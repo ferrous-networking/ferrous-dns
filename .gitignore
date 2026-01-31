@@ -1,0 +1,335 @@
+# Ferrous DNS - Complete .gitignore
+
+# ============================================================================
+# Rust
+# ============================================================================
+
+# Compiled files
+/target/
+**/target/
+Cargo.lock
+
+# Backup files
+**/*.rs.bk
+**/*.bk
+
+# ============================================================================
+# IDE / Editors
+# ============================================================================
+
+# IntelliJ IDEA / CLion / RustRover
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Neovim
+.nvimlog
+
+# Kate
+.kateconfig
+*.kate-swp
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# NetBeans
+nbproject/
+nbbuild/
+dist/
+nbdist/
+
+# ============================================================================
+# Operating Systems
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# Build artifacts
+# ============================================================================
+
+# Rust artifacts
+*.pdb
+*.rlib
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Release builds
+/release/
+/dist/
+/build/
+
+# ============================================================================
+# Testing & Coverage
+# ============================================================================
+
+# Code coverage
+tarpaulin-report.html
+cobertura.xml
+lcov.info
+*.profraw
+*.profdata
+
+# Test artifacts
+/tmp/
+/temp/
+*.test
+test-results/
+
+# Benchmark results
+criterion/
+benchmarks/
+
+# ============================================================================
+# Logs & Databases
+# ============================================================================
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# ============================================================================
+# Configuration & Secrets
+# ============================================================================
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Secrets
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.secret
+
+# Configuration overrides
+config/local.toml
+config/development.toml
+config/production.toml
+local.toml
+
+# ============================================================================
+# Docker
+# ============================================================================
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# ============================================================================
+# CI/CD
+# ============================================================================
+
+# CI artifacts
+.travis/
+.circleci/local/
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+# Generated docs
+/docs/_build/
+/docs/.doctrees/
+/target/doc/
+
+# Mdbook
+book/
+
+# ============================================================================
+# Package managers
+# ============================================================================
+
+# npm (if using for frontend tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ============================================================================
+# Project specific
+# ============================================================================
+
+# Ferrous DNS specific
+
+# Cache directory
+cache/
+.cache/
+
+# Data directory (databases, logs, etc.)
+data/
+*.data
+
+# Blocklists (downloaded)
+blocklists/
+*.hosts
+
+# Temporary DNS files
+*.zone
+
+# PID files
+*.pid
+
+# Backup files
+*.backup
+*.bak
+backups/
+
+# Query logs (sensitive data)
+query-logs/
+queries.log
+
+# Statistics
+stats/
+*.stats
+
+# TLS certificates (should not be committed)
+certs/
+*.crt
+*.csr
+
+# ============================================================================
+# Profiling & Performance
+# ============================================================================
+
+# Flamegraph
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Valgrind
+*.valgrind
+callgrind.out.*
+massif.out.*
+
+# Profiling data
+*.prof
+
+# ============================================================================
+# Miscellaneous
+# ============================================================================
+
+# Temporary files
+tmp/
+*.tmp
+*.temp
+
+# Archive files
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Core dumps
+core
+core.*
+
+# Python (if any scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# ============================================================================
+# Optional: Uncomment if needed
+# ============================================================================
+
+# Ignore all .toml except Cargo.toml
+# *.toml
+# !Cargo.toml
+# !**/Cargo.toml
+
+# Keep empty directories
+# !.gitkeep
+
+# ============================================================================
+# End of .gitignore
+# ============================================================================

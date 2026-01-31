@@ -1,0 +1,11 @@
+[package]
+name = "ferrous-dns-application"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+ferrous-dns-domain.workspace = true
+async-trait.workspace = true
+tokio.workspace = true

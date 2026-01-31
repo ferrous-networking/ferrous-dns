@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦀 Ferrous DNS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <style>[x-cloak] {
+        display: none !important;
+    }</style>
+</head>
+<body class="bg-gray-50" x-data="dashboard()" x-init="init()">
+
+<header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="text-4xl">🦀</div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Ferrous DNS</h1>
+                    <p class="text-sm text-gray-500">Blazingly fast DNS server</p>
+                </div>
+            </div>
+
+            <button @click="refreshStats()"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Total Queries</p>
+            <p class="text-3xl font-bold" x-text="stats.queries_total">0</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Blocked</p>
+            <p class="text-3xl font-bold text-red-600" x-text="stats.queries_blocked">0</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Clients</p>
+            <p class="text-3xl font-bold text-blue-600" x-text="stats.clients">0</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Uptime</p>
+            <p class="text-2xl font-bold text-green-600" x-text="uptime">0h</p>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-6">
+        <h2 class="text-xl font-bold mb-4">Recent Queries</h2>
+        <div class="space-y-2">
+            <template x-for="query in queries" :key="query.timestamp">
+                <div class="p-3 bg-gray-50 rounded-lg flex justify-between">
+                    <span x-text="query.domain"></span>
+                    <span :class="query.blocked ? 'text-red-600' : 'text-green-600'"
+                          x-text="query.blocked ? 'Blocked' : 'Allowed'">
+                        </span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+</main>
+
+<script>
+    function dashboard() {
+        return {
+            stats: {queries_total: 0, queries_blocked: 0, clients: 0, uptime: 0},
+            queries: [],
+
+            get uptime() {
+                const hours = Math.floor(this.stats.uptime / 3600);
+                const mins = Math.floor((this.stats.uptime % 3600) / 60);
+                return `${hours}h ${mins}m`;
+            },
+
+            async init() {
+                await this.refreshStats();
+                await this.loadQueries();
+                setInterval(() => this.refreshStats(), 5000);
+            },
+
+            async refreshStats() {
+                const res = await fetch('/api/stats');
+                this.stats = await res.json();
+            },
+
+            async loadQueries() {
+                const res = await fetch('/api/queries');
+                this.queries = await res.json();
+            }
+        }
+    }
+</script>
+</body>
+</html>
