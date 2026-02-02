@@ -1,16 +1,31 @@
-//! # Ferrous DNS Server
-//!
-//! Main entry point for the DNS server with integrated web UI
-
 use axum::{response::Html, routing::get, Router};
 use clap::Parser;
+use ferrous_dns_api::{create_api_routes, state::AppState};
+use ferrous_dns_application::use_cases::handle_dns_query::HandleDnsQueryUseCase;
+use ferrous_dns_application::{
+    ports::ConfigRepository,
+    use_cases::{GetBlocklistUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase},
+};
+use ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository;
+use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
+use ferrous_dns_infrastructure::repositories::SqliteConfigRepository;
+use ferrous_dns_infrastructure::{
+    database::create_pool,
+    dns::server::DnsServerHandler,
+    dns::HickoryDnsResolver,
+};
+use hickory_server::ServerFuture;
 use std::net::SocketAddr;
+use std::str::FromStr;
+use std::sync::Arc;
+use tokio::net::{TcpListener, UdpSocket};
 use tower_http::services::ServeDir;
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "ferrous-dns")]
 #[command(version = "0.1.0")]
-#[command(about = "🦀 A blazingly fast DNS server with ad-blocking")]
+#[command(about = "Ferrous DNS - High-performance DNS server with ad-blocking")]
 struct Cli {
     /// DNS server port
     #[arg(short = 'd', long, default_value = "53")]
@@ -23,28 +38,106 @@ struct Cli {
     /// Bind address
     #[arg(short = 'b', long, default_value = "0.0.0.0")]
     bind: String,
+
+    /// Database path
+    #[arg(long, default_value = "ferrous-dns.db")]
+    database: String,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt()
-        .with_target(false)
-        .with_thread_ids(false)
-        .with_level(true)
-        .init();
-
     let cli = Cli::parse();
 
-    tracing::info!("🦀 Ferrous DNS Server Starting...");
-    tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    // Initialize structured logging
+    let log_level = cli.log_level.parse().unwrap_or(tracing::Level::INFO);
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_level(true)
+        .with_max_level(log_level)
+        .with_ansi(true)
+        .init();
 
-    // Start DNS server (async task)
+    info!("Starting Ferrous DNS Server v{}", env!("CARGO_PKG_VERSION"));
+
+    // Initialize database
+    let database_url = format!("sqlite:{}", cli.database);
+    info!("Initializing database: {}", cli.database);
+
+    let pool = match create_pool(&database_url).await {
+        Ok(pool) => {
+            info!("Database initialized successfully");
+            pool
+        }
+        Err(e) => {
+            error!("Failed to initialize database: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    // Dependency Injection - Create repositories
+    let config_repo = SqliteConfigRepository::new(pool.clone());
+    let query_log_repo = Arc::new(SqliteQueryLogRepository::new(pool.clone()));
+    let blocklist_repo = Arc::new(SqliteBlocklistRepository::new(pool.clone()));
+
+    // Load configuration
+    info!("Loading configuration");
+    match config_repo.get_config().await {
+        Ok(cfg) => {
+            info!(
+                upstream_servers = cfg.upstream_dns.len(),
+                cache_enabled = cfg.cache_enabled,
+                blocklist_enabled = cfg.blocklist_enabled,
+                "Configuration loaded"
+            );
+            cfg
+        }
+        Err(e) => {
+            error!("Failed to load configuration: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    // Create use cases
+    let get_stats_use_case = Arc::new(GetQueryStatsUseCase::new(query_log_repo.clone()));
+    let get_queries_use_case = Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone()));
+    let get_blocklist_use_case = Arc::new(GetBlocklistUseCase::new(blocklist_repo.clone()));
+
+    // Create app state
+    let app_state = AppState {
+        get_stats: get_stats_use_case,
+        get_queries: get_queries_use_case,
+        get_blocklist: get_blocklist_use_case,
+    };
+
+    // Create DNS resolver
+    let resolver = Arc::new(
+        HickoryDnsResolver::with_google()
+            .map_err(|e| {
+                error!("Failed to create DNS resolver: {}", e);
+                anyhow::anyhow!("DNS resolver initialization failed")
+            })?
+    );
+
+    // Create DNS query handler use case
+    let dns_handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
+        resolver.clone(),
+        blocklist_repo.clone(),
+        query_log_repo.clone(),
+    ));
+
+    // Start DNS server
     let dns_addr = format!("{}:{}", cli.bind, cli.dns_port);
+    let dns_handler = DnsServerHandler::new(dns_handler_use_case);
+
     tokio::spawn(async move {
-        tracing::info!("🌐 DNS Server: {}", dns_addr);
-        tracing::info!("   Status: Ready to resolve queries");
-        // TODO: Start actual DNS server here
+        if let Err(e) = start_dns_server(dns_addr, dns_handler).await {
+            error!(error = %e, "DNS server error");
+        }
     });
 
     // Start web server
@@ -52,76 +145,70 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("Invalid address");
 
-    tracing::info!("🌍 Web Server: http://{}", web_addr);
-    tracing::info!("   Dashboard: http://{}", web_addr);
-    tracing::info!("   API: http://{}/api", web_addr);
-    tracing::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    info!(
+        bind_address = %web_addr,
+        dashboard_url = format!("http://{}", web_addr),
+        api_url = format!("http://{}/api", web_addr),
+        "Starting web server"
+    );
 
-    let app = create_app();
-
+    let app = create_app(app_state);
     let listener = tokio::net::TcpListener::bind(&web_addr).await?;
-    tracing::info!("✅ Server ready! Press Ctrl+C to stop");
 
-    axum::serve(listener, app).await?;
+    info!("Server started successfully");
+
+
+    axum::serve(listener, app)
+        .await
+        .map_err(|e| {
+            error!("Web server error: {}", e);
+            e
+        })?;
+
+    info!("Server shutdown complete");
 
     Ok(())
 }
 
-/// Creates the main application router
-fn create_app() -> Router {
+/// Start DNS server on UDP and TCP
+async fn start_dns_server(
+    bind_addr: String,
+    handler: DnsServerHandler,
+) -> anyhow::Result<()> {
+    let socket_addr = SocketAddr::from_str(&bind_addr)?;
+
+    info!(
+        bind_address = %socket_addr,
+        "Starting DNS server"
+    );
+
+    // Create UDP socket
+    let udp_socket = UdpSocket::bind(socket_addr).await?;
+    info!(protocol = "UDP", "DNS server listening");
+
+    // Create TCP listener
+    let tcp_listener = TcpListener::bind(socket_addr).await?;
+    info!(protocol = "TCP", "DNS server listening");
+
+    // Start server
+    let mut server = ServerFuture::new(handler);
+    server.register_socket(udp_socket);
+    server.register_listener(tcp_listener, std::time::Duration::from_secs(10));
+
+    info!("DNS server ready to accept queries");
+
+    server.block_until_done().await?;
+    
+    Ok(())
+}
+
+fn create_app(state: AppState) -> Router {
     Router::new()
-        // API Routes
-        .nest("/api", api_routes())
-        // Static files (CSS, JS, images)
+        .nest("/api", create_api_routes(state))
         .nest_service("/static", ServeDir::new("web/static"))
-        // Root - serve index.html
         .route("/", get(index_handler))
 }
 
-/// API routes
-fn api_routes() -> Router {
-    Router::new()
-        .route("/health", get(health_check))
-        .route("/stats", get(get_stats))
-        .route("/queries", get(get_queries))
-        .route("/blocklist", get(get_blocklist))
-}
-
-/// Handlers
 async fn index_handler() -> Html<&'static str> {
     Html(include_str!("../../../web/static/index.html"))
-}
-
-async fn health_check() -> &'static str {
-    "OK"
-}
-
-async fn get_stats() -> &'static str {
-    r#"{
-        "queries_total": 1234,
-        "queries_blocked": 567,
-        "clients": 5,
-        "uptime": 3600
-    }"#
-}
-
-async fn get_queries() -> &'static str {
-    r#"[
-        {
-            "timestamp": "2025-01-31T20:30:00Z",
-            "domain": "example.com",
-            "client": "192.168.1.100",
-            "type": "A",
-            "blocked": false
-        }
-    ]"#
-}
-
-async fn get_blocklist() -> &'static str {
-    r#"[
-        {
-            "domain": "ads.example.com",
-            "added_at": "2025-01-31T10:00:00Z"
-        }
-    ]"#
 }

@@ -24,3 +24,4 @@ tracing-subscriber.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true
+hickory-server = "0.25.2"

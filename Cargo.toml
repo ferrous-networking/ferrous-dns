@@ -22,13 +22,17 @@ ferrous-dns-api = { path = "crates/api" }
 
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-axum = { version = "0.7", features = ["macros"] }
-tower = "0.4"
+axum = { version = "0.8.8", features = ["macros"] }
+tower = "0.5.3"
 tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-thiserror = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate"], default-features = false }
+hickory-resolver = "0.25"
+hickory-server = "0.25"
+hickory-proto = "0.25"
