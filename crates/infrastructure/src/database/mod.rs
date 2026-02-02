@@ -11,7 +11,6 @@ pub async fn create_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> 
         .connect_with(options)
         .await?;
 
-    // Run migrations usando Migrator ao invés de macro
     let migrator = Migrator::new(Path::new("./migrations")).await?;
     migrator.run(&pool).await?;
 

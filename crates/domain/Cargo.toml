@@ -8,4 +8,4 @@ license.workspace = true
 [dependencies]
 thiserror.workspace = true
 serde.workspace = true
-toml = "0.8"
+toml.workspace = true

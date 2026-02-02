@@ -36,3 +36,4 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite","migrat
 hickory-resolver = "0.25"
 hickory-server = "0.25"
 hickory-proto = "0.25"
+toml = "0.9.8"

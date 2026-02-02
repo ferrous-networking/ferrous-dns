@@ -1,5 +1,5 @@
 use crate::dns_record::RecordType;
-use std::net::IpAddr; // ← Reutilizar RecordType
+use std::net::IpAddr;
 
 #[derive(Debug, Clone)]
 pub struct QueryLog {
