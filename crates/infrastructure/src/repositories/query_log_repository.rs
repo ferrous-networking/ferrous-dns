@@ -1,9 +1,7 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::QueryLogRepository;
-use ferrous_dns_domain::{DomainError, QueryLog, QueryStats, RecordType};
+use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
-use std::net::IpAddr;
-use std::str::FromStr;
 use std::time::SystemTime;
 use tracing::{debug, error, instrument};
 
@@ -19,8 +17,7 @@ impl SqliteQueryLogRepository {
 
 #[async_trait]
 impl QueryLogRepository for SqliteQueryLogRepository {
-    #[instrument(skip(self, query), fields(domain = %query.domain, record_type = %query.record_type.as_str()
-    ))]
+    #[instrument(skip(self, query), fields(domain = %query.domain, record_type = %query.record_type.as_str()))]
     async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError> {
         debug!("Logging DNS query");
 
@@ -72,8 +69,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 Some(QueryLog {
                     id: Some(row.get("id")),
                     domain: row.get("domain"),
-                    record_type: RecordType::from_str(&record_type_str)?,
-                    client_ip: IpAddr::from_str(&client_ip_str).ok()?,
+                    record_type: record_type_str.parse().ok()?, // Uses FromStr trait
+                    client_ip: client_ip_str.parse().ok()?,     // Uses FromStr trait
                     blocked: row.get::<i64, _>("blocked") != 0,
                     response_time_ms: row
                         .get::<Option<i64>, _>("response_time_ms")
@@ -126,6 +123,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
 
 fn get_uptime() -> u64 {
-    let start = START_TIME.get_or_init(|| SystemTime::now());
+    let start = START_TIME.get_or_init(SystemTime::now);
     start.elapsed().unwrap_or_default().as_secs()
 }

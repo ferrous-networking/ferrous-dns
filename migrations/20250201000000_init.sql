@@ -1,15 +1,6 @@
 -- Config table
-CREATE TABLE IF NOT EXISTS config
-(
-    id
-    INTEGER
-    PRIMARY
-    KEY
-    CHECK
-(
-    id =
-    1
-),
+CREATE TABLE IF NOT EXISTS config (
+                                      id INTEGER PRIMARY KEY CHECK (id = 1),
     upstream_dns TEXT NOT NULL,
     cache_enabled INTEGER NOT NULL DEFAULT 1,
     cache_ttl_seconds INTEGER NOT NULL DEFAULT 3600,
@@ -19,56 +10,21 @@ CREATE TABLE IF NOT EXISTS config
     );
 
 -- Query log table
-CREATE TABLE IF NOT EXISTS query_log
-(
-    id
-    INTEGER
-    PRIMARY
-    KEY
-    AUTOINCREMENT,
-    domain
-    TEXT
-    NOT
-    NULL,
-    record_type
-    TEXT
-    NOT
-    NULL,
-    client_ip
-    TEXT
-    NOT
-    NULL,
-    blocked
-    INTEGER
-    NOT
-    NULL
-    DEFAULT
-    0,
-    response_time_ms
-    INTEGER,
-    created_at
-    DATETIME
-    DEFAULT
-    CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS query_log (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     domain TEXT NOT NULL,
+     record_type TEXT NOT NULL,
+     client_ip TEXT NOT NULL,
+     blocked INTEGER NOT NULL DEFAULT 0,
+     response_time_ms INTEGER,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Blocklist table
-CREATE TABLE IF NOT EXISTS blocklist
-(
-    id
-    INTEGER
-    PRIMARY
-    KEY
-    AUTOINCREMENT,
-    domain
-    TEXT
-    NOT
-    NULL
-    UNIQUE,
-    added_at
-    DATETIME
-    DEFAULT
-    CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS blocklist (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     domain TEXT NOT NULL UNIQUE,
+     added_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes

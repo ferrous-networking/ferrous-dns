@@ -7,10 +7,10 @@
 - [x] Axum web server integration
 - [x] Modern dashboard with HTMX + Alpine.js
 - [x] REST API endpoints structure
-- [x] SQLite persistence
-- [x] Basic DNS server implementation
+- [ ] SQLite persistence
+- [ ] Basic DNS server implementation
 - [ ] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
-- [ ] Upstream DNS forwarding (1.1.1.1, 8.8.8.8)
+- [x] Upstream DNS forwarding (1.1.1.1, 8.8.8.8)
 - [ ] Load balancing across upstreams
 - [ ] Query caching with TTL
 - [ ] Blocklist functionality

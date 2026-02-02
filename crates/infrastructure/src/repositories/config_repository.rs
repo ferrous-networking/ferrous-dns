@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::ConfigRepository;
-use ferrous_dns_domain::{DnsConfig, DomainError};
+use ferrous_dns_domain::{Config, DomainError};
 use sqlx::{Row, SqlitePool};
-use std::net::IpAddr;
 
 pub struct SqliteConfigRepository {
     pool: SqlitePool,
@@ -16,9 +15,9 @@ impl SqliteConfigRepository {
 
 #[async_trait]
 impl ConfigRepository for SqliteConfigRepository {
-    async fn get_config(&self) -> Result<DnsConfig, DomainError> {
+    async fn get_config(&self) -> Result<Config, DomainError> {
         let row = sqlx::query(
-            "SELECT id, upstream_dns, cache_enabled, cache_ttl_seconds, blocklist_enabled
+            "SELECT upstream_dns, cache_enabled, cache_ttl_seconds, blocklist_enabled
              FROM config
              WHERE id = 1",
         )
@@ -28,53 +27,55 @@ impl ConfigRepository for SqliteConfigRepository {
 
         match row {
             Some(row) => {
+                // Parse upstream DNS servers from comma-separated string
                 let upstream_dns_str: String = row.get("upstream_dns");
-                let upstream_dns: Vec<IpAddr> = upstream_dns_str
+                let upstream_servers: Vec<String> = upstream_dns_str
                     .split(',')
-                    .filter_map(|s| s.trim().parse().ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
                     .collect();
 
-                Ok(DnsConfig {
-                    id: row.get("id"),
-                    upstream_dns,
-                    cache_enabled: row.get::<i64, _>("cache_enabled") != 0,
-                    cache_ttl_seconds: row.get("cache_ttl_seconds"),
-                    blocklist_enabled: row.get::<i64, _>("blocklist_enabled") != 0,
-                })
+                // Build Config from database values
+                let mut config = Config::default();
+
+                // Update DNS config
+                config.dns.upstream_servers = upstream_servers;
+                config.dns.cache_enabled = row.get::<i64, _>("cache_enabled") != 0;
+                config.dns.cache_ttl = row.get::<i64, _>("cache_ttl_seconds") as u64;
+
+                // Update blocking config
+                config.blocking.enabled = row.get::<i64, _>("blocklist_enabled") != 0;
+
+                Ok(config)
             }
             None => {
-                // Insert default config
-                let default = DnsConfig::default();
+                // Insert default config into database
+                let default = Config::default();
                 self.save_config(&default).await?;
                 Ok(default)
             }
         }
     }
 
-    async fn save_config(&self, config: &DnsConfig) -> Result<(), DomainError> {
-        let upstream_dns = config
-            .upstream_dns
-            .iter()
-            .map(|ip| ip.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
+    async fn save_config(&self, config: &Config) -> Result<(), DomainError> {
+        // Convert upstream servers to comma-separated string
+        let upstream_dns = config.dns.upstream_servers.join(",");
 
-        let cache_enabled = if config.cache_enabled { 1 } else { 0 };
-        let blocklist_enabled = if config.blocklist_enabled { 1 } else { 0 };
+        let cache_enabled = if config.dns.cache_enabled { 1 } else { 0 };
+        let blocklist_enabled = if config.blocking.enabled { 1 } else { 0 };
 
         sqlx::query(
             "INSERT INTO config (id, upstream_dns, cache_enabled, cache_ttl_seconds, blocklist_enabled)
-             VALUES (?, ?, ?, ?, ?)
+             VALUES (1, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 upstream_dns = excluded.upstream_dns,
                 cache_enabled = excluded.cache_enabled,
                 cache_ttl_seconds = excluded.cache_ttl_seconds,
                 blocklist_enabled = excluded.blocklist_enabled"
         )
-            .bind(config.id)
             .bind(&upstream_dns)
             .bind(cache_enabled)
-            .bind(config.cache_ttl_seconds)
+            .bind(config.dns.cache_ttl as i64)
             .bind(blocklist_enabled)
             .execute(&self.pool)
             .await

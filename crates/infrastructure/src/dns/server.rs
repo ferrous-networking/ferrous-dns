@@ -2,6 +2,10 @@ use ferrous_dns_application::use_cases::handle_dns_query::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{DnsRequest, RecordType};
 use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::{Name, RData, Record, RecordType as HickoryRecordType};
+use hickory_resolver::config::ResolverConfig;
+use hickory_resolver::lookup::LookupRecordIter;
+use hickory_resolver::name_server::TokioConnectionProvider;
+use hickory_resolver::Resolver;
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use std::net::IpAddr;
@@ -17,6 +21,48 @@ pub struct DnsServerHandler {
 impl DnsServerHandler {
     pub fn new(use_case: Arc<HandleDnsQueryUseCase>) -> Self {
         Self { use_case }
+    }
+
+    /// Normalize domain name by removing trailing dot (FQDN -> simple name)
+    /// Example: "x.com." -> "x.com"
+    fn normalize_domain(domain: &str) -> String {
+        domain.trim_end_matches('.').to_string()
+    }
+
+    /// Get SOA record for AUTHORITY section in NODATA responses
+    /// Returns empty vec if SOA lookup fails (graceful degradation)
+    async fn get_soa_authority(&self, domain: &str) -> Vec<Record> {
+        use hickory_proto::rr::RecordType as HickoryRecordType;
+
+        // Create a quick resolver for SOA lookup
+        let resolver = Resolver::builder_with_config(
+            ResolverConfig::google(),
+            TokioConnectionProvider::default(),
+        )
+        .build();
+
+        // Try to lookup SOA record using generic lookup
+        match resolver.lookup(domain, HickoryRecordType::SOA).await {
+            Ok(lookup) => {
+                let records: Vec<Record> =
+                    LookupRecordIter::filter_map(lookup.record_iter(), |record| {
+                        Some(record.clone())
+                    })
+                    .collect();
+
+                if !records.is_empty() {
+                    debug!(domain = %domain, count = records.len(), "SOA record found for AUTHORITY section");
+                } else {
+                    debug!(domain = %domain, "SOA lookup returned empty");
+                }
+
+                records
+            }
+            Err(e) => {
+                debug!(domain = %domain, error = %e, "Failed to lookup SOA, using empty AUTHORITY");
+                vec![]
+            }
+        }
     }
 }
 
@@ -38,7 +84,7 @@ impl RequestHandler for DnsServerHandler {
         };
 
         let query = &request_info.query;
-        let domain = query.name().to_utf8();
+        let domain = Self::normalize_domain(&query.name().to_utf8());
         let record_type = query.query_type();
         let client_ip = request.src().ip();
 
@@ -89,6 +135,32 @@ impl RequestHandler for DnsServerHandler {
             }
         };
 
+        // If no addresses found, return NOERROR with SOA in AUTHORITY section
+        // This is RFC 2308 compliant NODATA response
+        if addresses.is_empty() {
+            debug!(domain = %domain, record_type = ?record_type, "No records found (NODATA), fetching SOA");
+
+            // Try to get SOA record for AUTHORITY section
+            let authority_records = self.get_soa_authority(&domain).await;
+
+            let builder = MessageResponseBuilder::from_message_request(request);
+            let response = builder.build(
+                *request.header(),
+                &[],                      // Empty answers
+                authority_records.iter(), // SOA in authority section
+                &[],
+                &[],
+            );
+
+            return match response_handle.send_response(response).await {
+                Ok(info) => info,
+                Err(e) => {
+                    error!(error = %e, "Failed to send NODATA response");
+                    ResponseInfo::from(*request.header())
+                }
+            };
+        }
+
         // Build response using MessageResponseBuilder
         let builder = MessageResponseBuilder::from_message_request(request);
         let mut answers = Vec::new();
@@ -112,13 +184,13 @@ impl RequestHandler for DnsServerHandler {
         debug!(domain = %domain, answers = addresses.len(), "Sending response");
 
         // Build and send response
-        let response = builder.build(request.header().clone(), answers.iter(), &[], &[], &[]);
+        let response = builder.build(*request.header(), answers.iter(), &[], &[], &[]);
 
         match response_handle.send_response(response).await {
             Ok(info) => info,
             Err(e) => {
                 error!(error = %e, "Failed to send response");
-                ResponseInfo::from(request.header().clone())
+                ResponseInfo::from(*request.header())
             }
         }
     }
@@ -132,7 +204,7 @@ async fn send_error_response<R: ResponseHandler>(
     debug!(code = ?code, "Sending error response");
 
     let builder = MessageResponseBuilder::from_message_request(request);
-    let mut header = request.header().clone();
+    let mut header = *request.header();
     header.set_response_code(code);
 
     let response = builder.build(header, &[], &[], &[], &[]);
@@ -141,7 +213,7 @@ async fn send_error_response<R: ResponseHandler>(
         Ok(info) => info,
         Err(e) => {
             error!(error = %e, "Failed to send error response");
-            ResponseInfo::from(request.header().clone())
+            ResponseInfo::from(*request.header())
         }
     }
 }

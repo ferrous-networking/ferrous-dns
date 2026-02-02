@@ -5,6 +5,7 @@ use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::Resolver;
 use std::net::IpAddr;
+use tracing::{debug, warn};
 
 pub struct HickoryDnsResolver {
     resolver: Resolver<TokioConnectionProvider>,
@@ -50,34 +51,81 @@ impl DnsResolver for HickoryDnsResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<Vec<IpAddr>, DomainError> {
         match query.record_type {
             RecordType::A => {
-                let response = self
-                    .resolver
-                    .ipv4_lookup(&query.domain)
-                    .await
-                    .map_err(|e| DomainError::InvalidDomainName(e.to_string()))?;
+                match self.resolver.ipv4_lookup(&query.domain).await {
+                    Ok(response) => {
+                        let ips: Vec<IpAddr> = response
+                            .iter()
+                            .map(|a_record| IpAddr::V4(a_record.0))
+                            .collect();
 
-                // Extract Ipv4Addr from A record
-                Ok(response
-                    .iter()
-                    .map(|a_record| IpAddr::V4(a_record.0))
-                    .collect())
+                        debug!(domain = %query.domain, count = ips.len(), "A records resolved");
+                        Ok(ips)
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        // No A records found is not an error, just empty result
+                        if error_msg.contains("no records found")
+                            || error_msg.contains("no records")
+                            || error_msg.contains("NoRecordsFound")
+                        {
+                            debug!(domain = %query.domain, "No A records found");
+                            Ok(vec![])
+                        } else {
+                            warn!(domain = %query.domain, error = %e, "A lookup failed");
+                            Err(DomainError::InvalidDomainName(e.to_string()))
+                        }
+                    }
+                }
             }
+
             RecordType::AAAA => {
-                let response = self
-                    .resolver
-                    .ipv6_lookup(&query.domain)
-                    .await
-                    .map_err(|e| DomainError::InvalidDomainName(e.to_string()))?;
+                match self.resolver.ipv6_lookup(&query.domain).await {
+                    Ok(response) => {
+                        let ips: Vec<IpAddr> = response
+                            .iter()
+                            .map(|aaaa_record| IpAddr::V6(aaaa_record.0))
+                            .collect();
 
-                // Extract Ipv6Addr from AAAA record
-                Ok(response
-                    .iter()
-                    .map(|aaaa_record| IpAddr::V6(aaaa_record.0))
-                    .collect())
+                        debug!(domain = %query.domain, count = ips.len(), "AAAA records resolved");
+                        Ok(ips)
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        // No AAAA records found is not an error, just empty result
+                        if error_msg.contains("no records found")
+                            || error_msg.contains("no records")
+                            || error_msg.contains("NoRecordsFound")
+                        {
+                            debug!(domain = %query.domain, "No AAAA records found");
+                            Ok(vec![])
+                        } else {
+                            warn!(domain = %query.domain, error = %e, "AAAA lookup failed");
+                            Err(DomainError::InvalidDomainName(e.to_string()))
+                        }
+                    }
+                }
             }
-            _ => {
-                // For other record types, return empty for now
-                Ok(vec![])
+
+            RecordType::MX | RecordType::TXT | RecordType::CNAME | RecordType::PTR => {
+                // MX, TXT, CNAME and PTR records don't return IP addresses
+                // They should be handled differently in the future
+                // For now, try A record fallback for the domain
+                debug!(
+                    domain = %query.domain,
+                    record_type = %query.record_type.as_str(),
+                    "Non-IP record type, attempting A record fallback"
+                );
+
+                match self.resolver.ipv4_lookup(&query.domain).await {
+                    Ok(response) => {
+                        let ips: Vec<IpAddr> = response
+                            .iter()
+                            .map(|a_record| IpAddr::V4(a_record.0))
+                            .collect();
+                        Ok(ips)
+                    }
+                    Err(_) => Ok(vec![]),
+                }
             }
         }
     }

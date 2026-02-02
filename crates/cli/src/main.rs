@@ -1,14 +1,16 @@
+//! # Ferrous DNS Server
+//!
+//! Main entry point for the DNS server with integrated web UI
+
 use axum::{response::Html, routing::get, Router};
 use clap::Parser;
 use ferrous_dns_api::{create_api_routes, state::AppState};
-use ferrous_dns_application::use_cases::handle_dns_query::HandleDnsQueryUseCase;
-use ferrous_dns_application::{
-    ports::ConfigRepository,
-    use_cases::{GetBlocklistUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase},
+use ferrous_dns_application::use_cases::{
+    handle_dns_query::HandleDnsQueryUseCase, GetBlocklistUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase,
 };
 use ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
-use ferrous_dns_infrastructure::repositories::SqliteConfigRepository;
 use ferrous_dns_infrastructure::{
     database::create_pool, dns::server::DnsServerHandler, dns::HickoryDnsResolver,
 };
@@ -25,33 +27,50 @@ use tracing::{error, info};
 #[command(version = "0.1.0")]
 #[command(about = "Ferrous DNS - High-performance DNS server with ad-blocking")]
 struct Cli {
+    /// Configuration file path
+    #[arg(short = 'c', long, value_name = "FILE")]
+    config: Option<String>,
+
     /// DNS server port
-    #[arg(short = 'd', long, default_value = "53")]
-    dns_port: u16,
+    #[arg(short = 'd', long)]
+    dns_port: Option<u16>,
 
     /// Web server port
-    #[arg(short = 'w', long, default_value = "8080")]
-    web_port: u16,
+    #[arg(short = 'w', long)]
+    web_port: Option<u16>,
 
     /// Bind address
-    #[arg(short = 'b', long, default_value = "0.0.0.0")]
-    bind: String,
+    #[arg(short = 'b', long)]
+    bind: Option<String>,
 
     /// Database path
-    #[arg(long, default_value = "ferrous-dns.db")]
-    database: String,
+    #[arg(long)]
+    database: Option<String>,
 
     /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info")]
-    log_level: String,
+    #[arg(long)]
+    log_level: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Initialize structured logging
-    let log_level = cli.log_level.parse().unwrap_or(tracing::Level::INFO);
+    // Load configuration (file + CLI overrides)
+    let cli_overrides = ferrous_dns_domain::CliOverrides {
+        dns_port: cli.dns_port,
+        web_port: cli.web_port,
+        bind_address: cli.bind.clone(),
+        database_path: cli.database.clone(),
+        log_level: cli.log_level.clone(),
+    };
+
+    let config = ferrous_dns_domain::Config::load(cli.config.as_deref(), cli_overrides)?;
+
+    config.validate()?;
+
+    // Initialize structured logging from config
+    let log_level = config.logging.level.parse().unwrap_or(tracing::Level::INFO);
     tracing_subscriber::fmt()
         .with_target(true)
         .with_thread_ids(false)
@@ -61,10 +80,17 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     info!("Starting Ferrous DNS Server v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        config_file = cli.config.as_deref().unwrap_or("default"),
+        dns_port = config.server.dns_port,
+        web_port = config.server.web_port,
+        bind = %config.server.bind_address,
+        "Configuration loaded"
+    );
 
-    // Initialize database
-    let database_url = format!("sqlite:{}", cli.database);
-    info!("Initializing database: {}", cli.database);
+    // Initialize database from config
+    let database_url = format!("sqlite:{}", config.database.path);
+    info!("Initializing database: {}", config.database.path);
 
     let pool = match create_pool(&database_url).await {
         Ok(pool) => {
@@ -78,27 +104,16 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Dependency Injection - Create repositories
-    let config_repo = SqliteConfigRepository::new(pool.clone());
     let query_log_repo = Arc::new(SqliteQueryLogRepository::new(pool.clone()));
     let blocklist_repo = Arc::new(SqliteBlocklistRepository::new(pool.clone()));
 
-    // Load configuration
-    info!("Loading configuration");
-    match config_repo.get_config().await {
-        Ok(cfg) => {
-            info!(
-                upstream_servers = cfg.upstream_dns.len(),
-                cache_enabled = cfg.cache_enabled,
-                blocklist_enabled = cfg.blocklist_enabled,
-                "Configuration loaded"
-            );
-            cfg
-        }
-        Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            return Err(e.into());
-        }
-    };
+    // Config já carregado do TOML acima, apenas logar
+    info!(
+        upstream_servers = config.dns.upstream_servers.len(),
+        cache_enabled = config.dns.cache_enabled,
+        blocklist_enabled = config.blocking.enabled,
+        "DNS configuration"
+    );
 
     // Create use cases
     let get_stats_use_case = Arc::new(GetQueryStatsUseCase::new(query_log_repo.clone()));
@@ -126,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     // Start DNS server
-    let dns_addr = format!("{}:{}", cli.bind, cli.dns_port);
+    let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
     let dns_handler = DnsServerHandler::new(dns_handler_use_case);
 
     tokio::spawn(async move {
@@ -136,7 +151,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Start web server
-    let web_addr: SocketAddr = format!("{}:{}", cli.bind, cli.web_port)
+    let web_addr: SocketAddr = format!("{}:{}", config.server.bind_address, config.server.web_port)
         .parse()
         .expect("Invalid address");
 

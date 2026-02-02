@@ -58,58 +58,55 @@
 
     <div class="bg-white rounded-xl shadow-sm p-6">
         <h2 class="text-xl font-bold mb-4">Recent Queries</h2>
-
+        
         <!-- Loading state -->
         <div x-show="queries.length === 0" class="text-center py-8 text-gray-500">
             <p>No queries yet. Make a DNS query to see it here!</p>
-            <p class="text-sm mt-2">Try: <code class="bg-gray-100 px-2 py-1 rounded">dig @localhost -p 5353
-                google.com</code></p>
+            <p class="text-sm mt-2">Try: <code class="bg-gray-100 px-2 py-1 rounded">dig @localhost -p 5353 google.com</code></p>
         </div>
 
         <!-- Queries table -->
         <div x-show="queries.length > 0" class="overflow-x-auto" x-cloak>
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Domain
-                    </th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                    </th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Client
-                    </th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Time
-                    </th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                    </th>
-                </tr>
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Domain
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Type
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Client
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Time
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                        </th>
+                    </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
-                <template x-for="(query, index) in queries" :key="index">
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="font-medium text-gray-900" x-text="query.domain"></span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                                  x-text="query.type"></span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="text-sm text-gray-600" x-text="query.client"></span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            <span x-text="query.timestamp"></span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span :class="query.blocked ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'"
-                                  x-text="query.blocked ? '🚫 Blocked' : '✅ Allowed'"></span>
-                        </td>
-                    </tr>
-                </template>
+                    <template x-for="(query, index) in queries" :key="index">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="font-medium text-gray-900" x-text="query.domain"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800" x-text="query.type"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="text-sm text-gray-600" x-text="query.client"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                <span x-text="query.timestamp"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span :class="query.blocked ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'" x-text="query.blocked ? '🚫 Blocked' : '✅ Allowed'"></span>
+                            </td>
+                        </tr>
+                    </template>
                 </tbody>
             </table>
         </div>

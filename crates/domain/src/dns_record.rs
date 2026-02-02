@@ -1,4 +1,6 @@
+use std::fmt;
 use std::net::IpAddr;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordType {
@@ -21,16 +23,28 @@ impl RecordType {
             RecordType::PTR => "PTR",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+// Implement Display trait for easy string conversion
+impl fmt::Display for RecordType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+// Implement FromStr trait (standard Rust way)
+impl FromStr for RecordType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
-            "A" => Some(RecordType::A),
-            "AAAA" => Some(RecordType::AAAA),
-            "CNAME" => Some(RecordType::CNAME),
-            "MX" => Some(RecordType::MX),
-            "TXT" => Some(RecordType::TXT),
-            "PTR" => Some(RecordType::PTR),
-            _ => None,
+            "A" => Ok(RecordType::A),
+            "AAAA" => Ok(RecordType::AAAA),
+            "CNAME" => Ok(RecordType::CNAME),
+            "MX" => Ok(RecordType::MX),
+            "TXT" => Ok(RecordType::TXT),
+            "PTR" => Ok(RecordType::PTR),
+            _ => Err(format!("Invalid record type: {}", s)),
         }
     }
 }
