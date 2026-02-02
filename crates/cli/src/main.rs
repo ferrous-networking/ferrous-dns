@@ -1,7 +1,3 @@
-//! # Ferrous DNS Server
-//!
-//! Main entry point for the DNS server with integrated web UI
-
 use axum::{response::Html, routing::get, Router};
 use clap::Parser;
 use ferrous_dns_api::{create_api_routes, state::AppState};

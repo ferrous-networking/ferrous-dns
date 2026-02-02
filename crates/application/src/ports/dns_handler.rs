@@ -4,7 +4,7 @@ use std::net::IpAddr;
 
 #[async_trait]
 pub trait DnsHandler: Send + Sync {
-    /// Handle DNS query - resolve upstream and check blocklist
+
     async fn handle_query(
         &self,
         request: &DnsRequest,
