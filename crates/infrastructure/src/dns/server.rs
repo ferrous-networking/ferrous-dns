@@ -97,10 +97,40 @@ impl RequestHandler for DnsServerHandler {
 
         // Convert Hickory record type to our domain type
         let our_record_type = match record_type {
+            // Basic types
             HickoryRecordType::A => RecordType::A,
             HickoryRecordType::AAAA => RecordType::AAAA,
+            HickoryRecordType::CNAME => RecordType::CNAME,
             HickoryRecordType::MX => RecordType::MX,
             HickoryRecordType::TXT => RecordType::TXT,
+            HickoryRecordType::PTR => RecordType::PTR,
+
+            // Advanced types
+            HickoryRecordType::SRV => RecordType::SRV,
+            HickoryRecordType::SOA => RecordType::SOA,
+            HickoryRecordType::NS => RecordType::NS,
+            HickoryRecordType::NAPTR => RecordType::NAPTR,
+            HickoryRecordType::DS => RecordType::DS,
+            HickoryRecordType::DNSKEY => RecordType::DNSKEY,
+            HickoryRecordType::SVCB => RecordType::SVCB,
+            HickoryRecordType::HTTPS => RecordType::HTTPS,
+
+            // Security & Modern records
+            HickoryRecordType::CAA => RecordType::CAA,
+            HickoryRecordType::TLSA => RecordType::TLSA,
+            HickoryRecordType::SSHFP => RecordType::SSHFP,
+            // Note: DNAME not available in Hickory 0.25
+
+            // DNSSEC records
+            HickoryRecordType::RRSIG => RecordType::RRSIG,
+            HickoryRecordType::NSEC => RecordType::NSEC,
+            HickoryRecordType::NSEC3 => RecordType::NSEC3,
+            HickoryRecordType::NSEC3PARAM => RecordType::NSEC3PARAM,
+
+            // Child DNSSEC
+            HickoryRecordType::CDS => RecordType::CDS,
+            HickoryRecordType::CDNSKEY => RecordType::CDNSKEY,
+
             _ => {
                 warn!(record_type = ?record_type, "Unsupported record type");
                 return send_error_response(request, &mut response_handle, ResponseCode::NotImp)

@@ -83,6 +83,9 @@
                             Time
                         </th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Response
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
                         </th>
                     </tr>
@@ -101,6 +104,19 @@
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                                 <span x-text="query.timestamp"></span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm">
+                                <span 
+                                    class="font-semibold"
+                                    :class="{
+                                        'text-green-600': query.response_time_ms && query.response_time_ms < 10,
+                                        'text-yellow-600': query.response_time_ms && query.response_time_ms >= 10 && query.response_time_ms < 50,
+                                        'text-orange-600': query.response_time_ms && query.response_time_ms >= 50 && query.response_time_ms < 100,
+                                        'text-red-600': query.response_time_ms && query.response_time_ms >= 100,
+                                        'text-gray-400': !query.response_time_ms
+                                    }"
+                                    x-text="query.response_time_ms ? query.response_time_ms + 'ms' : '-'">
+                                </span>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <span :class="query.blocked ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'" x-text="query.blocked ? '🚫 Blocked' : '✅ Allowed'"></span>

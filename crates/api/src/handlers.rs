@@ -20,6 +20,7 @@ pub struct QueryResponse {
     #[serde(rename = "type")]
     pub record_type: String,
     pub blocked: bool,
+    pub response_time_ms: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -84,6 +85,7 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
                     client: q.client_ip.to_string(),
                     record_type: q.record_type.as_str().to_string(),
                     blocked: q.blocked,
+                    response_time_ms: q.response_time_ms,
                 })
                 .collect();
 

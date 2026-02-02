@@ -4,12 +4,39 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordType {
+    // Basic records
     A,
     AAAA,
     CNAME,
     MX,
     TXT,
     PTR,
+
+    // Advanced records
+    SRV,    // Service locator
+    SOA,    // Start of Authority
+    NS,     // Name Server
+    NAPTR,  // Naming Authority Pointer
+    DS,     // Delegation Signer (DNSSEC)
+    DNSKEY, // DNS Key (DNSSEC)
+    SVCB,   // Service Binding
+    HTTPS,  // HTTPS Service Binding
+
+    // Security & Modern records (NEW!)
+    CAA,   // Certificate Authority Authorization
+    TLSA,  // TLS Authentication (DANE)
+    SSHFP, // SSH Fingerprint
+    DNAME, // Delegation Name
+
+    // DNSSEC records (NEW!)
+    RRSIG,      // Resource Record Signature
+    NSEC,       // Next Secure
+    NSEC3,      // NSEC version 3
+    NSEC3PARAM, // NSEC3 Parameters
+
+    // Child DNSSEC (NEW!)
+    CDS,     // Child DS
+    CDNSKEY, // Child DNSKEY
 }
 
 impl RecordType {
@@ -21,6 +48,24 @@ impl RecordType {
             RecordType::MX => "MX",
             RecordType::TXT => "TXT",
             RecordType::PTR => "PTR",
+            RecordType::SRV => "SRV",
+            RecordType::SOA => "SOA",
+            RecordType::NS => "NS",
+            RecordType::NAPTR => "NAPTR",
+            RecordType::DS => "DS",
+            RecordType::DNSKEY => "DNSKEY",
+            RecordType::SVCB => "SVCB",
+            RecordType::HTTPS => "HTTPS",
+            RecordType::CAA => "CAA",
+            RecordType::TLSA => "TLSA",
+            RecordType::SSHFP => "SSHFP",
+            RecordType::DNAME => "DNAME",
+            RecordType::RRSIG => "RRSIG",
+            RecordType::NSEC => "NSEC",
+            RecordType::NSEC3 => "NSEC3",
+            RecordType::NSEC3PARAM => "NSEC3PARAM",
+            RecordType::CDS => "CDS",
+            RecordType::CDNSKEY => "CDNSKEY",
         }
     }
 }
@@ -44,6 +89,24 @@ impl FromStr for RecordType {
             "MX" => Ok(RecordType::MX),
             "TXT" => Ok(RecordType::TXT),
             "PTR" => Ok(RecordType::PTR),
+            "SRV" => Ok(RecordType::SRV),
+            "SOA" => Ok(RecordType::SOA),
+            "NS" => Ok(RecordType::NS),
+            "NAPTR" => Ok(RecordType::NAPTR),
+            "DS" => Ok(RecordType::DS),
+            "DNSKEY" => Ok(RecordType::DNSKEY),
+            "SVCB" => Ok(RecordType::SVCB),
+            "HTTPS" => Ok(RecordType::HTTPS),
+            "CAA" => Ok(RecordType::CAA),
+            "TLSA" => Ok(RecordType::TLSA),
+            "SSHFP" => Ok(RecordType::SSHFP),
+            "DNAME" => Ok(RecordType::DNAME),
+            "RRSIG" => Ok(RecordType::RRSIG),
+            "NSEC" => Ok(RecordType::NSEC),
+            "NSEC3" => Ok(RecordType::NSEC3),
+            "NSEC3PARAM" => Ok(RecordType::NSEC3PARAM),
+            "CDS" => Ok(RecordType::CDS),
+            "CDNSKEY" => Ok(RecordType::CDNSKEY),
             _ => Err(format!("Invalid record type: {}", s)),
         }
     }

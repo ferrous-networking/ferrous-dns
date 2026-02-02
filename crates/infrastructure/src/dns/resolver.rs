@@ -49,84 +49,195 @@ impl HickoryDnsResolver {
 #[async_trait]
 impl DnsResolver for HickoryDnsResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<Vec<IpAddr>, DomainError> {
-        match query.record_type {
-            RecordType::A => {
-                match self.resolver.ipv4_lookup(&query.domain).await {
-                    Ok(response) => {
-                        let ips: Vec<IpAddr> = response
-                            .iter()
-                            .map(|a_record| IpAddr::V4(a_record.0))
-                            .collect();
+        use hickory_proto::rr::RecordType as HickoryRecordType;
 
-                        debug!(domain = %query.domain, count = ips.len(), "A records resolved");
-                        Ok(ips)
-                    }
-                    Err(e) => {
-                        let error_msg = e.to_string();
-                        // No A records found is not an error, just empty result
-                        if error_msg.contains("no records found")
-                            || error_msg.contains("no records")
-                            || error_msg.contains("NoRecordsFound")
-                        {
-                            debug!(domain = %query.domain, "No A records found");
-                            Ok(vec![])
-                        } else {
-                            warn!(domain = %query.domain, error = %e, "A lookup failed");
-                            Err(DomainError::InvalidDomainName(e.to_string()))
-                        }
-                    }
-                }
+        match query.record_type {
+            // IP-based records
+            RecordType::A => {
+                self.resolve_ip_records(
+                    &query.domain,
+                    "A",
+                    self.resolver.ipv4_lookup(&query.domain),
+                    |r| IpAddr::V4(r.0),
+                )
+                .await
             }
 
             RecordType::AAAA => {
-                match self.resolver.ipv6_lookup(&query.domain).await {
-                    Ok(response) => {
-                        let ips: Vec<IpAddr> = response
-                            .iter()
-                            .map(|aaaa_record| IpAddr::V6(aaaa_record.0))
-                            .collect();
-
-                        debug!(domain = %query.domain, count = ips.len(), "AAAA records resolved");
-                        Ok(ips)
-                    }
-                    Err(e) => {
-                        let error_msg = e.to_string();
-                        // No AAAA records found is not an error, just empty result
-                        if error_msg.contains("no records found")
-                            || error_msg.contains("no records")
-                            || error_msg.contains("NoRecordsFound")
-                        {
-                            debug!(domain = %query.domain, "No AAAA records found");
-                            Ok(vec![])
-                        } else {
-                            warn!(domain = %query.domain, error = %e, "AAAA lookup failed");
-                            Err(DomainError::InvalidDomainName(e.to_string()))
-                        }
-                    }
-                }
+                self.resolve_ip_records(
+                    &query.domain,
+                    "AAAA",
+                    self.resolver.ipv6_lookup(&query.domain),
+                    |r| IpAddr::V6(r.0),
+                )
+                .await
             }
 
-            RecordType::MX | RecordType::TXT | RecordType::CNAME | RecordType::PTR => {
-                // MX, TXT, CNAME and PTR records don't return IP addresses
-                // They should be handled differently in the future
-                // For now, try A record fallback for the domain
-                debug!(
-                    domain = %query.domain,
-                    record_type = %query.record_type.as_str(),
-                    "Non-IP record type, attempting A record fallback"
-                );
+            // Non-IP records
+            RecordType::MX => {
+                self.resolve_non_ip_records(&query.domain, "MX", HickoryRecordType::MX)
+                    .await
+            }
+            RecordType::TXT => {
+                self.resolve_non_ip_records(&query.domain, "TXT", HickoryRecordType::TXT)
+                    .await
+            }
+            RecordType::CNAME => {
+                self.resolve_non_ip_records(&query.domain, "CNAME", HickoryRecordType::CNAME)
+                    .await
+            }
+            RecordType::PTR => {
+                self.resolve_non_ip_records(&query.domain, "PTR", HickoryRecordType::PTR)
+                    .await
+            }
+            RecordType::SRV => {
+                self.resolve_non_ip_records(&query.domain, "SRV", HickoryRecordType::SRV)
+                    .await
+            }
+            RecordType::SOA => {
+                self.resolve_non_ip_records(&query.domain, "SOA", HickoryRecordType::SOA)
+                    .await
+            }
+            RecordType::NS => {
+                self.resolve_non_ip_records(&query.domain, "NS", HickoryRecordType::NS)
+                    .await
+            }
+            RecordType::NAPTR => {
+                self.resolve_non_ip_records(&query.domain, "NAPTR", HickoryRecordType::NAPTR)
+                    .await
+            }
+            RecordType::DS => {
+                self.resolve_non_ip_records(&query.domain, "DS", HickoryRecordType::DS)
+                    .await
+            }
+            RecordType::DNSKEY => {
+                self.resolve_non_ip_records(&query.domain, "DNSKEY", HickoryRecordType::DNSKEY)
+                    .await
+            }
+            RecordType::SVCB => {
+                self.resolve_non_ip_records(&query.domain, "SVCB", HickoryRecordType::SVCB)
+                    .await
+            }
+            RecordType::HTTPS => {
+                self.resolve_non_ip_records(&query.domain, "HTTPS", HickoryRecordType::HTTPS)
+                    .await
+            }
 
-                match self.resolver.ipv4_lookup(&query.domain).await {
-                    Ok(response) => {
-                        let ips: Vec<IpAddr> = response
-                            .iter()
-                            .map(|a_record| IpAddr::V4(a_record.0))
-                            .collect();
-                        Ok(ips)
-                    }
-                    Err(_) => Ok(vec![]),
-                }
+            // Security & Modern records
+            RecordType::CAA => {
+                self.resolve_non_ip_records(&query.domain, "CAA", HickoryRecordType::CAA)
+                    .await
+            }
+            RecordType::TLSA => {
+                self.resolve_non_ip_records(&query.domain, "TLSA", HickoryRecordType::TLSA)
+                    .await
+            }
+            RecordType::SSHFP => {
+                self.resolve_non_ip_records(&query.domain, "SSHFP", HickoryRecordType::SSHFP)
+                    .await
+            }
+
+            // Note: DNAME not available in Hickory 0.25
+            RecordType::DNAME => {
+                debug!(domain = %query.domain, "DNAME not supported in Hickory 0.25");
+                Ok(vec![])
+            }
+
+            // DNSSEC records
+            RecordType::RRSIG => {
+                self.resolve_non_ip_records(&query.domain, "RRSIG", HickoryRecordType::RRSIG)
+                    .await
+            }
+            RecordType::NSEC => {
+                self.resolve_non_ip_records(&query.domain, "NSEC", HickoryRecordType::NSEC)
+                    .await
+            }
+            RecordType::NSEC3 => {
+                self.resolve_non_ip_records(&query.domain, "NSEC3", HickoryRecordType::NSEC3)
+                    .await
+            }
+            RecordType::NSEC3PARAM => {
+                self.resolve_non_ip_records(
+                    &query.domain,
+                    "NSEC3PARAM",
+                    HickoryRecordType::NSEC3PARAM,
+                )
+                .await
+            }
+
+            // Child DNSSEC
+            RecordType::CDS => {
+                self.resolve_non_ip_records(&query.domain, "CDS", HickoryRecordType::CDS)
+                    .await
+            }
+            RecordType::CDNSKEY => {
+                self.resolve_non_ip_records(&query.domain, "CDNSKEY", HickoryRecordType::CDNSKEY)
+                    .await
             }
         }
+    }
+}
+
+impl HickoryDnsResolver {
+    async fn resolve_ip_records<Fut, Resp, Item, Map>(
+        &self,
+        domain: &str,
+        record_name: &'static str,
+        fut: Fut,
+        map: Map,
+    ) -> Result<Vec<IpAddr>, DomainError>
+    where
+        Fut: std::future::Future<Output = Result<Resp, hickory_resolver::ResolveError>>,
+        Resp: IntoIterator<Item = Item>,
+        Map: Fn(Item) -> IpAddr,
+    {
+        match fut.await {
+            Ok(response) => {
+                let ips: Vec<IpAddr> = response.into_iter().map(map).collect();
+                debug!(domain = %domain, count = ips.len(), "{record_name} records resolved");
+                Ok(ips)
+            }
+            Err(e) => handle_no_records_error(domain, record_name, e),
+        }
+    }
+
+    async fn resolve_non_ip_records(
+        &self,
+        domain: &str,
+        record_name: &'static str,
+        record_type: hickory_proto::rr::RecordType,
+    ) -> Result<Vec<IpAddr>, DomainError> {
+        match self.resolver.lookup(domain, record_type).await {
+            Ok(lookup) => {
+                let count = lookup.record_iter().count();
+
+                if count > 0 {
+                    debug!(domain = %domain, count, "{record_name} records found");
+                } else {
+                    debug!(domain = %domain, "No {record_name} records found");
+                }
+
+                Ok(vec![]) // Server will build response from upstream
+            }
+            Err(e) => handle_no_records_error(domain, record_name, e),
+        }
+    }
+}
+
+fn handle_no_records_error(
+    domain: &str,
+    record_type: &str,
+    e: impl std::fmt::Display,
+) -> Result<Vec<IpAddr>, DomainError> {
+    let error_msg = e.to_string();
+    if error_msg.contains("no records found")
+        || error_msg.contains("no records")
+        || error_msg.contains("NoRecordsFound")
+    {
+        debug!(domain = %domain, "No {} records found", record_type);
+        Ok(vec![])
+    } else {
+        warn!(domain = %domain, error = %e, "{} lookup failed", record_type);
+        Err(DomainError::InvalidDomainName(e.to_string()))
     }
 }
