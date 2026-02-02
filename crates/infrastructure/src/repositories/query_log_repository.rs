@@ -22,14 +22,15 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!("Logging DNS query");
 
         sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms)
-             VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit)
+             VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&query.domain)
         .bind(query.record_type.as_str())
         .bind(query.client_ip.to_string())
         .bind(if query.blocked { 1 } else { 0 })
         .bind(query.response_time_ms.map(|t| t as i64))
+        .bind(if query.cache_hit { 1 } else { 0 })
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -46,7 +47,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!(limit = limit, "Fetching recent queries");
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit,
                     datetime(created_at) as created_at
              FROM query_log
              ORDER BY created_at DESC
@@ -60,7 +61,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             DomainError::InvalidDomainName(format!("Database error: {}", e))
         })?;
 
-        let entries: Vec<QueryLog> = rows // ← Type annotation adicionada
+        let entries: Vec<QueryLog> = rows
             .into_iter()
             .filter_map(|row| {
                 let client_ip_str: String = row.get("client_ip");
@@ -69,12 +70,13 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 Some(QueryLog {
                     id: Some(row.get("id")),
                     domain: row.get("domain"),
-                    record_type: record_type_str.parse().ok()?, // Uses FromStr trait
-                    client_ip: client_ip_str.parse().ok()?,     // Uses FromStr trait
+                    record_type: record_type_str.parse().ok()?,
+                    client_ip: client_ip_str.parse().ok()?,
                     blocked: row.get::<i64, _>("blocked") != 0,
                     response_time_ms: row
                         .get::<Option<i64>, _>("response_time_ms")
                         .map(|t| t as u64),
+                    cache_hit: row.get::<i64, _>("cache_hit") != 0,
                     timestamp: Some(row.get("created_at")),
                 })
             })
@@ -92,8 +94,13 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
-                COUNT(DISTINCT client_ip) as unique_clients
-             FROM query_log",
+                SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
+                COUNT(DISTINCT client_ip) as unique_clients,
+                AVG(response_time_ms) as avg_time,
+                AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
+                AVG(CASE WHEN cache_hit = 0 AND blocked = 0 THEN response_time_ms END) as avg_upstream_time
+             FROM query_log
+             WHERE response_time_ms IS NOT NULL",
         )
         .fetch_one(&self.pool)
         .await
@@ -102,17 +109,35 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             DomainError::InvalidDomainName(format!("Database error: {}", e))
         })?;
 
+        let total = row.get::<i64, _>("total") as u64;
+        let cache_hits = row.get::<i64, _>("cache_hits") as u64;
+        let cache_hit_rate = if total > 0 {
+            (cache_hits as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+
         let stats = QueryStats {
-            queries_total: row.get::<i64, _>("total") as u64,
+            queries_total: total,
             queries_blocked: row.get::<i64, _>("blocked") as u64,
             unique_clients: row.get::<i64, _>("unique_clients") as u64,
             uptime_seconds: get_uptime(),
+            cache_hit_rate,
+            avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0),
+            avg_cache_time_ms: row.get::<Option<f64>, _>("avg_cache_time").unwrap_or(0.0),
+            avg_upstream_time_ms: row
+                .get::<Option<f64>, _>("avg_upstream_time")
+                .unwrap_or(0.0),
         };
 
         debug!(
             queries_total = stats.queries_total,
             queries_blocked = stats.queries_blocked,
             unique_clients = stats.unique_clients,
+            cache_hit_rate = stats.cache_hit_rate,
+            avg_query_time_ms = stats.avg_query_time_ms,
+            avg_cache_time_ms = stats.avg_cache_time_ms,
+            avg_upstream_time_ms = stats.avg_upstream_time_ms,
             "Statistics fetched successfully"
         );
 

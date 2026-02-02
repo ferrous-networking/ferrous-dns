@@ -9,6 +9,7 @@ pub struct QueryLog {
     pub client_ip: IpAddr,
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
+    pub cache_hit: bool,
     pub timestamp: Option<String>,
 }
 
@@ -18,4 +19,8 @@ pub struct QueryStats {
     pub queries_blocked: u64,
     pub unique_clients: u64,
     pub uptime_seconds: u64,
+    pub cache_hit_rate: f64,
+    pub avg_query_time_ms: f64,
+    pub avg_cache_time_ms: f64,
+    pub avg_upstream_time_ms: f64,
 }

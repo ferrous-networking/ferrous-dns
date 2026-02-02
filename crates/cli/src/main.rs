@@ -116,11 +116,12 @@ async fn main() -> anyhow::Result<()> {
     let get_queries_use_case = Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone()));
     let get_blocklist_use_case = Arc::new(GetBlocklistUseCase::new(blocklist_repo.clone()));
 
-    // Create app state
+    // Create app state with config
     let app_state = AppState {
         get_stats: get_stats_use_case,
         get_queries: get_queries_use_case,
         get_blocklist: get_blocklist_use_case,
+        config: Arc::new(tokio::sync::RwLock::new(config.clone())),
     };
 
     // Create DNS resolver
@@ -207,8 +208,13 @@ fn create_app(state: AppState) -> Router {
         .nest("/api", create_api_routes(state))
         .nest_service("/static", ServeDir::new("web/static"))
         .route("/", get(index_handler))
+        .route("/settings.html", get(settings_handler))
 }
 
 async fn index_handler() -> Html<&'static str> {
     Html(include_str!("../../../web/static/index.html"))
+}
+
+async fn settings_handler() -> Html<&'static str> {
+    Html(include_str!("../../../web/static/settings.html"))
 }

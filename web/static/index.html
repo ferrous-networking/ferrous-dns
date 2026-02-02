@@ -24,17 +24,24 @@
                 </div>
             </div>
 
-            <button @click="refreshStats()"
-                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                🔄 Refresh
-            </button>
+            <div class="flex gap-2">
+                <a href="/settings.html" 
+                   class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                    ⚙️ Settings
+                </a>
+                <button @click="refreshStats()"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    🔄 Refresh
+                </button>
+            </div>
         </div>
     </div>
 </header>
 
 <main class="max-w-7xl mx-auto px-4 py-8">
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+    <!-- Stats Cards Row 1 -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div class="bg-white rounded-xl shadow-sm p-6">
             <p class="text-sm text-gray-600">Total Queries</p>
             <p class="text-3xl font-bold" x-text="stats.queries_total">0</p>
@@ -53,6 +60,29 @@
         <div class="bg-white rounded-xl shadow-sm p-6">
             <p class="text-sm text-gray-600">Uptime</p>
             <p class="text-2xl font-bold text-green-600" x-text="uptime">0h</p>
+        </div>
+    </div>
+
+    <!-- Stats Cards Row 2 - Performance Metrics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Cache Hit Rate</p>
+            <p class="text-3xl font-bold text-purple-600" x-text="stats.cache_hit_rate ? stats.cache_hit_rate.toFixed(1) + '%' : '0%'">0%</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">Avg Query Time</p>
+            <p class="text-3xl font-bold text-indigo-600" x-text="stats.avg_query_time_ms ? stats.avg_query_time_ms.toFixed(1) + ' ms' : '0 ms'">0 ms</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">⚡ Cache Time</p>
+            <p class="text-3xl font-bold text-green-600" x-text="stats.avg_cache_time_ms ? stats.avg_cache_time_ms.toFixed(1) + ' ms' : '0 ms'">0 ms</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm p-6">
+            <p class="text-sm text-gray-600">🌐 Upstream Time</p>
+            <p class="text-3xl font-bold text-orange-600" x-text="stats.avg_upstream_time_ms ? stats.avg_upstream_time_ms.toFixed(1) + ' ms' : '0 ms'">0 ms</p>
         </div>
     </div>
 
@@ -106,17 +136,20 @@
                                 <span x-text="query.timestamp"></span>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap text-sm">
-                                <span 
-                                    class="font-semibold"
-                                    :class="{
-                                        'text-green-600': query.response_time_ms && query.response_time_ms < 10,
-                                        'text-yellow-600': query.response_time_ms && query.response_time_ms >= 10 && query.response_time_ms < 50,
-                                        'text-orange-600': query.response_time_ms && query.response_time_ms >= 50 && query.response_time_ms < 100,
-                                        'text-red-600': query.response_time_ms && query.response_time_ms >= 100,
-                                        'text-gray-400': !query.response_time_ms
-                                    }"
-                                    x-text="query.response_time_ms ? query.response_time_ms + 'ms' : '-'">
-                                </span>
+                                <div class="flex items-center gap-1">
+                                    <span 
+                                        class="font-semibold"
+                                        :class="{
+                                            'text-green-600': query.response_time_ms && query.response_time_ms < 10,
+                                            'text-yellow-600': query.response_time_ms && query.response_time_ms >= 10 && query.response_time_ms < 50,
+                                            'text-orange-600': query.response_time_ms && query.response_time_ms >= 50 && query.response_time_ms < 100,
+                                            'text-red-600': query.response_time_ms && query.response_time_ms >= 100,
+                                            'text-gray-400': !query.response_time_ms
+                                        }"
+                                        x-text="query.response_time_ms ? query.response_time_ms + ' ms' : '-'">
+                                    </span>
+                                    <span x-show="query.cache_hit" class="text-xs" title="Cache Hit">⚡</span>
+                                </div>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <span :class="query.blocked ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'" x-text="query.blocked ? '🚫 Blocked' : '✅ Allowed'"></span>
@@ -133,7 +166,16 @@
 <script>
     function dashboard() {
         return {
-            stats: {queries_total: 0, queries_blocked: 0, clients: 0, uptime: 0},
+            stats: {
+                queries_total: 0, 
+                queries_blocked: 0, 
+                clients: 0, 
+                uptime: 0,
+                cache_hit_rate: 0,
+                avg_query_time_ms: 0,
+                avg_cache_time_ms: 0,
+                avg_upstream_time_ms: 0
+            },
             queries: [],
 
             get uptime() {

@@ -28,6 +28,9 @@ cache_enabled = true
 # Cache TTL in seconds (max time to cache responses)
 cache_ttl = 3600
 
+# Enable DNSSEC validation (cryptographic verification of DNS responses)
+dnssec_enabled = false
+
 # Maximum cache size (number of entries)
 cache_max_entries = 10000
 

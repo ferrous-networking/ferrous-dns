@@ -25,6 +25,8 @@ pub struct DnsConfig {
     pub cache_enabled: bool,
     #[serde(default = "default_cache_ttl")]
     pub cache_ttl: u64,
+    #[serde(default = "default_false")]
+    pub dnssec_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -66,6 +68,9 @@ fn default_db_path() -> String {
 fn default_true() -> bool {
     true
 }
+fn default_false() -> bool {
+    false
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -80,6 +85,7 @@ impl Default for Config {
                 query_timeout: default_query_timeout(),
                 cache_enabled: true,
                 cache_ttl: default_cache_ttl(),
+                dnssec_enabled: false,
             },
             blocking: BlockingConfig {
                 enabled: true,
@@ -153,6 +159,28 @@ impl Config {
         }
         Ok(())
     }
+
+    /// Save configuration to TOML file
+    pub fn save(&self, path: &str) -> Result<(), ConfigError> {
+        let toml_string = toml::to_string_pretty(self)
+            .map_err(|e| ConfigError::Parse(format!("Failed to serialize config: {}", e)))?;
+
+        std::fs::write(path, toml_string)
+            .map_err(|e| ConfigError::FileWrite(path.to_string(), e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Get the config file path that was loaded
+    pub fn get_config_path() -> Option<String> {
+        if std::path::Path::new("ferrous-dns.toml").exists() {
+            Some("ferrous-dns.toml".to_string())
+        } else if std::path::Path::new("/etc/ferrous-dns/config.toml").exists() {
+            Some("/etc/ferrous-dns/config.toml".to_string())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -168,6 +196,9 @@ pub struct CliOverrides {
 pub enum ConfigError {
     #[error("Failed to read config file {0}: {1}")]
     FileRead(String, String),
+
+    #[error("Failed to write config file {0}: {1}")]
+    FileWrite(String, String),
 
     #[error("Failed to parse config: {0}")]
     Parse(String),

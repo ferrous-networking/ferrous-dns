@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚙️ Settings - Ferrous DNS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="bg-gray-50" x-data="settings()" x-init="init()">
+
+<header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 py-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="text-4xl">⚙️</div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+                    <p class="text-sm text-gray-500">Ferrous DNS Configuration</p>
+                </div>
+            </div>
+            <a href="/" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">← Back to Dashboard</a>
+        </div>
+    </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 py-8">
+    <!-- Alert Messages -->
+    <div x-show="alert.show" x-cloak :class="alert.type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'" class="border px-4 py-3 rounded mb-6 relative" role="alert">
+        <strong class="font-bold" x-text="alert.type === 'success' ? '✅ Success!' : '❌ Error!'"></strong>
+        <span class="block sm:inline" x-text="alert.message"></span>
+        <button @click="alert.show = false" class="absolute top-0 bottom-0 right-0 px-4 py-3"><span class="text-2xl">&times;</span></button>
+    </div>
+
+    <!-- Permission Warning -->
+    <div x-show="!config.writable && config.config_path" x-cloak class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+        <strong class="font-bold">⚠️ Warning:</strong> <span>Config file is read-only. You cannot save changes.</span>
+        <p class="text-sm mt-1">File: <code class="bg-yellow-200 px-1 rounded" x-text="config.config_path"></code></p>
+    </div>
+
+    <!-- DNS Settings -->
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h2 class="text-xl font-bold mb-4">🌐 DNS Settings</h2>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Upstream DNS Servers</label>
+                <template x-for="(server, index) in config.dns.upstream_servers" :key="index">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" x-model="config.dns.upstream_servers[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="8.8.8.8:53">
+                        <button @click="config.dns.upstream_servers.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+                    </div>
+                </template>
+                <button @click="config.dns.upstream_servers.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Server</button>
+            </div>
+            <div class="flex items-center">
+                <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="cache_enabled" class="ml-2 text-sm text-gray-700">Enable DNS Cache</label>
+            </div>
+            <div class="flex items-center">
+                <input type="checkbox" x-model="config.dns.dnssec_enabled" id="dnssec_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="dnssec_enabled" class="ml-2 text-sm text-gray-700">Enable DNSSEC Validation ✨ <span class="text-xs text-gray-500">(Cryptographic validation of DNS responses)</span></label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blocking Settings -->
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h2 class="text-xl font-bold mb-4">🚫 Ad Blocking</h2>
+        <div class="space-y-4">
+            <div class="flex items-center">
+                <input type="checkbox" x-model="config.blocking.enabled" id="blocking_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="blocking_enabled" class="ml-2 text-sm text-gray-700">Enable Ad/Tracker Blocking</label>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Custom Blocked Domains</label>
+                <template x-for="(domain, index) in config.blocking.custom_blocked" :key="index">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" x-model="config.blocking.custom_blocked[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="ads.example.com">
+                        <button @click="config.blocking.custom_blocked.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+                    </div>
+                </template>
+                <button @click="config.blocking.custom_blocked.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Whitelist (Never Block)</label>
+                <template x-for="(domain, index) in config.blocking.whitelist" :key="index">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" x-model="config.blocking.whitelist[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="analytics.google.com">
+                        <button @click="config.blocking.whitelist.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+                    </div>
+                </template>
+                <button @click="config.blocking.whitelist.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="flex gap-4">
+        <button @click="saveConfig()" :disabled="saving || !config.writable" :class="saving || !config.writable ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'" class="px-6 py-3 text-white rounded-lg font-bold">
+            <span x-show="!saving">💾 Save Configuration</span>
+            <span x-show="saving">⏳ Saving...</span>
+        </button>
+        <button @click="loadConfig()" class="px-6 py-3 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-700">🔄 Reload</button>
+    </div>
+
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p class="text-sm text-blue-800"><strong>ℹ️ Note:</strong> Configuration changes require server restart to take effect. After saving, restart the Ferrous DNS service.</p>
+    </div>
+</main>
+
+<script>
+function settings() {
+    return {
+        config: { dns: { upstream_servers: [], cache_enabled: true, dnssec_enabled: false }, blocking: { enabled: true, custom_blocked: [], whitelist: [] }, config_path: null, writable: false },
+        alert: { show: false, type: 'success', message: '' },
+        saving: false,
+        async init() { await this.loadConfig(); },
+        async loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                this.config = await res.json();
+            } catch (error) {
+                console.error('Error loading config:', error);
+                this.showAlert('error', 'Failed to load configuration');
+            }
+        },
+        async saveConfig() {
+            if (!this.config.writable) { this.showAlert('error', 'Config file is read-only. Cannot save changes.'); return; }
+            this.saving = true;
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dns: { upstream_servers: this.config.dns.upstream_servers.filter(s => s.trim()), cache_enabled: this.config.dns.cache_enabled, dnssec_enabled: this.config.dns.dnssec_enabled },
+                        blocking: { enabled: this.config.blocking.enabled, custom_blocked: this.config.blocking.custom_blocked.filter(d => d.trim()), whitelist: this.config.blocking.whitelist.filter(d => d.trim()) }
+                    })
+                });
+                const data = await res.json();
+                if (data.success) { this.showAlert('success', data.message); await this.loadConfig(); } else { this.showAlert('error', data.error); }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                this.showAlert('error', 'Failed to save configuration');
+            } finally {
+                this.saving = false;
+            }
+        },
+        showAlert(type, message) { this.alert = { show: true, type, message }; setTimeout(() => { this.alert.show = false; }, 5000); }
+    }
+}
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS query_log (
      client_ip TEXT NOT NULL,
      blocked INTEGER NOT NULL DEFAULT 0,
      response_time_ms INTEGER,
+     cache_hit INTEGER NOT NULL DEFAULT 0,
      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

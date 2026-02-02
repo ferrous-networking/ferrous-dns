@@ -38,6 +38,7 @@ impl HandleDnsQueryUseCase {
                 client_ip: request.client_ip,
                 blocked: true,
                 response_time_ms: Some(start.elapsed().as_millis() as u64),
+                cache_hit: false,
                 timestamp: None,
             };
             self.query_log.log_query(&query_log).await?;
@@ -54,7 +55,7 @@ impl HandleDnsQueryUseCase {
         // Resolve via upstream - agora retorna Vec<IpAddr> direto
         let addresses = self.resolver.resolve(&dns_query).await?;
 
-        // Log successful query
+        // Log successful query (cache_hit = false for now, will implement cache later)
         let query_log = QueryLog {
             id: None,
             domain: request.domain.clone(),
@@ -62,6 +63,7 @@ impl HandleDnsQueryUseCase {
             client_ip: request.client_ip,
             blocked: false,
             response_time_ms: Some(start.elapsed().as_millis() as u64),
+            cache_hit: false, // TODO: Implement cache detection
             timestamp: None,
         };
         self.query_log.log_query(&query_log).await?;
