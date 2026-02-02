@@ -19,11 +19,11 @@ impl BlocklistRepository for SqliteBlocklistRepository {
         let rows = sqlx::query(
             "SELECT id, domain, datetime(added_at) as added_at
              FROM blocklist
-             ORDER BY added_at DESC"
+             ORDER BY added_at DESC",
         )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| DomainError::InvalidDomainName(format!("Database error: {}", e)))?;
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| DomainError::InvalidDomainName(format!("Database error: {}", e)))?;
 
         let entries = rows
             .into_iter()

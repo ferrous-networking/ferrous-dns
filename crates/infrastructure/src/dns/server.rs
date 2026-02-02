@@ -32,7 +32,8 @@ impl RequestHandler for DnsServerHandler {
             Ok(info) => info,
             Err(e) => {
                 error!(error = %e, "Failed to parse request info");
-                return send_error_response(request, &mut response_handle, ResponseCode::FormErr).await;
+                return send_error_response(request, &mut response_handle, ResponseCode::FormErr)
+                    .await;
             }
         };
 
@@ -56,7 +57,8 @@ impl RequestHandler for DnsServerHandler {
             HickoryRecordType::TXT => RecordType::TXT,
             _ => {
                 warn!(record_type = ?record_type, "Unsupported record type");
-                return send_error_response(request, &mut response_handle, ResponseCode::NotImp).await;
+                return send_error_response(request, &mut response_handle, ResponseCode::NotImp)
+                    .await;
             }
         };
 
@@ -69,10 +71,20 @@ impl RequestHandler for DnsServerHandler {
             Err(e) => {
                 if e.to_string().contains("blocked") {
                     warn!(domain = %domain, "Domain blocked");
-                    return send_error_response(request, &mut response_handle, ResponseCode::Refused).await;
+                    return send_error_response(
+                        request,
+                        &mut response_handle,
+                        ResponseCode::Refused,
+                    )
+                    .await;
                 } else {
                     error!(error = %e, "Query resolution failed");
-                    return send_error_response(request, &mut response_handle, ResponseCode::ServFail).await;
+                    return send_error_response(
+                        request,
+                        &mut response_handle,
+                        ResponseCode::ServFail,
+                    )
+                    .await;
                 }
             }
         };
@@ -100,13 +112,7 @@ impl RequestHandler for DnsServerHandler {
         debug!(domain = %domain, answers = addresses.len(), "Sending response");
 
         // Build and send response
-        let response = builder.build(
-            request.header().clone(),
-            answers.iter(),
-            &[],
-            &[],
-            &[],
-        );
+        let response = builder.build(request.header().clone(), answers.iter(), &[], &[], &[]);
 
         match response_handle.send_response(response).await {
             Ok(info) => info,

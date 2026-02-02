@@ -1,7 +1,7 @@
+mod blocklist_repository;
 mod config_repository;
 mod dns_resolver;
 mod query_log_repository;
-mod blocklist_repository;
 
 pub use blocklist_repository::BlocklistRepository;
 pub use config_repository::ConfigRepository;

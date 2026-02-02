@@ -26,19 +26,19 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
         sqlx::query(
             "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
-            .bind(&query.domain)
-            .bind(query.record_type.as_str())
-            .bind(query.client_ip.to_string())
-            .bind(if query.blocked { 1 } else { 0 })
-            .bind(query.response_time_ms.map(|t| t as i64))
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to log query");
-                DomainError::InvalidDomainName(format!("Database error: {}", e))
-            })?;
+        .bind(&query.domain)
+        .bind(query.record_type.as_str())
+        .bind(query.client_ip.to_string())
+        .bind(if query.blocked { 1 } else { 0 })
+        .bind(query.response_time_ms.map(|t| t as i64))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to log query");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
 
         debug!("Query logged successfully");
         Ok(())
@@ -53,17 +53,17 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     datetime(created_at) as created_at
              FROM query_log
              ORDER BY created_at DESC
-             LIMIT ?"
+             LIMIT ?",
         )
-            .bind(limit as i64)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to fetch recent queries");
-                DomainError::InvalidDomainName(format!("Database error: {}", e))
-            })?;
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch recent queries");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
 
-        let entries: Vec<QueryLog> = rows  // ← Type annotation adicionada
+        let entries: Vec<QueryLog> = rows // ← Type annotation adicionada
             .into_iter()
             .filter_map(|row| {
                 let client_ip_str: String = row.get("client_ip");
@@ -75,7 +75,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     record_type: RecordType::from_str(&record_type_str)?,
                     client_ip: IpAddr::from_str(&client_ip_str).ok()?,
                     blocked: row.get::<i64, _>("blocked") != 0,
-                    response_time_ms: row.get::<Option<i64>, _>("response_time_ms").map(|t| t as u64),
+                    response_time_ms: row
+                        .get::<Option<i64>, _>("response_time_ms")
+                        .map(|t| t as u64),
                     timestamp: Some(row.get("created_at")),
                 })
             })
@@ -94,14 +96,14 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 COUNT(*) as total,
                 SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
                 COUNT(DISTINCT client_ip) as unique_clients
-             FROM query_log"
+             FROM query_log",
         )
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to fetch statistics");
-                DomainError::InvalidDomainName(format!("Database error: {}", e))
-            })?;
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch statistics");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
 
         let stats = QueryStats {
             queries_total: row.get::<i64, _>("total") as u64,

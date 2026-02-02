@@ -49,10 +49,7 @@ impl HandleDnsQueryUseCase {
         }
 
         // Create DNS query for resolver
-        let dns_query = DnsQuery::new(
-            request.domain.clone(),
-            request.record_type.clone(),
-        );
+        let dns_query = DnsQuery::new(request.domain.clone(), request.record_type.clone());
 
         // Resolve via upstream - agora retorna Vec<IpAddr> direto
         let addresses = self.resolver.resolve(&dns_query).await?;

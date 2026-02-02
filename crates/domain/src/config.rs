@@ -13,10 +13,7 @@ impl Default for DnsConfig {
     fn default() -> Self {
         Self {
             id: 1,
-            upstream_dns: vec![
-                "1.1.1.1".parse().unwrap(),
-                "8.8.8.8".parse().unwrap(),
-            ],
+            upstream_dns: vec!["1.1.1.1".parse().unwrap(), "8.8.8.8".parse().unwrap()],
             cache_enabled: true,
             cache_ttl_seconds: 3600,
             blocklist_enabled: true,

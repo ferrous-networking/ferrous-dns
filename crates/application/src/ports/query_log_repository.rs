@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use ferrous_dns_domain::{query_log::{QueryLog, QueryStats}, DomainError};
+use ferrous_dns_domain::{
+    query_log::{QueryLog, QueryStats},
+    DomainError,
+};
 
 #[async_trait]
 pub trait QueryLogRepository: Send + Sync {

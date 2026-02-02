@@ -20,11 +20,11 @@ impl ConfigRepository for SqliteConfigRepository {
         let row = sqlx::query(
             "SELECT id, upstream_dns, cache_enabled, cache_ttl_seconds, blocklist_enabled
              FROM config
-             WHERE id = 1"
+             WHERE id = 1",
         )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| DomainError::InvalidDomainName(format!("Database error: {}", e)))?;
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| DomainError::InvalidDomainName(format!("Database error: {}", e)))?;
 
         match row {
             Some(row) => {
@@ -52,7 +52,8 @@ impl ConfigRepository for SqliteConfigRepository {
     }
 
     async fn save_config(&self, config: &DnsConfig) -> Result<(), DomainError> {
-        let upstream_dns = config.upstream_dns
+        let upstream_dns = config
+            .upstream_dns
             .iter()
             .map(|ip| ip.to_string())
             .collect::<Vec<_>>()

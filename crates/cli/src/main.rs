@@ -10,9 +10,7 @@ use ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlockl
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use ferrous_dns_infrastructure::repositories::SqliteConfigRepository;
 use ferrous_dns_infrastructure::{
-    database::create_pool,
-    dns::server::DnsServerHandler,
-    dns::HickoryDnsResolver,
+    database::create_pool, dns::server::DnsServerHandler, dns::HickoryDnsResolver,
 };
 use hickory_server::ServerFuture;
 use std::net::SocketAddr;
@@ -115,13 +113,10 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Create DNS resolver
-    let resolver = Arc::new(
-        HickoryDnsResolver::with_google()
-            .map_err(|e| {
-                error!("Failed to create DNS resolver: {}", e);
-                anyhow::anyhow!("DNS resolver initialization failed")
-            })?
-    );
+    let resolver = Arc::new(HickoryDnsResolver::with_google().map_err(|e| {
+        error!("Failed to create DNS resolver: {}", e);
+        anyhow::anyhow!("DNS resolver initialization failed")
+    })?);
 
     // Create DNS query handler use case
     let dns_handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
@@ -157,13 +152,10 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Server started successfully");
 
-
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| {
-            error!("Web server error: {}", e);
-            e
-        })?;
+    axum::serve(listener, app).await.map_err(|e| {
+        error!("Web server error: {}", e);
+        e
+    })?;
 
     info!("Server shutdown complete");
 
@@ -171,10 +163,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Start DNS server on UDP and TCP
-async fn start_dns_server(
-    bind_addr: String,
-    handler: DnsServerHandler,
-) -> anyhow::Result<()> {
+async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> anyhow::Result<()> {
     let socket_addr = SocketAddr::from_str(&bind_addr)?;
 
     info!(
@@ -198,7 +187,7 @@ async fn start_dns_server(
     info!("DNS server ready to accept queries");
 
     server.block_until_done().await?;
-    
+
     Ok(())
 }
 

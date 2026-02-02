@@ -39,7 +39,7 @@ impl RecordType {
 pub struct DnsRecord {
     pub domain: String,
     pub record_type: RecordType,
-    pub address: IpAddr,  // ← Campo para IP address
+    pub address: IpAddr, // ← Campo para IP address
     pub ttl: u32,
 }
 

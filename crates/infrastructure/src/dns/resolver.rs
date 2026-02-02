@@ -17,7 +17,7 @@ impl HickoryDnsResolver {
             ResolverConfig::default(),
             TokioConnectionProvider::default(),
         )
-            .build();
+        .build();
 
         Ok(Self { resolver })
     }
@@ -28,7 +28,7 @@ impl HickoryDnsResolver {
             ResolverConfig::google(),
             TokioConnectionProvider::default(),
         )
-            .build();
+        .build();
 
         Ok(Self { resolver })
     }
@@ -39,7 +39,7 @@ impl HickoryDnsResolver {
             ResolverConfig::cloudflare(),
             TokioConnectionProvider::default(),
         )
-            .build();
+        .build();
 
         Ok(Self { resolver })
     }

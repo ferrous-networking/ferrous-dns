@@ -1,11 +1,11 @@
 //! Ferrous DNS Domain Layer
-pub mod errors;
-pub mod dns_record;
-pub mod query_log;
 pub mod blocklist;
 pub mod config;
-pub mod dns_request;
 pub mod dns_query;
+pub mod dns_record;
+pub mod dns_request;
+pub mod errors;
+pub mod query_log;
 
 pub use blocklist::BlockedDomain;
 pub use config::DnsConfig;
