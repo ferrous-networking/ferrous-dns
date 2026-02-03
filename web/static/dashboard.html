@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦀 Ferrous DNS - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body { display: flex; flex-direction: column; }
+        main { flex: 1; overflow-y: auto; }
+    </style>
+</head>
+<body class="bg-gray-50 h-full" x-data="dashboard()" x-init="init()">
+
+<header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+    <div class="px-4 sm:px-6 lg:px-8 py-3 lg:py-4">
+        <div class="flex items-center justify-between">
+            <!-- Logo e Título -->
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <div class="text-2xl sm:text-3xl lg:text-4xl">🦀</div>
+                <div>
+                    <h1 class="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">Ferrous DNS</h1>
+                    <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">Dashboard</p>
+                </div>
+            </div>
+
+            <!-- Navigation - Responsive -->
+            <div class="flex gap-1 sm:gap-2">
+                <a href="/" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700">
+                    <span class="hidden sm:inline">📊 Dashboard</span>
+                    <span class="sm:hidden">📊</span>
+                </a>
+                <a href="/queries.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
+                    <span class="hidden sm:inline">📝 Query Log</span>
+                    <span class="sm:hidden">📝</span>
+                </a>
+                <a href="/settings.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
+                    <span class="hidden sm:inline">⚙️ Settings</span>
+                    <span class="sm:hidden">⚙️</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</header>
+
+<main class="flex-1 px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8 overflow-y-auto">
+
+    <!-- Stats Cards Row -->
+    <div class="mb-3 sm:mb-4">
+        <h2 class="text-base sm:text-lg font-semibold text-gray-700">📊 Estatísticas das Últimas 24 Horas</h2>
+    </div>
+    
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">Total Queries</p>
+                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold" x-text="stats.queries_total || 0">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">Blocked</p>
+                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600" x-text="stats.queries_blocked || 0">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">Cache Hit Rate</p>
+                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="stats.cache_hit_rate ? stats.cache_hit_rate.toFixed(1) + '%' : '0%'">0%</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">Avg Query Time</p>
+                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="formatTime(stats.avg_query_time_ms || 0)">0 ms</p>
+        </div>
+    </div>
+
+    <!-- DNSSEC Stats Row (only show if DNSSEC enabled) -->
+    <div x-show="dnssecEnabled && stats.queries_total > 0" class="mb-3 sm:mb-4" x-cloak>
+        <h2 class="text-base sm:text-lg font-semibold text-gray-700 flex items-center gap-2">
+            🔐 DNSSEC Validation Queries
+            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Active</span>
+        </h2>
+    </div>
+    
+    <div x-show="dnssecEnabled && stats.queries_total > 0" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8" x-cloak>
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border-l-4 border-purple-500">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">DNSSEC Queries</p>
+                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="dnssecStats.total || 0">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">DS / DNSKEY</p>
+                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Keys</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-indigo-600" x-text="(dnssecStats.DS || 0) + (dnssecStats.DNSKEY || 0)">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">RRSIG / NSEC</p>
+                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Sigs</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-violet-600" x-text="(dnssecStats.RRSIG || 0) + (dnssecStats.NSEC || 0) + (dnssecStats.NSEC3 || 0)">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <div class="flex items-center justify-between mb-1">
+                <p class="text-xs sm:text-sm text-gray-600">% of Total</p>
+                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Ratio</span>
+            </div>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="dnssecPercentage">0%</p>
+        </div>
+    </div>
+
+    <!-- Queries per 15min Chart -->
+    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total > 0" x-cloak>
+        <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">📈 Queries over Time</h2>
+        <p class="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">Timeline visualization will be available with more query data</p>
+        <div class="h-48 sm:h-56 lg:h-64 flex items-center justify-center bg-gray-50 rounded-lg">
+            <p class="text-sm sm:text-base text-gray-400">Chart will appear as queries accumulate</p>
+        </div>
+    </div>
+
+    <!-- Empty state for no queries -->
+    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total === 0" x-cloak>
+        <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">📈 Queries over Time</h2>
+        <div class="h-48 sm:h-56 lg:h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+            <div class="text-center px-4">
+                <p class="text-gray-400 text-base sm:text-lg mb-2">No queries yet</p>
+                <p class="text-xs sm:text-sm text-gray-500 mb-2">Make a DNS query to see the timeline</p>
+                <p class="text-xs text-gray-400">Example: <code class="bg-gray-100 px-2 py-1 rounded text-xs">dig @localhost -p 5353 google.com</code></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pie Charts Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        <!-- Query Types Pie Chart -->
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
+                <h2 class="text-lg sm:text-xl font-bold">🔍 Query Types</h2>
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
+            </div>
+            <div x-show="stats.queries_total === 0" class="h-48 sm:h-64 flex items-center justify-center">
+                <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
+            </div>
+            <canvas id="queryTypesChart" x-show="stats.queries_total > 0" class="w-full h-48 sm:h-64"></canvas>
+        </div>
+
+        <!-- Cache vs Upstream Pie Chart -->
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
+                <h2 class="text-lg sm:text-xl font-bold">⚡ Response Source</h2>
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
+            </div>
+            <div x-show="stats.queries_total === 0" class="h-48 sm:h-64 flex items-center justify-center">
+                <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
+            </div>
+            <canvas id="cacheSourceChart" x-show="stats.queries_total > 0" class="w-full h-48 sm:h-64"></canvas>
+        </div>
+    </div>
+
+    <!-- Cache Statistics Section -->
+    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total > 0" x-cloak>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
+            <h2 class="text-lg sm:text-xl font-bold">💾 Cache Statistics</h2>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
+        </div>
+        
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+            <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3 sm:p-4">
+                <p class="text-xs sm:text-sm text-purple-700 font-medium mb-1">Cache Hits</p>
+                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-900" x-text="cacheMetrics.total_hits || 0">0</p>
+                <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
+            </div>
+            
+            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 sm:p-4">
+                <p class="text-xs sm:text-sm text-blue-700 font-medium mb-1">Cache Misses</p>
+                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-900" x-text="cacheMetrics.total_misses || 0">0</p>
+                <p class="text-xs text-blue-600 mt-1">Upstream queries</p>
+            </div>
+            
+            <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-3 sm:p-4">
+                <p class="text-xs sm:text-sm text-yellow-700 font-medium mb-1">Cache Refreshes</p>
+                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-yellow-900" x-text="cacheMetrics.total_refreshes || 0">0</p>
+                <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
+            </div>
+            
+            <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 sm:p-4">
+                <p class="text-xs sm:text-sm text-green-700 font-medium mb-1">Total Entries</p>
+                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-900" x-text="cacheMetrics.total_entries || 0">0</p>
+                <p class="text-xs text-green-600 mt-1">In cache</p>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<script>
+    function dashboard() {
+        return {
+            stats: {
+                queries_total: 0,
+                queries_blocked: 0,
+                cache_hit_rate: 0,
+                avg_query_time_ms: 0,
+            },
+            queriesChart: null,
+            queryTypesChart: null,
+            cacheSourceChart: null,
+            upstreamServers: [],
+            queryTypes: {},
+            cacheStats: { cache: 0, upstream: 0 },
+            cacheMetrics: {
+                total_entries: 0,
+                total_hits: 0,
+                total_misses: 0,
+                total_refreshes: 0,
+                hit_rate: 0,
+                refresh_rate: 0
+            },
+            dnssecEnabled: false,
+            dnssecStats: {
+                total: 0,
+                DS: 0,
+                DNSKEY: 0,
+                RRSIG: 0,
+                NSEC: 0,
+                NSEC3: 0,
+                NSEC3PARAM: 0,
+                CDS: 0,
+                CDNSKEY: 0
+            },
+            dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
+
+            get dnssecPercentage() {
+                if (this.stats.queries_total === 0) return '0%';
+                return ((this.dnssecStats.total / this.stats.queries_total) * 100).toFixed(1) + '%';
+            },
+
+            async init() {
+                console.log('Dashboard initializing...');
+                
+                // Load config first to check DNSSEC
+                await this.loadConfig();
+                
+                // Load all data
+                await this.loadStats();
+                await this.loadQueryTypes();
+                await this.loadCacheStats();
+                await this.loadCacheMetrics();
+                
+                // Calculate DNSSEC stats if enabled
+                if (this.dnssecEnabled) {
+                    await this.loadDnssecStats();
+                }
+                
+                console.log('Stats loaded:', this.stats);
+                console.log('Query types:', this.queryTypes);
+                console.log('Cache stats:', this.cacheStats);
+                console.log('Cache metrics:', this.cacheMetrics);
+                console.log('DNSSEC enabled:', this.dnssecEnabled);
+                console.log('DNSSEC stats:', this.dnssecStats);
+                
+                // Now initialize charts with the loaded data
+                this.initCharts();
+                
+                // Auto-refresh every 1 second
+                setInterval(() => this.loadStats(), 1000);
+                setInterval(() => {
+                    this.loadQueryTypes();
+                    this.loadCacheStats();
+                    this.loadCacheMetrics();
+                    if (this.dnssecEnabled) {
+                        this.loadDnssecStats();
+                    }
+                    this.updateCharts();
+                }, 1000);
+            },
+
+            async loadConfig() {
+                try {
+                    const res = await fetch('/api/config');
+                    const config = await res.json();
+                    this.dnssecEnabled = config.dns.dnssec_enabled;
+                    console.log('DNSSEC enabled:', this.dnssecEnabled);
+                } catch (error) {
+                    console.error('Error loading config:', error);
+                }
+            },
+
+            async loadDnssecStats() {
+                try {
+                    const res = await fetch('/api/queries');
+                    const queries = await res.json();
+                    
+                    // Reset counts
+                    this.dnssecStats = {
+                        total: 0,
+                        DS: 0,
+                        DNSKEY: 0,
+                        RRSIG: 0,
+                        NSEC: 0,
+                        NSEC3: 0,
+                        NSEC3PARAM: 0,
+                        CDS: 0,
+                        CDNSKEY: 0
+                    };
+                    
+                    // Count DNSSEC queries
+                    queries.forEach(q => {
+                        if (this.dnssecTypes.includes(q.type)) {
+                            this.dnssecStats.total++;
+                            if (this.dnssecStats[q.type] !== undefined) {
+                                this.dnssecStats[q.type]++;
+                            }
+                        }
+                    });
+                    
+                    console.log('DNSSEC stats calculated:', this.dnssecStats);
+                } catch (error) {
+                    console.error('Error loading DNSSEC stats:', error);
+                }
+            },
+
+            async loadStats() {
+                try {
+                    console.log('Fetching /api/stats...');
+                    const res = await fetch('/api/stats');
+                    if (!res.ok) {
+                        console.error('Stats API error:', res.status);
+                        return;
+                    }
+                    this.stats = await res.json();
+                    console.log('Stats received:', this.stats);
+                } catch (error) {
+                    console.error('Error loading stats:', error);
+                }
+            },
+
+            async loadQueryTypes() {
+                try {
+                    console.log('Fetching /api/queries for types...');
+                    const res = await fetch('/api/queries');
+                    if (!res.ok) {
+                        console.error('Queries API error:', res.status);
+                        return;
+                    }
+                    const queries = await res.json();
+                    console.log('Queries received:', queries.length, 'queries');
+                    
+                    // Count query types
+                    this.queryTypes = {};
+                    queries.forEach(q => {
+                        this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
+                    });
+                    console.log('Query types counted:', this.queryTypes);
+                } catch (error) {
+                    console.error('Error loading query types:', error);
+                }
+            },
+
+            async loadCacheStats() {
+                try {
+                    console.log('Fetching /api/queries for cache stats...');
+                    const res = await fetch('/api/queries');
+                    if (!res.ok) {
+                        console.error('Queries API error:', res.status);
+                        return;
+                    }
+                    const queries = await res.json();
+                    
+                    // Count cache vs upstream
+                    let cache = 0, upstream = 0;
+                    queries.forEach(q => {
+                        if (q.blocked) return; // Skip blocked
+                        if (q.cache_hit) cache++;
+                        else upstream++;
+                    });
+                    
+                    this.cacheStats = { cache, upstream };
+                    console.log('Cache stats:', this.cacheStats);
+                } catch (error) {
+                    console.error('Error loading cache stats:', error);
+                }
+            },
+
+            async loadCacheMetrics() {
+                try {
+                    console.log('Fetching /api/cache/stats...');
+                    const res = await fetch('/api/cache/stats');
+                    if (!res.ok) {
+                        console.error('Cache stats API error:', res.status);
+                        return;
+                    }
+                    this.cacheMetrics = await res.json();
+                    console.log('Cache metrics received:', this.cacheMetrics);
+                } catch (error) {
+                    console.error('Error loading cache metrics:', error);
+                }
+            },
+
+            initCharts() {
+                console.log('Initializing charts...');
+                
+                // Query types pie chart - only if there's data
+                if (Object.keys(this.queryTypes).length > 0) {
+                    const ctx2 = document.getElementById('queryTypesChart');
+                    if (ctx2 && ctx2.offsetParent !== null) {  // Check if visible
+                        console.log('Creating query types chart');
+                        this.queryTypesChart = new Chart(ctx2.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: Object.keys(this.queryTypes),
+                                datasets: [{
+                                    data: Object.values(this.queryTypes),
+                                    backgroundColor: [
+                                        'rgb(59, 130, 246)',
+                                        'rgb(147, 51, 234)',
+                                        'rgb(34, 197, 94)',
+                                        'rgb(251, 191, 36)',
+                                        'rgb(239, 68, 68)',
+                                        'rgb(156, 163, 175)'
+                                    ]
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'right',
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+
+                // Cache vs Upstream pie chart - only if there's data
+                if (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0) {
+                    const ctx3 = document.getElementById('cacheSourceChart');
+                    if (ctx3 && ctx3.offsetParent !== null) {  // Check if visible
+                        console.log('Creating cache source chart');
+                        this.cacheSourceChart = new Chart(ctx3.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['⚡ Cache', '🌐 Upstream'],
+                                datasets: [{
+                                    data: [this.cacheStats.cache, this.cacheStats.upstream],
+                                    backgroundColor: [
+                                        'rgb(168, 85, 247)',
+                                        'rgb(59, 130, 246)'
+                                    ]
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'right',
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+
+                console.log('Charts initialized:', {
+                    queryTypes: !!this.queryTypesChart,
+                    cacheSource: !!this.cacheSourceChart
+                });
+            },
+
+            async updateCharts() {
+                console.log('Updating charts...');
+                
+                // Update query types chart
+                const ctx2 = document.getElementById('queryTypesChart');
+                if (this.queryTypesChart && ctx2 && Object.keys(this.queryTypes).length > 0) {
+                    console.log('Updating query types chart with:', this.queryTypes);
+                    this.queryTypesChart.data.labels = Object.keys(this.queryTypes);
+                    this.queryTypesChart.data.datasets[0].data = Object.values(this.queryTypes);
+                    this.queryTypesChart.update('none');
+                } else {
+                    console.log('Skipping query types chart update (no data or chart not ready)');
+                }
+
+                // Update cache/upstream chart
+                const ctx3 = document.getElementById('cacheSourceChart');
+                if (this.cacheSourceChart && ctx3 && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
+                    console.log('Updating cache source chart with:', this.cacheStats);
+                    this.cacheSourceChart.data.datasets[0].data = [
+                        this.cacheStats.cache,
+                        this.cacheStats.upstream
+                    ];
+                    this.cacheSourceChart.update('none');
+                } else {
+                    console.log('Skipping cache source chart update (no data or chart not ready)');
+                }
+            },
+
+            formatTime(ms) {
+                if (!ms || ms === 0) return '0 ms';
+                
+                // Se for microsegundos (< 1000)
+                if (ms < 1000) {
+                    const rounded = Math.round(ms);
+                    return `${rounded} µs`;
+                }
+                
+                // Se for millisegundos, arredondar para 1 casa decimal
+                const msValue = (ms / 1000).toFixed(1);
+                return `${msValue} ms`;
+            },
+
+            getResponseTimeColor(time) {
+                if (!time) return 'text-gray-400';
+                if (time < 1000) return 'text-green-600 font-semibold';  // µs
+                if (time < 10000) return 'text-yellow-600 font-semibold'; // < 10ms
+                if (time < 50000) return 'text-orange-600 font-semibold'; // < 50ms
+                return 'text-red-600 font-semibold'; // > 50ms
+            }
+        }
+    }
+</script>
+</body>
+</html>

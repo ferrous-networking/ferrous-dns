@@ -1,118 +1,40 @@
-# Ferrous DNS Configuration File
-# All settings can be overridden via command-line arguments
-
 [server]
-# DNS server settings
-dns_port = 5353
+dns_port = 53
 web_port = 8080
 bind_address = "0.0.0.0"
 
-# Number of worker threads (0 = auto-detect CPU cores)
-workers = 0
-
 [dns]
-# Upstream DNS servers (tried in order)
 upstream_servers = [
-    "8.8.8.8:53",      # Google DNS
-    "8.8.4.4:53",      # Google DNS Secondary
-    "1.1.1.1:53",      # Cloudflare DNS
-    "1.0.0.1:53",      # Cloudflare DNS Secondary
+    "8.8.8.8:53",
+    "8.8.4.4:53",
+    "1.1.1.1:53",
+    "1.0.0.1:53",
 ]
-
-# DNS query timeout in seconds
 query_timeout = 5
-
-# Enable DNS caching
 cache_enabled = true
-
-# Cache TTL in seconds (max time to cache responses)
 cache_ttl = 3600
-
-# Enable DNSSEC validation (cryptographic verification of DNS responses)
 dnssec_enabled = false
-
-# Maximum cache size (number of entries)
-cache_max_entries = 10000
+cache_max_entries = 200000
+cache_eviction_strategy = "hit_rate"
+cache_optimistic_refresh = true
+cache_min_hit_rate = 2.0
+cache_min_frequency = 10
+cache_min_lfuk_score = 1.5
+cache_refresh_threshold = 0.75
+cache_lfuk_history_size = 10
+cache_batch_eviction_percentage = 0.1
+cache_lazy_expiration = true
+cache_compaction_interval = 300
+cache_adaptive_thresholds = false
 
 [blocking]
-# Enable ad/tracker blocking
 enabled = true
-
-# Blocklist update interval in hours (0 = manual only)
-update_interval = 24
-
-# Blocklist sources (URLs to download)
-blocklist_urls = [
-    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-    "https://adaway.org/hosts.txt",
-]
-
-# Custom blocked domains (added to blocklist)
-custom_blocked = [
-    "ads.example.com",
-    "tracker.example.com",
-]
-
-# Whitelist (never block these domains)
-whitelist = [
-    "analytics.google.com",
-]
+custom_blocked = []
+whitelist = []
 
 [logging]
-# Log level: trace, debug, info, warn, error
 level = "info"
 
-# Log format: json or text
-format = "text"
-
-# Log to file
-file = "ferrous-dns.log"
-
-# Enable log rotation
-rotate = true
-
-# Max log file size in MB before rotation
-max_size_mb = 100
-
 [database]
-# Database path (SQLite)
 path = "ferrous-dns.db"
-
-# Enable query logging to database
 log_queries = true
-
-# Keep query logs for N days (0 = forever)
-retention_days = 30
-
-# Batch insert interval in seconds (better performance)
-batch_interval = 5
-
-[features]
-# Enable experimental features
-
-# DNS-over-HTTPS (DoH)
-doh_enabled = false
-doh_port = 443
-
-# DNS-over-TLS (DoT)
-dot_enabled = false
-dot_port = 853
-
-# Prometheus metrics endpoint
-metrics_enabled = false
-metrics_port = 9090
-
-[performance]
-# Performance tuning
-
-# Enable query response caching
-response_cache = true
-
-# Max concurrent queries
-max_concurrent_queries = 1000
-
-# Connection pool size
-db_pool_size = 10
-
-# Enable compression for web responses
-web_compression = true

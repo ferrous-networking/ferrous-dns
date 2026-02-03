@@ -39,6 +39,7 @@ impl HandleDnsQueryUseCase {
                 blocked: true,
                 response_time_ms: Some(start.elapsed().as_millis() as u64),
                 cache_hit: false,
+                cache_refresh: false,
                 timestamp: None,
             };
             self.query_log.log_query(&query_log).await?;
@@ -52,22 +53,35 @@ impl HandleDnsQueryUseCase {
         // Create DNS query for resolver
         let dns_query = DnsQuery::new(request.domain.clone(), request.record_type.clone());
 
-        // Resolve via upstream - agora retorna Vec<IpAddr> direto
-        let addresses = self.resolver.resolve(&dns_query).await?;
+        // Resolve via upstream/cache - retorna DnsResolution com cache_hit info
+        let resolution = self.resolver.resolve(&dns_query).await?;
 
-        // Log successful query (cache_hit = false for now, will implement cache later)
+        // Calculate response time in microseconds for sub-millisecond precision
+        let elapsed_micros = start.elapsed().as_micros() as u64;
+
+        // Convert to milliseconds but preserve sub-ms precision
+        // Store as microseconds in the database field (reusing response_time_ms)
+        // Frontend will handle conversion based on value
+        let response_time_ms = if elapsed_micros < 1000 {
+            elapsed_micros // Store microseconds directly when < 1ms
+        } else {
+            elapsed_micros / 1000 // Convert to milliseconds when >= 1ms
+        };
+
+        // Log successful query with cache hit info
         let query_log = QueryLog {
             id: None,
             domain: request.domain.clone(),
             record_type: request.record_type.clone(),
             client_ip: request.client_ip,
             blocked: false,
-            response_time_ms: Some(start.elapsed().as_millis() as u64),
-            cache_hit: false, // TODO: Implement cache detection
+            response_time_ms: Some(response_time_ms),
+            cache_hit: resolution.cache_hit,
+            cache_refresh: false, // Normal query, not refresh
             timestamp: None,
         };
         self.query_log.log_query(&query_log).await?;
 
-        Ok(addresses)
+        Ok(resolution.addresses)
     }
 }

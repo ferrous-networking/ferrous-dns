@@ -1,101 +1,312 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>⚙️ Settings - Ferrous DNS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
-    <style>[x-cloak] { display: none !important; }</style>
+    <style>
+        [x-cloak] { display: none !important; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        body { display: flex; flex-direction: column; }
+        main { flex: 1; overflow-y: auto; }
+    </style>
 </head>
-<body class="bg-gray-50" x-data="settings()" x-init="init()">
+<body class="bg-gray-50 h-full" x-data="settings()" x-init="init()">
 
-<header class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-7xl mx-auto px-4 py-4">
-        <div class="flex items-center justify-between">
+<header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+    <div class="w-full px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
             <div class="flex items-center space-x-3">
-                <div class="text-4xl">⚙️</div>
+                <div class="text-3xl sm:text-4xl">⚙️</div>
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-                    <p class="text-sm text-gray-500">Ferrous DNS Configuration</p>
+                    <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Settings</h1>
+                    <p class="text-xs sm:text-sm text-gray-500">Ferrous DNS Configuration</p>
                 </div>
             </div>
-            <a href="/" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">← Back to Dashboard</a>
+
+            <nav class="flex flex-wrap gap-2 w-full sm:w-auto">
+                <a href="/dashboard.html" 
+                   class="flex-1 sm:flex-initial px-3 sm:px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 text-center">
+                    📊 Dashboard
+                </a>
+                <a href="/queries.html" 
+                   class="flex-1 sm:flex-initial px-3 sm:px-4 py-2 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700 text-center">
+                    📋 Query Log
+                </a>
+                <a href="/settings.html" 
+                   class="flex-1 sm:flex-initial px-3 sm:px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 text-center">
+                    ⚙️ Settings
+                </a>
+            </nav>
         </div>
     </div>
 </header>
 
-<main class="max-w-7xl mx-auto px-4 py-8">
+<main class="w-full min-h-screen bg-gray-50 px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
     <!-- Alert Messages -->
-    <div x-show="alert.show" x-cloak :class="alert.type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'" class="border px-4 py-3 rounded mb-6 relative" role="alert">
-        <strong class="font-bold" x-text="alert.type === 'success' ? '✅ Success!' : '❌ Error!'"></strong>
-        <span class="block sm:inline" x-text="alert.message"></span>
-        <button @click="alert.show = false" class="absolute top-0 bottom-0 right-0 px-4 py-3"><span class="text-2xl">&times;</span></button>
+    <div x-show="alert.show" x-cloak :class="alert.type === 'success' ? 'bg-green-100 border-green-400 text-green-700' : 'bg-red-100 border-red-400 text-red-700'" class="border px-3 sm:px-4 py-2 sm:py-3 rounded-lg mb-4 sm:mb-6 relative text-sm sm:text-base" role="alert">
+        <strong class="font-bold text-sm sm:text-base" x-text="alert.type === 'success' ? '✅ Success!' : '❌ Error!'"></strong>
+        <span class="block sm:inline text-sm sm:text-base" x-text="alert.message"></span>
+        <button @click="alert.show = false" class="absolute top-0 bottom-0 right-0 px-3 sm:px-4 py-2 sm:py-3"><span class="text-xl sm:text-2xl">&times;</span></button>
     </div>
 
     <!-- Permission Warning -->
-    <div x-show="!config.writable && config.config_path" x-cloak class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+    <div x-show="!config.writable && config.config_path" x-cloak class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-3 sm:px-4 py-2 sm:py-3 rounded-lg mb-4 sm:mb-6 text-sm sm:text-base">
         <strong class="font-bold">⚠️ Warning:</strong> <span>Config file is read-only. You cannot save changes.</span>
-        <p class="text-sm mt-1">File: <code class="bg-yellow-200 px-1 rounded" x-text="config.config_path"></code></p>
+        <p class="text-xs sm:text-sm mt-1">File: <code class="bg-yellow-200 px-1 rounded text-xs sm:text-sm break-all" x-text="config.config_path"></code></p>
     </div>
 
-    <!-- DNS Settings -->
-    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <h2 class="text-xl font-bold mb-4">🌐 DNS Settings</h2>
-        <div class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Upstream DNS Servers</label>
-                <template x-for="(server, index) in config.dns.upstream_servers" :key="index">
-                    <div class="flex gap-2 mb-2">
-                        <input type="text" x-model="config.dns.upstream_servers[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="8.8.8.8:53">
-                        <button @click="config.dns.upstream_servers.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
-                    </div>
-                </template>
-                <button @click="config.dns.upstream_servers.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Server</button>
-            </div>
-            <div class="flex items-center">
-                <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <label for="cache_enabled" class="ml-2 text-sm text-gray-700">Enable DNS Cache</label>
-            </div>
-            <div class="flex items-center">
-                <input type="checkbox" x-model="config.dns.dnssec_enabled" id="dnssec_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <label for="dnssec_enabled" class="ml-2 text-sm text-gray-700">Enable DNSSEC Validation ✨ <span class="text-xs text-gray-500">(Cryptographic validation of DNS responses)</span></label>
+    <!-- Tabs -->
+    <div class="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
+        <nav class="flex space-x-4 sm:space-x-8 min-w-max px-1" aria-label="Tabs">
+            <button @click="currentTab = 'dns'" :class="currentTab === 'dns' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm">
+                🌐 DNS Settings
+            </button>
+            <button @click="currentTab = 'cache'" :class="currentTab === 'cache' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm">
+                ⚡ Cache Settings
+            </button>
+            <button @click="currentTab = 'adblock'" :class="currentTab === 'adblock' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm">
+                🚫 Ad Blocking
+            </button>
+        </nav>
+    </div>
+
+    <!-- DNS Settings Tab -->
+    <div x-show="currentTab === 'dns'" x-cloak>
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-4 sm:mb-6">
+            <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">🌐 DNS Settings</h2>
+            <div class="space-y-3 sm:space-y-4">
+                <div>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Upstream DNS Servers</label>
+                    <template x-for="(server, index) in config.dns.upstream_servers" :key="index">
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" x-model="config.dns.upstream_servers[index]" class="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="8.8.8.8:53">
+                            <button @click="config.dns.upstream_servers.splice(index, 1)" class="px-2 sm:px-3 py-1.5 sm:py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600">🗑️</button>
+                        </div>
+                    </template>
+                    <button @click="config.dns.upstream_servers.push('')" class="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">➕ Add Server</button>
+                </div>
+                
+                <div class="flex items-center">
+                    <input type="checkbox" x-model="config.dns.dnssec_enabled" id="dnssec_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="dnssec_enabled" class="ml-2 text-sm text-gray-700">Enable DNSSEC Validation ✨ <span class="text-xs text-gray-500">(Cryptographic validation of DNS responses)</span></label>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Blocking Settings -->
-    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <h2 class="text-xl font-bold mb-4">🚫 Ad Blocking</h2>
-        <div class="space-y-4">
-            <div class="flex items-center">
-                <input type="checkbox" x-model="config.blocking.enabled" id="blocking_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                <label for="blocking_enabled" class="ml-2 text-sm text-gray-700">Enable Ad/Tracker Blocking</label>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Custom Blocked Domains</label>
-                <template x-for="(domain, index) in config.blocking.custom_blocked" :key="index">
-                    <div class="flex gap-2 mb-2">
-                        <input type="text" x-model="config.blocking.custom_blocked[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="ads.example.com">
-                        <button @click="config.blocking.custom_blocked.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+    <!-- Cache Settings Tab -->
+    <div x-show="currentTab === 'cache'" x-cloak>
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">⚡ DNS Cache</h2>
+            <div class="space-y-4">
+                <div class="flex items-center">
+                    <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="cache_enabled" class="ml-2 text-sm text-gray-700 font-medium">Enable DNS Cache</label>
+                </div>
+
+                <div x-show="config.dns.cache_enabled">
+                    <!-- Eviction Strategy -->
+                    <div class="border-t pt-4">
+                        <h3 class="font-semibold text-gray-900 mb-3">Eviction Strategy</h3>
+                        <p class="text-sm text-gray-600 mb-3">Choose how the cache decides which entries to remove when full:</p>
+                        
+                        <div class="space-y-3">
+                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'hit_rate' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
+                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="hit_rate" class="mt-1">
+                                <div class="ml-3">
+                                    <div class="font-medium">Hit Rate (Default)</div>
+                                    <div class="text-sm text-gray-600">Removes entries with lowest hits/second. Best for changing patterns.</div>
+                                </div>
+                            </label>
+
+                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'lfu' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
+                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu" class="mt-1">
+                                <div class="ml-3">
+                                    <div class="font-medium">LFU (Least Frequently Used)</div>
+                                    <div class="text-sm text-gray-600">Removes entries with lowest total hits. Best for stable patterns.</div>
+                                </div>
+                            </label>
+
+                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'lfu-k' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
+                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu-k" class="mt-1">
+                                <div class="ml-3">
+                                    <div class="font-medium">LFU-K (Balanced)</div>
+                                    <div class="text-sm text-gray-600">Uses sliding window for frequency. Best for hybrid usage.</div>
+                                </div>
+                            </label>
+                        </div>
                     </div>
-                </template>
-                <button @click="config.blocking.custom_blocked.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Whitelist (Never Block)</label>
-                <template x-for="(domain, index) in config.blocking.whitelist" :key="index">
-                    <div class="flex gap-2 mb-2">
-                        <input type="text" x-model="config.blocking.whitelist[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="analytics.google.com">
-                        <button @click="config.blocking.whitelist.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+
+                    <!-- Performance Options -->
+                    <div class="border-t pt-4 mt-4">
+                        <h3 class="font-semibold text-gray-900 mb-3">Performance Optimizations</h3>
+                        
+                        <div class="space-y-3">
+                            <div class="flex items-center">
+                                <input type="checkbox" x-model="config.dns.cache_optimistic_refresh" id="optimistic_refresh" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                                <label for="optimistic_refresh" class="ml-2 text-sm text-gray-700">
+                                    <span class="font-medium">Optimistic Refresh</span>
+                                    <span class="text-gray-500"> - Update popular entries before they expire</span>
+                                </label>
+                            </div>
+
+                            <div class="flex items-center">
+                                <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds" id="adaptive_thresholds" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                                <label for="adaptive_thresholds" class="ml-2 text-sm text-gray-700">
+                                    <span class="font-medium">Adaptive Thresholds</span>
+                                    <span class="text-gray-500"> - Auto-tune eviction thresholds based on effectiveness</span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                </template>
-                <button @click="config.blocking.whitelist.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cache Statistics Section -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold">📊 Cache Statistics</h2>
+                <button @click="loadCacheMetrics()" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">
+                    🔄 Refresh
+                </button>
+            </div>
+            
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <!-- Cache Hits -->
+                <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-purple-700">Cache Hits</span>
+                        <span class="text-2xl">⚡</span>
+                    </div>
+                    <p class="text-3xl font-bold text-purple-900" x-text="cacheMetrics.total_hits || 0">0</p>
+                    <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
+                </div>
+                
+                <!-- Cache Misses -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-blue-700">Cache Misses</span>
+                        <span class="text-2xl">🌐</span>
+                    </div>
+                    <p class="text-3xl font-bold text-blue-900" x-text="cacheMetrics.total_misses || 0">0</p>
+                    <p class="text-xs text-blue-600 mt-1">Upstream queries</p>
+                </div>
+                
+                <!-- Cache Refreshes -->
+                <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border border-yellow-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-yellow-700">Optimistic Refreshes</span>
+                        <span class="text-2xl">🔄</span>
+                    </div>
+                    <p class="text-3xl font-bold text-yellow-900" x-text="cacheMetrics.total_refreshes || 0">0</p>
+                    <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
+                </div>
+                
+                <!-- Total Entries -->
+                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-green-700">Cache Entries</span>
+                        <span class="text-2xl">💾</span>
+                    </div>
+                    <p class="text-3xl font-bold text-green-900" x-text="cacheMetrics.total_entries || 0">0</p>
+                    <p class="text-xs text-green-600 mt-1">Items in cache</p>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-900 mb-3">Performance Breakdown</h3>
+                
+                <div class="space-y-3">
+                    <!-- Hit Rate Bar -->
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-700 font-medium">Cache Hit Rate</span>
+                            <span class="text-purple-600 font-bold" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-purple-600 h-2.5 rounded-full transition-all duration-500" :style="'width: ' + (cacheMetrics.hit_rate || 0) + '%'"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Target: >70% for optimal performance</p>
+                    </div>
+
+                    <!-- Refresh Rate Bar -->
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-700 font-medium">Optimistic Refresh Rate</span>
+                            <span class="text-yellow-600 font-bold" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '%'">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-yellow-500 h-2.5 rounded-full transition-all duration-500" :style="'width: ' + Math.min((cacheMetrics.refresh_rate || 0), 100) + '%'"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Lower is better - queries refreshed before expiration</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Box -->
+            <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <span class="text-2xl">ℹ️</span>
+                    </div>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-blue-800">About Cache Statistics</h4>
+                        <div class="mt-2 text-sm text-blue-700 space-y-1">
+                            <p>• <strong>Cache Hits:</strong> Queries served directly from cache (fastest)</p>
+                            <p>• <strong>Cache Misses:</strong> Queries that went to upstream DNS</p>
+                            <p>• <strong>Optimistic Refreshes:</strong> Background updates before expiration</p>
+                            <p>• <strong>Cache Entries:</strong> Total number of domains cached</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Save Button -->
+    <!-- Ad Blocking Tab -->
+    <div x-show="currentTab === 'adblock'" x-cloak>
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">🚫 Ad Blocking</h2>
+            <div class="space-y-4">
+                <div class="flex items-center">
+                    <input type="checkbox" x-model="config.blocking.enabled" id="blocking_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="blocking_enabled" class="ml-2 text-sm text-gray-700 font-medium">Enable Ad/Tracker Blocking</label>
+                </div>
+                
+                <div x-show="config.blocking.enabled">
+                    <div class="border-t pt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Custom Blocked Domains</label>
+                        <template x-for="(domain, index) in config.blocking.custom_blocked" :key="index">
+                            <div class="flex gap-2 mb-2">
+                                <input type="text" x-model="config.blocking.custom_blocked[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="ads.example.com">
+                                <button @click="config.blocking.custom_blocked.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+                            </div>
+                        </template>
+                        <button @click="config.blocking.custom_blocked.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
+                    </div>
+                    
+                    <div class="border-t pt-4 mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Whitelist (Never Block)</label>
+                        <template x-for="(domain, index) in config.blocking.whitelist" :key="index">
+                            <div class="flex gap-2 mb-2">
+                                <input type="text" x-model="config.blocking.whitelist[index]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="analytics.google.com">
+                                <button @click="config.blocking.whitelist.splice(index, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">🗑️</button>
+                            </div>
+                        </template>
+                        <button @click="config.blocking.whitelist.push('')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">➕ Add Domain</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Buttons (always visible) -->
     <div class="flex gap-4">
         <button @click="saveConfig()" :disabled="saving || !config.writable" :class="saving || !config.writable ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'" class="px-6 py-3 text-white rounded-lg font-bold">
             <span x-show="!saving">💾 Save Configuration</span>
@@ -112,10 +323,40 @@
 <script>
 function settings() {
     return {
-        config: { dns: { upstream_servers: [], cache_enabled: true, dnssec_enabled: false }, blocking: { enabled: true, custom_blocked: [], whitelist: [] }, config_path: null, writable: false },
+        currentTab: 'dns',
+        config: { 
+            dns: { 
+                upstream_servers: [], 
+                cache_enabled: true, 
+                cache_eviction_strategy: 'hit_rate',
+                cache_optimistic_refresh: true,
+                cache_adaptive_thresholds: false,
+                dnssec_enabled: false 
+            }, 
+            blocking: { 
+                enabled: true, 
+                custom_blocked: [], 
+                whitelist: [] 
+            }, 
+            config_path: null, 
+            writable: false 
+        },
         alert: { show: false, type: 'success', message: '' },
         saving: false,
-        async init() { await this.loadConfig(); },
+        cacheMetrics: {
+            total_entries: 0,
+            total_hits: 0,
+            total_misses: 0,
+            total_refreshes: 0,
+            hit_rate: 0,
+            refresh_rate: 0
+        },
+        
+        async init() { 
+            await this.loadConfig();
+            await this.loadCacheMetrics();
+        },
+        
         async loadConfig() {
             try {
                 const res = await fetch('/api/config');
@@ -125,20 +366,42 @@ function settings() {
                 this.showAlert('error', 'Failed to load configuration');
             }
         },
+        
         async saveConfig() {
-            if (!this.config.writable) { this.showAlert('error', 'Config file is read-only. Cannot save changes.'); return; }
+            if (!this.config.writable) { 
+                this.showAlert('error', 'Config file is read-only. Cannot save changes.'); 
+                return; 
+            }
+            
             this.saving = true;
             try {
                 const res = await fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        dns: { upstream_servers: this.config.dns.upstream_servers.filter(s => s.trim()), cache_enabled: this.config.dns.cache_enabled, dnssec_enabled: this.config.dns.dnssec_enabled },
-                        blocking: { enabled: this.config.blocking.enabled, custom_blocked: this.config.blocking.custom_blocked.filter(d => d.trim()), whitelist: this.config.blocking.whitelist.filter(d => d.trim()) }
+                        dns: { 
+                            upstream_servers: this.config.dns.upstream_servers.filter(s => s.trim()), 
+                            cache_enabled: this.config.dns.cache_enabled, 
+                            dnssec_enabled: this.config.dns.dnssec_enabled,
+                            cache_eviction_strategy: this.config.dns.cache_eviction_strategy,
+                            cache_optimistic_refresh: this.config.dns.cache_optimistic_refresh,
+                            cache_adaptive_thresholds: this.config.dns.cache_adaptive_thresholds
+                        },
+                        blocking: { 
+                            enabled: this.config.blocking.enabled, 
+                            custom_blocked: this.config.blocking.custom_blocked.filter(d => d.trim()), 
+                            whitelist: this.config.blocking.whitelist.filter(d => d.trim()) 
+                        }
                     })
                 });
+                
                 const data = await res.json();
-                if (data.success) { this.showAlert('success', data.message); await this.loadConfig(); } else { this.showAlert('error', data.error); }
+                if (data.success) { 
+                    this.showAlert('success', data.message); 
+                    await this.loadConfig(); 
+                } else { 
+                    this.showAlert('error', data.error); 
+                }
             } catch (error) {
                 console.error('Error saving config:', error);
                 this.showAlert('error', 'Failed to save configuration');
@@ -146,7 +409,26 @@ function settings() {
                 this.saving = false;
             }
         },
-        showAlert(type, message) { this.alert = { show: true, type, message }; setTimeout(() => { this.alert.show = false; }, 5000); }
+        
+        async loadCacheMetrics() {
+            try {
+                console.log('Fetching cache statistics...');
+                const res = await fetch('/api/cache/stats');
+                if (!res.ok) {
+                    console.error('Cache stats API error:', res.status);
+                    return;
+                }
+                this.cacheMetrics = await res.json();
+                console.log('Cache metrics loaded:', this.cacheMetrics);
+            } catch (error) {
+                console.error('Error loading cache metrics:', error);
+            }
+        },
+        
+        showAlert(type, message) { 
+            this.alert = { show: true, type, message }; 
+            setTimeout(() => { this.alert.show = false; }, 5000); 
+        }
     }
 }
 </script>

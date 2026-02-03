@@ -26,6 +26,17 @@ pub struct QueryResponse {
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
+    pub cache_refresh: bool, // NEW
+}
+
+#[derive(Serialize)]
+pub struct CacheStatsResponse {
+    pub total_entries: usize,
+    pub total_hits: u64,
+    pub total_misses: u64,
+    pub total_refreshes: u64,
+    pub hit_rate: f64,
+    pub refresh_rate: f64,
 }
 
 #[derive(Serialize)]
@@ -59,6 +70,13 @@ pub struct DnsConfigResponse {
     pub cache_enabled: bool,
     pub cache_ttl: u64,
     pub dnssec_enabled: bool,
+    pub cache_eviction_strategy: String,
+    pub cache_max_entries: usize,
+    pub cache_min_hit_rate: f64,
+    pub cache_min_frequency: u64,
+    pub cache_min_lfuk_score: f64,
+    pub cache_optimistic_refresh: bool,
+    pub cache_adaptive_thresholds: bool,
 }
 
 #[derive(Serialize)]
@@ -90,6 +108,13 @@ pub struct DnsConfigUpdate {
     pub upstream_servers: Option<Vec<String>>,
     pub cache_enabled: Option<bool>,
     pub dnssec_enabled: Option<bool>,
+    pub cache_eviction_strategy: Option<String>,
+    pub cache_max_entries: Option<usize>,
+    pub cache_min_hit_rate: Option<f64>,
+    pub cache_min_frequency: Option<u64>,
+    pub cache_min_lfuk_score: Option<f64>,
+    pub cache_optimistic_refresh: Option<bool>,
+    pub cache_adaptive_thresholds: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -151,26 +176,54 @@ pub async fn get_stats(State(state): State<AppState>) -> Json<StatsResponse> {
 
 #[instrument(skip(state), name = "api_get_queries")]
 pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryResponse>> {
-    debug!("Fetching recent queries");
+    debug!("Fetching recent queries (last 24 hours)");
 
-    match state.get_queries.execute(100).await {
+    // Get queries from last 24 hours (1440 minutes = 24 hours * 60)
+    match state.get_queries.execute(10000).await {
+        // Get lots of queries
         Ok(queries) => {
-            debug!(count = queries.len(), "Queries retrieved successfully");
+            // Filter to last 24 hours
+            let now = chrono::Utc::now();
+            let twenty_four_hours_ago = now - chrono::Duration::hours(24);
 
-            let response = queries
+            let filtered: Vec<QueryResponse> = queries
                 .into_iter()
-                .map(|q| QueryResponse {
-                    timestamp: q.timestamp.unwrap_or_default(),
-                    domain: q.domain,
-                    client: q.client_ip.to_string(),
-                    record_type: q.record_type.as_str().to_string(),
-                    blocked: q.blocked,
-                    response_time_ms: q.response_time_ms,
-                    cache_hit: q.cache_hit,
+                .filter_map(|q| {
+                    // Parse timestamp
+                    if let Some(ts) = &q.timestamp {
+                        if let Ok(query_time) =
+                            chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S")
+                        {
+                            let query_time_utc =
+                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                    query_time,
+                                    chrono::Utc,
+                                );
+
+                            // Only include if within last 24 hours
+                            if query_time_utc >= twenty_four_hours_ago {
+                                return Some(QueryResponse {
+                                    timestamp: q.timestamp.unwrap_or_default(),
+                                    domain: q.domain,
+                                    client: q.client_ip.to_string(),
+                                    record_type: q.record_type.as_str().to_string(),
+                                    blocked: q.blocked,
+                                    response_time_ms: q.response_time_ms,
+                                    cache_hit: q.cache_hit,
+                                    cache_refresh: q.cache_refresh,
+                                });
+                            }
+                        }
+                    }
+                    None
                 })
                 .collect();
 
-            Json(response)
+            debug!(
+                count = filtered.len(),
+                "Queries from last 24h retrieved successfully"
+            );
+            Json(filtered)
         }
         Err(e) => {
             error!(error = %e, "Failed to retrieve queries");
@@ -204,6 +257,71 @@ pub async fn get_blocklist(State(state): State<AppState>) -> Json<Vec<BlocklistR
     }
 }
 
+#[instrument(skip(state), name = "api_get_cache_stats")]
+pub async fn get_cache_stats(State(state): State<AppState>) -> Json<CacheStatsResponse> {
+    debug!("Fetching cache statistics");
+
+    // Get all queries to calculate cache stats
+    match state.get_queries.execute(100000).await {
+        Ok(queries) => {
+            let total_hits = queries
+                .iter()
+                .filter(|q| q.cache_hit && !q.cache_refresh)
+                .count() as u64;
+            let total_refreshes = queries.iter().filter(|q| q.cache_refresh).count() as u64;
+            let total_misses = queries
+                .iter()
+                .filter(|q| !q.cache_hit && !q.cache_refresh && !q.blocked)
+                .count() as u64;
+            let total_queries = total_hits + total_misses;
+
+            let hit_rate = if total_queries > 0 {
+                (total_hits as f64 / total_queries as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let refresh_rate = if total_hits > 0 {
+                (total_refreshes as f64 / total_hits as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            // Get actual cache size
+            let total_entries = state.cache.size();
+
+            debug!(
+                total_entries = total_entries,
+                total_hits = total_hits,
+                total_misses = total_misses,
+                total_refreshes = total_refreshes,
+                hit_rate = hit_rate,
+                "Cache statistics calculated"
+            );
+
+            Json(CacheStatsResponse {
+                total_entries,
+                total_hits,
+                total_misses,
+                total_refreshes,
+                hit_rate,
+                refresh_rate,
+            })
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to calculate cache stats");
+            Json(CacheStatsResponse {
+                total_entries: 0,
+                total_hits: 0,
+                total_misses: 0,
+                total_refreshes: 0,
+                hit_rate: 0.0,
+                refresh_rate: 0.0,
+            })
+        }
+    }
+}
+
 #[instrument(skip(state), name = "api_get_config")]
 pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     debug!("Fetching current configuration");
@@ -232,6 +350,13 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             cache_enabled: config.dns.cache_enabled,
             cache_ttl: config.dns.cache_ttl,
             dnssec_enabled: config.dns.dnssec_enabled,
+            cache_eviction_strategy: config.dns.cache_eviction_strategy.clone(),
+            cache_max_entries: config.dns.cache_max_entries,
+            cache_min_hit_rate: config.dns.cache_min_hit_rate,
+            cache_min_frequency: config.dns.cache_min_frequency,
+            cache_min_lfuk_score: config.dns.cache_min_lfuk_score,
+            cache_optimistic_refresh: config.dns.cache_optimistic_refresh,
+            cache_adaptive_thresholds: config.dns.cache_adaptive_thresholds,
         },
         blocking: BlockingConfigResponse {
             enabled: config.blocking.enabled,
@@ -292,6 +417,27 @@ pub async fn update_config(
         if let Some(dnssec) = dns_update.dnssec_enabled {
             config.dns.dnssec_enabled = dnssec;
         }
+        if let Some(strategy) = dns_update.cache_eviction_strategy {
+            config.dns.cache_eviction_strategy = strategy;
+        }
+        if let Some(max) = dns_update.cache_max_entries {
+            config.dns.cache_max_entries = max;
+        }
+        if let Some(hit_rate) = dns_update.cache_min_hit_rate {
+            config.dns.cache_min_hit_rate = hit_rate;
+        }
+        if let Some(freq) = dns_update.cache_min_frequency {
+            config.dns.cache_min_frequency = freq;
+        }
+        if let Some(score) = dns_update.cache_min_lfuk_score {
+            config.dns.cache_min_lfuk_score = score;
+        }
+        if let Some(refresh) = dns_update.cache_optimistic_refresh {
+            config.dns.cache_optimistic_refresh = refresh;
+        }
+        if let Some(adaptive) = dns_update.cache_adaptive_thresholds {
+            config.dns.cache_adaptive_thresholds = adaptive;
+        }
     }
 
     if let Some(blocking_update) = request.blocking {
@@ -323,4 +469,19 @@ pub async fn update_config(
             }))
         }
     }
+}
+
+#[derive(Serialize)]
+pub struct HostnameResponse {
+    pub hostname: String,
+}
+
+#[instrument(skip_all, name = "api_get_hostname")]
+pub async fn get_hostname() -> Json<HostnameResponse> {
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "DNS Server".to_string());
+
+    Json(HostnameResponse { hostname })
 }

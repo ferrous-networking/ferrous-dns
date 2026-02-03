@@ -16,3 +16,5 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+chrono = "0.4"
+hostname = "0.4"

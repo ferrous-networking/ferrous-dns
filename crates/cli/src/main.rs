@@ -116,19 +116,102 @@ async fn main() -> anyhow::Result<()> {
     let get_queries_use_case = Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone()));
     let get_blocklist_use_case = Arc::new(GetBlocklistUseCase::new(blocklist_repo.clone()));
 
-    // Create app state with config
+    // Create DNS resolver with cache
+    info!("Initializing DNS resolver with cache");
+
+    let mut resolver = HickoryDnsResolver::with_google().map_err(|e| {
+        error!("Failed to create DNS resolver: {}", e);
+        anyhow::anyhow!("DNS resolver initialization failed")
+    })?;
+
+    // Initialize cache if enabled
+    let cache = if config.dns.cache_enabled {
+        use ferrous_dns_infrastructure::dns::cache::{DnsCache, EvictionStrategy};
+
+        // Detect eviction strategy from config (simple enum, no fields)
+        let eviction_strategy = match config.dns.cache_eviction_strategy.as_str() {
+            "lfu" => EvictionStrategy::LFU,
+            "lfu-k" => EvictionStrategy::LFUK,
+            _ => EvictionStrategy::HitRate,
+        };
+
+        info!(
+            strategy = config.dns.cache_eviction_strategy.as_str(),
+            max_entries = config.dns.cache_max_entries,
+            optimistic_refresh = config.dns.cache_optimistic_refresh,
+            adaptive_thresholds = config.dns.cache_adaptive_thresholds,
+            "Cache enabled"
+        );
+
+        // Create cache with all 7 required parameters
+        let cache = Arc::new(DnsCache::new(
+            config.dns.cache_max_entries,               // max_entries: usize
+            eviction_strategy,                          // eviction_strategy: EvictionStrategy
+            config.dns.cache_min_hit_rate,              // min_threshold: f64
+            config.dns.cache_refresh_threshold,         // refresh_threshold: f64
+            config.dns.cache_lfuk_history_size,         // lfuk_history_size: usize
+            config.dns.cache_batch_eviction_percentage, // batch_eviction_percentage: f64
+            config.dns.cache_adaptive_thresholds,       // adaptive_thresholds: bool
+        ));
+
+        // Attach cache to resolver with TTL from config
+        resolver = resolver
+            .with_cache(cache.clone())
+            .with_cache_ttl(config.dns.cache_ttl);
+
+        info!(cache_ttl = config.dns.cache_ttl, "Cache TTL configured");
+
+        cache
+    } else {
+        // Create empty cache for API even if caching disabled
+        use ferrous_dns_infrastructure::dns::cache::{DnsCache, EvictionStrategy};
+        Arc::new(DnsCache::new(
+            0,
+            EvictionStrategy::HitRate,
+            0.0,
+            0.0,
+            0,
+            0.0,
+            false,
+        ))
+    };
+
+    // Create app state with config and cache
     let app_state = AppState {
         get_stats: get_stats_use_case,
         get_queries: get_queries_use_case,
         get_blocklist: get_blocklist_use_case,
         config: Arc::new(tokio::sync::RwLock::new(config.clone())),
+        cache: cache.clone(),
     };
 
-    // Create DNS resolver
-    let resolver = Arc::new(HickoryDnsResolver::with_google().map_err(|e| {
-        error!("Failed to create DNS resolver: {}", e);
-        anyhow::anyhow!("DNS resolver initialization failed")
-    })?);
+    // Spawn background tasks if cache enabled and optimistic refresh enabled
+    if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
+        use ferrous_dns_infrastructure::dns::cache_updater::CacheUpdater;
+
+        info!("Starting cache background tasks");
+
+        // CacheUpdater needs Arc<HickoryDnsResolver>, not mutable
+        // We need to clone before moving to Arc
+        let resolver_for_updater = HickoryDnsResolver::with_google()
+            .map_err(|e| anyhow::anyhow!("Failed to create resolver for updater: {}", e))?
+            .with_cache(cache.clone())
+            .with_cache_ttl(config.dns.cache_ttl);
+
+        let updater = CacheUpdater::new(
+            cache.clone(),
+            Arc::new(resolver_for_updater),
+            60, // update_interval_secs (optimistic refresh every 60s)
+            config.dns.cache_compaction_interval, // compaction_interval_secs
+        );
+
+        // Start both tasks
+        let (_refresh_handle, _compaction_handle) = updater.start();
+
+        info!("Cache background tasks started successfully");
+    }
+
+    let resolver = Arc::new(resolver);
 
     // Create DNS query handler use case
     let dns_handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
@@ -208,11 +291,21 @@ fn create_app(state: AppState) -> Router {
         .nest("/api", create_api_routes(state))
         .nest_service("/static", ServeDir::new("web/static"))
         .route("/", get(index_handler))
+        .route("/dashboard.html", get(dashboard_handler))
+        .route("/queries.html", get(queries_handler))
         .route("/settings.html", get(settings_handler))
 }
 
 async fn index_handler() -> Html<&'static str> {
     Html(include_str!("../../../web/static/index.html"))
+}
+
+async fn dashboard_handler() -> Html<&'static str> {
+    Html(include_str!("../../../web/static/dashboard.html"))
+}
+
+async fn queries_handler() -> Html<&'static str> {
+    Html(include_str!("../../../web/static/queries.html"))
 }
 
 async fn settings_handler() -> Html<&'static str> {

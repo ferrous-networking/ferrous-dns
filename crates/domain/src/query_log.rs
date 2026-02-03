@@ -10,6 +10,7 @@ pub struct QueryLog {
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
+    pub cache_refresh: bool, // NEW: Optimistic refresh
     pub timestamp: Option<String>,
 }
 
@@ -23,4 +24,16 @@ pub struct QueryStats {
     pub avg_query_time_ms: f64,
     pub avg_cache_time_ms: f64,
     pub avg_upstream_time_ms: f64,
+}
+
+// NEW: Cache-specific statistics
+#[derive(Debug, Clone)]
+pub struct CacheStats {
+    pub total_entries: usize,
+    pub total_hits: u64,
+    pub total_misses: u64,
+    pub total_updates: u64,
+    pub total_evictions: u64,
+    pub hit_rate: f64,
+    pub avg_ttl_seconds: u64,
 }

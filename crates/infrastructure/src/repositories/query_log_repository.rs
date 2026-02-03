@@ -22,8 +22,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!("Logging DNS query");
 
         sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit)
-             VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&query.domain)
         .bind(query.record_type.as_str())
@@ -31,6 +31,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         .bind(if query.blocked { 1 } else { 0 })
         .bind(query.response_time_ms.map(|t| t as i64))
         .bind(if query.cache_hit { 1 } else { 0 })
+        .bind(if query.cache_refresh { 1 } else { 0 })
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -47,7 +48,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!(limit = limit, "Fetching recent queries");
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh,
                     datetime(created_at) as created_at
              FROM query_log
              ORDER BY created_at DESC
@@ -77,6 +78,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                         .get::<Option<i64>, _>("response_time_ms")
                         .map(|t| t as u64),
                     cache_hit: row.get::<i64, _>("cache_hit") != 0,
+                    cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
                     timestamp: Some(row.get("created_at")),
                 })
             })

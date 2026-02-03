@@ -16,3 +16,4 @@ hickory-server.workspace = true
 hickory-proto.workspace = true
 serde.workspace = true
 tracing.workspace = true
+dashmap.workspace = true

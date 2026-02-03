@@ -13,4 +13,4 @@ pub use dns_query::DnsQuery;
 pub use dns_record::{DnsRecord, RecordType};
 pub use dns_request::DnsRequest;
 pub use errors::DomainError;
-pub use query_log::{QueryLog, QueryStats};
+pub use query_log::{CacheStats, QueryLog, QueryStats};
