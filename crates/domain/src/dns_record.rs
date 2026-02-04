@@ -2,7 +2,7 @@ use std::fmt;
 use std::net::IpAddr;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]  // ← Added Copy for zero-cost!
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]  // ← Added Hash for cache keys!
 pub enum RecordType {
     // Basic records
     A,

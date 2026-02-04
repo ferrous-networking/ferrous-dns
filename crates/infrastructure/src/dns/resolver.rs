@@ -350,7 +350,6 @@ impl HickoryDnsResolver {
 
     /// Resolve without DNSSEC
     async fn resolve_simple(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        let start = Instant::now();
         let hickory_type = Self::to_hickory_type(&query.record_type);
 
         let lookup = match self.resolver.lookup(&query.domain, hickory_type).await {
