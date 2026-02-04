@@ -30,7 +30,7 @@ impl HandleDnsQueryUseCase {
         let is_blocked = self.blocklist.is_blocked(&request.domain).await?;
 
         if is_blocked {
-            // Log blocked query
+            // Log blocked query (ASYNC - fire and forget! ✅)
             let query_log = QueryLog {
                 id: None,
                 domain: request.domain.clone(),
@@ -40,9 +40,17 @@ impl HandleDnsQueryUseCase {
                 response_time_ms: Some(start.elapsed().as_millis() as u64),
                 cache_hit: false,
                 cache_refresh: false,
+                dnssec_status: None,
                 timestamp: None,
             };
-            self.query_log.log_query(&query_log).await?;
+            
+            // Spawn async task - DON'T WAIT! ✅
+            let logger = self.query_log.clone();
+            tokio::spawn(async move {
+                if let Err(e) = logger.log_query(&query_log).await {
+                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
+                }
+            });
 
             return Err(DomainError::InvalidDomainName(format!(
                 "Domain {} is blocked",
@@ -58,17 +66,15 @@ impl HandleDnsQueryUseCase {
 
         // Calculate response time in microseconds for sub-millisecond precision
         let elapsed_micros = start.elapsed().as_micros() as u64;
-
+        
         // Convert to milliseconds but preserve sub-ms precision
-        // Store as microseconds in the database field (reusing response_time_ms)
-        // Frontend will handle conversion based on value
         let response_time_ms = if elapsed_micros < 1000 {
-            elapsed_micros // Store microseconds directly when < 1ms
+            elapsed_micros  // Store microseconds directly when < 1ms
         } else {
-            elapsed_micros / 1000 // Convert to milliseconds when >= 1ms
+            elapsed_micros / 1000  // Convert to milliseconds when >= 1ms
         };
 
-        // Log successful query with cache hit info
+        // Log successful query (ASYNC - fire and forget! ✅)
         let query_log = QueryLog {
             id: None,
             domain: request.domain.clone(),
@@ -77,11 +83,20 @@ impl HandleDnsQueryUseCase {
             blocked: false,
             response_time_ms: Some(response_time_ms),
             cache_hit: resolution.cache_hit,
-            cache_refresh: false, // Normal query, not refresh
+            cache_refresh: false,
+            dnssec_status: resolution.dnssec_status,
             timestamp: None,
         };
-        self.query_log.log_query(&query_log).await?;
+        
+        // Spawn async task - DON'T WAIT! ✅
+        let logger = self.query_log.clone();
+        tokio::spawn(async move {
+            if let Err(e) = logger.log_query(&query_log).await {
+                tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
+            }
+        });
 
+        // Return immediately! ✅
         Ok(resolution.addresses)
     }
 }

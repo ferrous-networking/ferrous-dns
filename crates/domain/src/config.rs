@@ -24,50 +24,50 @@ pub struct DnsConfig {
     #[serde(default = "default_true")]
     pub cache_enabled: bool,
     #[serde(default = "default_cache_ttl")]
-    pub cache_ttl: u64,
+    pub cache_ttl: u32,  // Changed from u64 to u32 (consistent with cache implementation)
     #[serde(default = "default_false")]
     pub dnssec_enabled: bool,
-
+    
     // Cache size
     #[serde(default = "default_cache_max_entries")]
     pub cache_max_entries: usize,
-
+    
     // Eviction strategy
     #[serde(default = "default_cache_eviction_strategy")]
     pub cache_eviction_strategy: String,
-
+    
     // Optimistic refresh
     #[serde(default = "default_cache_optimistic_refresh")]
     pub cache_optimistic_refresh: bool,
-
+    
     // Minimum thresholds per strategy
     #[serde(default = "default_cache_min_hit_rate")]
     pub cache_min_hit_rate: f64,
-
+    
     #[serde(default = "default_cache_min_frequency")]
     pub cache_min_frequency: u64,
-
+    
     #[serde(default = "default_cache_min_lfuk_score")]
     pub cache_min_lfuk_score: f64,
-
+    
     // Refresh threshold
     #[serde(default = "default_cache_refresh_threshold")]
     pub cache_refresh_threshold: f64,
-
+    
     // LFU-K specific
     #[serde(default = "default_cache_lfuk_history_size")]
     pub cache_lfuk_history_size: usize,
-
+    
     // Performance optimizations
     #[serde(default = "default_cache_batch_eviction_percentage")]
     pub cache_batch_eviction_percentage: f64,
-
+    
     #[serde(default = "default_cache_lazy_expiration")]
     pub cache_lazy_expiration: bool,
-
+    
     #[serde(default = "default_cache_compaction_interval")]
     pub cache_compaction_interval: u64,
-
+    
     #[serde(default = "default_cache_adaptive_thresholds")]
     pub cache_adaptive_thresholds: bool,
 }
@@ -96,62 +96,26 @@ pub struct DatabaseConfig {
     pub log_queries: bool,
 }
 
-fn default_query_timeout() -> u64 {
-    5
-}
-fn default_cache_ttl() -> u64 {
-    3600
-}
-fn default_log_level() -> String {
-    "info".to_string()
-}
-fn default_db_path() -> String {
-    "ferrous-dns.db".to_string()
-}
-fn default_true() -> bool {
-    true
-}
-fn default_false() -> bool {
-    false
-}
+fn default_query_timeout() -> u64 { 5 }
+fn default_cache_ttl() -> u32 { 3600 }
+fn default_log_level() -> String { "info".to_string() }
+fn default_db_path() -> String { "ferrous-dns.db".to_string() }
+fn default_true() -> bool { true }
+fn default_false() -> bool { false }
 
 // Cache defaults
-fn default_cache_max_entries() -> usize {
-    200_000
-}
-fn default_cache_eviction_strategy() -> String {
-    "hit_rate".to_string()
-}
-fn default_cache_optimistic_refresh() -> bool {
-    true
-}
-fn default_cache_min_hit_rate() -> f64 {
-    2.0
-}
-fn default_cache_min_frequency() -> u64 {
-    10
-}
-fn default_cache_min_lfuk_score() -> f64 {
-    1.5
-}
-fn default_cache_refresh_threshold() -> f64 {
-    0.75
-}
-fn default_cache_lfuk_history_size() -> usize {
-    10
-}
-fn default_cache_batch_eviction_percentage() -> f64 {
-    0.1
-}
-fn default_cache_lazy_expiration() -> bool {
-    true
-}
-fn default_cache_compaction_interval() -> u64 {
-    300
-}
-fn default_cache_adaptive_thresholds() -> bool {
-    false
-}
+fn default_cache_max_entries() -> usize { 200_000 }
+fn default_cache_eviction_strategy() -> String { "hit_rate".to_string() }
+fn default_cache_optimistic_refresh() -> bool { true }
+fn default_cache_min_hit_rate() -> f64 { 2.0 }
+fn default_cache_min_frequency() -> u64 { 10 }
+fn default_cache_min_lfuk_score() -> f64 { 1.5 }
+fn default_cache_refresh_threshold() -> f64 { 0.75 }
+fn default_cache_lfuk_history_size() -> usize { 10 }
+fn default_cache_batch_eviction_percentage() -> f64 { 0.1 }
+fn default_cache_lazy_expiration() -> bool { true }
+fn default_cache_compaction_interval() -> u64 { 300 }
+fn default_cache_adaptive_thresholds() -> bool { false }
 
 impl Default for Config {
     fn default() -> Self {

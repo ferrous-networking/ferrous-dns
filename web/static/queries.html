@@ -111,27 +111,50 @@
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Response</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
                 <template x-for="(query, index) in paginatedQueries" :key="index">
                     <tr class="hover:bg-gray-100" :class="query.blocked ? 'bg-red-50' : ''">
-                        <td class="px-4 py-3"><span class="font-medium text-gray-900 text-sm" x-text="query.domain"></span></td>
+                        <!-- Time (FIRST) -->
+                        <td class="px-4 py-3 text-sm text-gray-500" x-text="formatTimestamp(query.timestamp)"></td>
+                        
+                        <!-- Domain -->
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <!-- DNSSEC Status Icon (only if DNSSEC enabled and status exists) -->
+                                <template x-if="dnssecEnabled && query.dnssec_status">
+                                    <span 
+                                        class="text-sm"
+                                        :title="query.dnssec_status"
+                                        x-text="query.dnssec_status === 'Secure' ? '🔒' : 
+                                                query.dnssec_status === 'Insecure' ? '🔓' : 
+                                                query.dnssec_status === 'Bogus' ? '⚠️' : ''">
+                                    </span>
+                                </template>
+                                <span class="font-medium text-gray-900 text-sm" x-text="query.domain"></span>
+                            </div>
+                        </td>
+                        
+                        <!-- Type -->
                         <td class="px-4 py-3">
                             <span 
                                 class="px-2 py-0.5 rounded-full text-xs font-medium"
                                 :class="isDnssec(query.type) ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
                                 x-text="query.type">
                             </span>
-                            <span x-show="isDnssec(query.type)" class="ml-1 text-xs">🔐</span>
                         </td>
+                        
+                        <!-- Client -->
                         <td class="px-4 py-3 text-sm text-gray-600" x-text="formatClientName(query.client)"></td>
+                        
+                        <!-- Source -->
                         <td class="px-4 py-3">
                             <span 
                                 class="px-2 py-0.5 rounded-full text-xs font-medium"
@@ -139,7 +162,8 @@
                                 x-text="query.blocked ? '🚫 Blocked' : (query.cache_refresh ? '🔄 Refresh' : (query.cache_hit ? '⚡ Cache' : '🌐 Upstream'))">
                             </span>
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-500" x-text="query.timestamp"></td>
+                        
+                        <!-- Response -->
                         <td class="px-4 py-3">
                             <span 
                                 class="text-sm font-semibold"
@@ -165,14 +189,25 @@
                 <!-- Header -->
                 <div class="flex items-start justify-between mb-2">
                     <div class="flex-1 min-w-0 pr-2">
-                        <p class="font-semibold text-gray-900 truncate text-sm" x-text="query.domain"></p>
+                        <div class="flex items-center gap-1">
+                            <!-- DNSSEC Status Icon (only if DNSSEC enabled and status exists) -->
+                            <template x-if="dnssecEnabled && query.dnssec_status">
+                                <span 
+                                    class="text-sm shrink-0"
+                                    :title="query.dnssec_status"
+                                    x-text="query.dnssec_status === 'Secure' ? '🔒' : 
+                                            query.dnssec_status === 'Insecure' ? '🔓' : 
+                                            query.dnssec_status === 'Bogus' ? '⚠️' : ''">
+                                </span>
+                            </template>
+                            <p class="font-semibold text-gray-900 truncate text-sm" x-text="query.domain"></p>
+                        </div>
                         <div class="flex items-center gap-2 mt-1">
                             <span 
                                 class="px-2 py-0.5 rounded-full text-xs font-medium"
                                 :class="isDnssec(query.type) ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
                                 x-text="query.type">
                             </span>
-                            <span x-show="isDnssec(query.type)" class="text-xs">🔐 DNSSEC</span>
                         </div>
                     </div>
                     <span 
@@ -190,7 +225,7 @@
                     </div>
                     <div class="flex justify-between">
                         <span>Time:</span>
-                        <span class="font-medium" x-text="query.timestamp"></span>
+                        <span class="font-medium text-xs" x-text="formatTimestamp(query.timestamp)"></span>
                     </div>
                     <div class="flex justify-between">
                         <span>Response:</span>
@@ -250,6 +285,7 @@ function queryLog() {
         autoRefresh: true,
         showDnssec: false,  // Filter toggle
         dnssecEnabled: false,  // From config
+        serverHostname: 'localhost',  // Server hostname for internal queries
 
         // DNSSEC record types
         dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
@@ -280,6 +316,7 @@ function queryLog() {
 
         async init() {
             await this.loadConfig();
+            await this.loadHostname();
             await this.loadQueries();
             setInterval(() => {
                 if (this.autoRefresh) this.loadQueries();
@@ -294,6 +331,17 @@ function queryLog() {
                 console.log('DNSSEC enabled:', this.dnssecEnabled);
             } catch (error) {
                 console.error('Error loading config:', error);
+            }
+        },
+
+        async loadHostname() {
+            try {
+                const res = await fetch('/api/hostname');
+                const data = await res.json();
+                this.serverHostname = data.hostname;
+                console.log('Server hostname:', this.serverHostname);
+            } catch (error) {
+                console.error('Error loading hostname:', error);
             }
         },
 
@@ -312,7 +360,9 @@ function queryLog() {
         },
 
         formatClientName(ip) {
-            if (ip.startsWith('127.') || ip === '::1') return 'localhost';
+            if (ip.startsWith('127.') || ip === '::1') {
+                return this.serverHostname;  // Show server hostname for internal queries
+            }
             if (ip.startsWith('192.168.')) return 'Local';
             return ip;
         },
@@ -322,6 +372,43 @@ function queryLog() {
             if (ms < 1000) return `${ms} µs`;
             if (ms < 10000) return `${(ms / 1000).toFixed(1)} ms`;
             return `${(ms / 1000).toFixed(0)} ms`;
+        },
+
+        formatTimestamp(utcTimestamp) {
+            if (!utcTimestamp) return '-';
+            
+            try {
+                // Parse UTC timestamp from backend (format: "2026-02-03 14:30:45")
+                const date = new Date(utcTimestamp + ' UTC');
+                
+                // Get browser timezone
+                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                
+                // Format to local time with timezone
+                const timeOptions = {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                };
+                
+                const dateOptions = {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                };
+                
+                const timeStr = date.toLocaleTimeString('en-US', timeOptions);
+                const dateStr = date.toLocaleDateString('en-CA'); // yyyy-mm-dd
+                
+                // Short timezone abbreviation
+                const tzShort = date.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
+                
+                return `${dateStr} ${timeStr} ${tzShort}`;
+            } catch (error) {
+                console.error('Error formatting timestamp:', error);
+                return utcTimestamp;
+            }
         }
     }
 }

@@ -41,7 +41,7 @@ impl ConfigRepository for SqliteConfigRepository {
                 // Update DNS config
                 config.dns.upstream_servers = upstream_servers;
                 config.dns.cache_enabled = row.get::<i64, _>("cache_enabled") != 0;
-                config.dns.cache_ttl = row.get::<i64, _>("cache_ttl_seconds") as u64;
+                config.dns.cache_ttl = row.get::<i64, _>("cache_ttl_seconds") as u32;  // Changed to u32
 
                 // Update blocking config
                 config.blocking.enabled = row.get::<i64, _>("blocklist_enabled") != 0;

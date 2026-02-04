@@ -54,95 +54,90 @@
         <h2 class="text-base sm:text-lg font-semibold text-gray-700">📊 Estatísticas das Últimas 24 Horas</h2>
     </div>
     
+    <!-- Stats Row 1: Main Stats -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">Total Queries</p>
-                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
-            </div>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Total Queries</p>
             <p class="text-xl sm:text-2xl lg:text-3xl font-bold" x-text="stats.queries_total || 0">0</p>
         </div>
 
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">Blocked</p>
-                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
-            </div>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Blocked</p>
             <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600" x-text="stats.queries_blocked || 0">0</p>
         </div>
 
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">Cache Hit Rate</p>
-                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
-            </div>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Clients</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600" x-text="stats.clients || 0">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Uptime</p>
+            <p class="text-lg sm:text-xl lg:text-2xl font-bold text-green-600" x-text="uptime">0h</p>
+        </div>
+    </div>
+
+    <!-- Stats Row 2: Cache Stats ✨ NEW! -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Hits</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="cacheMetrics.total_hits || 0">0</p>
+            <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Misses</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600" x-text="cacheMetrics.total_misses || 0">0</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Refreshes</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-yellow-600" x-text="cacheMetrics.total_refreshes || 0">0</p>
+            <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
+        </div>
+
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Entries</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="cacheMetrics.total_entries || 0">0</p>
+        </div>
+    </div>
+
+    <!-- Stats Row 3: Performance Metrics -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Hit Rate</p>
             <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="stats.cache_hit_rate ? stats.cache_hit_rate.toFixed(1) + '%' : '0%'">0%</p>
         </div>
 
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">Avg Query Time</p>
-                <span class="text-xs bg-blue-100 text-blue-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
-            </div>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="formatTime(stats.avg_query_time_ms || 0)">0 ms</p>
-        </div>
-    </div>
-
-    <!-- DNSSEC Stats Row (only show if DNSSEC enabled) -->
-    <div x-show="dnssecEnabled && stats.queries_total > 0" class="mb-3 sm:mb-4" x-cloak>
-        <h2 class="text-base sm:text-lg font-semibold text-gray-700 flex items-center gap-2">
-            🔐 DNSSEC Validation Queries
-            <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Active</span>
-        </h2>
-    </div>
-    
-    <div x-show="dnssecEnabled && stats.queries_total > 0" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8" x-cloak>
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6 border-l-4 border-purple-500">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">DNSSEC Queries</p>
-                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">24h</span>
-            </div>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="dnssecStats.total || 0">0</p>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">Avg Query Time</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-indigo-600" x-text="formatTime(stats.avg_query_time_ms || 0)">0 ms</p>
         </div>
 
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">DS / DNSKEY</p>
-                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Keys</span>
-            </div>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-indigo-600" x-text="(dnssecStats.DS || 0) + (dnssecStats.DNSKEY || 0)">0</p>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">⚡ Cache Time</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="formatTime(stats.avg_cache_time_ms || 0)">0 ms</p>
         </div>
 
         <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">RRSIG / NSEC</p>
-                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Sigs</span>
-            </div>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-violet-600" x-text="(dnssecStats.RRSIG || 0) + (dnssecStats.NSEC || 0) + (dnssecStats.NSEC3 || 0)">0</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <div class="flex items-center justify-between mb-1">
-                <p class="text-xs sm:text-sm text-gray-600">% of Total</p>
-                <span class="text-xs bg-purple-100 text-purple-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">Ratio</span>
-            </div>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="dnssecPercentage">0%</p>
+            <p class="text-xs sm:text-sm text-gray-600 mb-1">🌐 Upstream Time</p>
+            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-orange-600" x-text="formatTime(stats.avg_upstream_time_ms || 0)">0 ms</p>
         </div>
     </div>
 
-    <!-- Queries per 15min Chart -->
+    <!-- Queries over Time Chart -->
     <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total > 0" x-cloak>
-        <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">📈 Queries over Time</h2>
-        <p class="text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4">Timeline visualization will be available with more query data</p>
-        <div class="h-48 sm:h-56 lg:h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-            <p class="text-sm sm:text-base text-gray-400">Chart will appear as queries accumulate</p>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
+            <h2 class="text-lg sm:text-xl font-bold">📈 Queries over Time</h2>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
         </div>
+        <canvas id="timelineChart" class="w-full h-32 sm:h-40 lg:h-48"></canvas>
     </div>
 
     <!-- Empty state for no queries -->
     <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total === 0" x-cloak>
         <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">📈 Queries over Time</h2>
-        <div class="h-48 sm:h-56 lg:h-64 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+        <div class="h-32 sm:h-40 lg:h-48 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
             <div class="text-center px-4">
                 <p class="text-gray-400 text-base sm:text-lg mb-2">No queries yet</p>
                 <p class="text-xs sm:text-sm text-gray-500 mb-2">Make a DNS query to see the timeline</p>
@@ -159,10 +154,10 @@
                 <h2 class="text-lg sm:text-xl font-bold">🔍 Query Types</h2>
                 <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
             </div>
-            <div x-show="stats.queries_total === 0" class="h-48 sm:h-64 flex items-center justify-center">
+            <div x-show="stats.queries_total === 0" class="h-40 sm:h-48 flex items-center justify-center">
                 <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
             </div>
-            <canvas id="queryTypesChart" x-show="stats.queries_total > 0" class="w-full h-48 sm:h-64"></canvas>
+            <canvas id="queryTypesChart" x-show="stats.queries_total > 0" class="w-full h-40 sm:h-48"></canvas>
         </div>
 
         <!-- Cache vs Upstream Pie Chart -->
@@ -171,44 +166,10 @@
                 <h2 class="text-lg sm:text-xl font-bold">⚡ Response Source</h2>
                 <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
             </div>
-            <div x-show="stats.queries_total === 0" class="h-48 sm:h-64 flex items-center justify-center">
+            <div x-show="stats.queries_total === 0" class="h-40 sm:h-48 flex items-center justify-center">
                 <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
             </div>
-            <canvas id="cacheSourceChart" x-show="stats.queries_total > 0" class="w-full h-48 sm:h-64"></canvas>
-        </div>
-    </div>
-
-    <!-- Cache Statistics Section -->
-    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total > 0" x-cloak>
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
-            <h2 class="text-lg sm:text-xl font-bold">💾 Cache Statistics</h2>
-            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
-        </div>
-        
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-            <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3 sm:p-4">
-                <p class="text-xs sm:text-sm text-purple-700 font-medium mb-1">Cache Hits</p>
-                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-900" x-text="cacheMetrics.total_hits || 0">0</p>
-                <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
-            </div>
-            
-            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 sm:p-4">
-                <p class="text-xs sm:text-sm text-blue-700 font-medium mb-1">Cache Misses</p>
-                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-900" x-text="cacheMetrics.total_misses || 0">0</p>
-                <p class="text-xs text-blue-600 mt-1">Upstream queries</p>
-            </div>
-            
-            <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-3 sm:p-4">
-                <p class="text-xs sm:text-sm text-yellow-700 font-medium mb-1">Cache Refreshes</p>
-                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-yellow-900" x-text="cacheMetrics.total_refreshes || 0">0</p>
-                <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
-            </div>
-            
-            <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 sm:p-4">
-                <p class="text-xs sm:text-sm text-green-700 font-medium mb-1">Total Entries</p>
-                <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-900" x-text="cacheMetrics.total_entries || 0">0</p>
-                <p class="text-xs text-green-600 mt-1">In cache</p>
-            </div>
+            <canvas id="cacheSourceChart" x-show="stats.queries_total > 0" class="w-full h-40 sm:h-48"></canvas>
         </div>
     </div>
 
@@ -220,12 +181,21 @@
             stats: {
                 queries_total: 0,
                 queries_blocked: 0,
+                clients: 0,
+                uptime: 0,
                 cache_hit_rate: 0,
                 avg_query_time_ms: 0,
+                avg_cache_time_ms: 0,
+                avg_upstream_time_ms: 0,
             },
             queriesChart: null,
+            timelineChart: null,
             queryTypesChart: null,
             cacheSourceChart: null,
+            timelineData: {
+                total: new Array(24).fill(0),
+                blocked: new Array(24).fill(0)
+            },
             upstreamServers: [],
             queryTypes: {},
             cacheStats: { cache: 0, upstream: 0 },
@@ -250,6 +220,13 @@
                 CDNSKEY: 0
             },
             dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
+            serverHostname: 'localhost',  // Server hostname
+
+            get uptime() {
+                const hours = Math.floor(this.stats.uptime / 3600);
+                const mins = Math.floor((this.stats.uptime % 3600) / 60);
+                return `${hours}h ${mins}m`;
+            },
 
             get dnssecPercentage() {
                 if (this.stats.queries_total === 0) return '0%';
@@ -261,6 +238,7 @@
                 
                 // Load config first to check DNSSEC
                 await this.loadConfig();
+                await this.loadHostname();
                 
                 // Load all data
                 await this.loadStats();
@@ -279,6 +257,7 @@
                 console.log('Cache metrics:', this.cacheMetrics);
                 console.log('DNSSEC enabled:', this.dnssecEnabled);
                 console.log('DNSSEC stats:', this.dnssecStats);
+                console.log('Server hostname:', this.serverHostname);
                 
                 // Now initialize charts with the loaded data
                 this.initCharts();
@@ -292,8 +271,12 @@
                     if (this.dnssecEnabled) {
                         this.loadDnssecStats();
                     }
+                    this.updateTimelineFromCurrentStats(); // Update timeline with current data
                     this.updateCharts();
                 }, 1000);
+                
+                // Refresh full timeline data every 5 minutes
+                setInterval(() => this.loadTimelineData(), 300000);
             },
 
             async loadConfig() {
@@ -304,6 +287,17 @@
                     console.log('DNSSEC enabled:', this.dnssecEnabled);
                 } catch (error) {
                     console.error('Error loading config:', error);
+                }
+            },
+
+            async loadHostname() {
+                try {
+                    const res = await fetch('/api/hostname');
+                    const data = await res.json();
+                    this.serverHostname = data.hostname;
+                    console.log('Server hostname:', this.serverHostname);
+                } catch (error) {
+                    console.error('Error loading hostname:', error);
                 }
             },
 
@@ -405,14 +399,28 @@
 
             async loadCacheMetrics() {
                 try {
-                    console.log('Fetching /api/cache/stats...');
-                    const res = await fetch('/api/cache/stats');
+                    console.log('Fetching /api/cache/metrics...');
+                    const res = await fetch('/api/cache/metrics');
                     if (!res.ok) {
-                        console.error('Cache stats API error:', res.status);
+                        console.error('Cache metrics API error:', res.status);
                         return;
                     }
-                    this.cacheMetrics = await res.json();
-                    console.log('Cache metrics received:', this.cacheMetrics);
+                    const metrics = await res.json();
+                    console.log('Cache metrics received:', metrics);
+                    
+                    // Map to dashboard structure
+                    this.cacheMetrics = {
+                        total_hits: metrics.hits,
+                        total_misses: metrics.misses,
+                        total_refreshes: metrics.optimistic_refreshes,
+                        total_entries: metrics.total_entries,
+                        hit_rate: metrics.hit_rate,
+                        refresh_rate: metrics.hits > 0 
+                            ? (metrics.optimistic_refreshes / metrics.hits * 100) 
+                            : 0
+                    };
+                    
+                    console.log('Mapped cache metrics:', this.cacheMetrics);
                 } catch (error) {
                     console.error('Error loading cache metrics:', error);
                 }
@@ -420,6 +428,73 @@
 
             initCharts() {
                 console.log('Initializing charts...');
+                
+                // Timeline chart - queries over time (last 24h)
+                const ctxTimeline = document.getElementById('timelineChart');
+                if (ctxTimeline && ctxTimeline.offsetParent !== null) {
+                    console.log('Creating timeline chart');
+                    this.timelineChart = new Chart(ctxTimeline.getContext('2d'), {
+                        type: 'line',
+                        data: {
+                            labels: this.generateTimeLabels(),
+                            datasets: [{
+                                label: 'Total Queries',
+                                data: new Array(24).fill(0),
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }, {
+                                label: 'Blocked',
+                                data: new Array(24).fill(0),
+                                borderColor: 'rgb(239, 68, 68)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: true,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            return context.dataset.label + ': ' + context.parsed.y + ' queries';
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    display: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Last 24 Hours'
+                                    }
+                                },
+                                y: {
+                                    display: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Queries'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Load initial timeline data
+                    this.loadTimelineData();
+                }
                 
                 // Query types pie chart - only if there's data
                 if (Object.keys(this.queryTypes).length > 0) {
@@ -486,6 +561,7 @@
                 }
 
                 console.log('Charts initialized:', {
+                    timeline: !!this.timelineChart,
                     queryTypes: !!this.queryTypesChart,
                     cacheSource: !!this.cacheSourceChart
                 });
@@ -531,6 +607,52 @@
                 // Se for millisegundos, arredondar para 1 casa decimal
                 const msValue = (ms / 1000).toFixed(1);
                 return `${msValue} ms`;
+            },
+
+            generateTimeLabels() {
+                const labels = [];
+                const now = new Date();
+                for (let i = 23; i >= 0; i--) {
+                    const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
+                    labels.push(hour.getHours() + 'h');
+                }
+                return labels;
+            },
+
+            async loadTimelineData() {
+                try {
+                    const res = await fetch('/api/queries/timeline');
+                    const data = await res.json();
+                    
+                    if (data && data.length > 0) {
+                        // Data comes as array of {hour, total, blocked}
+                        this.timelineData.total = data.map(d => d.total || 0);
+                        this.timelineData.blocked = data.map(d => d.blocked || 0);
+                        
+                        if (this.timelineChart) {
+                            this.timelineChart.data.datasets[0].data = this.timelineData.total;
+                            this.timelineChart.data.datasets[1].data = this.timelineData.blocked;
+                            this.timelineChart.update('none');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading timeline data:', error);
+                    // Use accumulated data from current stats as fallback
+                    this.updateTimelineFromCurrentStats();
+                }
+            },
+
+            updateTimelineFromCurrentStats() {
+                // Fallback: show current hour's stats
+                const currentHourIndex = 23; // Last hour in the 24h array
+                this.timelineData.total[currentHourIndex] = this.stats.queries_total || 0;
+                this.timelineData.blocked[currentHourIndex] = this.stats.queries_blocked || 0;
+                
+                if (this.timelineChart) {
+                    this.timelineChart.data.datasets[0].data = this.timelineData.total;
+                    this.timelineChart.data.datasets[1].data = this.timelineData.blocked;
+                    this.timelineChart.update('none');
+                }
             },
 
             getResponseTimeColor(time) {

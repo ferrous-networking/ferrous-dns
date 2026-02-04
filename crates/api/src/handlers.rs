@@ -26,7 +26,8 @@ pub struct QueryResponse {
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
-    pub cache_refresh: bool, // NEW
+    pub cache_refresh: bool,  // NEW
+    pub dnssec_status: Option<String>,  // NEW: DNSSEC validation status
 }
 
 #[derive(Serialize)]
@@ -37,6 +38,20 @@ pub struct CacheStatsResponse {
     pub total_refreshes: u64,
     pub hit_rate: f64,
     pub refresh_rate: f64,
+}
+
+#[derive(Serialize)]
+pub struct CacheMetricsResponse {
+    pub total_entries: usize,
+    pub hits: u64,
+    pub misses: u64,
+    pub insertions: u64,
+    pub evictions: u64,
+    pub optimistic_refreshes: u64,
+    pub lazy_deletions: u64,
+    pub compactions: u64,
+    pub batch_evictions: u64,
+    pub hit_rate: f64,
 }
 
 #[derive(Serialize)]
@@ -68,7 +83,7 @@ pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
     pub query_timeout: u64,
     pub cache_enabled: bool,
-    pub cache_ttl: u64,
+    pub cache_ttl: u32,  // Changed from u64 to u32
     pub dnssec_enabled: bool,
     pub cache_eviction_strategy: String,
     pub cache_max_entries: usize,
@@ -179,27 +194,20 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
     debug!("Fetching recent queries (last 24 hours)");
 
     // Get queries from last 24 hours (1440 minutes = 24 hours * 60)
-    match state.get_queries.execute(10000).await {
-        // Get lots of queries
+    match state.get_queries.execute(10000).await {  // Get lots of queries
         Ok(queries) => {
             // Filter to last 24 hours
             let now = chrono::Utc::now();
             let twenty_four_hours_ago = now - chrono::Duration::hours(24);
-
+            
             let filtered: Vec<QueryResponse> = queries
                 .into_iter()
                 .filter_map(|q| {
                     // Parse timestamp
                     if let Some(ts) = &q.timestamp {
-                        if let Ok(query_time) =
-                            chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S")
-                        {
-                            let query_time_utc =
-                                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                                    query_time,
-                                    chrono::Utc,
-                                );
-
+                        if let Ok(query_time) = chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S") {
+                            let query_time_utc = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(query_time, chrono::Utc);
+                            
                             // Only include if within last 24 hours
                             if query_time_utc >= twenty_four_hours_ago {
                                 return Some(QueryResponse {
@@ -211,6 +219,7 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
                                     response_time_ms: q.response_time_ms,
                                     cache_hit: q.cache_hit,
                                     cache_refresh: q.cache_refresh,
+                                    dnssec_status: q.dnssec_status,  // NEW
                                 });
                             }
                         }
@@ -219,10 +228,7 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
                 })
                 .collect();
 
-            debug!(
-                count = filtered.len(),
-                "Queries from last 24h retrieved successfully"
-            );
+            debug!(count = filtered.len(), "Queries from last 24h retrieved successfully");
             Json(filtered)
         }
         Err(e) => {
@@ -264,23 +270,17 @@ pub async fn get_cache_stats(State(state): State<AppState>) -> Json<CacheStatsRe
     // Get all queries to calculate cache stats
     match state.get_queries.execute(100000).await {
         Ok(queries) => {
-            let total_hits = queries
-                .iter()
-                .filter(|q| q.cache_hit && !q.cache_refresh)
-                .count() as u64;
+            let total_hits = queries.iter().filter(|q| q.cache_hit && !q.cache_refresh).count() as u64;
             let total_refreshes = queries.iter().filter(|q| q.cache_refresh).count() as u64;
-            let total_misses = queries
-                .iter()
-                .filter(|q| !q.cache_hit && !q.cache_refresh && !q.blocked)
-                .count() as u64;
+            let total_misses = queries.iter().filter(|q| !q.cache_hit && !q.cache_refresh && !q.blocked).count() as u64;
             let total_queries = total_hits + total_misses;
-
+            
             let hit_rate = if total_queries > 0 {
                 (total_hits as f64 / total_queries as f64) * 100.0
             } else {
                 0.0
             };
-
+            
             let refresh_rate = if total_hits > 0 {
                 (total_refreshes as f64 / total_hits as f64) * 100.0
             } else {
@@ -458,7 +458,8 @@ pub async fn update_config(
             info!("Configuration updated successfully");
             Json(serde_json::json!({
                 "success": true,
-                "message": "Configuration updated successfully. Restart server to apply changes."
+                "message": "Configuration saved successfully. Use 'Save & Apply Now' button to reload and apply changes immediately, or restart server later.",
+                "reload_available": true
             }))
         }
         Err(e) => {
@@ -482,6 +483,110 @@ pub async fn get_hostname() -> Json<HostnameResponse> {
         .ok()
         .and_then(|h| h.into_string().ok())
         .unwrap_or_else(|| "DNS Server".to_string());
-
+    
     Json(HostnameResponse { hostname })
+}
+
+#[instrument(skip(state), name = "api_get_cache_metrics")]
+pub async fn get_cache_metrics(State(state): State<AppState>) -> Json<CacheMetricsResponse> {
+    debug!("Fetching cache metrics directly from cache");
+
+    let cache = &state.cache;
+    let metrics = cache.metrics();
+
+    // Read atomic counters
+    let hits = metrics.hits.load(std::sync::atomic::Ordering::Relaxed);
+    let misses = metrics.misses.load(std::sync::atomic::Ordering::Relaxed);
+    let insertions = metrics.insertions.load(std::sync::atomic::Ordering::Relaxed);
+    let evictions = metrics.evictions.load(std::sync::atomic::Ordering::Relaxed);
+    let optimistic_refreshes = metrics.optimistic_refreshes.load(std::sync::atomic::Ordering::Relaxed);
+    let lazy_deletions = metrics.lazy_deletions.load(std::sync::atomic::Ordering::Relaxed);
+    let compactions = metrics.compactions.load(std::sync::atomic::Ordering::Relaxed);
+    let batch_evictions = metrics.batch_evictions.load(std::sync::atomic::Ordering::Relaxed);
+
+    let hit_rate = metrics.hit_rate();
+    let total_entries = cache.size();
+
+    debug!(
+        total_entries = total_entries,
+        hits = hits,
+        misses = misses,
+        optimistic_refreshes = optimistic_refreshes,
+        hit_rate = hit_rate,
+        "Cache metrics retrieved"
+    );
+
+    Json(CacheMetricsResponse {
+        total_entries,
+        hits,
+        misses,
+        insertions,
+        evictions,
+        optimistic_refreshes,
+        lazy_deletions,
+        compactions,
+        batch_evictions,
+        hit_rate,
+    })
+}
+
+#[instrument(skip(state), name = "api_reload_config")]
+pub async fn reload_config(State(state): State<AppState>) -> Json<serde_json::Value> {
+    info!("Config reload requested");
+
+    let config_path = match ferrous_dns_domain::Config::get_config_path() {
+        Some(path) => path,
+        None => {
+            error!("No config file found for reload");
+            return Json(serde_json::json!({
+                "success": false,
+                "error": "No config file found. Cannot reload configuration."
+            }));
+        }
+    };
+
+    // Reload config from file
+    let new_config = match ferrous_dns_domain::Config::load(Some(&config_path), Default::default()) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            error!(error = %e, "Failed to reload config from file");
+            return Json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to reload config: {}", e)
+            }));
+        }
+    };
+
+    // Update config in state
+    {
+        let mut config = state.config.write().await;
+        *config = new_config.clone();
+        info!("Configuration reloaded from file");
+    }
+
+    // Clear cache
+    let entries_before = state.cache.size();
+    state.cache.clear();
+    let entries_after = state.cache.size();
+    
+    info!(
+        entries_cleared = entries_before - entries_after,
+        "Cache cleared after config reload"
+    );
+
+    Json(serde_json::json!({
+        "success": true,
+        "message": format!(
+            "Configuration reloaded successfully. Cache cleared ({} entries removed). Server will use new settings.",
+            entries_before
+        ),
+        "details": {
+            "config_path": config_path,
+            "cache_entries_cleared": entries_before,
+            "dns_cache_enabled": new_config.dns.cache_enabled,
+            "optimistic_refresh": new_config.dns.cache_optimistic_refresh,
+            "dnssec_enabled": new_config.dns.dnssec_enabled,
+            "blocking_enabled": new_config.blocking.enabled
+        }
+    }))
 }

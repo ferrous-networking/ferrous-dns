@@ -7,4 +7,7 @@ pub enum DomainError {
 
     #[error("Invalid IP address: {0}")]
     InvalidIpAddress(String),
+    
+    #[error("DNSSEC validation failed: {0}")]
+    DnssecValidationFailed(String),
 }

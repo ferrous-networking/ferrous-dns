@@ -9,17 +9,19 @@
 - [x] REST API endpoints structure
 - [x] SQLite persistence
 - [x] Basic DNS server implementation
-- [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
+- [ ] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
 - [x] Upstream DNS forwarding (1.1.1.1, 8.8.8.8)
 - [ ] Load balancing across upstreams
-- [x] Query caching with TTL
+- [ ] Query caching with TTL
 - [ ] Blocklist functionality
+
+### 🚧 v0.2.0 - Core DNS Features
+
 - [ ] Blocklist import from URLs
-- [ ] Blocklist Regex support
 - [ ] Wildcard domain blocking (`*.ads.com`)
 - [ ] Whitelist support
 
-### 🔮 v0.2.0 - Advanced Features
+### 🔮 v0.3.0 - Advanced Features
 
 - [ ] DNS-over-HTTPS (DoH)
 - [ ] DNS-over-TLS (DoT)
@@ -30,7 +32,7 @@
 - [ ] Docker images on Docker Hub
 - [ ] Comprehensive documentation
 
-### 🎯 v0.3.0 - Performance & Scale
+### 🎯 v0.4.0 - Performance & Scale
 
 - [ ] Multi-level caching (L1 memory, L2 disk)
 - [ ] High Availability (HA) mode
@@ -45,5 +47,7 @@
 - [ ] Production deployment guide
 - [ ] API v1 stable
 - [ ] Full documentation
+
+See [ROADMAP.md](ROADMAP.md) for detailed milestones.
 
 ---

@@ -99,169 +99,235 @@
 
     <!-- Cache Settings Tab -->
     <div x-show="currentTab === 'cache'" x-cloak>
-        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">⚡ DNS Cache</h2>
-            <div class="space-y-4">
-                <div class="flex items-center">
-                    <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="cache_enabled" class="ml-2 text-sm text-gray-700 font-medium">Enable DNS Cache</label>
-                </div>
-
-                <div x-show="config.dns.cache_enabled">
-                    <!-- Eviction Strategy -->
-                    <div class="border-t pt-4">
-                        <h3 class="font-semibold text-gray-900 mb-3">Eviction Strategy</h3>
-                        <p class="text-sm text-gray-600 mb-3">Choose how the cache decides which entries to remove when full:</p>
-                        
-                        <div class="space-y-3">
-                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'hit_rate' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
-                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="hit_rate" class="mt-1">
-                                <div class="ml-3">
-                                    <div class="font-medium">Hit Rate (Default)</div>
-                                    <div class="text-sm text-gray-600">Removes entries with lowest hits/second. Best for changing patterns.</div>
-                                </div>
-                            </label>
-
-                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'lfu' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
-                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu" class="mt-1">
-                                <div class="ml-3">
-                                    <div class="font-medium">LFU (Least Frequently Used)</div>
-                                    <div class="text-sm text-gray-600">Removes entries with lowest total hits. Best for stable patterns.</div>
-                                </div>
-                            </label>
-
-                            <label class="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50" :class="config.dns.cache_eviction_strategy === 'lfu-k' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'">
-                                <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu-k" class="mt-1">
-                                <div class="ml-3">
-                                    <div class="font-medium">LFU-K (Balanced)</div>
-                                    <div class="text-sm text-gray-600">Uses sliding window for frequency. Best for hybrid usage.</div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Performance Options -->
-                    <div class="border-t pt-4 mt-4">
-                        <h3 class="font-semibold text-gray-900 mb-3">Performance Optimizations</h3>
-                        
-                        <div class="space-y-3">
-                            <div class="flex items-center">
-                                <input type="checkbox" x-model="config.dns.cache_optimistic_refresh" id="optimistic_refresh" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
-                                <label for="optimistic_refresh" class="ml-2 text-sm text-gray-700">
-                                    <span class="font-medium">Optimistic Refresh</span>
-                                    <span class="text-gray-500"> - Update popular entries before they expire</span>
-                                </label>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+            <!-- LEFT COLUMN: Configuration -->
+            <div class="lg:col-span-2 space-y-4 sm:space-y-6">
+                
+                <!-- Basic Cache Settings -->
+                <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+                    <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center">
+                        <span class="mr-2">⚡</span> Cache Configuration
+                    </h2>
+                    
+                    <div class="space-y-3 sm:space-y-4">
+                        <!-- Cache Enabled -->
+                        <div class="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-lg">
+                            <div class="flex-1 mr-4">
+                                <div class="font-medium text-gray-900 text-sm sm:text-base">Enable DNS Cache</div>
+                                <div class="text-xs sm:text-sm text-gray-600">Cache DNS responses to improve performance</div>
                             </div>
+                            <input type="checkbox" x-model="config.dns.cache_enabled" class="w-10 h-6 sm:w-12 sm:h-6 rounded-full relative inline-flex items-center cursor-pointer">
+                        </div>
 
-                            <div class="flex items-center">
-                                <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds" id="adaptive_thresholds" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
-                                <label for="adaptive_thresholds" class="ml-2 text-sm text-gray-700">
-                                    <span class="font-medium">Adaptive Thresholds</span>
-                                    <span class="text-gray-500"> - Auto-tune eviction thresholds based on effectiveness</span>
-                                </label>
+                        <!-- Max Entries -->
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                                Max Cache Entries
+                                <span class="text-gray-500 font-normal">(Currently: <span x-text="cacheMetrics.total_entries || 0"></span> entries)</span>
+                            </label>
+                            <input type="number" x-model.number="config.dns.cache_max_entries" min="1000" max="1000000" step="1000"
+                                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">Recommended: 10,000-50,000 entries</p>
+                        </div>
+
+                        <!-- Default TTL -->
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                                Default TTL (seconds)
+                                <span class="text-gray-500 font-normal">- Cache lifetime</span>
+                            </label>
+                            <input type="number" x-model.number="config.dns.cache_ttl" min="60" max="86400"
+                                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">Default: 3600 (1 hour)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Eviction Strategy -->
+                <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">🎯 Eviction Strategy</h3>
+                    <p class="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">Choose how to remove entries when cache is full</p>
+                    
+                    <div class="space-y-2 sm:space-y-3">
+                        <label class="flex items-start p-3 sm:p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition" 
+                               :class="config.dns.cache_eviction_strategy === 'hit_rate' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                            <input type="radio" x-model="config.dns.cache_eviction_strategy" value="hit_rate" class="mt-1">
+                            <div class="ml-2 sm:ml-3 flex-1">
+                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0">
+                                    <span class="font-medium text-gray-900 text-sm sm:text-base">Hit Rate</span>
+                                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit">Recommended</span>
+                                </div>
+                                <p class="text-xs sm:text-sm text-gray-600 mt-1">Removes entries with lowest hits/second. Best for changing traffic patterns.</p>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start p-3 sm:p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                               :class="config.dns.cache_eviction_strategy === 'lfu' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                            <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu" class="mt-1">
+                            <div class="ml-2 sm:ml-3 flex-1">
+                                <span class="font-medium text-gray-900 text-sm sm:text-base">LFU (Least Frequently Used)</span>
+                                <p class="text-xs sm:text-sm text-gray-600 mt-1">Removes entries with lowest total hits. Best for stable usage patterns.</p>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start p-3 sm:p-4 border-2 rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                               :class="config.dns.cache_eviction_strategy === 'lfu-k' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'">
+                            <input type="radio" x-model="config.dns.cache_eviction_strategy" value="lfu-k" class="mt-1">
+                            <div class="ml-2 sm:ml-3 flex-1">
+                                <span class="font-medium text-gray-900 text-sm sm:text-base">LFU-K (Balanced)</span>
+                                <p class="text-xs sm:text-sm text-gray-600 mt-1">Uses sliding window for frequency tracking. Best hybrid approach.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Advanced Features -->
+                <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">🚀 Advanced Features</h3>
+                    
+                    <div class="space-y-3 sm:space-y-4">
+                        <!-- Optimistic Refresh -->
+                        <div class="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+                            <div class="flex items-start">
+                                <input type="checkbox" x-model="config.dns.cache_optimistic_refresh" id="opt_refresh" 
+                                       class="mt-1 w-4 h-4 sm:w-5 sm:h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <div class="ml-2 sm:ml-3 flex-1">
+                                    <label for="opt_refresh" class="font-medium text-gray-900 cursor-pointer text-sm sm:text-base flex flex-wrap items-center gap-1 sm:gap-2">
+                                        ⚡ Optimistic Refresh
+                                        <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Popular</span>
+                                    </label>
+                                    <p class="text-xs sm:text-sm text-gray-600 mt-1">
+                                        Proactively updates popular cache entries before they expire. 
+                                        <strong>Eliminates cache misses for frequently accessed domains!</strong>
+                                    </p>
+                                    <div class="mt-2 text-xs text-gray-500 space-y-1">
+                                        <div>✅ Refreshes at <span x-text="(config.dns.cache_refresh_threshold * 100) + '%'"></span> of TTL</div>
+                                        <div>✅ Currently refreshing <span x-text="cacheMetrics.total_refreshes || 0"></span> entries</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lazy Expiration -->
+                        <div class="p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex items-start">
+                                <input type="checkbox" x-model="config.dns.cache_lazy_expiration" id="lazy_exp"
+                                       class="mt-1 w-4 h-4 sm:w-5 sm:h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <div class="ml-2 sm:ml-3 flex-1">
+                                    <label for="lazy_exp" class="font-medium text-gray-900 cursor-pointer text-sm sm:text-base">
+                                        💤 Lazy Expiration
+                                    </label>
+                                    <p class="text-xs sm:text-sm text-gray-600 mt-1">
+                                        Check if entries are expired only when accessed. Reduces background CPU usage.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Adaptive Thresholds -->
+                        <div class="p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex items-start">
+                                <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds" id="adapt_thresh"
+                                       class="mt-1 w-4 h-4 sm:w-5 sm:h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <div class="ml-2 sm:ml-3 flex-1">
+                                    <label for="adapt_thresh" class="font-medium text-gray-900 cursor-pointer text-sm sm:text-base">
+                                        🎯 Adaptive Thresholds
+                                    </label>
+                                    <p class="text-xs sm:text-sm text-gray-600 mt-1">
+                                        Automatically adjust eviction thresholds based on cache effectiveness.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Compaction Interval -->
+                        <div>
+                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                                🧹 Background Compaction Interval (seconds)
+                            </label>
+                            <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60" max="3600"
+                                   class="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">How often to clean up marked entries. Default: 300 (5 min)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Live Statistics -->
+            <div class="lg:col-span-1">
+                <div class="lg:sticky lg:top-24 space-y-3 sm:space-y-4">
+                    <!-- Status Card -->
+                    <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 text-white">
+                        <div class="flex items-center justify-between mb-3 sm:mb-4">
+                            <h3 class="text-base sm:text-lg font-bold">Cache Status</h3>
+                            <button @click="loadCacheMetrics()" class="p-1.5 sm:p-2 bg-white/20 hover:bg-white/30 rounded-lg transition text-sm sm:text-base">
+                                🔄
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-2 sm:space-y-3">
+                            <div>
+                                <div class="text-xs sm:text-sm opacity-90">Cache Enabled</div>
+                                <div class="text-xl sm:text-2xl font-bold" x-text="config.dns.cache_enabled ? '✅ Active' : '❌ Disabled'"></div>
+                            </div>
+                            <div class="border-t border-white/20 pt-2 sm:pt-3">
+                                <div class="text-xs sm:text-sm opacity-90">Hit Rate</div>
+                                <div class="text-2xl sm:text-3xl font-bold" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'"></div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Cache Statistics Section -->
-        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-bold">📊 Cache Statistics</h2>
-                <button @click="loadCacheMetrics()" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">
-                    🔄 Refresh
-                </button>
-            </div>
-            
-            <!-- Stats Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <!-- Cache Hits -->
-                <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-purple-700">Cache Hits</span>
-                        <span class="text-2xl">⚡</span>
-                    </div>
-                    <p class="text-3xl font-bold text-purple-900" x-text="cacheMetrics.total_hits || 0">0</p>
-                    <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
-                </div>
-                
-                <!-- Cache Misses -->
-                <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-blue-700">Cache Misses</span>
-                        <span class="text-2xl">🌐</span>
-                    </div>
-                    <p class="text-3xl font-bold text-blue-900" x-text="cacheMetrics.total_misses || 0">0</p>
-                    <p class="text-xs text-blue-600 mt-1">Upstream queries</p>
-                </div>
-                
-                <!-- Cache Refreshes -->
-                <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-4 border border-yellow-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-yellow-700">Optimistic Refreshes</span>
-                        <span class="text-2xl">🔄</span>
-                    </div>
-                    <p class="text-3xl font-bold text-yellow-900" x-text="cacheMetrics.total_refreshes || 0">0</p>
-                    <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
-                </div>
-                
-                <!-- Total Entries -->
-                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-sm font-medium text-green-700">Cache Entries</span>
-                        <span class="text-2xl">💾</span>
-                    </div>
-                    <p class="text-3xl font-bold text-green-900" x-text="cacheMetrics.total_entries || 0">0</p>
-                    <p class="text-xs text-green-600 mt-1">Items in cache</p>
-                </div>
-            </div>
-
-            <!-- Performance Metrics -->
-            <div class="border-t pt-4">
-                <h3 class="font-semibold text-gray-900 mb-3">Performance Breakdown</h3>
-                
-                <div class="space-y-3">
-                    <!-- Hit Rate Bar -->
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-gray-700 font-medium">Cache Hit Rate</span>
-                            <span class="text-purple-600 font-bold" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</span>
+                    <!-- Stats Cards -->
+                    <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                        <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4">
+                            <div class="text-xs text-gray-500 mb-1">Cache Hits</div>
+                            <div class="text-xl sm:text-2xl font-bold text-purple-600" x-text="cacheMetrics.total_hits || 0"></div>
                         </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5">
-                            <div class="bg-purple-600 h-2.5 rounded-full transition-all duration-500" :style="'width: ' + (cacheMetrics.hit_rate || 0) + '%'"></div>
+                        <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4">
+                            <div class="text-xs text-gray-500 mb-1">Cache Misses</div>
+                            <div class="text-xl sm:text-2xl font-bold text-blue-600" x-text="cacheMetrics.total_misses || 0"></div>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Target: >70% for optimal performance</p>
+                        <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4">
+                            <div class="text-xs text-gray-500 mb-1">Refreshes</div>
+                            <div class="text-xl sm:text-2xl font-bold text-yellow-600" x-text="cacheMetrics.total_refreshes || 0"></div>
+                        </div>
+                        <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4">
+                            <div class="text-xs text-gray-500 mb-1">Entries</div>
+                            <div class="text-xl sm:text-2xl font-bold text-green-600" x-text="cacheMetrics.total_entries || 0"></div>
+                        </div>
                     </div>
 
-                    <!-- Refresh Rate Bar -->
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <span class="text-gray-700 font-medium">Optimistic Refresh Rate</span>
-                            <span class="text-yellow-600 font-bold" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '%'">0%</span>
+                    <!-- Advanced Metrics -->
+                    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4">
+                        <h4 class="font-semibold text-xs sm:text-sm text-gray-700 mb-2 sm:mb-3">📊 Detailed Metrics</h4>
+                        <div class="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Insertions:</span>
+                                <span class="font-medium" x-text="cacheMetrics.insertions || 0"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Evictions:</span>
+                                <span class="font-medium" x-text="cacheMetrics.evictions || 0"></span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Compactions:</span>
+                                <span class="font-medium" x-text="cacheMetrics.compactions || 0"></span>
+                            </div>
+                            <div class="flex justify-between border-t pt-1.5 sm:pt-2">
+                                <span class="text-gray-600">Refresh Rate:</span>
+                                <span class="font-medium text-green-600" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '%'"></span>
+                            </div>
                         </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5">
-                            <div class="bg-yellow-500 h-2.5 rounded-full transition-all duration-500" :style="'width: ' + Math.min((cacheMetrics.refresh_rate || 0), 100) + '%'"></div>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">Lower is better - queries refreshed before expiration</p>
                     </div>
-                </div>
-            </div>
 
-            <!-- Info Box -->
-            <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div class="flex">
-                    <div class="flex-shrink-0">
-                        <span class="text-2xl">ℹ️</span>
-                    </div>
-                    <div class="ml-3">
-                        <h4 class="text-sm font-medium text-blue-800">About Cache Statistics</h4>
-                        <div class="mt-2 text-sm text-blue-700 space-y-1">
-                            <p>• <strong>Cache Hits:</strong> Queries served directly from cache (fastest)</p>
-                            <p>• <strong>Cache Misses:</strong> Queries that went to upstream DNS</p>
-                            <p>• <strong>Optimistic Refreshes:</strong> Background updates before expiration</p>
-                            <p>• <strong>Cache Entries:</strong> Total number of domains cached</p>
+                    <!-- Info Card -->
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                        <div class="flex items-start">
+                            <span class="text-xl sm:text-2xl mr-2">💡</span>
+                            <div class="text-xs text-blue-800">
+                                <strong>Tip:</strong> Enable Optimistic Refresh for best performance. 
+                                It eliminates cache misses for popular domains by refreshing them before expiration.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -307,16 +373,25 @@
     </div>
 
     <!-- Save Buttons (always visible) -->
-    <div class="flex gap-4">
+    <div class="flex flex-wrap gap-4">
         <button @click="saveConfig()" :disabled="saving || !config.writable" :class="saving || !config.writable ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'" class="px-6 py-3 text-white rounded-lg font-bold">
             <span x-show="!saving">💾 Save Configuration</span>
             <span x-show="saving">⏳ Saving...</span>
         </button>
-        <button @click="loadConfig()" class="px-6 py-3 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-700">🔄 Reload</button>
+        
+        <button @click="saveAndReload()" :disabled="saving || !config.writable" :class="saving || !config.writable ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'" class="px-6 py-3 text-white rounded-lg font-bold">
+            <span x-show="!saving">💾🔄 Save & Apply Now</span>
+            <span x-show="saving">⏳ Applying...</span>
+        </button>
+        
+        <button @click="loadConfig()" class="px-6 py-3 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-700">🔄 Reload from File</button>
     </div>
 
     <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p class="text-sm text-blue-800"><strong>ℹ️ Note:</strong> Configuration changes require server restart to take effect. After saving, restart the Ferrous DNS service.</p>
+        <p class="text-sm text-blue-800">
+            <strong>ℹ️ Note:</strong> Use <strong>"Save & Apply Now"</strong> to reload configuration and clear cache immediately without restarting the server. 
+            Changes take effect instantly!
+        </p>
     </div>
 </main>
 
@@ -349,12 +424,22 @@ function settings() {
             total_misses: 0,
             total_refreshes: 0,
             hit_rate: 0,
-            refresh_rate: 0
+            refresh_rate: 0,
+            insertions: 0,
+            evictions: 0,
+            compactions: 0
         },
         
         async init() { 
             await this.loadConfig();
             await this.loadCacheMetrics();
+            
+            // Auto-refresh cache metrics every 5 seconds when on cache tab
+            setInterval(() => {
+                if (this.currentTab === 'cache') {
+                    this.loadCacheMetrics();
+                }
+            }, 5000);
         },
         
         async loadConfig() {
@@ -410,15 +495,86 @@ function settings() {
             }
         },
         
-        async loadCacheMetrics() {
+        async saveAndReload() {
+            if (!this.config.writable) { 
+                this.showAlert('error', 'Config file is read-only. Cannot save changes.'); 
+                return; 
+            }
+            
+            this.saving = true;
             try {
-                console.log('Fetching cache statistics...');
-                const res = await fetch('/api/cache/stats');
-                if (!res.ok) {
-                    console.error('Cache stats API error:', res.status);
+                // First save the config
+                const saveRes = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dns: { 
+                            upstream_servers: this.config.dns.upstream_servers.filter(s => s.trim()), 
+                            cache_enabled: this.config.dns.cache_enabled, 
+                            dnssec_enabled: this.config.dns.dnssec_enabled,
+                            cache_eviction_strategy: this.config.dns.cache_eviction_strategy,
+                            cache_optimistic_refresh: this.config.dns.cache_optimistic_refresh,
+                            cache_adaptive_thresholds: this.config.dns.cache_adaptive_thresholds
+                        },
+                        blocking: { 
+                            enabled: this.config.blocking.enabled, 
+                            custom_blocked: this.config.blocking.custom_blocked.filter(d => d.trim()), 
+                            whitelist: this.config.blocking.whitelist.filter(d => d.trim()) 
+                        }
+                    })
+                });
+                
+                const saveData = await saveRes.json();
+                if (!saveData.success) {
+                    this.showAlert('error', saveData.error);
                     return;
                 }
-                this.cacheMetrics = await res.json();
+                
+                // Then reload config and clear cache
+                const reloadRes = await fetch('/api/config/reload', {
+                    method: 'POST'
+                });
+                
+                const reloadData = await reloadRes.json();
+                if (reloadData.success) {
+                    this.showAlert('success', reloadData.message + ' ✅ Applied immediately!');
+                    await this.loadConfig();
+                    await this.loadCacheMetrics(); // Refresh cache metrics
+                } else {
+                    this.showAlert('error', reloadData.error);
+                }
+            } catch (error) {
+                console.error('Error saving and reloading config:', error);
+                this.showAlert('error', 'Failed to save and reload configuration');
+            } finally {
+                this.saving = false;
+            }
+        },
+        
+        async loadCacheMetrics() {
+            try {
+                console.log('Fetching cache metrics...');
+                const res = await fetch('/api/cache/metrics');
+                if (!res.ok) {
+                    console.error('Cache metrics API error:', res.status);
+                    return;
+                }
+                const metrics = await res.json();
+                
+                this.cacheMetrics = {
+                    total_hits: metrics.hits,
+                    total_misses: metrics.misses,
+                    total_refreshes: metrics.optimistic_refreshes,
+                    total_entries: metrics.total_entries,
+                    hit_rate: metrics.hit_rate,
+                    refresh_rate: metrics.hits > 0 
+                        ? (metrics.optimistic_refreshes / metrics.hits * 100) 
+                        : 0,
+                    insertions: metrics.insertions,
+                    evictions: metrics.evictions,
+                    compactions: metrics.compactions
+                };
+                
                 console.log('Cache metrics loaded:', this.cacheMetrics);
             } catch (error) {
                 console.error('Error loading cache metrics:', error);

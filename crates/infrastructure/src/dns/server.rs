@@ -174,11 +174,11 @@ impl RequestHandler for DnsServerHandler {
             let authority_records = self.get_soa_authority(&domain).await;
 
             let builder = MessageResponseBuilder::from_message_request(request);
-
+            
             // Set RA flag
             let mut header = *request.header();
             header.set_recursion_available(true);
-
+            
             let response = builder.build(
                 header,
                 &[],                      // Empty answers
@@ -221,7 +221,7 @@ impl RequestHandler for DnsServerHandler {
         // Build response with RA (Recursion Available) flag
         let mut header = *request.header();
         header.set_recursion_available(true); // ✅ Indica que suportamos recursão
-
+        
         let response = builder.build(header, answers.iter(), &[], &[], &[]);
 
         match response_handle.send_response(response).await {

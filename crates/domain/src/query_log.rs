@@ -10,7 +10,8 @@ pub struct QueryLog {
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
-    pub cache_refresh: bool, // NEW: Optimistic refresh
+    pub cache_refresh: bool,  // NEW: Optimistic refresh
+    pub dnssec_status: Option<String>,  // NEW: "Secure", "Insecure", "Bogus", "Indeterminate"
     pub timestamp: Option<String>,
 }
 
