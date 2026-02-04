@@ -9,7 +9,7 @@
 - [x] REST API endpoints structure
 - [x] SQLite persistence
 - [x] Basic DNS server implementation
-- [ ] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
+- [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
 - [x] Upstream DNS forwarding (1.1.1.1, 8.8.8.8)
 - [ ] Load balancing across upstreams
 - [ ] Query caching with TTL
