@@ -238,7 +238,7 @@ yarn.lock
 # Ferrous DNS specific
 
 # Cache directory
-cache/
+./cache/
 .cache/
 
 # Data directory (databases, logs, etc.)

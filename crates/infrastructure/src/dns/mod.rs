@@ -5,7 +5,10 @@ pub mod prefetch;
 pub mod resolver;
 pub mod server;
 
-pub use cache::{CacheMetrics, DnsCache, EvictionStrategy};
+// Re-export from refactored cache module (SOLID compliant ✅)
+pub use cache::{
+    CacheKey, CacheMetrics, CachedData, CachedRecord, DnsCache, DnssecStatus, EvictionStrategy,
+};
 pub use cache_updater::CacheUpdater;
 pub use cache_warming::{CacheWarmer, WarmingStats};
 pub use prefetch::PrefetchPredictor;

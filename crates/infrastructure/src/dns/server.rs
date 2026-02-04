@@ -1,4 +1,4 @@
-use ferrous_dns_application::use_cases::handle_dns_query::HandleDnsQueryUseCase;
+use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{DnsRequest, RecordType};
 use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::{Name, RData, Record, RecordType as HickoryRecordType};
