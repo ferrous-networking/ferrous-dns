@@ -7,6 +7,7 @@ use ferrous_dns_domain::Config;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[allow(dead_code)]
 pub struct UseCases {
     pub get_stats: Arc<GetQueryStatsUseCase>,
     pub get_queries: Arc<GetRecentQueriesUseCase>,

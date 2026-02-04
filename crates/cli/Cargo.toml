@@ -26,4 +26,4 @@ clap.workspace = true
 serde.workspace = true
 sqlx.workspace = true
 hickory-server.workspace = true
-socket2 = "0.6.2"
+socket2.workspace = true

@@ -9,6 +9,7 @@ use ferrous_dns_infrastructure::dns::{
 use std::sync::Arc;
 use tracing::info;
 
+#[allow(dead_code)]
 pub struct DnsServices {
     pub resolver: Arc<HickoryDnsResolver>,
     pub cache: Arc<DnsCache>,
