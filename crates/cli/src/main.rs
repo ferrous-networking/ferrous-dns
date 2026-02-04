@@ -118,15 +118,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Create DNS resolver with cache
     info!("Initializing DNS resolver with cache");
-    
+
     let mut resolver = HickoryDnsResolver::with_google_dnssec(
-        config.dns.dnssec_enabled,  // ← From config!
-        Some(query_log_repo.clone()),  // ← For logging internal DNSSEC queries
-    ).map_err(|e| {
+        config.dns.dnssec_enabled,    // ← From config!
+        Some(query_log_repo.clone()), // ← For logging internal DNSSEC queries
+    )
+    .map_err(|e| {
         error!("Failed to create DNS resolver: {}", e);
         anyhow::anyhow!("DNS resolver initialization failed")
     })?;
-    
+
     info!(
         dnssec_enabled = config.dns.dnssec_enabled,
         "DNS resolver created"
@@ -135,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize cache if enabled
     let cache = if config.dns.cache_enabled {
         use ferrous_dns_infrastructure::dns::cache::{DnsCache, EvictionStrategy};
-        
+
         // Detect eviction strategy from config (simple enum, no fields)
         let eviction_strategy = match config.dns.cache_eviction_strategy.as_str() {
             "lfu" => EvictionStrategy::LFU,
@@ -153,13 +154,13 @@ async fn main() -> anyhow::Result<()> {
 
         // Create cache with all 7 required parameters
         let cache = Arc::new(DnsCache::new(
-            config.dns.cache_max_entries,                  // max_entries: usize
-            eviction_strategy,                             // eviction_strategy: EvictionStrategy
-            config.dns.cache_min_hit_rate,                 // min_threshold: f64
-            config.dns.cache_refresh_threshold,            // refresh_threshold: f64
-            config.dns.cache_lfuk_history_size,            // lfuk_history_size: usize
-            config.dns.cache_batch_eviction_percentage,    // batch_eviction_percentage: f64
-            config.dns.cache_adaptive_thresholds,          // adaptive_thresholds: bool
+            config.dns.cache_max_entries,               // max_entries: usize
+            eviction_strategy,                          // eviction_strategy: EvictionStrategy
+            config.dns.cache_min_hit_rate,              // min_threshold: f64
+            config.dns.cache_refresh_threshold,         // refresh_threshold: f64
+            config.dns.cache_lfuk_history_size,         // lfuk_history_size: usize
+            config.dns.cache_batch_eviction_percentage, // batch_eviction_percentage: f64
+            config.dns.cache_adaptive_thresholds,       // adaptive_thresholds: bool
         ));
 
         // Attach SHARED cache to resolver (same instance for stats)
@@ -174,7 +175,15 @@ async fn main() -> anyhow::Result<()> {
     } else {
         // Create empty cache for API even if caching disabled
         use ferrous_dns_infrastructure::dns::cache::{DnsCache, EvictionStrategy};
-        Arc::new(DnsCache::new(0, EvictionStrategy::HitRate, 0.0, 0.0, 0, 0.0, false))
+        Arc::new(DnsCache::new(
+            0,
+            EvictionStrategy::HitRate,
+            0.0,
+            0.0,
+            0,
+            0.0,
+            false,
+        ))
     };
 
     // Create app state with config and cache
@@ -201,14 +210,14 @@ async fn main() -> anyhow::Result<()> {
         let updater = CacheUpdater::new(
             cache.clone(),
             Arc::new(resolver_for_updater),
-            Some(query_log_repo.clone()),  // Pass query_log for logging refreshes
-            60,  // update_interval_secs (optimistic refresh every 60s)
-            config.dns.cache_compaction_interval,  // compaction_interval_secs
+            Some(query_log_repo.clone()), // Pass query_log for logging refreshes
+            60,                           // update_interval_secs (optimistic refresh every 60s)
+            config.dns.cache_compaction_interval, // compaction_interval_secs
         );
 
         // Start both tasks
         let (_refresh_handle, _compaction_handle) = updater.start();
-        
+
         info!("Cache background tasks started successfully");
     }
 

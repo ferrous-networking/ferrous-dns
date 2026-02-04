@@ -80,7 +80,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                         .map(|t| t as u64),
                     cache_hit: row.get::<i64, _>("cache_hit") != 0,
                     cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
-                    dnssec_status: row.get::<Option<String>, _>("dnssec_status"),  // NEW
+                    dnssec_status: row.get::<Option<String>, _>("dnssec_status"), // NEW
                     timestamp: Some(row.get("created_at")),
                 })
             })

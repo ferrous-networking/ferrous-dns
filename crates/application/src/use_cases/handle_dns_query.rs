@@ -43,7 +43,7 @@ impl HandleDnsQueryUseCase {
                 dnssec_status: None,
                 timestamp: None,
             };
-            
+
             // Spawn async task - DON'T WAIT! ✅
             let logger = self.query_log.clone();
             tokio::spawn(async move {
@@ -66,12 +66,12 @@ impl HandleDnsQueryUseCase {
 
         // Calculate response time in microseconds for sub-millisecond precision
         let elapsed_micros = start.elapsed().as_micros() as u64;
-        
+
         // Convert to milliseconds but preserve sub-ms precision
         let response_time_ms = if elapsed_micros < 1000 {
-            elapsed_micros  // Store microseconds directly when < 1ms
+            elapsed_micros // Store microseconds directly when < 1ms
         } else {
-            elapsed_micros / 1000  // Convert to milliseconds when >= 1ms
+            elapsed_micros / 1000 // Convert to milliseconds when >= 1ms
         };
 
         // Log successful query (ASYNC - fire and forget! ✅)
@@ -87,7 +87,7 @@ impl HandleDnsQueryUseCase {
             dnssec_status: resolution.dnssec_status,
             timestamp: None,
         };
-        
+
         // Spawn async task - DON'T WAIT! ✅
         let logger = self.query_log.clone();
         tokio::spawn(async move {

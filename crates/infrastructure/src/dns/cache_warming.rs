@@ -19,64 +19,132 @@ impl CacheWarmer {
         let resolver = Resolver::builder_with_config(
             ResolverConfig::google(),
             TokioConnectionProvider::default(),
-        ).build();
-        
+        )
+        .build();
+
         // Top 100 popular domains (simplified list)
         let popular_domains = vec![
             // Search & Social
-            "google.com", "youtube.com", "facebook.com", "twitter.com", "x.com",
-            "instagram.com", "linkedin.com", "reddit.com", "tiktok.com", "pinterest.com",
-            
+            "google.com",
+            "youtube.com",
+            "facebook.com",
+            "twitter.com",
+            "x.com",
+            "instagram.com",
+            "linkedin.com",
+            "reddit.com",
+            "tiktok.com",
+            "pinterest.com",
             // Tech & Cloud
-            "amazon.com", "apple.com", "microsoft.com", "github.com", "stackoverflow.com",
-            "cloudflare.com", "openai.com", "anthropic.com", "nvidia.com", "vercel.com",
-            
+            "amazon.com",
+            "apple.com",
+            "microsoft.com",
+            "github.com",
+            "stackoverflow.com",
+            "cloudflare.com",
+            "openai.com",
+            "anthropic.com",
+            "nvidia.com",
+            "vercel.com",
             // Streaming & Media
-            "netflix.com", "spotify.com", "twitch.tv", "discord.com", "vimeo.com",
-            "soundcloud.com", "zoom.us", "slack.com", "notion.so", "figma.com",
-            
+            "netflix.com",
+            "spotify.com",
+            "twitch.tv",
+            "discord.com",
+            "vimeo.com",
+            "soundcloud.com",
+            "zoom.us",
+            "slack.com",
+            "notion.so",
+            "figma.com",
             // News & Info
-            "wikipedia.org", "medium.com", "cnn.com", "bbc.com", "nytimes.com",
-            "theguardian.com", "reuters.com", "bloomberg.com", "wsj.com", "forbes.com",
-            
+            "wikipedia.org",
+            "medium.com",
+            "cnn.com",
+            "bbc.com",
+            "nytimes.com",
+            "theguardian.com",
+            "reuters.com",
+            "bloomberg.com",
+            "wsj.com",
+            "forbes.com",
             // E-commerce
-            "ebay.com", "walmart.com", "target.com", "bestbuy.com", "etsy.com",
-            "shopify.com", "aliexpress.com", "mercadolivre.com.br", "alibaba.com",
-            
+            "ebay.com",
+            "walmart.com",
+            "target.com",
+            "bestbuy.com",
+            "etsy.com",
+            "shopify.com",
+            "aliexpress.com",
+            "mercadolivre.com.br",
+            "alibaba.com",
             // Developer & Tools
-            "docker.com", "kubernetes.io", "python.org", "rust-lang.org", "nodejs.org",
-            "golang.org", "mozilla.org", "chromium.org", "ubuntu.com", "archlinux.org",
-            
+            "docker.com",
+            "kubernetes.io",
+            "python.org",
+            "rust-lang.org",
+            "nodejs.org",
+            "golang.org",
+            "mozilla.org",
+            "chromium.org",
+            "ubuntu.com",
+            "archlinux.org",
             // CDN & Infrastructure
-            "jsdelivr.net", "unpkg.com", "cdnjs.com", "fonts.googleapis.com",
-            "ajax.googleapis.com", "code.jquery.com", "maxcdn.com", "akamai.com",
-            
+            "jsdelivr.net",
+            "unpkg.com",
+            "cdnjs.com",
+            "fonts.googleapis.com",
+            "ajax.googleapis.com",
+            "code.jquery.com",
+            "maxcdn.com",
+            "akamai.com",
             // Analytics & Ads
-            "google-analytics.com", "doubleclick.net", "googlesyndication.com",
-            "googleadservices.com", "facebook.net", "scorecardresearch.com",
-            
+            "google-analytics.com",
+            "doubleclick.net",
+            "googlesyndication.com",
+            "googleadservices.com",
+            "facebook.net",
+            "scorecardresearch.com",
             // Misc Popular
-            "wordpress.com", "wix.com", "squarespace.com", "paypal.com", "stripe.com",
-            "mailchimp.com", "dropbox.com", "drive.google.com", "docs.google.com",
-            "gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "protonmail.com",
-        ].into_iter().map(String::from).collect();
-        
+            "wordpress.com",
+            "wix.com",
+            "squarespace.com",
+            "paypal.com",
+            "stripe.com",
+            "mailchimp.com",
+            "dropbox.com",
+            "drive.google.com",
+            "docs.google.com",
+            "gmail.com",
+            "outlook.com",
+            "yahoo.com",
+            "hotmail.com",
+            "protonmail.com",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
         Ok(Self {
             resolver,
             popular_domains,
         })
     }
-    
+
     /// Warm the cache with popular domains
-    pub async fn warm(&self, cache: &Arc<DnsCache>, ttl: u32) -> Result<WarmingStats, Box<dyn std::error::Error>> {
+    pub async fn warm(
+        &self,
+        cache: &Arc<DnsCache>,
+        ttl: u32,
+    ) -> Result<WarmingStats, Box<dyn std::error::Error>> {
         info!(
             domains = self.popular_domains.len(),
             "Starting cache warming with popular domains"
         );
-        
+
         let start = std::time::Instant::now();
         let mut stats = WarmingStats::default();
-        
+
         for domain in &self.popular_domains {
             // Resolve A record
             match self.resolver.ipv4_lookup(domain).await {
@@ -102,7 +170,7 @@ impl CacheWarmer {
                             domain,
                             &RecordType::A,
                             CachedData::NegativeResponse,
-                            300,  // 5 minutes TTL for NXDOMAIN
+                            300, // 5 minutes TTL for NXDOMAIN
                             Some(DnssecStatus::Unknown),
                         );
                         stats.nxdomain += 1;
@@ -113,7 +181,7 @@ impl CacheWarmer {
                     }
                 }
             }
-            
+
             // Resolve AAAA record
             match self.resolver.ipv6_lookup(domain).await {
                 Ok(lookup) => {
@@ -139,14 +207,14 @@ impl CacheWarmer {
                     }
                 }
             }
-            
+
             // Small delay to avoid overwhelming upstream DNS
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
-        
+
         stats.duration_ms = start.elapsed().as_millis() as u64;
         stats.total_domains = self.popular_domains.len() as u64;
-        
+
         info!(
             total = stats.total_domains,
             successful_a = stats.successful_a,
@@ -157,7 +225,7 @@ impl CacheWarmer {
             cache_size = cache.len(),
             "Cache warming complete"
         );
-        
+
         Ok(stats)
     }
 }
@@ -183,6 +251,7 @@ impl WarmingStats {
         if self.total_domains == 0 {
             return 0.0;
         }
-        ((self.successful_a + self.successful_aaaa) as f64 / (self.total_domains * 2) as f64) * 100.0
+        ((self.successful_a + self.successful_aaaa) as f64 / (self.total_domains * 2) as f64)
+            * 100.0
     }
 }
