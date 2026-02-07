@@ -69,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
     let config_arc = Arc::new(RwLock::new(config.clone()));
 
     // Dependency Injection - Build all dependencies
-    let repos = di::Repositories::new(pool);
+    let repos = di::Repositories::new(pool).await?;
     let use_cases = di::UseCases::new(&repos, config_arc.clone());
     let dns_services = di::DnsServices::new(&config, &repos).await?;
 

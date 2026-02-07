@@ -1,4 +1,4 @@
-# Ferrous DNS Advanced Configuration
+# Ferrous DNS Advanced Configuration with Load Balancing
 
 [server]
 dns_port = 53
@@ -7,77 +7,85 @@ bind_address = "0.0.0.0"
 workers = 0
 
 [dns]
-# Upstream DNS servers
+# Global DNS settings
+query_timeout = 5
+dnssec_enabled = true
+
+# Default strategy if not specified in pool (parallel, balanced, failover)
+default_strategy = "parallel"
+
+# Legacy upstream_servers (converted to single pool if pools not defined)
 upstream_servers = [
     "8.8.8.8:53",
     "8.8.4.4:53",
+]
+
+# ============================================================================
+# LOAD BALANCING POOLS
+# ============================================================================
+# Multiple pools with different strategies and priorities
+# Lower priority = tried first (1 = primary, 2 = failover, etc.)
+
+[[dns.pools]]
+name = "google-parallel"
+strategy = "parallel"   # Send to all, fastest wins (low latency)
+priority = 1            # Primary pool
+servers = [
+    "8.8.8.8:53",
+    "8.8.4.4:53",
+]
+
+[[dns.pools]]
+name = "cloudflare-balanced"
+strategy = "balanced"   # Round-robin (distributes load)
+priority = 1            # Also primary (both tried in parallel by pool manager)
+servers = [
     "1.1.1.1:53",
     "1.0.0.1:53",
 ]
 
-query_timeout = 5
-dnssec_enabled = true
+[[dns.pools]]
+name = "quad9-backup"
+strategy = "failover"   # Sequential fallback
+priority = 2            # Backup pool (only if priority 1 fails)
+servers = [
+    "9.9.9.9:53",
+    "149.112.112.112:53",
+]
+
+# ============================================================================
+# HEALTH CHECK CONFIGURATION
+# ============================================================================
+[dns.health_check]
+enabled = true
+interval_seconds = 30        # Check every 30 seconds
+timeout_ms = 2000            # 2 second timeout
+failure_threshold = 3        # Mark down after 3 consecutive failures
+success_threshold = 2        # Mark up after 2 consecutive successes
 
 # ============================================================================
 # DNS CACHE CONFIGURATION
 # ============================================================================
-
-# Enable DNS caching
 cache_enabled = true
-
-# Cache TTL in seconds
 cache_ttl = 1200
-
-# Maximum cache entries
 cache_max_entries = 200000
 
-# ============================================================================
-# EVICTION STRATEGY
-# ============================================================================
-# Choose one: "hit_rate", "lfu", "lfu-k"
-#
-# - "hit_rate": Evicts entries with lowest hits/second (best for changing patterns)
-# - "lfu": Evicts entries with fewest total hits (best for stable patterns)  
-# - "lfu-k": Evicts entries with lowest frequency in sliding window (balanced)
-#
+# Eviction strategy: "hit_rate", "lfu", "lfu-k"
 cache_eviction_strategy = "hit_rate"
+cache_min_hit_rate = 2.0
+cache_min_frequency = 10
+cache_min_lfuk_score = 1.5
 
-# Minimum thresholds for eviction (strategy-specific)
-cache_min_hit_rate = 2.0        # For hit_rate: minimum hits/second
-cache_min_frequency = 10        # For lfu: minimum total hits
-cache_min_lfuk_score = 1.5      # For lfu-k: minimum frequency score
-
-# ============================================================================
-# OPTIMISTIC REFRESH
-# ============================================================================
-# Proactively update popular entries before they expire
-
+# Optimistic refresh
 cache_optimistic_refresh = true
-
-# Refresh when X% of TTL has elapsed (0.75 = 75%)
 cache_refresh_threshold = 0.75
 
-# ============================================================================
-# LFU-K CONFIGURATION
-# ============================================================================
-# History size for LFU-K strategy (number of recent accesses to track)
-cache_lfuk_history_size = 10
-
-# ============================================================================
-# PERFORMANCE OPTIMIZATIONS
-# ============================================================================
-
-# Batch eviction: Percentage of cache to evict when full (0.1 = 10%)
+# Performance optimizations
 cache_batch_eviction_percentage = 0.1
-
-# Lazy expiration: Check expiry only on access (recommended: true)
 cache_lazy_expiration = true
-
-# Background compaction interval in seconds (cleanup marked entries)
-cache_compaction_interval = 300  # 5 minutes
-
-# Adaptive thresholds: Auto-tune eviction thresholds based on effectiveness
+cache_compaction_interval = 300
 cache_adaptive_thresholds = false
+cache_lfuk_history_size = 10
 
 [blocking]
 enabled = true
@@ -85,7 +93,6 @@ update_interval = 24
 
 blocklist_urls = [
     "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-    "https://adaway.org/hosts.txt",
 ]
 
 custom_blocked = []
@@ -105,34 +112,51 @@ retention_days = 30
 batch_interval = 5
 
 # ============================================================================
-# CACHE TUNING EXAMPLES
+# LOAD BALANCING EXAMPLES
 # ============================================================================
 
-# Example 1: High-traffic server with changing patterns
-# cache_eviction_strategy = "hit_rate"
-# cache_max_entries = 500000
-# cache_min_hit_rate = 5.0
-# cache_batch_eviction_percentage = 0.15
-# cache_adaptive_thresholds = true
+# Example 1: High Performance (Parallel Everywhere)
+# [[dns.pools]]
+# name = "fast-google"
+# strategy = "parallel"
+# priority = 1
+# servers = ["8.8.8.8:53", "8.8.4.4:53"]
 
-# Example 2: Stable corporate DNS
-# cache_eviction_strategy = "lfu"
-# cache_max_entries = 100000
-# cache_min_frequency = 50
-# cache_batch_eviction_percentage = 0.05
-# cache_adaptive_thresholds = false
+# [[dns.pools]]
+# name = "fast-cloudflare"
+# strategy = "parallel"
+# priority = 1
+# servers = ["1.1.1.1:53", "1.0.0.1:53"]
 
-# Example 3: Balanced hybrid (LFU-K)
-# cache_eviction_strategy = "lfu-k"
-# cache_max_entries = 200000
-# cache_min_lfuk_score = 2.0
-# cache_lfuk_history_size = 20
-# cache_batch_eviction_percentage = 0.1
-# cache_adaptive_thresholds = true
+# Example 2: Load Distribution (Balanced Primary + Failover Backup)
+# [[dns.pools]]
+# name = "primary-balanced"
+# strategy = "balanced"
+# priority = 1
+# servers = ["8.8.8.8:53", "1.1.1.1:53", "9.9.9.9:53"]
 
-# Example 4: Low-memory server
-# cache_enabled = true
-# cache_max_entries = 50000
-# cache_eviction_strategy = "hit_rate"
-# cache_optimistic_refresh = false
-# cache_batch_eviction_percentage = 0.2
+# [[dns.pools]]
+# name = "backup-failover"
+# strategy = "failover"
+# priority = 2
+# servers = ["8.8.4.4:53", "1.0.0.1:53"]
+
+# Example 3: Geographic Failover
+# [[dns.pools]]
+# name = "local-datacenter"
+# strategy = "parallel"
+# priority = 1
+# servers = ["192.168.1.53:53", "192.168.1.54:53"]
+
+# [[dns.pools]]
+# name = "remote-datacenter"
+# strategy = "balanced"
+# priority = 2
+# servers = ["10.0.0.53:53", "10.0.0.54:53"]
+
+# [[dns.pools]]
+# name = "public-internet"
+# strategy = "failover"
+# priority = 3
+# servers = ["8.8.8.8:53", "1.1.1.1:53"]
+

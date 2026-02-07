@@ -1,7 +1,14 @@
-// Main DNS Cache implementation - Extracted from original cache.rs
+// Main DNS Cache implementation — all performance optimizations applied:
+// - CompactString: inline storage for domains ≤24 bytes (no heap alloc)
+// - BorrowedKey: zero-allocation bloom filter and L1 cache checks
+// - Double-hash bloom filter (Kirsch-Mitzenmacker) with FxHasher
+// - O(1) probabilistic eviction
+// - Sampling-based batch eviction (Redis-style)
 
 use super::eviction::{EvictionEntry, EvictionStrategy};
+use super::key::BorrowedKey;
 use super::{CacheKey, CacheMetrics, CachedData, CachedRecord, DnssecStatus};
+use compact_str::CompactString;
 use dashmap::DashMap;
 use ferrous_dns_domain::RecordType;
 use lru::LruCache;
@@ -15,7 +22,8 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, RwLock};
 use tracing::{debug, info};
 
-/// Atomic Bloom filter for fast negative lookups
+// --- Bloom filter (zero-allocation, double-hashing) ---
+
 struct AtomicBloom {
     bits: Vec<AtomicU64>,
     num_bits: usize,
@@ -37,19 +45,23 @@ impl AtomicBloom {
 
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
-        let hashes = self.hash_key(key);
-        hashes.iter().all(|&bit_idx| {
+        let (h1, h2) = Self::double_hash(key);
+        for i in 0..self.num_hashes {
+            let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
             let word_idx = bit_idx / 64;
             let bit_pos = bit_idx % 64;
-            let word = self.bits[word_idx].load(AtomicOrdering::Relaxed);
-            (word & (1u64 << bit_pos)) != 0
-        })
+            if (self.bits[word_idx].load(AtomicOrdering::Relaxed) & (1u64 << bit_pos)) == 0 {
+                return false;
+            }
+        }
+        true
     }
 
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
-        let hashes = self.hash_key(key);
-        for &bit_idx in &hashes {
+        let (h1, h2) = Self::double_hash(key);
+        for i in 0..self.num_hashes {
+            let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
             let word_idx = bit_idx / 64;
             let bit_pos = bit_idx % 64;
             self.bits[word_idx].fetch_or(1u64 << bit_pos, AtomicOrdering::Relaxed);
@@ -62,38 +74,44 @@ impl AtomicBloom {
         }
     }
 
-    fn hash_key<K: Hash>(&self, key: &K) -> Vec<usize> {
-        use std::collections::hash_map::DefaultHasher;
+    #[inline]
+    fn double_hash<K: Hash>(key: &K) -> (u64, u64) {
+        use rustc_hash::FxHasher;
         use std::hash::Hasher;
-        let mut hashes = Vec::with_capacity(self.num_hashes);
-        for i in 0..self.num_hashes {
-            let mut hasher = DefaultHasher::new();
-            key.hash(&mut hasher);
-            i.hash(&mut hasher);
-            let hash = hasher.finish();
-            hashes.push((hash as usize) % self.num_bits);
-        }
-        hashes
+        let mut hasher = FxHasher::default();
+        key.hash(&mut hasher);
+        let h1 = hasher.finish();
+        let h2 = h1
+            .wrapping_mul(0x517cc1b727220a95)
+            .wrapping_add(0x6c62272e07bb0142);
+        (h1, h2)
+    }
+
+    #[inline]
+    fn nth_hash(h1: u64, h2: u64, i: u64, num_bits: usize) -> usize {
+        h1.wrapping_add(i.wrapping_mul(h2)) as usize % num_bits
     }
 
     fn optimal_num_bits(capacity: usize, fp_rate: f64) -> usize {
-        let m = -1.0 * (capacity as f64) * fp_rate.ln() / (2.0_f64.ln().powi(2));
-        m.ceil() as usize
+        (-1.0 * (capacity as f64) * fp_rate.ln() / (2.0_f64.ln().powi(2))).ceil() as usize
     }
 
     fn optimal_num_hashes(capacity: usize, num_bits: usize) -> usize {
-        let k = (num_bits as f64 / capacity as f64) * 2.0_f64.ln();
-        k.ceil().max(1.0) as usize
+        ((num_bits as f64 / capacity as f64) * 2.0_f64.ln())
+            .ceil()
+            .max(1.0) as usize
     }
 }
 
-// L1 Thread-Local Cache
+// --- L1 Thread-Local Cache (CompactString keys) ---
+
 thread_local! {
-    static L1_CACHE: RefCell<LruCache<(String, RecordType), Arc<Vec<IpAddr>>>> =
+    static L1_CACHE: RefCell<LruCache<(CompactString, RecordType), Arc<Vec<IpAddr>>>> =
         RefCell::new(LruCache::new(NonZeroUsize::new(32).unwrap()));
 }
 
-/// DNS Cache main implementation
+// --- DNS Cache ---
+
 pub struct DnsCache {
     cache: Arc<DashMap<CacheKey, CachedRecord, FxBuildHasher>>,
     max_entries: usize,
@@ -121,24 +139,19 @@ impl DnsCache {
         adaptive_thresholds: bool,
     ) -> Self {
         info!(
-            max_entries = max_entries,
-            eviction_strategy = ?eviction_strategy,
-            min_threshold = min_threshold,
-            refresh_threshold = refresh_threshold,
-            adaptive_thresholds = adaptive_thresholds,
-            "Initializing DNS cache (REFACTORED ✅)"
+            max_entries,
+            ?eviction_strategy,
+            min_threshold,
+            refresh_threshold,
+            adaptive_thresholds,
+            "Initializing DNS cache"
         );
-
-        let cache: DashMap<CacheKey, CachedRecord, FxBuildHasher> =
-            DashMap::with_capacity_and_hasher_and_shard_amount(
-                max_entries,
-                FxBuildHasher::default(),
-                512,
-            );
-
-        let bloom_items = max_entries * 2;
-        let bloom = AtomicBloom::new(bloom_items, 0.01);
-
+        let cache = DashMap::with_capacity_and_hasher_and_shard_amount(
+            max_entries,
+            FxBuildHasher::default(),
+            512,
+        );
+        let bloom = AtomicBloom::new(max_entries * 2, 0.01);
         Self {
             cache: Arc::new(cache),
             max_entries,
@@ -158,7 +171,6 @@ impl DnsCache {
     pub fn len(&self) -> usize {
         self.cache.len()
     }
-
     pub fn is_empty(&self) -> bool {
         self.cache.is_empty()
     }
@@ -168,49 +180,38 @@ impl DnsCache {
         domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>)> {
-        let key = CacheKey::new(domain.to_string(), *record_type);
-
-        // Bloom filter pre-check
-        if !self.bloom.check(&key) {
+        // Zero-allocation bloom check
+        let borrowed = BorrowedKey::new(domain, *record_type);
+        if !self.bloom.check(&borrowed) {
             self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
             return None;
         }
 
-        // L1 thread-local cache check
+        // L1 thread-local cache check (CompactString key)
         let l1_hit = L1_CACHE.with(|cache| {
-            let mut cache_mut = cache.borrow_mut();
-            cache_mut.get(&(domain.to_string(), *record_type)).cloned()
+            cache
+                .borrow_mut()
+                .get(&(CompactString::from(domain), *record_type))
+                .cloned()
         });
-
         if let Some(arc_data) = l1_hit {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some((CachedData::IpAddresses(arc_data), None));
         }
 
         // L2 DashMap check
+        let key = CacheKey::new(domain, *record_type);
         if let Some(entry) = self.cache.get(&key) {
             let record = entry.value();
 
-            // Stale-while-revalidate
             if record.is_stale_usable() {
-                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {
-                    // Trigger refresh externally
-                }
+                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {}
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
-
-                if let CachedData::IpAddresses(ref arc_data) = record.data {
-                    L1_CACHE.with(|cache| {
-                        cache
-                            .borrow_mut()
-                            .put((domain.to_string(), *record_type), arc_data.clone());
-                    });
-                }
-
+                self.promote_to_l1(domain, record_type, record);
                 return Some((record.data.clone(), Some(record.dnssec_status)));
             }
 
-            // Hard expired
             if record.is_expired() && !record.is_stale_usable() {
                 drop(entry);
                 self.lazy_remove(&key);
@@ -221,7 +222,6 @@ impl DnsCache {
                 return None;
             }
 
-            // Marked for deletion
             if record.is_marked_for_deletion() {
                 drop(entry);
                 self.lazy_remove(&key);
@@ -234,23 +234,26 @@ impl DnsCache {
 
             record.record_hit();
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
-
             if record.data.is_negative() {
                 return Some((CachedData::NegativeResponse, Some(record.dnssec_status)));
             }
-
-            if let CachedData::IpAddresses(ref arc_data) = record.data {
-                L1_CACHE.with(|cache| {
-                    cache
-                        .borrow_mut()
-                        .put((domain.to_string(), *record_type), arc_data.clone());
-                });
-            }
-
+            self.promote_to_l1(domain, record_type, record);
             Some((record.data.clone(), Some(record.dnssec_status)))
         } else {
             self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
             None
+        }
+    }
+
+    #[inline]
+    fn promote_to_l1(&self, domain: &str, record_type: &RecordType, record: &CachedRecord) {
+        if let CachedData::IpAddresses(ref arc_data) = record.data {
+            L1_CACHE.with(|cache| {
+                cache.borrow_mut().put(
+                    (CompactString::from(domain), *record_type),
+                    arc_data.clone(),
+                );
+            });
         }
     }
 
@@ -265,10 +268,8 @@ impl DnsCache {
         if data.is_empty() {
             return;
         }
+        let key = CacheKey::new(domain, *record_type);
 
-        let key = CacheKey::new(domain.to_string(), *record_type);
-
-        // Probabilistic eviction
         if self.use_probabilistic_eviction && self.cache.len() >= self.max_entries {
             if fastrand::u32(..100) == 0 {
                 self.evict_random_entry();
@@ -279,37 +280,23 @@ impl DnsCache {
 
         let use_lfuk = self.eviction_strategy == EvictionStrategy::LFUK;
         let record = CachedRecord::new(data, ttl, record_type.clone(), use_lfuk, dnssec_status);
-
         self.cache.insert(key.clone(), record);
         self.bloom.set(&key);
         self.metrics
             .insertions
             .fetch_add(1, AtomicOrdering::Relaxed);
-
-        debug!(
-            domain = %domain,
-            record_type = %record_type,
-            ttl = ttl,
-            cache_size = self.cache.len(),
-            "Inserted into cache"
-        );
+        debug!(domain = %domain, record_type = %record_type, ttl, cache_size = self.cache.len(), "Inserted into cache");
     }
 
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
-        let key = CacheKey::new(domain.to_string(), *record_type);
+        let key = CacheKey::new(domain, *record_type);
         if let Some(entry) = self.cache.get(&key) {
             entry.refreshing.store(false, AtomicOrdering::Release);
         }
     }
 
     fn evict_random_entry(&self) {
-        let len = self.cache.len();
-        if len == 0 {
-            return;
-        }
-
-        let random_idx = fastrand::usize(..len);
-        if let Some(entry) = self.cache.iter().nth(random_idx) {
+        if let Some(entry) = self.cache.iter().next() {
             let key = entry.key().clone();
             drop(entry);
             self.cache.remove(&key);
@@ -326,9 +313,8 @@ impl DnsCache {
     fn batch_evict(&self) {
         let evict_count =
             ((self.max_entries as f64 * self.batch_eviction_percentage) as usize).max(1);
-        let candidates = self.collect_eviction_candidates();
+        let candidates = self.collect_eviction_candidates(evict_count);
         let mut evicted = 0;
-
         let min_threshold = *self.min_threshold.read().unwrap();
         for entry in candidates.into_iter().take(evict_count) {
             if entry.score < min_threshold {
@@ -337,7 +323,6 @@ impl DnsCache {
                 }
             }
         }
-
         if evicted > 0 {
             self.metrics
                 .evictions
@@ -345,55 +330,52 @@ impl DnsCache {
             self.metrics
                 .batch_evictions
                 .fetch_add(1, AtomicOrdering::Relaxed);
-
             if self.adaptive_thresholds {
                 self.adjust_thresholds(evicted, evict_count);
             }
         }
     }
 
-    fn collect_eviction_candidates(&self) -> Vec<EvictionEntry> {
-        let mut candidates = Vec::with_capacity(self.cache.len());
-
-        for entry in self.cache.iter() {
+    fn collect_eviction_candidates(&self, target_count: usize) -> Vec<EvictionEntry> {
+        let sample_size = (target_count * 3).min(256).max(16);
+        let mut candidates = Vec::with_capacity(sample_size);
+        for entry in self.cache.iter().take(sample_size) {
             let record = entry.value();
             if record.is_marked_for_deletion() {
                 continue;
             }
-
-            let score = match self.eviction_strategy {
-                EvictionStrategy::HitRate => record.hit_rate(),
-                EvictionStrategy::LFU => record.frequency() as f64,
-                EvictionStrategy::LFUK => record.lfuk_score(),
-            };
-
             candidates.push(EvictionEntry {
                 key: entry.key().clone(),
-                score,
+                score: self.compute_score(record),
                 last_access: record.last_access.load(AtomicOrdering::Relaxed),
             });
         }
-
-        candidates.sort_by(|a, b| {
+        candidates.sort_unstable_by(|a, b| {
             a.score
                 .partial_cmp(&b.score)
                 .unwrap_or(Ordering::Equal)
                 .then_with(|| a.last_access.cmp(&b.last_access))
         });
-
         candidates
+    }
+
+    #[inline]
+    fn compute_score(&self, record: &CachedRecord) -> f64 {
+        match self.eviction_strategy {
+            EvictionStrategy::HitRate => record.hit_rate(),
+            EvictionStrategy::LFU => record.frequency() as f64,
+            EvictionStrategy::LFUK => record.lfuk_score(),
+        }
     }
 
     fn adjust_thresholds(&self, evicted: u64, target: usize) {
         let effectiveness = evicted as f64 / target as f64;
         let mut threshold = self.min_threshold.write().unwrap();
-
         if effectiveness < 0.5 {
             *threshold *= 0.9;
         } else if effectiveness > 0.95 {
             *threshold *= 1.05;
         }
-
         self.metrics
             .adaptive_adjustments
             .fetch_add(1, AtomicOrdering::Relaxed);
@@ -402,30 +384,19 @@ impl DnsCache {
     pub fn get_refresh_candidates(&self) -> Vec<(String, RecordType)> {
         let mut candidates = Vec::new();
         let mean_score = self.calculate_mean_score();
-
         for entry in self.cache.iter() {
             let record = entry.value();
-
             if record.is_expired() || record.is_marked_for_deletion() {
                 continue;
             }
-
             if !record.should_refresh(self.refresh_threshold) {
                 continue;
             }
-
-            let score = match self.eviction_strategy {
-                EvictionStrategy::HitRate => record.hit_rate(),
-                EvictionStrategy::LFU => record.frequency() as f64,
-                EvictionStrategy::LFUK => record.lfuk_score(),
-            };
-
-            if score >= mean_score {
+            if self.compute_score(record) >= mean_score {
                 let key = entry.key();
-                candidates.push((key.domain.clone(), key.record_type.clone()));
+                candidates.push((key.domain.to_string(), key.record_type.clone()));
             }
         }
-
         candidates
     }
 
@@ -433,26 +404,16 @@ impl DnsCache {
         if self.cache.is_empty() {
             return *self.min_threshold.read().unwrap();
         }
-
         let mut total = 0.0;
         let mut count = 0;
-
         for entry in self.cache.iter() {
             let record = entry.value();
             if record.is_marked_for_deletion() {
                 continue;
             }
-
-            let score = match self.eviction_strategy {
-                EvictionStrategy::HitRate => record.hit_rate(),
-                EvictionStrategy::LFU => record.frequency() as f64,
-                EvictionStrategy::LFUK => record.lfuk_score(),
-            };
-
-            total += score;
+            total += self.compute_score(record);
             count += 1;
         }
-
         if count > 0 {
             total / count as f64
         } else {
@@ -461,28 +422,24 @@ impl DnsCache {
     }
 
     pub fn compact(&self) -> usize {
-        let mut removed = 0;
         let mut to_remove = Vec::new();
-
         for entry in self.cache.iter() {
             let record = entry.value();
             if record.is_marked_for_deletion() || record.is_expired() {
                 to_remove.push(entry.key().clone());
             }
         }
-
+        let mut removed = 0;
         for key in to_remove {
             if self.cache.remove(&key).is_some() {
                 removed += 1;
             }
         }
-
         if removed > 0 {
             self.metrics
                 .compactions
                 .fetch_add(1, AtomicOrdering::Relaxed);
         }
-
         self.compaction_counter
             .fetch_add(1, AtomicOrdering::Relaxed);
         removed
@@ -491,11 +448,9 @@ impl DnsCache {
     pub fn cleanup_expired(&self) -> usize {
         self.compact()
     }
-
     pub fn metrics(&self) -> Arc<CacheMetrics> {
         Arc::clone(&self.metrics)
     }
-
     pub fn size(&self) -> usize {
         self.cache.len()
     }
@@ -510,7 +465,7 @@ impl DnsCache {
     }
 
     pub fn get_ttl(&self, domain: &str, record_type: &RecordType) -> Option<u32> {
-        let key = CacheKey::new(domain.to_string(), *record_type);
+        let key = CacheKey::new(domain, *record_type);
         self.cache.get(&key).map(|entry| entry.ttl)
     }
 

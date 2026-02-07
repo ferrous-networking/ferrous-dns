@@ -10,8 +10,10 @@ pub struct QueryLog {
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
-    pub cache_refresh: bool,           // NEW: Optimistic refresh
-    pub dnssec_status: Option<String>, // NEW: "Secure", "Insecure", "Bogus", "Indeterminate"
+    pub cache_refresh: bool,             // NEW: Optimistic refresh
+    pub dnssec_status: Option<String>,   // NEW: "Secure", "Insecure", "Bogus", "Indeterminate"
+    pub upstream_server: Option<String>, // NEW: Which upstream server responded (e.g., "8.8.8.8:53")
+    pub response_status: Option<String>, // NEW: "NOERROR", "NXDOMAIN", "SERVFAIL", "TIMEOUT", "REFUSED"
     pub timestamp: Option<String>,
 }
 

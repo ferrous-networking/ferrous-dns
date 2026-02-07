@@ -38,11 +38,11 @@ thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite","migrate"], default-features = false }
-hickory-resolver = "0.26.0-alpha.1"
 hickory-server = "0.26.0-alpha.1"
 hickory-proto = "0.26.0-alpha.1"
 toml = "0.9.8"
 dashmap = "6.1"
 futures = "0.3"
 rustc-hash = "2.1.0"
+compact_str = "0.8"
 socket2 = "0.6.2"

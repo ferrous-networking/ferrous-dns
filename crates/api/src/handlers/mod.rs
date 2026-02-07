@@ -13,3 +13,4 @@ pub use health::health_check;
 pub use hostname::get_hostname;
 pub use queries::get_queries;
 pub use stats::get_stats;
+pub mod upstream;

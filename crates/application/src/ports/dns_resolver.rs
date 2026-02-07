@@ -9,6 +9,7 @@ pub struct DnsResolution {
     pub cache_hit: bool,
     pub dnssec_status: Option<String>, // "Secure", "Insecure", "Bogus", "Indeterminate"
     pub cname: Option<String>,         // Canonical name (CNAME record)
+    pub upstream_server: Option<String>, // Which upstream server responded (e.g., "8.8.8.8:53")
 }
 
 impl DnsResolution {
@@ -18,6 +19,7 @@ impl DnsResolution {
             cache_hit,
             dnssec_status: None,
             cname: None,
+            upstream_server: None,
         }
     }
 
@@ -31,6 +33,7 @@ impl DnsResolution {
             cache_hit,
             dnssec_status,
             cname: None,
+            upstream_server: None,
         }
     }
 
@@ -45,6 +48,7 @@ impl DnsResolution {
             cache_hit,
             dnssec_status,
             cname,
+            upstream_server: None,
         }
     }
 }

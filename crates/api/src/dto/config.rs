@@ -21,6 +21,8 @@ pub struct ServerConfigResponse {
 #[derive(Serialize, Debug, Clone)]
 pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
+    pub pools: Vec<UpstreamPoolResponse>,  // ✅ NOVO
+    pub health_check: HealthCheckResponse, // ✅ NOVO
     pub query_timeout: u64,
     pub cache_enabled: bool,
     pub cache_ttl: u32,
@@ -32,6 +34,25 @@ pub struct DnsConfigResponse {
     pub cache_min_lfuk_score: f64,
     pub cache_optimistic_refresh: bool,
     pub cache_adaptive_thresholds: bool,
+}
+
+// ✅ NOVO: Pool response
+#[derive(Serialize, Debug, Clone)]
+pub struct UpstreamPoolResponse {
+    pub name: String,
+    pub strategy: String,
+    pub priority: u8,
+    pub servers: Vec<String>,
+}
+
+// ✅ NOVO: Health check response
+#[derive(Serialize, Debug, Clone)]
+pub struct HealthCheckResponse {
+    pub enabled: bool,
+    pub interval_seconds: u64,
+    pub timeout_ms: u64,
+    pub failure_threshold: u8,
+    pub success_threshold: u8,
 }
 
 #[derive(Serialize, Debug, Clone)]

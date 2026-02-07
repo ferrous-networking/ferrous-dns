@@ -12,11 +12,12 @@ pub struct Repositories {
 }
 
 impl Repositories {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self {
+    pub async fn new(pool: SqlitePool) -> Result<Self, ferrous_dns_domain::DomainError> {
+        let blocklist = SqliteBlocklistRepository::load(pool.clone()).await?;
+        Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(pool.clone())),
-            blocklist: Arc::new(SqliteBlocklistRepository::new(pool.clone())),
+            blocklist: Arc::new(blocklist),
             config: Arc::new(SqliteConfigRepository::new(pool)),
-        }
+        })
     }
 }

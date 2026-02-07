@@ -35,15 +35,17 @@ impl CacheUpdater {
     }
 
     /// Start the background updater and compaction tasks
-    pub fn start(self) -> (tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>) {
-        let updater_handle = self.start_updater();
-        let compaction_handle = self.start_compaction();
+    /// Tasks run detached in background
+    pub fn start(self) {
+        // Spawn tasks and detach (don't return handles)
+        self.start_updater();
+        self.start_compaction();
 
-        (updater_handle, compaction_handle)
+        // Tasks now run independently in background
     }
 
-    /// Start optimistic refresh task
-    fn start_updater(&self) -> tokio::task::JoinHandle<()> {
+    /// Start optimistic refresh task (detached)
+    fn start_updater(&self) {
         let cache = Arc::clone(&self.cache);
         let resolver = Arc::clone(&self.resolver);
         let query_log = self.query_log.clone();
@@ -59,11 +61,11 @@ impl CacheUpdater {
                 sleep(update_interval).await;
                 Self::update_cycle(&cache, &resolver, &query_log).await;
             }
-        })
+        }); // ✅ Semicolon drops the JoinHandle
     }
 
-    /// Start background compaction task
-    fn start_compaction(&self) -> tokio::task::JoinHandle<()> {
+    /// Start background compaction task (detached)
+    fn start_compaction(&self) {
         let cache = Arc::clone(&self.cache);
         let compaction_interval = self.compaction_interval;
 
@@ -77,7 +79,7 @@ impl CacheUpdater {
                 sleep(compaction_interval).await;
                 Self::compaction_cycle(&cache);
             }
-        })
+        }); // ✅ Semicolon drops the JoinHandle
     }
 
     /// Run one update cycle
@@ -211,6 +213,8 @@ impl CacheUpdater {
                         cache_hit: false,    // It's a refresh, not a hit
                         cache_refresh: true, // Mark as cache refresh!
                         dnssec_status: resolution.dnssec_status.as_ref().map(|s| s.to_string()),
+                        upstream_server: resolution.upstream_server.clone(), // ✅ Which upstream handled the refresh
+                        response_status: Some("NOERROR".to_string()), // ✅ Refresh is always successful
                         timestamp: None,
                     };
 

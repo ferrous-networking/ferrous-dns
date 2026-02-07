@@ -4,7 +4,7 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::{DnsCache, EvictionStrategy},
     cache_updater::CacheUpdater,
-    HickoryDnsResolver,
+    HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -18,20 +18,64 @@ pub struct DnsServices {
 
 impl DnsServices {
     pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
-        info!("Initializing DNS services");
+        info!("Initializing DNS services with load balancing");
 
-        // Create DNS resolver
-        let mut resolver = HickoryDnsResolver::with_google_dnssec(
+        let health_checker = if config.dns.health_check.enabled {
+            let checker = Arc::new(HealthChecker::new(
+                config.dns.health_check.failure_threshold,
+                config.dns.health_check.success_threshold,
+            ));
+
+            info!(
+                interval_seconds = config.dns.health_check.interval_seconds,
+                timeout_ms = config.dns.health_check.timeout_ms,
+                "Health checker enabled"
+            );
+
+            Some(checker)
+        } else {
+            info!("Health checker disabled");
+            None
+        };
+
+        let pool_manager = Arc::new(PoolManager::new(
+            config.dns.pools.clone(),
+            health_checker.clone(),
+        )?);
+
+        // Start health checker in background (don't keep JoinHandle)
+        if let Some(checker) = health_checker {
+            let all_servers = pool_manager.get_all_servers();
+
+            // Spawn and detach - não guardar o JoinHandle
+            let checker_clone = checker.clone();
+            let interval = config.dns.health_check.interval_seconds;
+            let timeout = config.dns.health_check.timeout_ms;
+
+            tokio::spawn(async move {
+                checker_clone.run(all_servers, interval, timeout).await;
+            });
+
+            info!("Health checker background task started");
+        }
+
+        let timeout_ms = config.dns.query_timeout * 1000;
+
+        let pool_manager_clone = Arc::clone(&pool_manager);
+
+        let mut resolver = HickoryDnsResolver::new_with_pools(
+            pool_manager,
+            timeout_ms,
             config.dns.dnssec_enabled,
             Some(repos.query_log.clone()),
         )?;
 
         info!(
             dnssec_enabled = config.dns.dnssec_enabled,
+            pools = config.dns.pools.len(),
             "DNS resolver created"
         );
 
-        // Initialize cache if enabled
         let cache = if config.dns.cache_enabled {
             let eviction_strategy = match config.dns.cache_eviction_strategy.as_str() {
                 "lfu" => EvictionStrategy::LFU,
@@ -69,12 +113,12 @@ impl DnsServices {
             ))
         };
 
-        // Start background tasks if needed
         if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
             info!("Starting cache background tasks");
 
-            let resolver_for_updater = HickoryDnsResolver::with_google_dnssec(false, None)?
-                .with_cache_ref(cache.clone(), config.dns.cache_ttl);
+            let resolver_for_updater =
+                HickoryDnsResolver::new_with_pools(pool_manager_clone, timeout_ms, false, None)?
+                    .with_cache_ref(cache.clone(), config.dns.cache_ttl);
 
             let updater = CacheUpdater::new(
                 cache.clone(),
@@ -90,12 +134,13 @@ impl DnsServices {
 
         let resolver = Arc::new(resolver);
 
-        // Create handler use case
         let handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
             resolver.clone(),
             repos.blocklist.clone(),
             repos.query_log.clone(),
         ));
+
+        info!("DNS services initialized successfully with load balancing");
 
         Ok(Self {
             resolver,

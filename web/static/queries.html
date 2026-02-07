@@ -74,23 +74,15 @@
                 </div>
             </div>
 
-            <!-- Bottom Row: Filters (only show if DNSSEC enabled) -->
+            <!-- Bottom Row: DNSSEC Stats (only show if DNSSEC enabled) -->
             <div x-show="dnssecEnabled" class="flex flex-wrap gap-2 items-center border-t pt-3" x-cloak>
-                <span class="text-xs sm:text-sm text-gray-600 font-medium">Filters:</span>
+                <span class="text-xs sm:text-sm text-gray-600 font-medium">
+                    🔐 DNSSEC Enabled - Showing all queries including DNSSEC validations
+                </span>
                 
-                <!-- DNSSEC Filter Toggle -->
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" x-model="showDnssec" 
-                           class="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-                    <span class="text-xs sm:text-sm text-gray-700">
-                        <span class="font-medium">🔐 Show DNSSEC Queries</span>
-                        <span class="text-gray-500">(DS, DNSKEY, RRSIG, NSEC, etc.)</span>
-                    </span>
-                </label>
-
                 <!-- Stats -->
                 <span class="text-xs text-gray-500 ml-auto" x-show="queries.length > 0">
-                    <span x-text="filteredQueries.length"></span> of <span x-text="queries.length"></span> queries
+                    <span x-text="queries.length"></span> queries
                     <template x-if="dnssecCount > 0">
                         <span class="text-purple-600 font-medium">
                             (<span x-text="dnssecCount"></span> DNSSEC)
@@ -116,6 +108,7 @@
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Upstream</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Response</th>
                 </tr>
             </thead>
@@ -160,6 +153,20 @@
                                 class="px-2 py-0.5 rounded-full text-xs font-medium"
                                 :class="query.blocked ? 'bg-red-100 text-red-800' : (query.cache_refresh ? 'bg-yellow-100 text-yellow-800' : (query.cache_hit ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'))"
                                 x-text="query.blocked ? '🚫 Blocked' : (query.cache_refresh ? '🔄 Refresh' : (query.cache_hit ? '⚡ Cache' : '🌐 Upstream'))">
+                            </span>
+                        </td>
+                        
+                        <!-- Upstream Server -->
+                        <td class="px-4 py-3">
+                            <span 
+                                class="text-xs font-mono text-gray-700"
+                                x-show="!query.cache_hit && query.upstream_server"
+                                x-text="query.upstream_server">
+                            </span>
+                            <span 
+                                class="text-xs text-gray-400"
+                                x-show="query.cache_hit || !query.upstream_server">
+                                -
                             </span>
                         </td>
                         
@@ -222,6 +229,10 @@
                     <div class="flex justify-between">
                         <span>Client:</span>
                         <span class="font-medium" x-text="formatClientName(query.client)"></span>
+                    </div>
+                    <div class="flex justify-between" x-show="!query.cache_hit && query.upstream_server">
+                        <span>Upstream:</span>
+                        <span class="font-mono font-medium text-xs" x-text="query.upstream_server"></span>
                     </div>
                     <div class="flex justify-between">
                         <span>Time:</span>
@@ -291,12 +302,12 @@ function queryLog() {
         dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
 
         get filteredQueries() {
-            if (!this.dnssecEnabled || this.showDnssec) {
-                // Show all queries if DNSSEC disabled OR filter enabled
+            // ✅ ALWAYS show all queries when DNSSEC is enabled
+            if (this.dnssecEnabled) {
                 return this.queries;
             }
-            // Hide DNSSEC queries if DNSSEC enabled but filter disabled
-            return this.queries.filter(q => !this.dnssecTypes.includes(q.type));
+            // When DNSSEC disabled, also show all queries
+            return this.queries;
         },
         get dnssecCount() {
             return this.queries.filter(q => this.dnssecTypes.includes(q.type)).length;
@@ -367,11 +378,25 @@ function queryLog() {
             return ip;
         },
 
-        formatResponseTime(ms) {
-            if (!ms) return '-';
-            if (ms < 1000) return `${ms} µs`;
-            if (ms < 10000) return `${(ms / 1000).toFixed(1)} ms`;
-            return `${(ms / 1000).toFixed(0)} ms`;
+        formatResponseTime(us) {
+            if (!us) return '-';
+            
+            // Backend SEMPRE retorna em MICROSSEGUNDOS (µs)
+            // Exemplos:
+            //   50 µs = cache hit
+            //   15,000 µs = 15 ms upstream
+            //   3,000,000 µs = 3 s slow
+            
+            if (us < 1000) {
+                // < 1ms = mostrar em µs
+                return `${Math.round(us)} µs`;
+            } else if (us < 1000000) {
+                // 1ms - 999ms = converter para ms
+                return `${Math.round(us / 1000)} ms`;
+            } else {
+                // >= 1s = converter para segundos
+                return `${(us / 1000000).toFixed(2)} s`;
+            }
         },
 
         formatTimestamp(utcTimestamp) {

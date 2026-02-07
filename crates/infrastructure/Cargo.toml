@@ -5,13 +5,17 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["dns-over-rustls", "dns-over-https"]
+dns-over-rustls = []
+dns-over-https = []
+
 [dependencies]
 ferrous-dns-domain.workspace = true
 ferrous-dns-application.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 sqlx.workspace = true
-hickory-resolver.workspace = true
 hickory-server.workspace = true
 hickory-proto.workspace = true
 serde.workspace = true
@@ -24,3 +28,10 @@ hostname.workspace = true
 dashmap.workspace = true
 futures.workspace = true
 rustc-hash.workspace = true
+compact_str.workspace = true
+
+# Transport layer
+rustls = "0.23"
+tokio-rustls = "0.26"
+webpki-roots = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }

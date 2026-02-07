@@ -35,6 +35,7 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
                                     cache_hit: q.cache_hit,
                                     cache_refresh: q.cache_refresh,
                                     dnssec_status: q.dnssec_status,
+                                    upstream_server: q.upstream_server, // ✅ Include upstream server
                                 });
                             }
                         }

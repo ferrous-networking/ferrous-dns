@@ -18,58 +18,124 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DnsConfig {
+    #[serde(default)]
     pub upstream_servers: Vec<String>,
+
     #[serde(default = "default_query_timeout")]
     pub query_timeout: u64,
+
     #[serde(default = "default_true")]
     pub cache_enabled: bool,
+
     #[serde(default = "default_cache_ttl")]
-    pub cache_ttl: u32, // Changed from u64 to u32 (consistent with cache implementation)
+    pub cache_ttl: u32,
+
     #[serde(default = "default_false")]
     pub dnssec_enabled: bool,
 
-    // Cache size
+    #[serde(default = "default_upstream_strategy")]
+    pub default_strategy: UpstreamStrategy,
+
+    #[serde(default)]
+    pub pools: Vec<UpstreamPool>,
+
+    #[serde(default)]
+    pub health_check: HealthCheckConfig,
+
     #[serde(default = "default_cache_max_entries")]
     pub cache_max_entries: usize,
-
-    // Eviction strategy
     #[serde(default = "default_cache_eviction_strategy")]
     pub cache_eviction_strategy: String,
-
-    // Optimistic refresh
     #[serde(default = "default_cache_optimistic_refresh")]
     pub cache_optimistic_refresh: bool,
-
-    // Minimum thresholds per strategy
     #[serde(default = "default_cache_min_hit_rate")]
     pub cache_min_hit_rate: f64,
-
     #[serde(default = "default_cache_min_frequency")]
     pub cache_min_frequency: u64,
-
     #[serde(default = "default_cache_min_lfuk_score")]
     pub cache_min_lfuk_score: f64,
-
-    // Refresh threshold
     #[serde(default = "default_cache_refresh_threshold")]
     pub cache_refresh_threshold: f64,
-
-    // LFU-K specific
     #[serde(default = "default_cache_lfuk_history_size")]
     pub cache_lfuk_history_size: usize,
-
-    // Performance optimizations
     #[serde(default = "default_cache_batch_eviction_percentage")]
     pub cache_batch_eviction_percentage: f64,
-
     #[serde(default = "default_cache_lazy_expiration")]
     pub cache_lazy_expiration: bool,
-
     #[serde(default = "default_cache_compaction_interval")]
     pub cache_compaction_interval: u64,
-
     #[serde(default = "default_cache_adaptive_thresholds")]
     pub cache_adaptive_thresholds: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UpstreamPool {
+    pub name: String,
+
+    #[serde(default = "default_upstream_strategy")]
+    pub strategy: UpstreamStrategy,
+
+    #[serde(default = "default_priority")]
+    pub priority: u8,
+
+    pub servers: Vec<String>,
+
+    #[serde(default)]
+    pub weight: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpstreamStrategy {
+    Parallel,
+    Balanced,
+    Failover,
+}
+
+impl UpstreamStrategy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Parallel => "parallel",
+            Self::Balanced => "balanced",
+            Self::Failover => "failover",
+        }
+    }
+}
+
+impl Default for UpstreamStrategy {
+    fn default() -> Self {
+        Self::Parallel
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HealthCheckConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    #[serde(default = "default_health_check_interval")]
+    pub interval_seconds: u64,
+
+    #[serde(default = "default_health_check_timeout")]
+    pub timeout_ms: u64,
+
+    #[serde(default = "default_failure_threshold")]
+    pub failure_threshold: u8,
+
+    #[serde(default = "default_success_threshold")]
+    pub success_threshold: u8,
+}
+
+impl Default for HealthCheckConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_seconds: 30,
+            timeout_ms: 2000,
+            failure_threshold: 3,
+            success_threshold: 2,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -114,8 +180,25 @@ fn default_true() -> bool {
 fn default_false() -> bool {
     false
 }
+fn default_upstream_strategy() -> UpstreamStrategy {
+    UpstreamStrategy::Parallel
+}
+fn default_priority() -> u8 {
+    1
+}
+fn default_health_check_interval() -> u64 {
+    30
+}
+fn default_health_check_timeout() -> u64 {
+    2000
+}
+fn default_failure_threshold() -> u8 {
+    3
+}
+fn default_success_threshold() -> u8 {
+    2
+}
 
-// Cache defaults
 fn default_cache_max_entries() -> usize {
     200_000
 }
@@ -167,6 +250,9 @@ impl Default for Config {
                 cache_enabled: true,
                 cache_ttl: default_cache_ttl(),
                 dnssec_enabled: false,
+                default_strategy: UpstreamStrategy::Parallel,
+                pools: vec![],
+                health_check: HealthCheckConfig::default(),
                 cache_max_entries: default_cache_max_entries(),
                 cache_eviction_strategy: default_cache_eviction_strategy(),
                 cache_optimistic_refresh: default_cache_optimistic_refresh(),
@@ -211,6 +297,7 @@ impl Config {
         };
 
         config.apply_cli_overrides(cli_overrides);
+        config.normalize_pools();
         Ok(config)
     }
 
@@ -238,13 +325,38 @@ impl Config {
         }
     }
 
+    fn normalize_pools(&mut self) {
+        if self.dns.pools.is_empty() && !self.dns.upstream_servers.is_empty() {
+            self.dns.pools.push(UpstreamPool {
+                name: "default".to_string(),
+                strategy: self.dns.default_strategy,
+                priority: 1,
+                servers: self.dns.upstream_servers.clone(),
+                weight: None,
+            });
+        }
+    }
+
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.server.dns_port == 0 {
             return Err(ConfigError::Validation("DNS port cannot be 0".to_string()));
         }
-        if self.dns.upstream_servers.is_empty() {
-            return Err(ConfigError::Validation("No upstream servers".to_string()));
+
+        if self.dns.pools.is_empty() && self.dns.upstream_servers.is_empty() {
+            return Err(ConfigError::Validation(
+                "No upstream servers configured".to_string(),
+            ));
         }
+
+        for pool in &self.dns.pools {
+            if pool.servers.is_empty() {
+                return Err(ConfigError::Validation(format!(
+                    "Pool '{}' has no servers",
+                    pool.name
+                )));
+            }
+        }
+
         Ok(())
     }
 

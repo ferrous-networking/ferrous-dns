@@ -12,4 +12,5 @@ pub struct QueryResponse {
     pub cache_hit: bool,
     pub cache_refresh: bool,
     pub dnssec_status: Option<String>,
+    pub upstream_server: Option<String>, // ✅ Which upstream server responded
 }

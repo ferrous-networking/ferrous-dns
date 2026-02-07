@@ -31,6 +31,24 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
         },
         dns: DnsConfigResponse {
             upstream_servers: config.dns.upstream_servers.clone(),
+            pools: config
+                .dns
+                .pools
+                .iter()
+                .map(|p| crate::dto::UpstreamPoolResponse {
+                    name: p.name.clone(),
+                    strategy: format!("{:?}", p.strategy).to_lowercase(),
+                    priority: p.priority,
+                    servers: p.servers.clone(),
+                })
+                .collect(),
+            health_check: crate::dto::HealthCheckResponse {
+                enabled: config.dns.health_check.enabled,
+                interval_seconds: config.dns.health_check.interval_seconds,
+                timeout_ms: config.dns.health_check.timeout_ms,
+                failure_threshold: config.dns.health_check.failure_threshold,
+                success_threshold: config.dns.health_check.success_threshold,
+            },
             query_timeout: config.dns.query_timeout,
             cache_enabled: config.dns.cache_enabled,
             cache_ttl: config.dns.cache_ttl,

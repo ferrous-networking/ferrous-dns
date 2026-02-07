@@ -11,6 +11,13 @@
         html, body { height: 100%; margin: 0; padding: 0; }
         body { display: flex; flex-direction: column; }
         main { flex: 1; overflow-y: auto; }
+        .strategy-badge { @apply px-2 py-1 rounded text-xs font-semibold; }
+        .strategy-parallel { @apply bg-purple-100 text-purple-800; }
+        .strategy-balanced { @apply bg-blue-100 text-blue-800; }
+        .strategy-failover { @apply bg-green-100 text-green-800; }
+        .health-healthy { @apply text-green-600; }
+        .health-unhealthy { @apply text-red-600; }
+        .health-unknown { @apply text-gray-400; }
     </style>
 </head>
 <body class="bg-gray-50 h-full" x-data="settings()" x-init="init()">
@@ -52,14 +59,8 @@
         <button @click="alert.show = false" class="absolute top-0 bottom-0 right-0 px-3 sm:px-4 py-2 sm:py-3"><span class="text-xl sm:text-2xl">&times;</span></button>
     </div>
 
-    <!-- Loading State -->
-    <div x-show="loading" x-cloak class="text-center py-8">
-        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p class="mt-2 text-gray-600">Loading configuration...</p>
-    </div>
-
     <!-- Tabs -->
-    <div x-show="!loading" class="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
+    <div class="mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto">
         <nav class="flex space-x-4 sm:space-x-8 min-w-max px-1" aria-label="Tabs">
             <button @click="currentTab = 'dns'" :class="currentTab === 'dns' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-xs sm:text-sm">
                 🌐 DNS & Load Balancing
@@ -74,7 +75,7 @@
     </div>
 
     <!-- DNS & Load Balancing Tab -->
-    <div x-show="currentTab === 'dns' && !loading" x-cloak>
+    <div x-show="currentTab === 'dns'" x-cloak>
         <!-- Strategy Info Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
@@ -126,7 +127,7 @@
                 </button>
             </div>
 
-            <template x-for="(pool, poolIndex) in config.dns.pools" :key="poolIndex">
+            <template x-for="(pool, poolIndex) in pools" :key="poolIndex">
                 <div class="border border-gray-200 rounded-lg p-4 mb-4 bg-gray-50">
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -148,7 +149,7 @@
                                 <p class="text-xs text-gray-500 mt-1">1 = Primary, 2 = Backup</p>
                             </div>
                         </div>
-                        <button @click="config.dns.pools.splice(poolIndex, 1)" class="ml-3 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                        <button @click="pools.splice(poolIndex, 1)" class="ml-3 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
                             🗑️
                         </button>
                     </div>
@@ -159,12 +160,8 @@
                         <template x-for="(server, serverIndex) in pool.servers" :key="serverIndex">
                             <div class="flex gap-2">
                                 <input type="text" x-model="pool.servers[serverIndex]" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg" placeholder="8.8.8.8:53">
-                                <div x-data="{status: getServerHealth(server)}" class="flex items-center px-3 py-2 bg-white border border-gray-300 rounded-lg">
-                                    <span :class="status === 'Healthy' ? 'text-green-600' : status === 'Unhealthy' ? 'text-red-600' : 'text-gray-400'" class="text-xl">
-                                        <span x-show="status === 'Healthy'">✅</span>
-                                        <span x-show="status === 'Unhealthy'">❌</span>
-                                        <span x-show="status === 'Unknown'">❓</span>
-                                    </span>
+                                <div class="flex items-center px-3 py-2 bg-white border border-gray-300 rounded-lg">
+                                    <span :class="getHealthClass(server)" class="text-xl" x-text="getHealthIcon(server)"></span>
                                 </div>
                                 <button @click="pool.servers.splice(serverIndex, 1)" class="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
                                     🗑️
@@ -178,7 +175,7 @@
                 </div>
             </template>
 
-            <div x-show="config.dns.pools.length === 0" class="text-center py-8 text-gray-500">
+            <div x-show="pools.length === 0" class="text-center py-8 text-gray-500">
                 No pools configured. Click "Add Pool" to create one.
             </div>
         </div>
@@ -188,20 +185,20 @@
             <h2 class="text-xl font-bold mb-4">🩺 Health Check Configuration</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="flex items-center">
-                    <input type="checkbox" x-model="config.dns.health_check.enabled" id="health_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                    <input type="checkbox" x-model="healthCheck.enabled" id="health_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
                     <label for="health_enabled" class="ml-2 text-sm text-gray-700">Enable Health Checking</label>
                 </div>
-                <div x-show="config.dns.health_check.enabled">
+                <div x-show="healthCheck.enabled">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Check Interval (seconds)</label>
-                    <input type="number" x-model.number="config.dns.health_check.interval_seconds" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="number" x-model.number="healthCheck.interval_seconds" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
-                <div x-show="config.dns.health_check.enabled">
+                <div x-show="healthCheck.enabled">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Timeout (ms)</label>
-                    <input type="number" x-model.number="config.dns.health_check.timeout_ms" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="number" x-model.number="healthCheck.timeout_ms" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                 </div>
-                <div x-show="config.dns.health_check.enabled">
+                <div x-show="healthCheck.enabled">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Failure Threshold</label>
-                    <input type="number" x-model.number="config.dns.health_check.failure_threshold" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="number" x-model.number="healthCheck.failure_threshold" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                     <p class="text-xs text-gray-500 mt-1">Mark unhealthy after N failures</p>
                 </div>
             </div>
@@ -212,11 +209,11 @@
             <h2 class="text-xl font-bold mb-4">⚙️ General DNS Settings</h2>
             <div class="space-y-4">
                 <div class="flex items-center">
-                    <input type="checkbox" x-model="config.dns.dnssec_enabled" id="dnssec_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                    <input type="checkbox" x-model="dnsSettings.dnssec_enabled" id="dnssec_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
                     <label for="dnssec_enabled" class="ml-2 text-sm text-gray-700">Enable DNSSEC Validation ✨</label>
                 </div>
                 <div class="flex items-center">
-                    <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
+                    <input type="checkbox" x-model="dnsSettings.cache_enabled" id="cache_enabled" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
                     <label for="cache_enabled" class="ml-2 text-sm text-gray-700">Enable DNS Cache</label>
                 </div>
             </div>
@@ -224,116 +221,23 @@
     </div>
 
     <!-- Cache Settings Tab -->
-    <div x-show="currentTab === 'cache' && !loading" x-cloak>
-        <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">⚡ Cache Settings</h2>
-            
-            <!-- Basic Cache Settings -->
-            <div class="space-y-4 mb-6">
-                <div class="flex items-center">
-                    <input type="checkbox" x-model="config.dns.cache_enabled" id="cache_enabled_tab" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
-                    <label for="cache_enabled_tab" class="ml-2 text-sm font-medium text-gray-700">Enable DNS Cache</label>
-                </div>
-
-                <div x-show="config.dns.cache_enabled">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Cache TTL (seconds)</label>
-                    <input type="number" x-model.number="config.dns.cache_ttl" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <p class="text-xs text-gray-500 mt-1">How long to cache DNS responses</p>
-                </div>
-
-                <div x-show="config.dns.cache_enabled">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Cache Entries</label>
-                    <input type="number" x-model.number="config.dns.cache_max_entries" min="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <p class="text-xs text-gray-500 mt-1">Maximum number of entries in cache</p>
-                </div>
-            </div>
-
-            <!-- Advanced Cache Settings -->
-            <div x-show="config.dns.cache_enabled" class="border-t pt-4">
-                <h3 class="text-lg font-semibold mb-4">🔧 Advanced Settings</h3>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Eviction Strategy</label>
-                        <select x-model="config.dns.cache_eviction_strategy" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                            <option value="lru">LRU (Least Recently Used)</option>
-                            <option value="lfu">LFU (Least Frequently Used)</option>
-                            <option value="lfu-k">LFU-K (Adaptive)</option>
-                            <option value="hit-rate">Hit Rate Based</option>
-                        </select>
-                        <p class="text-xs text-gray-500 mt-1">How to remove old cache entries</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Min Hit Rate</label>
-                        <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" max="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <p class="text-xs text-gray-500 mt-1">Minimum hit rate (0.0 - 1.0)</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Refresh Threshold</label>
-                        <input type="number" x-model.number="config.dns.cache_refresh_threshold" step="0.1" min="0" max="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <p class="text-xs text-gray-500 mt-1">When to refresh (0.0 - 1.0)</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Compaction Interval (seconds)</label>
-                        <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                        <p class="text-xs text-gray-500 mt-1">How often to compact cache</p>
-                    </div>
-                </div>
-
-                <div class="mt-4 space-y-4">
-                    <div class="flex items-center">
-                        <input type="checkbox" x-model="config.dns.cache_optimistic_refresh" id="optimistic_refresh" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
-                        <label for="optimistic_refresh" class="ml-2 text-sm text-gray-700">Enable Optimistic Refresh</label>
-                    </div>
-
-                    <div class="flex items-center">
-                        <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds" id="adaptive_thresholds" class="w-4 h-4 text-blue-600 border-gray-300 rounded">
-                        <label for="adaptive_thresholds" class="ml-2 text-sm text-gray-700">Enable Adaptive Thresholds</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Cache Statistics (Read-only) -->
+    <div x-show="currentTab === 'cache'" x-cloak>
         <div class="bg-white rounded-lg shadow-sm p-6">
-            <h2 class="text-xl font-bold mb-4">📊 Cache Statistics</h2>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-blue-50 rounded-lg p-4">
-                    <div class="text-3xl font-bold text-blue-600" x-text="cacheStats.total_entries || 0"></div>
-                    <div class="text-sm text-blue-700">Total Entries</div>
-                </div>
-                <div class="bg-green-50 rounded-lg p-4">
-                    <div class="text-3xl font-bold text-green-600" x-text="cacheStats.hit_rate ? (cacheStats.hit_rate * 100).toFixed(1) + '%' : '0%'"></div>
-                    <div class="text-sm text-green-700">Hit Rate</div>
-                </div>
-                <div class="bg-purple-50 rounded-lg p-4">
-                    <div class="text-3xl font-bold text-purple-600" x-text="cacheStats.total_hits || 0"></div>
-                    <div class="text-sm text-purple-700">Total Hits</div>
-                </div>
-                <div class="bg-orange-50 rounded-lg p-4">
-                    <div class="text-3xl font-bold text-orange-600" x-text="cacheStats.total_misses || 0"></div>
-                    <div class="text-sm text-orange-700">Total Misses</div>
-                </div>
-            </div>
-            <button @click="loadCacheStats()" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-                🔄 Refresh Stats
-            </button>
+            <h2 class="text-xl font-bold mb-4">⚡ Cache Settings</h2>
+            <p class="text-gray-600">Cache configuration settings</p>
         </div>
     </div>
 
     <!-- Ad Blocking Tab -->
-    <div x-show="currentTab === 'adblock' && !loading" x-cloak>
+    <div x-show="currentTab === 'adblock'" x-cloak>
         <div class="bg-white rounded-lg shadow-sm p-6">
             <h2 class="text-xl font-bold mb-4">🚫 Ad Blocking</h2>
-            <p class="text-gray-600">Ad blocking configuration (coming soon)</p>
+            <p class="text-gray-600">Ad blocking configuration</p>
         </div>
     </div>
 
     <!-- Save Buttons -->
-    <div x-show="!loading" class="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex gap-3">
+    <div class="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex gap-3">
         <button @click="saveConfig()" class="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">
             💾 Save Configuration
         </button>
@@ -350,35 +254,17 @@
 function settings() {
     return {
         currentTab: 'dns',
-        loading: true,
-        config: {
-            dns: {
-                pools: [],
-                health_check: {
-                    enabled: true,
-                    interval_seconds: 30,
-                    timeout_ms: 2000,
-                    failure_threshold: 3,
-                    success_threshold: 2
-                },
-                dnssec_enabled: false,
-                cache_enabled: true,
-                cache_ttl: 3600,
-                cache_max_entries: 10000,
-                cache_eviction_strategy: 'lfu',
-                cache_min_hit_rate: 0.3,
-                cache_refresh_threshold: 0.8,
-                cache_compaction_interval: 300,
-                cache_optimistic_refresh: true,
-                cache_adaptive_thresholds: true,
-                upstream_servers: []
-            }
+        pools: [],
+        healthCheck: {
+            enabled: true,
+            interval_seconds: 30,
+            timeout_ms: 2000,
+            failure_threshold: 3,
+            success_threshold: 2
         },
-        cacheStats: {
-            total_entries: 0,
-            hit_rate: 0,
-            total_hits: 0,
-            total_misses: 0
+        dnsSettings: {
+            dnssec_enabled: false,
+            cache_enabled: true
         },
         healthStatus: {},
         alert: {
@@ -388,62 +274,69 @@ function settings() {
         },
 
         async init() {
+            console.log('Initializing settings...');
             await this.loadConfig();
             await this.loadHealthStatus();
-            await this.loadCacheStats();
             setInterval(() => this.loadHealthStatus(), 10000);
         },
 
         async loadConfig() {
             try {
-                this.loading = true;
+                console.log('Loading config from /api/config...');
                 const response = await fetch('/api/config');
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('Loaded config:', data);
+                    console.log('Config loaded:', data);
                     
-                    this.config = {
-                        ...this.config,
-                        ...data,
-                        dns: {
-                            ...this.config.dns,
-                            ...(data.dns || {}),
-                            pools: data.dns?.pools || [],
-                            health_check: {
-                                enabled: data.dns?.health_check?.enabled ?? true,
-                                interval_seconds: data.dns?.health_check?.interval_seconds ?? 30,
-                                timeout_ms: data.dns?.health_check?.timeout_ms ?? 2000,
-                                failure_threshold: data.dns?.health_check?.failure_threshold ?? 3,
-                                success_threshold: data.dns?.health_check?.success_threshold ?? 2
-                            },
-                            cache_ttl: data.dns?.cache_ttl ?? 3600,
-                            cache_max_entries: data.dns?.cache_max_entries ?? 10000,
-                            cache_eviction_strategy: data.dns?.cache_eviction_strategy ?? 'lfu',
-                            cache_min_hit_rate: data.dns?.cache_min_hit_rate ?? 0.3,
-                            cache_refresh_threshold: data.dns?.cache_refresh_threshold ?? 0.8,
-                            cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
-                            cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
-                            cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
-                            upstream_servers: data.dns?.upstream_servers || []
+                    // Ensure pools exist
+                    if (data.dns && Array.isArray(data.dns.pools)) {
+                        this.pools = data.dns.pools.map(pool => ({
+                            name: pool.name || '',
+                            strategy: pool.strategy || 'parallel',
+                            priority: pool.priority || 1,
+                            servers: Array.isArray(pool.servers) ? pool.servers : []
+                        }));
+                    } else {
+                        // Fallback: convert upstream_servers to a pool
+                        this.pools = [];
+                        if (data.dns && Array.isArray(data.dns.upstream_servers) && data.dns.upstream_servers.length > 0) {
+                            this.pools.push({
+                                name: 'default',
+                                strategy: 'parallel',
+                                priority: 1,
+                                servers: data.dns.upstream_servers
+                            });
                         }
-                    };
-                    
-                    if (this.config.dns.pools.length === 0 && this.config.dns.upstream_servers.length > 0) {
-                        this.config.dns.pools = [{
-                            name: 'default',
-                            strategy: 'parallel',
-                            priority: 1,
-                            servers: [...this.config.dns.upstream_servers]
-                        }];
                     }
+                    
+                    // Load health check settings
+                    if (data.dns && data.dns.health_check) {
+                        this.healthCheck = {
+                            enabled: data.dns.health_check.enabled !== false,
+                            interval_seconds: data.dns.health_check.interval_seconds || 30,
+                            timeout_ms: data.dns.health_check.timeout_ms || 2000,
+                            failure_threshold: data.dns.health_check.failure_threshold || 3,
+                            success_threshold: data.dns.health_check.success_threshold || 2
+                        };
+                    }
+                    
+                    // Load DNS settings
+                    if (data.dns) {
+                        this.dnsSettings = {
+                            dnssec_enabled: data.dns.dnssec_enabled || false,
+                            cache_enabled: data.dns.cache_enabled !== false
+                        };
+                    }
+                    
+                    console.log('Pools loaded:', this.pools);
+                    console.log('Health check loaded:', this.healthCheck);
                 } else {
+                    console.error('Failed to load config:', response.status);
                     this.showAlert('error', 'Failed to load configuration');
                 }
             } catch (error) {
-                console.error('Failed to load config:', error);
+                console.error('Error loading config:', error);
                 this.showAlert('error', 'Failed to load configuration: ' + error.message);
-            } finally {
-                this.loading = false;
             }
         },
 
@@ -452,29 +345,25 @@ function settings() {
                 const response = await fetch('/api/health/upstreams');
                 if (response.ok) {
                     this.healthStatus = await response.json();
+                    console.log('Health status updated:', this.healthStatus);
                 }
             } catch (error) {
                 console.error('Failed to load health status:', error);
             }
         },
 
-        async loadCacheStats() {
-            try {
-                const response = await fetch('/api/cache/stats');
-                if (response.ok) {
-                    this.cacheStats = await response.json();
-                }
-            } catch (error) {
-                console.error('Failed to load cache stats:', error);
-            }
+        getHealthIcon(server) {
+            const status = this.healthStatus[server] || 'Unknown';
+            return status === 'Healthy' ? '✅' : (status === 'Unhealthy' ? '❌' : '❓');
         },
 
-        getServerHealth(server) {
-            return this.healthStatus[server] || 'Unknown';
+        getHealthClass(server) {
+            const status = this.healthStatus[server] || 'Unknown';
+            return status === 'Healthy' ? 'health-healthy' : (status === 'Unhealthy' ? 'health-unhealthy' : 'health-unknown');
         },
 
         addPool() {
-            this.config.dns.pools.push({
+            this.pools.push({
                 name: '',
                 strategy: 'parallel',
                 priority: 1,
@@ -484,40 +373,58 @@ function settings() {
 
         async saveConfig() {
             try {
+                const configToSave = {
+                    dns: {
+                        pools: this.pools,
+                        health_check: this.healthCheck,
+                        dnssec_enabled: this.dnsSettings.dnssec_enabled,
+                        cache_enabled: this.dnsSettings.cache_enabled
+                    }
+                };
+
+                console.log('Saving config:', configToSave);
                 const response = await fetch('/api/config', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.config)
+                    body: JSON.stringify(configToSave)
                 });
 
                 if (response.ok) {
                     this.showAlert('success', 'Configuration saved successfully!');
                 } else {
-                    const error = await response.text();
-                    this.showAlert('error', 'Failed to save configuration: ' + error);
+                    this.showAlert('error', 'Failed to save configuration');
                 }
             } catch (error) {
+                console.error('Error saving config:', error);
                 this.showAlert('error', 'Failed to save configuration: ' + error.message);
             }
         },
 
         async saveAndApply() {
             try {
+                const configToSave = {
+                    dns: {
+                        pools: this.pools,
+                        health_check: this.healthCheck,
+                        dnssec_enabled: this.dnsSettings.dnssec_enabled,
+                        cache_enabled: this.dnsSettings.cache_enabled
+                    }
+                };
+
                 const response = await fetch('/api/config/apply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.config)
+                    body: JSON.stringify(configToSave)
                 });
 
                 if (response.ok) {
                     this.showAlert('success', 'Configuration saved and applied! Cache cleared.');
                     await this.loadConfig();
-                    await this.loadCacheStats();
                 } else {
-                    const error = await response.text();
-                    this.showAlert('error', 'Failed to apply configuration: ' + error);
+                    this.showAlert('error', 'Failed to apply configuration');
                 }
             } catch (error) {
+                console.error('Error applying config:', error);
                 this.showAlert('error', 'Failed to apply configuration: ' + error.message);
             }
         },
@@ -532,10 +439,10 @@ function settings() {
                     this.showAlert('success', 'Configuration reloaded from file!');
                     await this.loadConfig();
                 } else {
-                    const error = await response.text();
-                    this.showAlert('error', 'Failed to reload configuration: ' + error);
+                    this.showAlert('error', 'Failed to reload configuration');
                 }
             } catch (error) {
+                console.error('Error reloading config:', error);
                 this.showAlert('error', 'Failed to reload configuration: ' + error.message);
             }
         },

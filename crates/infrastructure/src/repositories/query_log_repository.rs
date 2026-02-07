@@ -22,8 +22,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!("Logging DNS query");
 
         sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&query.domain)
         .bind(query.record_type.as_str())
@@ -32,7 +32,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         .bind(query.response_time_ms.map(|t| t as i64))
         .bind(if query.cache_hit { 1 } else { 0 })
         .bind(if query.cache_refresh { 1 } else { 0 })
-        .bind(query.dnssec_status.as_deref())  // NEW: DNSSEC status
+        .bind(query.dnssec_status.as_deref())
+        .bind(query.upstream_server.as_deref())  // ✅ Which upstream responded
+        .bind(query.response_status.as_deref())  // ✅ NEW: Response status (NOERROR, NXDOMAIN, etc)
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -49,7 +51,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!(limit = limit, "Fetching recent queries");
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status,
                     datetime(created_at) as created_at
              FROM query_log
              ORDER BY created_at DESC
@@ -80,7 +82,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                         .map(|t| t as u64),
                     cache_hit: row.get::<i64, _>("cache_hit") != 0,
                     cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
-                    dnssec_status: row.get::<Option<String>, _>("dnssec_status"), // NEW
+                    dnssec_status: row.get::<Option<String>, _>("dnssec_status"),
+                    upstream_server: row.get::<Option<String>, _>("upstream_server"), // ✅ Which upstream responded
+                    response_status: row.get::<Option<String>, _>("response_status"), // ✅ NEW: Response status
                     timestamp: Some(row.get("created_at")),
                 })
             })
