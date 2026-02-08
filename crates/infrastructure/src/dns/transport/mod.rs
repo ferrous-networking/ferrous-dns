@@ -92,7 +92,7 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
         #[cfg(feature = "dns-over-rustls")]
         DnsProtocol::Tls { addr, hostname } => Ok(Transport::Tls(tls::TlsTransport::new(
             *addr,
-            hostname.clone(),
+            hostname.to_string(),
         ))),
 
         #[cfg(not(feature = "dns-over-rustls"))]
@@ -102,9 +102,9 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
         }
 
         #[cfg(feature = "dns-over-https")]
-        DnsProtocol::Https { url, .. } => {
-            Ok(Transport::Https(https::HttpsTransport::new(url.clone())))
-        }
+        DnsProtocol::Https { url, .. } => Ok(Transport::Https(https::HttpsTransport::new(
+            url.to_string(),
+        ))),
 
         #[cfg(not(feature = "dns-over-https"))]
         DnsProtocol::Https { url, .. } => Err(DomainError::InvalidDomainName(format!(

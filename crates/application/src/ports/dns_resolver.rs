@@ -2,14 +2,15 @@ use async_trait::async_trait;
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use std::net::IpAddr;
 
-/// Result of a DNS resolution with metadata
+/// Result of a DNS resolution with metadata.
+/// Uses `&'static str` for dnssec_status (only 5 possible values).
 #[derive(Debug, Clone)]
 pub struct DnsResolution {
     pub addresses: Vec<IpAddr>,
     pub cache_hit: bool,
-    pub dnssec_status: Option<String>, // "Secure", "Insecure", "Bogus", "Indeterminate"
-    pub cname: Option<String>,         // Canonical name (CNAME record)
-    pub upstream_server: Option<String>, // Which upstream server responded (e.g., "8.8.8.8:53")
+    pub dnssec_status: Option<&'static str>,
+    pub cname: Option<String>,
+    pub upstream_server: Option<String>,
 }
 
 impl DnsResolution {
@@ -26,7 +27,7 @@ impl DnsResolution {
     pub fn with_dnssec(
         addresses: Vec<IpAddr>,
         cache_hit: bool,
-        dnssec_status: Option<String>,
+        dnssec_status: Option<&'static str>,
     ) -> Self {
         Self {
             addresses,
@@ -40,7 +41,7 @@ impl DnsResolution {
     pub fn with_cname(
         addresses: Vec<IpAddr>,
         cache_hit: bool,
-        dnssec_status: Option<String>,
+        dnssec_status: Option<&'static str>,
         cname: Option<String>,
     ) -> Self {
         Self {

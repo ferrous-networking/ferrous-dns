@@ -1,17 +1,18 @@
 use super::RecordType;
+use std::sync::Arc;
 
-/// Represents a DNS query (domain + record type)
-/// This is used for querying upstream DNS servers
+/// DNS query (domain + record type).
+/// Uses `Arc<str>` for zero-cost cloning across resolver → cache → prefetch layers.
 #[derive(Debug, Clone)]
 pub struct DnsQuery {
-    pub domain: String,
+    pub domain: Arc<str>,
     pub record_type: RecordType,
 }
 
 impl DnsQuery {
-    pub fn new(domain: String, record_type: RecordType) -> Self {
+    pub fn new(domain: impl Into<Arc<str>>, record_type: RecordType) -> Self {
         Self {
-            domain,
+            domain: domain.into(),
             record_type,
         }
     }

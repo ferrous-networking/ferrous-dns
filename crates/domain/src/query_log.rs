@@ -1,19 +1,20 @@
 use crate::dns_record::RecordType;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct QueryLog {
     pub id: Option<i64>,
-    pub domain: String,
+    pub domain: Arc<str>,
     pub record_type: RecordType,
     pub client_ip: IpAddr,
     pub blocked: bool,
     pub response_time_ms: Option<u64>,
     pub cache_hit: bool,
-    pub cache_refresh: bool,             // NEW: Optimistic refresh
-    pub dnssec_status: Option<String>,   // NEW: "Secure", "Insecure", "Bogus", "Indeterminate"
-    pub upstream_server: Option<String>, // NEW: Which upstream server responded (e.g., "8.8.8.8:53")
-    pub response_status: Option<String>, // NEW: "NOERROR", "NXDOMAIN", "SERVFAIL", "TIMEOUT", "REFUSED"
+    pub cache_refresh: bool,
+    pub dnssec_status: Option<&'static str>,
+    pub upstream_server: Option<String>,
+    pub response_status: Option<&'static str>,
     pub timestamp: Option<String>,
 }
 
@@ -29,7 +30,6 @@ pub struct QueryStats {
     pub avg_upstream_time_ms: f64,
 }
 
-// NEW: Cache-specific statistics
 #[derive(Debug, Clone)]
 pub struct CacheStats {
     pub total_entries: usize,

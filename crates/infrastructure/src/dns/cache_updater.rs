@@ -176,7 +176,7 @@ impl CacheUpdater {
             "Refreshing cache entry (will revalidate DNSSEC if enabled)"
         );
 
-        let query = DnsQuery::new(domain.to_string(), record_type.clone());
+        let query = DnsQuery::new(domain, record_type.clone());
 
         // resolver.resolve() will validate DNSSEC if dnssec_enabled = true
         match resolver.resolve(&query).await {
@@ -189,8 +189,7 @@ impl CacheUpdater {
                 // Insert with DNSSEC status from fresh validation!
                 let dnssec_status = resolution
                     .dnssec_status
-                    .as_ref()
-                    .and_then(|s| super::cache::DnssecStatus::from_string(s));
+                    .map(super::cache::DnssecStatus::from_str);
 
                 cache.insert(
                     domain,
@@ -205,16 +204,16 @@ impl CacheUpdater {
                     // Use localhost as client IP to indicate it's a background refresh
                     let log_entry = QueryLog {
                         id: None,
-                        domain: domain.to_string(),
+                        domain: Arc::from(domain),
                         record_type: record_type.clone(),
-                        client_ip: IpAddr::from([127, 0, 0, 1]), // localhost = background refresh
+                        client_ip: IpAddr::from([127, 0, 0, 1]),
                         blocked: false,
                         response_time_ms: Some(response_time),
-                        cache_hit: false,    // It's a refresh, not a hit
-                        cache_refresh: true, // Mark as cache refresh!
-                        dnssec_status: resolution.dnssec_status.as_ref().map(|s| s.to_string()),
-                        upstream_server: resolution.upstream_server.clone(), // ✅ Which upstream handled the refresh
-                        response_status: Some("NOERROR".to_string()), // ✅ Refresh is always successful
+                        cache_hit: false,
+                        cache_refresh: true,
+                        dnssec_status: resolution.dnssec_status,
+                        upstream_server: resolution.upstream_server.clone(),
+                        response_status: Some("NOERROR"),
                         timestamp: None,
                     };
 

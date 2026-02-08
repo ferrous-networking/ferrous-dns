@@ -1,6 +1,5 @@
 use super::query::query_server;
-use super::strategy::{LoadBalancingStrategy, UpstreamResult};
-use async_trait::async_trait;
+use super::strategy::UpstreamResult;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -14,19 +13,10 @@ impl ParallelStrategy {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl Default for ParallelStrategy {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl LoadBalancingStrategy for ParallelStrategy {
-    async fn query(
+    pub async fn query_refs(
         &self,
-        servers: &[DnsProtocol],
+        servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
@@ -36,13 +26,12 @@ impl LoadBalancingStrategy for ParallelStrategy {
                 "No upstream servers available".into(),
             ));
         }
-
         debug!(strategy = "parallel", servers = servers.len(), domain = %domain, "Racing all upstreams");
 
         let mut abort_handles = Vec::with_capacity(servers.len());
         let mut futs = FuturesUnordered::new();
 
-        for protocol in servers {
+        for &protocol in servers {
             let protocol = protocol.clone();
             let domain = domain.to_string();
             let record_type = record_type.clone();
@@ -58,9 +47,7 @@ impl LoadBalancingStrategy for ParallelStrategy {
                 match join_result {
                     Ok(Ok(r)) => {
                         debug!(server = %r.server_addr, latency_ms = r.latency_ms, "Fastest response");
-                        return Ok(UpstreamResult {
-                            response: r.response, server: r.server_addr, latency_ms: r.latency_ms,
-                        });
+                        return Ok(UpstreamResult { response: r.response, server: r.server_addr, latency_ms: r.latency_ms });
                     }
                     Ok(Err(e)) => { debug!(error = %e, "Server failed"); }
                     Err(e) => { warn!(error = %e, "Task panicked"); }
@@ -81,8 +68,10 @@ impl LoadBalancingStrategy for ParallelStrategy {
             ))),
         }
     }
+}
 
-    fn name(&self) -> &'static str {
-        "parallel"
+impl Default for ParallelStrategy {
+    fn default() -> Self {
+        Self::new()
     }
 }

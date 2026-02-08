@@ -29,6 +29,7 @@ dashmap.workspace = true
 futures.workspace = true
 rustc-hash.workspace = true
 compact_str.workspace = true
+smallvec.workspace = true
 
 # Transport layer
 rustls = "0.23"

@@ -1,6 +1,5 @@
 use super::query::query_server;
-use super::strategy::{LoadBalancingStrategy, UpstreamResult};
-use async_trait::async_trait;
+use super::strategy::UpstreamResult;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use tracing::{debug, warn};
 
@@ -10,19 +9,10 @@ impl FailoverStrategy {
     pub fn new() -> Self {
         Self
     }
-}
 
-impl Default for FailoverStrategy {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl LoadBalancingStrategy for FailoverStrategy {
-    async fn query(
+    pub async fn query_refs(
         &self,
-        servers: &[DnsProtocol],
+        servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
@@ -32,7 +22,6 @@ impl LoadBalancingStrategy for FailoverStrategy {
                 "No upstream servers available".into(),
             ));
         }
-
         debug!(strategy = "failover", servers = servers.len(), domain = %domain, "Trying sequentially");
 
         for (index, protocol) in servers.iter().enumerate() {
@@ -50,13 +39,14 @@ impl LoadBalancingStrategy for FailoverStrategy {
                 }
             }
         }
-
         Err(DomainError::InvalidDomainName(
             "All servers failed in failover strategy".into(),
         ))
     }
+}
 
-    fn name(&self) -> &'static str {
-        "failover"
+impl Default for FailoverStrategy {
+    fn default() -> Self {
+        Self::new()
     }
 }

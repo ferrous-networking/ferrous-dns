@@ -69,25 +69,25 @@ impl HickoryDnsResolver {
         self
     }
 
-    async fn validate_dnssec(&self, _domain: &str) -> String {
+    fn validate_dnssec(&self, _domain: &str) -> &'static str {
         if self.dnssec_enabled {
-            "Secure".to_string()
+            "Secure"
         } else {
-            "Unknown".to_string()
+            "Unknown"
         }
     }
 
     async fn resolve_via_pools(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        let result = self
+        let mut result = self
             .pool_manager
             .query(&query.domain, &query.record_type, self.query_timeout_ms)
             .await?;
 
-        let addresses = result.response.addresses.clone();
-        let cname = result.response.cname.clone();
+        let addresses = std::mem::take(&mut result.response.addresses);
+        let cname = result.response.cname.take();
 
-        let dnssec_status = if self.dnssec_enabled {
-            Some(self.validate_dnssec(&query.domain).await)
+        let dnssec_status: Option<&'static str> = if self.dnssec_enabled {
+            Some(self.validate_dnssec(&query.domain))
         } else {
             None
         };
@@ -107,7 +107,6 @@ impl HickoryDnsResolver {
 #[async_trait]
 impl DnsResolver for HickoryDnsResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        // Check cache
         if let Some(cache) = &self.cache {
             if let Some((cached_data, cached_dnssec_status)) =
                 cache.get(&query.domain, &query.record_type)
@@ -120,16 +119,14 @@ impl DnsResolver for HickoryDnsResolver {
                 }
                 if let Some(arc_addrs) = cached_data.as_ip_addresses() {
                     let addresses = (**arc_addrs).clone();
-                    let dnssec_str = cached_dnssec_status.map(|s| s.as_str().to_string());
+                    let dnssec_str: Option<&'static str> = cached_dnssec_status.map(|s| s.as_str());
                     return Ok(DnsResolution::with_cname(addresses, true, dnssec_str, None));
                 }
             }
         }
 
-        // Resolve upstream
         let mut resolution = self.resolve_via_pools(query).await?;
 
-        // Cache result
         if let Some(cache) = &self.cache {
             let cached_data = if !resolution.addresses.is_empty() {
                 Some(super::cache::CachedData::IpAddresses(Arc::new(
@@ -146,8 +143,7 @@ impl DnsResolver for HickoryDnsResolver {
             if let Some(data) = cached_data {
                 let dnssec_status = resolution
                     .dnssec_status
-                    .as_ref()
-                    .and_then(|s| super::cache::DnssecStatus::from_string(s));
+                    .map(super::cache::DnssecStatus::from_str);
                 let ttl = if data.is_negative() {
                     300
                 } else {
@@ -160,7 +156,6 @@ impl DnsResolver for HickoryDnsResolver {
 
         resolution.cache_hit = false;
 
-        // Predictive prefetch
         if let Some(ref predictor) = self.prefetch_predictor {
             let predictions = predictor.on_query(&query.domain);
             if !predictions.is_empty() {

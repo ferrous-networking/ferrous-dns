@@ -27,14 +27,14 @@ pub async fn get_queries(State(state): State<AppState>) -> Json<Vec<QueryRespons
                             if query_time_utc >= twenty_four_hours_ago {
                                 return Some(QueryResponse {
                                     timestamp: q.timestamp.unwrap_or_default(),
-                                    domain: q.domain,
+                                    domain: q.domain.to_string(),
                                     client: q.client_ip.to_string(),
                                     record_type: q.record_type.as_str().to_string(),
                                     blocked: q.blocked,
                                     response_time_ms: q.response_time_ms,
                                     cache_hit: q.cache_hit,
                                     cache_refresh: q.cache_refresh,
-                                    dnssec_status: q.dnssec_status,
+                                    dnssec_status: q.dnssec_status.map(|s| s.to_string()),
                                     upstream_server: q.upstream_server, // ✅ Include upstream server
                                 });
                             }

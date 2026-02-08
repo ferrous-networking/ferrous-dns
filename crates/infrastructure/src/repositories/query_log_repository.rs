@@ -1,49 +1,195 @@
+//! Query log repository with batch INSERT optimization.
+//!
+//! Under high load, individual INSERT per query causes SQLite lock contention.
+//! This uses a bounded channel + background flush for batched multi-row INSERTs.
+//!   hot path: log_query() → channel.try_send() → ~50ns
+//!   background: flush task → batch INSERT → single transaction
+
 use async_trait::async_trait;
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
-use std::time::SystemTime;
-use tracing::{debug, error, instrument};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use tokio::sync::mpsc;
+use tracing::{debug, error, info, instrument, warn};
+
+const CHANNEL_CAPACITY: usize = 10_000;
+const MAX_BATCH_SIZE: usize = 500;
+const FLUSH_INTERVAL_MS: u64 = 100;
+
+/// Flattened entry for the channel (owned data, Send-safe).
+struct QueryLogEntry {
+    domain: String,
+    record_type: String,
+    client_ip: String,
+    blocked: bool,
+    response_time_ms: Option<i64>,
+    cache_hit: bool,
+    cache_refresh: bool,
+    dnssec_status: Option<&'static str>,
+    upstream_server: Option<String>,
+    response_status: Option<&'static str>,
+}
+
+impl QueryLogEntry {
+    fn from_query_log(q: &QueryLog) -> Self {
+        Self {
+            domain: q.domain.to_string(),
+            record_type: q.record_type.as_str().to_string(),
+            client_ip: q.client_ip.to_string(),
+            blocked: q.blocked,
+            response_time_ms: q.response_time_ms.map(|t| t as i64),
+            cache_hit: q.cache_hit,
+            cache_refresh: q.cache_refresh,
+            dnssec_status: q.dnssec_status,
+            upstream_server: q.upstream_server.clone(),
+            response_status: q.response_status,
+        }
+    }
+}
+
+fn to_static_dnssec(s: &str) -> Option<&'static str> {
+    match s {
+        "Secure" => Some("Secure"),
+        "Insecure" => Some("Insecure"),
+        "Bogus" => Some("Bogus"),
+        "Indeterminate" => Some("Indeterminate"),
+        "Unknown" => Some("Unknown"),
+        _ => None,
+    }
+}
+
+fn to_static_response_status(s: &str) -> Option<&'static str> {
+    match s {
+        "NOERROR" => Some("NOERROR"),
+        "NXDOMAIN" => Some("NXDOMAIN"),
+        "SERVFAIL" => Some("SERVFAIL"),
+        "REFUSED" => Some("REFUSED"),
+        "TIMEOUT" => Some("TIMEOUT"),
+        "BLOCKED" => Some("BLOCKED"),
+        _ => None,
+    }
+}
 
 pub struct SqliteQueryLogRepository {
     pool: SqlitePool,
+    sender: mpsc::Sender<QueryLogEntry>,
 }
 
 impl SqliteQueryLogRepository {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let (sender, receiver) = mpsc::channel(CHANNEL_CAPACITY);
+
+        let flush_pool = pool.clone();
+        tokio::spawn(async move {
+            Self::flush_loop(flush_pool, receiver).await;
+        });
+
+        info!(
+            channel_capacity = CHANNEL_CAPACITY,
+            batch_size = MAX_BATCH_SIZE,
+            flush_interval_ms = FLUSH_INTERVAL_MS,
+            "Query log batching enabled"
+        );
+
+        Self { pool, sender }
+    }
+
+    async fn flush_loop(pool: SqlitePool, mut receiver: mpsc::Receiver<QueryLogEntry>) {
+        let mut batch: Vec<QueryLogEntry> = Vec::with_capacity(MAX_BATCH_SIZE);
+        let mut flush_interval = tokio::time::interval(Duration::from_millis(FLUSH_INTERVAL_MS));
+
+        loop {
+            tokio::select! {
+                maybe_entry = receiver.recv() => {
+                    match maybe_entry {
+                        Some(entry) => {
+                            batch.push(entry);
+                            while batch.len() < MAX_BATCH_SIZE {
+                                match receiver.try_recv() {
+                                    Ok(e) => batch.push(e),
+                                    Err(_) => break,
+                                }
+                            }
+                            if batch.len() >= MAX_BATCH_SIZE {
+                                Self::flush_batch(&pool, &mut batch).await;
+                            }
+                        }
+                        None => {
+                            if !batch.is_empty() { Self::flush_batch(&pool, &mut batch).await; }
+                            info!("Query log flush task shutting down");
+                            return;
+                        }
+                    }
+                }
+                _ = flush_interval.tick() => {
+                    if !batch.is_empty() { Self::flush_batch(&pool, &mut batch).await; }
+                }
+            }
+        }
+    }
+
+    async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
+        let count = batch.len();
+        if count == 0 {
+            return;
+        }
+
+        let mut sql = String::from(
+            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status) VALUES "
+        );
+
+        for (i, _) in batch.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            sql.push_str("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        }
+
+        let mut query = sqlx::query(&sql);
+        for entry in batch.iter() {
+            query = query
+                .bind(&entry.domain)
+                .bind(&entry.record_type)
+                .bind(&entry.client_ip)
+                .bind(if entry.blocked { 1i64 } else { 0 })
+                .bind(entry.response_time_ms)
+                .bind(if entry.cache_hit { 1i64 } else { 0 })
+                .bind(if entry.cache_refresh { 1i64 } else { 0 })
+                .bind(entry.dnssec_status)
+                .bind(entry.upstream_server.as_deref())
+                .bind(entry.response_status);
+        }
+
+        match query.execute(pool).await {
+            Ok(_) => {
+                debug!(count, "Query log batch flushed");
+            }
+            Err(e) => {
+                error!(error = %e, count, "Failed to flush query log batch");
+            }
+        }
+
+        batch.clear();
     }
 }
 
 #[async_trait]
 impl QueryLogRepository for SqliteQueryLogRepository {
-    #[instrument(skip(self, query), fields(domain = %query.domain, record_type = %query.record_type.as_str()))]
     async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError> {
-        debug!("Logging DNS query");
-
-        sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&query.domain)
-        .bind(query.record_type.as_str())
-        .bind(query.client_ip.to_string())
-        .bind(if query.blocked { 1 } else { 0 })
-        .bind(query.response_time_ms.map(|t| t as i64))
-        .bind(if query.cache_hit { 1 } else { 0 })
-        .bind(if query.cache_refresh { 1 } else { 0 })
-        .bind(query.dnssec_status.as_deref())
-        .bind(query.upstream_server.as_deref())  // ✅ Which upstream responded
-        .bind(query.response_status.as_deref())  // ✅ NEW: Response status (NOERROR, NXDOMAIN, etc)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to log query");
-            DomainError::InvalidDomainName(format!("Database error: {}", e))
-        })?;
-
-        debug!("Query logged successfully");
-        Ok(())
+        let entry = QueryLogEntry::from_query_log(query);
+        match self.sender.try_send(entry) {
+            Ok(()) => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("Query log channel full, dropping entry");
+                Ok(())
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                error!("Query log channel closed");
+                Ok(())
+            }
+        }
     }
 
     #[instrument(skip(self))]
@@ -53,9 +199,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let rows = sqlx::query(
             "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status,
                     datetime(created_at) as created_at
-             FROM query_log
-             ORDER BY created_at DESC
-             LIMIT ?",
+             FROM query_log ORDER BY created_at DESC LIMIT ?",
         )
         .bind(limit as i64)
         .fetch_all(&self.pool)
@@ -70,10 +214,18 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             .filter_map(|row| {
                 let client_ip_str: String = row.get("client_ip");
                 let record_type_str: String = row.get("record_type");
+                let domain_str: String = row.get("domain");
+
+                let dnssec_status: Option<&'static str> = row
+                    .get::<Option<String>, _>("dnssec_status")
+                    .and_then(|s| to_static_dnssec(&s));
+                let response_status: Option<&'static str> = row
+                    .get::<Option<String>, _>("response_status")
+                    .and_then(|s| to_static_response_status(&s));
 
                 Some(QueryLog {
                     id: Some(row.get("id")),
-                    domain: row.get("domain"),
+                    domain: Arc::from(domain_str.as_str()),
                     record_type: record_type_str.parse().ok()?,
                     client_ip: client_ip_str.parse().ok()?,
                     blocked: row.get::<i64, _>("blocked") != 0,
@@ -82,9 +234,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                         .map(|t| t as u64),
                     cache_hit: row.get::<i64, _>("cache_hit") != 0,
                     cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
-                    dnssec_status: row.get::<Option<String>, _>("dnssec_status"),
-                    upstream_server: row.get::<Option<String>, _>("upstream_server"), // ✅ Which upstream responded
-                    response_status: row.get::<Option<String>, _>("response_status"), // ✅ NEW: Response status
+                    dnssec_status,
+                    upstream_server: row.get::<Option<String>, _>("upstream_server"),
+                    response_status,
                     timestamp: Some(row.get("created_at")),
                 })
             })
@@ -107,8 +259,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 AVG(response_time_ms) as avg_time,
                 AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
                 AVG(CASE WHEN cache_hit = 0 AND blocked = 0 THEN response_time_ms END) as avg_upstream_time
-             FROM query_log
-             WHERE response_time_ms IS NOT NULL",
+             FROM query_log WHERE response_time_ms IS NOT NULL",
         )
         .fetch_one(&self.pool)
         .await
@@ -143,12 +294,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             queries_blocked = stats.queries_blocked,
             unique_clients = stats.unique_clients,
             cache_hit_rate = stats.cache_hit_rate,
-            avg_query_time_ms = stats.avg_query_time_ms,
-            avg_cache_time_ms = stats.avg_cache_time_ms,
-            avg_upstream_time_ms = stats.avg_upstream_time_ms,
             "Statistics fetched successfully"
         );
-
         Ok(stats)
     }
 }

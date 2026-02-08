@@ -1,6 +1,5 @@
 use super::query::query_server;
-use super::strategy::{LoadBalancingStrategy, UpstreamResult};
-use async_trait::async_trait;
+use super::strategy::UpstreamResult;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::{debug, warn};
@@ -16,22 +15,9 @@ impl BalancedStrategy {
         }
     }
 
-    fn next_index(&self, server_count: usize) -> usize {
-        self.counter.fetch_add(1, Ordering::Relaxed) % server_count
-    }
-}
-
-impl Default for BalancedStrategy {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl LoadBalancingStrategy for BalancedStrategy {
-    async fn query(
+    pub async fn query_refs(
         &self,
-        servers: &[DnsProtocol],
+        servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
@@ -41,15 +27,12 @@ impl LoadBalancingStrategy for BalancedStrategy {
                 "No upstream servers available".into(),
             ));
         }
-
-        let start_index = self.next_index(servers.len());
+        let start_index = self.counter.fetch_add(1, Ordering::Relaxed) % servers.len();
         debug!(strategy = "balanced", servers = servers.len(), start_index, domain = %domain, "Round-robin");
 
         for i in 0..servers.len() {
             let index = (start_index + i) % servers.len();
-            let protocol = &servers[index];
-
-            match query_server(protocol, domain, record_type, timeout_ms).await {
+            match query_server(servers[index], domain, record_type, timeout_ms).await {
                 Ok(r) => {
                     debug!(server = %r.server_addr, latency_ms = r.latency_ms, "Server responded");
                     return Ok(UpstreamResult {
@@ -59,17 +42,18 @@ impl LoadBalancingStrategy for BalancedStrategy {
                     });
                 }
                 Err(e) => {
-                    warn!(protocol = %protocol, error = %e, "Server failed, trying next");
+                    warn!(protocol = %servers[index], error = %e, "Server failed, trying next");
                 }
             }
         }
-
         Err(DomainError::InvalidDomainName(
             "All servers failed in balanced strategy".into(),
         ))
     }
+}
 
-    fn name(&self) -> &'static str {
-        "balanced"
+impl Default for BalancedStrategy {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -2,11 +2,12 @@ use super::balanced::BalancedStrategy;
 use super::failover::FailoverStrategy;
 use super::health::HealthChecker;
 use super::parallel::ParallelStrategy;
-use super::strategy::{LoadBalancingStrategy, UpstreamResult};
+use super::strategy::{Strategy, UpstreamResult};
 use crate::dns::forwarding::ResponseParser;
 use ferrous_dns_domain::{
     Config, DnsProtocol, DomainError, RecordType, UpstreamPool, UpstreamStrategy,
 };
+use smallvec::SmallVec;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, warn};
@@ -18,7 +19,7 @@ pub struct PoolManager {
 
 struct PoolWithStrategy {
     config: UpstreamPool,
-    strategy: Box<dyn LoadBalancingStrategy>,
+    strategy: Strategy,
     server_protocols: Vec<DnsProtocol>,
 }
 
@@ -35,10 +36,10 @@ impl PoolManager {
 
         let mut pools_with_strategy = Vec::new();
         for pool in pools {
-            let strategy: Box<dyn LoadBalancingStrategy> = match pool.strategy {
-                UpstreamStrategy::Parallel => Box::new(ParallelStrategy::new()),
-                UpstreamStrategy::Balanced => Box::new(BalancedStrategy::new()),
-                UpstreamStrategy::Failover => Box::new(FailoverStrategy::new()),
+            let strategy = match pool.strategy {
+                UpstreamStrategy::Parallel => Strategy::Parallel(ParallelStrategy::new()),
+                UpstreamStrategy::Balanced => Strategy::Balanced(BalancedStrategy::new()),
+                UpstreamStrategy::Failover => Strategy::Failover(FailoverStrategy::new()),
             };
 
             let server_protocols: Result<Vec<DnsProtocol>, _> = pool
@@ -57,8 +58,6 @@ impl PoolManager {
                 server_protocols: server_protocols?,
             });
         }
-
-        // Pre-sort by priority so query() iterates directly
         pools_with_strategy.sort_by_key(|p| p.config.priority);
 
         Ok(Self {
@@ -83,35 +82,29 @@ impl PoolManager {
         );
 
         for pool in &self.pools {
-            let server_addrs: Vec<SocketAddr> = pool
-                .server_protocols
-                .iter()
-                .filter_map(|p| p.socket_addr())
-                .collect();
+            // SmallVec of refs — stack-allocated for ≤8 servers, zero DnsProtocol cloning
+            let healthy_refs: SmallVec<[&DnsProtocol; 8]> =
+                if let Some(ref checker) = self.health_checker {
+                    pool.server_protocols
+                        .iter()
+                        .filter(|p| {
+                            p.socket_addr()
+                                .map(|a| checker.is_healthy(&a))
+                                .unwrap_or(true)
+                        })
+                        .collect()
+                } else {
+                    pool.server_protocols.iter().collect()
+                };
 
-            let healthy_servers = if let Some(ref checker) = self.health_checker {
-                let healthy_addrs = checker.get_healthy_servers(&server_addrs);
-                pool.server_protocols
-                    .iter()
-                    .filter(|p| {
-                        p.socket_addr()
-                            .map(|a| healthy_addrs.contains(&a))
-                            .unwrap_or(true)
-                    })
-                    .cloned()
-                    .collect()
-            } else {
-                pool.server_protocols.clone()
-            };
-
-            if healthy_servers.is_empty() {
+            if healthy_refs.is_empty() {
                 debug!(pool = %pool.config.name, "All unhealthy, skipping");
                 continue;
             }
 
             match pool
                 .strategy
-                .query(&healthy_servers, domain, record_type, timeout_ms)
+                .query_refs(&healthy_refs, domain, record_type, timeout_ms)
                 .await
             {
                 Ok(result) => {
@@ -129,7 +122,6 @@ impl PoolManager {
                 }
             }
         }
-
         Err(DomainError::InvalidDomainName("All pools exhausted".into()))
     }
 

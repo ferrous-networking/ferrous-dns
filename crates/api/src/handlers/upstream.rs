@@ -2,7 +2,6 @@ use axum::{extract::State, Json};
 use ferrous_dns_infrastructure::dns::{HealthChecker, PoolManager};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 pub struct UpstreamState {
