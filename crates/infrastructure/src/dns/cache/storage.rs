@@ -12,7 +12,7 @@ use std::hash::Hash;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tracing::{debug, info};
 
 // --- Bloom filter (zero-allocation, double-hashing) ---
@@ -39,25 +39,73 @@ impl AtomicBloom {
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
         let (h1, h2) = Self::double_hash(key);
-        for i in 0..self.num_hashes {
-            let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
-            let word_idx = bit_idx / 64;
-            let bit_pos = bit_idx % 64;
-            if (self.bits[word_idx].load(AtomicOrdering::Relaxed) & (1u64 << bit_pos)) == 0 {
-                return false;
+        let num_hashes = self.num_hashes;
+
+        // Most common case: num_hashes = 5 (for 1% false positive rate)
+        // Unroll the loop and use bitwise AND to eliminate branches
+        if num_hashes == 5 {
+            // Unrolled loop for 5 hashes (most common case)
+            let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
+            let check0 = self.bits[idx0 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx0 % 64));
+
+            let idx1 = Self::nth_hash(h1, h2, 1, self.num_bits);
+            let check1 = self.bits[idx1 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx1 % 64));
+
+            let idx2 = Self::nth_hash(h1, h2, 2, self.num_bits);
+            let check2 = self.bits[idx2 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx2 % 64));
+
+            let idx3 = Self::nth_hash(h1, h2, 3, self.num_bits);
+            let check3 = self.bits[idx3 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx3 % 64));
+
+            let idx4 = Self::nth_hash(h1, h2, 4, self.num_bits);
+            let check4 = self.bits[idx4 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx4 % 64));
+
+            // Bitwise AND all checks (no branches!)
+            // If ANY bit is 0, the result is 0
+            (check0 & check1 & check2 & check3 & check4) != 0
+        } else {
+            // Fallback to loop for other num_hashes values (rare)
+            for i in 0..num_hashes {
+                let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
+                let word_idx = bit_idx / 64;
+                let bit_pos = bit_idx % 64;
+                if (self.bits[word_idx].load(AtomicOrdering::Relaxed) & (1u64 << bit_pos)) == 0 {
+                    return false;
+                }
             }
+            true
         }
-        true
     }
 
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
         let (h1, h2) = Self::double_hash(key);
-        for i in 0..self.num_hashes {
-            let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
-            let word_idx = bit_idx / 64;
-            let bit_pos = bit_idx % 64;
-            self.bits[word_idx].fetch_or(1u64 << bit_pos, AtomicOrdering::Relaxed);
+        let num_hashes = self.num_hashes;
+
+        if num_hashes == 5 {
+            // Unrolled loop for 5 hashes (most common case)
+            let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
+            self.bits[idx0 / 64].fetch_or(1u64 << (idx0 % 64), AtomicOrdering::Relaxed);
+
+            let idx1 = Self::nth_hash(h1, h2, 1, self.num_bits);
+            self.bits[idx1 / 64].fetch_or(1u64 << (idx1 % 64), AtomicOrdering::Relaxed);
+
+            let idx2 = Self::nth_hash(h1, h2, 2, self.num_bits);
+            self.bits[idx2 / 64].fetch_or(1u64 << (idx2 % 64), AtomicOrdering::Relaxed);
+
+            let idx3 = Self::nth_hash(h1, h2, 3, self.num_bits);
+            self.bits[idx3 / 64].fetch_or(1u64 << (idx3 % 64), AtomicOrdering::Relaxed);
+
+            let idx4 = Self::nth_hash(h1, h2, 4, self.num_bits);
+            self.bits[idx4 / 64].fetch_or(1u64 << (idx4 % 64), AtomicOrdering::Relaxed);
+        } else {
+            // Fallback to loop for other num_hashes values (rare)
+            for i in 0..num_hashes {
+                let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
+                let word_idx = bit_idx / 64;
+                let bit_pos = bit_idx % 64;
+                self.bits[word_idx].fetch_or(1u64 << bit_pos, AtomicOrdering::Relaxed);
+            }
         }
     }
 
@@ -100,7 +148,7 @@ impl AtomicBloom {
 
 thread_local! {
     static L1_CACHE: RefCell<LruCache<(CompactString, RecordType), Arc<Vec<IpAddr>>>> =
-        RefCell::new(LruCache::new(NonZeroUsize::new(32).unwrap()));
+        RefCell::new(LruCache::new(NonZeroUsize::new(128).unwrap()));
 }
 
 // --- DNS Cache ---
@@ -109,7 +157,7 @@ pub struct DnsCache {
     cache: Arc<DashMap<CacheKey, CachedRecord, FxBuildHasher>>,
     max_entries: usize,
     eviction_strategy: EvictionStrategy,
-    min_threshold: Arc<RwLock<f64>>,
+    min_threshold_bits: AtomicU64,
     refresh_threshold: f64,
     #[allow(dead_code)]
     lfuk_history_size: usize,
@@ -149,7 +197,7 @@ impl DnsCache {
             cache: Arc::new(cache),
             max_entries,
             eviction_strategy,
-            min_threshold: Arc::new(RwLock::new(min_threshold)),
+            min_threshold_bits: AtomicU64::new(min_threshold.to_bits()),
             refresh_threshold,
             lfuk_history_size,
             batch_eviction_percentage,
@@ -159,6 +207,20 @@ impl DnsCache {
             use_probabilistic_eviction: true,
             bloom: Arc::new(bloom),
         }
+    }
+
+    /// Get the minimum threshold value (lock-free, ~2ns)
+    #[inline]
+    fn get_threshold(&self) -> f64 {
+        let bits = self.min_threshold_bits.load(AtomicOrdering::Relaxed);
+        f64::from_bits(bits)
+    }
+
+    /// Set the minimum threshold value (lock-free, ~2ns)
+    #[inline]
+    fn set_threshold(&self, value: f64) {
+        self.min_threshold_bits
+            .store(value.to_bits(), AtomicOrdering::Relaxed);
     }
 
     pub fn len(&self) -> usize {
@@ -308,47 +370,91 @@ impl DnsCache {
             ((self.max_entries as f64 * self.batch_eviction_percentage) as usize).max(1);
         let candidates = self.collect_eviction_candidates(evict_count);
         let mut evicted = 0;
-        let min_threshold = *self.min_threshold.read().unwrap();
-        for entry in candidates.into_iter().take(evict_count) {
+        let min_threshold = self.get_threshold();
+
+        for entry in candidates.into_iter() {
+            // Early exit: stop when we've evicted enough
+            if evicted >= evict_count {
+                break;
+            }
+
             if entry.score < min_threshold {
                 if self.cache.remove(&entry.key).is_some() {
                     evicted += 1;
                 }
             }
         }
+
         if evicted > 0 {
             self.metrics
                 .evictions
-                .fetch_add(evicted, AtomicOrdering::Relaxed);
+                .fetch_add(evicted as u64, AtomicOrdering::Relaxed);
             self.metrics
                 .batch_evictions
                 .fetch_add(1, AtomicOrdering::Relaxed);
             if self.adaptive_thresholds {
-                self.adjust_thresholds(evicted, evict_count);
+                self.adjust_thresholds(evicted as u64, evict_count);
             }
         }
     }
 
     fn collect_eviction_candidates(&self, target_count: usize) -> Vec<EvictionEntry> {
-        let sample_size = (target_count * 3).min(256).max(16);
+        let cache_pressure = self.cache.len() as f64 / self.max_entries as f64;
+        let sample_multiplier = if cache_pressure > 0.95 {
+            6 // High pressure: larger sample for better candidates
+        } else if cache_pressure > 0.90 {
+            4 // Medium pressure: moderate sample
+        } else {
+            3 // Low pressure: smaller sample is enough
+        };
+
+        let sample_size = (target_count * sample_multiplier).min(512).max(32);
         let mut candidates = Vec::with_capacity(sample_size);
-        for entry in self.cache.iter().take(sample_size) {
-            let record = entry.value();
-            if record.is_marked_for_deletion() {
-                continue;
+
+        let cache_len = self.cache.len();
+        if cache_len == 0 {
+            return candidates;
+        }
+
+        // Use fastrand for fast random sampling
+        for _ in 0..sample_size {
+            // Random skip to get uniform distribution
+            let skip_count = fastrand::usize(0..cache_len);
+
+            if let Some(entry) = self.cache.iter().nth(skip_count) {
+                let record = entry.value();
+
+                // Skip entries marked for deletion
+                if record.is_marked_for_deletion() {
+                    continue;
+                }
+
+                candidates.push(EvictionEntry {
+                    key: entry.key().clone(),
+                    score: self.compute_score(record),
+                    last_access: record.last_access.load(AtomicOrdering::Relaxed),
+                });
             }
-            candidates.push(EvictionEntry {
-                key: entry.key().clone(),
-                score: self.compute_score(record),
-                last_access: record.last_access.load(AtomicOrdering::Relaxed),
+        }
+
+        if candidates.len() > target_count {
+            candidates.select_nth_unstable_by(target_count, |a, b| {
+                a.score
+                    .partial_cmp(&b.score)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.last_access.cmp(&b.last_access))
+            });
+
+            candidates.truncate(target_count);
+        } else {
+            candidates.sort_unstable_by(|a, b| {
+                a.score
+                    .partial_cmp(&b.score)
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| a.last_access.cmp(&b.last_access))
             });
         }
-        candidates.sort_unstable_by(|a, b| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(Ordering::Equal)
-                .then_with(|| a.last_access.cmp(&b.last_access))
-        });
+
         candidates
     }
 
@@ -363,12 +469,13 @@ impl DnsCache {
 
     fn adjust_thresholds(&self, evicted: u64, target: usize) {
         let effectiveness = evicted as f64 / target as f64;
-        let mut threshold = self.min_threshold.write().unwrap();
+        let mut threshold = self.get_threshold();
         if effectiveness < 0.5 {
-            *threshold *= 0.9;
+            threshold *= 0.9;
         } else if effectiveness > 0.95 {
-            *threshold *= 1.05;
+            threshold *= 1.05;
         }
+        self.set_threshold(threshold);
         self.metrics
             .adaptive_adjustments
             .fetch_add(1, AtomicOrdering::Relaxed);
@@ -395,7 +502,7 @@ impl DnsCache {
 
     fn calculate_mean_score(&self) -> f64 {
         if self.cache.is_empty() {
-            return *self.min_threshold.read().unwrap();
+            return self.get_threshold();
         }
         let mut total = 0.0;
         let mut count = 0;
@@ -410,7 +517,7 @@ impl DnsCache {
         if count > 0 {
             total / count as f64
         } else {
-            *self.min_threshold.read().unwrap()
+            self.get_threshold()
         }
     }
 

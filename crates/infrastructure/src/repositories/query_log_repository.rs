@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use compact_str::CompactString;
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_domain::{DomainError, QueryLog, QuerySource, QueryStats};
 use sqlx::{Row, SqlitePool};
@@ -11,35 +12,34 @@ const CHANNEL_CAPACITY: usize = 10_000;
 const MAX_BATCH_SIZE: usize = 500;
 const FLUSH_INTERVAL_MS: u64 = 100;
 
-/// Flattened entry for the channel (owned data, Send-safe).
 struct QueryLogEntry {
-    domain: String,
-    record_type: String,
-    client_ip: String,
+    domain: CompactString,      // Inline if ≤24 chars
+    record_type: CompactString, // Inline (always ≤4 chars: A, AAAA, etc)
+    client_ip: Arc<str>,        // Shared, no clone cost
     blocked: bool,
     response_time_ms: Option<i64>,
     cache_hit: bool,
     cache_refresh: bool,
     dnssec_status: Option<&'static str>,
-    upstream_server: Option<String>,
+    upstream_server: Option<Arc<str>>, // Shared across entries
     response_status: Option<&'static str>,
-    query_source: String, // Phase 5: client, internal, dnssec_validation
+    query_source: CompactString, // Inline (always ≤20 chars)
 }
 
 impl QueryLogEntry {
     fn from_query_log(q: &QueryLog) -> Self {
         Self {
-            domain: q.domain.to_string(),
-            record_type: q.record_type.as_str().to_string(),
-            client_ip: q.client_ip.to_string(),
+            domain: CompactString::from(q.domain.as_ref()),
+            record_type: CompactString::from(q.record_type.as_str()),
+            client_ip: Arc::from(q.client_ip.to_string()),
             blocked: q.blocked,
             response_time_ms: q.response_time_ms.map(|t| t as i64),
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
-            upstream_server: q.upstream_server.clone(),
+            upstream_server: q.upstream_server.as_ref().map(|s| Arc::from(s.as_str())),
             response_status: q.response_status,
-            query_source: q.query_source.as_str().to_string(),
+            query_source: CompactString::from(q.query_source.as_str()),
         }
     }
 }
@@ -145,17 +145,17 @@ impl SqliteQueryLogRepository {
         let mut query = sqlx::query(&sql);
         for entry in batch.iter() {
             query = query
-                .bind(&entry.domain)
-                .bind(&entry.record_type)
-                .bind(&entry.client_ip)
+                .bind(entry.domain.as_str()) // CompactString → &str
+                .bind(entry.record_type.as_str()) // CompactString → &str
+                .bind(entry.client_ip.as_ref()) // Arc<str> → &str
                 .bind(if entry.blocked { 1i64 } else { 0 })
                 .bind(entry.response_time_ms)
                 .bind(if entry.cache_hit { 1i64 } else { 0 })
                 .bind(if entry.cache_refresh { 1i64 } else { 0 })
                 .bind(entry.dnssec_status)
-                .bind(entry.upstream_server.as_deref())
+                .bind(entry.upstream_server.as_ref().map(|s| s.as_ref())) // Option<Arc<str>> → Option<&str>
                 .bind(entry.response_status)
-                .bind(&entry.query_source);
+                .bind(entry.query_source.as_str()); // CompactString → &str
         }
 
         match query.execute(pool).await {
@@ -251,7 +251,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
     #[instrument(skip(self))]
     async fn get_stats(&self) -> Result<QueryStats, DomainError> {
-        debug!("Fetching query statistics with Phase 4 analytics");
+        debug!("Fetching query statistics with Phase 4 analytics (optimized single-pass)");
 
         let row = sqlx::query(
             "SELECT
@@ -279,7 +279,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             0.0
         };
 
-        // Phase 4: Fetch queries by type for analytics
         let type_rows = sqlx::query(
             "SELECT record_type, COUNT(*) as count FROM query_log GROUP BY record_type",
         )
@@ -291,9 +290,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         })?;
 
         let mut queries_by_type = std::collections::HashMap::new();
-        for row in type_rows {
-            let type_str: String = row.get("record_type");
-            let count: i64 = row.get("count");
+        for type_row in type_rows {
+            let type_str: String = type_row.get("record_type");
+            let count: i64 = type_row.get("count");
 
             // Parse RecordType from string
             if let Ok(record_type) = type_str.parse::<ferrous_dns_domain::RecordType>() {
