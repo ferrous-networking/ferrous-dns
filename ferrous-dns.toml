@@ -14,12 +14,6 @@ dnssec_enabled = true
 # Default strategy if not specified in pool (parallel, balanced, failover)
 default_strategy = "parallel"
 
-# Legacy upstream_servers (converted to single pool if pools not defined)
-upstream_servers = [
-    "8.8.8.8:53",
-    "8.8.4.4:53",
-]
-
 # ============================================================================
 # LOAD BALANCING POOLS
 # ============================================================================
@@ -67,7 +61,7 @@ success_threshold = 2        # Mark up after 2 consecutive successes
 # DNS CACHE CONFIGURATION
 # ============================================================================
 cache_enabled = true
-cache_ttl = 1200
+cache_ttl = 7200
 cache_max_entries = 200000
 
 # Eviction strategy: "hit_rate", "lfu", "lfu-k"
@@ -83,7 +77,7 @@ cache_refresh_threshold = 0.75
 # Performance optimizations
 cache_batch_eviction_percentage = 0.1
 cache_lazy_expiration = true
-cache_compaction_interval = 300
+cache_compaction_interval = 1200
 cache_adaptive_thresholds = false
 cache_lfuk_history_size = 10
 
@@ -159,4 +153,3 @@ batch_interval = 5
 # strategy = "failover"
 # priority = 3
 # servers = ["8.8.8.8:53", "1.1.1.1:53"]
-

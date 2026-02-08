@@ -14,6 +14,7 @@
 - [x] Load balancing across upstreams
 - [x] Query caching with TTL
 - [ ] Blocklist functionality
+- [ ] blocklist url import 
 - [ ] Local Dns records domain.local
 
 ### 🚧 v0.2.0 - Core DNS Features

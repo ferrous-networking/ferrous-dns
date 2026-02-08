@@ -1,699 +1,242 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🦀 Ferrous DNS - Query Log</title>
+    <title>Ferrous DNS - Query Log</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        [x-cloak] { display: none !important; }
-        html, body { height: 100%; margin: 0; padding: 0; }
-        body { display: flex; flex-direction: column; }
-        main { flex: 1; overflow-y: auto; }
-        
-        /* Phase 3: Icon animations */
-        .icon-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            transition: all 0.2s ease;
-        }
-        
-        .icon-badge:hover {
-            transform: scale(1.05);
-        }
-        
-        /* Category legend item hover */
-        .legend-item {
-            transition: all 0.2s ease;
-            cursor: pointer;
-        }
-        
-        .legend-item:hover {
-            transform: translateX(4px);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Stats badge pulse animation */
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-            50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
-        }
-        
-        .stat-badge {
-            animation: pulse-glow 2s ease-in-out infinite;
-        }
-        
-        /* Type badge with icon */
-        .type-badge-icon {
-            font-size: 0.875rem;
-            line-height: 1;
-        }
+        :root{--color-primary:#3B82F6;--color-success:#10B981;--color-warning:#F59E0B;--color-error:#EF4444;--bg-primary:#F9FAFB;--bg-secondary:#FFFFFF;--bg-tertiary:#F3F4F6;--text-primary:#111827;--text-secondary:#6B7280;--text-tertiary:#9CA3AF;--border-color:#E5E7EB}
+        .dark{--bg-primary:#0F172A;--bg-secondary:#1E293B;--bg-tertiary:#334155;--text-primary:#F1F5F9;--text-secondary:#CBD5E1;--text-tertiary:#94A3B8;--border-color:#334155}
+        body{background:var(--bg-primary);color:var(--text-primary);padding-left:260px;margin:0}
+        .sidebar{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto}
+        .logo-container{display:flex;align-items:center;gap:12px;padding:24px 16px 16px}
+        .logo-icon{width:40px;height:40px;padding:8px;background:var(--color-primary);color:white;border-radius:8px}
+        .logo-text h1{font-size:20px;font-weight:700;color:var(--text-primary);margin:0}
+        .logo-subtitle{font-size:11px;color:var(--text-tertiary)}
+        .status-box{margin:0 16px 16px;padding:12px;background:var(--bg-tertiary);border-radius:8px}
+        .status-header{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase}
+        .status-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+        .status-indicator{width:8px;height:8px;border-radius:50%;background:var(--color-success);animation:pulse 2s infinite}
+        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--color-success)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0.2)}}
+        .nav-section{margin-bottom:24px}
+        .nav-section-title{padding:8px 16px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase}
+        .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:var(--text-secondary);text-decoration:none;font-size:14px;transition:all .2s}
+        .nav-item:hover{background:var(--bg-tertiary);color:var(--text-primary)}
+        .nav-item.active{background:var(--bg-tertiary);color:var(--color-primary);font-weight:600;border-left:3px solid var(--color-primary)}
+        .nav-icon{width:18px;height:18px}
+        .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
+        .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
+        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color);padding:16px}
+        .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
+        table{width:100%;border-collapse:collapse}
+        th{padding:12px;text-align:left;font-weight:600;font-size:12px;color:var(--text-secondary);text-transform:uppercase;border-bottom:1px solid var(--border-color)}
+        td{padding:12px;border-bottom:1px solid var(--border-color);font-size:14px}
+        tr.row-allowed{background:rgba(16,185,129,0.08)}
+        tr.row-blocked{background:rgba(239,68,68,0.08)}
+        tr:hover{opacity:0.85}
     </style>
 </head>
-<body class="bg-gray-50 flex flex-col min-h-screen" x-data="queryLog()" x-init="init()">
-
-<header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-    <div class="px-4 sm:px-6 lg:px-8 py-3 lg:py-4">
-        <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-2 sm:space-x-3">
-                <div class="text-2xl sm:text-3xl lg:text-4xl">🦀</div>
-                <div>
-                    <h1 class="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">Ferrous DNS</h1>
-                    <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">Query Log</p>
-                </div>
-            </div>
-
-            <div class="flex gap-1 sm:gap-2">
-                <a href="/" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
-                    <span class="hidden sm:inline">📊 Dashboard</span>
-                    <span class="sm:hidden">📊</span>
-                </a>
-                <a href="/queries.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700">
-                    <span class="hidden sm:inline">📝 Query Log</span>
-                    <span class="sm:hidden">📝</span>
-                </a>
-                <a href="/settings.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
-                    <span class="hidden sm:inline">⚙️ Settings</span>
-                    <span class="sm:hidden">⚙️</span>
-                </a>
-            </div>
+<body x-data="app()" x-init="init()">
+    <aside class="sidebar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
         </div>
-    </div>
-</header>
-
-<main class="flex-1 px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8 overflow-y-auto">
-
-    <!-- Controls -->
-    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
-        <div class="flex flex-col gap-3">
-            <!-- Top Row: Page Size + Category Filter + Auto-refresh -->
-            <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center sm:justify-between">
-                <!-- Left: Page Size -->
-                <div class="flex items-center gap-2">
-                    <label class="text-xs sm:text-sm text-gray-700 font-medium">Show:</label>
-                    <select x-model.number="pageSize" @change="currentPage = 1" 
-                            class="text-xs sm:text-sm border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500">
-                        <option value="10">10</option>
-                        <option value="25">25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select>
-                    <span class="text-xs sm:text-sm text-gray-600">queries</span>
-                </div>
-
-                <!-- Middle: Category Filter (Phase 2) -->
-                <div class="flex items-center gap-2">
-                    <label class="text-xs sm:text-sm text-gray-700 font-medium">Filter:</label>
-                    <select x-model="categoryFilter" @change="currentPage = 1"
-                            class="text-xs sm:text-sm border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500">
-                        <option value="all">All Types</option>
-                        <option value="basic">📋 Basic</option>
-                        <option value="advanced">🚀 Advanced</option>
-                        <option value="dnssec">🔐 DNSSEC</option>
-                        <option value="security">🔒 Security</option>
-                        <option value="modern">✨ Modern</option>
-                        <option value="legacy">📜 Legacy</option>
+        <div class="status-box">
+            <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
+            <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
+            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span x-text="queries.length+' queries'">0 queries</span></div>
+        </div>
+        <nav style="flex:1;padding:16px 0">
+            <div class="nav-section">
+                <div class="nav-section-title">MAIN</div>
+                <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+                <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">DNS CONTROL</div>
+                <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button @click="toggleTheme()" class="theme-btn">
+                <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+                <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+                <span>Theme</span>
+            </button>
+        </div>
+    </aside>
+    <main style="padding:24px">
+        <div class="card" style="margin-bottom:24px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:center">
+                <div>
+                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Show:</label>
+                    <select x-model.number="pageSize" @change="currentPage=1" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                        <option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option>
                     </select>
                 </div>
-
-                <!-- Right: Auto-refresh -->
-                <div class="flex items-center gap-2">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" x-model="autoRefresh" 
-                               class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                        <span class="text-xs sm:text-sm text-gray-700 font-medium">Auto-refresh (1s)</span>
+                <div>
+                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Category:</label>
+                    <select x-model="category" @change="currentPage=1" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                        <option value="">All Queries</option><option value="allowed">Allowed</option><option value="blocked">Blocked</option><option value="cache">Cache Hits</option><option value="upstream">Upstream</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">&nbsp;</label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" x-model="autoRefresh" style="width:16px;height:16px;accent-color:var(--color-primary)">
+                        <span style="font-size:14px;color:var(--text-secondary)">Auto-refresh (1s)</span>
                     </label>
                 </div>
             </div>
-
-            <!-- Stats Row -->
-            <div class="flex flex-wrap gap-2 items-center border-t pt-3" x-show="queries.length > 0" x-cloak>
-                <!-- Filter Stats -->
-                <span class="text-xs text-gray-600">
-                    Showing <span class="font-semibold" x-text="filteredQueries.length"></span> 
-                    of <span class="font-semibold" x-text="queries.length"></span> queries
-                    <template x-if="categoryFilter !== 'all'">
-                        <span class="text-blue-600">
-                            (<span x-text="categoryFilter"></span> filter)
-                        </span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+            <div class="card">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="check-circle" style="width:32px;height:32px;color:var(--color-success)"></i>
+                    <div><p style="font-size:12px;color:var(--text-secondary)">Allowed</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.allowed">0</p></div>
+                </div>
+            </div>
+            <div class="card">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="shield-ban" style="width:32px;height:32px;color:var(--color-error)"></i>
+                    <div><p style="font-size:12px;color:var(--text-secondary)">Blocked</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.blocked">0</p></div>
+                </div>
+            </div>
+            <div class="card">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
+                    <div><p style="font-size:12px;color:var(--text-secondary)">Cache Hits</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.cacheHits">0</p></div>
+                </div>
+            </div>
+            <div class="card">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="server" style="width:32px;height:32px;color:var(--color-info)"></i>
+                    <div><p style="font-size:12px;color:var(--text-secondary)">Upstream</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.upstream">0</p></div>
+                </div>
+            </div>
+        </div>
+        <div class="card" style="overflow-x:auto">
+            <table>
+                <thead><tr><th>TIME</th><th>DOMAIN</th><th>TYPE</th><th>CLIENT</th><th>SOURCE</th><th>RESPONSE TIME</th></tr></thead>
+                <tbody>
+                    <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
+                        <tr :class="query.blocked ? 'row-blocked' : 'row-allowed'">
+                            <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
+                            <td style="font-family:monospace;font-size:14px" x-text="query.domain"></td>
+                            <td><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6" x-text="query.type"></span></td>
+                            <td style="font-size:13px" x-text="query.client"></td>
+                            <td>
+                                <span class="badge" :style="query.cache_hit ? 'background:rgba(168,85,247,0.1);color:#A855F7' : 'background:rgba(59,130,246,0.1);color:#3B82F6'" x-text="query.cache_hit ? 'Cache' : 'Upstream'"></span>
+                            </td>
+                            <td style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                        </tr>
                     </template>
-                </span>
-
-                <!-- DNSSEC Badge (only if DNSSEC enabled and count > 0) -->
-                <template x-if="dnssecEnabled && dnssecCount > 0">
-                    <span class="stat-badge text-xs px-3 py-1.5 bg-purple-100 text-purple-700 rounded-full font-medium flex items-center gap-1">
-                        <span>🔐</span>
-                        <span x-text="dnssecCount"></span>
-                        <span>DNSSEC</span>
-                    </span>
-                </template>
-
-                <!-- Modern Types Badge -->
-                <template x-if="modernCount > 0">
-                    <span class="stat-badge text-xs px-3 py-1.5 bg-green-100 text-green-700 rounded-full font-medium flex items-center gap-1">
-                        <span>✨</span>
-                        <span x-text="modernCount"></span>
-                        <span>Modern</span>
-                    </span>
-                </template>
-
-                <!-- Security Types Badge -->
-                <template x-if="securityCount > 0">
-                    <span class="stat-badge text-xs px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-full font-medium flex items-center gap-1">
-                        <span>🔒</span>
-                        <span x-text="securityCount"></span>
-                        <span>Security</span>
-                    </span>
-                </template>
-            </div>
-
-            <!-- Info message when DNSSEC disabled -->
-            <div x-show="!dnssecEnabled && queries.length > 0" class="text-xs text-gray-500 border-t pt-3" x-cloak>
-                💡 DNSSEC validation is disabled. Enable in Settings to see DNSSEC queries.
-            </div>
-        </div>
-    </div>
-
-    <!-- Phase 3: Category Legend (Visual Guide) -->
-    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 mb-4 sm:mb-6" x-show="queries.length > 0" x-cloak>
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <span>🎨</span>
-                <span>Category Legend</span>
-            </h3>
-            <button @click="showLegend = !showLegend" 
-                    class="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                <span x-text="showLegend ? 'Hide' : 'Show'"></span>
-            </button>
-        </div>
-        
-        <div x-show="showLegend" x-cloak class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-            <!-- Basic -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-blue-50 border border-blue-200"
-                 @click="categoryFilter = 'basic'; currentPage = 1">
-                <span class="text-lg">📋</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-blue-800">Basic</div>
-                    <div class="text-xs text-blue-600" x-text="recordCategories.basic.length + ' types'"></div>
+                </tbody>
+            </table>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
+                <div style="font-size:14px;color:var(--text-secondary)">
+                    Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span x-text="Math.min(currentPage*pageSize,filteredQueries.length)"></span> of <span x-text="filteredQueries.length"></span>
                 </div>
-            </div>
-
-            <!-- Advanced -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-indigo-50 border border-indigo-200"
-                 @click="categoryFilter = 'advanced'; currentPage = 1">
-                <span class="text-lg">🚀</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-indigo-800">Advanced</div>
-                    <div class="text-xs text-indigo-600" x-text="recordCategories.advanced.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- DNSSEC -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-purple-50 border border-purple-200"
-                 @click="categoryFilter = 'dnssec'; currentPage = 1">
-                <span class="text-lg">🔐</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-purple-800">DNSSEC</div>
-                    <div class="text-xs text-purple-600" x-text="recordCategories.dnssec.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- Security -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-yellow-50 border border-yellow-200"
-                 @click="categoryFilter = 'security'; currentPage = 1">
-                <span class="text-lg">🔒</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-yellow-800">Security</div>
-                    <div class="text-xs text-yellow-600" x-text="recordCategories.security.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- Modern -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-green-50 border border-green-200"
-                 @click="categoryFilter = 'modern'; currentPage = 1">
-                <span class="text-lg">✨</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-green-800">Modern</div>
-                    <div class="text-xs text-green-600" x-text="modernTypes.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- Legacy -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-gray-50 border border-gray-200"
-                 @click="categoryFilter = 'legacy'; currentPage = 1">
-                <span class="text-lg">📜</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-gray-800">Legacy</div>
-                    <div class="text-xs text-gray-600" x-text="recordCategories.legacy.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- Protocol -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-orange-50 border border-orange-200">
-                <span class="text-lg">🔧</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-orange-800">Protocol</div>
-                    <div class="text-xs text-orange-600" x-text="recordCategories.protocol.length + ' types'"></div>
-                </div>
-            </div>
-
-            <!-- Integrity -->
-            <div class="legend-item flex items-center gap-2 p-2 rounded-lg bg-teal-50 border border-teal-200">
-                <span class="text-lg">🛡️</span>
-                <div class="flex-1">
-                    <div class="text-xs font-semibold text-teal-800">Integrity</div>
-                    <div class="text-xs text-teal-600" x-text="recordCategories.integrity.length + ' types'"></div>
+                <div style="display:flex;gap:8px">
+                    <button @click="currentPage--" :disabled="currentPage===1" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px" :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous</button>
+                    <button @click="currentPage++" :disabled="currentPage>=totalPages" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px" :style="currentPage>=totalPages?'opacity:0.5;cursor:not-allowed':''">Next</button>
                 </div>
             </div>
         </div>
-        
-        <!-- Quick tip -->
-        <div x-show="showLegend" class="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700" x-cloak>
-            💡 <strong>Tip:</strong> Click on a category to filter queries instantly!
-        </div>
-    </div>
-
-    <!-- Desktop Table -->
-    <div x-show="paginatedQueries.length > 0" class="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden mb-6" x-cloak>
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Domain</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Client</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Upstream</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Response</th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                <template x-for="(query, index) in paginatedQueries" :key="index">
-                    <tr class="hover:bg-gray-100" :class="query.blocked ? 'bg-red-50' : ''">
-                        <!-- Time (FIRST) -->
-                        <td class="px-4 py-3 text-sm text-gray-500" x-text="formatTimestamp(query.timestamp)"></td>
-                        
-                        <!-- Domain -->
-                        <td class="px-4 py-3">
-                            <div class="flex items-center gap-2">
-                                <!-- DNSSEC Status Icon (only if DNSSEC enabled and status exists) -->
-                                <template x-if="dnssecEnabled && query.dnssec_status">
-                                    <span 
-                                        class="text-sm"
-                                        :title="query.dnssec_status"
-                                        x-text="query.dnssec_status === 'Secure' ? '🔒' : 
-                                                query.dnssec_status === 'Insecure' ? '🔓' : 
-                                                query.dnssec_status === 'Bogus' ? '⚠️' : ''">
-                                    </span>
-                                </template>
-                                <span class="font-medium text-gray-900 text-sm" x-text="query.domain"></span>
-                            </div>
-                        </td>
-                        
-                        <!-- Type (Phase 3: Icons + Colors) -->
-                        <td class="px-4 py-3">
-                            <span 
-                                class="icon-badge px-2 py-0.5 rounded-full text-xs font-medium"
-                                :class="{
-                                    'bg-blue-100 text-blue-800': getCategory(query.type) === 'basic',
-                                    'bg-indigo-100 text-indigo-800': getCategory(query.type) === 'advanced',
-                                    'bg-purple-100 text-purple-800': getCategory(query.type) === 'dnssec',
-                                    'bg-yellow-100 text-yellow-800': getCategory(query.type) === 'security',
-                                    'bg-green-100 text-green-800': modernTypes.includes(query.type),
-                                    'bg-gray-100 text-gray-800': getCategory(query.type) === 'legacy',
-                                    'bg-orange-100 text-orange-800': getCategory(query.type) === 'protocol',
-                                    'bg-teal-100 text-teal-800': getCategory(query.type) === 'integrity'
-                                }">
-                                <span class="type-badge-icon" x-text="getTypeIcon(query.type)"></span>
-                                <span x-text="query.type"></span>
-                            </span>
-                        </td>
-                        
-                        <!-- Client -->
-                        <td class="px-4 py-3 text-sm text-gray-600" x-text="formatClientName(query.client)"></td>
-                        
-                        <!-- Source -->
-                        <td class="px-4 py-3">
-                            <span 
-                                class="px-2 py-0.5 rounded-full text-xs font-medium"
-                                :class="query.blocked ? 'bg-red-100 text-red-800' : (query.cache_refresh ? 'bg-yellow-100 text-yellow-800' : (query.cache_hit ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'))"
-                                x-text="query.blocked ? '🚫 Blocked' : (query.cache_refresh ? '🔄 Refresh' : (query.cache_hit ? '⚡ Cache' : '🌐 Upstream'))">
-                            </span>
-                        </td>
-                        
-                        <!-- Upstream Server -->
-                        <td class="px-4 py-3">
-                            <span 
-                                class="text-xs font-mono text-gray-700"
-                                x-show="!query.cache_hit && query.upstream_server"
-                                x-text="query.upstream_server">
-                            </span>
-                            <span 
-                                class="text-xs text-gray-400"
-                                x-show="query.cache_hit || !query.upstream_server">
-                                -
-                            </span>
-                        </td>
-                        
-                        <!-- Response -->
-                        <td class="px-4 py-3">
-                            <span 
-                                class="text-sm font-semibold"
-                                :class="{
-                                    'text-green-600': query.response_time_ms && query.response_time_ms < 1000,
-                                    'text-yellow-600': query.response_time_ms >= 1000 && query.response_time_ms < 10000,
-                                    'text-red-600': query.response_time_ms >= 10000,
-                                    'text-gray-400': !query.response_time_ms
-                                }"
-                                x-text="formatResponseTime(query.response_time_ms)">
-                            </span>
-                        </td>
-                    </tr>
-                </template>
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Mobile Cards -->
-    <div x-show="paginatedQueries.length > 0" class="md:hidden space-y-3 mb-6" x-cloak>
-        <template x-for="(query, index) in paginatedQueries" :key="index">
-            <div class="bg-white rounded-lg shadow-sm p-4 border-l-4" :class="query.blocked ? 'border-red-500 bg-red-50' : 'border-green-500'">
-                <!-- Header -->
-                <div class="flex items-start justify-between mb-2">
-                    <div class="flex-1 min-w-0 pr-2">
-                        <div class="flex items-center gap-1">
-                            <!-- DNSSEC Status Icon (only if DNSSEC enabled and status exists) -->
-                            <template x-if="dnssecEnabled && query.dnssec_status">
-                                <span 
-                                    class="text-sm shrink-0"
-                                    :title="query.dnssec_status"
-                                    x-text="query.dnssec_status === 'Secure' ? '🔒' : 
-                                            query.dnssec_status === 'Insecure' ? '🔓' : 
-                                            query.dnssec_status === 'Bogus' ? '⚠️' : ''">
-                                </span>
-                            </template>
-                            <p class="font-semibold text-gray-900 truncate text-sm" x-text="query.domain"></p>
-                        </div>
-                        <div class="flex items-center gap-2 mt-1">
-                            <span 
-                                class="icon-badge px-2 py-0.5 rounded-full text-xs font-medium"
-                                :class="{
-                                    'bg-blue-100 text-blue-800': getCategory(query.type) === 'basic',
-                                    'bg-indigo-100 text-indigo-800': getCategory(query.type) === 'advanced',
-                                    'bg-purple-100 text-purple-800': getCategory(query.type) === 'dnssec',
-                                    'bg-yellow-100 text-yellow-800': getCategory(query.type) === 'security',
-                                    'bg-green-100 text-green-800': modernTypes.includes(query.type),
-                                    'bg-gray-100 text-gray-800': getCategory(query.type) === 'legacy',
-                                    'bg-orange-100 text-orange-800': getCategory(query.type) === 'protocol',
-                                    'bg-teal-100 text-teal-800': getCategory(query.type) === 'integrity'
-                                }">
-                                <span class="type-badge-icon" x-text="getTypeIcon(query.type)"></span>
-                                <span x-text="query.type"></span>
-                            </span>
-                            </span>
-                        </div>
-                    </div>
-                    <span 
-                        class="px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
-                        :class="query.blocked ? 'bg-red-100 text-red-800' : (query.cache_refresh ? 'bg-yellow-100 text-yellow-800' : (query.cache_hit ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'))"
-                        x-text="query.blocked ? '🚫' : (query.cache_refresh ? '🔄' : (query.cache_hit ? '⚡' : '🌐'))">
-                    </span>
-                </div>
-                
-                <!-- Details -->
-                <div class="space-y-1 text-xs text-gray-600">
-                    <div class="flex justify-between">
-                        <span>Client:</span>
-                        <span class="font-medium" x-text="formatClientName(query.client)"></span>
-                    </div>
-                    <div class="flex justify-between" x-show="!query.cache_hit && query.upstream_server">
-                        <span>Upstream:</span>
-                        <span class="font-mono font-medium text-xs" x-text="query.upstream_server"></span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Time:</span>
-                        <span class="font-medium text-xs" x-text="formatTimestamp(query.timestamp)"></span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span>Response:</span>
-                        <span 
-                            class="font-semibold"
-                            :class="{
-                                'text-green-600': query.response_time_ms && query.response_time_ms < 1000,
-                                'text-yellow-600': query.response_time_ms >= 1000 && query.response_time_ms < 10000,
-                                'text-red-600': query.response_time_ms >= 10000,
-                                'text-gray-400': !query.response_time_ms
-                            }"
-                            x-text="formatResponseTime(query.response_time_ms)">
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </template>
-    </div>
-
-    <!-- Empty State -->
-    <div x-show="queries.length === 0" class="text-center py-12 text-gray-500">
-        <p class="text-lg mb-2">No queries yet</p>
-        <p class="text-sm">Make a DNS query to see it here!</p>
-    </div>
-
-    <!-- Pagination -->
-    <div x-show="totalPages > 1" class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4" x-cloak>
-        <div class="text-xs sm:text-sm text-gray-700">
-            Showing <span class="font-semibold" x-text="startIndex + 1"></span> to 
-            <span class="font-semibold" x-text="Math.min(endIndex, queries.length)"></span> of 
-            <span class="font-semibold" x-text="queries.length"></span> queries
-        </div>
-        
-        <div class="flex gap-2">
-            <button @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage === 1" 
-                    class="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700">
-                Previous
-            </button>
-            <span class="px-3 py-1.5 text-xs sm:text-sm bg-gray-100 rounded-lg font-medium">
-                Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
-            </span>
-            <button @click="currentPage = Math.min(totalPages, currentPage + 1)" :disabled="currentPage === totalPages"
-                    class="px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700">
-                Next
-            </button>
-        </div>
-    </div>
-
-</main>
-
-<script>
-function queryLog() {
+    </main>
+    <script>
+function app() {
     return {
+        theme: 'light',
         queries: [],
         pageSize: 25,
         currentPage: 1,
+        category: '',
         autoRefresh: true,
-        categoryFilter: 'all',  // Phase 2: Category filter
-        dnssecEnabled: false,  // From config
-        serverHostname: 'localhost',  // Server hostname for internal queries
-
-        // Phase 2: DNS Record Type Categories
-        recordCategories: {
-            basic: ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'PTR'],
-            advanced: ['SRV', 'SOA', 'NS', 'NAPTR', 'SVCB', 'HTTPS', 'DNAME', 'ANAME'],
-            dnssec: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
-            security: ['CAA', 'TLSA', 'SSHFP', 'IPSECKEY', 'OPENPGPKEY'],
-            legacy: ['NULL', 'HINFO', 'WKS'],
-            protocol: ['OPT'],
-            integrity: ['ZONEMD']
-        },
-
-        // Modern types (subset for filtering)
-        modernTypes: ['SVCB', 'HTTPS', 'CAA', 'TLSA', 'ANAME', 'OPENPGPKEY', 'IPSECKEY', 'ZONEMD'],
-
-        // DNSSEC record types (for backward compatibility)
-        dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY', 'ZONEMD'],
-
-        // Phase 3: Icon mapping for each DNS type
-        typeIcons: {
-            // Basic - Communication icons
-            'A': '🌐',
-            'AAAA': '🌏',
-            'CNAME': '🔗',
-            'MX': '📧',
-            'TXT': '📝',
-            'PTR': '🔙',
-            
-            // Advanced - Infrastructure icons
-            'SRV': '⚙️',
-            'SOA': '👑',
-            'NS': '🗄️',
-            'NAPTR': '🧭',
-            'SVCB': '🔌',
-            'HTTPS': '🔐',
-            'DNAME': '↪️',
-            'ANAME': '🏷️',
-            
-            // DNSSEC - Security icons
-            'DS': '🔑',
-            'DNSKEY': '🗝️',
-            'RRSIG': '✍️',
-            'NSEC': '🔗',
-            'NSEC3': '🔐',
-            'NSEC3PARAM': '⚙️',
-            'CDS': '🔑',
-            'CDNSKEY': '🗝️',
-            
-            // Security - Shield icons
-            'CAA': '🛡️',
-            'TLSA': '🔒',
-            'SSHFP': '🔐',
-            'IPSECKEY': '🔑',
-            'OPENPGPKEY': '📧',
-            
-            // Legacy - Archive icons
-            'NULL': '⚫',
-            'HINFO': 'ℹ️',
-            'WKS': '📋',
-            
-            // Protocol - Technical icons
-            'OPT': '🔧',
-            
-            // Integrity - Verification icons
-            'ZONEMD': '✅'
-        },
-
-        // Phase 3: Show/hide legend
-        showLegend: true,
-
-        // Category helpers
-        getCategory(type) {
-            for (const [category, types] of Object.entries(this.recordCategories)) {
-                if (types.includes(type)) return category;
-            }
-            return 'unknown';
-        },
-
-        isInCategory(type, category) {
-            if (category === 'all') return true;
-            if (category === 'modern') return this.modernTypes.includes(type);
-            return this.recordCategories[category]?.includes(type) || false;
-        },
-
-        get filteredQueries() {
-            // Phase 2: Filter by category
-            return this.queries.filter(q => this.isInCategory(q.type, this.categoryFilter));
-        },
-        
-        get dnssecCount() {
-            return this.queries.filter(q => this.dnssecTypes.includes(q.type)).length;
-        },
-
-        get modernCount() {
-            return this.queries.filter(q => this.modernTypes.includes(q.type)).length;
-        },
-
-        get securityCount() {
-            return this.queries.filter(q => 
-                this.recordCategories.security.includes(q.type) || 
-                this.recordCategories.dnssec.includes(q.type) ||
-                this.recordCategories.integrity.includes(q.type)
-            ).length;
-        },
-        
-        get totalPages() {
-            return Math.ceil(this.filteredQueries.length / this.pageSize);
-        },
-        get startIndex() {
-            return (this.currentPage - 1) * this.pageSize;
-        },
-        get endIndex() {
-            return this.startIndex + this.pageSize;
-        },
-        get paginatedQueries() {
-            return this.filteredQueries.slice(this.startIndex, this.endIndex);
-        },
+        stats: { allowed: 0, blocked: 0, cacheHits: 0, upstream: 0 },
 
         async init() {
-            await this.loadConfig();
-            await this.loadHostname();
+            console.log('Query Log initializing...');
+            this.theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.classList.toggle('dark', this.theme === 'dark');
             await this.loadQueries();
-            setInterval(() => {
-                if (this.autoRefresh) this.loadQueries();
-            }, 1000);
+            setTimeout(() => lucide.createIcons(), 100);
+            this.startPolling();
         },
 
-        async loadConfig() {
-            try {
-                const res = await fetch('/api/config');
-                const config = await res.json();
-                this.dnssecEnabled = config.dns.dnssec_enabled;
-                console.log('DNSSEC enabled:', this.dnssecEnabled);
-            } catch (error) {
-                console.error('Error loading config:', error);
-            }
-        },
-
-        async loadHostname() {
-            try {
-                const res = await fetch('/api/hostname');
-                const data = await res.json();
-                this.serverHostname = data.hostname;
-                console.log('Server hostname:', this.serverHostname);
-            } catch (error) {
-                console.error('Error loading hostname:', error);
-            }
+        toggleTheme() {
+            this.theme = this.theme === 'light' ? 'dark' : 'light';
+            localStorage.setItem('theme', this.theme);
+            document.documentElement.classList.toggle('dark', this.theme === 'dark');
+            setTimeout(() => lucide.createIcons(), 50);
         },
 
         async loadQueries() {
             try {
                 const res = await fetch('/api/queries');
-                this.queries = await res.json();
-            } catch (error) {
-                console.error('Error loading queries:', error);
-                this.queries = [];
+                if (res.ok) {
+                    this.queries = await res.json();
+                    console.log('Loaded', this.queries.length, 'queries');
+                    if (this.queries.length > 0) {
+                        console.log('Sample query:', JSON.stringify(this.queries[0], null, 2));
+                    }
+                    this.calculateStats();
+                }
+            } catch (e) {
+                console.error('Error loading queries:', e);
             }
         },
 
-        isDnssec(type) {
-            return this.dnssecTypes.includes(type);
+        calculateStats() {
+            this.stats = {
+                allowed: this.queries.filter(q => !q.blocked).length,
+                blocked: this.queries.filter(q => q.blocked).length,
+                cacheHits: this.queries.filter(q => q.cache_hit).length,
+                upstream: this.queries.filter(q => !q.cache_hit && !q.blocked).length
+            };
         },
 
-        // Phase 2: Category helper methods
-        isModern(type) {
-            return this.modernTypes.includes(type);
+        get filteredQueries() {
+            let filtered = this.queries;
+            if (this.category === 'allowed') filtered = filtered.filter(q => !q.blocked);
+            if (this.category === 'blocked') filtered = filtered.filter(q => q.blocked);
+            if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
+            if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
+            return filtered;
         },
 
-        isLegacy(type) {
-            return this.recordCategories.legacy.includes(type);
+        get paginatedQueries() {
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.filteredQueries.slice(start, start + this.pageSize);
         },
 
-        // Phase 3: Get icon for DNS type
-        getTypeIcon(type) {
-            return this.typeIcons[type] || '📋';
+        get totalPages() {
+            return Math.ceil(this.filteredQueries.length / this.pageSize);
         },
 
-        // Phase 3: Get display label with icon
-        getTypeLabel(type) {
-            const icon = this.getTypeIcon(type);
-            return `${icon} ${type}`;
+        startPolling() {
+            setInterval(() => {
+                if (this.autoRefresh) this.loadQueries();
+            }, 1000);
         },
 
-        formatClientName(ip) {
-            if (ip.startsWith('127.') || ip === '::1') {
-                return this.serverHostname;  // Show server hostname for internal queries
-            }
-            if (ip.startsWith('192.168.')) return 'Local';
-            return ip;
+        formatTime(timestamp) {
+            if (!timestamp) return '-';
+            return new Date(timestamp).toLocaleTimeString();
         },
 
-        formatResponseTime(us) {
+        formatResponseTime(query) {
+            // Backend retorna em MICROSSEGUNDOS no campo 'response_time_ms'
+            const us = query.response_time_ms || 0;
+            
             if (!us) return '-';
             
-            // Backend SEMPRE retorna em MICROSSEGUNDOS (µs)
-            // Exemplos:
-            //   50 µs = cache hit
-            //   15,000 µs = 15 ms upstream
-            //   3,000,000 µs = 3 s slow
+            // response_time_ms está em MICROSSEGUNDOS (apesar do nome)
+            // Exemplo: 3259 = 3259 µs = 3.26 ms
             
             if (us < 1000) {
                 // < 1ms = mostrar em µs
@@ -705,46 +248,9 @@ function queryLog() {
                 // >= 1s = converter para segundos
                 return `${(us / 1000000).toFixed(2)} s`;
             }
-        },
-
-        formatTimestamp(utcTimestamp) {
-            if (!utcTimestamp) return '-';
-            
-            try {
-                // Parse UTC timestamp from backend (format: "2026-02-03 14:30:45")
-                const date = new Date(utcTimestamp + ' UTC');
-                
-                // Get browser timezone
-                const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                
-                // Format to local time with timezone
-                const timeOptions = {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false
-                };
-                
-                const dateOptions = {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit'
-                };
-                
-                const timeStr = date.toLocaleTimeString('en-US', timeOptions);
-                const dateStr = date.toLocaleDateString('en-CA'); // yyyy-mm-dd
-                
-                // Short timezone abbreviation
-                const tzShort = date.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
-                
-                return `${dateStr} ${timeStr} ${tzShort}`;
-            } catch (error) {
-                console.error('Error formatting timestamp:', error);
-                return utcTimestamp;
-            }
         }
-    }
+    };
 }
-</script>
+    </script>
 </body>
 </html>

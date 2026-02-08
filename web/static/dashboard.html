@@ -1,669 +1,141 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🦀 Ferrous DNS - Dashboard</title>
+    <title>Ferrous DNS - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        [x-cloak] { display: none !important; }
-        html, body { height: 100%; margin: 0; padding: 0; }
-        body { display: flex; flex-direction: column; }
-        main { flex: 1; overflow-y: auto; }
+        :root{--color-primary:#3B82F6;--color-success:#10B981;--color-warning:#F59E0B;--color-error:#EF4444;--bg-primary:#F9FAFB;--bg-secondary:#FFFFFF;--bg-tertiary:#F3F4F6;--text-primary:#111827;--text-secondary:#6B7280;--text-tertiary:#9CA3AF;--border-color:#E5E7EB}
+        .dark{--bg-primary:#0F172A;--bg-secondary:#1E293B;--bg-tertiary:#334155;--text-primary:#F1F5F9;--text-secondary:#CBD5E1;--text-tertiary:#94A3B8;--border-color:#334155}
+        body{background:var(--bg-primary);color:var(--text-primary);padding-left:260px;margin:0}
+        .sidebar{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto}
+        .logo-container{display:flex;align-items:center;gap:12px;padding:24px 16px 16px}
+        .logo-icon{width:40px;height:40px;padding:8px;background:var(--color-primary);color:white;border-radius:8px}
+        .logo-text h1{font-size:20px;font-weight:700;color:var(--text-primary);margin:0}
+        .logo-subtitle{font-size:11px;color:var(--text-tertiary)}
+        .status-box{margin:0 16px 16px;padding:12px;background:var(--bg-tertiary);border-radius:8px}
+        .status-header{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase}
+        .status-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+        .status-indicator{width:8px;height:8px;border-radius:50%;background:var(--color-success);animation:pulse 2s infinite}
+        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--color-success)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0.2)}}
+        .nav-section{margin-bottom:24px}
+        .nav-section-title{padding:8px 16px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase}
+        .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:var(--text-secondary);text-decoration:none;font-size:14px;transition:all .2s}
+        .nav-item:hover{background:var(--bg-tertiary);color:var(--text-primary)}
+        .nav-item.active{background:var(--bg-tertiary);color:var(--color-primary);font-weight:600;border-left:3px solid var(--color-primary)}
+        .nav-icon{width:18px;height:18px}
+        .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
+        .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
+        .card-stat{background:var(--bg-secondary);border-radius:12px;padding:24px;border:1px solid var(--border-color);transition:all .2s}
+        .card-stat:hover{box-shadow:0 4px 6px rgba(0,0,0,0.1);transform:translateY(-2px)}
+        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color)}
     </style>
 </head>
-<body class="bg-gray-50 h-full" x-data="dashboard()" x-init="init()">
-
-<header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-    <div class="px-4 sm:px-6 lg:px-8 py-3 lg:py-4">
-        <div class="flex items-center justify-between">
-            <!-- Logo e Título -->
-            <div class="flex items-center space-x-2 sm:space-x-3">
-                <div class="text-2xl sm:text-3xl lg:text-4xl">🦀</div>
-                <div>
-                    <h1 class="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">Ferrous DNS</h1>
-                    <p class="text-xs sm:text-sm text-gray-500 hidden sm:block">Dashboard</p>
+<body x-data="app()" x-init="init()">
+    <aside class="sidebar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        </div>
+        <div class="status-box">
+            <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
+            <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
+            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span id="queries-min" x-text="stats.queries_total||0+' q/total'">0 q/total</span></div>
+        </div>
+        <nav style="flex:1;padding:16px 0">
+            <div class="nav-section">
+                <div class="nav-section-title">MAIN</div>
+                <a href="/dashboard.html" class="nav-item active"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+                <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">DNS CONTROL</div>
+                <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button @click="toggleTheme()" class="theme-btn">
+                <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+                <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+                <span>Theme</span>
+            </button>
+        </div>
+    </aside>
+    <main style="padding:24px">
+        <div style="margin-bottom:24px">
+            <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">📊 Estatísticas das Últimas 24 Horas</h1>
+            <p style="font-size:14px;color:var(--text-secondary)">Visão geral do desempenho do servidor DNS</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)"><i data-lucide="package" style="width:24px;height:24px;color:#3B82F6"></i></div>
+                </div>
+                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
+                <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="stats.queries_total||0">0</p>
+            </div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)"><i data-lucide="shield-ban" style="width:24px;height:24px;color:#EF4444"></i></div>
+                </div>
+                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Blocked</p>
+                <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="stats.queries_blocked||0">0</p>
+            </div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)"><i data-lucide="gauge" style="width:24px;height:24px;color:#A855F7"></i></div>
+                </div>
+                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
+                <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="formatTime(stats.avg_query_time_ms||0)">0 ms</p>
+            </div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)"><i data-lucide="zap" style="width:24px;height:24px;color:#10B981"></i></div>
+                </div>
+                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">⚡ Cache Time</p>
+                <p style="font-size:32px;font-weight:700;color:#10B981" x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p>
+            </div>
+        </div>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache Performance</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+            <div class="card" style="padding:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
+                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_hits||0">0</p><p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">0%</p></div>
                 </div>
             </div>
-
-            <!-- Navigation - Responsive -->
-            <div class="flex gap-1 sm:gap-2">
-                <a href="/" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700">
-                    <span class="hidden sm:inline">📊 Dashboard</span>
-                    <span class="sm:hidden">📊</span>
-                </a>
-                <a href="/queries.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
-                    <span class="hidden sm:inline">📝 Query Log</span>
-                    <span class="sm:hidden">📝</span>
-                </a>
-                <a href="/settings.html" class="px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 bg-gray-600 text-white text-xs sm:text-sm rounded-lg hover:bg-gray-700">
-                    <span class="hidden sm:inline">⚙️ Settings</span>
-                    <span class="sm:hidden">⚙️</span>
-                </a>
+            <div class="card" style="padding:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="archive" style="width:32px;height:32px;color:#3B82F6"></i>
+                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Misses</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_misses||0">0</p></div>
+                </div>
+            </div>
+            <div class="card" style="padding:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="refresh-cw" style="width:32px;height:32px;color:#F59E0B"></i>
+                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_refreshes||0">0</p></div>
+                </div>
+            </div>
+            <div class="card" style="padding:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <i data-lucide="database" style="width:32px;height:32px;color:#10B981"></i>
+                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_entries||0">0</p></div>
+                </div>
             </div>
         </div>
-    </div>
-</header>
-
-<main class="flex-1 px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8 overflow-y-auto">
-
-    <!-- Stats Cards Row -->
-    <div class="mb-3 sm:mb-4">
-        <h2 class="text-base sm:text-lg font-semibold text-gray-700">📊 Estatísticas das Últimas 24 Horas</h2>
-    </div>
-    
-    <!-- Stats Row 1: Main Stats -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Total Queries</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold" x-text="stats.queries_total || 0">0</p>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">📈 Queries over Time</h2>
+        <div class="card" style="padding:24px;margin-bottom:24px"><canvas id="timelineChart" style="max-height:300px"></canvas></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px">
+            <div class="card" style="padding:24px"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">🔍 Query Types</h3><canvas id="queryTypesChart" style="max-height:250px"></canvas></div>
+            <div class="card" style="padding:24px"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache vs Upstream</h3><canvas id="cacheSourceChart" style="max-height:250px"></canvas></div>
         </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Blocked</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-red-600" x-text="stats.queries_blocked || 0">0</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Clients</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600" x-text="stats.clients || 0">0</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Uptime</p>
-            <p class="text-lg sm:text-xl lg:text-2xl font-bold text-green-600" x-text="uptime">0h</p>
-        </div>
-    </div>
-
-    <!-- Stats Row 2: Cache Stats ✨ NEW! -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Hits</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="cacheMetrics.total_hits || 0">0</p>
-            <p class="text-xs text-purple-600 mt-1" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '% hit rate'">0% hit rate</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Misses</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-600" x-text="cacheMetrics.total_misses || 0">0</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Refreshes</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-yellow-600" x-text="cacheMetrics.total_refreshes || 0">0</p>
-            <p class="text-xs text-yellow-600 mt-1" x-text="(cacheMetrics.refresh_rate || 0).toFixed(1) + '% of hits'">0% of hits</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Entries</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="cacheMetrics.total_entries || 0">0</p>
-        </div>
-    </div>
-
-    <!-- Stats Row 3: Performance Metrics -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Cache Hit Rate</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600" x-text="stats.cache_hit_rate ? stats.cache_hit_rate.toFixed(1) + '%' : '0%'">0%</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">Avg Query Time</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-indigo-600" x-text="formatTime(stats.avg_query_time_ms || 0)">0 ms</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">⚡ Cache Time</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600" x-text="formatTime(stats.avg_cache_time_ms || 0)">0 ms</p>
-        </div>
-
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 lg:p-6">
-            <p class="text-xs sm:text-sm text-gray-600 mb-1">🌐 Upstream Time</p>
-            <p class="text-xl sm:text-2xl lg:text-3xl font-bold text-orange-600" x-text="formatTime(stats.avg_upstream_time_ms || 0)">0 ms</p>
-        </div>
-    </div>
-
-    <!-- Queries over Time Chart -->
-    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total > 0" x-cloak>
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
-            <h2 class="text-lg sm:text-xl font-bold">📈 Queries over Time</h2>
-            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
-        </div>
-        <canvas id="timelineChart" class="w-full h-32 sm:h-40 lg:h-48"></canvas>
-    </div>
-
-    <!-- Empty state for no queries -->
-    <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8" x-show="stats.queries_total === 0" x-cloak>
-        <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4">📈 Queries over Time</h2>
-        <div class="h-32 sm:h-40 lg:h-48 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-            <div class="text-center px-4">
-                <p class="text-gray-400 text-base sm:text-lg mb-2">No queries yet</p>
-                <p class="text-xs sm:text-sm text-gray-500 mb-2">Make a DNS query to see the timeline</p>
-                <p class="text-xs text-gray-400">Example: <code class="bg-gray-100 px-2 py-1 rounded text-xs">dig @localhost -p 5353 google.com</code></p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pie Charts Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        <!-- Query Types Pie Chart -->
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
-                <h2 class="text-lg sm:text-xl font-bold">🔍 Query Types</h2>
-                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
-            </div>
-            <div x-show="stats.queries_total === 0" class="h-40 sm:h-48 flex items-center justify-center">
-                <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
-            </div>
-            <canvas id="queryTypesChart" x-show="stats.queries_total > 0" class="w-full h-40 sm:h-48"></canvas>
-        </div>
-
-        <!-- Cache vs Upstream Pie Chart -->
-        <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
-                <h2 class="text-lg sm:text-xl font-bold">⚡ Response Source</h2>
-                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-semibold self-start">Últimas 24h</span>
-            </div>
-            <div x-show="stats.queries_total === 0" class="h-40 sm:h-48 flex items-center justify-center">
-                <p class="text-gray-400 text-sm sm:text-base">No data yet</p>
-            </div>
-            <canvas id="cacheSourceChart" x-show="stats.queries_total > 0" class="w-full h-40 sm:h-48"></canvas>
-        </div>
-    </div>
-
-</main>
-
-<script>
-    function dashboard() {
-        return {
-            stats: {
-                queries_total: 0,
-                queries_blocked: 0,
-                clients: 0,
-                uptime: 0,
-                cache_hit_rate: 0,
-                avg_query_time_ms: 0,
-                avg_cache_time_ms: 0,
-                avg_upstream_time_ms: 0,
-            },
-            queriesChart: null,
-            timelineChart: null,
-            queryTypesChart: null,
-            cacheSourceChart: null,
-            timelineData: {
-                total: new Array(24).fill(0),
-                blocked: new Array(24).fill(0)
-            },
-            upstreamServers: [],
-            queryTypes: {},
-            cacheStats: { cache: 0, upstream: 0 },
-            cacheMetrics: {
-                total_entries: 0,
-                total_hits: 0,
-                total_misses: 0,
-                total_refreshes: 0,
-                hit_rate: 0,
-                refresh_rate: 0
-            },
-            dnssecEnabled: false,
-            dnssecStats: {
-                total: 0,
-                DS: 0,
-                DNSKEY: 0,
-                RRSIG: 0,
-                NSEC: 0,
-                NSEC3: 0,
-                NSEC3PARAM: 0,
-                CDS: 0,
-                CDNSKEY: 0
-            },
-            dnssecTypes: ['DS', 'DNSKEY', 'RRSIG', 'NSEC', 'NSEC3', 'NSEC3PARAM', 'CDS', 'CDNSKEY'],
-            serverHostname: 'localhost',  // Server hostname
-
-            get uptime() {
-                const hours = Math.floor(this.stats.uptime / 3600);
-                const mins = Math.floor((this.stats.uptime % 3600) / 60);
-                return `${hours}h ${mins}m`;
-            },
-
-            get dnssecPercentage() {
-                if (this.stats.queries_total === 0) return '0%';
-                return ((this.dnssecStats.total / this.stats.queries_total) * 100).toFixed(1) + '%';
-            },
-
-            async init() {
-                console.log('Dashboard initializing...');
-                
-                // Load config first to check DNSSEC
-                await this.loadConfig();
-                await this.loadHostname();
-                
-                // Load all data
-                await this.loadStats();
-                await this.loadQueryTypes();
-                await this.loadCacheStats();
-                await this.loadCacheMetrics();
-                
-                // Calculate DNSSEC stats if enabled
-                if (this.dnssecEnabled) {
-                    await this.loadDnssecStats();
-                }
-                
-                console.log('Stats loaded:', this.stats);
-                console.log('Query types:', this.queryTypes);
-                console.log('Cache stats:', this.cacheStats);
-                console.log('Cache metrics:', this.cacheMetrics);
-                console.log('DNSSEC enabled:', this.dnssecEnabled);
-                console.log('DNSSEC stats:', this.dnssecStats);
-                console.log('Server hostname:', this.serverHostname);
-                
-                // Now initialize charts with the loaded data
-                this.initCharts();
-                
-                // Auto-refresh every 1 second
-                setInterval(() => this.loadStats(), 1000);
-                setInterval(() => {
-                    this.loadQueryTypes();
-                    this.loadCacheStats();
-                    this.loadCacheMetrics();
-                    if (this.dnssecEnabled) {
-                        this.loadDnssecStats();
-                    }
-                    this.updateTimelineFromCurrentStats(); // Update timeline with current data
-                    this.updateCharts();
-                }, 1000);
-                
-                // Refresh full timeline data every 5 minutes
-                setInterval(() => this.loadTimelineData(), 300000);
-            },
-
-            async loadConfig() {
-                try {
-                    const res = await fetch('/api/config');
-                    const config = await res.json();
-                    this.dnssecEnabled = config.dns.dnssec_enabled;
-                    console.log('DNSSEC enabled:', this.dnssecEnabled);
-                } catch (error) {
-                    console.error('Error loading config:', error);
-                }
-            },
-
-            async loadHostname() {
-                try {
-                    const res = await fetch('/api/hostname');
-                    const data = await res.json();
-                    this.serverHostname = data.hostname;
-                    console.log('Server hostname:', this.serverHostname);
-                } catch (error) {
-                    console.error('Error loading hostname:', error);
-                }
-            },
-
-            async loadDnssecStats() {
-                try {
-                    const res = await fetch('/api/queries');
-                    const queries = await res.json();
-                    
-                    // Reset counts
-                    this.dnssecStats = {
-                        total: 0,
-                        DS: 0,
-                        DNSKEY: 0,
-                        RRSIG: 0,
-                        NSEC: 0,
-                        NSEC3: 0,
-                        NSEC3PARAM: 0,
-                        CDS: 0,
-                        CDNSKEY: 0
-                    };
-                    
-                    // Count DNSSEC queries
-                    queries.forEach(q => {
-                        if (this.dnssecTypes.includes(q.type)) {
-                            this.dnssecStats.total++;
-                            if (this.dnssecStats[q.type] !== undefined) {
-                                this.dnssecStats[q.type]++;
-                            }
-                        }
-                    });
-                    
-                    console.log('DNSSEC stats calculated:', this.dnssecStats);
-                } catch (error) {
-                    console.error('Error loading DNSSEC stats:', error);
-                }
-            },
-
-            async loadStats() {
-                try {
-                    console.log('Fetching /api/stats...');
-                    const res = await fetch('/api/stats');
-                    if (!res.ok) {
-                        console.error('Stats API error:', res.status);
-                        return;
-                    }
-                    this.stats = await res.json();
-                    console.log('Stats received:', this.stats);
-                } catch (error) {
-                    console.error('Error loading stats:', error);
-                }
-            },
-
-            async loadQueryTypes() {
-                try {
-                    console.log('Fetching /api/queries for types...');
-                    const res = await fetch('/api/queries');
-                    if (!res.ok) {
-                        console.error('Queries API error:', res.status);
-                        return;
-                    }
-                    const queries = await res.json();
-                    console.log('Queries received:', queries.length, 'queries');
-                    
-                    // Count query types
-                    this.queryTypes = {};
-                    queries.forEach(q => {
-                        this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
-                    });
-                    console.log('Query types counted:', this.queryTypes);
-                } catch (error) {
-                    console.error('Error loading query types:', error);
-                }
-            },
-
-            async loadCacheStats() {
-                try {
-                    console.log('Fetching /api/queries for cache stats...');
-                    const res = await fetch('/api/queries');
-                    if (!res.ok) {
-                        console.error('Queries API error:', res.status);
-                        return;
-                    }
-                    const queries = await res.json();
-                    
-                    // Count cache vs upstream
-                    let cache = 0, upstream = 0;
-                    queries.forEach(q => {
-                        if (q.blocked) return; // Skip blocked
-                        if (q.cache_hit) cache++;
-                        else upstream++;
-                    });
-                    
-                    this.cacheStats = { cache, upstream };
-                    console.log('Cache stats:', this.cacheStats);
-                } catch (error) {
-                    console.error('Error loading cache stats:', error);
-                }
-            },
-
-            async loadCacheMetrics() {
-                try {
-                    console.log('Fetching /api/cache/metrics...');
-                    const res = await fetch('/api/cache/metrics');
-                    if (!res.ok) {
-                        console.error('Cache metrics API error:', res.status);
-                        return;
-                    }
-                    const metrics = await res.json();
-                    console.log('Cache metrics received:', metrics);
-                    
-                    // Map to dashboard structure
-                    this.cacheMetrics = {
-                        total_hits: metrics.hits,
-                        total_misses: metrics.misses,
-                        total_refreshes: metrics.optimistic_refreshes,
-                        total_entries: metrics.total_entries,
-                        hit_rate: metrics.hit_rate,
-                        refresh_rate: metrics.hits > 0 
-                            ? (metrics.optimistic_refreshes / metrics.hits * 100) 
-                            : 0
-                    };
-                    
-                    console.log('Mapped cache metrics:', this.cacheMetrics);
-                } catch (error) {
-                    console.error('Error loading cache metrics:', error);
-                }
-            },
-
-            initCharts() {
-                console.log('Initializing charts...');
-                
-                // Timeline chart - queries over time (last 24h)
-                const ctxTimeline = document.getElementById('timelineChart');
-                if (ctxTimeline && ctxTimeline.offsetParent !== null) {
-                    console.log('Creating timeline chart');
-                    this.timelineChart = new Chart(ctxTimeline.getContext('2d'), {
-                        type: 'line',
-                        data: {
-                            labels: this.generateTimeLabels(),
-                            datasets: [{
-                                label: 'Total Queries',
-                                data: new Array(24).fill(0),
-                                borderColor: 'rgb(59, 130, 246)',
-                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                                fill: true,
-                                tension: 0.4
-                            }, {
-                                label: 'Blocked',
-                                data: new Array(24).fill(0),
-                                borderColor: 'rgb(239, 68, 68)',
-                                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                fill: true,
-                                tension: 0.4
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: true,
-                            interaction: {
-                                mode: 'index',
-                                intersect: false,
-                            },
-                            plugins: {
-                                legend: {
-                                    position: 'top',
-                                },
-                                tooltip: {
-                                    callbacks: {
-                                        label: function(context) {
-                                            return context.dataset.label + ': ' + context.parsed.y + ' queries';
-                                        }
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    display: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Last 24 Hours'
-                                    }
-                                },
-                                y: {
-                                    display: true,
-                                    title: {
-                                        display: true,
-                                        text: 'Queries'
-                                    },
-                                    beginAtZero: true
-                                }
-                            }
-                        }
-                    });
-                    
-                    // Load initial timeline data
-                    this.loadTimelineData();
-                }
-                
-                // Query types pie chart - only if there's data
-                if (Object.keys(this.queryTypes).length > 0) {
-                    const ctx2 = document.getElementById('queryTypesChart');
-                    if (ctx2 && ctx2.offsetParent !== null) {  // Check if visible
-                        console.log('Creating query types chart');
-                        this.queryTypesChart = new Chart(ctx2.getContext('2d'), {
-                            type: 'doughnut',
-                            data: {
-                                labels: Object.keys(this.queryTypes),
-                                datasets: [{
-                                    data: Object.values(this.queryTypes),
-                                    backgroundColor: [
-                                        'rgb(59, 130, 246)',
-                                        'rgb(147, 51, 234)',
-                                        'rgb(34, 197, 94)',
-                                        'rgb(251, 191, 36)',
-                                        'rgb(239, 68, 68)',
-                                        'rgb(156, 163, 175)'
-                                    ]
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                plugins: {
-                                    legend: {
-                                        position: 'right',
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-
-                // Cache vs Upstream pie chart - only if there's data
-                if (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0) {
-                    const ctx3 = document.getElementById('cacheSourceChart');
-                    if (ctx3 && ctx3.offsetParent !== null) {  // Check if visible
-                        console.log('Creating cache source chart');
-                        this.cacheSourceChart = new Chart(ctx3.getContext('2d'), {
-                            type: 'doughnut',
-                            data: {
-                                labels: ['⚡ Cache', '🌐 Upstream'],
-                                datasets: [{
-                                    data: [this.cacheStats.cache, this.cacheStats.upstream],
-                                    backgroundColor: [
-                                        'rgb(168, 85, 247)',
-                                        'rgb(59, 130, 246)'
-                                    ]
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                plugins: {
-                                    legend: {
-                                        position: 'right',
-                                    }
-                                }
-                            }
-                        });
-                    }
-                }
-
-                console.log('Charts initialized:', {
-                    timeline: !!this.timelineChart,
-                    queryTypes: !!this.queryTypesChart,
-                    cacheSource: !!this.cacheSourceChart
-                });
-            },
-
-            async updateCharts() {
-                console.log('Updating charts...');
-                
-                // Update query types chart
-                const ctx2 = document.getElementById('queryTypesChart');
-                if (this.queryTypesChart && ctx2 && Object.keys(this.queryTypes).length > 0) {
-                    console.log('Updating query types chart with:', this.queryTypes);
-                    this.queryTypesChart.data.labels = Object.keys(this.queryTypes);
-                    this.queryTypesChart.data.datasets[0].data = Object.values(this.queryTypes);
-                    this.queryTypesChart.update('none');
-                } else {
-                    console.log('Skipping query types chart update (no data or chart not ready)');
-                }
-
-                // Update cache/upstream chart
-                const ctx3 = document.getElementById('cacheSourceChart');
-                if (this.cacheSourceChart && ctx3 && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
-                    console.log('Updating cache source chart with:', this.cacheStats);
-                    this.cacheSourceChart.data.datasets[0].data = [
-                        this.cacheStats.cache,
-                        this.cacheStats.upstream
-                    ];
-                    this.cacheSourceChart.update('none');
-                } else {
-                    console.log('Skipping cache source chart update (no data or chart not ready)');
-                }
-            },
-
-            formatTime(ms) {
-                if (!ms || ms === 0) return '0 ms';
-                
-                // Se for microsegundos (< 1000)
-                if (ms < 1000) {
-                    const rounded = Math.round(ms);
-                    return `${rounded} µs`;
-                }
-                
-                // Se for millisegundos, arredondar para 1 casa decimal
-                const msValue = (ms / 1000).toFixed(1);
-                return `${msValue} ms`;
-            },
-
-            generateTimeLabels() {
-                const labels = [];
-                const now = new Date();
-                for (let i = 23; i >= 0; i--) {
-                    const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
-                    labels.push(hour.getHours() + 'h');
-                }
-                return labels;
-            },
-
-            async loadTimelineData() {
-                try {
-                    const res = await fetch('/api/queries/timeline');
-                    const data = await res.json();
-                    
-                    if (data && data.length > 0) {
-                        // Data comes as array of {hour, total, blocked}
-                        this.timelineData.total = data.map(d => d.total || 0);
-                        this.timelineData.blocked = data.map(d => d.blocked || 0);
-                        
-                        if (this.timelineChart) {
-                            this.timelineChart.data.datasets[0].data = this.timelineData.total;
-                            this.timelineChart.data.datasets[1].data = this.timelineData.blocked;
-                            this.timelineChart.update('none');
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error loading timeline data:', error);
-                    // Use accumulated data from current stats as fallback
-                    this.updateTimelineFromCurrentStats();
-                }
-            },
-
-            updateTimelineFromCurrentStats() {
-                // Fallback: show current hour's stats
-                const currentHourIndex = 23; // Last hour in the 24h array
-                this.timelineData.total[currentHourIndex] = this.stats.queries_total || 0;
-                this.timelineData.blocked[currentHourIndex] = this.stats.queries_blocked || 0;
-                
-                if (this.timelineChart) {
-                    this.timelineChart.data.datasets[0].data = this.timelineData.total;
-                    this.timelineChart.data.datasets[1].data = this.timelineData.blocked;
-                    this.timelineChart.update('none');
-                }
-            },
-
-            getResponseTimeColor(time) {
-                if (!time) return 'text-gray-400';
-                if (time < 1000) return 'text-green-600 font-semibold';  // µs
-                if (time < 10000) return 'text-yellow-600 font-semibold'; // < 10ms
-                if (time < 50000) return 'text-orange-600 font-semibold'; // < 50ms
-                return 'text-red-600 font-semibold'; // > 50ms
-            }
-        }
-    }
-</script>
+    </main>
+    <script>
+function app(){return{theme:'light',stats:{},cacheMetrics:{},cacheStats:{cache:0,upstream:0},queryTypes:{},charts:{},async init(){this.theme=localStorage.getItem('theme')||'light';document.documentElement.classList.toggle('dark',this.theme==='dark');await this.loadAllData();await this.$nextTick();setTimeout(()=>{this.initCharts();lucide.createIcons()},100);this.startPolling()},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadAllData(){await Promise.all([this.loadStats(),this.loadQueryTypes(),this.loadCacheMetrics()])},async loadStats(){try{const res=await fetch('/api/stats');if(res.ok)this.stats=await res.json()}catch(e){console.error(e)}},async loadQueryTypes(){try{const res=await fetch('/api/queries');if(res.ok){const queries=await res.json();this.queryTypes={};queries.forEach(q=>{this.queryTypes[q.type]=(this.queryTypes[q.type]||0)+1});let cache=0,upstream=0;queries.forEach(q=>{if(q.blocked)return;if(q.cache_hit)cache++;else upstream++});this.cacheStats={cache,upstream}}}catch(e){console.error(e)}},async loadCacheMetrics(){try{const res=await fetch('/api/cache/metrics');if(res.ok){const m=await res.json();this.cacheMetrics={total_hits:m.hits,total_misses:m.misses,total_refreshes:m.optimistic_refreshes,total_entries:m.total_entries,hit_rate:m.hit_rate}}}catch(e){console.error(e)}},initCharts(){try{const ctx1=document.getElementById('timelineChart');if(ctx1){this.charts.timeline=new Chart(ctx1.getContext('2d'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>(new Date().getHours()-23+i+24)%24+'h'),datasets:[{label:'Total Queries',data:Array(24).fill(0),borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:3,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}})}const ctx2=document.getElementById('queryTypesChart');if(ctx2&&Object.keys(this.queryTypes).length>0){this.charts.queryTypes=new Chart(ctx2.getContext('2d'),{type:'doughnut',data:{labels:Object.keys(this.queryTypes),datasets:[{data:Object.values(this.queryTypes),backgroundColor:['#3B82F6','#10B981','#F59E0B','#EF4444','#A855F7']}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.5,plugins:{legend:{position:'right'}}}})}const ctx3=document.getElementById('cacheSourceChart');if(ctx3&&(this.cacheStats.cache>0||this.cacheStats.upstream>0)){this.charts.cacheSource=new Chart(ctx3.getContext('2d'),{type:'doughnut',data:{labels:['⚡ Cache','🌐 Upstream'],datasets:[{data:[this.cacheStats.cache,this.cacheStats.upstream],backgroundColor:['#A855F7','#3B82F6']}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.5,plugins:{legend:{position:'right'}}}})}}catch(e){console.error('Chart error:',e)}},startPolling(){setInterval(()=>this.loadAllData(),1000)},formatTime(ms){if(!ms)return'0 ms';if(ms<1000)return`${Math.round(ms)} µs`;return`${(ms/1000).toFixed(1)} ms`}}}
+    </script>
 </body>
 </html>
