@@ -1,11 +1,3 @@
-//! Cache key types optimized for zero-allocation lookups.
-//!
-//! `CacheKey` uses `CompactString` instead of `String` to store domain names.
-//! CompactString stores strings up to 24 bytes inline on the stack without
-//! heap allocation. Since most DNS domains are under 24 bytes (e.g.,
-//! "google.com" = 10, "api.github.com" = 14), this eliminates heap allocation
-//! for the vast majority of cache operations.
-
 use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
 use std::hash::{Hash, Hasher};

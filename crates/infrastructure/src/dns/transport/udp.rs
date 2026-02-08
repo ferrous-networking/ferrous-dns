@@ -1,9 +1,3 @@
-//! UDP Transport for DNS queries (RFC 1035 §4.2.1)
-//!
-//! Standard DNS transport. Messages are sent as-is (no framing).
-//! Limited to 512 bytes without EDNS(0), or up to 4096 bytes with EDNS(0).
-//! If the response has the TC (truncated) bit set, the caller should retry via TCP.
-
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;

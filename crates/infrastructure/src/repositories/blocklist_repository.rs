@@ -1,6 +1,3 @@
-//! Blocklist repository with in-memory DashSet backed by SQLite.
-//! is_blocked() hot path: DashSet lookup ~20ns vs SQLite SELECT ~200µs
-
 use async_trait::async_trait;
 use dashmap::DashSet;
 use ferrous_dns_application::ports::BlocklistRepository;

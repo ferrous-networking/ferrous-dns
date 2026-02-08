@@ -1,5 +1,6 @@
 use super::query::query_server;
 use super::strategy::UpstreamResult;
+use crate::dns::events::QueryEventEmitter;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::{debug, warn};
@@ -15,12 +16,14 @@ impl BalancedStrategy {
         }
     }
 
+    /// comprehensive logging of all DNS queries.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
             return Err(DomainError::InvalidDomainName(
@@ -32,7 +35,7 @@ impl BalancedStrategy {
 
         for i in 0..servers.len() {
             let index = (start_index + i) % servers.len();
-            match query_server(servers[index], domain, record_type, timeout_ms).await {
+            match query_server(servers[index], domain, record_type, timeout_ms, emitter).await {
                 Ok(r) => {
                     debug!(server = %r.server_addr, latency_ms = r.latency_ms, "Server responded");
                     return Ok(UpstreamResult {

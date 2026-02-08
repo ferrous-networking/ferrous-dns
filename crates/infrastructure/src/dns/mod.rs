@@ -1,9 +1,12 @@
 pub mod cache;
 pub mod cache_updater;
 pub mod cache_warming;
+pub mod dnssec;
+pub mod events;
 pub mod forwarding;
 pub mod load_balancer;
 pub mod prefetch;
+pub mod query_logger;
 pub mod resolver;
 pub mod server;
 pub mod transport;
@@ -13,9 +16,11 @@ pub use cache::{
 };
 pub use cache_updater::CacheUpdater;
 pub use cache_warming::{CacheWarmer, WarmingStats};
+pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,
     ServerStatus,
 };
 pub use prefetch::PrefetchPredictor;
+pub use query_logger::QueryEventLogger;
 pub use resolver::HickoryDnsResolver;

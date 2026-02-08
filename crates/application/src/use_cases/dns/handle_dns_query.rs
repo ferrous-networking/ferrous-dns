@@ -1,5 +1,5 @@
 use crate::ports::{BlocklistRepository, DnsResolver, QueryLogRepository};
-use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog};
+use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -42,6 +42,7 @@ impl HandleDnsQueryUseCase {
                 upstream_server: None,
                 response_status: Some("BLOCKED"),
                 timestamp: None,
+                query_source: QuerySource::Client,
             };
 
             let logger = self.query_log.clone();
@@ -76,6 +77,7 @@ impl HandleDnsQueryUseCase {
                     upstream_server: resolution.upstream_server.clone(),
                     response_status: Some("NOERROR"),
                     timestamp: None,
+                    query_source: QuerySource::Client,
                 };
 
                 let logger = self.query_log.clone();
@@ -114,6 +116,7 @@ impl HandleDnsQueryUseCase {
                     upstream_server: None,
                     response_status: Some(response_status),
                     timestamp: None,
+                    query_source: QuerySource::Client,
                 };
 
                 let logger = self.query_log.clone();

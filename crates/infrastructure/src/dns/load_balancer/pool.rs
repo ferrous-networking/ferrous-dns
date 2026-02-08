@@ -3,6 +3,7 @@ use super::failover::FailoverStrategy;
 use super::health::HealthChecker;
 use super::parallel::ParallelStrategy;
 use super::strategy::{Strategy, UpstreamResult};
+use crate::dns::events::QueryEventEmitter;
 use crate::dns::forwarding::ResponseParser;
 use ferrous_dns_domain::{
     Config, DnsProtocol, DomainError, RecordType, UpstreamPool, UpstreamStrategy,
@@ -12,9 +13,16 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+/// Manages multiple upstream DNS pools with load balancing strategies.
+///
+/// ## Phase 5: Query Event Logging
+///
+/// The `emitter` field is used to pass query events through to `query_server()`
+/// for comprehensive logging of all DNS queries, including DNSSEC validation.
 pub struct PoolManager {
     pools: Vec<PoolWithStrategy>,
     health_checker: Option<Arc<HealthChecker>>,
+    emitter: QueryEventEmitter,
 }
 
 struct PoolWithStrategy {
@@ -24,9 +32,16 @@ struct PoolWithStrategy {
 }
 
 impl PoolManager {
+    /// Creates a new pool manager.
+    ///
+    /// ## Phase 5: Query Event Logging
+    ///
+    /// The `emitter` parameter enables comprehensive query logging. Use
+    /// `QueryEventEmitter::new_disabled()` to disable logging (zero overhead).
     pub fn new(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
+        emitter: QueryEventEmitter,
     ) -> Result<Self, DomainError> {
         if pools.is_empty() {
             return Err(DomainError::InvalidDomainName(
@@ -63,11 +78,17 @@ impl PoolManager {
         Ok(Self {
             pools: pools_with_strategy,
             health_checker,
+            emitter,
         })
     }
 
     pub fn from_config(config: &Config) -> Result<Self, DomainError> {
-        Self::new(config.dns.pools.clone(), None)
+        // When creating from config, use disabled emitter (will be replaced in DI)
+        Self::new(
+            config.dns.pools.clone(),
+            None,
+            QueryEventEmitter::new_disabled(),
+        )
     }
 
     pub async fn query(
@@ -102,9 +123,16 @@ impl PoolManager {
                 continue;
             }
 
+            // PHASE 5: Pass emitter to strategy
             match pool
                 .strategy
-                .query_refs(&healthy_refs, domain, record_type, timeout_ms)
+                .query_refs(
+                    &healthy_refs,
+                    domain,
+                    record_type,
+                    timeout_ms,
+                    &self.emitter,
+                )
                 .await
             {
                 Ok(result) => {

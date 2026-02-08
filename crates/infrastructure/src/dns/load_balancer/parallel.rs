@@ -1,5 +1,6 @@
 use super::query::query_server;
 use super::strategy::UpstreamResult;
+use crate::dns::events::QueryEventEmitter;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -14,12 +15,19 @@ impl ParallelStrategy {
         Self
     }
 
+    /// Query all servers in parallel, return fastest response.
+    ///
+    /// ## Phase 5: Query Event Logging
+    ///
+    /// The `emitter` parameter is cloned and passed to each spawned task to enable
+    /// comprehensive logging of all parallel DNS queries.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
             return Err(DomainError::InvalidDomainName(
@@ -35,8 +43,9 @@ impl ParallelStrategy {
             let protocol = protocol.clone();
             let domain = domain.to_string();
             let record_type = record_type.clone();
+            let emitter = emitter.clone(); // Clone emitter for spawned task
             let handle = tokio::spawn(async move {
-                query_server(&protocol, &domain, &record_type, timeout_ms).await
+                query_server(&protocol, &domain, &record_type, timeout_ms, &emitter).await
             });
             abort_handles.push(handle.abort_handle());
             futs.push(handle);

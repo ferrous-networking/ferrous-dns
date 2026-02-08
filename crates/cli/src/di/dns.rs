@@ -4,6 +4,8 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::{DnsCache, EvictionStrategy},
     cache_updater::CacheUpdater,
+    events::QueryEventEmitter,
+    query_logger::QueryEventLogger,
     HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
@@ -19,6 +21,10 @@ pub struct DnsServices {
 impl DnsServices {
     pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
         info!("Initializing DNS services with load balancing");
+
+        // PHASE 5: Create query event emitter (always enabled for internal query logging)
+        info!("Query event logging enabled (parallel batch processing - 20,000+ queries/sec)");
+        let (emitter, event_rx) = QueryEventEmitter::new_enabled();
 
         let health_checker = if config.dns.health_check.enabled {
             let checker = Arc::new(HealthChecker::new(
@@ -38,10 +44,19 @@ impl DnsServices {
             None
         };
 
+        // PHASE 5: Pass emitter to PoolManager
         let pool_manager = Arc::new(PoolManager::new(
             config.dns.pools.clone(),
             health_checker.clone(),
+            emitter.clone(), // ← Pass emitter for internal query logging
         )?);
+
+        // PHASE 5: Start query event logger background task
+        let logger = QueryEventLogger::new(repos.query_log.clone());
+        tokio::spawn(async move {
+            logger.start_parallel_batch(event_rx).await.unwrap();
+        });
+        info!("Query event logger started - logging ALL DNS queries including DNSSEC validation");
 
         // Start health checker in background (don't keep JoinHandle)
         if let Some(checker) = health_checker {

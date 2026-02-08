@@ -1,5 +1,3 @@
-// Cache module - Refactored following SOLID principles
-
 pub mod data;
 pub mod eviction;
 pub mod key;

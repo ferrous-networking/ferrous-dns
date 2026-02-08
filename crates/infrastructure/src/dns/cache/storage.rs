@@ -1,10 +1,3 @@
-// Main DNS Cache implementation — all performance optimizations applied:
-// - CompactString: inline storage for domains ≤24 bytes (no heap alloc)
-// - BorrowedKey: zero-allocation bloom filter and L1 cache checks
-// - Double-hash bloom filter (Kirsch-Mitzenmacker) with FxHasher
-// - O(1) probabilistic eviction
-// - Sampling-based batch eviction (Redis-style)
-
 use super::eviction::{EvictionEntry, EvictionStrategy};
 use super::key::BorrowedKey;
 use super::{CacheKey, CacheMetrics, CachedData, CachedRecord, DnssecStatus};

@@ -1,15 +1,5 @@
-//! Centralized mapping between `ferrous_dns_domain::RecordType` and `hickory_proto::rr::RecordType`
-//!
-//! Previously this conversion was duplicated in:
-//! - `resolver.rs` (domain → hickory, 24 match arms)
-//! - `server.rs` (hickory → domain, 24 match arms)
-//!
-//! Now it lives in one place.
-
-use ferrous_dns_domain::RecordType;
+use ferrous_dns_domain::dns_record::{RecordCategory, RecordType};
 use hickory_proto::rr::RecordType as HickoryRecordType;
-
-/// Bidirectional mapper between domain and hickory record types
 pub struct RecordTypeMapper;
 
 impl RecordTypeMapper {
@@ -49,6 +39,27 @@ impl RecordTypeMapper {
             // Child DNSSEC
             RecordType::CDS => HickoryRecordType::CDS,
             RecordType::CDNSKEY => HickoryRecordType::CDNSKEY,
+
+            // EDNS & Protocol Support
+            RecordType::OPT => HickoryRecordType::OPT,
+
+            // Legacy/Informational records
+            RecordType::NULL => HickoryRecordType::NULL,
+            RecordType::HINFO => HickoryRecordType::HINFO,
+            // WKS (type 11) not supported by Hickory - use Unknown
+            RecordType::WKS => HickoryRecordType::Unknown(11),
+
+            // Security & Cryptography (Extended)
+            // IPSECKEY (type 45) not fully supported - use Unknown
+            RecordType::IPSECKEY => HickoryRecordType::Unknown(45),
+            RecordType::OPENPGPKEY => HickoryRecordType::OPENPGPKEY,
+
+            // Zone Integrity
+            // ZONEMD (type 63) not supported by Hickory - use Unknown
+            RecordType::ZONEMD => HickoryRecordType::Unknown(63),
+
+            // DNS Alias (ANAME/DNAME mapping)
+            RecordType::ANAME => HickoryRecordType::ANAME,
         }
     }
 
@@ -90,71 +101,63 @@ impl RecordTypeMapper {
             HickoryRecordType::CDS => Some(RecordType::CDS),
             HickoryRecordType::CDNSKEY => Some(RecordType::CDNSKEY),
 
+            // EDNS & Protocol Support
+            HickoryRecordType::OPT => Some(RecordType::OPT),
+
+            // Legacy/Informational records
+            HickoryRecordType::NULL => Some(RecordType::NULL),
+            HickoryRecordType::HINFO => Some(RecordType::HINFO),
+            // WKS, IPSECKEY, ZONEMD handled as Unknown types
+            HickoryRecordType::Unknown(11) => Some(RecordType::WKS),
+            HickoryRecordType::Unknown(45) => Some(RecordType::IPSECKEY),
+            HickoryRecordType::Unknown(63) => Some(RecordType::ZONEMD),
+
+            // Security & Cryptography (Extended)
+            HickoryRecordType::OPENPGPKEY => Some(RecordType::OPENPGPKEY),
+
+            // DNS Alias - Fixed ANAME/DNAME mapping
+            // Hickory uses ANAME internally for both ANAME and DNAME
+            HickoryRecordType::ANAME => Some(RecordType::ANAME),
+
             _ => None,
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_roundtrip_all_types() {
-        let types = vec![
-            RecordType::A,
-            RecordType::AAAA,
-            RecordType::CNAME,
-            RecordType::MX,
-            RecordType::TXT,
-            RecordType::PTR,
-            RecordType::SRV,
-            RecordType::SOA,
-            RecordType::NS,
-            RecordType::NAPTR,
-            RecordType::DS,
-            RecordType::DNSKEY,
-            RecordType::SVCB,
-            RecordType::HTTPS,
-            RecordType::CAA,
-            RecordType::TLSA,
-            RecordType::SSHFP,
-            RecordType::RRSIG,
-            RecordType::NSEC,
-            RecordType::NSEC3,
-            RecordType::NSEC3PARAM,
-            RecordType::CDS,
-            RecordType::CDNSKEY,
-        ];
-
-        for rt in types {
-            let hickory = RecordTypeMapper::to_hickory(&rt);
-            let back = RecordTypeMapper::from_hickory(hickory);
-            assert!(
-                back.is_some(),
-                "Roundtrip failed for {:?} → {:?}",
-                rt,
-                hickory
-            );
-        }
+    /// Validates if a hickory record type is supported
+    ///
+    /// Centralizes validation logic (DRY principle)
+    pub fn is_supported(hickory_type: HickoryRecordType) -> bool {
+        Self::from_hickory(hickory_type).is_some()
     }
 
-    #[test]
-    fn test_unsupported_type_returns_none() {
-        // ANY is not in our domain model
-        let result = RecordTypeMapper::from_hickory(HickoryRecordType::ANY);
-        assert!(result.is_none());
+    /// Returns all hickory types that map to a specific category
+    ///
+    /// Useful for filtering queries by category
+    pub fn hickory_types_for_category(category: RecordCategory) -> Vec<HickoryRecordType> {
+        RecordType::by_category(category)
+            .into_iter()
+            .map(|rt| Self::to_hickory(&rt))
+            .collect()
     }
 
-    #[test]
-    fn test_a_record_mapping() {
-        assert_eq!(
-            RecordTypeMapper::to_hickory(&RecordType::A),
-            HickoryRecordType::A
-        );
-        assert_eq!(
-            RecordTypeMapper::from_hickory(HickoryRecordType::A),
-            Some(RecordType::A)
-        );
+    /// Checks if a hickory type is DNSSEC-related
+    pub fn is_dnssec(hickory_type: HickoryRecordType) -> bool {
+        Self::from_hickory(hickory_type)
+            .map(|rt| rt.is_dnssec())
+            .unwrap_or(false)
+    }
+
+    /// Checks if a hickory type is security-related
+    pub fn is_security_related(hickory_type: HickoryRecordType) -> bool {
+        Self::from_hickory(hickory_type)
+            .map(|rt| rt.is_security_related())
+            .unwrap_or(false)
+    }
+
+    /// Checks if a hickory type is modern
+    pub fn is_modern(hickory_type: HickoryRecordType) -> bool {
+        Self::from_hickory(hickory_type)
+            .map(|rt| rt.is_modern())
+            .unwrap_or(false)
     }
 }

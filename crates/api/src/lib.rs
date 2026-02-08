@@ -1,4 +1,3 @@
-//! Ferrous DNS API Layer - Refactored following SOLID principles
 pub mod dto;
 pub mod handlers;
 pub mod middleware;

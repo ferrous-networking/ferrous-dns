@@ -1,13 +1,6 @@
-//! Query log repository with batch INSERT optimization.
-//!
-//! Under high load, individual INSERT per query causes SQLite lock contention.
-//! This uses a bounded channel + background flush for batched multi-row INSERTs.
-//!   hot path: log_query() → channel.try_send() → ~50ns
-//!   background: flush task → batch INSERT → single transaction
-
 use async_trait::async_trait;
 use ferrous_dns_application::ports::QueryLogRepository;
-use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
+use ferrous_dns_domain::{DomainError, QueryLog, QuerySource, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -30,6 +23,7 @@ struct QueryLogEntry {
     dnssec_status: Option<&'static str>,
     upstream_server: Option<String>,
     response_status: Option<&'static str>,
+    query_source: String, // Phase 5: client, internal, dnssec_validation
 }
 
 impl QueryLogEntry {
@@ -45,6 +39,7 @@ impl QueryLogEntry {
             dnssec_status: q.dnssec_status,
             upstream_server: q.upstream_server.clone(),
             response_status: q.response_status,
+            query_source: q.query_source.as_str().to_string(),
         }
     }
 }
@@ -137,14 +132,14 @@ impl SqliteQueryLogRepository {
         }
 
         let mut sql = String::from(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status) VALUES "
+            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source) VALUES "
         );
 
         for (i, _) in batch.iter().enumerate() {
             if i > 0 {
                 sql.push_str(", ");
             }
-            sql.push_str("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            sql.push_str("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         }
 
         let mut query = sqlx::query(&sql);
@@ -159,7 +154,8 @@ impl SqliteQueryLogRepository {
                 .bind(if entry.cache_refresh { 1i64 } else { 0 })
                 .bind(entry.dnssec_status)
                 .bind(entry.upstream_server.as_deref())
-                .bind(entry.response_status);
+                .bind(entry.response_status)
+                .bind(&entry.query_source);
         }
 
         match query.execute(pool).await {
@@ -197,7 +193,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!(limit = limit, "Fetching recent queries");
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source,
                     datetime(created_at) as created_at
              FROM query_log ORDER BY created_at DESC LIMIT ?",
         )
@@ -223,6 +219,12 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     .get::<Option<String>, _>("response_status")
                     .and_then(|s| to_static_response_status(&s));
 
+                let query_source_str: String = row
+                    .get::<Option<String>, _>("query_source")
+                    .unwrap_or_else(|| "client".to_string());
+                let query_source =
+                    QuerySource::from_str(&query_source_str).unwrap_or(QuerySource::Client);
+
                 Some(QueryLog {
                     id: Some(row.get("id")),
                     domain: Arc::from(domain_str.as_str()),
@@ -238,6 +240,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     upstream_server: row.get::<Option<String>, _>("upstream_server"),
                     response_status,
                     timestamp: Some(row.get("created_at")),
+                    query_source,
                 })
             })
             .collect();
@@ -248,7 +251,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
     #[instrument(skip(self))]
     async fn get_stats(&self) -> Result<QueryStats, DomainError> {
-        debug!("Fetching query statistics");
+        debug!("Fetching query statistics with Phase 4 analytics");
 
         let row = sqlx::query(
             "SELECT
@@ -276,6 +279,28 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             0.0
         };
 
+        // Phase 4: Fetch queries by type for analytics
+        let type_rows = sqlx::query(
+            "SELECT record_type, COUNT(*) as count FROM query_log GROUP BY record_type",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch type distribution");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+
+        let mut queries_by_type = std::collections::HashMap::new();
+        for row in type_rows {
+            let type_str: String = row.get("record_type");
+            let count: i64 = row.get("count");
+
+            // Parse RecordType from string
+            if let Ok(record_type) = type_str.parse::<ferrous_dns_domain::RecordType>() {
+                queries_by_type.insert(record_type, count as u64);
+            }
+        }
+
         let stats = QueryStats {
             queries_total: total,
             queries_blocked: row.get::<i64, _>("blocked") as u64,
@@ -287,14 +312,20 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             avg_upstream_time_ms: row
                 .get::<Option<f64>, _>("avg_upstream_time")
                 .unwrap_or(0.0),
-        };
+            queries_by_type: std::collections::HashMap::new(),
+            most_queried_type: None,
+            record_type_distribution: Vec::new(),
+        }
+        .with_analytics(queries_by_type);
 
         debug!(
             queries_total = stats.queries_total,
             queries_blocked = stats.queries_blocked,
             unique_clients = stats.unique_clients,
             cache_hit_rate = stats.cache_hit_rate,
-            "Statistics fetched successfully"
+            most_queried_type = ?stats.most_queried_type,
+            type_count = stats.queries_by_type.len(),
+            "Statistics with analytics fetched successfully"
         );
         Ok(stats)
     }

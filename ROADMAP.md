@@ -11,13 +11,13 @@
 - [x] Basic DNS server implementation
 - [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR)
 - [x] Upstream DNS forwarding (1.1.1.1, 8.8.8.8)
-- [ ] Load balancing across upstreams
-- [ ] Query caching with TTL
+- [x] Load balancing across upstreams
+- [x] Query caching with TTL
 - [ ] Blocklist functionality
+- [ ] Local Dns records domain.local
 
 ### 🚧 v0.2.0 - Core DNS Features
 
-- [ ] Blocklist import from URLs
 - [ ] Wildcard domain blocking (`*.ads.com`)
 - [ ] Whitelist support
 

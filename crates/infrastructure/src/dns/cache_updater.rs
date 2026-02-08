@@ -1,7 +1,7 @@
 use super::cache::DnsCache;
 use crate::dns::HickoryDnsResolver;
 use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
-use ferrous_dns_domain::{DnsQuery, QueryLog};
+use ferrous_dns_domain::{DnsQuery, QueryLog, QuerySource};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -215,6 +215,7 @@ impl CacheUpdater {
                         upstream_server: resolution.upstream_server.clone(),
                         response_status: Some("NOERROR"),
                         timestamp: None,
+                        query_source: QuerySource::Internal, // Cache refresh is internal
                     };
 
                     if let Err(e) = log.log_query(&log_entry).await {

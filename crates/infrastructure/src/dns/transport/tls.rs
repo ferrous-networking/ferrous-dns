@@ -1,13 +1,3 @@
-//! TLS Transport for DNS queries — DNS-over-TLS (RFC 7858)
-//!
-//! Optimized with:
-//! - Static shared `ClientConfig` (built once, reused across all queries)
-//! - TLS session resumption via rustls session cache (avoids full handshake)
-//! - Connection pool: idle TLS connections are cached per (addr, hostname)
-//!   and reused for subsequent queries, amortizing the handshake cost.
-//!
-//! Performance: full handshake ~40ms → reused connection ~1ms
-
 use super::tcp::{read_with_length_prefix, send_with_length_prefix};
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;

@@ -10,4 +10,4 @@ pub use cache::{CacheMetricsResponse, CacheStatsResponse};
 pub use config::*;
 pub use hostname::HostnameResponse;
 pub use query::QueryResponse;
-pub use stats::StatsResponse;
+pub use stats::{StatsResponse, TopType, TypeDistribution};

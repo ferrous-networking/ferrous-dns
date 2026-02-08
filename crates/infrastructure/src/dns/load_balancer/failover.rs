@@ -1,5 +1,6 @@
 use super::query::query_server;
 use super::strategy::UpstreamResult;
+use crate::dns::events::QueryEventEmitter;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use tracing::{debug, warn};
 
@@ -10,12 +11,19 @@ impl FailoverStrategy {
         Self
     }
 
+    /// Query servers sequentially until one succeeds.
+    ///
+    /// ## Phase 5: Query Event Logging
+    ///
+    /// The `emitter` parameter is passed through to `query_server()` to enable
+    /// comprehensive logging of all DNS queries, including failed attempts.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
             return Err(DomainError::InvalidDomainName(
@@ -25,7 +33,7 @@ impl FailoverStrategy {
         debug!(strategy = "failover", servers = servers.len(), domain = %domain, "Trying sequentially");
 
         for (index, protocol) in servers.iter().enumerate() {
-            match query_server(protocol, domain, record_type, timeout_ms).await {
+            match query_server(protocol, domain, record_type, timeout_ms, emitter).await {
                 Ok(r) => {
                     debug!(server = %r.server_addr, latency_ms = r.latency_ms, position = index, "Server responded");
                     return Ok(UpstreamResult {

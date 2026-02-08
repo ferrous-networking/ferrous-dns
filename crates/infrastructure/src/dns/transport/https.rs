@@ -1,20 +1,3 @@
-//! HTTPS Transport for DNS queries — DNS-over-HTTPS (RFC 8484)
-//!
-//! Sends DNS queries as HTTP POST requests with `application/dns-message` content type.
-//! The request body is the raw DNS wire format message, and the response body
-//! contains the raw DNS wire format response.
-//!
-//! Requires the `dns-over-https` feature flag.
-//!
-//! Wire format (HTTP):
-//! ```text
-//! POST /dns-query HTTP/2
-//! Content-Type: application/dns-message
-//! Accept: application/dns-message
-//!
-//! <raw DNS message bytes>
-//! ```
-
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;

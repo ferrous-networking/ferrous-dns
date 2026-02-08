@@ -1,16 +1,3 @@
-//! TCP Transport for DNS queries (RFC 1035 §4.2.2)
-//!
-//! DNS over TCP uses a 2-byte length prefix before each message.
-//! Used for responses that exceed UDP size limits (TC bit set)
-//! or when reliable delivery is required.
-//!
-//! Wire format:
-//! ```text
-//! +-----+-----+-----+-----+-----+-----+
-//! |  Length (u16 BE)  |  DNS Message... |
-//! +-----+-----+-----+-----+-----+-----+
-//! ```
-
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;

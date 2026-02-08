@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct StatsResponse {
@@ -10,6 +11,24 @@ pub struct StatsResponse {
     pub avg_query_time_ms: f64,
     pub avg_cache_time_ms: f64,
     pub avg_upstream_time_ms: f64,
+
+    // Phase 4: Analytics
+    pub queries_by_type: HashMap<String, u64>,
+    pub most_queried_type: Option<String>,
+    pub record_type_distribution: Vec<TypeDistribution>,
+    pub top_10_types: Vec<TopType>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct TypeDistribution {
+    pub record_type: String,
+    pub percentage: f64,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct TopType {
+    pub record_type: String,
+    pub count: u64,
 }
 
 impl Default for StatsResponse {
@@ -23,6 +42,10 @@ impl Default for StatsResponse {
             avg_query_time_ms: 0.0,
             avg_cache_time_ms: 0.0,
             avg_upstream_time_ms: 0.0,
+            queries_by_type: HashMap::new(),
+            most_queried_type: None,
+            record_type_distribution: Vec::new(),
+            top_10_types: Vec::new(),
         }
     }
 }

@@ -47,3 +47,8 @@ rustc-hash = "2.1.0"
 compact_str = "0.8"
 smallvec = "1.15.1"
 socket2 = "0.6.2"
+
+# DNSSEC Crypto (FASE 2)
+ring = "0.17"
+sha2 = "0.10"
+base64 = "0.21"

@@ -3,9 +3,11 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tokio::sync::Mutex;
+use tracing::{debug, info, warn};
 
 use super::cache::DnsCache;
+use super::dnssec::{DnssecCache, DnssecValidator};
 use super::prefetch::PrefetchPredictor;
 
 pub struct HickoryDnsResolver {
@@ -14,6 +16,8 @@ pub struct HickoryDnsResolver {
     cache_ttl: u32,
     query_timeout_ms: u64,
     dnssec_enabled: bool,
+    dnssec_validator: Option<Arc<Mutex<DnssecValidator>>>,
+    dnssec_cache: Option<Arc<DnssecCache>>,
     #[allow(dead_code)]
     server_hostname: String,
     #[allow(dead_code)]
@@ -33,6 +37,21 @@ impl HickoryDnsResolver {
             .and_then(|h| h.into_string().ok())
             .unwrap_or_else(|| "localhost".to_string());
 
+        // Initialize DNSSEC validator if enabled
+        let (dnssec_validator, dnssec_cache) = if dnssec_enabled {
+            let cache = Arc::new(DnssecCache::new());
+
+            // Create validator with shared cache
+            let validator = DnssecValidator::with_cache(pool_manager.clone(), cache.clone())
+                .with_timeout(query_timeout_ms);
+
+            info!("DNSSEC validation enabled with shared cache (queries will be logged!)");
+
+            (Some(Arc::new(Mutex::new(validator))), Some(cache))
+        } else {
+            (None, None)
+        };
+
         info!(
             dnssec_enabled,
             timeout_ms = query_timeout_ms,
@@ -45,6 +64,8 @@ impl HickoryDnsResolver {
             cache_ttl: 3600,
             query_timeout_ms,
             dnssec_enabled,
+            dnssec_validator,
+            dnssec_cache,
             server_hostname,
             query_log_repo,
             prefetch_predictor: None,
@@ -69,15 +90,64 @@ impl HickoryDnsResolver {
         self
     }
 
-    fn validate_dnssec(&self, _domain: &str) -> &'static str {
-        if self.dnssec_enabled {
-            "Secure"
+    async fn validate_dnssec_query(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+    ) -> Option<&'static str> {
+        if !self.dnssec_enabled {
+            return None;
+        }
+
+        // Check DNSSEC cache first
+        if let Some(ref cache) = self.dnssec_cache {
+            if let Some(result) = cache.get_validation(domain, record_type) {
+                debug!(
+                    domain = %domain,
+                    record_type = ?record_type,
+                    result = %result.as_str(),
+                    "DNSSEC cache hit"
+                );
+                return Some(result.as_str());
+            }
+        }
+
+        // Perform DNSSEC validation
+        if let Some(ref validator) = self.dnssec_validator {
+            let mut validator_guard = validator.lock().await;
+
+            match validator_guard.validate_simple(domain, record_type).await {
+                Ok(result) => {
+                    info!(
+                        domain = %domain,
+                        record_type = ?record_type,
+                        result = %result.as_str(),
+                        "DNSSEC validation completed"
+                    );
+
+                    // Cache the result (TTL 300 seconds)
+                    if let Some(ref cache) = self.dnssec_cache {
+                        cache.cache_validation(domain, record_type, result, 300);
+                    }
+
+                    Some(result.as_str())
+                }
+                Err(e) => {
+                    warn!(
+                        domain = %domain,
+                        error = %e,
+                        "DNSSEC validation failed"
+                    );
+                    Some("Indeterminate")
+                }
+            }
         } else {
-            "Unknown"
+            None
         }
     }
 
     async fn resolve_via_pools(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        // Perform DNS query
         let mut result = self
             .pool_manager
             .query(&query.domain, &query.record_type, self.query_timeout_ms)
@@ -86,15 +156,16 @@ impl HickoryDnsResolver {
         let addresses = std::mem::take(&mut result.response.addresses);
         let cname = result.response.cname.take();
 
-        let dnssec_status: Option<&'static str> = if self.dnssec_enabled {
-            Some(self.validate_dnssec(&query.domain))
-        } else {
-            None
-        };
+        // Perform DNSSEC validation if enabled
+        // This will query DS/DNSKEY records (all logged!)
+        let dnssec_status = self
+            .validate_dnssec_query(&query.domain, query.record_type)
+            .await;
 
         debug!(
             domain = %query.domain, record_type = ?query.record_type,
             addresses = addresses.len(), upstream = %result.server, latency_ms = result.latency_ms,
+            dnssec_status = ?dnssec_status,
             "Query resolved via load balancer"
         );
 
@@ -125,6 +196,7 @@ impl DnsResolver for HickoryDnsResolver {
             }
         }
 
+        // Use resolve_via_pools which includes DNSSEC validation
         let mut resolution = self.resolve_via_pools(query).await?;
 
         if let Some(cache) = &self.cache {
@@ -132,16 +204,16 @@ impl DnsResolver for HickoryDnsResolver {
                 Some(super::cache::CachedData::IpAddresses(Arc::new(
                     resolution.addresses.clone(),
                 )))
-            } else if let Some(ref cname) = resolution.cname {
+            } else if let Some(ref cname_val) = resolution.cname {
                 Some(super::cache::CachedData::CanonicalName(Arc::new(
-                    cname.clone(),
+                    cname_val.clone(),
                 )))
             } else {
                 Some(super::cache::CachedData::NegativeResponse)
             };
 
             if let Some(data) = cached_data {
-                let dnssec_status = resolution
+                let dnssec_status_cache = resolution
                     .dnssec_status
                     .map(super::cache::DnssecStatus::from_str);
                 let ttl = if data.is_negative() {
@@ -149,7 +221,13 @@ impl DnsResolver for HickoryDnsResolver {
                 } else {
                     self.cache_ttl
                 };
-                cache.insert(&query.domain, &query.record_type, data, ttl, dnssec_status);
+                cache.insert(
+                    &query.domain,
+                    &query.record_type,
+                    data,
+                    ttl,
+                    dnssec_status_cache,
+                );
                 cache.reset_refreshing(&query.domain, &query.record_type);
             }
         }

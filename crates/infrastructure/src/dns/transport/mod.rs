@@ -1,14 +1,3 @@
-//! DNS Transport Layer
-//!
-//! Handles raw DNS message delivery over multiple protocols:
-//! - UDP (RFC 1035 §4.2.1)
-//! - TCP with length-prefix framing (RFC 1035 §4.2.2)
-//! - TLS / DNS-over-TLS (RFC 7858)
-//! - HTTPS / DNS-over-HTTPS (RFC 8484)
-//!
-//! Uses enum dispatch instead of trait objects (Box<dyn>) to eliminate
-//! heap allocation and vtable indirection per query (~20ns savings).
-
 pub mod https;
 pub mod tcp;
 pub mod tls;

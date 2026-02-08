@@ -1,6 +1,7 @@
 use super::balanced::BalancedStrategy;
 use super::failover::FailoverStrategy;
 use super::parallel::ParallelStrategy;
+use crate::dns::events::QueryEventEmitter;
 use crate::dns::forwarding::DnsResponse;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use std::net::SocketAddr;
@@ -20,17 +21,33 @@ pub enum Strategy {
 }
 
 impl Strategy {
+    /// Query upstream servers using the strategy.
+    ///
+    /// ## Phase 5: Query Event Logging
+    ///
+    /// The `emitter` parameter is passed through to `query_server()` to enable
+    /// comprehensive logging of all DNS queries, including DNSSEC validation.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         match self {
-            Self::Parallel(s) => s.query_refs(servers, domain, record_type, timeout_ms).await,
-            Self::Balanced(s) => s.query_refs(servers, domain, record_type, timeout_ms).await,
-            Self::Failover(s) => s.query_refs(servers, domain, record_type, timeout_ms).await,
+            Self::Parallel(s) => {
+                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                    .await
+            }
+            Self::Balanced(s) => {
+                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                    .await
+            }
+            Self::Failover(s) => {
+                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                    .await
+            }
         }
     }
 }

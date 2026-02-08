@@ -10,4 +10,7 @@ pub enum DomainError {
 
     #[error("DNSSEC validation failed: {0}")]
     DnssecValidationFailed(String),
+
+    #[error("Invalid DNS response: {0}")]
+    InvalidDnsResponse(String),
 }
