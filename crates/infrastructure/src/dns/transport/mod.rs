@@ -2,10 +2,14 @@ pub mod https;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
+pub mod udp_pool;
 
 use async_trait::async_trait;
 use ferrous_dns_domain::{DnsProtocol, DomainError};
 use std::time::Duration;
+
+// Re-export UDP pool for convenience
+pub use udp_pool::{PoolStats, UdpSocketPool};
 
 /// Result of a raw DNS transport operation
 #[derive(Debug)]
@@ -50,12 +54,12 @@ impl Transport {
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
         match self {
-            Self::Udp(t) => t.send(message_bytes, timeout).await,
-            Self::Tcp(t) => t.send(message_bytes, timeout).await,
+            Self::Udp(t) => DnsTransport::send(t, message_bytes, timeout).await,
+            Self::Tcp(t) => DnsTransport::send(t, message_bytes, timeout).await,
             #[cfg(feature = "dns-over-rustls")]
-            Self::Tls(t) => t.send(message_bytes, timeout).await,
+            Self::Tls(t) => DnsTransport::send(t, message_bytes, timeout).await,
             #[cfg(feature = "dns-over-https")]
-            Self::Https(t) => t.send(message_bytes, timeout).await,
+            Self::Https(t) => DnsTransport::send(t, message_bytes, timeout).await,
         }
     }
 

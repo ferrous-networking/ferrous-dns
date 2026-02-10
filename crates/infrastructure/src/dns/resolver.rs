@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use super::cache::DnsCache;
+use super::cache::NegativeQueryTracker;
 use super::dnssec::{DnssecCache, DnssecValidator};
 use super::prefetch::PrefetchPredictor;
 
@@ -32,6 +33,9 @@ pub struct HickoryDnsResolver {
 
     // Conditional forwarding (Fase 3)
     conditional_forwarder: Option<Arc<ConditionalForwarder>>,
+
+    // FASE 3: TTL dinâmico para negative responses
+    negative_ttl_tracker: Arc<NegativeQueryTracker>,
 }
 
 impl HickoryDnsResolver {
@@ -86,6 +90,9 @@ impl HickoryDnsResolver {
 
             // Conditional forwarding (Fase 3)
             conditional_forwarder: None,
+
+            // FASE 3: TTL dinâmico para negative responses
+            negative_ttl_tracker: Arc::new(NegativeQueryTracker::new()),
         })
     }
 
@@ -372,11 +379,6 @@ impl HickoryDnsResolver {
 #[async_trait]
 impl DnsResolver for HickoryDnsResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        // ============================================================================
-        // PHASE 1: QUERY FILTERS (Privacy & Local DNS)
-        // ============================================================================
-
-        // 1.1 Block PTR queries for private IP addresses
         if self.block_private_ptr && query.record_type == RecordType::PTR {
             if PrivateIpFilter::is_private_ptr_query(&query.domain) {
                 debug!(
@@ -390,7 +392,6 @@ impl DnsResolver for HickoryDnsResolver {
             }
         }
 
-        // 1.2 Block non-FQDN queries
         if self.block_non_fqdn && FqdnFilter::is_local_hostname(&query.domain) {
             debug!(
                 domain = %query.domain,
@@ -402,66 +403,65 @@ impl DnsResolver for HickoryDnsResolver {
             )));
         }
 
-        // ============================================================================
-        // PHASE 2: CACHE LOOKUP
-        // ============================================================================
-
         if let Some(cache) = &self.cache {
-            if let Some((cached_data, cached_dnssec_status)) =
-                cache.get(&query.domain, &query.record_type)
-            {
-                if cached_data.is_negative() {
+            if let Some((data, dnssec_status)) = cache.get(&query.domain, &query.record_type) {
+                debug!(
+                    domain = %query.domain,
+                    record_type = %query.record_type,
+                    "Cache HIT"
+                );
+
+                if data.is_negative() {
                     return Err(DomainError::InvalidDomainName(format!(
                         "Domain {} not found (cached NXDOMAIN)",
                         query.domain
                     )));
                 }
-                if let Some(arc_addrs) = cached_data.as_ip_addresses() {
-                    let addresses = (**arc_addrs).clone();
-                    let dnssec_str: Option<&'static str> = cached_dnssec_status.map(|s| s.as_str());
-                    return Ok(DnsResolution::with_cname(addresses, true, dnssec_str, None));
+
+                match data {
+                    super::cache::CachedData::IpAddresses(addrs) => {
+                        let addresses = (*addrs).clone();
+                        let dnssec_str = dnssec_status.map(|s| s.as_str());
+
+                        return Ok(DnsResolution {
+                            addresses,
+                            cache_hit: true,
+                            dnssec_status: dnssec_str,
+                            cname: None,
+                            upstream_server: None,
+                        });
+                    }
+                    super::cache::CachedData::CanonicalName(cname) => {
+                        debug!(
+                            domain = %query.domain,
+                            cname = %cname,
+                            "Cached CNAME, resolving canonical name"
+                        );
+
+                        let canonical_query = DnsQuery {
+                            domain: Arc::from(cname.as_str()),
+                            record_type: query.record_type,
+                        };
+
+                        let mut resolution = Box::pin(self.resolve(&canonical_query)).await?;
+                        resolution.cname = Some(cname.as_ref().clone());
+                        resolution.cache_hit = true;
+
+                        return Ok(resolution);
+                    }
+                    super::cache::CachedData::NegativeResponse => {
+                        return Ok(DnsResolution {
+                            addresses: vec![],
+                            cache_hit: true,
+                            dnssec_status: dnssec_status.map(|s| s.as_str()),
+                            cname: None,
+                            upstream_server: None,
+                        });
+                    }
                 }
             }
         }
 
-        // ============================================================================
-        // PHASE 3: CACHE LOOKUP
-        // ============================================================================
-
-        if let Some(cache) = &self.cache {
-            if let Some(cached) = cache.get(&query.domain, &query.record_type) {
-                debug!(
-                    domain = %query.domain,
-                    record_type = %query.record_type,
-                    "Cache HIT (includes permanent local DNS records)"
-                );
-
-                // Unpack tuple: (CachedData, Option<DnssecStatus>)
-                let (data, dnssec_status) = cached;
-
-                // Extract addresses from CachedData enum
-                let addresses = match data {
-                    super::cache::CachedData::IpAddresses(addrs) => (*addrs).clone(),
-                    super::cache::CachedData::CanonicalName(_name) => {
-                        // CNAME - would need recursive resolution
-                        warn!("CNAME in cache - not fully implemented yet");
-                        vec![]
-                    }
-                    super::cache::CachedData::NegativeResponse => vec![],
-                };
-
-                // Convert DnssecStatus to &'static str
-                let dnssec_str = dnssec_status.map(|s| s.as_str());
-
-                return Ok(DnsResolution {
-                    addresses,
-                    cache_hit: true,
-                    dnssec_status: dnssec_str,
-                    cname: None, // TODO: handle CNAME properly
-                    upstream_server: None,
-                });
-            }
-        }
         if let Some(forwarder) = &self.conditional_forwarder {
             if let Some((rule, server)) = forwarder.should_forward(query) {
                 debug!(
@@ -511,7 +511,6 @@ impl DnsResolver for HickoryDnsResolver {
             }
         }
 
-        // Use resolve_via_pools which includes DNSSEC validation
         let mut resolution = self.resolve_via_pools(query).await?;
 
         if let Some(cache) = &self.cache {
@@ -531,11 +530,15 @@ impl DnsResolver for HickoryDnsResolver {
                 let dnssec_status_cache = resolution
                     .dnssec_status
                     .map(super::cache::DnssecStatus::from_str);
+
+                // FASE 3: TTL dinâmico para negative responses
                 let ttl = if data.is_negative() {
-                    300
+                    // Usa tracker para determinar TTL baseado em frequência
+                    self.negative_ttl_tracker.record_and_get_ttl(&query.domain)
                 } else {
                     self.cache_ttl
                 };
+
                 cache.insert(
                     &query.domain,
                     &query.record_type,

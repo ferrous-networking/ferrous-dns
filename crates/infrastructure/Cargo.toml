@@ -18,12 +18,9 @@ async-trait.workspace = true
 sqlx.workspace = true
 hickory-server.workspace = true
 hickory-proto.workspace = true
-serde.workspace = true
 tracing.workspace = true
 fastrand.workspace = true
 lru.workspace = true
-ahash.workspace = true
-bloomfilter.workspace = true
 hostname.workspace = true
 dashmap.workspace = true
 futures.workspace = true
@@ -31,13 +28,16 @@ rustc-hash.workspace = true
 compact_str.workspace = true
 smallvec.workspace = true
 
+# FASE 2: UDP Socket Pool
+socket2.workspace = true
+
 # DNSSEC Crypto (FASE 2)
 ring.workspace = true
 sha2.workspace = true
 base64.workspace = true
 
 # Transport layer
-rustls = "0.23"
-tokio-rustls = "0.26"
-webpki-roots = "1.0"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+rustls.workspace = true
+tokio-rustls.workspace = true
+webpki-roots.workspace = true
+reqwest.workspace = true
