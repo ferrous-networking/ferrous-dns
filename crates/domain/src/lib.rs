@@ -5,15 +5,18 @@ pub mod dns_query;
 pub mod dns_record;
 pub mod dns_request;
 pub mod errors;
+pub mod query_filters;
 pub mod query_log;
 
 pub use blocklist::BlockedDomain;
 pub use config::{
-    CliOverrides, Config, ConfigError, HealthCheckConfig, UpstreamPool, UpstreamStrategy,
+    CliOverrides, ConditionalForward, Config, ConfigError, DnsConfig, HealthCheckConfig,
+    LocalDnsRecord, UpstreamPool, UpstreamStrategy,
 };
 pub use dns_protocol::DnsProtocol;
 pub use dns_query::DnsQuery;
 pub use dns_record::{DnsRecord, RecordType};
 pub use dns_request::DnsRequest;
 pub use errors::DomainError;
+pub use query_filters::{FqdnFilter, PrivateIpFilter};
 pub use query_log::{CacheStats, QueryLog, QuerySource, QueryStats};

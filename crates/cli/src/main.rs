@@ -80,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         get_blocklist: use_cases.get_blocklist,
         config: config_arc,
         cache: dns_services.cache.clone(),
+        dns_resolver: dns_services.resolver.clone(),
     };
 
     // Start DNS server in background

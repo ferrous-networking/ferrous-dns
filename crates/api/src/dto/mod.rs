@@ -2,8 +2,11 @@ pub mod blocklist;
 pub mod cache;
 pub mod config;
 pub mod hostname;
+pub mod local_record;
 pub mod query;
 pub mod stats;
+
+pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 
 pub use blocklist::BlocklistResponse;
 pub use cache::{CacheMetricsResponse, CacheStatsResponse};

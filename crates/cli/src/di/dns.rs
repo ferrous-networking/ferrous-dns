@@ -6,7 +6,7 @@ use ferrous_dns_infrastructure::dns::{
     cache_updater::CacheUpdater,
     events::QueryEventEmitter,
     query_logger::QueryEventLogger,
-    HealthChecker, HickoryDnsResolver, PoolManager,
+    ConditionalForwarder, HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -83,12 +83,34 @@ impl DnsServices {
             timeout_ms,
             config.dns.dnssec_enabled,
             Some(repos.query_log.clone()),
-        )?;
+        )?
+        .with_filters(
+            config.dns.block_private_ptr,
+            config.dns.block_non_fqdn,
+            config.dns.local_domain.clone(),
+        );
+
+        // Configure conditional forwarding (Fase 3)
+        if !config.dns.conditional_forwarding.is_empty() {
+            let forwarder = Arc::new(ConditionalForwarder::new(
+                config.dns.conditional_forwarding.clone(),
+            ));
+            resolver = resolver.with_conditional_forwarding(forwarder);
+
+            info!(
+                rules_count = config.dns.conditional_forwarding.len(),
+                "Conditional forwarding enabled"
+            );
+        }
 
         info!(
             dnssec_enabled = config.dns.dnssec_enabled,
             pools = config.dns.pools.len(),
-            "DNS resolver created"
+            block_private_ptr = config.dns.block_private_ptr,
+            block_non_fqdn = config.dns.block_non_fqdn,
+            local_domain = ?config.dns.local_domain,
+            conditional_forwarding_rules = config.dns.conditional_forwarding.len(),
+            "DNS resolver created with all features"
         );
 
         let cache = if config.dns.cache_enabled {
@@ -148,6 +170,19 @@ impl DnsServices {
         }
 
         let resolver = Arc::new(resolver);
+
+        if !config.dns.local_records.is_empty() {
+            info!(
+                count = config.dns.local_records.len(),
+                "Preloading local DNS records into permanent cache..."
+            );
+
+            resolver
+                .preload_local_records(config.dns.local_records.clone(), &config.dns.local_domain)
+                .await;
+
+            info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
+        }
 
         let handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
             resolver.clone(),

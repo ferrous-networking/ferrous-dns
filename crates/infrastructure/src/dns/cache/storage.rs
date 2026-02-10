@@ -343,10 +343,78 @@ impl DnsCache {
         debug!(domain = %domain, record_type = %record_type, ttl, cache_size = self.cache.len(), "Inserted into cache");
     }
 
+    /// Insert a permanent record that never expires and is immune to eviction
+    ///
+    /// Permanent records are used for local DNS records and:
+    /// - Do NOT count towards max_entries limit
+    /// - Are NEVER evicted
+    /// - Do NOT trigger eviction of other records
+    /// - Are logged differently for visibility
+    ///
+    /// # Arguments
+    /// * `domain` - Fully qualified domain name (e.g., "nas.home.lan")
+    /// * `record_type` - DNS record type (A, AAAA, etc.)
+    /// * `data` - DNS response data (IP addresses)
+    /// * `ttl` - TTL for metadata (not used for expiration)
+    pub fn insert_permanent(
+        &self,
+        domain: &str,
+        record_type: &RecordType,
+        data: CachedData,
+        ttl: u32,
+    ) {
+        if data.is_empty() {
+            return;
+        }
+
+        let key = CacheKey::new(domain, *record_type);
+        let record = CachedRecord::permanent(data, ttl, record_type.clone());
+
+        self.cache.insert(key.clone(), record);
+        self.bloom.set(&key);
+
+        // Different metrics for permanent records
+        self.metrics
+            .insertions
+            .fetch_add(1, AtomicOrdering::Relaxed);
+
+        // Different log message for permanent records
+        info!(
+            domain = %domain,
+            record_type = %record_type,
+            ttl,
+            permanent = true,
+            cache_size = self.cache.len(),
+            "Inserted permanent record into cache (never expires, immune to eviction)"
+        );
+    }
+
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
         let key = CacheKey::new(domain, *record_type);
         if let Some(entry) = self.cache.get(&key) {
             entry.refreshing.store(false, AtomicOrdering::Release);
+        }
+    }
+
+    /// Remove a specific record from cache
+    ///
+    /// Used to remove local DNS records when they're deleted via API.
+    /// Returns true if the record existed and was removed, false otherwise.
+    pub fn remove(&self, domain: &str, record_type: &RecordType) -> bool {
+        let key = CacheKey::new(domain, *record_type);
+
+        if self.cache.remove(&key).is_some() {
+            self.metrics.evictions.fetch_add(1, AtomicOrdering::Relaxed);
+
+            info!(
+                domain = %domain,
+                record_type = %record_type,
+                "Removed record from cache"
+            );
+
+            true
+        } else {
+            false
         }
     }
 
@@ -426,6 +494,11 @@ impl DnsCache {
 
                 // Skip entries marked for deletion
                 if record.is_marked_for_deletion() {
+                    continue;
+                }
+
+                // Skip permanent records - they are immune to eviction
+                if record.permanent {
                     continue;
                 }
 

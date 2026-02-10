@@ -99,3 +99,36 @@ pub struct BlockingConfigUpdate {
     pub custom_blocked: Option<Vec<String>>,
     pub whitelist: Option<Vec<String>>,
 }
+
+/// DTO for DNS settings (Pi-hole style)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsDto {
+    /// Never forward non-FQDN queries (queries without dots)
+    pub never_forward_non_fqdn: bool,
+
+    /// Never forward reverse lookups for private IP ranges
+    pub never_forward_reverse_lookups: bool,
+
+    /// Enable conditional forwarding
+    pub conditional_forwarding_enabled: bool,
+
+    /// Local network in CIDR notation (e.g., "192.168.0.0/24")
+    #[serde(default)]
+    pub local_network_cidr: String,
+
+    /// Router IP address (e.g., "192.168.0.1")
+    #[serde(default)]
+    pub router_ip: String,
+
+    /// Local domain name (e.g., "home.lan")
+    #[serde(default)]
+    pub local_domain: String,
+}
+
+/// Response for settings update
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingsUpdateResponse {
+    pub success: bool,
+    pub message: String,
+    pub settings: SettingsDto,
+}

@@ -230,3 +230,262 @@ pub async fn reload_config(State(state): State<AppState>) -> Json<serde_json::Va
         }
     }))
 }
+
+/// GET /api/settings - Get current DNS settings
+#[instrument(skip(state), name = "api_get_settings")]
+pub async fn get_settings(State(state): State<AppState>) -> Json<crate::dto::SettingsDto> {
+    info!("Fetching DNS settings");
+
+    let config = state.config.read().await;
+
+    // Extract conditional forwarding settings
+    let (cidr, router, domain) = extract_conditional_forward_config(&config.dns);
+
+    Json(crate::dto::SettingsDto {
+        never_forward_non_fqdn: config.dns.block_non_fqdn,
+        never_forward_reverse_lookups: config.dns.block_private_ptr,
+        conditional_forwarding_enabled: !config.dns.conditional_forwarding.is_empty()
+            || config.dns.conditional_forward_network.is_some(),
+        local_network_cidr: cidr,
+        router_ip: router,
+        local_domain: domain,
+    })
+}
+
+/// Extract simplified conditional forwarding config from DnsConfig
+fn extract_conditional_forward_config(
+    dns_config: &ferrous_dns_domain::DnsConfig,
+) -> (String, String, String) {
+    // Priority 1: Check simplified fields first
+    if let (Some(network), Some(router)) = (
+        &dns_config.conditional_forward_network,
+        &dns_config.conditional_forward_router,
+    ) {
+        let domain = dns_config.local_domain.clone().unwrap_or_default();
+        return (network.clone(), router.clone(), domain);
+    }
+
+    // Priority 2: Check first rule in conditional_forwarding array
+    if let Some(rule) = dns_config.conditional_forwarding.first() {
+        // Extract router IP from server string (remove :53 port)
+        let router_ip = rule.server.split(':').next().unwrap_or("").to_string();
+
+        // Use local_domain if set, otherwise use rule domain
+        let domain = dns_config
+            .local_domain
+            .clone()
+            .or_else(|| Some(rule.domain.clone()))
+            .unwrap_or_default();
+
+        // Note: Cannot reliably infer CIDR from domain, leave empty
+        let cidr = String::new();
+
+        return (cidr, router_ip, domain);
+    }
+
+    // Priority 3: Default - empty values
+    (String::new(), String::new(), String::new())
+}
+
+/// POST /api/settings - Update DNS settings
+#[instrument(skip(state), name = "api_update_settings")]
+pub async fn update_settings(
+    State(state): State<AppState>,
+    Json(req): Json<crate::dto::SettingsDto>,
+) -> Json<crate::dto::SettingsUpdateResponse> {
+    info!("Updating DNS settings");
+
+    // Step 1: Validate inputs
+    if req.conditional_forwarding_enabled {
+        // Validate CIDR format
+        if req.local_network_cidr.is_empty() {
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: "Local network CIDR is required when conditional forwarding is enabled"
+                    .to_string(),
+                settings: req,
+            });
+        }
+
+        if !is_valid_cidr(&req.local_network_cidr) {
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: format!(
+                    "Invalid CIDR format: '{}'. Use format like '192.168.0.0/24'",
+                    req.local_network_cidr
+                ),
+                settings: req,
+            });
+        }
+
+        // Validate router IP
+        if req.router_ip.is_empty() {
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: "Router IP is required when conditional forwarding is enabled".to_string(),
+                settings: req,
+            });
+        }
+
+        if req.router_ip.parse::<std::net::Ipv4Addr>().is_err() {
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: format!("Invalid router IP address: '{}'", req.router_ip),
+                settings: req,
+            });
+        }
+    }
+
+    // Step 2: Update config
+    {
+        let mut config = state.config.write().await;
+
+        // Update query filters
+        config.dns.block_non_fqdn = req.never_forward_non_fqdn;
+        config.dns.block_private_ptr = req.never_forward_reverse_lookups;
+
+        // Update local domain
+        config.dns.local_domain = if req.local_domain.is_empty() {
+            None
+        } else {
+            Some(req.local_domain.clone())
+        };
+
+        // Update conditional forwarding
+        if req.conditional_forwarding_enabled {
+            // Store simplified format
+            config.dns.conditional_forward_network = Some(req.local_network_cidr.clone());
+            config.dns.conditional_forward_router = Some(req.router_ip.clone());
+
+            // Also create rule in conditional_forwarding array
+            let domain = if req.local_domain.is_empty() {
+                extract_domain_from_cidr(&req.local_network_cidr)
+            } else {
+                req.local_domain.clone()
+            };
+
+            config.dns.conditional_forwarding = vec![ferrous_dns_domain::ConditionalForward {
+                domain,
+                server: format!("{}:53", req.router_ip),
+                record_types: None,
+            }];
+        } else {
+            // Clear conditional forwarding
+            config.dns.conditional_forward_network = None;
+            config.dns.conditional_forward_router = None;
+            config.dns.conditional_forwarding.clear();
+        }
+
+        // Step 3: Backup and save to file
+        if let Err(e) = save_config_with_backup(&config).await {
+            error!(error = %e, "Failed to save settings");
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: format!("Failed to save settings: {}", e),
+                settings: req,
+            });
+        }
+
+        info!("Settings saved to config file");
+    }
+
+    // Step 4: Apply settings to resolver (without restart)
+    let restart_required = match apply_settings_to_resolver(&state).await {
+        Ok(requires_restart) => requires_restart,
+        Err(e) => {
+            error!(error = %e, "Failed to apply settings to resolver");
+            return Json(crate::dto::SettingsUpdateResponse {
+                success: false,
+                message: format!("Settings saved but failed to apply: {}", e),
+                settings: req,
+            });
+        }
+    };
+
+    let message = if restart_required {
+        "DNS settings updated successfully. Please restart the server for all changes to take effect.".to_string()
+    } else {
+        "DNS settings updated successfully.".to_string()
+    };
+
+    info!(restart_required, "Settings applied successfully");
+
+    Json(crate::dto::SettingsUpdateResponse {
+        success: true,
+        message,
+        settings: req,
+    })
+}
+
+/// Validate CIDR notation format
+fn is_valid_cidr(cidr: &str) -> bool {
+    // Format: xxx.xxx.xxx.xxx/yy
+    let parts: Vec<&str> = cidr.split('/').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+
+    // Validate IP part
+    if parts[0].parse::<std::net::Ipv4Addr>().is_err() {
+        return false;
+    }
+
+    // Validate prefix length (0-32)
+    if let Ok(prefix) = parts[1].parse::<u8>() {
+        prefix <= 32
+    } else {
+        false
+    }
+}
+
+/// Extract domain name from CIDR notation
+/// Returns "local" as default since CIDR alone doesn't indicate domain
+fn extract_domain_from_cidr(_cidr: &str) -> String {
+    // Simple heuristic: use "local" as default
+    // User should set local_domain explicitly for better naming
+    "local".to_string()
+}
+
+/// Save config to file with automatic backup
+async fn save_config_with_backup(config: &ferrous_dns_domain::Config) -> Result<(), String> {
+    let config_path =
+        ferrous_dns_domain::Config::get_config_path().ok_or("No config file path found")?;
+
+    // Create backup of original config
+    let backup_path = format!("{}.backup", config_path);
+    if std::path::Path::new(&config_path).exists() {
+        std::fs::copy(&config_path, &backup_path)
+            .map_err(|e| format!("Failed to create backup: {}", e))?;
+        debug!("Created backup at: {}", backup_path);
+    }
+
+    // Serialize config to TOML
+    let toml_string =
+        toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    // Write to file
+    std::fs::write(&config_path, toml_string)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    info!("Config saved to: {}", config_path);
+    Ok(())
+}
+
+/// Apply settings to resolver without restarting server
+/// Returns true if server restart is required
+async fn apply_settings_to_resolver(state: &AppState) -> Result<bool, String> {
+    let config = state.config.read().await;
+
+    // Note: For MVP, query filter changes require server restart
+    // In future versions, we can implement hot-reload with interior mutability
+
+    info!(
+        block_non_fqdn = config.dns.block_non_fqdn,
+        block_private_ptr = config.dns.block_private_ptr,
+        conditional_forwarding = !config.dns.conditional_forwarding.is_empty(),
+        "Settings will apply on next server restart"
+    );
+
+    // Return true to indicate restart is required
+    Ok(true)
+}

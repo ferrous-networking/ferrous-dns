@@ -1,29 +1,37 @@
-# Ferrous DNS Advanced Configuration with Load Balancing
-
 [server]
 dns_port = 53
 web_port = 8080
 bind_address = "0.0.0.0"
-workers = 0
 
 [dns]
-# Global DNS settings
+upstream_servers = []
 query_timeout = 5
+cache_enabled = true
+cache_ttl = 3600
 dnssec_enabled = true
-
-# Default strategy if not specified in pool (parallel, balanced, failover)
 default_strategy = "parallel"
-
-# ============================================================================
-# LOAD BALANCING POOLS
-# ============================================================================
-# Multiple pools with different strategies and priorities
-# Lower priority = tried first (1 = primary, 2 = failover, etc.)
+cache_max_entries = 200000
+cache_eviction_strategy = "hit_rate"
+cache_optimistic_refresh = true
+cache_min_hit_rate = 2.0
+cache_min_frequency = 10
+cache_min_lfuk_score = 1.5
+cache_refresh_threshold = 0.75
+cache_lfuk_history_size = 10
+cache_batch_eviction_percentage = 0.1
+cache_lazy_expiration = true
+cache_compaction_interval = 300
+cache_adaptive_thresholds = false
+block_private_ptr = true
+block_non_fqdn = true
+local_domain = "lan"
+conditional_forward_network = "10.0.0.0/8"
+conditional_forward_router = "10.0.0.1"
 
 [[dns.pools]]
 name = "google-parallel"
-strategy = "parallel"   # Send to all, fastest wins (low latency)
-priority = 1            # Primary pool
+strategy = "parallel"
+priority = 1
 servers = [
     "8.8.8.8:53",
     "8.8.4.4:53",
@@ -31,8 +39,8 @@ servers = [
 
 [[dns.pools]]
 name = "cloudflare-balanced"
-strategy = "balanced"   # Round-robin (distributes load)
-priority = 1            # Also primary (both tried in parallel by pool manager)
+strategy = "balanced"
+priority = 1
 servers = [
     "1.1.1.1:53",
     "1.0.0.1:53",
@@ -40,116 +48,39 @@ servers = [
 
 [[dns.pools]]
 name = "quad9-backup"
-strategy = "failover"   # Sequential fallback
-priority = 2            # Backup pool (only if priority 1 fails)
+strategy = "failover"
+priority = 2
 servers = [
     "9.9.9.9:53",
     "149.112.112.112:53",
 ]
 
-# ============================================================================
-# HEALTH CHECK CONFIGURATION
-# ============================================================================
 [dns.health_check]
 enabled = true
-interval_seconds = 30        # Check every 30 seconds
-timeout_ms = 2000            # 2 second timeout
-failure_threshold = 3        # Mark down after 3 consecutive failures
-success_threshold = 2        # Mark up after 2 consecutive successes
+interval_seconds = 30
+timeout_ms = 2000
+failure_threshold = 3
+success_threshold = 2
 
-# ============================================================================
-# DNS CACHE CONFIGURATION
-# ============================================================================
-cache_enabled = true
-cache_ttl = 7200
-cache_max_entries = 200000
+[[dns.conditional_forwarding]]
+domain = "lan"
+server = "10.0.0.1:53"
 
-# Eviction strategy: "hit_rate", "lfu", "lfu-k"
-cache_eviction_strategy = "hit_rate"
-cache_min_hit_rate = 2.0
-cache_min_frequency = 10
-cache_min_lfuk_score = 1.5
-
-# Optimistic refresh
-cache_optimistic_refresh = true
-cache_refresh_threshold = 0.75
-
-# Performance optimizations
-cache_batch_eviction_percentage = 0.1
-cache_lazy_expiration = true
-cache_compaction_interval = 1200
-cache_adaptive_thresholds = false
-cache_lfuk_history_size = 10
+[[dns.local_records]]
+hostname = "viudes"
+domain = "lan"
+ip = "10.0.10.1"
+record_type = "A"
+ttl = 300
 
 [blocking]
 enabled = true
-update_interval = 24
-
-blocklist_urls = [
-    "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
-]
-
 custom_blocked = []
 whitelist = []
 
 [logging]
 level = "info"
-format = "text"
-file = "ferrous-dns.log"
-rotate = true
-max_size_mb = 100
 
 [database]
 path = "ferrous-dns.db"
 log_queries = true
-retention_days = 30
-batch_interval = 5
-
-# ============================================================================
-# LOAD BALANCING EXAMPLES
-# ============================================================================
-
-# Example 1: High Performance (Parallel Everywhere)
-# [[dns.pools]]
-# name = "fast-google"
-# strategy = "parallel"
-# priority = 1
-# servers = ["8.8.8.8:53", "8.8.4.4:53"]
-
-# [[dns.pools]]
-# name = "fast-cloudflare"
-# strategy = "parallel"
-# priority = 1
-# servers = ["1.1.1.1:53", "1.0.0.1:53"]
-
-# Example 2: Load Distribution (Balanced Primary + Failover Backup)
-# [[dns.pools]]
-# name = "primary-balanced"
-# strategy = "balanced"
-# priority = 1
-# servers = ["8.8.8.8:53", "1.1.1.1:53", "9.9.9.9:53"]
-
-# [[dns.pools]]
-# name = "backup-failover"
-# strategy = "failover"
-# priority = 2
-# servers = ["8.8.4.4:53", "1.0.0.1:53"]
-
-# Example 3: Geographic Failover
-# [[dns.pools]]
-# name = "local-datacenter"
-# strategy = "parallel"
-# priority = 1
-# servers = ["192.168.1.53:53", "192.168.1.54:53"]
-
-# [[dns.pools]]
-# name = "remote-datacenter"
-# strategy = "balanced"
-# priority = 2
-# servers = ["10.0.0.53:53", "10.0.0.54:53"]
-
-# [[dns.pools]]
-# name = "public-internet"
-# strategy = "failover"
-# priority = 3
-# servers = ["8.8.8.8:53", "1.1.1.1:53"]

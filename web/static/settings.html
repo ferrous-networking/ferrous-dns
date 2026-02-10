@@ -29,7 +29,7 @@
         .nav-icon{width:18px;height:18px}
         .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
         .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
-        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color);padding:20px;margin-bottom:20px}
+        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color);padding:24px;margin-bottom:20px}
         .btn{padding:10px 20px;border-radius:6px;font-weight:500;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;border:none;font-size:14px}
         .btn-primary{background:var(--color-primary);color:white}
         .btn-primary:hover{background:#2563EB}
@@ -46,6 +46,10 @@
         .alert{padding:12px 16px;border-radius:8px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
         .alert-success{background:#ECFDF5;border:1px solid #10B981;color:#065F46}
         .alert-error{background:#FEF2F2;border:1px solid #EF4444;color:#991B1B}
+        .toggle-switch{position:relative;width:48px;height:24px;background:var(--text-tertiary);border-radius:12px;cursor:pointer;transition:background .3s}
+        .toggle-switch.active{background:var(--color-success)}
+        .toggle-slider{position:absolute;top:2px;left:2px;width:20px;height:20px;background:white;border-radius:50%;transition:transform .3s}
+        .toggle-switch.active .toggle-slider{transform:translateX(24px)}
     </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -57,7 +61,7 @@
         <div class="status-box">
             <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
             <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
-            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span>Running</span></div>
+            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span x-text="stats.queries_total+' queries'">Running</span></div>
         </div>
         <nav style="flex:1;padding:16px 0">
             <div class="nav-section">
@@ -67,6 +71,7 @@
             </div>
             <div class="nav-section">
                 <div class="nav-section-title">DNS CONTROL</div>
+                <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="hard-drive" class="nav-icon"></i><span>Local DNS</span></a>
                 <a href="/settings.html" class="nav-item active"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
             </div>
         </nav>
@@ -79,7 +84,13 @@
         </div>
     </aside>
 
-    <main style="padding:24px;max-width:1400px">
+    <main style="padding:32px;width:100%;min-height:100vh">
+        <!-- Restart Warning Banner -->
+        <div x-show="restartRequired" x-cloak style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+            <i data-lucide="alert-triangle" style="width:20px;height:20px;color:#F59E0B;flex-shrink:0"></i>
+            <p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take effect</p>
+        </div>
+
         <!-- Alert -->
         <div x-show="alert.show" :class="alert.type==='success'?'alert-success':'alert-error'" class="alert" x-cloak>
             <strong x-text="alert.message"></strong>
@@ -95,21 +106,101 @@
         <!-- Tabs -->
         <div x-show="!loading" style="margin-bottom:24px;border-bottom:1px solid var(--border-color)">
             <div style="display:flex;gap:8px">
-                <button @click="currentTab='dns';setTimeout(()=>lucide.createIcons(),50)" :class="currentTab==='dns'?'tab-btn active':'tab-btn'">
-                    <i data-lucide="globe" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> DNS & Load Balancing
+                <button @click="currentTab='dnsbasic';setTimeout(()=>lucide.createIcons(),50)" :class="currentTab==='dnsbasic'?'tab-btn active':'tab-btn'">
+                    <i data-lucide="shield" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> DNS Settings
+                </button>
+                <button @click="currentTab='dnsadvanced';setTimeout(()=>lucide.createIcons(),50)" :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">
+                    <i data-lucide="globe" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> DNS Advanced
                 </button>
                 <button @click="currentTab='cache';setTimeout(()=>lucide.createIcons(),50)" :class="currentTab==='cache'?'tab-btn active':'tab-btn'">
                     <i data-lucide="zap" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> Cache Settings
                 </button>
                 <button @click="currentTab='adblock';setTimeout(()=>lucide.createIcons(),50)" :class="currentTab==='adblock'?'tab-btn active':'tab-btn'">
-                    <i data-lucide="shield" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> Ad Blocking
+                    <i data-lucide="shield-off" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> Ad Blocking
                 </button>
             </div>
         </div>
 
-        <!-- DNS Tab -->
-        <div x-show="currentTab==='dns'&&!loading" x-cloak>
-            <!-- Strategy Cards -->
+        <!-- DNS Settings Tab -->
+        <div x-show="currentTab==='dnsbasic'&&!loading" x-cloak>
+            <div class="card">
+                <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">🛡️ DNS Settings</h3>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Configure advanced DNS behavior</p>
+                
+                <!-- Never forward non-FQDN -->
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="shield-off" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Never forward non-FQDN queries</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Tells Ferrous DNS to never forward queries for plain names, without dots or domain parts, to upstream nameservers. If the name is not known from <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">local-records</code> or DHCP then a "not found" answer is returned.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">If Conditional Forwarding is enabled, unticking this box may cause a partial loop.</p>
+                    </div>
+                    <div @click="settings.never_forward_non_fqdn=!settings.never_forward_non_fqdn" :class="settings.never_forward_non_fqdn?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <!-- Never forward reverse lookups -->
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="lock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Never forward reverse lookups for private IP ranges</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">All reverse lookups for private IP ranges (i.e., <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">192.168.0.x/24</code>, etc.) which are not found in <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">local-records</code> or the DHCP leases are answered with "no such domain" rather than being forwarded upstream.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0">The set of prefixes affected is the list given in <a href="https://tools.ietf.org/html/rfc6303" style="color:var(--color-primary)" target="_blank">RFC6303</a>.</p>
+                    </div>
+                    <div @click="settings.never_forward_reverse_lookups=!settings.never_forward_reverse_lookups" :class="settings.never_forward_reverse_lookups?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <!-- Use Conditional Forwarding -->
+                <div style="padding:16px 0">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="git-branch" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Use Conditional Forwarding</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">If not configured as your DHCP server, Ferrous DNS typically won't be able to determine the names of devices on your local network. As a result, tables such as Top Clients will only show IP addresses.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">One solution is to configure Ferrous DNS to forward these requests to your DHCP server (most likely your router), but only for devices on your home network. To configure this we will need to know the IP address of your DHCP server and which addresses belong to your local network.</p>
+                        </div>
+                        <div @click="toggleConditionalForwarding()" :class="settings.conditional_forwarding_enabled?'active':''" class="toggle-switch">
+                            <div class="toggle-slider"></div>
+                        </div>
+                    </div>
+
+                    <!-- Config fields -->
+                    <div x-show="settings.conditional_forwarding_enabled" x-cloak style="border-top:1px solid var(--border-color);padding-top:16px">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:16px">
+                            <div>
+                                <label>Local network in CIDR notation</label>
+                                <input type="text" x-model="settings.local_network_cidr" placeholder="192.168.0.0/24" style="font-family:monospace">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Example: 192.168.0.0/24 or 10.0.0.0/8</p>
+                            </div>
+                            <div>
+                                <label>IP address of your DHCP server (router)</label>
+                                <input type="text" x-model="settings.router_ip" placeholder="192.168.0.1" style="font-family:monospace">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Usually your router's IP</p>
+                            </div>
+                        </div>
+                        <div style="margin-bottom:16px">
+                            <label>Local domain name (optional)</label>
+                            <input type="text" x-model="settings.local_domain" placeholder="fritz.box" style="max-width:400px;font-family:monospace">
+                            <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Optional: Like <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">fritz.box</code> to ensure queries to devices ending in your local domain name won't leave your network</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button @click="saveDnsSettings()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i> Save DNS Settings</button>
+        </div>
+
+        <!-- DNS Advanced Tab -->
+        <div x-show="currentTab==='dnsadvanced'&&!loading" x-cloak>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px">
                 <div class="strategy-card" :class="getFirstPoolStrategy()==='parallel'?'selected':''" @click="setFirstPoolStrategy('parallel')">
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -146,7 +237,6 @@
                 </div>
             </div>
 
-            <!-- Pools -->
             <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
                     <h3 style="font-size:18px;font-weight:700">🎯 Upstream DNS Pools</h3>
@@ -179,7 +269,6 @@
                 <div x-show="config.dns.pools.length===0" style="text-align:center;padding:40px;color:var(--text-secondary)">No pools configured. Click "Add Pool" to create one.</div>
             </div>
 
-            <!-- Health Check -->
             <div class="card">
                 <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">🩺 Health Check Configuration</h3>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
@@ -190,7 +279,6 @@
                 </div>
             </div>
 
-            <!-- General DNS -->
             <div class="card">
                 <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">⚙️ General DNS Settings</h3>
                 <div style="display:flex;flex-direction:column;gap:12px">
@@ -199,7 +287,7 @@
                 </div>
             </div>
 
-            <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i> Save Changes</button>
+            <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i> Save Advanced Settings</button>
         </div>
 
         <!-- Cache Tab -->
@@ -226,7 +314,6 @@
                 </div>
             </div>
 
-            <!-- Cache Stats -->
             <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h3 style="font-size:18px;font-weight:700">📊 Cache Statistics</h3>
@@ -240,7 +327,7 @@
                 </div>
             </div>
 
-            <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i> Save Changes</button>
+            <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i> Save Cache Settings</button>
         </div>
 
         <!-- Ad Block Tab -->
@@ -253,8 +340,8 @@
     </main>
 
     <script>
-function app(){return{theme:'light',currentTab:'dns',loading:true,config:{dns:{pools:[],health_check:{enabled:true,interval_seconds:30,timeout_ms:2000,failure_threshold:3},dnssec_enabled:false,cache_enabled:true,cache_ttl:3600,cache_max_entries:10000,cache_eviction_strategy:'lfu',cache_min_hit_rate:0.3,cache_refresh_threshold:0.8,cache_compaction_interval:300,cache_optimistic_refresh:true,cache_adaptive_thresholds:true}},cacheStats:{total_entries:0,hit_rate:0,total_hits:0,total_misses:0},healthStatus:{},alert:{show:false,type:'success',message:''},async init(){console.log('Settings init...');this.theme=localStorage.getItem('theme')||'light';document.documentElement.classList.toggle('dark',this.theme==='dark');await this.loadConfig();await this.loadHealthStatus();await this.loadCacheStats();setTimeout(()=>lucide.createIcons(),100);setInterval(()=>this.loadHealthStatus(),10000)},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadConfig(){try{this.loading=true;const res=await fetch('/api/config');if(res.ok){const data=await res.json();console.log('Config loaded:',data);this.config={...this.config,...data,dns:{...this.config.dns,...(data.dns||{}),pools:data.dns?.pools||[],health_check:{enabled:data.dns?.health_check?.enabled??true,interval_seconds:data.dns?.health_check?.interval_seconds??30,timeout_ms:data.dns?.health_check?.timeout_ms??2000,failure_threshold:data.dns?.health_check?.failure_threshold??3},cache_ttl:data.dns?.cache_ttl??3600,cache_max_entries:data.dns?.cache_max_entries??10000,cache_eviction_strategy:data.dns?.cache_eviction_strategy??'lfu',cache_min_hit_rate:data.dns?.cache_min_hit_rate??0.3,cache_refresh_threshold:data.dns?.cache_refresh_threshold??0.8,cache_compaction_interval:data.dns?.cache_compaction_interval??300,cache_optimistic_refresh:data.dns?.cache_optimistic_refresh??true,cache_adaptive_thresholds:data.dns?.cache_adaptive_thresholds??true}};if(this.config.dns.pools.length===0&&data.dns?.upstream_servers?.length>0){this.config.dns.pools=[{name:'default',strategy:'parallel',priority:1,servers:[...data.dns.upstream_servers]}]}}else{this.showAlert('error','Failed to load configuration')}}catch(e){console.error('Load config error:',e);this.showAlert('error','Failed to load: '+e.message)}finally{this.loading=false}},async loadHealthStatus(){try{const res=await fetch('/api/health/upstreams');if(res.ok)this.healthStatus=await res.json()}catch(e){console.error('Load health error:',e)}},async loadCacheStats(){try{const res=await fetch('/api/cache/stats');if(res.ok)this.cacheStats=await res.json()}catch(e){console.error('Load cache stats error:',e)}},getServerHealth(s){return this.healthStatus[s]||'Unknown'},addPool(){this.config.dns.pools.push({name:'',strategy:'parallel',priority:1,servers:['']});setTimeout(()=>lucide.createIcons(),50)},removePool(idx){this.config.dns.pools.splice(idx,1)},getFirstPoolStrategy(){return this.config.dns.pools[0]?.strategy||'parallel'},setFirstPoolStrategy(s){if(this.config.dns.pools.length>0){this.config.dns.pools[0].strategy=s}else{this.addPool();this.config.dns.pools[0].strategy=s}},async saveConfig(){try{const res=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.config)});if(res.ok){this.showAlert('success','Configuration saved successfully!')}else{const err=await res.text();this.showAlert('error','Failed to save: '+err)}}catch(e){this.showAlert('error','Failed to save: '+e.message)}},showAlert(type,msg){this.alert={show:true,type,message:msg};setTimeout(()=>{this.alert.show=false},5000)}}}
+function app(){return{theme:'light',currentTab:'dnsbasic',loading:true,stats:{queries_total:0},config:{dns:{pools:[],health_check:{enabled:true,interval_seconds:30,timeout_ms:2000,failure_threshold:3},dnssec_enabled:false,cache_enabled:true,cache_ttl:3600,cache_max_entries:10000,cache_eviction_strategy:'lfu',cache_min_hit_rate:0.3,cache_refresh_threshold:0.8,cache_compaction_interval:300,cache_optimistic_refresh:true,cache_adaptive_thresholds:true}},settings:{never_forward_non_fqdn:false,never_forward_reverse_lookups:false,conditional_forwarding_enabled:false,local_network_cidr:'',router_ip:'',local_domain:''},cacheStats:{total_entries:0,hit_rate:0,total_hits:0,total_misses:0},healthStatus:{},restartRequired:false,alert:{show:false,type:'success',message:''},async init(){console.log('Settings init...');this.theme=localStorage.getItem('theme')||'light';document.documentElement.classList.toggle('dark',this.theme==='dark');await Promise.all([this.loadConfig(),this.loadDnsSettings(),this.loadHealthStatus(),this.loadCacheStats(),this.loadStats()]);setTimeout(()=>lucide.createIcons(),100);setInterval(()=>{this.loadHealthStatus();this.loadStats()},10000)},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadStats(){try{const r=await fetch('/api/stats');if(r.ok)this.stats=await r.json()}catch(e){console.error(e)}},async loadConfig(){try{this.loading=true;const res=await fetch('/api/config');if(res.ok){const data=await res.json();console.log('Config loaded:',data);this.config={...this.config,...data,dns:{...this.config.dns,...(data.dns||{}),pools:data.dns?.pools||[],health_check:{enabled:data.dns?.health_check?.enabled??true,interval_seconds:data.dns?.health_check?.interval_seconds??30,timeout_ms:data.dns?.health_check?.timeout_ms??2000,failure_threshold:data.dns?.health_check?.failure_threshold??3},cache_ttl:data.dns?.cache_ttl??3600,cache_max_entries:data.dns?.cache_max_entries??10000,cache_eviction_strategy:data.dns?.cache_eviction_strategy??'lfu',cache_min_hit_rate:data.dns?.cache_min_hit_rate??0.3,cache_refresh_threshold:data.dns?.cache_refresh_threshold??0.8,cache_compaction_interval:data.dns?.cache_compaction_interval??300,cache_optimistic_refresh:data.dns?.cache_optimistic_refresh??true,cache_adaptive_thresholds:data.dns?.cache_adaptive_thresholds??true}};if(this.config.dns.pools.length===0&&data.dns?.upstream_servers?.length>0){this.config.dns.pools=[{name:'default',strategy:'parallel',priority:1,servers:[...data.dns.upstream_servers]}]}}else{this.showAlert('error','Failed to load configuration')}}catch(e){console.error('Load config error:',e);this.showAlert('error','Failed to load: '+e.message)}finally{this.loading=false}},async loadDnsSettings(){try{const r=await fetch('/api/settings');if(r.ok)this.settings=await r.json()}catch(e){console.log('Using default DNS settings',e)}},async loadHealthStatus(){try{const res=await fetch('/api/health/upstreams');if(res.ok)this.healthStatus=await res.json()}catch(e){console.error('Load health error:',e)}},async loadCacheStats(){try{const res=await fetch('/api/cache/stats');if(res.ok)this.cacheStats=await res.json()}catch(e){console.error('Load cache stats error:',e)}},getServerHealth(s){return this.healthStatus[s]||'Unknown'},addPool(){this.config.dns.pools.push({name:'',strategy:'parallel',priority:1,servers:['']});setTimeout(()=>lucide.createIcons(),50)},removePool(idx){this.config.dns.pools.splice(idx,1)},getFirstPoolStrategy(){return this.config.dns.pools[0]?.strategy||'parallel'},setFirstPoolStrategy(s){if(this.config.dns.pools.length>0){this.config.dns.pools[0].strategy=s}else{this.addPool();this.config.dns.pools[0].strategy=s}},async saveConfig(){try{const res=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.config)});if(res.ok){this.showAlert('success','Configuration saved successfully!')}else{const err=await res.text();this.showAlert('error','Failed to save: '+err)}}catch(e){this.showAlert('error','Failed to save: '+e.message)}},async saveDnsSettings(){try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.settings)});if(r.ok){const data=await r.json();this.showAlert('success','DNS settings saved!');if(data.message.includes('restart')){this.restartRequired=true}}else{const error=await r.json();this.showAlert('error','Failed: '+(error.message||'Unknown error'))}}catch(e){console.error(e);this.showAlert('error','Error: '+e.message)}},toggleConditionalForwarding(){this.settings.conditional_forwarding_enabled=!this.settings.conditional_forwarding_enabled;if(!this.settings.conditional_forwarding_enabled){this.settings.local_network_cidr='';this.settings.router_ip='';this.settings.local_domain=''}},showAlert(type,msg){this.alert={show:true,type,message:msg};setTimeout(()=>{this.alert.show=false},5000)}}}
     </script>
-    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}[x-cloak]{display:none!important}</style>
 </body>
 </html>

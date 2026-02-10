@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local DNS Settings - Ferrous DNS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root{--color-primary:#3B82F6;--color-success:#10B981;--color-warning:#F59E0B;--color-error:#EF4444;--bg-primary:#F9FAFB;--bg-secondary:#FFFFFF;--bg-tertiary:#F3F4F6;--text-primary:#111827;--text-secondary:#6B7280;--text-tertiary:#9CA3AF;--border-color:#E5E7EB}
+        .dark{--bg-primary:#0F172A;--bg-secondary:#1E293B;--bg-tertiary:#334155;--text-primary:#F1F5F9;--text-secondary:#CBD5E1;--text-tertiary:#94A3B8;--border-color:#334155}
+        body{background:var(--bg-primary);color:var(--text-primary);padding-left:260px;margin:0}
+        .sidebar{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto}
+        .logo-container{display:flex;align-items:center;gap:12px;padding:24px 16px 16px}
+        .logo-icon{width:40px;height:40px;padding:8px;background:var(--color-primary);color:white;border-radius:8px}
+        .logo-text h1{font-size:20px;font-weight:700;color:var(--text-primary);margin:0}
+        .logo-subtitle{font-size:11px;color:var(--text-tertiary)}
+        .status-box{margin:0 16px 16px;padding:12px;background:var(--bg-tertiary);border-radius:8px}
+        .status-header{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase}
+        .status-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:6px}
+        .status-indicator{width:8px;height:8px;border-radius:50%;background:var(--color-success);animation:pulse 2s infinite}
+        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--color-success)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0.2)}}
+        .nav-section{margin-bottom:24px}
+        .nav-section-title{padding:8px 16px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase}
+        .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:var(--text-secondary);text-decoration:none;font-size:14px;transition:all .2s}
+        .nav-item:hover{background:var(--bg-tertiary);color:var(--text-primary)}
+        .nav-item.active{background:var(--bg-tertiary);color:var(--color-primary);font-weight:600;border-left:3px solid var(--color-primary)}
+        .nav-icon{width:18px;height:18px}
+        .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
+        .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
+        .card-stat{background:var(--bg-secondary);border-radius:12px;padding:24px;border:1px solid var(--border-color);transition:all .2s}
+        .card-stat:hover{box-shadow:0 4px 6px rgba(0,0,0,0.1);transform:translateY(-2px)}
+        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color)}
+    </style>
+</head>
+<body x-data="localDnsApp()" x-init="init()">
+    <aside class="sidebar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        </div>
+        <div class="status-box">
+            <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
+            <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
+            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span id="queries-min" x-text="stats.queries_total||0+' q/total'">0 q/total</span></div>
+        </div>
+        <nav style="flex:1;padding:16px 0">
+            <div class="nav-section">
+                <div class="nav-section-title">MAIN</div>
+                <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+                <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">DNS CONTROL</div>
+                <a href="/local-dns-settings.html" class="nav-item active"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
+                <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <button @click="toggleTheme()" class="theme-btn">
+                <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+                <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+                <span>Theme</span>
+            </button>
+        </div>
+    </aside>
+    </aside>
+    <main style="padding:24px">
+        <!-- Header -->
+        <div style="margin-bottom:24px">
+            <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">🖥️ Local DNS Settings</h1>
+            <p style="font-size:14px;color:var(--text-secondary)">Manage local DNS records and conditional forwarding rules</p>
+        </div>
+
+        <!-- Tabs -->
+        <div style="border-bottom:1px solid var(--border-color);margin-bottom:24px">
+            <div style="display:flex;gap:32px;margin-bottom:-1px">
+                <button @click="activeTab = 'records'" 
+                        :style="activeTab === 'records' ? 'border-bottom:2px solid #3B82F6;color:#3B82F6' : 'border-bottom:2px solid transparent;color:var(--text-secondary)'"
+                        style="padding:16px 4px;font-weight:500;font-size:14px;background:none;border:none;cursor:pointer;white-space:nowrap">
+                    DNS Records
+                    <span x-text="records.length" style="margin-left:8px;padding:4px 8px;border-radius:12px;font-size:12px;background:var(--bg-tertiary);color:var(--text-primary)">0</span>
+                </button>
+                <button @click="activeTab = 'forwarding'" 
+                        :style="activeTab === 'forwarding' ? 'border-bottom:2px solid #3B82F6;color:#3B82F6' : 'border-bottom:2px solid transparent;color:var(--text-secondary)'"
+                        style="padding:16px 4px;font-weight:500;font-size:14px;background:none;border:none;cursor:pointer;white-space:nowrap">
+                    Conditional Forwarding
+                    <span x-text="forwardingRules.length" style="margin-left:8px;padding:4px 8px;border-radius:12px;font-size:12px;background:var(--bg-tertiary);color:var(--text-primary)">0</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- DNS Records Tab -->
+        <div x-show="activeTab === 'records'" x-cloak>
+            <!-- Info Box -->
+            <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:24px">
+                <div style="display:flex;gap:12px">
+                    <i data-lucide="info" style="width:20px;height:20px;color:#3B82F6;flex-shrink:0"></i>
+                    <div style="flex:1">
+                        <h3 style="font-weight:600;font-size:14px;color:var(--text-primary);margin-bottom:8px">Configuration File Storage</h3>
+                        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Local DNS records are stored in <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px;font-family:monospace;font-size:12px">ferrous-dns.toml</code> and cached permanently in memory.</p>
+                        <ul style="font-size:13px;color:var(--text-secondary);list-style:disc;padding-left:20px;line-height:1.6">
+                            <li>Changes are saved immediately to the config file</li>
+                            <li>Records are preloaded on server startup</li>
+                            <li>DNS queries resolve in <0.1ms from cache</li>
+                            <li>Config file can be version-controlled with Git</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+                <div class="card" style="padding:24px">
+                    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">Total Records</p>
+                    <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="records.length">0</p>
+                </div>
+                <div class="card" style="padding:24px">
+                    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">A Records</p>
+                    <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="records.filter(r => r.record_type === 'A').length">0</p>
+                </div>
+                <div class="card" style="padding:24px">
+                    <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">AAAA Records</p>
+                    <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="records.filter(r => r.record_type === 'AAAA').length">0</p>
+                </div>
+            </div>
+
+            <!-- Inline Add Form -->
+            <div class="card" style="padding:16px;margin-bottom:16px">
+                <div style="display:grid;grid-template-columns:150px 1fr 1fr 120px 100px auto;gap:12px;align-items:end">
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px">Hostname</label>
+                        <input x-model="newRecord.hostname" type="text" placeholder="server" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px">Domain</label>
+                        <input x-model="newRecord.domain" type="text" placeholder="local" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px">Associated IP</label>
+                        <input x-model="newRecord.ip" type="text" placeholder="10.0.1.1" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px">Type</label>
+                        <select x-model="newRecord.record_type" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+                            <option value="A">A</option>
+                            <option value="AAAA">AAAA</option>
+                            <option value="CNAME">CNAME</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:4px">TTL</label>
+                        <input x-model="newRecord.ttl" type="number" value="300" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
+                    </div>
+                    <div>
+                        <button @click="addRecord()" style="padding:8px 16px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:500;cursor:pointer;font-size:13px;white-space:nowrap">
+                            <span style="font-size:16px;margin-right:4px">+</span> Add
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Records Table -->
+            <div class="card" style="overflow:hidden">
+                <table style="width:100%;border-collapse:collapse">
+                    <thead style="background:var(--bg-tertiary)">
+                        <tr>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">FQDN</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">IP ADDRESS</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">TYPE</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">TTL</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-if="records.length === 0">
+                            <tr>
+                                <td colspan="5" style="padding:48px;text-align:center;color:var(--text-secondary)">
+                                    No DNS records. Click "+ Add DNS Record" to create one.
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="record in records" :key="record.fqdn">
+                            <tr style="border-top:1px solid var(--border-color)">
+                                <td style="padding:12px 16px;font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.fqdn"></td>
+                                <td style="padding:12px 16px;font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.ip"></td>
+                                <td style="padding:12px 16px">
+                                    <span style="padding:4px 8px;border-radius:4px;font-size:12px;font-weight:500;background:rgba(59,130,246,0.1);color:#3B82F6" x-text="record.record_type"></span>
+                                </td>
+                                <td style="padding:12px 16px;color:var(--text-secondary);font-size:13px" x-text="record.ttl + 's'"></td>
+                                <td style="padding:12px 16px">
+                                    <button @click="deleteRecord(record.fqdn)" style="padding:6px 12px;background:#EF4444;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer">
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conditional Forwarding Tab -->
+        <div x-show="activeTab === 'forwarding'" x-cloak>
+            <p style="color:var(--text-secondary);margin-bottom:16px">Configure domain-specific DNS forwarders</p>
+            
+            <div style="margin-bottom:16px">
+                <button style="padding:10px 20px;background:#3B82F6;color:white;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:14px">
+                    + Add Forwarding Rule
+                </button>
+            </div>
+
+            <div class="card" style="overflow:hidden">
+                <table style="width:100%;border-collapse:collapse">
+                    <thead style="background:var(--bg-tertiary)">
+                        <tr>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">DOMAIN</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">SERVER</th>
+                            <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase">ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="3" style="padding:48px;text-align:center;color:var(--text-secondary)">
+                                No forwarding rules configured.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+    <script>lucide.createIcons();</script>
+    <script>
+function localDnsApp(){return{theme:localStorage.getItem('theme')||'light',stats:{queries_total:0},activeTab:'records',records:[],forwardingRules:[],newRecord:{hostname:'',domain:'',ip:'',record_type:'A',ttl:300},async init(){document.documentElement.classList.toggle('dark',this.theme==='dark');await Promise.all([this.loadRecords(),this.loadStats()]);setInterval(()=>this.loadStats(),5000);setTimeout(()=>lucide.createIcons(),100)},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadStats(){try{const r=await fetch('/api/stats');if(r.ok)this.stats=await r.json()}catch(e){console.error(e)}},async loadRecords(){try{const r=await fetch('/api/local-records');if(r.ok)this.records=await r.json()}catch(e){console.error(e)}},async addRecord(){if(!this.newRecord.hostname||!this.newRecord.ip){alert('Please fill in Hostname and IP');return}try{const r=await fetch('/api/local-records',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:this.newRecord.hostname,domain:this.newRecord.domain||null,ip:this.newRecord.ip,record_type:this.newRecord.record_type,ttl:parseInt(this.newRecord.ttl)||300})});if(r.ok){await this.loadRecords();this.newRecord={hostname:'',domain:'',ip:'',record_type:'A',ttl:300}}else{const err=await r.text();alert('Failed to add record: '+err)}}catch(e){console.error(e);alert('Error adding record')}},async deleteRecord(fqdn){if(!confirm('Delete this record?'))return;try{const r=await fetch(`/api/local-records/${fqdn}`,{method:'DELETE'});if(r.ok)await this.loadRecords();else alert('Failed to delete record')}catch(e){console.error(e);alert('Error deleting record')}}}}
+    </script>
+    <style>[x-cloak] { display: none !important; }</style>
+</body>
+</html>

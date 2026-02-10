@@ -13,4 +13,10 @@ pub enum DomainError {
 
     #[error("Invalid DNS response: {0}")]
     InvalidDnsResponse(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
+
+    #[error("Query timeout")]
+    QueryTimeout,
 }

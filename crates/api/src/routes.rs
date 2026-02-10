@@ -18,5 +18,10 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/config", post(handlers::update_config))
         .route("/config/reload", post(handlers::reload_config))
         .route("/hostname", get(handlers::get_hostname))
+        // DNS Settings (Pi-hole style)
+        .route("/settings", get(handlers::get_settings))
+        .route("/settings", post(handlers::update_settings))
+        // Local DNS records routes (Fase 2)
+        .merge(handlers::local_records::routes())
         .with_state(state)
 }
