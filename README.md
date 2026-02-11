@@ -89,37 +89,6 @@ docker run -d \
 
 ---
 
-## 📦 Conteúdo do Package
-
-```
-ferrous-dns-release-deployment/
-├── .github/workflows/
-│   ├── ci.yml              # CI completo
-│   ├── release.yml         # Release + 2 binários (amd64, arm64)
-│   ├── docker.yml          # Docker multi-arch
-│   └── pr-validation.yml   # Validação PRs
-├── scripts/
-│   ├── release.sh          # Release automatizado
-│   ├── bump-version.sh     # Bump de versão
-│   └── README.md
-├── docker/
-│   └── entrypoint.sh       # Converte ENVs → CLI args
-├── docs/
-│   ├── CONFIG_GUIDE.md     # Guia de configuração
-│   ├── GITHUB_ACTIONS_INTEGRATION.md
-│   ├── DOCKER.md
-│   ├── INSTALLATION.md
-│   └── SECRETS_GUIDE.md
-├── Dockerfile              # Alpine com ENVs (valores padrão)
-├── docker-compose.yml      # Compose com todas ENVs
-├── Makefile                # 40+ comandos
-├── cliff.toml              # Config CHANGELOG
-├── release.toml            # Config cargo-release
-└── CHANGELOG.md
-```
-
----
-
 
 ## 🐳 Docker Compose
 
@@ -153,4 +122,40 @@ volumes:
 
 ---
 
-Veja: `docker/entrypoint.sh`
+## 📬 Contact & Support
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/andersonviudes/ferrous-dns/issues)
+- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/andersonviudes/ferrous-dns/discussions)
+
+---
+
+## 📊 Project Status
+
+| Status | Description                                                     |
+|--------|-----------------------------------------------------------------|
+| 🚧     | **Alpha** - Core architecture complete, features in development |
+| 🔄     | **Active Development** - Regular commits and updates            |
+| 📅     | **Beta Target** - Q2 2025                                       |
+| 🎯     | **v1.0 Target** - Q3 2025                                       |
+
+---
+
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=andersonviudes/ferrous-dns&type=Date)](https://star-history.com/#andersonviudes/ferrous-dns&Date)
+
+---
+
+<div align="center">
+
+**Made with ❤️ and 🦀 by [Anderson Viudes](https://github.com/andersonviudes)**
+
+**If you find this project useful, please consider giving it a ⭐ on GitHub!**
+
+[⬆ Back to Top](#-ferrous-dns)
+
+---
+
+*Ferrous DNS - Blazingly fast, memory-safe DNS with ad-blocking*
+
+</div>
