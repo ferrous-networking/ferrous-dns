@@ -9,134 +9,494 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root{--color-primary:#3B82F6;--color-success:#10B981;--color-warning:#F59E0B;--color-error:#EF4444;--bg-primary:#F9FAFB;--bg-secondary:#FFFFFF;--bg-tertiary:#F3F4F6;--text-primary:#111827;--text-secondary:#6B7280;--text-tertiary:#9CA3AF;--border-color:#E5E7EB}
-        .dark{--bg-primary:#0F172A;--bg-secondary:#1E293B;--bg-tertiary:#334155;--text-primary:#F1F5F9;--text-secondary:#CBD5E1;--text-tertiary:#94A3B8;--border-color:#334155}
-        body{background:var(--bg-primary);color:var(--text-primary);padding-left:260px;margin:0}
-        .sidebar{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto}
-        .logo-container{display:flex;align-items:center;gap:12px;padding:24px 16px 16px}
-        .logo-icon{width:40px;height:40px;padding:8px;background:var(--color-primary);color:white;border-radius:8px}
-        .logo-text h1{font-size:20px;font-weight:700;color:var(--text-primary);margin:0}
-        .logo-subtitle{font-size:11px;color:var(--text-tertiary)}
-        .status-box{margin:0 16px 16px;padding:12px;background:var(--bg-tertiary);border-radius:8px}
-        .status-header{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase}
-        .status-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:6px}
-        .status-indicator{width:8px;height:8px;border-radius:50%;background:var(--color-success);animation:pulse 2s infinite}
-        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--color-success)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0.2)}}
-        .nav-section{margin-bottom:24px}
-        .nav-section-title{padding:8px 16px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase}
-        .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:var(--text-secondary);text-decoration:none;font-size:14px;transition:all .2s}
-        .nav-item:hover{background:var(--bg-tertiary);color:var(--text-primary)}
-        .nav-item.active{background:var(--bg-tertiary);color:var(--color-primary);font-weight:600;border-left:3px solid var(--color-primary)}
-        .nav-icon{width:18px;height:18px}
-        .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
-        .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
-        .card-stat{background:var(--bg-secondary);border-radius:12px;padding:24px;border:1px solid var(--border-color);transition:all .2s}
-        .card-stat:hover{box-shadow:0 4px 6px rgba(0,0,0,0.1);transform:translateY(-2px)}
-        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color)}
+        :root {
+            --color-primary: #3B82F6;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+            --bg-primary: #F9FAFB;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F3F4F6;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --text-tertiary: #9CA3AF;
+            --border-color: #E5E7EB
+        }
+
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-color: #334155
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding-left: 260px;
+            margin: 0
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 24px 16px 16px
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 8px
+        }
+
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0
+        }
+
+        .logo-subtitle {
+            font-size: 11px;
+            color: var(--text-tertiary)
+        }
+
+        .status-box {
+            margin: 0 16px 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s infinite
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 var(--color-success)
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2)
+            }
+        }
+
+        .nav-section {
+            margin-bottom: 24px
+        }
+
+        .nav-section-title {
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all .2s
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary)
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--color-primary);
+            font-weight: 600;
+            border-left: 3px solid var(--color-primary)
+        }
+
+        .nav-icon {
+            width: 18px;
+            height: 18px
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid var(--border-color)
+        }
+
+        .theme-btn {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-secondary)
+        }
+
+        .card-stat {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            transition: all .2s
+        }
+
+        .card-stat:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px)
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color)
+        }
     </style>
 </head>
 <body x-data="app()" x-init="init()">
-    <aside class="sidebar">
-        <div class="logo-container">
-            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+<aside class="sidebar">
+    <div class="logo-container">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+    </div>
+    <div class="status-box">
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
         </div>
-        <div class="status-box">
-            <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
-            <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
-            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span id="queries-min" x-text="stats.queries_total||0+' q/total'">0 q/total</span></div>
+        <div class="status-item">
+            <div class="status-indicator"></div>
+            <span>Active</span></div>
+        <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span id="queries-min"
+                                                                                               x-text="stats.queries_total||0+' q/total'">0 q/total</span>
         </div>
-        <nav style="flex:1;padding:16px 0">
-            <div class="nav-section">
-                <div class="nav-section-title">MAIN</div>
-                <a href="/dashboard.html" class="nav-item active"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-                <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
-            </div>
-            <div class="nav-section">
-                <div class="nav-section-title">DNS CONTROL</div>
-                <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-                <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
-            </div>
-        </nav>
-        <div class="sidebar-footer">
-            <button @click="toggleTheme()" class="theme-btn">
-                <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
-                <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
-                <span>Theme</span>
-            </button>
+    </div>
+    <nav style="flex:1;padding:16px 0">
+        <div class="nav-section">
+            <div class="nav-section-title">MAIN</div>
+            <a href="/dashboard.html" class="nav-item active"><i data-lucide="layout-dashboard"
+                                                                 class="nav-icon"></i><span>Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text"
+                                                        class="nav-icon"></i><span>Query Log</span></a>
         </div>
-    </aside>
-    <main style="padding:24px">
-        <div style="margin-bottom:24px">
-            <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">📊 Estatísticas das Últimas 24 Horas</h1>
-            <p style="font-size:14px;color:var(--text-secondary)">Visão geral do desempenho do servidor DNS</p>
+        <div class="nav-section">
+            <div class="nav-section-title">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings"
+                                                         class="nav-icon"></i><span>Settings</span></a>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
-            <div class="card-stat">
-                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)"><i data-lucide="package" style="width:24px;height:24px;color:#3B82F6"></i></div>
+    </nav>
+    <div class="sidebar-footer">
+        <button @click="toggleTheme()" class="theme-btn">
+            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+            <span>Theme</span>
+        </button>
+    </div>
+</aside>
+<main style="padding:24px">
+    <div style="margin-bottom:24px">
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">📊 Estatísticas das
+            Últimas 24 Horas</h1>
+        <p style="font-size:14px;color:var(--text-secondary)">Visão geral do desempenho do servidor DNS</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)"><i data-lucide="package"
+                                                                                               style="width:24px;height:24px;color:#3B82F6"></i>
                 </div>
-                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
-                <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="stats.queries_total||0">0</p>
             </div>
-            <div class="card-stat">
-                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)"><i data-lucide="shield-ban" style="width:24px;height:24px;color:#EF4444"></i></div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
+            <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="stats.queries_total||0">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)"><i data-lucide="shield-ban"
+                                                                                              style="width:24px;height:24px;color:#EF4444"></i>
                 </div>
-                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Blocked</p>
-                <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="stats.queries_blocked||0">0</p>
             </div>
-            <div class="card-stat">
-                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)"><i data-lucide="gauge" style="width:24px;height:24px;color:#A855F7"></i></div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Blocked</p>
+            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="stats.queries_blocked||0">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)"><i data-lucide="gauge"
+                                                                                               style="width:24px;height:24px;color:#A855F7"></i>
                 </div>
-                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
-                <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="formatTime(stats.avg_query_time_ms||0)">0 ms</p>
             </div>
-            <div class="card-stat">
-                <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)"><i data-lucide="zap" style="width:24px;height:24px;color:#10B981"></i></div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
+            <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="formatTime(stats.avg_query_time_ms||0)">0
+                ms</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)"><i data-lucide="zap"
+                                                                                               style="width:24px;height:24px;color:#10B981"></i>
                 </div>
-                <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">⚡ Cache Time</p>
-                <p style="font-size:32px;font-weight:700;color:#10B981" x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p>
+            </div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">⚡ Cache Time</p>
+            <p style="font-size:32px;font-weight:700;color:#10B981" x-text="formatTime(stats.avg_cache_time_ms||0)">0
+                ms</p>
+        </div>
+    </div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache Performance</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+        <div class="card" style="padding:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
+                       x-text="cacheMetrics.total_hits||0">0</p>
+                    <p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">
+                        0%</p></div>
             </div>
         </div>
-        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache Performance</h2>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
-            <div class="card" style="padding:16px">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
-                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_hits||0">0</p><p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">0%</p></div>
-                </div>
-            </div>
-            <div class="card" style="padding:16px">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="archive" style="width:32px;height:32px;color:#3B82F6"></i>
-                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Misses</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_misses||0">0</p></div>
-                </div>
-            </div>
-            <div class="card" style="padding:16px">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="refresh-cw" style="width:32px;height:32px;color:#F59E0B"></i>
-                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_refreshes||0">0</p></div>
-                </div>
-            </div>
-            <div class="card" style="padding:16px">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="database" style="width:32px;height:32px;color:#10B981"></i>
-                    <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="cacheMetrics.total_entries||0">0</p></div>
-                </div>
+        <div class="card" style="padding:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="archive" style="width:32px;height:32px;color:#3B82F6"></i>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Misses</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
+                       x-text="cacheMetrics.total_misses||0">0</p></div>
             </div>
         </div>
-        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">📈 Queries over Time</h2>
-        <div class="card" style="padding:24px;margin-bottom:24px"><canvas id="timelineChart" style="max-height:300px"></canvas></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px">
-            <div class="card" style="padding:24px"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">🔍 Query Types</h3><canvas id="queryTypesChart" style="max-height:250px"></canvas></div>
-            <div class="card" style="padding:24px"><h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache vs Upstream</h3><canvas id="cacheSourceChart" style="max-height:250px"></canvas></div>
+        <div class="card" style="padding:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="refresh-cw" style="width:32px;height:32px;color:#F59E0B"></i>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
+                       x-text="cacheMetrics.total_refreshes||0">0</p></div>
+            </div>
         </div>
-    </main>
-    <script>
-function app(){return{theme:'light',stats:{},cacheMetrics:{},cacheStats:{cache:0,upstream:0},queryTypes:{},charts:{},async init(){this.theme=localStorage.getItem('theme')||'light';document.documentElement.classList.toggle('dark',this.theme==='dark');await this.loadAllData();await this.$nextTick();setTimeout(()=>{this.initCharts();lucide.createIcons()},100);this.startPolling()},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadAllData(){await Promise.all([this.loadStats(),this.loadQueryTypes(),this.loadCacheMetrics()])},async loadStats(){try{const res=await fetch('/api/stats');if(res.ok)this.stats=await res.json()}catch(e){console.error(e)}},async loadQueryTypes(){try{const res=await fetch('/api/queries');if(res.ok){const queries=await res.json();this.queryTypes={};queries.forEach(q=>{this.queryTypes[q.type]=(this.queryTypes[q.type]||0)+1});let cache=0,upstream=0;queries.forEach(q=>{if(q.blocked)return;if(q.cache_hit)cache++;else upstream++});this.cacheStats={cache,upstream}}}catch(e){console.error(e)}},async loadCacheMetrics(){try{const res=await fetch('/api/cache/metrics');if(res.ok){const m=await res.json();this.cacheMetrics={total_hits:m.hits,total_misses:m.misses,total_refreshes:m.optimistic_refreshes,total_entries:m.total_entries,hit_rate:m.hit_rate}}}catch(e){console.error(e)}},initCharts(){try{const ctx1=document.getElementById('timelineChart');if(ctx1){this.charts.timeline=new Chart(ctx1.getContext('2d'),{type:'line',data:{labels:Array.from({length:24},(_,i)=>(new Date().getHours()-23+i+24)%24+'h'),datasets:[{label:'Total Queries',data:Array(24).fill(0),borderColor:'#3B82F6',backgroundColor:'rgba(59,130,246,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:3,plugins:{legend:{position:'top'}},scales:{y:{beginAtZero:true}}}})}const ctx2=document.getElementById('queryTypesChart');if(ctx2&&Object.keys(this.queryTypes).length>0){this.charts.queryTypes=new Chart(ctx2.getContext('2d'),{type:'doughnut',data:{labels:Object.keys(this.queryTypes),datasets:[{data:Object.values(this.queryTypes),backgroundColor:['#3B82F6','#10B981','#F59E0B','#EF4444','#A855F7']}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.5,plugins:{legend:{position:'right'}}}})}const ctx3=document.getElementById('cacheSourceChart');if(ctx3&&(this.cacheStats.cache>0||this.cacheStats.upstream>0)){this.charts.cacheSource=new Chart(ctx3.getContext('2d'),{type:'doughnut',data:{labels:['⚡ Cache','🌐 Upstream'],datasets:[{data:[this.cacheStats.cache,this.cacheStats.upstream],backgroundColor:['#A855F7','#3B82F6']}]},options:{responsive:true,maintainAspectRatio:true,aspectRatio:1.5,plugins:{legend:{position:'right'}}}})}}catch(e){console.error('Chart error:',e)}},startPolling(){setInterval(()=>this.loadAllData(),1000)},formatTime(ms){if(!ms)return'0 ms';if(ms<1000)return`${Math.round(ms)} µs`;return`${(ms/1000).toFixed(1)} ms`}}}
-    </script>
+        <div class="card" style="padding:16px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="database" style="width:32px;height:32px;color:#10B981"></i>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
+                       x-text="cacheMetrics.total_entries||0">0</p></div>
+            </div>
+        </div>
+    </div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">📈 Queries over Time</h2>
+    <div class="card" style="padding:24px;margin-bottom:24px">
+        <canvas id="timelineChart" style="max-height:300px"></canvas>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px">
+        <div class="card" style="padding:24px"><h3
+                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">🔍 Query Types</h3>
+            <canvas id="queryTypesChart" style="max-height:250px"></canvas>
+        </div>
+        <div class="card" style="padding:24px"><h3
+                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">⚡ Cache vs
+            Upstream</h3>
+            <canvas id="cacheSourceChart" style="max-height:250px"></canvas>
+        </div>
+    </div>
+</main>
+<script>
+    function app() {
+        return {
+            theme: 'light',
+            stats: {},
+            cacheMetrics: {},
+            cacheStats: {cache: 0, upstream: 0},
+            queryTypes: {},
+            charts: {},
+            async init() {
+                this.theme = localStorage.getItem('theme') || 'light';
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await this.loadAllData();
+                await this.$nextTick();
+                setTimeout(() => {
+                    this.initCharts();
+                    lucide.createIcons()
+                }, 100);
+                this.startPolling()
+            },
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('theme', this.theme);
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                setTimeout(() => lucide.createIcons(), 50)
+            },
+            async loadAllData() {
+                await Promise.all([this.loadStats(), this.loadQueryTypes(), this.loadCacheMetrics()])
+            },
+            async loadStats() {
+                try {
+                    const res = await fetch('/api/stats');
+                    if (res.ok) this.stats = await res.json()
+                } catch (e) {
+                    console.error(e)
+                }
+            },
+            async loadQueryTypes() {
+                try {
+                    const res = await fetch('/api/queries');
+                    if (res.ok) {
+                        const queries = await res.json();
+                        this.queryTypes = {};
+                        queries.forEach(q => {
+                            this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1
+                        });
+                        let cache = 0, upstream = 0;
+                        queries.forEach(q => {
+                            if (q.blocked) return;
+                            if (q.cache_hit) cache++; else upstream++
+                        });
+                        this.cacheStats = {cache, upstream}
+                    }
+                } catch (e) {
+                    console.error(e)
+                }
+            },
+            async loadCacheMetrics() {
+                try {
+                    const res = await fetch('/api/cache/metrics');
+                    if (res.ok) {
+                        const m = await res.json();
+                        this.cacheMetrics = {
+                            total_hits: m.hits,
+                            total_misses: m.misses,
+                            total_refreshes: m.optimistic_refreshes,
+                            total_entries: m.total_entries,
+                            hit_rate: m.hit_rate
+                        }
+                    }
+                } catch (e) {
+                    console.error(e)
+                }
+            },
+            initCharts() {
+                try {
+                    const ctx1 = document.getElementById('timelineChart');
+                    if (ctx1) {
+                        this.charts.timeline = new Chart(ctx1.getContext('2d'), {
+                            type: 'line',
+                            data: {
+                                labels: Array.from({length: 24}, (_, i) => (new Date().getHours() - 23 + i + 24) % 24 + 'h'),
+                                datasets: [{
+                                    label: 'Total Queries',
+                                    data: Array(24).fill(0),
+                                    borderColor: '#3B82F6',
+                                    backgroundColor: 'rgba(59,130,246,0.1)',
+                                    fill: true,
+                                    tension: 0.4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 3,
+                                plugins: {legend: {position: 'top'}},
+                                scales: {y: {beginAtZero: true}}
+                            }
+                        })
+                    }
+                    const ctx2 = document.getElementById('queryTypesChart');
+                    if (ctx2 && Object.keys(this.queryTypes).length > 0) {
+                        this.charts.queryTypes = new Chart(ctx2.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: Object.keys(this.queryTypes),
+                                datasets: [{
+                                    data: Object.values(this.queryTypes),
+                                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#A855F7']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 1.5,
+                                plugins: {legend: {position: 'right'}}
+                            }
+                        })
+                    }
+                    const ctx3 = document.getElementById('cacheSourceChart');
+                    if (ctx3 && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
+                        this.charts.cacheSource = new Chart(ctx3.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['⚡ Cache', '🌐 Upstream'],
+                                datasets: [{
+                                    data: [this.cacheStats.cache, this.cacheStats.upstream],
+                                    backgroundColor: ['#A855F7', '#3B82F6']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 1.5,
+                                plugins: {legend: {position: 'right'}}
+                            }
+                        })
+                    }
+                } catch (e) {
+                    console.error('Chart error:', e)
+                }
+            },
+            startPolling() {
+                setInterval(() => this.loadAllData(), 1000)
+            },
+            formatTime(ms) {
+                if (!ms) return '0 ms';
+                if (ms < 1000) return `${Math.round(ms)} µs`;
+                return `${(ms / 1000).toFixed(1)} ms`
+            }
+        }
+    }
+</script>
 </body>
 </html>

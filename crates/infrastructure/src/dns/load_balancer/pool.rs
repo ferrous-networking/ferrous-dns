@@ -108,11 +108,7 @@ impl PoolManager {
                 if let Some(ref checker) = self.health_checker {
                     pool.server_protocols
                         .iter()
-                        .filter(|p| {
-                            p.socket_addr()
-                                .map(|a| checker.is_healthy(&a))
-                                .unwrap_or(true)
-                        })
+                        .filter(|p| checker.is_healthy(p))
                         .collect()
                 } else {
                     pool.server_protocols.iter().collect()
@@ -157,6 +153,13 @@ impl PoolManager {
         self.pools
             .iter()
             .flat_map(|p| p.server_protocols.iter().filter_map(|p| p.socket_addr()))
+            .collect()
+    }
+
+    pub fn get_all_protocols(&self) -> Vec<DnsProtocol> {
+        self.pools
+            .iter()
+            .flat_map(|p| p.server_protocols.iter().cloned())
             .collect()
     }
 }

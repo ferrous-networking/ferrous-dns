@@ -21,16 +21,16 @@ pub async fn get_upstream_health(
     let mut health_map = HashMap::new();
 
     if let Some(checker) = &state.health_checker {
-        let all_servers = state.pool_manager.get_all_servers();
+        let all_protocols = state.pool_manager.get_all_protocols();
 
-        for server in all_servers {
-            let status = checker.get_status(&server);
+        for protocol in all_protocols {
+            let status = checker.get_status(&protocol);
             let status_str = match status {
                 ferrous_dns_infrastructure::dns::ServerStatus::Healthy => "Healthy",
                 ferrous_dns_infrastructure::dns::ServerStatus::Unhealthy => "Unhealthy",
                 ferrous_dns_infrastructure::dns::ServerStatus::Unknown => "Unknown",
             };
-            health_map.insert(server.to_string(), status_str.to_string());
+            health_map.insert(protocol.to_string(), status_str.to_string());
         }
     }
 

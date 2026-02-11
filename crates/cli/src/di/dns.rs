@@ -58,7 +58,7 @@ impl DnsServices {
 
         // Start health checker in background (don't keep JoinHandle)
         if let Some(checker) = health_checker {
-            let all_servers = pool_manager.get_all_servers();
+            let all_protocols = pool_manager.get_all_protocols();
 
             // Spawn and detach - não guardar o JoinHandle
             let checker_clone = checker.clone();
@@ -66,7 +66,7 @@ impl DnsServices {
             let timeout = config.dns.health_check.timeout;
 
             tokio::spawn(async move {
-                checker_clone.run(all_servers, interval, timeout).await;
+                checker_clone.run(all_protocols, interval, timeout).await;
             });
 
             info!("Health checker background task started");

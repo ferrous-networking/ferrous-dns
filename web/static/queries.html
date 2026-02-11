@@ -8,250 +8,498 @@
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root{--color-primary:#3B82F6;--color-success:#10B981;--color-warning:#F59E0B;--color-error:#EF4444;--bg-primary:#F9FAFB;--bg-secondary:#FFFFFF;--bg-tertiary:#F3F4F6;--text-primary:#111827;--text-secondary:#6B7280;--text-tertiary:#9CA3AF;--border-color:#E5E7EB}
-        .dark{--bg-primary:#0F172A;--bg-secondary:#1E293B;--bg-tertiary:#334155;--text-primary:#F1F5F9;--text-secondary:#CBD5E1;--text-tertiary:#94A3B8;--border-color:#334155}
-        body{background:var(--bg-primary);color:var(--text-primary);padding-left:260px;margin:0}
-        .sidebar{position:fixed;left:0;top:0;bottom:0;width:260px;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto}
-        .logo-container{display:flex;align-items:center;gap:12px;padding:24px 16px 16px}
-        .logo-icon{width:40px;height:40px;padding:8px;background:var(--color-primary);color:white;border-radius:8px}
-        .logo-text h1{font-size:20px;font-weight:700;color:var(--text-primary);margin:0}
-        .logo-subtitle{font-size:11px;color:var(--text-tertiary)}
-        .status-box{margin:0 16px 16px;padding:12px;background:var(--bg-tertiary);border-radius:8px}
-        .status-header{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase}
-        .status-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);margin-bottom:6px}
-        .status-indicator{width:8px;height:8px;border-radius:50%;background:var(--color-success);animation:pulse 2s infinite}
-        @keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--color-success)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0.2)}}
-        .nav-section{margin-bottom:24px}
-        .nav-section-title{padding:8px 16px;font-size:10px;font-weight:700;color:var(--text-tertiary);text-transform:uppercase}
-        .nav-item{display:flex;align-items:center;gap:12px;padding:10px 16px;color:var(--text-secondary);text-decoration:none;font-size:14px;transition:all .2s}
-        .nav-item:hover{background:var(--bg-tertiary);color:var(--text-primary)}
-        .nav-item.active{background:var(--bg-tertiary);color:var(--color-primary);font-weight:600;border-left:3px solid var(--color-primary)}
-        .nav-icon{width:18px;height:18px}
-        .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-color)}
-        .theme-btn{width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text-secondary)}
-        .card{background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border-color);padding:16px}
-        .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
-        table{width:100%;border-collapse:collapse}
-        th{padding:12px;text-align:left;font-weight:600;font-size:12px;color:var(--text-secondary);text-transform:uppercase;border-bottom:1px solid var(--border-color)}
-        td{padding:12px;border-bottom:1px solid var(--border-color);font-size:14px}
-        tr.row-allowed{background:rgba(16,185,129,0.08)}
-        tr.row-blocked{background:rgba(239,68,68,0.08)}
-        tr:hover{opacity:0.85}
+        :root {
+            --color-primary: #3B82F6;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+            --bg-primary: #F9FAFB;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F3F4F6;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --text-tertiary: #9CA3AF;
+            --border-color: #E5E7EB
+        }
+
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-color: #334155
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding-left: 260px;
+            margin: 0
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 24px 16px 16px
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 8px
+        }
+
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0
+        }
+
+        .logo-subtitle {
+            font-size: 11px;
+            color: var(--text-tertiary)
+        }
+
+        .status-box {
+            margin: 0 16px 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s infinite
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 var(--color-success)
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2)
+            }
+        }
+
+        .nav-section {
+            margin-bottom: 24px
+        }
+
+        .nav-section-title {
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all .2s
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary)
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--color-primary);
+            font-weight: 600;
+            border-left: 3px solid var(--color-primary)
+        }
+
+        .nav-icon {
+            width: 18px;
+            height: 18px
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid var(--border-color)
+        }
+
+        .theme-btn {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-secondary)
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 16px
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px
+        }
+
+        tr.row-allowed {
+            background: rgba(16, 185, 129, 0.08)
+        }
+
+        tr.row-blocked {
+            background: rgba(239, 68, 68, 0.08)
+        }
+
+        tr:hover {
+            opacity: 0.85
+        }
     </style>
 </head>
 <body x-data="app()" x-init="init()">
-    <aside class="sidebar">
-        <div class="logo-container">
-            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-            <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+<aside class="sidebar">
+    <div class="logo-container">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+    </div>
+    <div class="status-box">
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
         </div>
-        <div class="status-box">
-            <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
-            <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
-            <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span x-text="queries.length+' queries'">0 queries</span></div>
+        <div class="status-item">
+            <div class="status-indicator"></div>
+            <span>Active</span></div>
+        <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span
+                x-text="stats.queries_total+' queries'">0 queries</span></div>
+    </div>
+    <nav style="flex:1;padding:16px 0">
+        <div class="nav-section">
+            <div class="nav-section-title">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+            <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
         </div>
-        <nav style="flex:1;padding:16px 0">
-            <div class="nav-section">
-                <div class="nav-section-title">MAIN</div>
-                <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-                <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
-            </div>
-            <div class="nav-section">
-                <div class="nav-section-title">DNS CONTROL</div>
-                <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-                <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
-            </div>
-        </nav>
-        <div class="sidebar-footer">
-            <button @click="toggleTheme()" class="theme-btn">
-                <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
-                <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
-                <span>Theme</span>
-            </button>
+        <div class="nav-section">
+            <div class="nav-section-title">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings"
+                                                         class="nav-icon"></i><span>Settings</span></a>
         </div>
-    </aside>
-    <main style="padding:24px">
-        <div class="card" style="margin-bottom:24px">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:center">
-                <div>
-                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Show:</label>
-                    <select x-model.number="pageSize" @change="currentPage=1" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
-                        <option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option>
-                    </select>
-                </div>
-                <div>
-                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Category:</label>
-                    <select x-model="category" @change="currentPage=1" style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
-                        <option value="">All Queries</option><option value="allowed">Allowed</option><option value="blocked">Blocked</option><option value="cache">Cache Hits</option><option value="upstream">Upstream</option>
-                    </select>
-                </div>
-                <div>
-                    <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">&nbsp;</label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                        <input type="checkbox" x-model="autoRefresh" style="width:16px;height:16px;accent-color:var(--color-primary)">
-                        <span style="font-size:14px;color:var(--text-secondary)">Auto-refresh (1s)</span>
-                    </label>
-                </div>
+    </nav>
+    <div class="sidebar-footer">
+        <button @click="toggleTheme()" class="theme-btn">
+            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+            <span>Theme</span>
+        </button>
+    </div>
+</aside>
+<main style="padding:24px">
+    <div class="card" style="margin-bottom:24px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:center">
+            <div>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Show:</label>
+                <select x-model.number="pageSize" @change="currentPage=1"
+                        style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
             </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
-            <div class="card">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="check-circle" style="width:32px;height:32px;color:var(--color-success)"></i>
-                    <div><p style="font-size:12px;color:var(--text-secondary)">Allowed</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.allowed">0</p></div>
-                </div>
+            <div>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Category:</label>
+                <select x-model="category" @change="currentPage=1"
+                        style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                    <option value="">All Queries</option>
+                    <option value="allowed">Allowed</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="cache">Cache Hits</option>
+                    <option value="upstream">Upstream</option>
+                </select>
             </div>
-            <div class="card">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="shield-ban" style="width:32px;height:32px;color:var(--color-error)"></i>
-                    <div><p style="font-size:12px;color:var(--text-secondary)">Blocked</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.blocked">0</p></div>
-                </div>
-            </div>
-            <div class="card">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
-                    <div><p style="font-size:12px;color:var(--text-secondary)">Cache Hits</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.cacheHits">0</p></div>
-                </div>
-            </div>
-            <div class="card">
-                <div style="display:flex;align-items:center;gap:12px">
-                    <i data-lucide="server" style="width:32px;height:32px;color:var(--color-info)"></i>
-                    <div><p style="font-size:12px;color:var(--text-secondary)">Upstream</p><p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.upstream">0</p></div>
-                </div>
+            <div>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">&nbsp;</label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" x-model="autoRefresh"
+                           style="width:16px;height:16px;accent-color:var(--color-primary)">
+                    <span style="font-size:14px;color:var(--text-secondary)">Auto-refresh (1s)</span>
+                </label>
             </div>
         </div>
-        <div class="card" style="overflow-x:auto">
-            <table>
-                <thead><tr><th>TIME</th><th>DOMAIN</th><th>TYPE</th><th>CLIENT</th><th>SOURCE</th><th>RESPONSE TIME</th></tr></thead>
-                <tbody>
-                    <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                        <tr :class="query.blocked ? 'row-blocked' : 'row-allowed'">
-                            <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
-                            <td style="font-family:monospace;font-size:14px" x-text="query.domain"></td>
-                            <td><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6" x-text="query.type"></span></td>
-                            <td style="font-size:13px" x-text="query.client"></td>
-                            <td>
-                                <span class="badge" :style="query.cache_hit ? 'background:rgba(168,85,247,0.1);color:#A855F7' : 'background:rgba(59,130,246,0.1);color:#3B82F6'" x-text="query.cache_hit ? 'Cache' : 'Upstream'"></span>
-                            </td>
-                            <td style="font-size:13px" x-text="formatResponseTime(query)"></td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
-                <div style="font-size:14px;color:var(--text-secondary)">
-                    Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span x-text="Math.min(currentPage*pageSize,filteredQueries.length)"></span> of <span x-text="filteredQueries.length"></span>
-                </div>
-                <div style="display:flex;gap:8px">
-                    <button @click="currentPage--" :disabled="currentPage===1" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px" :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous</button>
-                    <button @click="currentPage++" :disabled="currentPage>=totalPages" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px" :style="currentPage>=totalPages?'opacity:0.5;cursor:not-allowed':''">Next</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="check-circle" style="width:32px;height:32px;color:var(--color-success)"></i>
+                <div><p style="font-size:12px;color:var(--text-secondary)">Allowed</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.allowed">0</p>
                 </div>
             </div>
         </div>
-    </main>
-    <script>
-function app() {
-    return {
-        theme: 'light',
-        queries: [],
-        pageSize: 25,
-        currentPage: 1,
-        category: '',
-        autoRefresh: true,
-        stats: { allowed: 0, blocked: 0, cacheHits: 0, upstream: 0 },
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="shield-ban" style="width:32px;height:32px;color:var(--color-error)"></i>
+                <div><p style="font-size:12px;color:var(--text-secondary)">Blocked</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.blocked">0</p>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
+                <div><p style="font-size:12px;color:var(--text-secondary)">Cache Hits</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.cacheHits">0</p>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:12px">
+                <i data-lucide="server" style="width:32px;height:32px;color:var(--color-info)"></i>
+                <div><p style="font-size:12px;color:var(--text-secondary)">Upstream</p>
+                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.upstream">0</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card" style="overflow-x:auto">
+        <table>
+            <thead>
+            <tr>
+                <th>TIME</th>
+                <th>DOMAIN</th>
+                <th>TYPE</th>
+                <th>CLIENT</th>
+                <th>SOURCE</th>
+                <th>RESPONSE TIME</th>
+            </tr>
+            </thead>
+            <tbody>
+            <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
+                <tr :class="query.blocked ? 'row-blocked' : 'row-allowed'">
+                    <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
+                    <td style="font-family:monospace;font-size:14px" x-text="query.domain"></td>
+                    <td><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
+                              x-text="query.type"></span></td>
+                    <td style="font-size:13px" x-text="query.client"></td>
+                    <td>
+                        <span class="badge"
+                              :style="query.cache_hit ? 'background:rgba(168,85,247,0.1);color:#A855F7' : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
+                              x-text="query.cache_hit ? 'Cache' : 'Upstream'"></span>
+                    </td>
+                    <td style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                </tr>
+            </template>
+            </tbody>
+        </table>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
+            <div style="font-size:14px;color:var(--text-secondary)">
+                Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span
+                    x-text="Math.min(currentPage*pageSize,filteredQueries.length)"></span> of <span
+                    x-text="filteredQueries.length"></span>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button @click="currentPage--" :disabled="currentPage===1"
+                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
+                </button>
+                <button @click="currentPage++" :disabled="currentPage>=totalPages"
+                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                        :style="currentPage>=totalPages?'opacity:0.5;cursor:not-allowed':''">Next
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+    function app() {
+        return {
+            theme: 'light',
+            queries: [],
+            pageSize: 25,
+            currentPage: 1,
+            category: '',
+            autoRefresh: true,
+            stats: {allowed: 0, blocked: 0, cacheHits: 0, upstream: 0, queries_total: 0},
 
-        async init() {
-            console.log('Query Log initializing...');
-            this.theme = localStorage.getItem('theme') || 'light';
-            document.documentElement.classList.toggle('dark', this.theme === 'dark');
-            await this.loadQueries();
-            setTimeout(() => lucide.createIcons(), 100);
-            this.startPolling();
-        },
+            async init() {
+                console.log('Query Log initializing...');
+                this.theme = localStorage.getItem('theme') || 'light';
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await Promise.all([this.loadQueries(), this.loadStats()]);
+                setTimeout(() => lucide.createIcons(), 100);
+                this.startPolling();
+            },
 
-        toggleTheme() {
-            this.theme = this.theme === 'light' ? 'dark' : 'light';
-            localStorage.setItem('theme', this.theme);
-            document.documentElement.classList.toggle('dark', this.theme === 'dark');
-            setTimeout(() => lucide.createIcons(), 50);
-        },
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('theme', this.theme);
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                setTimeout(() => lucide.createIcons(), 50);
+            },
 
-        async loadQueries() {
-            try {
-                const res = await fetch('/api/queries');
-                if (res.ok) {
-                    this.queries = await res.json();
-                    console.log('Loaded', this.queries.length, 'queries');
-                    if (this.queries.length > 0) {
-                        console.log('Sample query:', JSON.stringify(this.queries[0], null, 2));
+            async loadQueries() {
+                try {
+                    const res = await fetch('/api/queries');
+                    if (res.ok) {
+                        this.queries = await res.json();
+                        console.log('Loaded', this.queries.length, 'queries');
+                        if (this.queries.length > 0) {
+                            console.log('Sample query:', JSON.stringify(this.queries[0], null, 2));
+                        }
+                        this.calculateStats();
                     }
-                    this.calculateStats();
+                } catch (e) {
+                    console.error('Error loading queries:', e);
                 }
-            } catch (e) {
-                console.error('Error loading queries:', e);
+            },
+
+            calculateStats() {
+                this.stats.allowed = this.queries.filter(q => !q.blocked).length;
+                this.stats.blocked = this.queries.filter(q => q.blocked).length;
+                this.stats.cacheHits = this.queries.filter(q => q.cache_hit).length;
+                this.stats.upstream = this.queries.filter(q => !q.cache_hit && !q.blocked).length;
+            },
+
+            get filteredQueries() {
+                let filtered = this.queries;
+                if (this.category === 'allowed') filtered = filtered.filter(q => !q.blocked);
+                if (this.category === 'blocked') filtered = filtered.filter(q => q.blocked);
+                if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
+                if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
+                return filtered;
+            },
+
+            get paginatedQueries() {
+                const start = (this.currentPage - 1) * this.pageSize;
+                return this.filteredQueries.slice(start, start + this.pageSize);
+            },
+
+            get totalPages() {
+                return Math.ceil(this.filteredQueries.length / this.pageSize);
+            },
+
+            startPolling() {
+                setInterval(() => {
+                    if (this.autoRefresh) {
+                        this.loadQueries();
+                        this.loadStats();
+                    }
+                }, 1000);
+            },
+
+            async loadStats() {
+                try {
+                    const res = await fetch('/api/stats');
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.stats.queries_total = data.queries_total || 0;
+                    }
+                } catch (e) {
+                    console.error('Failed to load stats:', e);
+                }
+            },
+
+            formatTime(timestamp) {
+                if (!timestamp) return '-';
+                return new Date(timestamp).toLocaleTimeString();
+            },
+
+            formatResponseTime(query) {
+                const us = query.response_time_ms || 0;
+
+                if (!us) return '-';
+
+
+                if (us < 1000) {
+                    return `${Math.round(us)} µs`;
+                } else if (us < 1000000) {
+                    return `${Math.round(us / 1000)} ms`;
+                } else {
+                    return `${(us / 1000000).toFixed(2)} s`;
+                }
             }
-        },
-
-        calculateStats() {
-            this.stats = {
-                allowed: this.queries.filter(q => !q.blocked).length,
-                blocked: this.queries.filter(q => q.blocked).length,
-                cacheHits: this.queries.filter(q => q.cache_hit).length,
-                upstream: this.queries.filter(q => !q.cache_hit && !q.blocked).length
-            };
-        },
-
-        get filteredQueries() {
-            let filtered = this.queries;
-            if (this.category === 'allowed') filtered = filtered.filter(q => !q.blocked);
-            if (this.category === 'blocked') filtered = filtered.filter(q => q.blocked);
-            if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
-            if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
-            return filtered;
-        },
-
-        get paginatedQueries() {
-            const start = (this.currentPage - 1) * this.pageSize;
-            return this.filteredQueries.slice(start, start + this.pageSize);
-        },
-
-        get totalPages() {
-            return Math.ceil(this.filteredQueries.length / this.pageSize);
-        },
-
-        startPolling() {
-            setInterval(() => {
-                if (this.autoRefresh) this.loadQueries();
-            }, 1000);
-        },
-
-        formatTime(timestamp) {
-            if (!timestamp) return '-';
-            return new Date(timestamp).toLocaleTimeString();
-        },
-
-        formatResponseTime(query) {
-            // Backend retorna em MICROSSEGUNDOS no campo 'response_time_ms'
-            const us = query.response_time_ms || 0;
-            
-            if (!us) return '-';
-            
-            // response_time_ms está em MICROSSEGUNDOS (apesar do nome)
-            // Exemplo: 3259 = 3259 µs = 3.26 ms
-            
-            if (us < 1000) {
-                // < 1ms = mostrar em µs
-                return `${Math.round(us)} µs`;
-            } else if (us < 1000000) {
-                // 1ms - 999ms = converter para ms
-                return `${Math.round(us / 1000)} ms`;
-            } else {
-                // >= 1s = converter para segundos
-                return `${(us / 1000000).toFixed(2)} s`;
-            }
-        }
-    };
-}
-    </script>
+        };
+    }
+</script>
 </body>
 </html>

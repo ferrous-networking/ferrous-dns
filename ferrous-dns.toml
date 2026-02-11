@@ -7,7 +7,7 @@ bind_address = "0.0.0.0"
 upstream_servers = []
 query_timeout = 5
 cache_enabled = true
-cache_ttl = 3600
+cache_ttl = 7200
 dnssec_enabled = true
 default_strategy = "Parallel"
 cache_max_entries = 200000
@@ -29,30 +29,12 @@ conditional_forward_network = "10.0.0.0/8"
 conditional_forward_router = "10.0.0.1"
 
 [[dns.pools]]
-name = "google-parallel"
+name = "cloudflare"
 strategy = "Parallel"
 priority = 1
 servers = [
-    "8.8.8.8:53",
-    "8.8.4.4:53",
-]
-
-[[dns.pools]]
-name = "cloudflare-balanced"
-strategy = "Balanced"
-priority = 1
-servers = [
-    "1.1.1.1:53",
-    "1.0.0.1:53",
-]
-
-[[dns.pools]]
-name = "quad9-backup"
-strategy = "Failover"
-priority = 2
-servers = [
-    "9.9.9.9:53",
-    "149.112.112.112:53",
+    "tls://1.1.1.1:853",
+    "tls://1.0.0.1:853",
 ]
 
 [dns.health_check]

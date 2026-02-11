@@ -2,7 +2,6 @@ use crate::dns::forwarding::{MessageBuilder, ResponseParser};
 use crate::dns::transport;
 use dashmap::DashMap;
 use ferrous_dns_domain::{DnsProtocol, RecordType};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -37,7 +36,7 @@ impl Default for ServerHealth {
 }
 
 pub struct HealthChecker {
-    health_map: Arc<DashMap<SocketAddr, ServerHealth>>,
+    health_map: Arc<DashMap<String, ServerHealth>>, // Changed from SocketAddr to String (protocol string)
     failure_threshold: u8,
     success_threshold: u8,
 }
@@ -53,52 +52,52 @@ impl HealthChecker {
 
     pub async fn run(
         self: Arc<Self>,
-        servers: Vec<SocketAddr>,
+        protocols: Vec<DnsProtocol>,
         interval_seconds: u64,
         timeout_ms: u64,
     ) {
         info!(
-            servers = servers.len(),
+            servers = protocols.len(),
             interval_seconds, "Health checker running"
         );
 
         let self_clone = Arc::clone(&self);
-        let servers_clone = servers.clone();
+        let protocols_clone = protocols.clone();
         tokio::spawn(async move {
-            self_clone.check_all(&servers_clone, timeout_ms).await;
+            self_clone.check_all(&protocols_clone, timeout_ms).await;
         });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut check_interval = interval(Duration::from_secs(interval_seconds));
         loop {
             check_interval.tick().await;
-            self.check_all(&servers, timeout_ms).await;
+            self.check_all(&protocols, timeout_ms).await;
         }
     }
 
-    async fn check_all(&self, servers: &[SocketAddr], timeout_ms: u64) {
-        for &server in servers {
-            self.check_server(server, timeout_ms).await;
+    async fn check_all(&self, protocols: &[DnsProtocol], timeout_ms: u64) {
+        for protocol in protocols {
+            self.check_server(protocol.clone(), timeout_ms).await;
         }
     }
 
-    async fn check_server(&self, server: SocketAddr, timeout_ms: u64) {
+    async fn check_server(&self, protocol: DnsProtocol, timeout_ms: u64) {
+        let server_str = protocol.to_string();
         let start = std::time::Instant::now();
         let timeout_duration = Duration::from_millis(timeout_ms);
 
         let query_bytes = match MessageBuilder::build_query("google.com", &RecordType::A) {
             Ok(b) => b,
             Err(e) => {
-                self.mark_failed(server, None, Some(e.to_string()));
+                self.mark_failed(&server_str, None, Some(e.to_string()));
                 return;
             }
         };
 
-        let protocol = DnsProtocol::Udp { addr: server };
         let dns_transport = match transport::create_transport(&protocol) {
             Ok(t) => t,
             Err(e) => {
-                self.mark_failed(server, None, Some(e.to_string()));
+                self.mark_failed(&server_str, None, Some(e.to_string()));
                 return;
             }
         };
@@ -112,38 +111,38 @@ impl HealthChecker {
 
         match result {
             Err(_) => {
-                warn!(server = %server, "Health check: TIMEOUT");
+                warn!(server = %server_str, "Health check: TIMEOUT");
                 self.mark_failed(
-                    server,
+                    &server_str,
                     None,
                     Some(format!("Timeout after {}ms", timeout_ms)),
                 );
             }
             Ok(Err(e)) => {
-                warn!(server = %server, error = %e, "Health check: FAILED");
-                self.mark_failed(server, Some(latency_ms), Some(e.to_string()));
+                warn!(server = %server_str, error = %e, "Health check: FAILED");
+                self.mark_failed(&server_str, Some(latency_ms), Some(e.to_string()));
             }
             Ok(Ok(resp)) => match ResponseParser::parse(&resp.bytes) {
                 Ok(dns) if dns.is_server_error() => {
                     self.mark_failed(
-                        server,
+                        &server_str,
                         Some(latency_ms),
                         Some(ResponseParser::rcode_to_status(dns.rcode).to_string()),
                     );
                 }
                 Ok(_) => {
-                    debug!(server = %server, latency_ms, "Health check: OK");
-                    self.mark_healthy(server, latency_ms);
+                    debug!(server = %server_str, latency_ms, "Health check: OK");
+                    self.mark_healthy(&server_str, latency_ms);
                 }
                 Err(e) => {
-                    self.mark_failed(server, Some(latency_ms), Some(e.to_string()));
+                    self.mark_failed(&server_str, Some(latency_ms), Some(e.to_string()));
                 }
             },
         }
     }
 
-    fn mark_healthy(&self, server: SocketAddr, latency_ms: u64) {
-        let mut entry = self.health_map.entry(server).or_default();
+    fn mark_healthy(&self, server: &str, latency_ms: u64) {
+        let mut entry = self.health_map.entry(server.to_string()).or_default();
         entry.consecutive_failures = 0;
         entry.consecutive_successes += 1;
         entry.last_check_latency_ms = Some(latency_ms);
@@ -156,8 +155,8 @@ impl HealthChecker {
         }
     }
 
-    fn mark_failed(&self, server: SocketAddr, latency_ms: Option<u64>, error: Option<String>) {
-        let mut entry = self.health_map.entry(server).or_default();
+    fn mark_failed(&self, server: &str, latency_ms: Option<u64>, error: Option<String>) {
+        let mut entry = self.health_map.entry(server.to_string()).or_default();
         entry.consecutive_successes = 0;
         entry.consecutive_failures += 1;
         entry.last_check_latency_ms = latency_ms;
@@ -170,29 +169,32 @@ impl HealthChecker {
         }
     }
 
-    pub fn is_healthy(&self, server: &SocketAddr) -> bool {
+    pub fn is_healthy(&self, protocol: &DnsProtocol) -> bool {
+        let server_str = protocol.to_string();
         self.health_map
-            .get(server)
+            .get(&server_str)
             .map(|h| h.status == ServerStatus::Healthy)
             .unwrap_or(true)
     }
 
-    pub fn get_healthy_servers(&self, servers: &[SocketAddr]) -> Vec<SocketAddr> {
-        servers
+    pub fn get_healthy_protocols(&self, protocols: &[DnsProtocol]) -> Vec<DnsProtocol> {
+        protocols
             .iter()
-            .filter(|s| self.is_healthy(s))
-            .copied()
+            .filter(|p| self.is_healthy(p))
+            .cloned()
             .collect()
     }
 
-    pub fn get_status(&self, server: &SocketAddr) -> ServerStatus {
+    pub fn get_status(&self, protocol: &DnsProtocol) -> ServerStatus {
+        let server_str = protocol.to_string();
         self.health_map
-            .get(server)
+            .get(&server_str)
             .map(|h| h.status)
             .unwrap_or(ServerStatus::Unknown)
     }
 
-    pub fn get_health_info(&self, server: &SocketAddr) -> Option<ServerHealth> {
-        self.health_map.get(server).map(|h| h.clone())
+    pub fn get_health_info(&self, protocol: &DnsProtocol) -> Option<ServerHealth> {
+        let server_str = protocol.to_string();
+        self.health_map.get(&server_str).map(|h| h.clone())
     }
 }
