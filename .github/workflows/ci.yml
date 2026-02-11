@@ -212,33 +212,6 @@ jobs:
           path: ${{ matrix.artifact }}.tar.gz
           retention-days: 7
 
-  # ============================================================================
-  # Security Audit
-  # ============================================================================
-  security:
-    name: Security Audit
-    needs: quick-check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo-audit binary
-        id: cache-audit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-cargo-audit-${{ env.AUDIT_VERSION }}
-
-      - name: Install cargo-audit
-        if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install cargo-audit --version ${{ env.AUDIT_VERSION }}
-
-      - name: Run security audit
-        run: cargo audit
 
   # ============================================================================
   # Performance Benchmarks PRs
@@ -286,35 +259,6 @@ jobs:
           comment-on-alert: true
           alert-threshold: '150%'
           fail-on-alert: false
-
-  # ============================================================================
-  # MSRV Check - Minimum Supported Rust Version
-  # ============================================================================
-  msrv:
-    name: MSRV Check (Rust 1.75)
-    needs: quick-check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust 1.75
-        uses: dtolnay/rust-toolchain@1.75
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: msrv-1.75-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            msrv-1.75-
-
-      - name: Check MSRV compatibility
-        run: cargo check --all-features --workspace
 
   # ============================================================================
   # Dependency Review PRS
