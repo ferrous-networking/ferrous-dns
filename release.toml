@@ -1,0 +1,74 @@
+# ============================================================================
+# Ferrous DNS - cargo-release Configuration
+# ============================================================================
+# Automates the release process for Rust projects
+# Install: cargo install cargo-release
+# Usage: cargo release [major|minor|patch]
+# ============================================================================
+
+# Enable pre-release replacements in files
+enable-features = []
+enable-all-features = false
+
+# Don't publish to crates.io automatically
+publish = false
+
+# Push to git remote
+push = true
+
+# Create git tag
+tag = true
+
+# Tag prefix
+tag-prefix = "v"
+
+# Tag message
+tag-message = "Release {{version}}"
+
+# Sign git tags
+sign-tag = false
+
+# Sign git commits
+sign-commit = false
+
+# Allow dirty working directory (use with caution)
+allow-branch = ["main", "develop"]
+
+# Don't push to crates.io
+no-publish = true
+
+# Pre-release hook - runs before version bump
+pre-release-hook = [
+    "cargo test --all-features --workspace",
+    "cargo clippy -- -D warnings",
+    "cargo fmt -- --check"
+]
+
+# Post-release hook - runs after git tag
+[[pre-release-replacements]]
+file = "CHANGELOG.md"
+search = "## \\[Unreleased\\]"
+replace = """
+## [Unreleased]
+
+## [{{version}}] - {{date}}"""
+exactly = 1
+
+[[pre-release-replacements]]
+file = "README.md"
+search = "ferrous-dns = \"[0-9.]+\""
+replace = "ferrous-dns = \"{{version}}\""
+
+# Workspace configuration
+[workspace]
+# Allow dirty workspace (for CI/CD)
+allow-branch = ["main", "develop"]
+
+# Consolidated commits
+consolidate-commits = true
+
+# Individual crate releases
+individual-tag-names = false
+
+# Publish all crates together
+exact-metadata = false

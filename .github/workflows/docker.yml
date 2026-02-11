@@ -1,0 +1,257 @@
+name: Docker Build and Push
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  repository_dispatch:
+    types: [release-created]
+
+env:
+  REGISTRY_IMAGE_DOCKERHUB: andersonviudes/ferrous-dns
+  REGISTRY_IMAGE_GHCR: ghcr.io/andersonviudes/ferrous-dns
+
+jobs:
+  # ============================================================================
+  # Build and Push Multi-arch Docker Images
+  # ============================================================================
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ========================================================================
+      # Docker Hub Login
+      # ========================================================================
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ========================================================================
+      # GitHub Container Registry Login
+      # ========================================================================
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ========================================================================
+      # Extract Metadata (tags, labels)
+      # ========================================================================
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_IMAGE_DOCKERHUB }}
+            ${{ env.REGISTRY_IMAGE_GHCR }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Ferrous DNS
+            org.opencontainers.image.description=High-performance DNS server with ad-blocking
+            org.opencontainers.image.vendor=Ferrous DNS Project
+            org.opencontainers.image.authors=Anderson Viudes
+
+      # ========================================================================
+      # Build and Push
+      # ========================================================================
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            RUST_VERSION=1.75
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      # ========================================================================
+      # Docker Hub Description
+      # ========================================================================
+      - name: Update Docker Hub Description
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.REGISTRY_IMAGE_DOCKERHUB }}
+          short-description: ${{ github.event.repository.description }}
+          readme-filepath: ./README.md
+        continue-on-error: true
+
+      # ========================================================================
+      # Generate SBOM (Software Bill of Materials)
+      # ========================================================================
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY_IMAGE_GHCR }}:${{ steps.meta.outputs.version }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+        continue-on-error: true
+
+      # ========================================================================
+      # Security Scan with Trivy
+      # ========================================================================
+      - name: Run Trivy vulnerability scanner
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY_IMAGE_GHCR }}:${{ steps.meta.outputs.version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Upload Trivy results to GitHub Security
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      # ========================================================================
+      # Docker Scout (Advanced Security Analysis)
+      # ========================================================================
+      - name: Docker Scout Analysis
+        if: github.event_name != 'pull_request'
+        uses: docker/scout-action@v1
+        with:
+          command: cves,recommendations
+          image: ${{ env.REGISTRY_IMAGE_GHCR }}:${{ steps.meta.outputs.version }}
+          only-severities: critical,high
+          write-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # ============================================================================
+  # Test Docker Image
+  # ============================================================================
+  test-docker:
+    name: Test Docker Image
+    needs: docker
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image
+        run: docker pull ${{ env.REGISTRY_IMAGE_GHCR }}:latest
+
+      - name: Test Docker image
+        run: |
+          # Start container
+          docker run -d --name ferrous-dns-test \
+            -p 53:53/udp \
+            -p 8080:8080 \
+            ${{ env.REGISTRY_IMAGE_GHCR }}:latest
+
+          # Wait for startup
+          sleep 10
+
+          # Check if container is running
+          docker ps | grep ferrous-dns-test
+
+          # Check health
+          docker inspect --format='{{.State.Health.Status}}' ferrous-dns-test || echo "No health check defined"
+
+          # Check logs
+          docker logs ferrous-dns-test
+
+          # Cleanup
+          docker stop ferrous-dns-test
+          docker rm ferrous-dns-test
+
+  # ============================================================================
+  # Notify on Success
+  # ============================================================================
+  notify:
+    name: Notify on Success
+    needs: [docker, test-docker]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Create Success Comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.number }}
+          body: |
+            ## 🐳 Docker Images Published Successfully!
+
+            **Version:** `${{ github.ref_name }}`
+
+            ### Available Images:
+
+            **Docker Hub:**
+            ```bash
+            docker pull ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:${{ github.ref_name }}
+            docker pull ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
+            ```
+
+            **GitHub Container Registry:**
+            ```bash
+            docker pull ${{ env.REGISTRY_IMAGE_GHCR }}:${{ github.ref_name }}
+            docker pull ${{ env.REGISTRY_IMAGE_GHCR }}:latest
+            ```
+
+            ### Quick Start:
+            ```bash
+            docker run -d \
+              --name ferrous-dns \
+              -p 53:53/udp \
+              -p 8080:8080 \
+              ${{ env.REGISTRY_IMAGE_GHCR }}:latest
+            ```
+
+            🎉 Release complete!
+        continue-on-error: true

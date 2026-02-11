@@ -1,0 +1,177 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ============================================================================
+  # Validate PR Title (Conventional Commits)
+  # ============================================================================
+  validate-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            chore
+            ci
+            build
+          requireScope: false
+
+  # ============================================================================
+  # Check for Breaking Changes
+  # ============================================================================
+  breaking-changes:
+    name: Check for Breaking Changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for breaking changes indicator
+        id: breaking
+        run: |
+          if git log --format=%B -n 1 ${{ github.event.pull_request.head.sha }} | grep -q "BREAKING CHANGE"; then
+            echo "has_breaking=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_breaking=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR if breaking changes detected
+        if: steps.breaking.outputs.has_breaking == 'true'
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ⚠️ Breaking Changes Detected
+
+            This PR contains breaking changes. Please ensure:
+            - [ ] CHANGELOG.md is updated
+            - [ ] Migration guide is provided (if needed)
+            - [ ] Documentation is updated
+            - [ ] Version bump will be MAJOR
+
+  # ============================================================================
+  # Size Label
+  # ============================================================================
+  size-label:
+    name: Size Label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add size label
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 10
+          s_label: 'size/s'
+          s_max_size: 100
+          m_label: 'size/m'
+          m_max_size: 500
+          l_label: 'size/l'
+          l_max_size: 1000
+          xl_label: 'size/xl'
+          fail_if_xl: false
+
+  # ============================================================================
+  # Check for TODO/FIXME
+  # ============================================================================
+  check-todos:
+    name: Check for TODO/FIXME
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for TODO/FIXME
+        run: |
+          if git diff origin/${{ github.base_ref }}..HEAD | grep -E '^\+.*TODO|FIXME'; then
+            echo "::warning::New TODO or FIXME comments found in this PR"
+            echo "Consider creating issues for these items"
+          fi
+        continue-on-error: true
+
+  # ============================================================================
+  # Suggest Reviewers
+  # ============================================================================
+  suggest-reviewers:
+    name: Suggest Reviewers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Suggest reviewers
+        uses: kentaro-m/auto-assign-action@v1.2.5
+        with:
+          configuration-path: '.github/auto-assign.yml'
+        continue-on-error: true
+
+  # ============================================================================
+  # Check Documentation
+  # ============================================================================
+  check-docs:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check documentation
+        run: cargo doc --no-deps --all-features --workspace
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # ============================================================================
+  # PR Summary
+  # ============================================================================
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [validate-title, check-docs]
+    steps:
+      - name: Create PR summary comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## 📋 PR Validation Summary
+
+            ✅ **All validations passed!**
+
+            ### Next Steps:
+            - Wait for CI checks to complete
+            - Address any review comments
+            - Ensure all tests pass
+            - Get approval from maintainers
+
+            ### Merge Checklist:
+            - [ ] All CI checks passed
+            - [ ] Code reviewed and approved
+            - [ ] Documentation updated
+            - [ ] CHANGELOG.md updated (if needed)
+            - [ ] Tests added/updated
+
+            ---
+            *This comment will be updated as checks complete*
+        continue-on-error: true

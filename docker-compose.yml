@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  ferrous-dns:
+    image: ghcr.io/andersonviudes/ferrous-dns:latest
+    container_name: ferrous-dns
+    restart: unless-stopped
+    
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "8080:8080"
+
+    volumes:
+      # Data persistence - todas pastas em /data
+      - ferrous-data:/data
+
+      # Opcional: montar config customizado
+      - ./ferrous-dns.toml:/data/config/ferrous-dns.toml:ro
+
+    environment:
+      # Config file (opcional - só usa se existir)
+      - FERROUS_CONFIG=/data/config/ferrous-dns.toml
+
+      # Network
+      - FERROUS_DNS_PORT=53
+      - FERROUS_WEB_PORT=8080
+      - FERROUS_BIND_ADDRESS=0.0.0.0
+
+      # Database
+      - FERROUS_DATABASE=/data/db/ferrous.db
+
+      # Logging
+      - FERROUS_LOG_LEVEL=info
+      - RUST_LOG=info
+
+      # Timezone
+      - TZ=America/Sao_Paulo
+
+    healthcheck:
+      test: ["/usr/local/bin/ferrous-dns", "--version"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  ferrous-data:
+    driver: local
