@@ -33,9 +33,3 @@ async fn test_get_stats_empty() {
     let stats = result.unwrap();
     assert_eq!(stats.queries_total, 0);
 }
-
-#[tokio::test]
-async fn test_mock_creation() {
-    let _repository = Arc::new(MockQueryLogRepository::new());
-    assert!(true);
-}

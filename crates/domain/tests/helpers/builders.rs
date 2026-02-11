@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-#[allow(dead_code)]
 #[allow(dead_code)]
 use ferrous_dns_domain::{DnsProtocol, DnsRecord, QueryLog, RecordType};
 use std::net::{IpAddr, SocketAddr};
@@ -40,28 +38,8 @@ impl QueryLogBuilder {
         self
     }
 
-    pub fn client_ip(mut self, ip: &str) -> Self {
-        self.client_ip = IpAddr::from_str(ip).expect("Invalid IP");
-        self
-    }
-
     pub fn blocked(mut self, blocked: bool) -> Self {
         self.blocked = blocked;
-        self
-    }
-
-    pub fn response_time_ms(mut self, ms: u64) -> Self {
-        self.response_time_ms = Some(ms);
-        self
-    }
-
-    pub fn cache_hit(mut self, hit: bool) -> Self {
-        self.cache_hit = hit;
-        self
-    }
-
-    pub fn cache_refresh(mut self, refresh: bool) -> Self {
-        self.cache_refresh = refresh;
         self
     }
 
@@ -148,11 +126,6 @@ impl DnsProtocolBuilder {
         DnsProtocol::Udp { addr: socket_addr }
     }
 
-    pub fn tcp(addr: &str) -> DnsProtocol {
-        let socket_addr = addr.parse::<SocketAddr>().expect("Invalid socket address");
-        DnsProtocol::Tcp { addr: socket_addr }
-    }
-
     pub fn tls(addr: &str, hostname: &str) -> DnsProtocol {
         let socket_addr = addr.parse::<SocketAddr>().expect("Invalid socket address");
         DnsProtocol::Tls {
@@ -161,19 +134,8 @@ impl DnsProtocolBuilder {
         }
     }
 
-    pub fn https(url: &str, hostname: &str) -> DnsProtocol {
-        DnsProtocol::Https {
-            url: url.into(),
-            hostname: hostname.into(),
-        }
-    }
-
     pub fn google_dns() -> DnsProtocol {
         Self::udp("8.8.8.8:53")
-    }
-
-    pub fn cloudflare_dns() -> DnsProtocol {
-        Self::udp("1.1.1.1:53")
     }
 
     pub fn cloudflare_tls() -> DnsProtocol {
