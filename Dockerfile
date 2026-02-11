@@ -60,39 +60,25 @@ RUN chmod +x /entrypoint.sh && \
 # Expose ports
 EXPOSE 53/udp 53/tcp 8080/tcp
 
-CMD mkdir -p /data/config /data/db /data/logs
-
-CMD chown -R ferrous:ferrous /data
-
+# Set working directory
 WORKDIR /data
 
+# Switch to non-root user
 USER ferrous
 
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD /usr/local/bin/ferrous-dns --version || exit 1
 
 # ============================================================================
 # Environment Variables (with default values)
 # ============================================================================
-# Configuration file path (--config)
 ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml"
-
-# DNS server port (--dns-port)
 ENV FERROUS_DNS_PORT="53"
-
-# Web interface port (--web-port)
 ENV FERROUS_WEB_PORT="8080"
-
-# Bind address (--bind)
 ENV FERROUS_BIND_ADDRESS="0.0.0.0"
-
-# Database path (--database)
 ENV FERROUS_DATABASE="/data/db/ferrous.db"
-
-# Log level (--log-level)
 ENV FERROUS_LOG_LEVEL="info"
-
-# Rust logging
 ENV RUST_LOG="info"
 
 # ============================================================================
@@ -101,7 +87,7 @@ ENV RUST_LOG="info"
 VOLUME ["/data"]
 
 # ============================================================================
-# Entrypoint
+# Entrypoint (JSON format - corrigido)
 # ============================================================================
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]
