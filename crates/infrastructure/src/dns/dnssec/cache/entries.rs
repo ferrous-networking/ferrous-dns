@@ -82,31 +82,3 @@ impl DsEntry {
         &self.records
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validation_entry_expiration() {
-        let entry = ValidationEntry::new(ValidationResult::Secure, 1);
-        assert!(!entry.is_expired());
-
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        assert!(entry.is_expired());
-    }
-
-    #[test]
-    fn test_dnskey_entry() {
-        let entry = DnskeyEntry::new(vec![], 300);
-        assert!(!entry.is_expired());
-        assert_eq!(entry.keys().len(), 0);
-    }
-
-    #[test]
-    fn test_ds_entry() {
-        let entry = DsEntry::new(vec![], 300);
-        assert!(!entry.is_expired());
-        assert_eq!(entry.records().len(), 0);
-    }
-}

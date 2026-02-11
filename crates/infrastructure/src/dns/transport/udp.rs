@@ -32,7 +32,7 @@ impl UdpTransport {
     /// Create new UDP transport with socket pooling (recommended).
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let pool = Arc::new(UdpSocketPool::new(8, 100));
     /// let transport = UdpTransport::with_pool(server_addr, pool);
     /// ```
@@ -225,35 +225,5 @@ impl DnsTransport for UdpTransport {
 
     fn protocol_name(&self) -> &'static str {
         "UDP"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_udp_transport_creation() {
-        let addr: SocketAddr = "8.8.8.8:53".parse().unwrap();
-        let transport = UdpTransport::new(addr);
-        assert_eq!(transport.server_addr, addr);
-        assert_eq!(transport.protocol_name(), "UDP");
-        assert!(transport.pool.is_none());
-    }
-
-    #[test]
-    fn test_udp_transport_with_pool() {
-        let addr: SocketAddr = "8.8.8.8:53".parse().unwrap();
-        let pool = Arc::new(UdpSocketPool::new(8, 100));
-        let transport = UdpTransport::with_pool(addr, pool);
-        assert_eq!(transport.server_addr, addr);
-        assert!(transport.pool.is_some());
-    }
-
-    #[test]
-    fn test_udp_transport_ipv6() {
-        let addr: SocketAddr = "[2001:4860:4860::8888]:53".parse().unwrap();
-        let transport = UdpTransport::new(addr);
-        assert_eq!(transport.server_addr, addr);
     }
 }

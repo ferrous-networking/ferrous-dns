@@ -1,0 +1,146 @@
+{
+  "google_a_record": {
+    "domain": "google.com",
+    "record_type": "A",
+    "answers": [
+      {
+        "name": "google.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "142.250.185.46"
+      }
+    ],
+    "description": "Resposta típica de A record do Google"
+  },
+  "cloudflare_aaaa_record": {
+    "domain": "cloudflare.com",
+    "record_type": "AAAA",
+    "answers": [
+      {
+        "name": "cloudflare.com",
+        "type": "AAAA",
+        "class": "IN",
+        "ttl": 300,
+        "data": "2606:4700::6810:85e5"
+      }
+    ],
+    "description": "Resposta AAAA do Cloudflare"
+  },
+  "example_mx_record": {
+    "domain": "example.com",
+    "record_type": "MX",
+    "answers": [
+      {
+        "name": "example.com",
+        "type": "MX",
+        "class": "IN",
+        "ttl": 3600,
+        "priority": 10,
+        "data": "mail.example.com"
+      }
+    ],
+    "description": "Resposta MX típica"
+  },
+  "nxdomain_response": {
+    "domain": "nonexistent.invalid",
+    "record_type": "A",
+    "rcode": "NXDOMAIN",
+    "answers": [],
+    "description": "Resposta NXDOMAIN para domínio inexistente"
+  },
+  "servfail_response": {
+    "domain": "broken.test",
+    "record_type": "A",
+    "rcode": "SERVFAIL",
+    "answers": [],
+    "description": "Resposta SERVFAIL simulando erro do servidor"
+  },
+  "cname_chain": {
+    "domain": "www.example.com",
+    "record_type": "A",
+    "answers": [
+      {
+        "name": "www.example.com",
+        "type": "CNAME",
+        "class": "IN",
+        "ttl": 300,
+        "data": "example.com"
+      },
+      {
+        "name": "example.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "93.184.216.34"
+      }
+    ],
+    "description": "Cadeia CNAME -> A"
+  },
+  "dnssec_signed_response": {
+    "domain": "cloudflare.com",
+    "record_type": "A",
+    "dnssec_status": "Secure",
+    "answers": [
+      {
+        "name": "cloudflare.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "104.16.132.229"
+      }
+    ],
+    "additional": [
+      {
+        "name": "cloudflare.com",
+        "type": "RRSIG",
+        "class": "IN",
+        "ttl": 300,
+        "data": "A 8 2 300 ..."
+      }
+    ],
+    "description": "Resposta com assinatura DNSSEC"
+  },
+  "large_txt_record": {
+    "domain": "example.com",
+    "record_type": "TXT",
+    "answers": [
+      {
+        "name": "example.com",
+        "type": "TXT",
+        "class": "IN",
+        "ttl": 300,
+        "data": "v=spf1 include:_spf.google.com ~all"
+      }
+    ],
+    "description": "TXT record típico (SPF)"
+  },
+  "multiple_a_records": {
+    "domain": "google.com",
+    "record_type": "A",
+    "answers": [
+      {
+        "name": "google.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "142.250.185.46"
+      },
+      {
+        "name": "google.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "142.250.185.78"
+      },
+      {
+        "name": "google.com",
+        "type": "A",
+        "class": "IN",
+        "ttl": 300,
+        "data": "142.250.185.110"
+      }
+    ],
+    "description": "Múltiplos A records para load balancing"
+  }
+}

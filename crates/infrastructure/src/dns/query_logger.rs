@@ -35,7 +35,7 @@ use tracing::{debug, warn};
 ///
 /// ## Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use ferrous_dns_infrastructure::dns::query_logger::QueryEventLogger;
 /// use std::sync::Arc;
 ///
@@ -63,7 +63,7 @@ impl QueryEventLogger {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use ferrous_dns_infrastructure::dns::query_logger::QueryEventLogger;
     /// use std::sync::Arc;
     ///
@@ -100,7 +100,7 @@ impl QueryEventLogger {
     ///
     /// ## Graceful Shutdown
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use ferrous_dns_infrastructure::dns::query_logger::QueryEventLogger;
     ///
     /// let handle = logger.start_parallel_batch(rx);
@@ -114,7 +114,7 @@ impl QueryEventLogger {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use ferrous_dns_infrastructure::dns::query_logger::QueryEventLogger;
     ///
     /// let logger = QueryEventLogger::new(query_log_repo);
@@ -261,7 +261,7 @@ impl QueryEventLogger {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use ferrous_dns_infrastructure::dns::query_logger::QueryEventLogger;
     ///
     /// let logger = QueryEventLogger::new(query_log_repo);

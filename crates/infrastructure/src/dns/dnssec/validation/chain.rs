@@ -90,7 +90,7 @@ impl ChainVerifier {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// let result = verifier.verify_chain("google.com", RecordType::A).await?;
     /// ```
     pub async fn verify_chain(

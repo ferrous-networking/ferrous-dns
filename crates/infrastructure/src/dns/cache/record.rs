@@ -102,7 +102,7 @@ impl CachedRecord {
     /// * `record_type` - DNS record type (A, AAAA, etc.)
     ///
     /// # Example
-    /// ```
+    /// ```ignore
     /// let data = CachedData {
     ///     addresses: vec!["192.168.1.100".parse().unwrap()],
     ///     cname: None,

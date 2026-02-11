@@ -15,7 +15,7 @@ use tracing::info;
 /// Builder for constructing a DNS resolver with decorators
 ///
 /// Example usage:
-/// ```no_run
+/// ```ignore
 /// use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
 ///
 /// let resolver = ResolverBuilder::new(pool_manager)

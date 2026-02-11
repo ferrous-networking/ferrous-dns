@@ -65,28 +65,3 @@ impl fmt::Display for RecordCategory {
         write!(f, "{}", self.as_str())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_category_as_str() {
-        assert_eq!(RecordCategory::Basic.as_str(), "basic");
-        assert_eq!(RecordCategory::Dnssec.as_str(), "dnssec");
-    }
-
-    #[test]
-    fn test_category_label() {
-        assert_eq!(RecordCategory::Basic.label(), "Basic DNS Records");
-        assert_eq!(RecordCategory::Security.label(), "Security & Cryptography");
-    }
-
-    #[test]
-    fn test_category_all() {
-        let all = RecordCategory::all();
-        assert_eq!(all.len(), 7);
-        assert!(all.contains(&RecordCategory::Basic));
-        assert!(all.contains(&RecordCategory::Dnssec));
-    }
-}

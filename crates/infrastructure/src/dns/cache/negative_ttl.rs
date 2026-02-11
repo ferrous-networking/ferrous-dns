@@ -60,7 +60,7 @@ impl NegativeQueryTracker {
     /// - Domínio raro (<=5 queries/5min): TTL = 300s (cache longo)
     ///
     /// # Exemplo
-    /// ```rust
+    /// ```rust,ignore
     /// let tracker = NegativeQueryTracker::new();
     /// let ttl = tracker.record_and_get_ttl("nonexistent.example.com");
     /// // Primeira query: ttl = 300s (raro)

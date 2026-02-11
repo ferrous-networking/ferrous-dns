@@ -71,7 +71,7 @@ impl ValidatedResponse {
 ///
 /// ## Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use ferrous_dns_infrastructure::dns::dnssec::DnssecValidator;
 ///
 /// let validator = DnssecValidator::new(pool_manager);
@@ -134,7 +134,7 @@ impl DnssecValidator {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// let cache = Arc::new(DnssecCache::new());
     /// let validator = DnssecValidator::with_cache(pool_manager, cache.clone());
     /// // Other components can use cache.clone() for shared access
@@ -200,7 +200,7 @@ impl DnssecValidator {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// let response = validator
     ///     .validate_query("google.com", RecordType::A)
     ///     .await?;

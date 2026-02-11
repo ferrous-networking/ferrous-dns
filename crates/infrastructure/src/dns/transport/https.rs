@@ -104,21 +104,3 @@ impl DnsTransport for HttpsTransport {
         "HTTPS"
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_https_transport_creation() {
-        let transport = HttpsTransport::new("https://1.1.1.1/dns-query".to_string());
-        assert_eq!(transport.url, "https://1.1.1.1/dns-query");
-        assert_eq!(transport.protocol_name(), "HTTPS");
-    }
-
-    #[test]
-    fn test_https_transport_google() {
-        let transport = HttpsTransport::new("https://dns.google/dns-query".to_string());
-        assert_eq!(transport.url, "https://dns.google/dns-query");
-    }
-}

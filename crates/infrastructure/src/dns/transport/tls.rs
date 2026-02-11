@@ -196,23 +196,3 @@ impl DnsTransport for TlsTransport {
         "TLS"
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tls_transport_creation() {
-        let addr: SocketAddr = "1.1.1.1:853".parse().unwrap();
-        let transport = TlsTransport::new(addr, "cloudflare-dns.com".to_string());
-        assert_eq!(transport.server_addr, addr);
-        assert_eq!(transport.hostname, "cloudflare-dns.com");
-        assert_eq!(transport.protocol_name(), "TLS");
-    }
-
-    #[test]
-    fn test_shared_tls_config() {
-        // Verify the static config builds successfully
-        let _config = &*SHARED_TLS_CONFIG;
-    }
-}

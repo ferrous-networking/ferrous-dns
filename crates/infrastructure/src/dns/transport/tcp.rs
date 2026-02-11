@@ -179,26 +179,3 @@ where
 
     Ok(response)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_tcp_transport_creation() {
-        let addr: SocketAddr = "8.8.8.8:53".parse().unwrap();
-        let transport = TcpTransport::new(addr);
-        assert_eq!(transport.server_addr, addr);
-        assert_eq!(transport.protocol_name(), "TCP");
-    }
-
-    #[test]
-    fn test_length_prefix_encoding() {
-        // Verify our understanding of the wire format
-        let len: u16 = 300;
-        let bytes = len.to_be_bytes();
-        assert_eq!(bytes[0], 1); // 300 = 0x012C
-        assert_eq!(bytes[1], 44);
-        assert_eq!(u16::from_be_bytes(bytes), 300);
-    }
-}

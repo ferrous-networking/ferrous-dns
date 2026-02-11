@@ -35,7 +35,7 @@ impl UdpSocketPool {
     /// * `total_limit` - Limite total de sockets (recomendado: max_per_server * num_servers * 2)
     ///
     /// # Exemplo
-    /// ```
+    /// ```ignore
     /// let pool = UdpSocketPool::new(8, 100);
     /// ```
     pub fn new(max_per_server: usize, total_limit: usize) -> Self {

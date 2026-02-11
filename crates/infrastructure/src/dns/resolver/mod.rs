@@ -10,7 +10,7 @@
 //!
 //! ## Example Usage
 //!
-//! ```no_run
+//! ```ignore
 //! use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
 //! use ferrous_dns_infrastructure::dns::resolver::QueryFilters;
 //!

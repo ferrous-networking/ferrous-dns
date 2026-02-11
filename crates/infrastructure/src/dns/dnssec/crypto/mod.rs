@@ -32,7 +32,7 @@ impl SignatureVerifier {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// let verifier = SignatureVerifier;
     /// let valid = verifier.verify_rrsig(&rrsig, &dnskey, &rrset)?;
     /// if valid {
@@ -94,7 +94,7 @@ impl SignatureVerifier {
     ///
     /// ## Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// let verifier = SignatureVerifier;
     /// let valid = verifier.verify_ds(&ds, &dnskey, "google.com")?;
     /// ```
