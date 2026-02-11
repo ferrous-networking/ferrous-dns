@@ -1,26 +1,28 @@
-/// Eviction strategy for cache management
+use std::str::FromStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvictionStrategy {
-    /// Least Recently Used
     LRU,
-    /// Hit rate based eviction (hits per second)
     HitRate,
-    /// Least Frequently Used (total hits)
     LFU,
-    /// LFU-K (frequency in sliding window of K accesses)
     LFUK,
 }
 
-impl EvictionStrategy {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "lru" => Self::LRU,
-            "lfu" => Self::LFU,
-            "lfu-k" | "lfuk" => Self::LFUK,
-            _ => Self::HitRate,
+impl FromStr for EvictionStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "lru" => Ok(Self::LRU),
+            "hit_rate" | "hitrate" => Ok(Self::HitRate),
+            "lfu" => Ok(Self::LFU),
+            "lfu-k" | "lfuk" => Ok(Self::LFUK),
+            _ => Err(format!("Invalid eviction strategy: {}", s)),
         }
     }
+}
 
+impl EvictionStrategy {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::LRU => "lru",

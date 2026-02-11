@@ -86,7 +86,7 @@ pub async fn query_server(
     let response_time_us = start.elapsed().as_micros() as u64;
     emitter.emit(QueryEvent {
         domain: Arc::from(domain),
-        record_type: record_type.clone(),
+        record_type: *record_type,
         upstream_server: protocol
             .socket_addr()
             .map(|addr| addr.to_string())
@@ -118,7 +118,7 @@ pub async fn query_server(
             let tcp_response_time_us = tcp_start.elapsed().as_micros() as u64;
             emitter.emit(QueryEvent {
                 domain: Arc::from(domain),
-                record_type: record_type.clone(),
+                record_type: *record_type,
                 upstream_server: tcp_protocol
                     .socket_addr()
                     .map(|addr| addr.to_string())

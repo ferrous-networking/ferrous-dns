@@ -28,9 +28,8 @@ impl DnsCache {
             }
 
             let key = entry.key();
-            match key.record_type {
-                RecordType::HTTPS => continue, // HTTPS records are optional and often missing
-                _ => {}
+            if matches!(key.record_type, RecordType::HTTPS) {
+                continue;
             }
 
             if !record.should_refresh(self.refresh_threshold) {
@@ -38,7 +37,7 @@ impl DnsCache {
             }
 
             if self.compute_score(record) >= mean_score {
-                candidates.push((key.domain.to_string(), key.record_type.clone()));
+                candidates.push((key.domain.to_string(), key.record_type));
             }
         }
 

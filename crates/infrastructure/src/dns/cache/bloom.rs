@@ -25,7 +25,7 @@ impl AtomicBloom {
     pub fn new(capacity: usize, fp_rate: f64) -> Self {
         let num_bits = Self::optimal_num_bits(capacity, fp_rate);
         let num_hashes = Self::optimal_num_hashes(capacity, num_bits);
-        let num_words = (num_bits + 63) / 64;
+        let num_words = num_bits.div_ceil(64);
         let bits = (0..num_words).map(|_| AtomicU64::new(0)).collect();
         Self {
             bits,

@@ -9,7 +9,7 @@ use super::server::ServerConfig;
 use super::upstream::UpstreamPool;
 
 /// Main configuration structure for Ferrous DNS
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     /// Server configuration (ports, bind address)
     pub server: ServerConfig,
@@ -25,18 +25,6 @@ pub struct Config {
 
     /// Database configuration
     pub database: DatabaseConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            dns: DnsConfig::default(),
-            blocking: BlockingConfig::default(),
-            logging: LoggingConfig::default(),
-            database: DatabaseConfig::default(),
-        }
-    }
 }
 
 impl Config {

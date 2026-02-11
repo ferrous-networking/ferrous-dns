@@ -22,9 +22,10 @@ pub struct UpstreamPool {
 }
 
 /// Load balancing strategy for upstream DNS servers
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub enum UpstreamStrategy {
     /// Query all servers in parallel, use fastest response
+    #[default]
     Parallel,
     /// Query servers in order, failover on timeout
     Failover,
@@ -39,12 +40,6 @@ impl UpstreamStrategy {
             Self::Failover => "failover",
             Self::Balanced => "balanced",
         }
-    }
-}
-
-impl Default for UpstreamStrategy {
-    fn default() -> Self {
-        Self::Parallel
     }
 }
 

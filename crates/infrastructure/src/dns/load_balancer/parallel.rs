@@ -51,7 +51,7 @@ impl ParallelStrategy {
         for &protocol in servers {
             let protocol = protocol.clone();
             let domain = domain.to_string();
-            let record_type = record_type.clone();
+            let record_type = *record_type;
             let emitter = emitter.clone();
 
             let handle = tokio::spawn(async move {

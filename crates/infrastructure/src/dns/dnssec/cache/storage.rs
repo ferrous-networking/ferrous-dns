@@ -84,7 +84,7 @@ impl DnssecCache {
                     "Validation cache hit"
                 );
 
-                return Some(entry.result().clone());
+                return Some(*entry.result());
             } else {
                 // Expired - remove it
                 drop(entry);

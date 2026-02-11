@@ -36,7 +36,7 @@ impl PrefetchPredictor {
     pub fn record_pattern(&self, previous_domain: Option<&str>, current_domain: &str) {
         if let Some(prev) = previous_domain {
             let key = CompactString::from(prev);
-            let mut entry = self.patterns.entry(key).or_insert_with(Vec::new);
+            let mut entry = self.patterns.entry(key).or_default();
             if let Some(pred) = entry
                 .iter_mut()
                 .find(|p| p.next_domain.as_str() == current_domain)

@@ -29,10 +29,13 @@ static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(||
     Arc::new(config)
 });
 
+type TlsConnection = TlsStream<TcpStream>;
+type PoolKey = (SocketAddr, String);
+type TlsConnectionPool = DashMap<PoolKey, Vec<TlsConnection>>;
+
 /// Global connection pool for TLS connections, keyed by (addr, hostname).
 /// Idle connections are reused to avoid repeated TCP+TLS handshakes.
-static TLS_POOL: LazyLock<DashMap<(SocketAddr, String), Vec<TlsStream<TcpStream>>>> =
-    LazyLock::new(DashMap::new);
+static TLS_POOL: LazyLock<TlsConnectionPool> = LazyLock::new(TlsConnectionPool::new);
 
 /// DNS-over-TLS transport (RFC 7858)
 pub struct TlsTransport {

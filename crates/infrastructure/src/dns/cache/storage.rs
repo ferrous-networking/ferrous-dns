@@ -47,11 +47,8 @@ impl DnsCache {
             "Initializing DNS cache"
         );
 
-        let cache = DashMap::with_capacity_and_hasher_and_shard_amount(
-            max_entries,
-            FxBuildHasher::default(),
-            512,
-        );
+        let cache =
+            DashMap::with_capacity_and_hasher_and_shard_amount(max_entries, FxBuildHasher, 512);
         let bloom = AtomicBloom::new(max_entries * 2, 0.01);
 
         Self {

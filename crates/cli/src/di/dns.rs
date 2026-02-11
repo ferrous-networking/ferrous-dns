@@ -248,12 +248,11 @@ impl DnsServices {
                 }
             };
 
-            // Validate IP matches record type
-            let ip_type_valid = match (&record_type, &ip) {
-                (RecordType::A, std::net::IpAddr::V4(_)) => true,
-                (RecordType::AAAA, std::net::IpAddr::V6(_)) => true,
-                _ => false,
-            };
+            let ip_type_valid = matches!(
+                (&record_type, &ip),
+                (RecordType::A, std::net::IpAddr::V4(_))
+                    | (RecordType::AAAA, std::net::IpAddr::V6(_))
+            );
 
             if !ip_type_valid {
                 warn!(

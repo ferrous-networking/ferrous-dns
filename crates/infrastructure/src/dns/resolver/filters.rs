@@ -30,13 +30,11 @@ impl QueryFilters {
     /// Returns Err(DomainError) if query should be blocked
     pub fn apply(&self, mut query: DnsQuery) -> Result<DnsQuery, DomainError> {
         // Filter 1: Block private PTR queries
-        if self.block_private_ptr {
-            if PrivateIpFilter::is_private_ptr_query(&query.domain) {
-                return Err(DomainError::FilteredQuery(format!(
-                    "Private PTR query blocked: {}",
-                    query.domain
-                )));
-            }
+        if self.block_private_ptr && PrivateIpFilter::is_private_ptr_query(&query.domain) {
+            return Err(DomainError::FilteredQuery(format!(
+                "Private PTR query blocked: {}",
+                query.domain
+            )));
         }
 
         // Filter 2: Block/transform non-FQDN queries

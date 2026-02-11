@@ -14,7 +14,7 @@ pub struct SqliteBlocklistRepository {
 
 impl SqliteBlocklistRepository {
     pub async fn load(pool: SqlitePool) -> Result<Self, DomainError> {
-        let blocked_domains = DashSet::with_hasher(FxBuildHasher::default());
+        let blocked_domains = DashSet::with_hasher(FxBuildHasher);
         let rows = sqlx::query("SELECT domain FROM blocklist")
             .fetch_all(&pool)
             .await
@@ -32,7 +32,7 @@ impl SqliteBlocklistRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             pool,
-            blocked_domains: Arc::new(DashSet::with_hasher(FxBuildHasher::default())),
+            blocked_domains: Arc::new(DashSet::with_hasher(FxBuildHasher)),
         }
     }
 }

@@ -119,7 +119,7 @@ impl UdpSocketPool {
     ///
     /// Chamado automaticamente quando PooledUdpSocket é dropado.
     fn release(&self, server: SocketAddr, socket: Arc<UdpSocket>) {
-        let mut entry = self.pools.entry(server).or_insert_with(Vec::new);
+        let mut entry = self.pools.entry(server).or_default();
 
         // Só guarda se não excedeu limite do pool
         if entry.len() < self.max_per_server {

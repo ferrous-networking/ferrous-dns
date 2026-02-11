@@ -2,15 +2,13 @@ use crate::dns_record::RecordType;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::str::FromStr;
 
-/// Source/origin of a DNS query (Phase 5: Internal Query Logging)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuerySource {
-    /// Query from a DNS client
+    #[default]
     Client,
-    /// Internal query made by the server (e.g., for recursive resolution)
     Internal,
-    /// Internal query for DNSSEC validation (DS, DNSKEY, RRSIG, etc.)
     DnssecValidation,
 }
 
@@ -23,23 +21,42 @@ impl QuerySource {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "client" => Some(QuerySource::Client),
-            "internal" => Some(QuerySource::Internal),
-            "dnssec_validation" => Some(QuerySource::DnssecValidation),
-            _ => None,
-        }
-    }
-
     pub fn is_internal(&self) -> bool {
         matches!(self, QuerySource::Internal | QuerySource::DnssecValidation)
     }
 }
 
-impl Default for QuerySource {
-    fn default() -> Self {
-        QuerySource::Client
+impl std::fmt::Display for QuerySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseQuerySourceError {
+    invalid: String,
+}
+
+impl std::fmt::Display for ParseQuerySourceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid query source: '{}'", self.invalid)
+    }
+}
+
+impl std::error::Error for ParseQuerySourceError {}
+
+impl FromStr for QuerySource {
+    type Err = ParseQuerySourceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "client" => Ok(QuerySource::Client),
+            "internal" => Ok(QuerySource::Internal),
+            "dnssec_validation" => Ok(QuerySource::DnssecValidation),
+            _ => Err(ParseQuerySourceError {
+                invalid: s.to_string(),
+            }),
+        }
     }
 }
 
@@ -62,7 +79,6 @@ pub struct QueryLog {
     pub query_source: QuerySource,
 }
 
-/// Phase 4: Enhanced QueryStats with analytics
 #[derive(Debug, Clone)]
 pub struct QueryStats {
     pub queries_total: u64,
@@ -74,25 +90,22 @@ pub struct QueryStats {
     pub avg_cache_time_ms: f64,
     pub avg_upstream_time_ms: f64,
 
-    // Phase 4: Analytics - Distribution by type
     pub queries_by_type: HashMap<RecordType, u64>,
     pub most_queried_type: Option<RecordType>,
-    pub record_type_distribution: Vec<(RecordType, f64)>, // (type, percentage)
+    pub record_type_distribution: Vec<(RecordType, f64)>,
 }
 
 impl QueryStats {
-    /// Phase 4: Calculate analytics from queries
     pub fn with_analytics(mut self, queries_by_type: HashMap<RecordType, u64>) -> Self {
         self.queries_by_type = queries_by_type.clone();
 
-        // Find most queried type
         self.most_queried_type = queries_by_type
             .iter()
             .max_by_key(|(_, count)| *count)
             .map(|(record_type, _)| *record_type);
 
-        // Calculate distribution percentages
         let total: u64 = queries_by_type.values().sum();
+
         if total > 0 {
             let mut distribution: Vec<(RecordType, f64)> = queries_by_type
                 .iter()
@@ -102,8 +115,11 @@ impl QueryStats {
                 })
                 .collect();
 
-            // Sort by percentage descending
-            distribution.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            // evita unwrap() — seguro contra NaN
+            distribution.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             self.record_type_distribution = distribution;
         } else {
@@ -113,7 +129,6 @@ impl QueryStats {
         self
     }
 
-    /// Phase 4: Get top N most queried types
     pub fn top_types(&self, n: usize) -> Vec<(RecordType, u64)> {
         let mut types: Vec<(RecordType, u64)> = self
             .queries_by_type
@@ -126,7 +141,6 @@ impl QueryStats {
         types
     }
 
-    /// Phase 4: Get percentage for specific type
     pub fn type_percentage(&self, record_type: RecordType) -> f64 {
         self.record_type_distribution
             .iter()
@@ -135,7 +149,6 @@ impl QueryStats {
             .unwrap_or(0.0)
     }
 
-    /// Phase 4: Get count for specific type
     pub fn type_count(&self, record_type: RecordType) -> u64 {
         *self.queries_by_type.get(&record_type).unwrap_or(&0)
     }
@@ -158,6 +171,7 @@ impl Default for QueryStats {
         }
     }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct CacheStats {

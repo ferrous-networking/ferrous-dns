@@ -18,7 +18,7 @@ thread_local! {
     static L1_CACHE: RefCell<LruCache<(CompactString, RecordType), L1Entry, FxBuildHasher>> =
         RefCell::new(LruCache::with_hasher(
             NonZeroUsize::new(512).unwrap(),
-            FxBuildHasher::default()
+            FxBuildHasher
         ));
 
     static L1_STATS: RefCell<L1CacheStats> = RefCell::new(L1CacheStats::default());

@@ -153,25 +153,22 @@ impl CacheWarmer {
                 }
             }
 
-            match self
+            if let Ok(result) = self
                 .pool_manager
                 .query(domain, &RecordType::AAAA, timeout_ms)
                 .await
             {
-                Ok(result) => {
-                    let addrs = result.response.addresses.clone();
-                    if !addrs.is_empty() {
-                        cache.insert(
-                            domain,
-                            RecordType::AAAA,
-                            CachedData::IpAddresses(Arc::new(addrs)),
-                            ttl,
-                            Some(DnssecStatus::Unknown),
-                        );
-                        stats.successful_aaaa += 1;
-                    }
+                let addrs = result.response.addresses.clone();
+                if !addrs.is_empty() {
+                    cache.insert(
+                        domain,
+                        RecordType::AAAA,
+                        CachedData::IpAddresses(Arc::new(addrs)),
+                        ttl,
+                        Some(DnssecStatus::Unknown),
+                    );
+                    stats.successful_aaaa += 1;
                 }
-                Err(_) => {}
             }
 
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;

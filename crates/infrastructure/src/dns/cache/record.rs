@@ -41,7 +41,7 @@ impl Clone for CachedRecord {
             hit_count: AtomicU64::new(self.hit_count.load(AtomicOrdering::Relaxed)),
             last_access: AtomicU64::new(self.last_access.load(AtomicOrdering::Relaxed)),
             ttl: self.ttl,
-            record_type: self.record_type.clone(),
+            record_type: self.record_type,
             access_history,
             marked_for_deletion: AtomicBool::new(
                 self.marked_for_deletion.load(AtomicOrdering::Relaxed),

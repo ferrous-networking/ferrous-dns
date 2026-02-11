@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use async_trait::async_trait;
 use compact_str::CompactString;
 use ferrous_dns_application::ports::QueryLogRepository;

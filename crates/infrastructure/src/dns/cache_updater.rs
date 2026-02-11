@@ -178,7 +178,7 @@ impl CacheUpdater {
             "Refreshing cache entry (will revalidate DNSSEC if enabled)"
         );
 
-        let query = DnsQuery::new(domain, record_type.clone());
+        let query = DnsQuery::new(domain, *record_type);
 
         // resolver.resolve() will validate DNSSEC if dnssec_enabled = true
         match resolver.resolve(&query).await {
@@ -206,7 +206,7 @@ impl CacheUpdater {
                     let log_entry = QueryLog {
                         id: None,
                         domain: Arc::from(domain),
-                        record_type: record_type.clone(),
+                        record_type: *record_type,
                         client_ip: IpAddr::from([127, 0, 0, 1]),
                         blocked: false,
                         response_time_ms: Some(response_time),

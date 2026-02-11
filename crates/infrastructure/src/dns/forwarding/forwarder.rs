@@ -8,6 +8,12 @@ use tokio::net::UdpSocket;
 /// DNS Forwarder for sending queries to specific servers
 pub struct DnsForwarder;
 
+impl Default for DnsForwarder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DnsForwarder {
     pub fn new() -> Self {
         Self

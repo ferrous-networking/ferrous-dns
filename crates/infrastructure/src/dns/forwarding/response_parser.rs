@@ -98,7 +98,7 @@ impl ResponseParser {
         }
 
         // Extract authority section (SOA records for NODATA responses)
-        let authority_records: Vec<Record> = message.name_servers().iter().cloned().collect();
+        let authority_records: Vec<Record> = message.name_servers().to_vec();
 
         debug!(
             rcode = ?rcode,

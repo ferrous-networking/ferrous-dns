@@ -32,7 +32,7 @@ impl HandleDnsQueryUseCase {
             let query_log = QueryLog {
                 id: None,
                 domain: Arc::clone(&request.domain),
-                record_type: request.record_type.clone(),
+                record_type: request.record_type,
                 client_ip: request.client_ip,
                 blocked: true,
                 response_time_ms: Some(start.elapsed().as_millis() as u64),
@@ -58,7 +58,7 @@ impl HandleDnsQueryUseCase {
             )));
         }
 
-        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type.clone());
+        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
 
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
@@ -67,7 +67,7 @@ impl HandleDnsQueryUseCase {
                 let query_log = QueryLog {
                     id: None,
                     domain: Arc::clone(&request.domain),
-                    record_type: request.record_type.clone(),
+                    record_type: request.record_type,
                     client_ip: request.client_ip,
                     blocked: false,
                     response_time_ms: Some(response_time_us),
@@ -106,7 +106,7 @@ impl HandleDnsQueryUseCase {
                 let query_log = QueryLog {
                     id: None,
                     domain: Arc::clone(&request.domain),
-                    record_type: request.record_type.clone(),
+                    record_type: request.record_type,
                     client_ip: request.client_ip,
                     blocked: false,
                     response_time_ms: Some(elapsed_micros),
