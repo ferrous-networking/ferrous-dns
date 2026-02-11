@@ -1,6 +1,6 @@
 use super::cache::DnssecCache;
-use super::chain::{ChainVerifier, ValidationResult};
 use super::trust_anchor::TrustAnchorStore;
+use super::validation::{ChainVerifier, ValidationResult};
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::sync::Arc;

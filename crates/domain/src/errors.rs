@@ -19,4 +19,7 @@ pub enum DomainError {
 
     #[error("Query timeout")]
     QueryTimeout,
+
+    #[error("Query filtered: {0}")]
+    FilteredQuery(String),
 }

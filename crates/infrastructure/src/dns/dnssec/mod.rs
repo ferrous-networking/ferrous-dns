@@ -1,13 +1,21 @@
+//! DNSSEC validation module
+//!
+//! Provides comprehensive DNSSEC validation with:
+//! - Cache for validation results, DNSKEY, and DS records
+//! - Cryptographic signature verification (RSA, ECDSA, Ed25519)
+//! - Chain of trust validation
+//! - Trust anchor management
+
 pub mod cache;
-pub mod chain;
 pub mod crypto;
 pub mod trust_anchor;
 pub mod types;
+pub mod validation;
 pub mod validator;
 
 pub use cache::{CacheStatsSnapshot, DnssecCache};
-pub use chain::{ChainVerifier, ValidationResult};
 pub use crypto::SignatureVerifier;
 pub use trust_anchor::{TrustAnchor, TrustAnchorStore};
 pub use types::{DnskeyRecord, DsRecord, RrsigRecord};
+pub use validation::{ChainVerifier, ValidationResult};
 pub use validator::{DnssecValidator, ValidatedResponse, ValidatorStats};

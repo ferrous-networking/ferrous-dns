@@ -15,7 +15,7 @@ pub use config::{
 };
 pub use dns_protocol::DnsProtocol;
 pub use dns_query::DnsQuery;
-pub use dns_record::{DnsRecord, RecordType};
+pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use dns_request::DnsRequest;
 pub use errors::DomainError;
 pub use query_filters::{FqdnFilter, PrivateIpFilter};

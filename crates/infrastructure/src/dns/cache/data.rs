@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// DNSSEC validation status (memory-optimized: 1 byte!)
@@ -12,6 +13,20 @@ pub enum DnssecStatus {
     Indeterminate = 4,
 }
 
+impl FromStr for DnssecStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "Secure" => Self::Secure,
+            "Insecure" => Self::Insecure,
+            "Bogus" => Self::Bogus,
+            "Indeterminate" => Self::Indeterminate,
+            _ => Self::Unknown,
+        })
+    }
+}
+
 impl DnssecStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -23,22 +38,12 @@ impl DnssecStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "Secure" => Self::Secure,
-            "Insecure" => Self::Insecure,
-            "Bogus" => Self::Bogus,
-            "Indeterminate" => Self::Indeterminate,
-            _ => Self::Unknown,
-        }
-    }
-
     pub fn from_string(s: &str) -> Option<Self> {
-        Some(Self::from_str(s))
+        s.parse().ok()
     }
 
     pub fn from_option_string(opt: Option<String>) -> Self {
-        opt.map(|s| Self::from_str(&s)).unwrap_or(Self::Unknown)
+        opt.and_then(|s| s.parse().ok()).unwrap_or(Self::Unknown)
     }
 }
 

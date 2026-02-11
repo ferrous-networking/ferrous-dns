@@ -6,7 +6,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 /// Background task manager for cache optimization
 pub struct CacheUpdater {
@@ -121,11 +121,13 @@ impl CacheUpdater {
                     debug!(domain = %domain, "No new records to refresh");
                 }
                 Err(e) => {
-                    error!(
+                    // Only log as debug - refresh failures are not critical
+                    // (could be temporary DNS issues, NXDOMAIN, etc)
+                    debug!(
                         domain = %domain,
                         record_type = %record_type,
                         error = %e,
-                        "Failed to refresh cache entry"
+                        "Cache refresh skipped (entry may have changed)"
                     );
                     failed += 1;
                 }
@@ -187,16 +189,15 @@ impl CacheUpdater {
                 let ttl = cache.get_ttl(domain, record_type).unwrap_or(3600);
 
                 // Insert with DNSSEC status from fresh validation!
-                let dnssec_status = resolution
-                    .dnssec_status
-                    .map(super::cache::DnssecStatus::from_str);
+                let dnssec_status: Option<super::cache::DnssecStatus> =
+                    resolution.dnssec_status.and_then(|s| s.parse().ok());
 
                 cache.insert(
                     domain,
-                    record_type,
+                    *record_type,
                     super::cache::CachedData::IpAddresses(Arc::new(resolution.addresses.clone())),
                     ttl,
-                    dnssec_status, // ✅ DnssecStatus, not String!
+                    dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );
 
                 // Log the refresh query if query_log is available

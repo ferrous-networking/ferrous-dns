@@ -1,235 +1,34 @@
+use super::bloom::AtomicBloom;
 use super::eviction::{EvictionEntry, EvictionStrategy};
-use super::key::BorrowedKey;
-use super::{CacheKey, CacheMetrics, CachedData, CachedRecord, DnssecStatus};
-use compact_str::CompactString;
+use super::key::{BorrowedKey, CacheKey};
+use super::l1::{l1_get, l1_insert};
+use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
 use dashmap::DashMap;
 use ferrous_dns_domain::RecordType;
-use lru::LruCache;
 use rustc_hash::FxBuildHasher;
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::hash::Hash;
-use std::net::IpAddr;
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use tracing::{debug, info};
 
-struct AtomicBloom {
-    bits: Vec<AtomicU64>,
-    num_bits: usize,
-    num_hashes: usize,
-}
-
-impl AtomicBloom {
-    pub fn new(capacity: usize, fp_rate: f64) -> Self {
-        let num_bits = Self::optimal_num_bits(capacity, fp_rate);
-        let num_hashes = Self::optimal_num_hashes(capacity, num_bits);
-        let num_words = (num_bits + 63) / 64;
-        let bits = (0..num_words).map(|_| AtomicU64::new(0)).collect();
-        Self {
-            bits,
-            num_bits,
-            num_hashes,
-        }
-    }
-
-    #[inline]
-    pub fn check<K: Hash>(&self, key: &K) -> bool {
-        let (h1, h2) = Self::double_hash(key);
-        let num_hashes = self.num_hashes;
-
-        if num_hashes == 5 {
-            let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
-            let check0 = self.bits[idx0 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx0 % 64));
-
-            let idx1 = Self::nth_hash(h1, h2, 1, self.num_bits);
-            let check1 = self.bits[idx1 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx1 % 64));
-
-            let idx2 = Self::nth_hash(h1, h2, 2, self.num_bits);
-            let check2 = self.bits[idx2 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx2 % 64));
-
-            let idx3 = Self::nth_hash(h1, h2, 3, self.num_bits);
-            let check3 = self.bits[idx3 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx3 % 64));
-
-            let idx4 = Self::nth_hash(h1, h2, 4, self.num_bits);
-            let check4 = self.bits[idx4 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx4 % 64));
-
-            (check0 & check1 & check2 & check3 & check4) != 0
-        } else {
-            for i in 0..num_hashes {
-                let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
-                let word_idx = bit_idx / 64;
-                let bit_pos = bit_idx % 64;
-                if (self.bits[word_idx].load(AtomicOrdering::Relaxed) & (1u64 << bit_pos)) == 0 {
-                    return false;
-                }
-            }
-            true
-        }
-    }
-
-    #[inline]
-    pub fn set<K: Hash>(&self, key: &K) {
-        let (h1, h2) = Self::double_hash(key);
-        let num_hashes = self.num_hashes;
-
-        if num_hashes == 5 {
-            let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
-            self.bits[idx0 / 64].fetch_or(1u64 << (idx0 % 64), AtomicOrdering::Relaxed);
-
-            let idx1 = Self::nth_hash(h1, h2, 1, self.num_bits);
-            self.bits[idx1 / 64].fetch_or(1u64 << (idx1 % 64), AtomicOrdering::Relaxed);
-
-            let idx2 = Self::nth_hash(h1, h2, 2, self.num_bits);
-            self.bits[idx2 / 64].fetch_or(1u64 << (idx2 % 64), AtomicOrdering::Relaxed);
-
-            let idx3 = Self::nth_hash(h1, h2, 3, self.num_bits);
-            self.bits[idx3 / 64].fetch_or(1u64 << (idx3 % 64), AtomicOrdering::Relaxed);
-
-            let idx4 = Self::nth_hash(h1, h2, 4, self.num_bits);
-            self.bits[idx4 / 64].fetch_or(1u64 << (idx4 % 64), AtomicOrdering::Relaxed);
-        } else {
-            for i in 0..num_hashes {
-                let bit_idx = Self::nth_hash(h1, h2, i as u64, self.num_bits);
-                let word_idx = bit_idx / 64;
-                let bit_pos = bit_idx % 64;
-                self.bits[word_idx].fetch_or(1u64 << bit_pos, AtomicOrdering::Relaxed);
-            }
-        }
-    }
-
-    pub fn clear(&self) {
-        for word in &self.bits {
-            word.store(0, AtomicOrdering::Relaxed);
-        }
-    }
-
-    #[inline]
-    fn double_hash<K: Hash>(key: &K) -> (u64, u64) {
-        use rustc_hash::FxHasher;
-        use std::hash::Hasher;
-        let mut hasher = FxHasher::default();
-        key.hash(&mut hasher);
-        let h1 = hasher.finish();
-        let h2 = h1
-            .wrapping_mul(0x517cc1b727220a95)
-            .wrapping_add(0x6c62272e07bb0142);
-        (h1, h2)
-    }
-
-    #[inline]
-    fn nth_hash(h1: u64, h2: u64, i: u64, num_bits: usize) -> usize {
-        h1.wrapping_add(i.wrapping_mul(h2)) as usize % num_bits
-    }
-
-    fn optimal_num_bits(capacity: usize, fp_rate: f64) -> usize {
-        (-1.0 * (capacity as f64) * fp_rate.ln() / (2.0_f64.ln().powi(2))).ceil() as usize
-    }
-
-    fn optimal_num_hashes(capacity: usize, num_bits: usize) -> usize {
-        ((num_bits as f64 / capacity as f64) * 2.0_f64.ln())
-            .ceil()
-            .max(1.0) as usize
-    }
-}
-
-use std::time::Instant;
-
-#[derive(Clone)]
-struct L1Entry {
-    addresses: Arc<Vec<IpAddr>>,
-    expires_at: Instant,
-}
-
-thread_local! {
-    static L1_CACHE: RefCell<LruCache<(CompactString, RecordType), L1Entry, FxBuildHasher>> =
-        RefCell::new(LruCache::with_hasher(
-            NonZeroUsize::new(512).unwrap(),  // ← FASE 3: Expandido de 128 para 512
-            FxBuildHasher::default()
-        ));
-
-    static L1_STATS: RefCell<L1CacheStats> = RefCell::new(L1CacheStats::default());
-}
-
-#[derive(Default, Clone, Copy)]
-struct L1CacheStats {
-    hits: u64,
-    misses: u64,
-    expirations: u64,
-}
-
-impl L1CacheStats {
-    #[allow(dead_code)]
-    fn hit_rate(&self) -> f64 {
-        if self.hits + self.misses == 0 {
-            0.0
-        } else {
-            self.hits as f64 / (self.hits + self.misses) as f64
-        }
-    }
-}
-
-#[inline]
-fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>> {
-    L1_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let key = (CompactString::new(domain), *record_type);
-
-        if let Some(entry) = cache.get(&key) {
-            // Verificar se expirou
-            if Instant::now() < entry.expires_at {
-                // Cache HIT válido
-                L1_STATS.with(|stats| stats.borrow_mut().hits += 1);
-                return Some(Arc::clone(&entry.addresses));
-            } else {
-                // Expirado - remover
-                cache.pop(&key);
-                L1_STATS.with(|stats| stats.borrow_mut().expirations += 1);
-            }
-        }
-
-        // Cache MISS
-        L1_STATS.with(|stats| stats.borrow_mut().misses += 1);
-        None
-    })
-}
-
-#[inline]
-fn l1_insert(domain: &str, record_type: &RecordType, addresses: Arc<Vec<IpAddr>>, ttl_secs: u32) {
-    L1_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let key = (CompactString::new(domain), *record_type);
-        let entry = L1Entry {
-            addresses,
-            expires_at: Instant::now() + std::time::Duration::from_secs(ttl_secs as u64),
-        };
-        cache.put(key, entry);
-    });
-}
-
-#[allow(dead_code)]
-fn l1_cache_stats() -> L1CacheStats {
-    L1_STATS.with(|stats| *stats.borrow())
-}
-
+/// Main DNS cache with eviction, refresh, and DNSSEC support
 pub struct DnsCache {
-    cache: Arc<DashMap<CacheKey, CachedRecord, FxBuildHasher>>,
-    max_entries: usize,
-    eviction_strategy: EvictionStrategy,
-    min_threshold_bits: AtomicU64,
-    refresh_threshold: f64,
+    pub(super) cache: Arc<DashMap<CacheKey, CachedRecord, FxBuildHasher>>,
+    pub(super) max_entries: usize,
+    pub(super) eviction_strategy: EvictionStrategy,
+    pub(super) min_threshold_bits: AtomicU64,
+    pub(super) refresh_threshold: f64,
     #[allow(dead_code)]
-    lfuk_history_size: usize,
-    batch_eviction_percentage: f64,
-    adaptive_thresholds: bool,
-    metrics: Arc<CacheMetrics>,
-    compaction_counter: Arc<AtomicUsize>,
-    use_probabilistic_eviction: bool,
-    bloom: Arc<AtomicBloom>,
+    pub(super) lfuk_history_size: usize,
+    pub(super) batch_eviction_percentage: f64,
+    pub(super) adaptive_thresholds: bool,
+    pub(super) metrics: Arc<CacheMetrics>,
+    pub(super) compaction_counter: Arc<AtomicUsize>,
+    pub(super) use_probabilistic_eviction: bool,
+    pub(super) bloom: Arc<AtomicBloom>,
 }
 
 impl DnsCache {
+    /// Create a new DNS cache
     pub fn new(
         max_entries: usize,
         eviction_strategy: EvictionStrategy,
@@ -247,12 +46,14 @@ impl DnsCache {
             adaptive_thresholds,
             "Initializing DNS cache"
         );
+
         let cache = DashMap::with_capacity_and_hasher_and_shard_amount(
             max_entries,
             FxBuildHasher::default(),
             512,
         );
         let bloom = AtomicBloom::new(max_entries * 2, 0.01);
+
         Self {
             cache: Arc::new(cache),
             max_entries,
@@ -269,25 +70,29 @@ impl DnsCache {
         }
     }
 
-    #[inline]
-    fn get_threshold(&self) -> f64 {
+    /// Get threshold for eviction (internal)
+    pub(super) fn get_threshold(&self) -> f64 {
         let bits = self.min_threshold_bits.load(AtomicOrdering::Relaxed);
         f64::from_bits(bits)
     }
 
-    #[inline]
+    /// Set threshold for eviction (internal)
     fn set_threshold(&self, value: f64) {
         self.min_threshold_bits
             .store(value.to_bits(), AtomicOrdering::Relaxed);
     }
 
+    /// Get number of entries in cache
     pub fn len(&self) -> usize {
         self.cache.len()
     }
+
+    /// Check if cache is empty
     pub fn is_empty(&self) -> bool {
         self.cache.is_empty()
     }
 
+    /// Get a cached record
     pub fn get(
         &self,
         domain: &str,
@@ -309,7 +114,10 @@ impl DnsCache {
             let record = entry.value();
 
             if record.is_stale_usable() {
-                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {}
+                // Mark as refreshing (empty block is intentional - we just want the swap)
+                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {
+                    // Do nothing - just marking for refresh
+                }
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 self.promote_to_l1(domain, record_type, record);
@@ -320,126 +128,134 @@ impl DnsCache {
                 drop(entry);
                 self.lazy_remove(&key);
                 self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
-                self.metrics
-                    .lazy_deletions
-                    .fetch_add(1, AtomicOrdering::Relaxed);
                 return None;
             }
 
-            if record.is_marked_for_deletion() {
-                drop(entry);
-                self.lazy_remove(&key);
-                self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
-                self.metrics
-                    .lazy_deletions
-                    .fetch_add(1, AtomicOrdering::Relaxed);
-                return None;
+            if !record.is_expired() {
+                self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
+                record.record_hit();
+                self.promote_to_l1(domain, record_type, record);
+                return Some((record.data.clone(), Some(record.dnssec_status)));
             }
-
-            record.record_hit();
-            self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
-            if record.data.is_negative() {
-                return Some((CachedData::NegativeResponse, Some(record.dnssec_status)));
-            }
-            self.promote_to_l1(domain, record_type, record);
-            Some((record.data.clone(), Some(record.dnssec_status)))
-        } else {
-            self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
-            None
         }
+
+        self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
+        None
     }
 
-    #[inline]
-    fn promote_to_l1(&self, domain: &str, record_type: &RecordType, record: &CachedRecord) {
-        if let CachedData::IpAddresses(ref arc_data) = record.data {
-            l1_insert(domain, record_type, arc_data.clone(), record.ttl);
-        }
-    }
-
+    /// Insert a new record into cache
     pub fn insert(
         &self,
         domain: &str,
-        record_type: &RecordType,
+        record_type: RecordType,
         data: CachedData,
         ttl: u32,
         dnssec_status: Option<DnssecStatus>,
     ) {
-        if data.is_empty() {
-            return;
-        }
-        let key = CacheKey::new(domain, *record_type);
-
-        if self.use_probabilistic_eviction && self.cache.len() >= self.max_entries {
-            if fastrand::u32(..100) == 0 {
-                self.evict_random_entry();
-            }
-        } else if !self.use_probabilistic_eviction && self.cache.len() >= self.max_entries {
-            self.batch_evict();
-        }
-
-        let use_lfuk = self.eviction_strategy == EvictionStrategy::LFUK;
-        let record = CachedRecord::new(data, ttl, record_type.clone(), use_lfuk, dnssec_status);
-        self.cache.insert(key.clone(), record);
-        self.bloom.set(&key);
-        self.metrics
-            .insertions
-            .fetch_add(1, AtomicOrdering::Relaxed);
-        debug!(domain = %domain, record_type = %record_type, ttl, cache_size = self.cache.len(), "Inserted into cache");
-    }
-
-    pub fn insert_permanent(
-        &self,
-        domain: &str,
-        record_type: &RecordType,
-        data: CachedData,
-        ttl: u32,
-    ) {
-        if data.is_empty() {
-            return;
-        }
-
-        let key = CacheKey::new(domain, *record_type);
-        let record = CachedRecord::permanent(data, ttl, record_type.clone());
-
-        self.cache.insert(key.clone(), record);
+        let key = CacheKey::new(domain, record_type);
         self.bloom.set(&key);
 
-        self.metrics
-            .insertions
-            .fetch_add(1, AtomicOrdering::Relaxed);
+        if self.cache.len() >= self.max_entries {
+            self.evict_entries();
+        }
 
-        info!(
+        let use_lfuk = matches!(self.eviction_strategy, EvictionStrategy::LFUK);
+        let record = CachedRecord::new(data.clone(), ttl, record_type, use_lfuk, dnssec_status);
+        self.cache.insert(key, record);
+
+        if let CachedData::IpAddresses(ref addresses) = data {
+            l1_insert(domain, &record_type, Arc::clone(addresses), ttl);
+        }
+
+        if let CachedData::IpAddresses(ref addresses) = data {
+            l1_insert(domain, &record_type, Arc::clone(addresses), ttl);
+        }
+
+        debug!(
             domain = %domain,
             record_type = %record_type,
             ttl,
-            permanent = true,
-            cache_size = self.cache.len(),
-            "Inserted permanent record into cache (never expires, immune to eviction)"
+            "Inserted record into cache"
         );
     }
 
-    pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
-        let key = CacheKey::new(domain, *record_type);
-        if let Some(entry) = self.cache.get(&key) {
-            entry.refreshing.store(false, AtomicOrdering::Release);
+    /// Insert a permanent record (never expires)
+    pub fn insert_permanent(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        data: CachedData,
+        _dnssec_status: Option<DnssecStatus>,
+    ) {
+        let key = CacheKey::new(domain, record_type);
+        self.bloom.set(&key);
+
+        if self.cache.len() >= self.max_entries {
+            self.evict_entries();
+        }
+
+        let record = CachedRecord::permanent(data.clone(), 365 * 24 * 60 * 60, record_type);
+        self.cache.insert(key, record);
+
+        if let CachedData::IpAddresses(ref addresses) = data {
+            l1_insert(
+                domain,
+                &record_type,
+                Arc::clone(addresses),
+                365 * 24 * 60 * 60,
+            );
         }
     }
 
+    /// Remove a record from cache
     pub fn remove(&self, domain: &str, record_type: &RecordType) -> bool {
         let key = CacheKey::new(domain, *record_type);
 
         if self.cache.remove(&key).is_some() {
             self.metrics.evictions.fetch_add(1, AtomicOrdering::Relaxed);
-
-            info!(
-                domain = %domain,
-                record_type = %record_type,
-                "Removed record from cache"
-            );
-
+            info!(domain = %domain, record_type = %record_type, "Removed record from cache");
             true
         } else {
             false
+        }
+    }
+
+    /// Clear the entire cache
+    pub fn clear(&self) {
+        self.cache.clear();
+        self.bloom.clear();
+        self.metrics.hits.store(0, AtomicOrdering::Relaxed);
+        self.metrics.misses.store(0, AtomicOrdering::Relaxed);
+        self.metrics.evictions.store(0, AtomicOrdering::Relaxed);
+        info!("Cache cleared");
+    }
+
+    pub fn metrics(&self) -> Arc<CacheMetrics> {
+        Arc::clone(&self.metrics)
+    }
+
+    pub fn size(&self) -> usize {
+        self.cache.len()
+    }
+
+    pub fn get_ttl(&self, domain: &str, record_type: &RecordType) -> Option<u32> {
+        let key = CacheKey::new(domain, *record_type);
+        self.cache.get(&key).map(|entry| entry.ttl)
+    }
+
+    pub fn strategy(&self) -> EvictionStrategy {
+        self.eviction_strategy
+    }
+
+    fn promote_to_l1(&self, domain: &str, record_type: &RecordType, record: &CachedRecord) {
+        if let CachedData::IpAddresses(ref addresses) = record.data {
+            l1_insert(domain, record_type, Arc::clone(addresses), record.ttl);
+        }
+    }
+
+    fn lazy_remove(&self, key: &CacheKey) {
+        if let Some(entry) = self.cache.get(key) {
+            entry.value().mark_for_deletion();
         }
     }
 
@@ -452,217 +268,108 @@ impl DnsCache {
         }
     }
 
-    fn lazy_remove(&self, key: &CacheKey) {
-        if let Some(entry) = self.cache.get(key) {
-            entry.value().mark_for_deletion();
-        }
-    }
+    fn evict_entries(&self) {
+        let num_to_evict = ((self.max_entries as f64) * self.batch_eviction_percentage) as usize;
+        let num_to_evict = num_to_evict.max(1);
 
-    fn batch_evict(&self) {
-        let evict_count =
-            ((self.max_entries as f64 * self.batch_eviction_percentage) as usize).max(1);
-        let candidates = self.collect_eviction_candidates(evict_count);
-        let mut evicted = 0;
-        let min_threshold = self.get_threshold();
-
-        for entry in candidates.into_iter() {
-            // Early exit: stop when we've evicted enough
-            if evicted >= evict_count {
-                break;
-            }
-
-            if entry.score < min_threshold {
-                if self.cache.remove(&entry.key).is_some() {
-                    evicted += 1;
-                }
-            }
-        }
-
-        if evicted > 0 {
-            self.metrics
-                .evictions
-                .fetch_add(evicted as u64, AtomicOrdering::Relaxed);
-            self.metrics
-                .batch_evictions
-                .fetch_add(1, AtomicOrdering::Relaxed);
-            if self.adaptive_thresholds {
-                self.adjust_thresholds(evicted as u64, evict_count);
-            }
-        }
-    }
-
-    fn collect_eviction_candidates(&self, target_count: usize) -> Vec<EvictionEntry> {
-        let cache_pressure = self.cache.len() as f64 / self.max_entries as f64;
-        let sample_multiplier = if cache_pressure > 0.95 {
-            6 // High pressure: larger sample for better candidates
-        } else if cache_pressure > 0.90 {
-            4 // Medium pressure: moderate sample
+        if self.use_probabilistic_eviction && self.cache.len() > self.max_entries / 2 {
+            self.evict_by_strategy(num_to_evict);
         } else {
-            3 // Low pressure: smaller sample is enough
-        };
-
-        let sample_size = (target_count * sample_multiplier).min(512).max(32);
-        let mut candidates = Vec::with_capacity(sample_size);
-
-        let cache_len = self.cache.len();
-        if cache_len == 0 {
-            return candidates;
+            for _ in 0..num_to_evict {
+                self.evict_random_entry();
+            }
         }
+    }
 
-        for _ in 0..sample_size {
-            let skip_count = fastrand::usize(0..cache_len);
-
-            if let Some(entry) = self.cache.iter().nth(skip_count) {
+    fn evict_by_strategy(&self, count: usize) {
+        let mut candidates: Vec<EvictionEntry> = self
+            .cache
+            .iter()
+            .filter_map(|entry| {
                 let record = entry.value();
-
                 if record.is_marked_for_deletion() {
-                    continue;
+                    return None;
                 }
-
-                if record.permanent {
-                    continue;
-                }
-
-                candidates.push(EvictionEntry {
+                let score = self.compute_score(record);
+                let last_access = record.last_access.load(AtomicOrdering::Relaxed);
+                Some(EvictionEntry {
                     key: entry.key().clone(),
-                    score: self.compute_score(record),
-                    last_access: record.last_access.load(AtomicOrdering::Relaxed),
-                });
-            }
+                    score,
+                    last_access,
+                })
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            self.evict_random_entry();
+            return;
         }
 
-        if candidates.len() > target_count {
-            candidates.select_nth_unstable_by(target_count, |a, b| {
-                a.score
-                    .partial_cmp(&b.score)
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| a.last_access.cmp(&b.last_access))
-            });
-
-            candidates.truncate(target_count);
-        } else {
-            candidates.sort_unstable_by(|a, b| {
-                a.score
-                    .partial_cmp(&b.score)
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| a.last_access.cmp(&b.last_access))
-            });
-        }
-
-        candidates
-    }
-
-    #[inline]
-    fn compute_score(&self, record: &CachedRecord) -> f64 {
-        match self.eviction_strategy {
-            EvictionStrategy::HitRate => record.hit_rate(),
-            EvictionStrategy::LFU => record.frequency() as f64,
-            EvictionStrategy::LFUK => record.lfuk_score(),
-        }
-    }
-
-    fn adjust_thresholds(&self, evicted: u64, target: usize) {
-        let effectiveness = evicted as f64 / target as f64;
-        let mut threshold = self.get_threshold();
-        if effectiveness < 0.5 {
-            threshold *= 0.9;
-        } else if effectiveness > 0.95 {
-            threshold *= 1.05;
-        }
-        self.set_threshold(threshold);
-        self.metrics
-            .adaptive_adjustments
-            .fetch_add(1, AtomicOrdering::Relaxed);
-    }
-
-    pub fn get_refresh_candidates(&self) -> Vec<(String, RecordType)> {
-        let mut candidates = Vec::new();
-        let mean_score = self.calculate_mean_score();
-        for entry in self.cache.iter() {
-            let record = entry.value();
-            if record.is_expired() || record.is_marked_for_deletion() {
-                continue;
-            }
-            if !record.should_refresh(self.refresh_threshold) {
-                continue;
-            }
-            if self.compute_score(record) >= mean_score {
-                let key = entry.key();
-                candidates.push((key.domain.to_string(), key.record_type.clone()));
-            }
-        }
-        candidates
-    }
-
-    fn calculate_mean_score(&self) -> f64 {
-        if self.cache.is_empty() {
-            return self.get_threshold();
-        }
-        let mut total = 0.0;
-        let mut count = 0;
-        for entry in self.cache.iter() {
-            let record = entry.value();
-            if record.is_marked_for_deletion() {
-                continue;
-            }
-            total += self.compute_score(record);
-            count += 1;
-        }
-        if count > 0 {
-            total / count as f64
-        } else {
-            self.get_threshold()
-        }
-    }
-
-    pub fn compact(&self) -> usize {
-        let mut removed = 0;
-
-        self.cache.retain(|_key, record| {
-            if record.is_marked_for_deletion() || record.is_expired() {
-                removed += 1;
-                false // Remove
-            } else {
-                true // Mantém
-            }
+        candidates.sort_by(|a, b| {
+            a.score
+                .partial_cmp(&b.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        if removed > 0 {
-            self.metrics
-                .compactions
-                .fetch_add(1, AtomicOrdering::Relaxed);
+        let threshold = self.get_threshold();
+        let evicted_count = candidates
+            .iter()
+            .take(count)
+            .filter(|candidate| candidate.score < threshold)
+            .filter_map(|candidate| self.cache.remove(&candidate.key))
+            .count();
+
+        if evicted_count < count {
+            for _ in 0..(count - evicted_count) {
+                self.evict_random_entry();
+            }
         }
-        self.compaction_counter
-            .fetch_add(1, AtomicOrdering::Relaxed);
 
-        removed
-    }
+        self.metrics
+            .evictions
+            .fetch_add(evicted_count as u64, AtomicOrdering::Relaxed);
 
-    pub fn cleanup_expired(&self) -> usize {
-        self.compact()
-    }
-    pub fn metrics(&self) -> Arc<CacheMetrics> {
-        Arc::clone(&self.metrics)
-    }
-    pub fn size(&self) -> usize {
-        self.cache.len()
+        if self.adaptive_thresholds && !candidates.is_empty() {
+            self.adjust_threshold(&candidates);
+        }
     }
 
-    pub fn clear(&self) {
-        self.cache.clear();
-        self.bloom.clear();
-        self.metrics.hits.store(0, AtomicOrdering::Relaxed);
-        self.metrics.misses.store(0, AtomicOrdering::Relaxed);
-        self.metrics.evictions.store(0, AtomicOrdering::Relaxed);
-        info!("Cache cleared");
+    pub(super) fn compute_score(&self, record: &CachedRecord) -> f64 {
+        match self.eviction_strategy {
+            EvictionStrategy::LRU => record.last_access.load(AtomicOrdering::Relaxed) as f64,
+            EvictionStrategy::LFU => record.hit_count.load(AtomicOrdering::Relaxed) as f64,
+            EvictionStrategy::HitRate => {
+                let hits = record.hit_count.load(AtomicOrdering::Relaxed);
+                let total = hits + 1; // Evitar divisão por zero
+                if total == 0 {
+                    0.0
+                } else {
+                    (hits as f64) / (total as f64)
+                }
+            }
+            EvictionStrategy::LFUK => {
+                let access_time = record.last_access.load(AtomicOrdering::Relaxed) as f64;
+                let hits = record.hit_count.load(AtomicOrdering::Relaxed) as f64;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as f64;
+                let inserted_unix = record.inserted_at.elapsed().as_secs() as f64;
+                let age = now - inserted_unix;
+                let k_value = 0.5;
+                hits / (age.powf(k_value).max(1.0)) * (1.0 / (now - access_time + 1.0))
+            }
+        }
     }
 
-    pub fn get_ttl(&self, domain: &str, record_type: &RecordType) -> Option<u32> {
-        let key = CacheKey::new(domain, *record_type);
-        self.cache.get(&key).map(|entry| entry.ttl)
-    }
+    fn adjust_threshold(&self, candidates: &[EvictionEntry]) {
+        if candidates.is_empty() {
+            return;
+        }
 
-    pub fn strategy(&self) -> EvictionStrategy {
-        self.eviction_strategy
+        let sorted: Vec<f64> = candidates.iter().map(|c| c.score).collect();
+        let median_index = sorted.len() / 2;
+        let new_threshold = sorted[median_index];
+        self.set_threshold(new_threshold);
     }
 }

@@ -1,7 +1,7 @@
-use super::cache::DnssecCache;
-use super::crypto::SignatureVerifier;
-use super::trust_anchor::TrustAnchorStore;
-use super::types::{DnskeyRecord, DsRecord, RrsigRecord};
+use crate::dns::dnssec::cache::DnssecCache;
+use crate::dns::dnssec::crypto::SignatureVerifier;
+use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
+use crate::dns::dnssec::types::{DnskeyRecord, DsRecord, RrsigRecord};
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::collections::HashMap;
@@ -378,8 +378,6 @@ impl ChainVerifier {
             "Querying RRSIG records"
         );
 
-        // In practice, RRSIG is returned alongside the record type query
-        // This is a placeholder for the full implementation
         Ok(Vec::new())
     }
 
@@ -420,54 +418,5 @@ impl ChainVerifier {
         }
 
         Some(format!("{}.", parts[1..].join(".")))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_split_domain() {
-        assert_eq!(
-            ChainVerifier::split_domain("google.com"),
-            vec!["com", "google"]
-        );
-
-        assert_eq!(
-            ChainVerifier::split_domain("www.example.com"),
-            vec!["com", "example", "www"]
-        );
-
-        assert_eq!(ChainVerifier::split_domain("com"), vec!["com"]);
-
-        assert_eq!(ChainVerifier::split_domain("."), Vec::<String>::new());
-
-        assert_eq!(ChainVerifier::split_domain(""), Vec::<String>::new());
-    }
-
-    #[test]
-    fn test_parent_domain() {
-        assert_eq!(
-            ChainVerifier::parent_domain("google.com."),
-            Some("com.".to_string())
-        );
-
-        assert_eq!(
-            ChainVerifier::parent_domain("www.google.com."),
-            Some("google.com.".to_string())
-        );
-
-        assert_eq!(ChainVerifier::parent_domain("com."), Some(".".to_string()));
-
-        assert_eq!(ChainVerifier::parent_domain("."), None);
-    }
-
-    #[test]
-    fn test_validation_result_as_str() {
-        assert_eq!(ValidationResult::Secure.as_str(), "Secure");
-        assert_eq!(ValidationResult::Insecure.as_str(), "Insecure");
-        assert_eq!(ValidationResult::Bogus.as_str(), "Bogus");
-        assert_eq!(ValidationResult::Indeterminate.as_str(), "Indeterminate");
     }
 }

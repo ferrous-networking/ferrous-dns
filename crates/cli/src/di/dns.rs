@@ -9,7 +9,7 @@ use ferrous_dns_infrastructure::dns::{
     ConditionalForwarder, HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 #[allow(dead_code)]
 pub struct DnsServices {
@@ -26,22 +26,20 @@ impl DnsServices {
         info!("Query event logging enabled (parallel batch processing - 20,000+ queries/sec)");
         let (emitter, event_rx) = QueryEventEmitter::new_enabled();
 
-        let health_checker = if config.dns.health_check.enabled {
+        // Health checker is always enabled
+        let health_checker = {
             let checker = Arc::new(HealthChecker::new(
                 config.dns.health_check.failure_threshold,
                 config.dns.health_check.success_threshold,
             ));
 
             info!(
-                interval_seconds = config.dns.health_check.interval_seconds,
-                timeout_ms = config.dns.health_check.timeout_ms,
+                interval_seconds = config.dns.health_check.interval,
+                timeout_ms = config.dns.health_check.timeout,
                 "Health checker enabled"
             );
 
             Some(checker)
-        } else {
-            info!("Health checker disabled");
-            None
         };
 
         // PHASE 5: Pass emitter to PoolManager
@@ -64,8 +62,8 @@ impl DnsServices {
 
             // Spawn and detach - não guardar o JoinHandle
             let checker_clone = checker.clone();
-            let interval = config.dns.health_check.interval_seconds;
-            let timeout = config.dns.health_check.timeout_ms;
+            let interval = config.dns.health_check.interval;
+            let timeout = config.dns.health_check.timeout;
 
             tokio::spawn(async move {
                 checker_clone.run(all_servers, interval, timeout).await;
@@ -84,7 +82,7 @@ impl DnsServices {
             config.dns.dnssec_enabled,
             Some(repos.query_log.clone()),
         )?
-        .with_filters(
+        .with_query_filters(
             config.dns.block_private_ptr,
             config.dns.block_non_fqdn,
             config.dns.local_domain.clone(),
@@ -95,7 +93,7 @@ impl DnsServices {
             let forwarder = Arc::new(ConditionalForwarder::new(
                 config.dns.conditional_forwarding.clone(),
             ));
-            resolver = resolver.with_conditional_forwarding(forwarder);
+            resolver = resolver.with_conditional_forwarder(forwarder);
 
             info!(
                 rules_count = config.dns.conditional_forwarding.len(),
@@ -136,7 +134,7 @@ impl DnsServices {
                 config.dns.cache_adaptive_thresholds,
             ));
 
-            resolver = resolver.with_cache_ref(cache.clone(), config.dns.cache_ttl);
+            resolver = resolver.with_cache(cache.clone(), config.dns.cache_ttl);
             cache
         } else {
             Arc::new(DnsCache::new(
@@ -155,7 +153,7 @@ impl DnsServices {
 
             let resolver_for_updater =
                 HickoryDnsResolver::new_with_pools(pool_manager_clone, timeout_ms, false, None)?
-                    .with_cache_ref(cache.clone(), config.dns.cache_ttl);
+                    .with_cache(cache.clone(), config.dns.cache_ttl);
 
             let updater = CacheUpdater::new(
                 cache.clone(),
@@ -177,9 +175,12 @@ impl DnsServices {
                 "Preloading local DNS records into permanent cache..."
             );
 
-            resolver
-                .preload_local_records(config.dns.local_records.clone(), &config.dns.local_domain)
-                .await;
+            // Preload local records directly into cache
+            Self::preload_local_records_into_cache(
+                &cache,
+                &config.dns.local_records,
+                &config.dns.local_domain,
+            );
 
             info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
         }
@@ -197,5 +198,109 @@ impl DnsServices {
             cache,
             handler_use_case,
         })
+    }
+
+    /// Preload local DNS records into permanent cache
+    ///
+    /// Loads static hostname → IP mappings from configuration into the cache
+    /// as permanent records that never expire and are immune to eviction.
+    fn preload_local_records_into_cache(
+        cache: &Arc<DnsCache>,
+        records: &[ferrous_dns_domain::LocalDnsRecord],
+        default_domain: &Option<String>,
+    ) {
+        use ferrous_dns_domain::RecordType;
+        use std::sync::Arc as StdArc;
+
+        let mut success_count = 0;
+        let mut error_count = 0;
+
+        for record in records {
+            // Build FQDN
+            let fqdn = record.fqdn(default_domain);
+
+            // Parse IP address
+            let ip: std::net::IpAddr = match record.ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    warn!(
+                        hostname = %record.hostname,
+                        ip = %record.ip,
+                        "Invalid IP address for local DNS record, skipping"
+                    );
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            // Parse record type
+            let record_type = match record.record_type.to_uppercase().as_str() {
+                "A" => RecordType::A,
+                "AAAA" => RecordType::AAAA,
+                _ => {
+                    warn!(
+                        hostname = %record.hostname,
+                        record_type = %record.record_type,
+                        "Invalid record type for local DNS record (must be A or AAAA), skipping"
+                    );
+                    error_count += 1;
+                    continue;
+                }
+            };
+
+            // Validate IP matches record type
+            let ip_type_valid = match (&record_type, &ip) {
+                (RecordType::A, std::net::IpAddr::V4(_)) => true,
+                (RecordType::AAAA, std::net::IpAddr::V6(_)) => true,
+                _ => false,
+            };
+
+            if !ip_type_valid {
+                warn!(
+                    hostname = %record.hostname,
+                    ip = %record.ip,
+                    record_type = %record.record_type,
+                    "IP type mismatch (A record needs IPv4, AAAA needs IPv6), skipping"
+                );
+                error_count += 1;
+                continue;
+            }
+
+            // Create cached data
+            use ferrous_dns_infrastructure::dns::CachedData;
+            let data = CachedData::IpAddresses(StdArc::new(vec![ip]));
+
+            // Get TTL (default 300)
+            let ttl = record.ttl.unwrap_or(300);
+
+            // Insert as permanent cache entry
+            cache.insert_permanent(&fqdn, record_type, data, None);
+
+            info!(
+                fqdn = %fqdn,
+                ip = %ip,
+                record_type = %record_type,
+                ttl = %ttl,
+                "Preloaded local DNS record into permanent cache"
+            );
+
+            success_count += 1;
+        }
+
+        if success_count > 0 {
+            info!(
+                count = success_count,
+                errors = error_count,
+                "✓ Preloaded {} local DNS record(s) into permanent cache",
+                success_count
+            );
+        }
+
+        if error_count > 0 {
+            warn!(
+                count = error_count,
+                "× Failed to preload {} local DNS record(s)", error_count
+            );
+        }
     }
 }

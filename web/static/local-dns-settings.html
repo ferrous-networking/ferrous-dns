@@ -147,7 +147,6 @@
                         <select x-model="newRecord.record_type" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--text-primary);font-size:13px">
                             <option value="A">A</option>
                             <option value="AAAA">AAAA</option>
-                            <option value="CNAME">CNAME</option>
                         </select>
                     </div>
                     <div>
@@ -191,7 +190,7 @@
                                 </td>
                                 <td style="padding:12px 16px;color:var(--text-secondary);font-size:13px" x-text="record.ttl + 's'"></td>
                                 <td style="padding:12px 16px">
-                                    <button @click="deleteRecord(record.fqdn)" style="padding:6px 12px;background:#EF4444;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer">
+                                    <button @click="deleteRecord(record.id)" style="padding:6px 12px;background:#EF4444;color:white;border:none;border-radius:6px;font-size:12px;cursor:pointer">
                                         Delete
                                     </button>
                                 </td>
@@ -234,7 +233,7 @@
     </main>
     <script>lucide.createIcons();</script>
     <script>
-function localDnsApp(){return{theme:localStorage.getItem('theme')||'light',stats:{queries_total:0},activeTab:'records',records:[],forwardingRules:[],newRecord:{hostname:'',domain:'',ip:'',record_type:'A',ttl:300},async init(){document.documentElement.classList.toggle('dark',this.theme==='dark');await Promise.all([this.loadRecords(),this.loadStats()]);setInterval(()=>this.loadStats(),5000);setTimeout(()=>lucide.createIcons(),100)},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadStats(){try{const r=await fetch('/api/stats');if(r.ok)this.stats=await r.json()}catch(e){console.error(e)}},async loadRecords(){try{const r=await fetch('/api/local-records');if(r.ok)this.records=await r.json()}catch(e){console.error(e)}},async addRecord(){if(!this.newRecord.hostname||!this.newRecord.ip){alert('Please fill in Hostname and IP');return}try{const r=await fetch('/api/local-records',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:this.newRecord.hostname,domain:this.newRecord.domain||null,ip:this.newRecord.ip,record_type:this.newRecord.record_type,ttl:parseInt(this.newRecord.ttl)||300})});if(r.ok){await this.loadRecords();this.newRecord={hostname:'',domain:'',ip:'',record_type:'A',ttl:300}}else{const err=await r.text();alert('Failed to add record: '+err)}}catch(e){console.error(e);alert('Error adding record')}},async deleteRecord(fqdn){if(!confirm('Delete this record?'))return;try{const r=await fetch(`/api/local-records/${fqdn}`,{method:'DELETE'});if(r.ok)await this.loadRecords();else alert('Failed to delete record')}catch(e){console.error(e);alert('Error deleting record')}}}}
+function localDnsApp(){return{theme:localStorage.getItem('theme')||'light',stats:{queries_total:0},activeTab:'records',records:[],forwardingRules:[],newRecord:{hostname:'',domain:'',ip:'',record_type:'A',ttl:300},async init(){document.documentElement.classList.toggle('dark',this.theme==='dark');await Promise.all([this.loadRecords(),this.loadStats()]);setInterval(()=>this.loadStats(),5000);setTimeout(()=>lucide.createIcons(),100)},toggleTheme(){this.theme=this.theme==='light'?'dark':'light';localStorage.setItem('theme',this.theme);document.documentElement.classList.toggle('dark',this.theme==='dark');setTimeout(()=>lucide.createIcons(),50)},async loadStats(){try{const r=await fetch('/api/stats');if(r.ok)this.stats=await r.json()}catch(e){console.error(e)}},async loadRecords(){try{const r=await fetch('/api/local-records');if(r.ok)this.records=await r.json()}catch(e){console.error(e)}},async addRecord(){if(!this.newRecord.hostname||!this.newRecord.ip){alert('Please fill in Hostname and IP');return}try{const r=await fetch('/api/local-records',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:this.newRecord.hostname,domain:(this.newRecord.domain||'').trim()||null,ip:this.newRecord.ip,record_type:this.newRecord.record_type,ttl:parseInt(this.newRecord.ttl)||300})});if(r.ok){await this.loadRecords();this.newRecord={hostname:'',domain:'',ip:'',record_type:'A',ttl:300}}else{const err=await r.text();console.error('API Error:', err);alert('Failed to add record: '+err)}}catch(e){console.error(e);alert('Error adding record')}},async deleteRecord(id){if(!confirm('Delete this record?'))return;try{const r=await fetch(`/api/local-records/${id}`,{method:'DELETE'});if(r.ok)await this.loadRecords();else alert('Failed to delete record')}catch(e){console.error(e);alert('Error deleting record')}}}}
     </script>
     <style>[x-cloak] { display: none !important; }</style>
 </body>

@@ -9,7 +9,7 @@ query_timeout = 5
 cache_enabled = true
 cache_ttl = 3600
 dnssec_enabled = true
-default_strategy = "parallel"
+default_strategy = "Parallel"
 cache_max_entries = 200000
 cache_eviction_strategy = "hit_rate"
 cache_optimistic_refresh = true
@@ -30,7 +30,7 @@ conditional_forward_router = "10.0.0.1"
 
 [[dns.pools]]
 name = "google-parallel"
-strategy = "parallel"
+strategy = "Parallel"
 priority = 1
 servers = [
     "8.8.8.8:53",
@@ -39,7 +39,7 @@ servers = [
 
 [[dns.pools]]
 name = "cloudflare-balanced"
-strategy = "balanced"
+strategy = "Balanced"
 priority = 1
 servers = [
     "1.1.1.1:53",
@@ -48,7 +48,7 @@ servers = [
 
 [[dns.pools]]
 name = "quad9-backup"
-strategy = "failover"
+strategy = "Failover"
 priority = 2
 servers = [
     "9.9.9.9:53",
@@ -56,9 +56,8 @@ servers = [
 ]
 
 [dns.health_check]
-enabled = true
-interval_seconds = 30
-timeout_ms = 2000
+interval = 30
+timeout = 2000
 failure_threshold = 3
 success_threshold = 2
 
@@ -68,7 +67,7 @@ server = "10.0.0.1:53"
 
 [[dns.local_records]]
 hostname = "viudes"
-domain = "lan"
+domain = "local"
 ip = "10.0.10.1"
 record_type = "A"
 ttl = 300

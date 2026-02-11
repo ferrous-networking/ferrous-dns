@@ -129,7 +129,7 @@ impl CacheWarmer {
                     if !addrs.is_empty() {
                         cache.insert(
                             domain,
-                            &RecordType::A,
+                            RecordType::A,
                             CachedData::IpAddresses(Arc::new(addrs)),
                             ttl,
                             Some(DnssecStatus::Unknown),
@@ -139,7 +139,7 @@ impl CacheWarmer {
                     } else if result.response.is_nxdomain() || result.response.is_nodata() {
                         cache.insert(
                             domain,
-                            &RecordType::A,
+                            RecordType::A,
                             CachedData::NegativeResponse,
                             300,
                             Some(DnssecStatus::Unknown),
@@ -163,7 +163,7 @@ impl CacheWarmer {
                     if !addrs.is_empty() {
                         cache.insert(
                             domain,
-                            &RecordType::AAAA,
+                            RecordType::AAAA,
                             CachedData::IpAddresses(Arc::new(addrs)),
                             ttl,
                             Some(DnssecStatus::Unknown),
