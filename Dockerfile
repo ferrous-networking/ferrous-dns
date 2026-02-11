@@ -1,7 +1,7 @@
 # ============================================================================
 # Ferrous DNS - Alpine Multi-stage Docker Build
 # ============================================================================
-FROM rust:1.75-alpine AS builder
+FROM rust:alpine AS builder
 
 # Install build dependencies (musl-dev for static linking)
 RUN apk add --no-cache \
@@ -87,7 +87,7 @@ ENV RUST_LOG="info"
 VOLUME ["/data"]
 
 # ============================================================================
-# Entrypoint (JSON format - corrigido)
+# Entrypoint
 # ============================================================================
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]
