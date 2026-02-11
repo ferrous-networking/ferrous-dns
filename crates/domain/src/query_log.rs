@@ -1,8 +1,8 @@
 use crate::dns_record::RecordType;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuerySource {
@@ -116,10 +116,7 @@ impl QueryStats {
                 .collect();
 
             // evita unwrap() — seguro contra NaN
-            distribution.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
+            distribution.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
             self.record_type_distribution = distribution;
         } else {
@@ -171,7 +168,6 @@ impl Default for QueryStats {
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CacheStats {

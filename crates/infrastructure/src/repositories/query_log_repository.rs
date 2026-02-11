@@ -1,9 +1,9 @@
-use std::str::FromStr;
 use async_trait::async_trait;
 use compact_str::CompactString;
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_domain::{DomainError, QueryLog, QuerySource, QueryStats};
 use sqlx::{Row, SqlitePool};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
