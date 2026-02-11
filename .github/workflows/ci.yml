@@ -3,11 +3,8 @@ name: CI
 on:
   push:
     branches: [ main ]
-    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-    branches: [ main, develop ]
-  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,12 +15,9 @@ env:
 jobs:
   # ============================================================================
   # Verificação Rápida - Falha rápido se código não está formatado
-  # Check Formatting
   # ============================================================================
   quick-check:
     name: Quick Check (Format + Clippy)
-  fmt:
-    name: Check Formatting
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -33,25 +27,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  # ============================================================================
-  # Clippy Lints
-  # ============================================================================
-  clippy:
-    name: Clippy Lints
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -66,40 +41,26 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
-        run: cargo clippy --all-targets --all-features -- -D warnings
 
   # ============================================================================
   # Testes Linux
-  # Run Tests
   # ============================================================================
   test:
     name: Test (Linux, Rust ${{ matrix.rust }})
     needs: quick-check
     runs-on: ubuntu-latest
-    name: Test Suite
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         rust: [ stable, beta ]
-        os: [ubuntu-latest]
-        rust: [stable, beta]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install Rust ${{ matrix.rust }}
-      - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -113,7 +74,6 @@ jobs:
             ${{ runner.os }}-${{ matrix.rust }}-cargo-target-
 
       - name: Cache cargo registry
-      - name: Cache cargo
         uses: actions/cache@v4
         with:
           path: |
@@ -123,42 +83,20 @@ jobs:
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run unit & integration tests
-      - name: Run tests
         run: cargo test --all-features --workspace --verbose
 
       - name: Run doc tests
         run: cargo test --doc --all-features --workspace --verbose
-        run: cargo test --doc --all-features --workspace
 
   # ============================================================================
   # Code Coverage
-  # Build Project
   # ============================================================================
   coverage:
     name: Code Coverage
     needs: quick-check
     runs-on: ubuntu-latest
-  build:
-    name: Build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            artifact_name: ferrous-dns-linux
-          - os: macos-latest
-            artifact_name: ferrous-dns-macos
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -177,21 +115,10 @@ jobs:
           key: ${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-coverage-
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache tarpaulin binary
         id: cache-tarpaulin
         uses: actions/cache@v4
-      - name: Build
-        run: cargo build --release --all-features --locked
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
         with:
           path: ~/.cargo/bin/cargo-tarpaulin
           key: ${{ runner.os }}-tarpaulin-${{ env.TARPAULIN_VERSION }}
@@ -201,6 +128,7 @@ jobs:
         run: cargo install cargo-tarpaulin --version ${{ env.TARPAULIN_VERSION }}
 
       - name: Generate coverage
+        run: cargo tarpaulin --out Xml --all-features --workspace --timeout 300
         run: cargo tarpaulin --out xml --all-features --workspace --timeout 300
 
       - name: Upload coverage to Codecov
@@ -209,19 +137,13 @@ jobs:
           files: ./cobertura.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-          name: ${{ matrix.artifact_name }}
-          path: target/release/ferrous-dns
-          retention-days: 7
 
   # ============================================================================
   # Build - Linux x86_64 e ARM64
-  # Security Audit
   # ============================================================================
   build:
     name: Build (${{ matrix.name }})
     needs: test
-  security:
-    name: Security Audit
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -253,7 +175,6 @@ jobs:
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Cache cargo
-      - name: Cache cargo-audit
         uses: actions/cache@v4
         with:
           path: |
@@ -291,25 +212,14 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
           retention-days: 7
-          path: ~/.cargo/bin/cargo-audit
-          key: ${{ runner.os }}-cargo-audit
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit || true
-
-      - name: Run security audit
-        run: cargo audit --deny warnings
-        continue-on-error: true
 
   # ============================================================================
   # Performance Benchmarks PRs
-  # Code Coverage
   # ============================================================================
   benchmark:
     name: Performance Benchmarks
     needs: quick-check
-  coverage:
-    name: Code Coverage
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -330,8 +240,6 @@ jobs:
           key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-bench-
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin || true
 
       - name: Run benchmarks
         run: |
@@ -341,14 +249,9 @@ jobs:
             echo "No benchmarks found, skipping..."
             echo "bench placeholder 1 ns/iter (+/- 0)" > output.txt
           fi
-      - name: Generate coverage
-        run: cargo tarpaulin --out Xml --all-features --workspace --timeout 300
-        continue-on-error: true
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
         with:
           tool: 'cargo'
           output-file-path: output.txt
@@ -357,19 +260,12 @@ jobs:
           comment-on-alert: true
           alert-threshold: '150%'
           fail-on-alert: false
-          files: ./cobertura.xml
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-        continue-on-error: true
 
   # ============================================================================
   # Dependency Review PRS
-  # Dependency Check
   # ============================================================================
   dependency-review:
     name: Dependency Review
-  dependencies:
-    name: Check Dependencies
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
@@ -378,25 +274,9 @@ jobs:
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo-outdated
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-outdated
-          key: ${{ runner.os }}-cargo-outdated
-
-      - name: Install cargo-outdated
-        run: cargo install cargo-outdated || true
-
-      - name: Check for outdated dependencies
-        run: cargo outdated --exit-code 1
-        continue-on-error: true
 
   # ============================================================================
   # Final Status Check
-  # All Checks Passed
   # ============================================================================
   ci-success:
     name: CI Success
@@ -405,20 +285,17 @@ jobs:
       - test
       - coverage
       - build
-    name: All CI Checks Passed
     runs-on: ubuntu-latest
     if: always()
-    needs: [fmt, clippy, test, build, security]
     steps:
       - name: Check all jobs
         run: |
           if [ "${{ needs.quick-check.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ] || \
              [ "${{ needs.coverage.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ CI failed"
             exit 1
           fi
           echo "✅ All CI checks passed!"
-      - name: Success
-        run: echo "All CI checks passed successfully!"
