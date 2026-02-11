@@ -128,7 +128,6 @@ jobs:
         run: cargo install cargo-tarpaulin --version ${{ env.TARPAULIN_VERSION }}
 
       - name: Generate coverage
-        run: cargo tarpaulin --out Xml --all-features --workspace --timeout 300
         run: cargo tarpaulin --out xml --all-features --workspace --timeout 300
 
       - name: Upload coverage to Codecov
@@ -213,7 +212,6 @@ jobs:
           path: ${{ matrix.artifact }}.tar.gz
           retention-days: 7
 
-
   # ============================================================================
   # Performance Benchmarks PRs
   # ============================================================================
@@ -292,7 +290,6 @@ jobs:
         run: |
           if [ "${{ needs.quick-check.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
-             [ "${{ needs.build.result }}" != "success" ] || \
              [ "${{ needs.coverage.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ CI failed"
