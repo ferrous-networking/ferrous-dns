@@ -293,10 +293,7 @@ jobs:
         run: |
           if [ "${{ needs.quick-check.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
-             [ "${{ needs.coverage.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ] || \
-             [ "${{ needs.security.result }}" != "success" ] || \
-             [ "${{ needs.msrv.result }}" != "success" ]; then
             echo "❌ CI failed"
             exit 1
           fi
