@@ -1,7 +1,7 @@
 # ============================================================================
 # Ferrous DNS - Alpine Multi-stage Docker Build
 # ============================================================================
-FROM rust:1.89-alpine AS builder
+FROM rust:1.93-alpine AS builder
 
 # Install build dependencies (musl-dev for static linking)
 RUN apk add --no-cache \
