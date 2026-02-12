@@ -1,0 +1,20 @@
+# Auto-assign configuration for Pull Requests
+# More info: https://github.com/kentaro-m/auto-assign-action
+
+# Automatically add reviewers to pull requests
+addReviewers: true
+
+# Automatically add assignees to pull requests
+addAssignees: false
+
+# List of reviewers (adjust with actual project maintainers)
+reviewers:
+  - andersonviudes
+
+# Number of reviewers to add
+numberOfReviewers: 1
+
+# Skip PRs with these keywords in title (optional)
+# skipKeywords:
+#   - wip
+#   - draft

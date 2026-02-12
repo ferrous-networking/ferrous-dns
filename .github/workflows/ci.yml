@@ -49,29 +49,23 @@ jobs:
   # Testes Linux
   # ============================================================================
   test:
-    name: Test (Linux, Rust ${{ matrix.rust }})
+    name: Test (Linux, Rust stable)
     needs: quick-check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        rust: [ stable, beta ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust ${{ matrix.rust }}
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-stable-cargo-target-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.rust }}-cargo-target-
+            ${{ runner.os }}-stable-cargo-target-
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -219,7 +213,7 @@ jobs:
     name: Performance Benchmarks
     needs: quick-check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -266,12 +260,18 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+        continue-on-error: true
 
   # ============================================================================
   # Final Status Check

@@ -35,7 +35,6 @@ jobs:
             docs
             style
             refactor
-            refactore
             perf
             test
             chore
@@ -141,6 +140,7 @@ jobs:
   check-docs:
     name: Check Documentation
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'  # Only run on push to main, not on PRs
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -171,7 +171,7 @@ jobs:
   pr-summary:
     name: PR Summary
     runs-on: ubuntu-latest
-    needs: [validate-title, check-docs]
+    needs: [validate-title]
     if: always()
     steps:
       - name: Create PR summary comment

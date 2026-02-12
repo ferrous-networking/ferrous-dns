@@ -71,10 +71,23 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
     ));
 
     // Create a minimal DNS resolver setup
+    use ferrous_dns_domain::config::upstream::{UpstreamPool, UpstreamStrategy};
     use ferrous_dns_infrastructure::dns::{PoolManager, QueryEventEmitter};
+
     let event_emitter = QueryEventEmitter::new_disabled();
+
+    // Create a test upstream pool (required for PoolManager)
+    let test_pool = UpstreamPool {
+        name: "test".to_string(),
+        strategy: UpstreamStrategy::Parallel,
+        priority: 1,
+        servers: vec!["8.8.8.8:53".to_string()],
+        weight: None,
+    };
+
     let pool_manager = Arc::new(
-        PoolManager::new(vec![], None, event_emitter).expect("Failed to create PoolManager"),
+        PoolManager::new(vec![test_pool], None, event_emitter)
+            .expect("Failed to create PoolManager"),
     );
 
     // Note: These use cases won't be called in client tests, but needed for AppState
