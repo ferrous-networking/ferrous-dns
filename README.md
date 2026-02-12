@@ -1,96 +1,63 @@
-# 🦀 Ferrous DNS
-
 <div align="center">
+
+# 🦀 Ferrous DNS
 
 **A blazingly fast, memory-safe DNS server with network-wide ad-blocking**
 
+[![CI](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/docker.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/docker.yml)
+[![codecov](https://codecov.io/gh/ferrous-networking/Ferrous-DNS/branch/main/graph/badge.svg)](https://codecov.io/gh/ferrous-networking/Ferrous-DNS)
+[![Docker Pulls](https://img.shields.io/docker/pulls/andersonviudes/ferrous-dns?logo=docker)](https://hub.docker.com/r/andersonviudes/ferrous-dns)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![GitHub Issues](https://img.shields.io/github/issues/ferrous-networking/Ferrous-DNS)](https://github.com/ferrous-networking/Ferrous-DNS/issues)
+[![GitHub Stars](https://img.shields.io/github/stars/ferrous-networking/Ferrous-DNS?style=social)](https://github.com/ferrous-networking/Ferrous-DNS/stargazers)
 
 *Modern alternative to Pi-hole and AdGuard Home, built with Rust*
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Documentation](#-documentation)
+[Features](#-features) • [Installation](#-installation) • [Docker](#-docker) • [Roadmap](ROADMAP.md)
 
 </div>
 
 ---
 
-## 🎯 Features
+## 📖 About
 
-### Core Features
+Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking capabilities. Written in Rust, it offers superior performance and memory safety compared to traditional solutions like Pi-hole and AdGuard Home.
 
-- ⚡ **Blazingly Fast** - 2x faster than Pi-hole, 50% lower latency
-- 🛡️ **Memory Safe** - Written in 100% safe Rust, zero memory vulnerabilities
-- 🌐 **Full DNS Server** - RFC 1035 compliant DNS implementation
-- 🚫 **Network-wide Ad Blocking** - Block ads, trackers, and malware domains
-- 📊 **Modern Dashboard** - Beautiful, responsive web interface
+**Key capabilities:**
+- ⚡ **High Performance** - 2x faster than Pi-hole with 50% lower latency
+- 🛡️ **Memory Safe** - Zero memory vulnerabilities thanks to Rust
+- 🌐 **Full DNS Implementation** - RFC 1035 compliant with support for A, AAAA, CNAME, MX, TXT, PTR records
+- 🔒 **Secure DNS** - DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT) support
+- 🚫 **Ad Blocking** - Network-wide blocking of ads, trackers, and malware
+- 📊 **Modern Dashboard** - Real-time statistics with beautiful UI (HTMX + Alpine.js + TailwindCSS)
 - 🔄 **REST API** - Complete API for automation and integration
-- 🐳 **Docker Ready** - One-command deployment
-
-### Web Interface
-
-- 📈 **Real-time Statistics** - Live query monitoring and metrics
-- 🎨 **Modern UI** - Built with HTMX + Alpine.js + TailwindCSS
-- 📱 **Responsive Design** - Works seamlessly on all devices
-- ⚡ **No Build Step Required** - Pure HTML/JavaScript, no npm needed
-- 🔄 **Auto-refresh** - Real-time updates every 5 seconds
-
-### Technical Highlights
-
-- 🏗️ **Clean Architecture** - Maintainable, testable, extensible
-- 🔌 **Hexagonal Design** - Ports and adapters pattern
-- 🧩 **Modular Crates** - Separated concerns across 5 crates
-- 🚀 **Async/Await** - Built on Tokio for maximum concurrency
-- 💾 **Zero-copy Operations** - Optimized memory usage
+- ⚡ **Smart Caching** - L1/L2 hierarchical cache with LFUK eviction
+- 🐳 **Docker Ready** - Easy deployment with Docker and Docker Compose
 
 ---
----
 
-## 🐳 Docker com ENVs Configuráveis
+## 🚀 Installation
 
-### Variáveis de Ambiente Disponíveis
+### 🐳 Docker
 
-Todas com **valores padrão do código**:
-
-| ENV | Padrão | Descrição | CLI Arg |
-|-----|--------|-----------|---------|
-| `FERROUS_CONFIG` | - | Config file path | `--config` |
-| `FERROUS_DNS_PORT` | `53` | DNS port | `--dns-port` |
-| `FERROUS_WEB_PORT` | `8080` | Web port | `--web-port` |
-| `FERROUS_BIND_ADDRESS` | `0.0.0.0` | Bind address | `--bind` |
-| `FERROUS_DATABASE` | `/var/lib/ferrous-dns/ferrous.db` | Database path | `--database` |
-| `FERROUS_LOG_LEVEL` | `info` | Log level | `--log-level` |
-| `RUST_LOG` | `info` | Rust logging | - |
-
-### Uso
+Quick start with Docker:
 
 ```bash
-# Defaults (portas 53 e 8080)
 docker run -d \
-  -p 53:53/udp -p 8080:8080 \
-  ghcr.io/andersonviudes/ferrous-dns
-
-# Portas customizadas
-docker run -d \
-  -p 5353:5353/udp -p 3000:3000 \
-  -e FERROUS_DNS_PORT=5353 \
-  -e FERROUS_WEB_PORT=3000 \
-  -e FERROUS_LOG_LEVEL=debug \
-  ghcr.io/andersonviudes/ferrous-dns
-
-# Com arquivo de config
-docker run -d \
-  -v $(pwd)/config.toml:/etc/ferrous-dns/config.toml:ro \
-  -e FERROUS_CONFIG=/etc/ferrous-dns/config.toml \
-  ghcr.io/andersonviudes/ferrous-dns
+  --name ferrous-dns \
+  -p 53:53/udp \
+  -p 8080:8080 \
+  ghcr.io/andersonviudes/ferrous-dns:latest
 ```
 
----
+Access the dashboard at `http://localhost:8080`
 
+### 🐳 Docker Compose
 
-## 🐳 Docker Compose
+Create a `docker-compose.yml` file:
 
 ```yaml
 version: '3.8'
@@ -98,21 +65,16 @@ version: '3.8'
 services:
   ferrous-dns:
     image: ghcr.io/andersonviudes/ferrous-dns:latest
+    container_name: ferrous-dns
+    restart: unless-stopped
     ports:
       - "53:53/udp"
       - "8080:8080"
     environment:
-      # Network (valores padrão)
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
       - FERROUS_BIND_ADDRESS=0.0.0.0
-      
-      # Database
-      - FERROUS_DATABASE=/var/lib/ferrous-dns/ferrous.db
-      
-      # Logging
       - FERROUS_LOG_LEVEL=info
-      - RUST_LOG=info
     volumes:
       - ferrous-data:/var/lib/ferrous-dns
 
@@ -120,29 +82,69 @@ volumes:
   ferrous-data:
 ```
 
+Start the service:
+
+```bash
+docker-compose up -d
+```
+
+### ⚙️ Configuration
+
+#### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FERROUS_CONFIG` | - | Path to config file |
+| `FERROUS_DNS_PORT` | `53` | DNS server port |
+| `FERROUS_WEB_PORT` | `8080` | Web dashboard port |
+| `FERROUS_BIND_ADDRESS` | `0.0.0.0` | Bind address |
+| `FERROUS_DATABASE` | `/var/lib/ferrous-dns/ferrous.db` | Database path |
+| `FERROUS_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
+
+#### Custom Configuration Example
+
+```bash
+docker run -d \
+  -p 5353:5353/udp \
+  -p 3000:3000 \
+  -e FERROUS_DNS_PORT=5353 \
+  -e FERROUS_WEB_PORT=3000 \
+  -e FERROUS_LOG_LEVEL=debug \
+  ghcr.io/andersonviudes/ferrous-dns:latest
+```
+
 ---
 
-## 📬 Contact & Support
+## 🗺️ Roadmap
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/andersonviudes/ferrous-dns/issues)
-- **GitHub Discussions**: [Ask questions and share ideas](https://github.com/andersonviudes/ferrous-dns/discussions)
+Check out our [detailed roadmap](ROADMAP.md) to see what's planned for future releases.
 
----
+**Current Status:** 🚧 Alpha - Core architecture complete, features in active development
 
-## 📊 Project Status
-
-| Status | Description                                                     |
-|--------|-----------------------------------------------------------------|
-| 🚧     | **Alpha** - Core architecture complete, features in development |
-| 🔄     | **Active Development** - Regular commits and updates            |
-| 📅     | **Beta Target** - Q2 2025                                       |
-| 🎯     | **v1.0 Target** - Q3 2025                                       |
+**Milestones:**
+- ✅ v0.1.0 - Foundation (RFC compliant DNS, DoH/DoT, caching, modern UI)
+- 🚧 v0.2.0 - Blocklist & Whitelist (in progress)
+- 🔮 v0.3.0 - Advanced Features
+- 🎯 v1.0.0 - Production Ready (Q3 2025)
 
 ---
 
-## ⭐ Star History
+## 🤝 Contributing
 
-[![Star History Chart](https://api.star-history.com/svg?repos=andersonviudes/ferrous-dns&type=Date)](https://star-history.com/#andersonviudes/ferrous-dns&Date)
+Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+
+- **Report bugs**: [GitHub Issues](https://github.com/ferrous-networking/Ferrous-DNS/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ferrous-networking/Ferrous-DNS/discussions)
+
+---
+
+## 📄 License
+
+This project is dual-licensed under:
+- [MIT License](https://opensource.org/licenses/MIT)
+- [Apache License 2.0](https://opensource.org/licenses/Apache-2.0)
+
+You may choose either license for your use.
 
 ---
 
@@ -150,12 +152,8 @@ volumes:
 
 **Made with ❤️ and 🦀 by [Anderson Viudes](https://github.com/andersonviudes)**
 
-**If you find this project useful, please consider giving it a ⭐ on GitHub!**
+If you find this project useful, please consider giving it a ⭐
 
 [⬆ Back to Top](#-ferrous-dns)
-
----
-
-*Ferrous DNS - Blazingly fast, memory-safe DNS with ad-blocking*
 
 </div>
