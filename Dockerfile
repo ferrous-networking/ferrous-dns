@@ -3,15 +3,13 @@
 # ============================================================================
 FROM rust:1.93-alpine AS builder
 
-# Install build dependencies (musl-dev for static linking)
+# Install build dependencies
 RUN apk add --no-cache \
     musl-dev \
     openssl-dev \
     openssl-libs-static \
     pkgconfig
 
-# Set target for static compilation
-ENV RUSTFLAGS="-C target-feature=+crt-static"
 
 # Create app directory
 WORKDIR /app
@@ -44,7 +42,6 @@ RUN apk add --no-cache \
     tzdata && \
     addgroup -g 1000 ferrous && \
     adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
-    # Create data directories
     mkdir -p /data/config /data/db /data/logs && \
     chown -R ferrous:ferrous /data
 
@@ -53,6 +50,7 @@ COPY --from=builder /app/target/release/ferrous-dns /usr/local/bin/ferrous-dns
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh /entrypoint.sh
+
 RUN chmod +x /entrypoint.sh && \
     chown root:root /usr/local/bin/ferrous-dns && \
     chmod 755 /usr/local/bin/ferrous-dns
@@ -70,24 +68,18 @@ USER ferrous
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD /usr/local/bin/ferrous-dns --version || exit 1
 
-# ============================================================================
-# Environment Variables (with default values)
-# ============================================================================
-ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml"
-ENV FERROUS_DNS_PORT="53"
-ENV FERROUS_WEB_PORT="8080"
-ENV FERROUS_BIND_ADDRESS="0.0.0.0"
-ENV FERROUS_DATABASE="/data/db/ferrous.db"
-ENV FERROUS_LOG_LEVEL="info"
-ENV RUST_LOG="info"
+# Environment Variables
+ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
+    FERROUS_DNS_PORT="53" \
+    FERROUS_WEB_PORT="8080" \
+    FERROUS_BIND_ADDRESS="0.0.0.0" \
+    FERROUS_DATABASE="/data/db/ferrous.db" \
+    FERROUS_LOG_LEVEL="info" \
+    RUST_LOG="info"
 
-# ============================================================================
-# Volumes for data persistence
-# ============================================================================
+# Volumes
 VOLUME ["/data"]
 
-# ============================================================================
 # Entrypoint
-# ============================================================================
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]
