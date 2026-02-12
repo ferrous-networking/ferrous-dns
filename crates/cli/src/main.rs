@@ -70,14 +70,34 @@ async fn main() -> anyhow::Result<()> {
 
     // Dependency Injection - Build all dependencies
     let repos = di::Repositories::new(pool).await?;
-    let use_cases = di::UseCases::new(&repos, config_arc.clone());
     let dns_services = di::DnsServices::new(&config, &repos).await?;
+    let use_cases = di::UseCases::new(
+        &repos,
+        config_arc.clone(),
+        dns_services.pool_manager.clone(),
+    );
+
+    // Start background jobs for client tracking
+    info!("Starting client tracking background jobs");
+    let client_sync_job = Arc::new(ferrous_dns_infrastructure::jobs::ClientSyncJob::new(
+        use_cases.sync_arp.clone(),
+        use_cases.sync_hostnames.clone(),
+    ));
+    client_sync_job.start().await;
+
+    let retention_job = Arc::new(ferrous_dns_infrastructure::jobs::RetentionJob::new(
+        use_cases.cleanup_clients.clone(),
+        30, // 30 days retention
+    ));
+    retention_job.start().await;
+    info!("Client tracking background jobs started");
 
     // Create AppState for web server
     let app_state = AppState {
         get_stats: use_cases.get_stats,
         get_queries: use_cases.get_queries,
         get_blocklist: use_cases.get_blocklist,
+        get_clients: use_cases.get_clients,
         config: config_arc,
         cache: dns_services.cache.clone(),
         dns_resolver: dns_services.resolver.clone(),

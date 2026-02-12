@@ -18,6 +18,9 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/config", post(handlers::update_config))
         .route("/config/reload", post(handlers::reload_config))
         .route("/hostname", get(handlers::get_hostname))
+        // Clients endpoints
+        .route("/clients", get(handlers::get_clients))
+        .route("/clients/stats", get(handlers::get_client_stats))
         // DNS Settings (Pi-hole style)
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))

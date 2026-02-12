@@ -29,6 +29,7 @@ fn create_app(state: AppState) -> Router {
         .route("/", get(index_handler))
         .route("/dashboard.html", get(dashboard_handler))
         .route("/queries.html", get(queries_handler))
+        .route("/clients.html", get(clients_handler))
         .route("/local-dns-settings.html", get(local_dns_settings_handler))
         .route("/settings.html", get(settings_handler))
 }
@@ -43,6 +44,10 @@ async fn dashboard_handler() -> Html<&'static str> {
 
 async fn queries_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/queries.html"))
+}
+
+async fn clients_handler() -> Html<&'static str> {
+    Html(include_str!("../../../../web/static/clients.html"))
 }
 
 async fn local_dns_settings_handler() -> Html<&'static str> {

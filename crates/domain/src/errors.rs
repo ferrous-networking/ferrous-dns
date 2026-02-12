@@ -17,6 +17,9 @@ pub enum DomainError {
     #[error("Database error: {0}")]
     DatabaseError(String),
 
+    #[error("I/O error: {0}")]
+    IoError(String),
+
     #[error("Query timeout")]
     QueryTimeout,
 

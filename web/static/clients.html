@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferrous DNS - Network Clients</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --color-primary: #3B82F6;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+            --color-purple: #8B5CF6;
+            --bg-primary: #F9FAFB;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F3F4F6;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --text-tertiary: #9CA3AF;
+            --border-color: #E5E7EB
+        }
+
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-color: #334155
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding-left: 260px;
+            margin: 0
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 24px 16px 16px
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 8px
+        }
+
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0
+        }
+
+        .logo-subtitle {
+            font-size: 11px;
+            color: var(--text-tertiary)
+        }
+
+        .status-box {
+            margin: 0 16px 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s infinite
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 var(--color-success)
+            }
+            50% {
+                box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2)
+            }
+        }
+
+        .nav-section {
+            margin-bottom: 24px
+        }
+
+        .nav-section-title {
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all .2s
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary)
+        }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--color-primary);
+            font-weight: 600;
+            border-left: 3px solid var(--color-primary)
+        }
+
+        .nav-icon {
+            width: 18px;
+            height: 18px
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid var(--border-color)
+        }
+
+        .theme-btn {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: var(--text-secondary)
+        }
+
+        .card-stat {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            transition: all .2s
+        }
+
+        .card-stat:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px)
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color)
+        }
+
+        .tab-button {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all .2s
+        }
+
+        .tab-button:hover {
+            color: var(--text-primary)
+        }
+
+        .tab-button.active {
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary);
+            font-weight: 600
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        thead th {
+            text-align: left;
+            padding: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        tbody td {
+            padding: 12px;
+            font-size: 14px;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        tbody tr:hover {
+            opacity: 0.8;
+            background: var(--bg-tertiary)
+        }
+
+        .monospace {
+            font-family: 'Courier New', monospace;
+            font-size: 13px
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-secondary)
+        }
+    </style>
+</head>
+<body x-data="app()" x-init="init()">
+<aside class="sidebar">
+    <div class="logo-container">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+    </div>
+    <div class="status-box">
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        </div>
+        <div class="status-item">
+            <div class="status-indicator"></div>
+            <span>Active</span></div>
+        <div class="status-item"><i data-lucide="users" style="width:14px;height:14px"></i><span
+                x-text="stats.total_clients||0+' clients'">0 clients</span>
+        </div>
+    </div>
+    <nav style="flex:1;padding:16px 0">
+        <div class="nav-section">
+            <div class="nav-section-title">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard"
+                                                          class="nav-icon"></i><span>Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text"
+                                                        class="nav-icon"></i><span>Query Log</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <a href="/clients.html" class="nav-item active"><i data-lucide="users"
+                                                               class="nav-icon"></i><span>Clients</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server"
+                                                                     class="nav-icon"></i><span>Local DNS</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings"
+                                                         class="nav-icon"></i><span>Settings</span></a>
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <button @click="toggleTheme()" class="theme-btn">
+            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+            <span>Theme</span>
+        </button>
+    </div>
+</aside>
+<main style="padding:24px">
+    <div style="margin-bottom:24px">
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">👥 Network Clients</h1>
+        <p style="font-size:14px;color:var(--text-secondary)">Monitor and manage network clients detected via DNS
+            queries</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)"><i data-lucide="users"
+                                                                                               style="width:24px;height:24px;color:#3B82F6"></i>
+                </div>
+            </div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Total Clients</p>
+            <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="stats.total_clients||0">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)"><i data-lucide="zap"
+                                                                                               style="width:24px;height:24px;color:#10B981"></i>
+                </div>
+            </div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Active (24h)</p>
+            <p style="font-size:32px;font-weight:700;color:#10B981" x-text="stats.active_24h||0">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(245,158,11,0.1)"><i data-lucide="clock"
+                                                                                               style="width:24px;height:24px;color:#F59E0B"></i>
+                </div>
+            </div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">Active (7d)</p>
+            <p style="font-size:32px;font-weight:700;color:#F59E0B" x-text="stats.active_7d||0">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;justify-between;margin-bottom:12px">
+                <div style="padding:12px;border-radius:8px;background:rgba(139,92,246,0.1)"><i data-lucide="tag"
+                                                                                               style="width:24px;height:24px;color:#8B5CF6"></i>
+                </div>
+            </div>
+            <p style="font-size:14px;margin-bottom:4px;font-weight:500;color:var(--text-secondary)">With Hostname</p>
+            <p style="font-size:32px;font-weight:700;color:#8B5CF6" x-text="stats.with_hostname||0">0</p>
+        </div>
+    </div>
+    <div class="card" style="margin-bottom:24px">
+        <div style="border-bottom:1px solid var(--border-color);padding:0 24px">
+            <button @click="activeTab='known-clients'" :class="{'active':activeTab==='known-clients'}"
+                    class="tab-button">Known Clients
+            </button>
+            <button @click="activeTab='management'" :class="{'active':activeTab==='management'}" class="tab-button">
+                Client Management
+            </button>
+        </div>
+        <div x-show="activeTab==='known-clients'" style="padding:24px">
+            <div x-show="clients.length===0" class="empty-state">
+                <i data-lucide="users" style="width:48px;height:48px;margin:0 auto 16px;opacity:0.3"></i>
+                <p style="font-size:16px;font-weight:500;margin-bottom:8px">No clients detected yet</p>
+                <p style="font-size:14px;opacity:0.7">Make a DNS query to populate this list</p>
+            </div>
+            <div x-show="clients.length>0">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>MAC Address</th>
+                        <th>Hostname</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                        <th>Query Count</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="client in clients" :key="client.id">
+                        <tr>
+                            <td class="monospace" x-text="client.ip_address">-</td>
+                            <td class="monospace" x-text="client.mac_address||'-'">-</td>
+                            <td x-text="client.hostname||'-'">-</td>
+                            <td x-text="formatDateTime(client.first_seen)">-</td>
+                            <td x-text="formatDateTime(client.last_seen)">-</td>
+                            <td x-text="client.query_count||0">0</td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div x-show="activeTab==='management'" style="padding:24px">
+            <div class="empty-state">
+                <i data-lucide="wrench" style="width:48px;height:48px;margin:0 auto 16px;opacity:0.3"></i>
+                <p style="font-size:16px;font-weight:500;margin-bottom:8px">Client Management</p>
+                <p style="font-size:14px;opacity:0.7">Client management features coming soon</p>
+            </div>
+        </div>
+    </div>
+</main>
+<script>
+    function app() {
+        return {
+            theme: 'light',
+            activeTab: 'known-clients',
+            clients: [],
+            stats: {
+                total_clients: 0,
+                active_24h: 0,
+                active_7d: 0,
+                with_mac: 0,
+                with_hostname: 0
+            },
+            async init() {
+                this.theme = localStorage.getItem('theme') || 'light';
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await this.loadAllData();
+                setTimeout(() => lucide.createIcons(), 100);
+                this.startPolling()
+            },
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('theme', this.theme);
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                setTimeout(() => lucide.createIcons(), 50)
+            },
+            async loadAllData() {
+                await Promise.all([this.loadClients(), this.loadStats()])
+            },
+            async loadClients() {
+                try {
+                    const res = await fetch('/api/clients?limit=100');
+                    if (res.ok) {
+                        this.clients = await res.json()
+                    }
+                } catch (e) {
+                    console.error('Failed to load clients:', e)
+                }
+            },
+            async loadStats() {
+                try {
+                    const res = await fetch('/api/clients/stats');
+                    if (res.ok) {
+                        this.stats = await res.json()
+                    }
+                } catch (e) {
+                    console.error('Failed to load stats:', e)
+                }
+            },
+            startPolling() {
+                setInterval(() => this.loadAllData(), 1000)
+            },
+            formatDateTime(timestamp) {
+                if (!timestamp) return '-';
+                return new Date(timestamp).toLocaleString()
+            }
+        }
+    }
+</script>
+</body>
+</html>

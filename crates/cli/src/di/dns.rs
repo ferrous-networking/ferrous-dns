@@ -16,6 +16,7 @@ pub struct DnsServices {
     pub resolver: Arc<HickoryDnsResolver>,
     pub cache: Arc<DnsCache>,
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
+    pub pool_manager: Arc<PoolManager>,
 }
 
 impl DnsServices {
@@ -151,9 +152,13 @@ impl DnsServices {
         if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
             info!("Starting cache background tasks");
 
-            let resolver_for_updater =
-                HickoryDnsResolver::new_with_pools(pool_manager_clone, timeout_ms, false, None)?
-                    .with_cache(cache.clone(), config.dns.cache_ttl);
+            let resolver_for_updater = HickoryDnsResolver::new_with_pools(
+                pool_manager_clone.clone(),
+                timeout_ms,
+                false,
+                None,
+            )?
+            .with_cache(cache.clone(), config.dns.cache_ttl);
 
             let updater = CacheUpdater::new(
                 cache.clone(),
@@ -185,11 +190,14 @@ impl DnsServices {
             info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
         }
 
-        let handler_use_case = Arc::new(HandleDnsQueryUseCase::new(
-            resolver.clone(),
-            repos.blocklist.clone(),
-            repos.query_log.clone(),
-        ));
+        let handler_use_case = Arc::new(
+            HandleDnsQueryUseCase::new(
+                resolver.clone(),
+                repos.blocklist.clone(),
+                repos.query_log.clone(),
+            )
+            .with_client_tracking(repos.client.clone()),
+        );
 
         info!("DNS services initialized successfully with load balancing");
 
@@ -197,6 +205,7 @@ impl DnsServices {
             resolver,
             cache,
             handler_use_case,
+            pool_manager: pool_manager_clone,
         })
     }
 

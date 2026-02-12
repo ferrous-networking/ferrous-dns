@@ -1,4 +1,4 @@
-use crate::ports::{BlocklistRepository, DnsResolver, QueryLogRepository};
+use crate::ports::{BlocklistRepository, ClientRepository, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -8,6 +8,7 @@ pub struct HandleDnsQueryUseCase {
     resolver: Arc<dyn DnsResolver>,
     blocklist: Arc<dyn BlocklistRepository>,
     query_log: Arc<dyn QueryLogRepository>,
+    client_repo: Option<Arc<dyn ClientRepository>>,
 }
 
 impl HandleDnsQueryUseCase {
@@ -20,11 +21,28 @@ impl HandleDnsQueryUseCase {
             resolver,
             blocklist,
             query_log,
+            client_repo: None,
         }
+    }
+
+    pub fn with_client_tracking(mut self, client_repo: Arc<dyn ClientRepository>) -> Self {
+        self.client_repo = Some(client_repo);
+        self
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<Vec<IpAddr>, DomainError> {
         let start = Instant::now();
+
+        // Track client (fire-and-forget, don't block DNS response)
+        if let Some(client_repo) = &self.client_repo {
+            let client_repo = Arc::clone(client_repo);
+            let client_ip = request.client_ip;
+            tokio::spawn(async move {
+                if let Err(e) = client_repo.update_last_seen(client_ip).await {
+                    tracing::warn!(error = %e, ip = %client_ip, "Failed to track client");
+                }
+            });
+        }
 
         let is_blocked = self.blocklist.is_blocked(&request.domain).await?;
 
