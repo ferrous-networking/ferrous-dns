@@ -184,7 +184,7 @@ jobs:
         run: |
           # Start container
           docker run -d --name ferrous-dns-test \
-            -p 53:53/udp \
+            -p 5353:53/udp \
             -p 8080:8080 \
             ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
 

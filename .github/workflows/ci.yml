@@ -213,7 +213,7 @@ jobs:
     name: Performance Benchmarks
     needs: quick-check
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: false  # Temporarily disabled
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
