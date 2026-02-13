@@ -3,10 +3,11 @@
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    BlocklistRepository, DnsResolution, DnsResolver, QueryLogRepository,
+    BlocklistRepository, ClientRepository, DnsResolution, DnsResolver, QueryLogRepository,
 };
 use ferrous_dns_domain::{
-    blocklist::BlockedDomain, DnsQuery, DomainError, QueryLog, QueryStats, RecordType,
+    blocklist::BlockedDomain, Client, ClientStats, DnsQuery, DomainError, QueryLog, QueryStats,
+    RecordType,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -259,6 +260,329 @@ impl QueryLogRepository for MockQueryLogRepository {
             most_queried_type: None,
             record_type_distribution: Vec::new(),
         })
+    }
+}
+
+// ============================================================================
+// Mock ClientRepository
+// ============================================================================
+
+#[derive(Clone)]
+pub struct MockClientRepository {
+    clients: Arc<RwLock<HashMap<i64, Client>>>,
+    next_id: Arc<RwLock<i64>>,
+}
+
+impl MockClientRepository {
+    pub fn new() -> Self {
+        Self {
+            clients: Arc::new(RwLock::new(HashMap::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+
+    /// Create mock with pre-populated clients
+    pub async fn with_clients(clients: Vec<Client>) -> Self {
+        let mut map = HashMap::new();
+        let mut max_id = 0i64;
+        for mut client in clients {
+            let id = client.id.unwrap_or_else(|| {
+                max_id += 1;
+                max_id
+            });
+            client.id = Some(id);
+            map.insert(id, client);
+            if id > max_id {
+                max_id = id;
+            }
+        }
+
+        Self {
+            clients: Arc::new(RwLock::new(map)),
+            next_id: Arc::new(RwLock::new(max_id + 1)),
+        }
+    }
+
+    /// Get count of clients
+    pub async fn count(&self) -> usize {
+        self.clients.read().await.len()
+    }
+
+    /// Clear all clients
+    pub async fn clear(&self) {
+        self.clients.write().await.clear();
+        *self.next_id.write().await = 1;
+    }
+
+    /// Get all clients
+    pub async fn get_all_clients(&self) -> Vec<Client> {
+        self.clients.read().await.values().cloned().collect()
+    }
+}
+
+impl Default for MockClientRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ClientRepository for MockClientRepository {
+    async fn get_or_create(&self, ip_address: IpAddr) -> Result<Client, DomainError> {
+        let mut clients = self.clients.write().await;
+
+        // Find client by IP
+        if let Some(client) = clients.values().find(|c| c.ip_address == ip_address) {
+            return Ok(client.clone());
+        }
+
+        // Create new client
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let client = Client {
+            id: Some(id),
+            ip_address,
+            mac_address: None,
+            hostname: None,
+            first_seen: Some(now.clone()),
+            last_seen: Some(now),
+            query_count: 0,
+            last_mac_update: None,
+            last_hostname_update: None,
+            group_id: Some(1), // Default to Protected group
+        };
+
+        clients.insert(id, client.clone());
+        Ok(client)
+    }
+
+    async fn update_last_seen(&self, ip_address: IpAddr) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+
+        // Find and update existing client
+        if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
+            client.last_seen = Some(chrono::Utc::now().to_rfc3339());
+            client.query_count += 1;
+            return Ok(());
+        }
+
+        // Create new client
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let client = Client {
+            id: Some(id),
+            ip_address,
+            mac_address: None,
+            hostname: None,
+            first_seen: Some(now.clone()),
+            last_seen: Some(now),
+            query_count: 1,
+            last_mac_update: None,
+            last_hostname_update: None,
+            group_id: Some(1),
+        };
+
+        clients.insert(id, client);
+        Ok(())
+    }
+
+    async fn update_mac_address(&self, ip_address: IpAddr, mac: String) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+
+        if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
+            client.mac_address = Some(Arc::from(mac));
+            client.last_mac_update = Some(chrono::Utc::now().to_rfc3339());
+            Ok(())
+        } else {
+            Err(DomainError::ClientNotFound(format!(
+                "Client with IP {} not found",
+                ip_address
+            )))
+        }
+    }
+
+    async fn batch_update_mac_addresses(
+        &self,
+        updates: Vec<(IpAddr, String)>,
+    ) -> Result<u64, DomainError> {
+        let mut count = 0u64;
+        for (ip, mac) in updates {
+            if self.update_mac_address(ip, mac).await.is_ok() {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    async fn update_hostname(
+        &self,
+        ip_address: IpAddr,
+        hostname: String,
+    ) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+
+        if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
+            client.hostname = Some(Arc::from(hostname));
+            client.last_hostname_update = Some(chrono::Utc::now().to_rfc3339());
+            Ok(())
+        } else {
+            Err(DomainError::ClientNotFound(format!(
+                "Client with IP {} not found",
+                ip_address
+            )))
+        }
+    }
+
+    async fn get_all(&self, limit: u32, offset: u32) -> Result<Vec<Client>, DomainError> {
+        let clients = self.clients.read().await;
+        let mut all: Vec<Client> = clients.values().cloned().collect();
+        all.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+
+        let start = offset as usize;
+        let end = (start + limit as usize).min(all.len());
+        Ok(all[start..end].to_vec())
+    }
+
+    async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError> {
+        let clients = self.clients.read().await;
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
+        let cutoff_str = cutoff.to_rfc3339();
+
+        let mut active: Vec<Client> = clients
+            .values()
+            .filter(|c| {
+                c.last_seen
+                    .as_ref()
+                    .map(|ls| ls.as_str() > cutoff_str.as_str())
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+
+        active.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+        active.truncate(limit as usize);
+        Ok(active)
+    }
+
+    async fn get_stats(&self) -> Result<ClientStats, DomainError> {
+        let clients = self.clients.read().await;
+        let total_clients = clients.len() as u64;
+        let with_mac = clients.values().filter(|c| c.mac_address.is_some()).count() as u64;
+        let with_hostname = clients.values().filter(|c| c.hostname.is_some()).count() as u64;
+
+        let cutoff_24h = (chrono::Utc::now() - chrono::Duration::hours(24)).to_rfc3339();
+        let cutoff_7d = (chrono::Utc::now() - chrono::Duration::days(7)).to_rfc3339();
+
+        let active_24h = clients
+            .values()
+            .filter(|c| {
+                c.last_seen
+                    .as_ref()
+                    .map(|ls| ls.as_str() > cutoff_24h.as_str())
+                    .unwrap_or(false)
+            })
+            .count() as u64;
+
+        let active_7d = clients
+            .values()
+            .filter(|c| {
+                c.last_seen
+                    .as_ref()
+                    .map(|ls| ls.as_str() > cutoff_7d.as_str())
+                    .unwrap_or(false)
+            })
+            .count() as u64;
+
+        Ok(ClientStats {
+            total_clients,
+            with_mac,
+            with_hostname,
+            active_24h,
+            active_7d,
+        })
+    }
+
+    async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
+        let mut clients = self.clients.write().await;
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
+
+        let to_remove: Vec<i64> = clients
+            .iter()
+            .filter(|(_, c)| {
+                c.last_seen
+                    .as_ref()
+                    .map(|ls| ls.as_str() < cutoff.as_str())
+                    .unwrap_or(true)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+
+        let count = to_remove.len() as u64;
+        for id in to_remove {
+            clients.remove(&id);
+        }
+
+        Ok(count)
+    }
+
+    async fn get_needs_mac_update(&self, limit: u32) -> Result<Vec<Client>, DomainError> {
+        let clients = self.clients.read().await;
+        let needs_update: Vec<Client> = clients
+            .values()
+            .filter(|c| c.mac_address.is_none())
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok(needs_update)
+    }
+
+    async fn get_needs_hostname_update(&self, limit: u32) -> Result<Vec<Client>, DomainError> {
+        let clients = self.clients.read().await;
+        let needs_update: Vec<Client> = clients
+            .values()
+            .filter(|c| c.hostname.is_none())
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok(needs_update)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<Client>, DomainError> {
+        let clients = self.clients.read().await;
+        Ok(clients.get(&id).cloned())
+    }
+
+    async fn assign_group(&self, client_id: i64, group_id: i64) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+
+        if let Some(client) = clients.get_mut(&client_id) {
+            client.group_id = Some(group_id);
+            Ok(())
+        } else {
+            Err(DomainError::ClientNotFound(format!(
+                "Client {} not found",
+                client_id
+            )))
+        }
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+
+        if clients.remove(&id).is_some() {
+            Ok(())
+        } else {
+            Err(DomainError::ClientNotFound(format!(
+                "Client {} not found",
+                id
+            )))
+        }
     }
 }
 

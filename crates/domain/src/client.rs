@@ -19,6 +19,7 @@ pub struct Client {
     pub query_count: u64,
     pub last_mac_update: Option<String>,
     pub last_hostname_update: Option<String>,
+    pub group_id: Option<i64>,
 }
 
 impl Client {
@@ -33,6 +34,7 @@ impl Client {
             query_count: 0,
             last_mac_update: None,
             last_hostname_update: None,
+            group_id: None,
         }
     }
 

@@ -36,6 +36,7 @@ pub async fn get_clients(
                     first_seen: c.first_seen.unwrap_or_default(),
                     last_seen: c.last_seen.unwrap_or_default(),
                     query_count: c.query_count,
+                    group_id: c.group_id,
                 })
                 .collect();
 

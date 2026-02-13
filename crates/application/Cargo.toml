@@ -10,3 +10,7 @@ ferrous-dns-domain.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+ipnetwork = "0.20"
+
+[dev-dependencies]
+chrono = "0.4"

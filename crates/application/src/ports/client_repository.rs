@@ -43,4 +43,13 @@ pub trait ClientRepository: Send + Sync {
 
     /// Get clients that need hostname updates
     async fn get_needs_hostname_update(&self, limit: u32) -> Result<Vec<Client>, DomainError>;
+
+    /// Get a client by ID
+    async fn get_by_id(&self, id: i64) -> Result<Option<Client>, DomainError>;
+
+    /// Assign a client to a group
+    async fn assign_group(&self, client_id: i64, group_id: i64) -> Result<(), DomainError>;
+
+    /// Delete a client by ID
+    async fn delete(&self, id: i64) -> Result<(), DomainError>;
 }

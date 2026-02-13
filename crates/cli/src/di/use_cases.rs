@@ -1,8 +1,12 @@
 use super::Repositories;
+use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    CleanupOldClientsUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientsUseCase,
-    GetConfigUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, ReloadConfigUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateConfigUseCase,
+    AssignClientGroupUseCase, CleanupOldClientsUseCase, CreateClientSubnetUseCase,
+    CreateGroupUseCase, CreateManualClientUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
+    DeleteGroupUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
+    GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
+    TrackClientUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -24,6 +28,17 @@ pub struct UseCases {
     pub sync_arp: Arc<SyncArpCacheUseCase>,
     pub sync_hostnames: Arc<SyncHostnamesUseCase>,
     pub cleanup_clients: Arc<CleanupOldClientsUseCase>,
+    pub get_groups: Arc<GetGroupsUseCase>,
+    pub create_group: Arc<CreateGroupUseCase>,
+    pub update_group: Arc<UpdateGroupUseCase>,
+    pub delete_group: Arc<DeleteGroupUseCase>,
+    pub assign_client_group: Arc<AssignClientGroupUseCase>,
+    pub get_client_subnets: Arc<GetClientSubnetsUseCase>,
+    pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
+    pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
+    pub create_manual_client: Arc<CreateManualClientUseCase>,
+    pub delete_client: Arc<DeleteClientUseCase>,
+    pub subnet_matcher: Arc<SubnetMatcherService>,
 }
 
 impl UseCases {
@@ -34,6 +49,9 @@ impl UseCases {
     ) -> Self {
         let arp_reader = Arc::new(LinuxArpReader::new());
         let hostname_resolver = Arc::new(PtrHostnameResolver::new(pool_manager, 5));
+
+        // Initialize SubnetMatcherService
+        let subnet_matcher = Arc::new(SubnetMatcherService::new(repos.client_subnet.clone()));
 
         Self {
             get_stats: Arc::new(GetQueryStatsUseCase::new(repos.query_log.clone())),
@@ -51,6 +69,28 @@ impl UseCases {
                 hostname_resolver,
             )),
             cleanup_clients: Arc::new(CleanupOldClientsUseCase::new(repos.client.clone())),
+            get_groups: Arc::new(GetGroupsUseCase::new(repos.group.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(repos.group.clone())),
+            update_group: Arc::new(UpdateGroupUseCase::new(repos.group.clone())),
+            delete_group: Arc::new(DeleteGroupUseCase::new(repos.group.clone())),
+            assign_client_group: Arc::new(AssignClientGroupUseCase::new(
+                repos.client.clone(),
+                repos.group.clone(),
+            )),
+            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(repos.client_subnet.clone())),
+            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(
+                repos.client_subnet.clone(),
+                repos.group.clone(),
+            )),
+            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(
+                repos.client_subnet.clone(),
+            )),
+            create_manual_client: Arc::new(CreateManualClientUseCase::new(
+                repos.client.clone(),
+                repos.group.clone(),
+            )),
+            delete_client: Arc::new(DeleteClientUseCase::new(repos.client.clone())),
+            subnet_matcher,
         }
     }
 }

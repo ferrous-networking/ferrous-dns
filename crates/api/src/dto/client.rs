@@ -9,6 +9,7 @@ pub struct ClientResponse {
     pub first_seen: String,
     pub last_seen: String,
     pub query_count: u64,
+    pub group_id: Option<i64>,
 }
 
 #[derive(Serialize, Debug)]

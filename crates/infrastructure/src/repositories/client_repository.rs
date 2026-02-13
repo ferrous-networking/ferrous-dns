@@ -16,6 +16,7 @@ type ClientRow = (
     i64,
     Option<String>,
     Option<String>,
+    Option<i64>,
 );
 
 pub struct SqliteClientRepository {
@@ -38,6 +39,7 @@ impl SqliteClientRepository {
             query_count,
             last_mac_update,
             last_hostname_update,
+            group_id,
         ) = row;
 
         Some(Client {
@@ -50,6 +52,7 @@ impl SqliteClientRepository {
             query_count: query_count as u64,
             last_mac_update,
             last_hostname_update,
+            group_id,
         })
     }
 }
@@ -61,7 +64,7 @@ impl ClientRepository for SqliteClientRepository {
         let ip_str = ip_address.to_string();
 
         let existing = sqlx::query_as::<_, ClientRow>(
-            "SELECT id, ip_address, mac_address, hostname, first_seen, last_seen, query_count, last_mac_update, last_hostname_update
+            "SELECT id, ip_address, mac_address, hostname, first_seen, last_seen, query_count, last_mac_update, last_hostname_update, group_id
              FROM clients WHERE ip_address = ?"
         )
         .bind(&ip_str)
@@ -82,6 +85,7 @@ impl ClientRepository for SqliteClientRepository {
             query_count,
             last_mac_update,
             last_hostname_update,
+            group_id,
         )) = existing
         {
             Ok(Client {
@@ -94,6 +98,7 @@ impl ClientRepository for SqliteClientRepository {
                 query_count: query_count as u64,
                 last_mac_update,
                 last_hostname_update,
+                group_id,
             })
         } else {
             let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -257,7 +262,8 @@ impl ClientRepository for SqliteClientRepository {
                     datetime(last_seen) as last_seen,
                     query_count,
                     datetime(last_mac_update) as last_mac_update,
-                    datetime(last_hostname_update) as last_hostname_update
+                    datetime(last_hostname_update) as last_hostname_update,
+                    group_id
              FROM clients
              ORDER BY last_seen DESC
              LIMIT ? OFFSET ?",
@@ -282,7 +288,8 @@ impl ClientRepository for SqliteClientRepository {
                     datetime(last_seen) as last_seen,
                     query_count,
                     datetime(last_mac_update) as last_mac_update,
-                    datetime(last_hostname_update) as last_hostname_update
+                    datetime(last_hostname_update) as last_hostname_update,
+                    group_id
              FROM clients
              WHERE last_seen > datetime('now', ?)
              ORDER BY last_seen DESC
@@ -349,7 +356,8 @@ impl ClientRepository for SqliteClientRepository {
                     datetime(last_seen) as last_seen,
                     query_count,
                     datetime(last_mac_update) as last_mac_update,
-                    datetime(last_hostname_update) as last_hostname_update
+                    datetime(last_hostname_update) as last_hostname_update,
+                    group_id
              FROM clients
              WHERE (last_mac_update IS NULL
                     OR last_mac_update < datetime('now', '-5 minutes'))
@@ -376,7 +384,8 @@ impl ClientRepository for SqliteClientRepository {
                     datetime(last_seen) as last_seen,
                     query_count,
                     datetime(last_mac_update) as last_mac_update,
-                    datetime(last_hostname_update) as last_hostname_update
+                    datetime(last_hostname_update) as last_hostname_update,
+                    group_id
              FROM clients
              WHERE (last_hostname_update IS NULL
                     OR last_hostname_update < datetime('now', '-1 hour'))
@@ -393,5 +402,75 @@ impl ClientRepository for SqliteClientRepository {
         })?;
 
         Ok(rows.into_iter().filter_map(Self::row_to_client).collect())
+    }
+
+    #[instrument(skip(self))]
+    async fn get_by_id(&self, id: i64) -> Result<Option<Client>, DomainError> {
+        let row = sqlx::query_as::<_, ClientRow>(
+            "SELECT id, ip_address, mac_address, hostname,
+                    datetime(first_seen) as first_seen,
+                    datetime(last_seen) as last_seen,
+                    query_count,
+                    datetime(last_mac_update) as last_mac_update,
+                    datetime(last_hostname_update) as last_hostname_update,
+                    group_id
+             FROM clients
+             WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch client by id");
+            DomainError::DatabaseError(e.to_string())
+        })?;
+
+        Ok(row.and_then(Self::row_to_client))
+    }
+
+    #[instrument(skip(self))]
+    async fn assign_group(&self, client_id: i64, group_id: i64) -> Result<(), DomainError> {
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+        let result = sqlx::query(
+            "UPDATE clients SET group_id = ?, updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(group_id)
+        .bind(&now)
+        .bind(client_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to assign client to group");
+            DomainError::DatabaseError(e.to_string())
+        })?;
+
+        if result.rows_affected() == 0 {
+            return Err(DomainError::NotFound(format!(
+                "Client {} not found",
+                client_id
+            )));
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let result = sqlx::query("DELETE FROM clients WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to delete client");
+                DomainError::DatabaseError(e.to_string())
+            })?;
+
+        if result.rows_affected() == 0 {
+            return Err(DomainError::NotFound(format!("Client {} not found", id)));
+        }
+
+        Ok(())
     }
 }

@@ -7,7 +7,8 @@ use ferrous_dns_api::{create_api_routes, AppState};
 use ferrous_dns_application::{
     ports::ClientRepository,
     use_cases::{
-        GetBlocklistUseCase, GetClientsUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
+        DeleteClientUseCase, GetBlocklistUseCase, GetClientsUseCase, GetQueryStatsUseCase,
+        GetRecentQueriesUseCase,
     },
 };
 use ferrous_dns_domain::Config;
@@ -29,7 +30,36 @@ async fn create_test_db() -> sqlx::SqlitePool {
         .await
         .unwrap();
 
-    // Run migration
+    // Create groups table first
+    sqlx::query(
+        r#"
+        CREATE TABLE groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            enabled BOOLEAN NOT NULL DEFAULT 1,
+            comment TEXT,
+            is_default BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert Protected group
+    sqlx::query(
+        r#"
+        INSERT INTO groups (id, name, enabled, comment, is_default)
+        VALUES (1, 'Protected', 1, 'Default group for all clients. Cannot be disabled or deleted.', 1)
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Create clients table with group_id foreign key
     sqlx::query(
         r#"
         CREATE TABLE clients (
@@ -42,6 +72,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             query_count INTEGER NOT NULL DEFAULT 0,
             last_mac_update DATETIME,
             last_hostname_update DATETIME,
+            group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id) ON DELETE RESTRICT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -107,6 +138,40 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
         ))),
         get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
+        get_groups: Arc::new(ferrous_dns_application::use_cases::GetGroupsUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone()),
+        ))),
+        create_group: Arc::new(ferrous_dns_application::use_cases::CreateGroupUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone()),
+        ))),
+        update_group: Arc::new(ferrous_dns_application::use_cases::UpdateGroupUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone()),
+        ))),
+        delete_group: Arc::new(ferrous_dns_application::use_cases::DeleteGroupUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone()),
+        ))),
+        assign_client_group: Arc::new(ferrous_dns_application::use_cases::AssignClientGroupUseCase::new(
+            client_repo.clone(),
+            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+        )),
+        get_client_subnets: Arc::new(ferrous_dns_application::use_cases::GetClientSubnetsUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
+        ))),
+        create_client_subnet: Arc::new(ferrous_dns_application::use_cases::CreateClientSubnetUseCase::new(
+            Arc::new(ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone())),
+            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+        )),
+        delete_client_subnet: Arc::new(ferrous_dns_application::use_cases::DeleteClientSubnetUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
+        ))),
+        create_manual_client: Arc::new(ferrous_dns_application::use_cases::CreateManualClientUseCase::new(
+            client_repo.clone(),
+            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+        )),
+        delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
+        subnet_matcher: Arc::new(ferrous_dns_application::services::SubnetMatcherService::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
+        ))),
         config,
         cache,
         dns_resolver: Arc::new(
@@ -350,4 +415,291 @@ async fn test_get_clients_with_active_days_filter() {
 
     // Should return only active clients (this test is approximate due to test setup)
     assert!(json.is_array());
+}
+
+// ============================================================================
+// DELETE /clients/{id} Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_delete_client_success() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add a test client
+    let ip: IpAddr = "192.168.1.100".parse().unwrap();
+    repo.update_last_seen(ip).await.unwrap();
+
+    // Get the client ID
+    let clients = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(clients.len(), 1);
+    let client_id = clients[0].id.unwrap();
+
+    // Delete the client
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", client_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should return 204 No Content
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify client was deleted
+    let remaining = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(remaining.len(), 0);
+}
+
+#[tokio::test]
+async fn test_delete_nonexistent_client() {
+    let (app, _repo, _pool) = create_test_app().await;
+
+    // Try to delete a client that doesn't exist
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/clients/9999")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should return 404 Not Found
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error_msg = String::from_utf8_lossy(&body);
+    assert!(error_msg.contains("not found") || error_msg.contains("9999"));
+}
+
+#[tokio::test]
+async fn test_delete_client_with_complete_data() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add a client with all data
+    let ip: IpAddr = "192.168.1.200".parse().unwrap();
+    repo.update_last_seen(ip).await.unwrap();
+    repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
+        .await
+        .unwrap();
+    repo.update_hostname(ip, "test-device.local".to_string())
+        .await
+        .unwrap();
+
+    // Get the client ID
+    let clients = repo.get_all(100, 0).await.unwrap();
+    let client_id = clients[0].id.unwrap();
+
+    // Delete the client
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", client_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify deletion
+    let remaining = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(remaining.len(), 0);
+}
+
+#[tokio::test]
+async fn test_delete_client_from_multiple() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add 3 clients
+    for i in 1..=3 {
+        let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
+        repo.update_last_seen(ip).await.unwrap();
+    }
+
+    let clients = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(clients.len(), 3);
+
+    // Delete the second client
+    let client_id = clients[1].id.unwrap();
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", client_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify only 2 clients remain
+    let remaining = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(remaining.len(), 2);
+    assert!(!remaining.iter().any(|c| c.id == Some(client_id)));
+}
+
+#[tokio::test]
+async fn test_delete_client_idempotency() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add a client
+    let ip: IpAddr = "192.168.1.100".parse().unwrap();
+    repo.update_last_seen(ip).await.unwrap();
+
+    let clients = repo.get_all(100, 0).await.unwrap();
+    let client_id = clients[0].id.unwrap();
+
+    // First delete should succeed
+    let response1 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", client_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response1.status(), StatusCode::NO_CONTENT);
+
+    // Second delete should return 404
+    let response2 = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", client_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response2.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_delete_client_invalid_id_format() {
+    let (app, _repo, _pool) = create_test_app().await;
+
+    // Try to delete with invalid ID format (should be handled by routing or return 404)
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/clients/not-a-number")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Could be 400 Bad Request or 404 Not Found depending on routing
+    assert!(
+        response.status() == StatusCode::BAD_REQUEST || response.status() == StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn test_delete_multiple_clients_sequentially() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add 5 clients
+    for i in 1..=5 {
+        let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
+        repo.update_last_seen(ip).await.unwrap();
+    }
+
+    let mut clients = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(clients.len(), 5);
+
+    // Delete 3 clients sequentially
+    for _ in 0..3 {
+        let client_id = clients.pop().unwrap().id.unwrap();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/clients/{}", client_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    // Verify 2 clients remain
+    let remaining = repo.get_all(100, 0).await.unwrap();
+    assert_eq!(remaining.len(), 2);
+}
+
+#[tokio::test]
+async fn test_delete_client_verifies_not_in_get_all() {
+    let (app, repo, _pool) = create_test_app().await;
+
+    // Add clients
+    for i in 1..=3 {
+        let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
+        repo.update_last_seen(ip).await.unwrap();
+    }
+
+    let clients_before = repo.get_all(100, 0).await.unwrap();
+    let delete_id = clients_before[1].id.unwrap();
+    let delete_ip = clients_before[1].ip_address;
+
+    // Delete client
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/clients/{}", delete_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify via GET /clients API
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/clients")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(get_response.status(), StatusCode::OK);
+
+    let body = get_response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    let clients_after = json.as_array().unwrap();
+
+    // Should have 2 clients now
+    assert_eq!(clients_after.len(), 2);
+
+    // Deleted client should not be in the list
+    assert!(!clients_after
+        .iter()
+        .any(|c| c["ip_address"].as_str().unwrap() == delete_ip.to_string()));
 }
