@@ -236,13 +236,17 @@ impl QueryLogRepository for MockQueryLogRepository {
         Ok(())
     }
 
-    async fn get_recent(&self, limit: u32) -> Result<Vec<QueryLog>, DomainError> {
+    async fn get_recent(
+        &self,
+        limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<QueryLog>, DomainError> {
         let logs = self.logs.read().await;
         let start = logs.len().saturating_sub(limit as usize);
         Ok(logs[start..].to_vec())
     }
 
-    async fn get_stats(&self) -> Result<QueryStats, DomainError> {
+    async fn get_stats(&self, _period_hours: f32) -> Result<QueryStats, DomainError> {
         let logs = self.logs.read().await;
         let queries_total = logs.len() as u64;
         let queries_blocked = logs.iter().filter(|l| l.blocked).count() as u64;
@@ -259,6 +263,60 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_by_type: HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),
+        })
+    }
+
+    async fn get_timeline(
+        &self,
+        _period_hours: u32,
+        _granularity: &str,
+    ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
+        // Mock implementation - returns empty timeline
+        Ok(Vec::new())
+    }
+
+    async fn count_queries_since(&self, _seconds_ago: i64) -> Result<u64, DomainError> {
+        // Mock implementation - returns total count of logs
+        // In real tests, you can configure this by adding logs with specific timestamps
+        let logs = self.logs.read().await;
+        Ok(logs.len() as u64)
+    }
+
+    async fn get_cache_stats(
+        &self,
+        _period_hours: f32,
+    ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
+        // Mock implementation - returns basic cache stats
+        let logs = self.logs.read().await;
+        let total_hits = logs
+            .iter()
+            .filter(|l| l.cache_hit && !l.cache_refresh)
+            .count() as u64;
+        let total_misses = logs
+            .iter()
+            .filter(|l| !l.cache_hit && !l.cache_refresh && !l.blocked)
+            .count() as u64;
+        let total_refreshes = logs.iter().filter(|l| l.cache_refresh).count() as u64;
+        let total_queries = total_hits + total_misses;
+
+        let hit_rate = if total_queries > 0 {
+            (total_hits as f64 / total_queries as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let refresh_rate = if total_hits > 0 {
+            (total_refreshes as f64 / total_hits as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        Ok(ferrous_dns_application::ports::CacheStats {
+            total_hits,
+            total_misses,
+            total_refreshes,
+            hit_rate,
+            refresh_rate,
         })
     }
 }

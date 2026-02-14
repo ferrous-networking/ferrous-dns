@@ -10,7 +10,9 @@ pub mod hostname;
 pub mod local_records;
 pub mod manual_clients;
 pub mod queries;
+pub mod rate;
 pub mod stats;
+pub mod timeline;
 
 pub use blocklist::get_blocklist;
 pub use cache::{get_cache_metrics, get_cache_stats};
@@ -21,5 +23,7 @@ pub use health::health_check;
 pub use hostname::get_hostname;
 pub use manual_clients::{create_manual_client, delete_manual_client};
 pub use queries::get_queries;
+pub use rate::get_query_rate;
 pub use stats::get_stats;
+pub use timeline::get_timeline;
 pub mod upstream;

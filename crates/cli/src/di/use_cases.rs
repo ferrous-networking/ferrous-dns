@@ -4,9 +4,10 @@ use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CleanupOldClientsUseCase, CreateClientSubnetUseCase,
     CreateGroupUseCase, CreateManualClientUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
     DeleteGroupUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
-    GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
-    TrackClientUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
+    GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase, GetQueryRateUseCase,
+    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase, ReloadConfigUseCase,
+    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateConfigUseCase,
+    UpdateGroupUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -18,6 +19,8 @@ use tokio::sync::RwLock;
 pub struct UseCases {
     pub get_stats: Arc<GetQueryStatsUseCase>,
     pub get_queries: Arc<GetRecentQueriesUseCase>,
+    pub get_timeline: Arc<GetTimelineUseCase>,
+    pub get_query_rate: Arc<GetQueryRateUseCase>,
     pub get_blocklist: Arc<GetBlocklistUseCase>,
     pub get_cache_stats: Arc<GetCacheStatsUseCase>,
     pub get_config: Arc<GetConfigUseCase>,
@@ -56,8 +59,10 @@ impl UseCases {
         Self {
             get_stats: Arc::new(GetQueryStatsUseCase::new(repos.query_log.clone())),
             get_queries: Arc::new(GetRecentQueriesUseCase::new(repos.query_log.clone())),
+            get_timeline: Arc::new(GetTimelineUseCase::new(repos.query_log.clone())),
+            get_query_rate: Arc::new(GetQueryRateUseCase::new(repos.query_log.clone())),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(repos.blocklist.clone())),
-            get_cache_stats: Arc::new(GetCacheStatsUseCase::new()),
+            get_cache_stats: Arc::new(GetCacheStatsUseCase::new(repos.query_log.clone())),
             get_config: Arc::new(GetConfigUseCase::new(repos.config.clone())),
             update_config: Arc::new(UpdateConfigUseCase::new(repos.config.clone())),
             reload_config: Arc::new(ReloadConfigUseCase::new(config)),

@@ -1,30 +1,17 @@
-use ferrous_dns_domain::{CacheStats, DomainError};
+use crate::ports::{CacheStats, QueryLogRepository};
+use ferrous_dns_domain::DomainError;
+use std::sync::Arc;
 
-pub struct GetCacheStatsUseCase;
-
-impl GetCacheStatsUseCase {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub async fn execute(&self) -> Result<CacheStats, DomainError> {
-        // Note: This is a placeholder implementation
-        // Real implementation would get stats from the cache directly
-        // which is done in the API handlers
-        Ok(CacheStats {
-            total_entries: 0,
-            total_hits: 0,
-            total_misses: 0,
-            total_updates: 0,
-            total_evictions: 0,
-            hit_rate: 0.0,
-            avg_ttl_seconds: 0,
-        })
-    }
+pub struct GetCacheStatsUseCase {
+    repository: Arc<dyn QueryLogRepository>,
 }
 
-impl Default for GetCacheStatsUseCase {
-    fn default() -> Self {
-        Self::new()
+impl GetCacheStatsUseCase {
+    pub fn new(repository: Arc<dyn QueryLogRepository>) -> Self {
+        Self { repository }
+    }
+
+    pub async fn execute(&self, period_hours: f32) -> Result<CacheStats, DomainError> {
+        self.repository.get_cache_stats(period_hours).await
     }
 }

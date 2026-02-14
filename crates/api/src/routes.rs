@@ -10,6 +10,8 @@ pub fn create_api_routes(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health_check))
         .route("/stats", get(handlers::get_stats))
+        .route("/stats/rate", get(handlers::get_query_rate))
+        .route("/queries/timeline", get(handlers::get_timeline))
         .route("/queries", get(handlers::get_queries))
         .route("/blocklist", get(handlers::get_blocklist))
         .route("/cache/stats", get(handlers::get_cache_stats))

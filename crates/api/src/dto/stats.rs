@@ -1,5 +1,15 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Deserialize, Debug)]
+pub struct StatsQuery {
+    #[serde(default = "default_period")]
+    pub period: String,
+}
+
+fn default_period() -> String {
+    "24h".to_string()
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct StatsResponse {

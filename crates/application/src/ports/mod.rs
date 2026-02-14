@@ -16,7 +16,7 @@ pub use config_repository::ConfigRepository;
 pub use dns_resolver::{DnsResolution, DnsResolver};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
-pub use query_log_repository::QueryLogRepository;
+pub use query_log_repository::{CacheStats, QueryLogRepository, TimelineBucket};
 
 // Re-export for convenience
 pub use ferrous_dns_domain::DnsQuery;

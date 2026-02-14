@@ -11,7 +11,7 @@ impl GetQueryStatsUseCase {
         Self { repository }
     }
 
-    pub async fn execute(&self) -> Result<QueryStats, DomainError> {
-        self.repository.get_stats().await
+    pub async fn execute(&self, period_hours: f32) -> Result<QueryStats, DomainError> {
+        self.repository.get_stats(period_hours).await
     }
 }

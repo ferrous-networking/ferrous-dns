@@ -1,15 +1,29 @@
 use crate::{
-    dto::{StatsResponse, TopType, TypeDistribution},
+    dto::{StatsQuery, StatsResponse, TopType, TypeDistribution},
     state::AppState,
+    utils::{parse_period, validate_period},
 };
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use tracing::{debug, error, instrument};
 
 #[instrument(skip(state), name = "api_get_stats")]
-pub async fn get_stats(State(state): State<AppState>) -> Json<StatsResponse> {
-    debug!("Fetching query statistics with Phase 4 analytics");
+pub async fn get_stats(
+    State(state): State<AppState>,
+    Query(params): Query<StatsQuery>,
+) -> Json<StatsResponse> {
+    debug!(period = %params.period, "Fetching query statistics with Phase 4 analytics");
 
-    match state.get_stats.execute().await {
+    // Parse and validate period
+    let period_hours = parse_period(&params.period)
+        .map(validate_period)
+        .unwrap_or(24.0);
+
+    debug!(period_hours = period_hours, "Using period for stats query");
+
+    match state.get_stats.execute(period_hours).await {
         Ok(stats) => {
             debug!(
                 queries_total = stats.queries_total,

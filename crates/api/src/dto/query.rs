@@ -1,4 +1,20 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Debug)]
+pub struct QueryParams {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default = "default_period")]
+    pub period: String,
+}
+
+fn default_limit() -> u32 {
+    10000
+}
+
+fn default_period() -> String {
+    "24h".to_string()
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct QueryResponse {

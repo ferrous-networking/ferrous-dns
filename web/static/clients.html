@@ -125,7 +125,7 @@
         .btn-bulk-delete:hover {
             background: #dc2626;
             transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
         }
 
         .btn-bulk-delete:active {
@@ -477,7 +477,8 @@
                        placeholder="IP (192.168.1.100), CIDR (192.168.1.0/24) or MAC (aa:bb:cc:dd:ee:ff)"
                        required
                        class="input">
-                <p x-show="form.error" x-text="form.error" style="margin-top:6px;font-size:12px;color:var(--color-error)"></p>
+                <p x-show="form.error" x-text="form.error"
+                   style="margin-top:6px;font-size:12px;color:var(--color-error)"></p>
             </div>
 
             <div>
@@ -530,28 +531,28 @@
 
             <table x-show="clients.length > 0" class="table">
                 <thead>
-                    <tr>
-                        <th>IP Address</th>
-                        <th>Hostname</th>
-                        <th>MAC Address</th>
-                        <th>Group</th>
-                        <th>First Seen</th>
-                        <th>Last Seen</th>
-                        <th>Queries</th>
-                    </tr>
+                <tr>
+                    <th>IP Address</th>
+                    <th>Hostname</th>
+                    <th>MAC Address</th>
+                    <th>Group</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                    <th>Queries</th>
+                </tr>
                 </thead>
                 <tbody>
-                    <template x-for="c in clients" :key="c.id">
-                        <tr>
-                            <td class="monospace" x-text="c.ip_address"></td>
-                            <td x-text="c.hostname || '-'"></td>
-                            <td class="monospace" x-text="c.mac_address || '-'"></td>
-                            <td x-text="getGroupName(c.group_id)"></td>
-                            <td x-text="formatDateTime(c.first_seen)"></td>
-                            <td x-text="formatDateTime(c.last_seen)"></td>
-                            <td x-text="c.query_count || 0"></td>
-                        </tr>
-                    </template>
+                <template x-for="c in clients" :key="c.id">
+                    <tr>
+                        <td class="monospace" x-text="c.ip_address"></td>
+                        <td x-text="c.hostname || '-'"></td>
+                        <td class="monospace" x-text="c.mac_address || '-'"></td>
+                        <td x-text="getGroupName(c.group_id)"></td>
+                        <td x-text="formatDateTime(c.first_seen)"></td>
+                        <td x-text="formatDateTime(c.last_seen)"></td>
+                        <td x-text="c.query_count || 0"></td>
+                    </tr>
+                </template>
                 </tbody>
             </table>
         </div>
@@ -564,7 +565,8 @@
                     Individual Clients
                 </h3>
 
-                <div x-show="manualClients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
+                <div x-show="manualClients.length === 0"
+                     style="padding:32px;text-align:center;color:var(--text-secondary)">
                     No manual clients yet
                 </div>
 
@@ -578,42 +580,42 @@
 
                 <table x-show="manualClients.length > 0" class="table">
                     <thead>
-                        <tr>
-                            <th style="width:40px;text-align:center">
-                                <input type="checkbox"
-                                       x-model="selectAllClients"
-                                       @change="toggleSelectAllClients()"
-                                       title="Select All">
-                            </th>
-                            <th>IP Address</th>
-                            <th>Hostname</th>
-                            <th>MAC Address</th>
-                            <th>Group</th>
-                            <th>Added</th>
-                            <th style="text-align:center;width:80px">Actions</th>
-                        </tr>
+                    <tr>
+                        <th style="width:40px;text-align:center">
+                            <input type="checkbox"
+                                   x-model="selectAllClients"
+                                   @change="toggleSelectAllClients()"
+                                   title="Select All">
+                        </th>
+                        <th>IP Address</th>
+                        <th>Hostname</th>
+                        <th>MAC Address</th>
+                        <th>Group</th>
+                        <th>Added</th>
+                        <th style="text-align:center;width:80px">Actions</th>
+                    </tr>
                     </thead>
                     <tbody>
-                        <template x-for="c in manualClients" :key="c.id">
-                            <tr>
-                                <td style="width:40px;text-align:center">
-                                    <input type="checkbox"
-                                           :value="c.id"
-                                           x-model="selectedClients"
-                                           @change="updateSelectAllClients()">
-                                </td>
-                                <td class="monospace" x-text="c.ip_address"></td>
-                                <td x-text="c.hostname || '-'"></td>
-                                <td class="monospace" x-text="c.mac_address || '-'"></td>
-                                <td x-text="getGroupName(c.group_id)"></td>
-                                <td x-text="formatDateTime(c.first_seen)"></td>
-                                <td style="text-align:center;width:80px">
-                                    <button @click="deleteClient(c.id)" class="btn-icon" title="Delete">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </template>
+                    <template x-for="c in manualClients" :key="c.id">
+                        <tr>
+                            <td style="width:40px;text-align:center">
+                                <input type="checkbox"
+                                       :value="c.id"
+                                       x-model="selectedClients"
+                                       @change="updateSelectAllClients()">
+                            </td>
+                            <td class="monospace" x-text="c.ip_address"></td>
+                            <td x-text="c.hostname || '-'"></td>
+                            <td class="monospace" x-text="c.mac_address || '-'"></td>
+                            <td x-text="getGroupName(c.group_id)"></td>
+                            <td x-text="formatDateTime(c.first_seen)"></td>
+                            <td style="text-align:center;width:80px">
+                                <button @click="deleteClient(c.id)" class="btn-icon" title="Delete">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
                     </tbody>
                 </table>
             </div>
@@ -638,38 +640,38 @@
 
                 <table x-show="subnets.length > 0" class="table">
                     <thead>
-                        <tr>
-                            <th style="width:40px;text-align:center">
-                                <input type="checkbox"
-                                       x-model="selectAllSubnets"
-                                       @change="toggleSelectAllSubnets()"
-                                       title="Select All">
-                            </th>
-                            <th>Subnet CIDR</th>
-                            <th>Group</th>
-                            <th>Comment</th>
-                            <th style="text-align:center;width:80px">Actions</th>
-                        </tr>
+                    <tr>
+                        <th style="width:40px;text-align:center">
+                            <input type="checkbox"
+                                   x-model="selectAllSubnets"
+                                   @change="toggleSelectAllSubnets()"
+                                   title="Select All">
+                        </th>
+                        <th>Subnet CIDR</th>
+                        <th>Group</th>
+                        <th>Comment</th>
+                        <th style="text-align:center;width:80px">Actions</th>
+                    </tr>
                     </thead>
                     <tbody>
-                        <template x-for="s in subnets" :key="s.id">
-                            <tr>
-                                <td style="width:40px;text-align:center">
-                                    <input type="checkbox"
-                                           :value="s.id"
-                                           x-model="selectedSubnets"
-                                           @change="updateSelectAllSubnets()">
-                                </td>
-                                <td class="monospace" x-text="s.subnet_cidr"></td>
-                                <td x-text="getGroupName(s.group_id)"></td>
-                                <td x-text="s.comment || '-'"></td>
-                                <td style="text-align:center;width:80px">
-                                    <button @click="deleteSubnet(s.id)" class="btn-icon" title="Delete">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </template>
+                    <template x-for="s in subnets" :key="s.id">
+                        <tr>
+                            <td style="width:40px;text-align:center">
+                                <input type="checkbox"
+                                       :value="s.id"
+                                       x-model="selectedSubnets"
+                                       @change="updateSelectAllSubnets()">
+                            </td>
+                            <td class="monospace" x-text="s.subnet_cidr"></td>
+                            <td x-text="getGroupName(s.group_id)"></td>
+                            <td x-text="s.comment || '-'"></td>
+                            <td style="text-align:center;width:80px">
+                                <button @click="deleteSubnet(s.id)" class="btn-icon" title="Delete">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
                     </tbody>
                 </table>
             </div>

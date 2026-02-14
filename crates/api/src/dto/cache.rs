@@ -1,4 +1,14 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Debug)]
+pub struct CacheStatsQuery {
+    #[serde(default = "default_period")]
+    pub period: String,
+}
+
+fn default_period() -> String {
+    "24h".to_string()
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CacheStatsResponse {

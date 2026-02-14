@@ -12,7 +12,11 @@ impl GetRecentQueriesUseCase {
         Self { repository }
     }
 
-    pub async fn execute(&self, limit: u32) -> Result<Vec<QueryLog>, DomainError> {
-        self.repository.get_recent(limit).await
+    pub async fn execute(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<QueryLog>, DomainError> {
+        self.repository.get_recent(limit, period_hours).await
     }
 }

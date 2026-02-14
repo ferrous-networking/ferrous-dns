@@ -1,61 +1,52 @@
 use crate::{
-    dto::{CacheMetricsResponse, CacheStatsResponse},
+    dto::{CacheMetricsResponse, CacheStatsQuery, CacheStatsResponse},
     state::AppState,
+    utils::{parse_period, validate_period},
 };
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
 use tracing::{debug, error, instrument};
 
 #[instrument(skip(state), name = "api_get_cache_stats")]
-pub async fn get_cache_stats(State(state): State<AppState>) -> Json<CacheStatsResponse> {
-    debug!("Fetching cache statistics");
+pub async fn get_cache_stats(
+    State(state): State<AppState>,
+    Query(params): Query<CacheStatsQuery>,
+) -> Json<CacheStatsResponse> {
+    debug!(period = %params.period, "Fetching cache statistics");
 
-    match state.get_queries.execute(100000).await {
-        Ok(queries) => {
-            let total_hits = queries
-                .iter()
-                .filter(|q| q.cache_hit && !q.cache_refresh)
-                .count() as u64;
-            let total_refreshes = queries.iter().filter(|q| q.cache_refresh).count() as u64;
-            let total_misses = queries
-                .iter()
-                .filter(|q| !q.cache_hit && !q.cache_refresh && !q.blocked)
-                .count() as u64;
-            let total_queries = total_hits + total_misses;
+    // Parse and validate period
+    let period_hours = parse_period(&params.period)
+        .map(validate_period)
+        .unwrap_or(24.0);
 
-            let hit_rate = if total_queries > 0 {
-                (total_hits as f64 / total_queries as f64) * 100.0
-            } else {
-                0.0
-            };
+    debug!(period_hours = period_hours, "Using period for cache stats");
 
-            let refresh_rate = if total_hits > 0 {
-                (total_refreshes as f64 / total_hits as f64) * 100.0
-            } else {
-                0.0
-            };
-
+    match state.get_cache_stats.execute(period_hours).await {
+        Ok(stats) => {
             let total_entries = state.cache.size();
 
             debug!(
                 total_entries = total_entries,
-                total_hits = total_hits,
-                total_misses = total_misses,
-                total_refreshes = total_refreshes,
-                hit_rate = hit_rate,
-                "Cache statistics calculated"
+                total_hits = stats.total_hits,
+                total_misses = stats.total_misses,
+                total_refreshes = stats.total_refreshes,
+                hit_rate = stats.hit_rate,
+                "Cache statistics retrieved"
             );
 
             Json(CacheStatsResponse {
                 total_entries,
-                total_hits,
-                total_misses,
-                total_refreshes,
-                hit_rate,
-                refresh_rate,
+                total_hits: stats.total_hits,
+                total_misses: stats.total_misses,
+                total_refreshes: stats.total_refreshes,
+                hit_rate: stats.hit_rate,
+                refresh_rate: stats.refresh_rate,
             })
         }
         Err(e) => {
-            error!(error = %e, "Failed to calculate cache stats");
+            error!(error = %e, "Failed to retrieve cache stats");
             Json(CacheStatsResponse {
                 total_entries: 0,
                 total_hits: 0,

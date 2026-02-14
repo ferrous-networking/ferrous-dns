@@ -7,12 +7,14 @@ pub mod group;
 pub mod hostname;
 pub mod local_record;
 pub mod query;
+pub mod rate;
 pub mod stats;
+pub mod timeline;
 
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 
 pub use blocklist::BlocklistResponse;
-pub use cache::{CacheMetricsResponse, CacheStatsResponse};
+pub use cache::{CacheMetricsResponse, CacheStatsQuery, CacheStatsResponse};
 pub use client::{ClientResponse, ClientStatsResponse, ClientsQuery};
 pub use client_subnet::{
     ClientSubnetResponse, CreateClientSubnetRequest, CreateManualClientRequest,
@@ -20,5 +22,7 @@ pub use client_subnet::{
 pub use config::*;
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use hostname::HostnameResponse;
-pub use query::QueryResponse;
-pub use stats::{StatsResponse, TopType, TypeDistribution};
+pub use query::{QueryParams, QueryResponse};
+pub use rate::{QueryRateResponse, RateQuery};
+pub use stats::{StatsQuery, StatsResponse, TopType, TypeDistribution};
+pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};

@@ -15,7 +15,7 @@ async fn test_get_recent_queries_empty() {
         repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
     );
 
-    let result = use_case.execute(10).await;
+    let result = use_case.execute(10, 24.0).await;
     assert!(result.is_ok());
     assert_eq!(result.unwrap().len(), 0);
 }
@@ -28,7 +28,7 @@ async fn test_get_stats_empty() {
         repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
     );
 
-    let result = use_case.execute().await;
+    let result = use_case.execute(24.0).await;
     assert!(result.is_ok());
     let stats = result.unwrap();
     assert_eq!(stats.queries_total, 0);
