@@ -119,15 +119,12 @@ docker run -d \
 
 Check out our [detailed roadmap](ROADMAP.md) to see what's planned for future releases.
 
-**Current Status:** 🚧 Alpha - Core architecture complete, features in active development
-
-**Milestones:**
-- ✅ v0.1.0 - Foundation (RFC compliant DNS, DoH/DoT, caching, modern UI)
-- 🚧 v0.2.0 - Blocklist & Whitelist (in progress)
-- 🔮 v0.3.0 - Advanced Features
-- 🎯 v1.0.0 - Production Ready (Q3 2025)
-
 ---
+
+## 🦀 Ferrous DNS
+
+![img.png](img.png)
+
 
 ## 🤝 Contributing
 
