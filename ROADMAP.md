@@ -23,12 +23,12 @@
 
 ### 🚧 v0.2.0 - Blocklist & Whitelist
                    
-- [ ] Auto detect Client ip and mac address                         
-- [ ] Client groups
+- [x] Auto detect Client ip and mac address                         
+- [x] Client groups
 - [ ] Wildcard domain blocking (`*.ads.com`)
 - [ ] Whitelist support
 - [ ] Blocklist functionality
-- [ ] blocklist url import
+- [x] blocklist url import
 - [ ] blocklist regex support
 - [ ] button allows and block in the queries.html list 
 

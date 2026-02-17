@@ -1,4 +1,5 @@
 pub mod blocklist;
+pub mod blocklist_sources;
 pub mod cache;
 pub mod client_groups;
 pub mod client_subnets;

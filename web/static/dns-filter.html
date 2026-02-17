@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferrous DNS - DNS Filter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --color-primary: #3B82F6;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+            --bg-primary: #F9FAFB;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F3F4F6;
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --text-tertiary: #9CA3AF;
+            --border-color: #E5E7EB
+        }
+
+        .dark {
+            --bg-primary: #0F172A;
+            --bg-secondary: #1E293B;
+            --bg-tertiary: #334155;
+            --text-primary: #F1F5F9;
+            --text-secondary: #CBD5E1;
+            --text-tertiary: #94A3B8;
+            --border-color: #334155
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding-left: 260px;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 24px 16px 16px
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            background: var(--color-primary);
+            color: white;
+            border-radius: 8px
+        }
+
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0
+        }
+
+        .logo-subtitle {
+            font-size: 11px;
+            color: var(--text-tertiary)
+        }
+
+        .status-box {
+            margin: 0 16px 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s infinite
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 var(--color-success) }
+            50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2) }
+        }
+
+        .nav-section { margin-bottom: 24px }
+
+        .nav-section-title {
+            padding: 8px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all .2s;
+            font-size: 14px
+        }
+
+        .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        .nav-item.active {
+            background: var(--bg-tertiary);
+            color: var(--color-primary);
+            font-weight: 600;
+            border-left: 3px solid var(--color-primary)
+        }
+
+        .nav-icon { width: 18px; height: 18px }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 16px;
+            border-top: 1px solid var(--border-color)
+        }
+
+        .theme-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all .15s;
+            font-size: 14px
+        }
+
+        .theme-btn:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color)
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s
+        }
+
+        .btn-primary { background: var(--color-primary); color: white }
+        .btn-primary:hover { background: #2563EB }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
+        .btn-secondary:hover { background: var(--border-color) }
+        .btn-danger { background: var(--color-error); color: white }
+        .btn-danger:hover { background: #DC2626 }
+
+        .btn-icon {
+            padding: 8px;
+            border-radius: 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s
+        }
+
+        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        .input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            box-sizing: border-box
+        }
+
+        .input:focus { outline: none; border-color: var(--color-primary) }
+
+        .textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: vertical;
+            min-height: 80px;
+            box-sizing: border-box
+        }
+
+        .textarea:focus { outline: none; border-color: var(--color-primary) }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s
+        }
+
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--color-success) }
+        .badge-success:hover { background: rgba(16, 185, 129, 0.2) }
+        .badge-inactive { background: rgba(107, 114, 128, 0.1); color: var(--text-secondary) }
+        .badge-inactive:hover { background: rgba(107, 114, 128, 0.2) }
+
+        .table { width: 100%; border-collapse: collapse }
+
+        .table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        .table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle
+        }
+
+        .table tbody tr:hover { background: var(--bg-tertiary) }
+
+        .form-group { margin-bottom: 16px }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary)
+        }
+
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: -1px
+        }
+
+        .tab-btn.active {
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary)
+        }
+
+        .tab-btn:hover { color: var(--text-primary) }
+
+        .group-select {
+            padding: 6px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 13px;
+            cursor: pointer
+        }
+
+        .group-select:focus { outline: none; border-color: var(--color-primary) }
+    </style>
+</head>
+<body x-data="app()" x-init="init()">
+<aside class="sidebar">
+    <div class="logo-container">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+    </div>
+    <div class="status-box">
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
+        <div class="status-item">
+            <div class="status-indicator"></div>
+            <span>Active</span>
+        </div>
+        <div class="status-item">
+            <i data-lucide="shield" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
+            <span x-text="`${sources.length} ${sources.length === 1 ? 'list' : 'lists'}`"></span>
+        </div>
+    </div>
+    <nav style="flex:1;padding:16px 0">
+        <div class="nav-section">
+            <div class="nav-section-title">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <a href="/clients.html" class="nav-item">
+                <i data-lucide="users" class="nav-icon"></i>
+                <span>Clients</span>
+            </a>
+            <a href="/groups.html" class="nav-item">
+                <i data-lucide="layers" class="nav-icon"></i>
+                <span>Groups</span>
+            </a>
+            <a href="/dns-filter.html" class="nav-item active">
+                <i data-lucide="shield" class="nav-icon"></i>
+                <span>DNS Filter</span>
+            </a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <button @click="toggleTheme()" class="theme-btn">
+            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
+            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
+            <span>Theme</span>
+        </button>
+    </div>
+</aside>
+
+<main style="padding:24px">
+    <div style="margin-bottom:24px">
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">DNS Filter</h1>
+        <p style="font-size:14px;color:var(--text-secondary)">Manage blocklist sources for DNS filtering</p>
+    </div>
+
+    <!-- Tab Bar (extensible for future tabs) -->
+    <div class="tab-bar">
+        <button class="tab-btn active">DNS Blocklist</button>
+    </div>
+
+    <!-- Add / Edit Form -->
+    <div style="margin-bottom:24px">
+        <div class="card" style="padding:24px">
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
+                x-text="editingSource ? 'Edit Blocklist Source' : 'Add Blocklist Source'">Add Blocklist Source</h2>
+
+            <form @submit.prevent="saveSource()">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                        <input type="text" class="input" x-model="form.name"
+                               placeholder="e.g. AdGuard DNS" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <input type="text" class="input" x-model="form.url"
+                               placeholder="https://example.com/blocklist.txt">
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                    <div class="form-group">
+                        <label class="form-label">Group</label>
+                        <select class="input" x-model="form.group_id">
+                            <template x-for="group in groups" :key="group.id">
+                                <option :value="group.id" x-text="group.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
+                            <input type="checkbox" x-model="form.enabled" style="width:18px;height:18px;cursor:pointer">
+                            <span class="form-label" style="margin:0">Enabled</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                    <textarea class="textarea" x-model="form.comment"
+                              placeholder="Add a description for this blocklist"></textarea>
+                </div>
+
+                <div style="display:flex;gap:12px">
+                    <button type="submit" class="btn btn-primary" x-text="editingSource ? 'Update Source' : 'Add Source'"></button>
+                    <button type="button" class="btn btn-secondary" @click="cancelForm()">Cancel</button>
+                </div>
+
+                <div x-show="formError" x-text="formError"
+                     style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Blocklist Sources Table -->
+    <div class="card">
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>Status</th>
+                <th>Comment</th>
+                <th>Group</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <template x-for="source in sources" :key="source.id">
+                <tr>
+                    <td>
+                        <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
+                    </td>
+                    <td>
+                        <template x-if="source.url">
+                            <a :href="source.url" target="_blank" rel="noopener noreferrer"
+                               style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
+                               :title="source.url" x-text="source.url"></a>
+                        </template>
+                        <template x-if="!source.url">
+                            <span style="color:var(--text-tertiary)">-</span>
+                        </template>
+                    </td>
+                    <td>
+                        <button class="badge"
+                                :class="source.enabled ? 'badge-success' : 'badge-inactive'"
+                                @click="toggleStatus(source)"
+                                :title="source.enabled ? 'Click to disable' : 'Click to enable'"
+                                x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                        </button>
+                    </td>
+                    <td>
+                        <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
+                    </td>
+                    <td>
+                        <select class="group-select"
+                                :value="source.group_id"
+                                @change="changeGroup(source, parseInt($event.target.value))">
+                            <template x-for="group in groups" :key="group.id">
+                                <option :value="group.id"
+                                        :selected="group.id === source.group_id"
+                                        x-text="group.name"></option>
+                            </template>
+                        </select>
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:4px">
+                            <button @click="editSource(source)" class="btn-icon" title="Edit">
+                                <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                            </button>
+                            <button @click="deleteSource(source)" class="btn-icon" title="Delete"
+                                    style="color:var(--color-error)">
+                                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            </template>
+            <tr x-show="sources.length === 0 && !loading">
+                <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                    <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                    <p style="margin:0">No blocklist sources found. Add one to get started.</p>
+                </td>
+            </tr>
+            <tr x-show="loading">
+                <td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                    Loading...
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<script>
+    function app() {
+        return {
+            theme: 'light',
+            sources: [],
+            groups: [],
+            loading: false,
+            editingSource: null,
+            form: {
+                name: '',
+                url: '',
+                group_id: 1,
+                comment: '',
+                enabled: true
+            },
+            formError: '',
+
+            async init() {
+                this.theme = localStorage.getItem('theme') || 'light';
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await Promise.all([this.loadSources(), this.loadGroups()]);
+                await this.$nextTick();
+                lucide.createIcons();
+            },
+
+            async loadSources() {
+                this.loading = true;
+                try {
+                    const res = await fetch('/api/blocklist-sources');
+                    if (res.ok) {
+                        this.sources = await res.json();
+                        await this.$nextTick();
+                        lucide.createIcons();
+                    }
+                } catch (e) {
+                    console.error('Failed to load blocklist sources:', e);
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            async loadGroups() {
+                try {
+                    const res = await fetch('/api/groups');
+                    if (res.ok) {
+                        this.groups = await res.json();
+                    }
+                } catch (e) {
+                    console.error('Failed to load groups:', e);
+                }
+            },
+
+            defaultGroupId() {
+                const def = this.groups.find(g => g.is_default);
+                return def ? def.id : (this.groups.length > 0 ? this.groups[0].id : 1);
+            },
+
+            editSource(source) {
+                this.editingSource = source;
+                this.form = {
+                    name: source.name,
+                    url: source.url || '',
+                    group_id: source.group_id,
+                    comment: source.comment || '',
+                    enabled: source.enabled
+                };
+                this.formError = '';
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            cancelForm() {
+                this.editingSource = null;
+                this.formError = '';
+                this.form = {
+                    name: '',
+                    url: '',
+                    group_id: this.defaultGroupId(),
+                    comment: '',
+                    enabled: true
+                };
+            },
+
+            async saveSource() {
+                this.formError = '';
+
+                const payload = {
+                    name: this.form.name.trim(),
+                    url: this.form.url.trim() || null,
+                    group_id: parseInt(this.form.group_id),
+                    comment: this.form.comment.trim() || null,
+                    enabled: this.form.enabled
+                };
+
+                try {
+                    let res;
+                    if (this.editingSource) {
+                        res = await fetch(`/api/blocklist-sources/${this.editingSource.id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        res = await fetch('/api/blocklist-sources', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    }
+
+                    if (res.ok) {
+                        await this.loadSources();
+                        this.cancelForm(); // reset form to blank "Add" state
+                    } else {
+                        const errorText = await res.text();
+                        this.formError = errorText || 'Failed to save blocklist source';
+                    }
+                } catch (e) {
+                    console.error('Error saving source:', e);
+                    this.formError = 'Network error: ' + e.message;
+                }
+            },
+
+            async toggleStatus(source) {
+                try {
+                    const res = await fetch(`/api/blocklist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({enabled: !source.enabled})
+                    });
+                    if (res.ok) {
+                        source.enabled = !source.enabled;
+                    } else {
+                        alert('Failed to toggle status');
+                    }
+                } catch (e) {
+                    console.error('Error toggling status:', e);
+                }
+            },
+
+            async changeGroup(source, newGroupId) {
+                try {
+                    const res = await fetch(`/api/blocklist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_id: newGroupId})
+                    });
+                    if (res.ok) {
+                        source.group_id = newGroupId;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to change group: ' + errorText);
+                        await this.loadSources();
+                    }
+                } catch (e) {
+                    console.error('Error changing group:', e);
+                    await this.loadSources();
+                }
+            },
+
+            async deleteSource(source) {
+                if (!confirm(`Delete blocklist source "${source.name}"? This cannot be undone.`)) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/blocklist-sources/${source.id}`, {
+                        method: 'DELETE'
+                    });
+                    if (res.ok) {
+                        await this.loadSources();
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to delete: ' + errorText);
+                    }
+                } catch (e) {
+                    console.error('Error deleting source:', e);
+                    alert('Network error: ' + e.message);
+                }
+            },
+
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('theme', this.theme);
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                setTimeout(() => lucide.createIcons(), 50);
+            }
+        }
+    }
+</script>
+</body>
+</html>

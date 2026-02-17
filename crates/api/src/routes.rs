@@ -30,6 +30,8 @@ pub fn create_api_routes(state: AppState) -> Router {
         .merge(handlers::groups::routes())
         // Client Subnets endpoints
         .merge(handlers::client_subnets::routes())
+        // Blocklist Sources endpoints
+        .merge(handlers::blocklist_sources::routes())
         // DNS Settings (Pi-hole style)
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))

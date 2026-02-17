@@ -33,6 +33,7 @@ fn create_app(state: AppState) -> Router {
         .route("/groups.html", get(groups_handler))
         .route("/local-dns-settings.html", get(local_dns_settings_handler))
         .route("/settings.html", get(settings_handler))
+        .route("/dns-filter.html", get(dns_filter_handler))
 }
 
 async fn index_handler() -> Html<&'static str> {
@@ -63,4 +64,8 @@ async fn local_dns_settings_handler() -> Html<&'static str> {
 
 async fn settings_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/settings.html"))
+}
+
+async fn dns_filter_handler() -> Html<&'static str> {
+    Html(include_str!("../../../../web/static/dns-filter.html"))
 }

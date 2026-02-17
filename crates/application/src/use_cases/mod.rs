@@ -1,4 +1,5 @@
 pub mod blocklist;
+pub mod blocklist_sources;
 pub mod cache;
 pub mod client_subnets;
 pub mod clients;
@@ -9,6 +10,10 @@ pub mod queries;
 
 // Re-export use cases
 pub use blocklist::GetBlocklistUseCase;
+pub use blocklist_sources::{
+    CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,
+    UpdateBlocklistSourceUseCase,
+};
 pub use cache::GetCacheStatsUseCase;
 pub use client_subnets::{
     CreateClientSubnetUseCase, DeleteClientSubnetUseCase, GetClientSubnetsUseCase,

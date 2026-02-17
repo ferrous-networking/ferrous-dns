@@ -3,11 +3,12 @@
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    BlocklistRepository, ClientRepository, DnsResolution, DnsResolver, QueryLogRepository,
+    BlocklistRepository, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
+    GroupRepository, QueryLogRepository,
 };
 use ferrous_dns_domain::{
-    blocklist::BlockedDomain, Client, ClientStats, DnsQuery, DomainError, QueryLog, QueryStats,
-    RecordType,
+    blocklist::BlockedDomain, BlocklistSource, Client, ClientStats, DnsQuery, DomainError, Group,
+    QueryLog, QueryStats, RecordType,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -644,11 +645,251 @@ impl ClientRepository for MockClientRepository {
     }
 }
 
-// ============================================================================
-// Helper Builders
-// ============================================================================
+#[derive(Clone)]
+pub struct MockBlocklistSourceRepository {
+    sources: Arc<RwLock<Vec<BlocklistSource>>>,
+    next_id: Arc<RwLock<i64>>,
+}
 
-/// Builder para criar DnsResolution facilmente
+impl MockBlocklistSourceRepository {
+    pub fn new() -> Self {
+        Self {
+            sources: Arc::new(RwLock::new(Vec::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+
+    pub async fn get_all_sources(&self) -> Vec<BlocklistSource> {
+        self.sources.read().await.clone()
+    }
+
+    pub async fn count(&self) -> usize {
+        self.sources.read().await.len()
+    }
+}
+
+impl Default for MockBlocklistSourceRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl BlocklistSourceRepository for MockBlocklistSourceRepository {
+    async fn create(
+        &self,
+        name: String,
+        url: Option<String>,
+        group_id: i64,
+        comment: Option<String>,
+        enabled: bool,
+    ) -> Result<BlocklistSource, DomainError> {
+        let mut sources = self.sources.write().await;
+
+        if sources.iter().any(|s| s.name.as_ref() == name.as_str()) {
+            return Err(DomainError::InvalidBlocklistSource(format!(
+                "Blocklist source '{}' already exists",
+                name
+            )));
+        }
+
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let source = BlocklistSource {
+            id: Some(id),
+            name: Arc::from(name.as_str()),
+            url: url.as_deref().map(Arc::from),
+            group_id,
+            comment: comment.as_deref().map(Arc::from),
+            enabled,
+            created_at: Some("2026-01-01 00:00:00".to_string()),
+            updated_at: Some("2026-01-01 00:00:00".to_string()),
+        };
+
+        sources.push(source.clone());
+        Ok(source)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<BlocklistSource>, DomainError> {
+        let sources = self.sources.read().await;
+        Ok(sources.iter().find(|s| s.id == Some(id)).cloned())
+    }
+
+    async fn get_all(&self) -> Result<Vec<BlocklistSource>, DomainError> {
+        Ok(self.sources.read().await.clone())
+    }
+
+    async fn update(
+        &self,
+        id: i64,
+        name: Option<String>,
+        url: Option<Option<String>>,
+        group_id: Option<i64>,
+        comment: Option<String>,
+        enabled: Option<bool>,
+    ) -> Result<BlocklistSource, DomainError> {
+        let mut sources = self.sources.write().await;
+
+        let source = sources
+            .iter_mut()
+            .find(|s| s.id == Some(id))
+            .ok_or_else(|| {
+                DomainError::BlocklistSourceNotFound(format!("Blocklist source {} not found", id))
+            })?;
+
+        if let Some(n) = name {
+            source.name = Arc::from(n.as_str());
+        }
+        if let Some(u_opt) = url {
+            source.url = u_opt.as_deref().map(Arc::from);
+        }
+        if let Some(gid) = group_id {
+            source.group_id = gid;
+        }
+        if let Some(c) = comment {
+            source.comment = Some(Arc::from(c.as_str()));
+        }
+        if let Some(e) = enabled {
+            source.enabled = e;
+        }
+
+        Ok(source.clone())
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut sources = self.sources.write().await;
+        let len_before = sources.len();
+        sources.retain(|s| s.id != Some(id));
+        if sources.len() == len_before {
+            return Err(DomainError::BlocklistSourceNotFound(format!(
+                "Blocklist source {} not found",
+                id
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct MockGroupRepository {
+    groups: Arc<RwLock<Vec<Group>>>,
+    next_id: Arc<RwLock<i64>>,
+}
+
+impl MockGroupRepository {
+    pub fn new() -> Self {
+        let protected = Group::new(
+            Some(1),
+            Arc::from("Protected"),
+            true,
+            Some(Arc::from("Default group")),
+            true,
+        );
+        Self {
+            groups: Arc::new(RwLock::new(vec![protected])),
+            next_id: Arc::new(RwLock::new(2)),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            groups: Arc::new(RwLock::new(Vec::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+}
+
+impl Default for MockGroupRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl GroupRepository for MockGroupRepository {
+    async fn create(&self, name: String, comment: Option<String>) -> Result<Group, DomainError> {
+        let mut groups = self.groups.write().await;
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let group = Group::new(
+            Some(id),
+            Arc::from(name.as_str()),
+            true,
+            comment.as_deref().map(Arc::from),
+            false,
+        );
+        groups.push(group.clone());
+        Ok(group)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<Group>, DomainError> {
+        let groups = self.groups.read().await;
+        Ok(groups.iter().find(|g| g.id == Some(id)).cloned())
+    }
+
+    async fn get_by_name(&self, name: &str) -> Result<Option<Group>, DomainError> {
+        let groups = self.groups.read().await;
+        Ok(groups.iter().find(|g| g.name.as_ref() == name).cloned())
+    }
+
+    async fn get_all(&self) -> Result<Vec<Group>, DomainError> {
+        Ok(self.groups.read().await.clone())
+    }
+
+    async fn update(
+        &self,
+        id: i64,
+        name: Option<String>,
+        enabled: Option<bool>,
+        comment: Option<String>,
+    ) -> Result<Group, DomainError> {
+        let mut groups = self.groups.write().await;
+        let group = groups
+            .iter_mut()
+            .find(|g| g.id == Some(id))
+            .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", id)))?;
+
+        if let Some(n) = name {
+            group.name = Arc::from(n.as_str());
+        }
+        if let Some(e) = enabled {
+            group.enabled = e;
+        }
+        if let Some(c) = comment {
+            group.comment = Some(Arc::from(c.as_str()));
+        }
+        Ok(group.clone())
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut groups = self.groups.write().await;
+        let len_before = groups.len();
+        groups.retain(|g| g.id != Some(id));
+        if groups.len() == len_before {
+            return Err(DomainError::GroupNotFound(format!(
+                "Group {} not found",
+                id
+            )));
+        }
+        Ok(())
+    }
+
+    async fn get_clients_in_group(
+        &self,
+        _group_id: i64,
+    ) -> Result<Vec<ferrous_dns_domain::Client>, DomainError> {
+        Ok(Vec::new())
+    }
+
+    async fn count_clients_in_group(&self, _group_id: i64) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+}
+
 pub struct DnsResolutionBuilder {
     addresses: Vec<IpAddr>,
     cache_hit: bool,

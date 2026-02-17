@@ -1,10 +1,11 @@
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
-    CreateManualClientUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase,
+    AssignClientGroupUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
+    CreateGroupUseCase, CreateManualClientUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase, GetBlocklistSourcesUseCase,
     GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
     GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, UpdateGroupUseCase,
+    GetTimelineUseCase, UpdateBlocklistSourceUseCase, UpdateGroupUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{cache::DnsCache, HickoryDnsResolver};
@@ -30,6 +31,10 @@ pub struct AppState {
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
+    pub get_blocklist_sources: Arc<GetBlocklistSourcesUseCase>,
+    pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,
+    pub update_blocklist_source: Arc<UpdateBlocklistSourceUseCase>,
+    pub delete_blocklist_source: Arc<DeleteBlocklistSourceUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
     pub config: Arc<RwLock<Config>>,
     pub cache: Arc<DnsCache>,

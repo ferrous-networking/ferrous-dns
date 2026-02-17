@@ -55,4 +55,10 @@ pub enum DomainError {
 
     #[error("Client not found: {0}")]
     ClientNotFound(String),
+
+    #[error("Blocklist source not found: {0}")]
+    BlocklistSourceNotFound(String),
+
+    #[error("Invalid blocklist source: {0}")]
+    InvalidBlocklistSource(String),
 }

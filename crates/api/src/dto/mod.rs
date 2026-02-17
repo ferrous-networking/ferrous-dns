@@ -1,4 +1,5 @@
 pub mod blocklist;
+pub mod blocklist_source;
 pub mod cache;
 pub mod client;
 pub mod client_subnet;
@@ -14,6 +15,9 @@ pub mod timeline;
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 
 pub use blocklist::BlocklistResponse;
+pub use blocklist_source::{
+    BlocklistSourceResponse, CreateBlocklistSourceRequest, UpdateBlocklistSourceRequest,
+};
 pub use cache::{CacheMetricsResponse, CacheStatsQuery, CacheStatsResponse};
 pub use client::{ClientResponse, ClientStatsResponse, ClientsQuery};
 pub use client_subnet::{

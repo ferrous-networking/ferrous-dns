@@ -1,13 +1,14 @@
 use super::Repositories;
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, CleanupOldClientsUseCase, CreateClientSubnetUseCase,
-    CreateGroupUseCase, CreateManualClientUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
-    GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase, GetQueryRateUseCase,
-    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase, ReloadConfigUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateConfigUseCase,
-    UpdateGroupUseCase,
+    AssignClientGroupUseCase, CleanupOldClientsUseCase, CreateBlocklistSourceUseCase,
+    CreateClientSubnetUseCase, CreateGroupUseCase, CreateManualClientUseCase,
+    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
+    DeleteGroupUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase,
+    GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase,
+    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
+    ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
+    UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -41,6 +42,10 @@ pub struct UseCases {
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
+    pub get_blocklist_sources: Arc<GetBlocklistSourcesUseCase>,
+    pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,
+    pub update_blocklist_source: Arc<UpdateBlocklistSourceUseCase>,
+    pub delete_blocklist_source: Arc<DeleteBlocklistSourceUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
 }
 
@@ -95,6 +100,20 @@ impl UseCases {
                 repos.group.clone(),
             )),
             delete_client: Arc::new(DeleteClientUseCase::new(repos.client.clone())),
+            get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(
+                repos.blocklist_source.clone(),
+            )),
+            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
+                repos.blocklist_source.clone(),
+                repos.group.clone(),
+            )),
+            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
+                repos.blocklist_source.clone(),
+                repos.group.clone(),
+            )),
+            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(
+                repos.blocklist_source.clone(),
+            )),
             subnet_matcher,
         }
     }

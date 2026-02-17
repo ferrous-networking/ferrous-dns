@@ -1,4 +1,5 @@
 pub mod blocklist;
+pub mod blocklist_source;
 pub mod client;
 pub mod client_subnet;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod query_filters;
 pub mod query_log;
 
 pub use blocklist::BlockedDomain;
+pub use blocklist_source::BlocklistSource;
 pub use client::{Client, ClientStats};
 pub use client_subnet::{ClientSubnet, SubnetMatcher};
 pub use config::{
