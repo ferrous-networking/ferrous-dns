@@ -42,7 +42,7 @@ clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite","migrate"], default-features = false }
 chrono = "0.4.43"
 hickory-server = "0.26.0-alpha.1"
-hickory-proto = "0.26.0-alpha.1"
+hickory-proto = { version = "0.26.0-alpha.1", features = ["dnssec-ring"] }
 toml = "0.9.8"
 dashmap = "6.1"
 futures = "0.3"

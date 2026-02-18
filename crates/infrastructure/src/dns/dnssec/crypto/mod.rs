@@ -1,7 +1,13 @@
 use super::types::{DnskeyRecord, DsRecord, RrsigRecord};
+use crate::dns::forwarding::record_type_map::RecordTypeMapper;
 use ferrous_dns_domain::DomainError;
+use hickory_proto::dnssec::rdata::sig::SigInput;
+use hickory_proto::dnssec::tbs::TBS;
+use hickory_proto::dnssec::Algorithm;
+use hickory_proto::rr::{DNSClass, Name, Record, SerialNumber};
 use ring::signature;
 use sha2::{Digest, Sha256, Sha384};
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct SignatureVerifier;
@@ -11,7 +17,8 @@ impl SignatureVerifier {
         &self,
         rrsig: &RrsigRecord,
         dnskey: &DnskeyRecord,
-        _rrset: &[String],
+        domain: &str,
+        records: &[Record],
     ) -> Result<bool, DomainError> {
         if !self.is_time_valid(rrsig) {
             return Ok(false);
@@ -26,12 +33,31 @@ impl SignatureVerifier {
             return Ok(false);
         }
 
-        let data_to_verify = self.build_rrsig_data(rrsig)?;
+        let name =
+            Name::from_str(domain).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+        let signer_name = Name::from_str(&rrsig.signer_name)
+            .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+        let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
+
+        let sig_input = SigInput {
+            type_covered: hickory_type,
+            algorithm: Algorithm::from_u8(rrsig.algorithm),
+            num_labels: rrsig.labels,
+            original_ttl: rrsig.original_ttl,
+            sig_expiration: SerialNumber::from(rrsig.signature_expiration),
+            sig_inception: SerialNumber::from(rrsig.signature_inception),
+            key_tag: rrsig.key_tag,
+            signer_name,
+        };
+
+        let tbs = TBS::from_input(&name, DNSClass::IN, &sig_input, records.iter())
+            .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+        let data_to_verify = tbs.as_ref();
 
         match rrsig.algorithm {
-            8 => self.verify_rsa_sha256(&data_to_verify, &rrsig.signature, dnskey),
-            13 => self.verify_ecdsa_p256(&data_to_verify, &rrsig.signature, dnskey),
-            15 => self.verify_ed25519(&data_to_verify, &rrsig.signature, dnskey),
+            8 => self.verify_rsa_sha256(data_to_verify, &rrsig.signature, dnskey),
+            13 => self.verify_ecdsa_p256(data_to_verify, &rrsig.signature, dnskey),
+            15 => self.verify_ed25519(data_to_verify, &rrsig.signature, dnskey),
             _ => Err(DomainError::InvalidDnsResponse(format!(
                 "Unsupported DNSSEC algorithm: {}",
                 rrsig.algorithm
@@ -196,23 +222,6 @@ impl SignatureVerifier {
         }
 
         Ok((exponent, modulus))
-    }
-
-    fn build_rrsig_data(&self, rrsig: &RrsigRecord) -> Result<Vec<u8>, DomainError> {
-        let mut data = Vec::new();
-
-        data.extend_from_slice(&rrsig.type_covered.to_u16().to_be_bytes());
-        data.push(rrsig.algorithm);
-        data.push(rrsig.labels);
-        data.extend_from_slice(&rrsig.original_ttl.to_be_bytes());
-        data.extend_from_slice(&rrsig.signature_expiration.to_be_bytes());
-        data.extend_from_slice(&rrsig.signature_inception.to_be_bytes());
-        data.extend_from_slice(&rrsig.key_tag.to_be_bytes());
-
-        let signer_wire = self.name_to_wire(&rrsig.signer_name)?;
-        data.extend_from_slice(&signer_wire);
-
-        Ok(data)
     }
 
     fn build_dnskey_data(

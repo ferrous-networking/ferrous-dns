@@ -1,6 +1,6 @@
 use ferrous_dns_infrastructure::dns::dnssec::{
     cache::{DnskeyEntry, DsEntry, ValidationEntry},
-    ValidationResult,
+    DnskeyRecord, DsRecord, SignatureVerifier, ValidationResult,
 };
 use std::thread;
 use std::time::Duration;
@@ -209,4 +209,244 @@ fn test_multiple_entries_different_expiry() {
     assert!(entries[0].is_expired());
     assert!(!entries[1].is_expired());
     assert!(!entries[2].is_expired());
+}
+
+// ============================================================================
+// DnskeyRecord tests
+// ============================================================================
+
+#[test]
+fn test_dnskey_record_construction() {
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![1, 2, 3, 4],
+    };
+
+    assert!(dnskey.is_ksk());
+    assert!(!dnskey.is_zsk());
+    assert_eq!(dnskey.algorithm_name(), "RSA/SHA-256");
+}
+
+#[test]
+fn test_dnskey_zsk_flags() {
+    let zsk = DnskeyRecord {
+        flags: 256,
+        protocol: 3,
+        algorithm: 13,
+        public_key: vec![0u8; 64],
+    };
+
+    assert!(!zsk.is_ksk());
+    assert!(zsk.is_zsk());
+    assert_eq!(zsk.algorithm_name(), "ECDSA P-256/SHA-256");
+}
+
+#[test]
+fn test_dnskey_calculate_key_tag_deterministic() {
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1, 0xAB, 0xCD, 0xEF],
+    };
+
+    // Key tag must be deterministic (same result every call)
+    let tag1 = dnskey.calculate_key_tag();
+    let tag2 = dnskey.calculate_key_tag();
+    assert_eq!(tag1, tag2);
+}
+
+// ============================================================================
+// DsRecord tests
+// ============================================================================
+
+#[test]
+fn test_ds_record_construction() {
+    let ds = DsRecord {
+        key_tag: 12345,
+        algorithm: 8,
+        digest_type: 2,
+        digest: vec![0u8; 32],
+    };
+
+    assert_eq!(ds.key_tag, 12345);
+    assert_eq!(ds.digest_type_name(), "SHA-256");
+    assert_eq!(ds.algorithm_name(), "RSA/SHA-256");
+}
+
+// ============================================================================
+// verify_ds tests
+// ============================================================================
+
+#[test]
+fn test_verify_ds_key_tag_mismatch() {
+    let verifier = SignatureVerifier;
+
+    let ds = DsRecord {
+        key_tag: 9999,
+        algorithm: 8,
+        digest_type: 2,
+        digest: vec![0u8; 32],
+    };
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1],
+    };
+
+    // Different key_tag → must return false without computing digest
+    let result = verifier.verify_ds(&ds, &dnskey, "example.com.").unwrap();
+    assert!(!result);
+}
+
+#[test]
+fn test_verify_ds_algorithm_mismatch() {
+    let verifier = SignatureVerifier;
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1],
+    };
+    let key_tag = dnskey.calculate_key_tag();
+
+    let ds = DsRecord {
+        key_tag,
+        algorithm: 13, // Different algorithm than dnskey.algorithm (8)
+        digest_type: 2,
+        digest: vec![0u8; 32],
+    };
+
+    let result = verifier.verify_ds(&ds, &dnskey, "example.com.").unwrap();
+    assert!(!result);
+}
+
+#[test]
+fn test_verify_ds_wrong_digest() {
+    let verifier = SignatureVerifier;
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1, 0xAB, 0xCD],
+    };
+    let key_tag = dnskey.calculate_key_tag();
+
+    let ds = DsRecord {
+        key_tag,
+        algorithm: 8,
+        digest_type: 2,
+        digest: vec![0u8; 32], // Wrong digest (all zeros)
+    };
+
+    let result = verifier.verify_ds(&ds, &dnskey, "example.com.").unwrap();
+    assert!(!result, "Wrong digest should not match");
+}
+
+#[test]
+fn test_verify_ds_unsupported_digest_type() {
+    let verifier = SignatureVerifier;
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1],
+    };
+    let key_tag = dnskey.calculate_key_tag();
+
+    let ds = DsRecord {
+        key_tag,
+        algorithm: 8,
+        digest_type: 99, // Unsupported
+        digest: vec![0u8; 20],
+    };
+
+    let result = verifier.verify_ds(&ds, &dnskey, "example.com.");
+    assert!(
+        result.is_err(),
+        "Unsupported digest type should return error"
+    );
+}
+
+// ============================================================================
+// verify_rrsig basic checks (time/key_tag/algorithm)
+// ============================================================================
+
+#[test]
+fn test_verify_rrsig_expired_signature() {
+    use ferrous_dns_domain::RecordType;
+    use ferrous_dns_infrastructure::dns::dnssec::RrsigRecord;
+
+    let verifier = SignatureVerifier;
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1, 0xAB],
+    };
+    let key_tag = dnskey.calculate_key_tag();
+
+    let rrsig = RrsigRecord {
+        type_covered: RecordType::A,
+        algorithm: 8,
+        labels: 2,
+        original_ttl: 300,
+        signature_expiration: 1000, // Way in the past (Unix epoch seconds)
+        signature_inception: 1,
+        key_tag,
+        signer_name: "example.com.".to_string(),
+        signature: vec![0u8; 64],
+    };
+
+    // Expired → must return Ok(false) without crypto
+    let result = verifier
+        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[])
+        .unwrap();
+    assert!(!result, "Expired RRSIG should return false");
+}
+
+#[test]
+fn test_verify_rrsig_key_tag_mismatch() {
+    use ferrous_dns_domain::RecordType;
+    use ferrous_dns_infrastructure::dns::dnssec::RrsigRecord;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let verifier = SignatureVerifier;
+
+    let dnskey = DnskeyRecord {
+        flags: 257,
+        protocol: 3,
+        algorithm: 8,
+        public_key: vec![3, 1, 0, 1, 0xAB],
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+
+    let rrsig = RrsigRecord {
+        type_covered: RecordType::A,
+        algorithm: 8,
+        labels: 2,
+        original_ttl: 300,
+        signature_expiration: now + 3600,
+        signature_inception: now - 60,
+        key_tag: 9999, // Deliberately wrong key_tag
+        signer_name: "example.com.".to_string(),
+        signature: vec![0u8; 64],
+    };
+
+    let result = verifier
+        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[])
+        .unwrap();
+    assert!(!result, "Key tag mismatch should return false");
 }
