@@ -8,6 +8,8 @@ mod dns_resolver;
 mod group_repository;
 mod hostname_resolver;
 mod query_log_repository;
+mod whitelist_repository;
+mod whitelist_source_repository;
 
 pub use arp_reader::{ArpReader, ArpTable};
 pub use blocklist_repository::BlocklistRepository;
@@ -19,5 +21,7 @@ pub use dns_resolver::{DnsResolution, DnsResolver};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use query_log_repository::{CacheStats, QueryLogRepository, TimelineBucket};
+pub use whitelist_repository::WhitelistRepository;
+pub use whitelist_source_repository::WhitelistSourceRepository;
 
 pub use ferrous_dns_domain::DnsQuery;

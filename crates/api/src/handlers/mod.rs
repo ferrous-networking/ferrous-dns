@@ -14,6 +14,8 @@ pub mod queries;
 pub mod rate;
 pub mod stats;
 pub mod timeline;
+pub mod whitelist;
+pub mod whitelist_sources;
 
 pub use blocklist::get_blocklist;
 pub use cache::{get_cache_metrics, get_cache_stats};
@@ -27,4 +29,5 @@ pub use queries::get_queries;
 pub use rate::get_query_rate;
 pub use stats::get_stats;
 pub use timeline::get_timeline;
+pub use whitelist::get_whitelist;
 pub mod upstream;

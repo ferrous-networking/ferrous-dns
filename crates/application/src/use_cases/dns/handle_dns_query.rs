@@ -1,4 +1,6 @@
-use crate::ports::{BlocklistRepository, ClientRepository, DnsResolver, QueryLogRepository};
+use crate::ports::{
+    BlocklistRepository, ClientRepository, DnsResolver, QueryLogRepository, WhitelistRepository,
+};
 use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -7,6 +9,7 @@ use std::time::Instant;
 pub struct HandleDnsQueryUseCase {
     resolver: Arc<dyn DnsResolver>,
     blocklist: Arc<dyn BlocklistRepository>,
+    whitelist: Arc<dyn WhitelistRepository>,
     query_log: Arc<dyn QueryLogRepository>,
     client_repo: Option<Arc<dyn ClientRepository>>,
 }
@@ -15,11 +18,13 @@ impl HandleDnsQueryUseCase {
     pub fn new(
         resolver: Arc<dyn DnsResolver>,
         blocklist: Arc<dyn BlocklistRepository>,
+        whitelist: Arc<dyn WhitelistRepository>,
         query_log: Arc<dyn QueryLogRepository>,
     ) -> Self {
         Self {
             resolver,
             blocklist,
+            whitelist,
             query_log,
             client_repo: None,
         }
@@ -43,7 +48,12 @@ impl HandleDnsQueryUseCase {
             });
         }
 
-        let is_blocked = self.blocklist.is_blocked(&request.domain).await?;
+        let is_whitelisted = self.whitelist.is_whitelisted(&request.domain).await?;
+        let is_blocked = if is_whitelisted {
+            false
+        } else {
+            self.blocklist.is_blocked(&request.domain).await?
+        };
 
         if is_blocked {
             let query_log = QueryLog {

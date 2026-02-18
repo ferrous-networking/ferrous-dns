@@ -11,6 +11,8 @@ pub mod errors;
 pub mod group;
 pub mod query_filters;
 pub mod query_log;
+pub mod whitelist;
+pub mod whitelist_source;
 
 pub use blocklist::BlockedDomain;
 pub use blocklist_source::BlocklistSource;
@@ -28,3 +30,5 @@ pub use errors::DomainError;
 pub use group::{Group, GroupStats};
 pub use query_filters::{FqdnFilter, PrivateIpFilter};
 pub use query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
+pub use whitelist::WhitelistedDomain;
+pub use whitelist_source::WhitelistSource;

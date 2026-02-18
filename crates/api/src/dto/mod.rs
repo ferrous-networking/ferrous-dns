@@ -11,6 +11,8 @@ pub mod query;
 pub mod rate;
 pub mod stats;
 pub mod timeline;
+pub mod whitelist;
+pub mod whitelist_source;
 
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 
@@ -30,3 +32,7 @@ pub use query::{QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};
 pub use stats::{StatsQuery, StatsResponse, TopType, TypeDistribution};
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
+pub use whitelist::WhitelistResponse;
+pub use whitelist_source::{
+    CreateWhitelistSourceRequest, UpdateWhitelistSourceRequest, WhitelistSourceResponse,
+};

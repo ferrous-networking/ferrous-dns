@@ -5,6 +5,8 @@ use ferrous_dns_infrastructure::repositories::{
     client_subnet_repository::SqliteClientSubnetRepository,
     config_repository::SqliteConfigRepository, group_repository::SqliteGroupRepository,
     query_log_repository::SqliteQueryLogRepository,
+    whitelist_repository::SqliteWhitelistRepository,
+    whitelist_source_repository::SqliteWhitelistSourceRepository,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -13,6 +15,8 @@ pub struct Repositories {
     pub query_log: Arc<SqliteQueryLogRepository>,
     pub blocklist: Arc<SqliteBlocklistRepository>,
     pub blocklist_source: Arc<SqliteBlocklistSourceRepository>,
+    pub whitelist: Arc<SqliteWhitelistRepository>,
+    pub whitelist_source: Arc<SqliteWhitelistSourceRepository>,
     pub config: Arc<SqliteConfigRepository>,
     pub client: Arc<SqliteClientRepository>,
     pub group: Arc<SqliteGroupRepository>,
@@ -22,10 +26,13 @@ pub struct Repositories {
 impl Repositories {
     pub async fn new(pool: SqlitePool) -> Result<Self, ferrous_dns_domain::DomainError> {
         let blocklist = SqliteBlocklistRepository::load(pool.clone()).await?;
+        let whitelist = SqliteWhitelistRepository::load(pool.clone()).await?;
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(pool.clone())),
             blocklist: Arc::new(blocklist),
             blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(pool.clone())),
+            whitelist: Arc::new(whitelist),
+            whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(pool.clone())),
             config: Arc::new(SqliteConfigRepository::new(pool.clone())),
             client: Arc::new(SqliteClientRepository::new(pool.clone())),
             group: Arc::new(SqliteGroupRepository::new(pool.clone())),

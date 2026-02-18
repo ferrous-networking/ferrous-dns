@@ -104,7 +104,7 @@ impl DnsCache {
             let record = entry.value();
 
             if record.is_stale_usable() {
-                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {}
+                record.refreshing.swap(true, AtomicOrdering::Acquire);
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 self.promote_to_l1(domain, record_type, record);

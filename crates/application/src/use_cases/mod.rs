@@ -7,6 +7,8 @@ pub mod config;
 pub mod dns;
 pub mod groups;
 pub mod queries;
+pub mod whitelist;
+pub mod whitelist_sources;
 
 pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
@@ -30,4 +32,9 @@ pub use groups::{
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
     GetTimelineUseCase, Granularity, QueryRate, RateUnit,
+};
+pub use whitelist::GetWhitelistUseCase;
+pub use whitelist_sources::{
+    CreateWhitelistSourceUseCase, DeleteWhitelistSourceUseCase, GetWhitelistSourcesUseCase,
+    UpdateWhitelistSourceUseCase,
 };

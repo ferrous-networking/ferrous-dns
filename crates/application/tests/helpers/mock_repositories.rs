@@ -4,11 +4,11 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     BlocklistRepository, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
-    GroupRepository, QueryLogRepository,
+    GroupRepository, QueryLogRepository, WhitelistRepository, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
     blocklist::BlockedDomain, BlocklistSource, Client, ClientStats, DnsQuery, DomainError, Group,
-    QueryLog, QueryStats, RecordType,
+    QueryLog, QueryStats, RecordType, WhitelistSource, WhitelistedDomain,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -850,6 +850,209 @@ impl GroupRepository for MockGroupRepository {
 
     async fn count_clients_in_group(&self, _group_id: i64) -> Result<u64, DomainError> {
         Ok(0)
+    }
+}
+
+#[derive(Clone)]
+pub struct MockWhitelistRepository {
+    whitelisted_domains: Arc<RwLock<Vec<WhitelistedDomain>>>,
+}
+
+impl MockWhitelistRepository {
+    pub fn new() -> Self {
+        Self {
+            whitelisted_domains: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub fn with_whitelisted_domains(domains: Vec<&str>) -> Self {
+        let whitelisted = domains
+            .into_iter()
+            .map(|d| WhitelistedDomain {
+                domain: d.to_string(),
+                id: None,
+                added_at: None,
+            })
+            .collect();
+
+        Self {
+            whitelisted_domains: Arc::new(RwLock::new(whitelisted)),
+        }
+    }
+
+    pub async fn add_whitelisted_domains(&self, domains: Vec<&str>) {
+        let mut whitelisted = self.whitelisted_domains.write().await;
+        for domain in domains {
+            whitelisted.push(WhitelistedDomain {
+                domain: domain.to_string(),
+                id: None,
+                added_at: None,
+            });
+        }
+    }
+
+    pub async fn clear(&self) {
+        self.whitelisted_domains.write().await.clear();
+    }
+
+    pub async fn count(&self) -> usize {
+        self.whitelisted_domains.read().await.len()
+    }
+}
+
+impl Default for MockWhitelistRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl WhitelistRepository for MockWhitelistRepository {
+    async fn get_all(&self) -> Result<Vec<WhitelistedDomain>, DomainError> {
+        Ok(self.whitelisted_domains.read().await.clone())
+    }
+
+    async fn add_domain(&self, domain: &WhitelistedDomain) -> Result<(), DomainError> {
+        self.whitelisted_domains.write().await.push(domain.clone());
+        Ok(())
+    }
+
+    async fn remove_domain(&self, domain: &str) -> Result<(), DomainError> {
+        let mut domains = self.whitelisted_domains.write().await;
+        domains.retain(|d| d.domain != domain);
+        Ok(())
+    }
+
+    async fn is_whitelisted(&self, domain: &str) -> Result<bool, DomainError> {
+        let domains = self.whitelisted_domains.read().await;
+        Ok(domains.iter().any(|d| d.domain == domain))
+    }
+}
+
+#[derive(Clone)]
+pub struct MockWhitelistSourceRepository {
+    sources: Arc<RwLock<Vec<WhitelistSource>>>,
+    next_id: Arc<RwLock<i64>>,
+}
+
+impl MockWhitelistSourceRepository {
+    pub fn new() -> Self {
+        Self {
+            sources: Arc::new(RwLock::new(Vec::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+
+    pub async fn get_all_sources(&self) -> Vec<WhitelistSource> {
+        self.sources.read().await.clone()
+    }
+
+    pub async fn count(&self) -> usize {
+        self.sources.read().await.len()
+    }
+}
+
+impl Default for MockWhitelistSourceRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl WhitelistSourceRepository for MockWhitelistSourceRepository {
+    async fn create(
+        &self,
+        name: String,
+        url: Option<String>,
+        group_id: i64,
+        comment: Option<String>,
+        enabled: bool,
+    ) -> Result<WhitelistSource, DomainError> {
+        let mut sources = self.sources.write().await;
+
+        if sources.iter().any(|s| s.name.as_ref() == name.as_str()) {
+            return Err(DomainError::InvalidWhitelistSource(format!(
+                "Whitelist source '{}' already exists",
+                name
+            )));
+        }
+
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let source = WhitelistSource {
+            id: Some(id),
+            name: Arc::from(name.as_str()),
+            url: url.as_deref().map(Arc::from),
+            group_id,
+            comment: comment.as_deref().map(Arc::from),
+            enabled,
+            created_at: Some("2026-01-01 00:00:00".to_string()),
+            updated_at: Some("2026-01-01 00:00:00".to_string()),
+        };
+
+        sources.push(source.clone());
+        Ok(source)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<WhitelistSource>, DomainError> {
+        let sources = self.sources.read().await;
+        Ok(sources.iter().find(|s| s.id == Some(id)).cloned())
+    }
+
+    async fn get_all(&self) -> Result<Vec<WhitelistSource>, DomainError> {
+        Ok(self.sources.read().await.clone())
+    }
+
+    async fn update(
+        &self,
+        id: i64,
+        name: Option<String>,
+        url: Option<Option<String>>,
+        group_id: Option<i64>,
+        comment: Option<String>,
+        enabled: Option<bool>,
+    ) -> Result<WhitelistSource, DomainError> {
+        let mut sources = self.sources.write().await;
+
+        let source = sources
+            .iter_mut()
+            .find(|s| s.id == Some(id))
+            .ok_or_else(|| {
+                DomainError::WhitelistSourceNotFound(format!("Whitelist source {} not found", id))
+            })?;
+
+        if let Some(n) = name {
+            source.name = Arc::from(n.as_str());
+        }
+        if let Some(u_opt) = url {
+            source.url = u_opt.as_deref().map(Arc::from);
+        }
+        if let Some(gid) = group_id {
+            source.group_id = gid;
+        }
+        if let Some(c) = comment {
+            source.comment = Some(Arc::from(c.as_str()));
+        }
+        if let Some(e) = enabled {
+            source.enabled = e;
+        }
+
+        Ok(source.clone())
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut sources = self.sources.write().await;
+        let len_before = sources.len();
+        sources.retain(|s| s.id != Some(id));
+        if sources.len() == len_before {
+            return Err(DomainError::WhitelistSourceNotFound(format!(
+                "Whitelist source {} not found",
+                id
+            )));
+        }
+        Ok(())
     }
 }
 

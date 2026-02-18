@@ -340,8 +340,12 @@
             <span>Active</span>
         </div>
         <div class="status-item">
-            <i data-lucide="shield" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
-            <span x-text="`${sources.length} ${sources.length === 1 ? 'list' : 'lists'}`"></span>
+            <i data-lucide="shield-off" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
+            <span x-text="`${sources.length} block ${sources.length === 1 ? 'list' : 'lists'}`"></span>
+        </div>
+        <div class="status-item">
+            <i data-lucide="shield-check" style="width:12px;height:12px;color:var(--color-success)"></i>
+            <span x-text="`${wSources.length} allow ${wSources.length === 1 ? 'list' : 'lists'}`"></span>
         </div>
     </div>
     <nav style="flex:1;padding:16px 0">
@@ -383,13 +387,16 @@
 <main style="padding:24px">
     <div style="margin-bottom:24px">
         <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">DNS Filter</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Manage blocklist sources for DNS filtering</p>
+        <p style="font-size:14px;color:var(--text-secondary)">Manage blocklist and allowlist sources for DNS filtering</p>
     </div>
 
     <div class="tab-bar">
-        <button class="tab-btn active">DNS Blocklist</button>
+        <button class="tab-btn" :class="activeTab === 'blocklist' ? 'active' : ''" @click="switchTab('blocklist')">DNS Blocklist</button>
+        <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')">DNS Allowlist</button>
     </div>
 
+    <!-- BLOCKLIST TAB -->
+    <div x-show="activeTab === 'blocklist'">
     <div style="margin-bottom:24px">
         <div class="card" style="padding:24px">
             <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
@@ -508,7 +515,7 @@
             </template>
             <tr x-show="sources.length === 0 && !loading">
                 <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                    <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                    <i data-lucide="shield-off" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
                     <p style="margin:0">No blocklist sources found. Add one to get started.</p>
                 </td>
             </tr>
@@ -520,12 +527,150 @@
             </tbody>
         </table>
     </div>
+    </div><!-- end blocklist tab -->
+
+    <!-- ALLOWLIST TAB -->
+    <div x-show="activeTab === 'allowlist'">
+        <div style="margin-bottom:24px">
+            <div class="card" style="padding:24px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
+                    x-text="wEditingSource ? 'Edit Allowlist Source' : 'Add Allowlist Source'">Add Allowlist Source</h2>
+
+                <form @submit.prevent="wSaveSource()">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="wForm.name"
+                                   placeholder="e.g. My Allowlist" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">URL <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                            <input type="text" class="input" x-model="wForm.url"
+                                   placeholder="https://example.com/allowlist.txt">
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Group</label>
+                            <select class="input" x-model="wForm.group_id">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id" x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
+                                <input type="checkbox" x-model="wForm.enabled" style="width:18px;height:18px;cursor:pointer">
+                                <span class="form-label" style="margin:0">Enabled</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <textarea class="textarea" x-model="wForm.comment"
+                                  placeholder="Add a description for this allowlist"></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:12px">
+                        <button type="submit" class="btn btn-primary" x-text="wEditingSource ? 'Update Source' : 'Add Source'"></button>
+                        <button type="button" class="btn btn-secondary" @click="wCancelForm()">Cancel</button>
+                    </div>
+
+                    <div x-show="wFormError" x-text="wFormError"
+                         style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                    <th>Group</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="source in wSources" :key="source.id">
+                    <tr>
+                        <td>
+                            <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
+                        </td>
+                        <td>
+                            <template x-if="source.url">
+                                <a :href="source.url" target="_blank" rel="noopener noreferrer"
+                                   style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
+                                   :title="source.url" x-text="source.url"></a>
+                            </template>
+                            <template x-if="!source.url">
+                                <span style="color:var(--text-tertiary)">-</span>
+                            </template>
+                        </td>
+                        <td>
+                            <button class="badge"
+                                    :class="source.enabled ? 'badge-success' : 'badge-inactive'"
+                                    @click="wToggleStatus(source)"
+                                    :title="source.enabled ? 'Click to disable' : 'Click to enable'"
+                                    x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                            </button>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
+                        </td>
+                        <td>
+                            <select class="group-select"
+                                    :value="source.group_id"
+                                    @change="wChangeGroup(source, parseInt($event.target.value))">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id"
+                                            :selected="group.id === source.group_id"
+                                            x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button @click="wEditSource(source)" class="btn-icon" title="Edit">
+                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="wDeleteSource(source)" class="btn-icon" title="Delete"
+                                        style="color:var(--color-error)">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="wSources.length === 0 && !wLoading">
+                    <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                        <i data-lucide="shield-check" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;color:var(--color-success)"></i>
+                        <p style="margin:0">No allowlist sources found. Add one to always allow specific domains.</p>
+                    </td>
+                </tr>
+                <tr x-show="wLoading">
+                    <td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        Loading...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div><!-- end allowlist tab -->
 </main>
 
 <script>
     function app() {
         return {
             theme: 'light',
+            activeTab: 'blocklist',
+
+            // --- BLOCKLIST ---
             sources: [],
             groups: [],
             loading: false,
@@ -539,12 +684,30 @@
             },
             formError: '',
 
+            // --- ALLOWLIST ---
+            wSources: [],
+            wLoading: false,
+            wEditingSource: null,
+            wForm: {
+                name: '',
+                url: '',
+                group_id: 1,
+                comment: '',
+                enabled: true
+            },
+            wFormError: '',
+
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                await Promise.all([this.loadSources(), this.loadGroups()]);
+                await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups()]);
                 await this.$nextTick();
                 lucide.createIcons();
+            },
+
+            switchTab(tab) {
+                this.activeTab = tab;
+                this.$nextTick(() => lucide.createIcons());
             },
 
             async loadSources() {
@@ -698,6 +861,147 @@
                     }
                 } catch (e) {
                     console.error('Error deleting source:', e);
+                    alert('Network error: ' + e.message);
+                }
+            },
+
+            // ===================== ALLOWLIST =====================
+
+            async loadWhitelistSources() {
+                this.wLoading = true;
+                try {
+                    const res = await fetch('/api/whitelist-sources');
+                    if (res.ok) {
+                        this.wSources = await res.json();
+                        await this.$nextTick();
+                        lucide.createIcons();
+                    }
+                } catch (e) {
+                    console.error('Failed to load whitelist sources:', e);
+                } finally {
+                    this.wLoading = false;
+                }
+            },
+
+            wEditSource(source) {
+                this.wEditingSource = source;
+                this.wForm = {
+                    name: source.name,
+                    url: source.url || '',
+                    group_id: source.group_id,
+                    comment: source.comment || '',
+                    enabled: source.enabled
+                };
+                this.wFormError = '';
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            wCancelForm() {
+                this.wEditingSource = null;
+                this.wFormError = '';
+                this.wForm = {
+                    name: '',
+                    url: '',
+                    group_id: this.defaultGroupId(),
+                    comment: '',
+                    enabled: true
+                };
+            },
+
+            async wSaveSource() {
+                this.wFormError = '';
+
+                const payload = {
+                    name: this.wForm.name.trim(),
+                    url: this.wForm.url.trim() || null,
+                    group_id: parseInt(this.wForm.group_id),
+                    comment: this.wForm.comment.trim() || null,
+                    enabled: this.wForm.enabled
+                };
+
+                try {
+                    let res;
+                    if (this.wEditingSource) {
+                        res = await fetch(`/api/whitelist-sources/${this.wEditingSource.id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        res = await fetch('/api/whitelist-sources', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    }
+
+                    if (res.ok) {
+                        await this.loadWhitelistSources();
+                        this.wCancelForm();
+                    } else {
+                        const errorText = await res.text();
+                        this.wFormError = errorText || 'Failed to save allowlist source';
+                    }
+                } catch (e) {
+                    console.error('Error saving allowlist source:', e);
+                    this.wFormError = 'Network error: ' + e.message;
+                }
+            },
+
+            async wToggleStatus(source) {
+                try {
+                    const res = await fetch(`/api/whitelist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({enabled: !source.enabled})
+                    });
+                    if (res.ok) {
+                        source.enabled = !source.enabled;
+                    } else {
+                        alert('Failed to toggle status');
+                    }
+                } catch (e) {
+                    console.error('Error toggling allowlist status:', e);
+                }
+            },
+
+            async wChangeGroup(source, newGroupId) {
+                try {
+                    const res = await fetch(`/api/whitelist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_id: newGroupId})
+                    });
+                    if (res.ok) {
+                        source.group_id = newGroupId;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to change group: ' + errorText);
+                        await this.loadWhitelistSources();
+                    }
+                } catch (e) {
+                    console.error('Error changing allowlist group:', e);
+                    await this.loadWhitelistSources();
+                }
+            },
+
+            async wDeleteSource(source) {
+                if (!confirm(`Delete allowlist source "${source.name}"? This cannot be undone.`)) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/whitelist-sources/${source.id}`, {
+                        method: 'DELETE'
+                    });
+                    if (res.ok) {
+                        await this.loadWhitelistSources();
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to delete: ' + errorText);
+                    }
+                } catch (e) {
+                    console.error('Error deleting allowlist source:', e);
                     alert('Network error: ' + e.message);
                 }
             },

@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS whitelist (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain   TEXT NOT NULL UNIQUE,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_whitelist_domain ON whitelist(domain);

@@ -67,4 +67,10 @@ pub enum DomainError {
 
     #[error("Invalid blocklist source: {0}")]
     InvalidBlocklistSource(String),
+
+    #[error("Whitelist source not found: {0}")]
+    WhitelistSourceNotFound(String),
+
+    #[error("Invalid whitelist source: {0}")]
+    InvalidWhitelistSource(String),
 }

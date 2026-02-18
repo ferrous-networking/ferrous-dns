@@ -186,6 +186,7 @@ impl DnsServices {
             HandleDnsQueryUseCase::new(
                 resolver.clone(),
                 repos.blocklist.clone(),
+                repos.whitelist.clone(),
                 repos.query_log.clone(),
             )
             .with_client_tracking(repos.client.clone()),
