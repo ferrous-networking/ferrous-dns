@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tracing::{debug, trace};
 
 pub struct DnssecCache {
-    
     validations: DashMap<(Arc<str>, RecordType), ValidationEntry>,
 
     dnskeys: DashMap<Arc<str>, DnskeyEntry>,
@@ -19,7 +18,6 @@ pub struct DnssecCache {
 }
 
 impl DnssecCache {
-    
     pub fn new() -> Self {
         Self {
             validations: DashMap::new(),
@@ -58,7 +56,6 @@ impl DnssecCache {
 
         if let Some(entry) = self.validations.get(&key) {
             if !entry.is_expired() {
-                
                 self.stats.record_validation_hit(domain);
 
                 trace!(
@@ -69,7 +66,6 @@ impl DnssecCache {
 
                 return Some(*entry.result());
             } else {
-                
                 drop(entry);
                 self.validations.remove(&key);
 
@@ -103,7 +99,6 @@ impl DnssecCache {
 
         if let Some(entry) = self.dnskeys.get(&key) {
             if !entry.is_expired() {
-                
                 self.stats.record_dnskey_hit(domain);
 
                 trace!(
@@ -113,7 +108,6 @@ impl DnssecCache {
 
                 return Some(entry.keys().to_vec());
             } else {
-                
                 drop(entry);
                 self.dnskeys.remove(&key);
 
@@ -146,7 +140,6 @@ impl DnssecCache {
 
         if let Some(entry) = self.ds_records.get(&key) {
             if !entry.is_expired() {
-                
                 self.stats.record_ds_hit(domain);
 
                 trace!(
@@ -156,7 +149,6 @@ impl DnssecCache {
 
                 return Some(entry.records().to_vec());
             } else {
-                
                 drop(entry);
                 self.ds_records.remove(&key);
 

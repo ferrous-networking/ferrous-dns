@@ -3,12 +3,10 @@ use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct QueryEventEmitter {
-    
     sender: Option<mpsc::UnboundedSender<QueryEvent>>,
 }
 
 impl QueryEventEmitter {
-    
     pub fn new_disabled() -> Self {
         Self { sender: None }
     }
@@ -31,7 +29,6 @@ impl QueryEventEmitter {
 }
 
 impl Default for QueryEventEmitter {
-    
     fn default() -> Self {
         Self::new_disabled()
     }

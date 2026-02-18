@@ -19,22 +19,16 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/config", post(handlers::update_config))
         .route("/config/reload", post(handlers::reload_config))
         .route("/hostname", get(handlers::get_hostname))
-        
         .route("/clients", get(handlers::get_clients))
         .route("/clients", post(handlers::create_manual_client))
         .route("/clients/stats", get(handlers::get_client_stats))
         .route("/clients/{id}", delete(handlers::delete_manual_client))
         .route("/clients/{id}/group", put(handlers::assign_client_to_group))
-        
         .merge(handlers::groups::routes())
-        
         .merge(handlers::client_subnets::routes())
-        
         .merge(handlers::blocklist_sources::routes())
-        
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))
-        
         .merge(handlers::local_records::routes())
         .with_state(state)
 }

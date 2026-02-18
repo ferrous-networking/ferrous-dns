@@ -159,7 +159,7 @@ async fn test_get_active_clients() {
     .unwrap();
 
     let active = repo.get_active(30, 100).await.unwrap();
-    assert_eq!(active.len(), 3); 
+    assert_eq!(active.len(), 3);
 }
 
 #[tokio::test]
@@ -237,7 +237,7 @@ async fn test_get_needs_mac_update() {
     .unwrap();
 
     let needs_update = repo.get_needs_mac_update(10).await.unwrap();
-    
+
     assert!(needs_update.len() >= 2);
 }
 
@@ -264,7 +264,7 @@ async fn test_get_needs_hostname_update() {
     .unwrap();
 
     let needs_update = repo.get_needs_hostname_update(10).await.unwrap();
-    
+
     assert!(needs_update.len() >= 2);
 }
 

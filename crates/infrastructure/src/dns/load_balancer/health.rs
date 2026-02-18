@@ -36,7 +36,7 @@ impl Default for ServerHealth {
 }
 
 pub struct HealthChecker {
-    health_map: Arc<DashMap<String, ServerHealth>>, 
+    health_map: Arc<DashMap<String, ServerHealth>>,
     failure_threshold: u8,
     success_threshold: u8,
 }

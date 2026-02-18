@@ -1,14 +1,13 @@
 use ferrous_dns_application::use_cases::CleanupOldQueryLogsUseCase;
 use ferrous_dns_jobs::QueryLogRetentionJob;
 use std::sync::Arc;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 mod helpers;
 use helpers::MockQueryLogRepository;
 
 #[tokio::test]
 async fn test_cleanup_removes_old_logs() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_recent_log("192.168.1.1").await;
     repo.add_old_log("192.168.1.2", 40).await;
@@ -18,8 +17,8 @@ async fn test_cleanup_removes_old_logs() {
     let result = use_case.execute(30).await;
 
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), 1); 
-    assert_eq!(repo.count().await, 1); 
+    assert_eq!(result.unwrap(), 1);
+    assert_eq!(repo.count().await, 1);
 }
 
 #[tokio::test]
@@ -36,7 +35,6 @@ async fn test_cleanup_empty_repository() {
 
 #[tokio::test]
 async fn test_cleanup_preserves_recent_logs() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_recent_log("10.0.0.1").await;
     repo.add_recent_log("10.0.0.2").await;
@@ -53,7 +51,6 @@ async fn test_cleanup_preserves_recent_logs() {
 
 #[tokio::test]
 async fn test_cleanup_all_old_logs() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_old_log("10.0.0.1", 31).await;
     repo.add_old_log("10.0.0.2", 60).await;
@@ -70,7 +67,6 @@ async fn test_cleanup_all_old_logs() {
 
 #[tokio::test]
 async fn test_cleanup_mixed_logs() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_recent_log("192.168.1.1").await;
     repo.add_recent_log("192.168.1.2").await;
@@ -89,10 +85,9 @@ async fn test_cleanup_mixed_logs() {
 
 #[tokio::test]
 async fn test_cleanup_with_boundary_unambiguous() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
-    repo.add_old_log("192.168.1.1", 25).await; 
-    repo.add_old_log("192.168.1.2", 40).await; 
+    repo.add_old_log("192.168.1.1", 25).await;
+    repo.add_old_log("192.168.1.2", 40).await;
 
     let use_case = CleanupOldQueryLogsUseCase::new(repo.clone());
 
@@ -105,7 +100,6 @@ async fn test_cleanup_with_boundary_unambiguous() {
 
 #[tokio::test]
 async fn test_cleanup_idempotent() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_old_log("10.0.0.1", 60).await;
 
@@ -121,10 +115,9 @@ async fn test_cleanup_idempotent() {
 
 #[tokio::test]
 async fn test_cleanup_configurable_retention_short() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
-    repo.add_old_log("10.0.0.1", 3).await; 
-    repo.add_old_log("10.0.0.2", 10).await; 
+    repo.add_old_log("10.0.0.1", 3).await;
+    repo.add_old_log("10.0.0.2", 10).await;
 
     let use_case = CleanupOldQueryLogsUseCase::new(repo.clone());
     let result = use_case.execute(7).await;
@@ -135,10 +128,9 @@ async fn test_cleanup_configurable_retention_short() {
 
 #[tokio::test]
 async fn test_cleanup_configurable_retention_long() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
-    repo.add_old_log("10.0.0.1", 60).await; 
-    repo.add_old_log("10.0.0.2", 100).await; 
+    repo.add_old_log("10.0.0.1", 60).await;
+    repo.add_old_log("10.0.0.2", 100).await;
 
     let use_case = CleanupOldQueryLogsUseCase::new(repo.clone());
     let result = use_case.execute(90).await;
@@ -159,7 +151,6 @@ async fn test_query_log_retention_job_starts_without_panic() {
 
 #[tokio::test]
 async fn test_query_log_retention_job_fires_and_cleans() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_old_log("192.168.1.100", 60).await;
 
@@ -178,7 +169,6 @@ async fn test_query_log_retention_job_fires_and_cleans() {
 
 #[tokio::test]
 async fn test_query_log_retention_job_preserves_recent_logs() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_recent_log("192.168.1.1").await;
     repo.add_recent_log("192.168.1.2").await;
@@ -194,10 +184,9 @@ async fn test_query_log_retention_job_preserves_recent_logs() {
 
 #[tokio::test]
 async fn test_query_log_retention_job_respects_configured_days() {
-    
     let repo = Arc::new(MockQueryLogRepository::new());
-    repo.add_old_log("10.0.0.1", 3).await; 
-    repo.add_old_log("10.0.0.2", 10).await; 
+    repo.add_old_log("10.0.0.1", 3).await;
+    repo.add_old_log("10.0.0.2", 10).await;
 
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
     let job = Arc::new(QueryLogRetentionJob::new(use_case, 7).with_interval(1));

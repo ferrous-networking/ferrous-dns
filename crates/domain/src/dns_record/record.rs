@@ -3,18 +3,16 @@ use std::net::IpAddr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsRecord {
-    
     pub domain: String,
-    
+
     pub record_type: RecordType,
-    
+
     pub address: IpAddr,
-    
+
     pub ttl: u32,
 }
 
 impl DnsRecord {
-    
     pub fn new(domain: String, record_type: RecordType, address: IpAddr, ttl: u32) -> Self {
         Self {
             domain,

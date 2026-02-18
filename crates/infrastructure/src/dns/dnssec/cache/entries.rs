@@ -9,7 +9,6 @@ pub struct ValidationEntry {
 }
 
 impl ValidationEntry {
-    
     pub fn new(result: ValidationResult, ttl_secs: u32) -> Self {
         Self {
             result,
@@ -33,7 +32,6 @@ pub struct DnskeyEntry {
 }
 
 impl DnskeyEntry {
-    
     pub fn new(keys: Vec<DnskeyRecord>, ttl_secs: u32) -> Self {
         Self {
             keys,
@@ -57,7 +55,6 @@ pub struct DsEntry {
 }
 
 impl DsEntry {
-    
     pub fn new(records: Vec<DsRecord>, ttl_secs: u32) -> Self {
         Self {
             records,

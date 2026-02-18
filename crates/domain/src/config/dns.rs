@@ -7,7 +7,6 @@ use super::upstream::UpstreamStrategy;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConditionalForward {
-    
     pub domain: String,
 
     pub server: String,
@@ -17,7 +16,6 @@ pub struct ConditionalForward {
 }
 
 impl ConditionalForward {
-    
     pub fn matches_domain(&self, query_domain: &str) -> bool {
         let query_lower = query_domain.to_lowercase();
         let rule_lower = self.domain.to_lowercase();
@@ -31,7 +29,7 @@ impl ConditionalForward {
 
     pub fn matches_record_type(&self, record_type: &str) -> bool {
         match &self.record_types {
-            None => true, 
+            None => true,
             Some(types) => types.iter().any(|t| t.eq_ignore_ascii_case(record_type)),
         }
     }

@@ -7,6 +7,5 @@ pub type ArpTable = HashMap<IpAddr, String>;
 
 #[async_trait]
 pub trait ArpReader: Send + Sync {
-    
     async fn read_arp_table(&self) -> Result<ArpTable, DomainError>;
 }

@@ -22,7 +22,6 @@ pub struct ResolverBuilder {
 }
 
 impl ResolverBuilder {
-    
     pub fn new(pool_manager: Arc<PoolManager>) -> Self {
         Self {
             pool_manager,

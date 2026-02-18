@@ -92,18 +92,18 @@ impl CachedRecord {
             .unwrap()
             .as_secs();
 
-        let expires_at = now + Duration::from_secs(365 * 24 * 60 * 60); 
+        let expires_at = now + Duration::from_secs(365 * 24 * 60 * 60);
 
         Self {
             data,
-            dnssec_status: DnssecStatus::Unknown, 
+            dnssec_status: DnssecStatus::Unknown,
             expires_at,
             inserted_at: now,
             hit_count: AtomicU64::new(0),
             last_access: AtomicU64::new(now_unix),
             ttl,
             record_type,
-            access_history: None, 
+            access_history: None,
             marked_for_deletion: AtomicBool::new(false),
             refreshing: AtomicBool::new(false),
             permanent: true,

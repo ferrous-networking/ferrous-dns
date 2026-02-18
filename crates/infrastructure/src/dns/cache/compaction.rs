@@ -3,16 +3,15 @@ use std::sync::atomic::Ordering as AtomicOrdering;
 use tracing::debug;
 
 impl DnsCache {
-    
     pub fn compact(&self) -> usize {
         let mut removed = 0;
 
         self.cache.retain(|_key, record| {
             if record.is_marked_for_deletion() || record.is_expired() {
                 removed += 1;
-                false 
+                false
             } else {
-                true 
+                true
             }
         });
 

@@ -37,7 +37,7 @@ impl ClientSubnet {
 }
 
 pub struct SubnetMatcher {
-    subnets: Vec<(ipnetwork::IpNetwork, i64)>, 
+    subnets: Vec<(ipnetwork::IpNetwork, i64)>,
 }
 
 impl SubnetMatcher {
@@ -56,7 +56,7 @@ impl SubnetMatcher {
     }
 
     pub fn find_group_for_ip(&self, ip: IpAddr) -> Option<i64> {
-        let mut best_match: Option<(u8, i64)> = None; 
+        let mut best_match: Option<(u8, i64)> = None;
 
         for (network, group_id) in &self.subnets {
             if network.contains(ip) {

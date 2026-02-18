@@ -25,7 +25,6 @@ async fn get_all_subnets(State(state): State<AppState>) -> Json<Vec<ClientSubnet
         Ok(subnets) => {
             let mut responses = Vec::new();
             for subnet in subnets {
-                
                 let group_name = state
                     .get_groups
                     .get_by_id(subnet.group_id)
@@ -56,7 +55,6 @@ async fn create_subnet(
         .await
     {
         Ok(subnet) => {
-            
             if let Err(e) = state.subnet_matcher.refresh().await {
                 error!(error = %e, "Failed to refresh subnet matcher");
             }
@@ -90,7 +88,6 @@ async fn delete_subnet(
 ) -> Result<StatusCode, (StatusCode, String)> {
     match state.delete_client_subnet.execute(id).await {
         Ok(()) => {
-            
             if let Err(e) = state.subnet_matcher.refresh().await {
                 error!(error = %e, "Failed to refresh subnet matcher");
             }

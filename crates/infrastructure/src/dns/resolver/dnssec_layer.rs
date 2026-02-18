@@ -13,7 +13,6 @@ pub struct DnssecResolver {
 }
 
 impl DnssecResolver {
-    
     pub fn new(
         inner: Arc<dyn DnsResolver>,
         pool_manager: Arc<PoolManager>,
@@ -42,7 +41,6 @@ impl DnssecResolver {
 #[async_trait]
 impl DnsResolver for DnssecResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        
         let mut resolution = self.inner.resolve(query).await?;
 
         if resolution.cache_hit {

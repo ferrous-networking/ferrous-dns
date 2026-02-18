@@ -9,7 +9,7 @@ fn test_build_a_query() {
     assert!(bytes.is_ok());
 
     let bytes = bytes.unwrap();
-    
+
     assert!(
         bytes.len() >= 12,
         "DNS message too short: {} bytes",
@@ -52,7 +52,7 @@ fn test_build_query_with_id() {
     assert!(result.is_ok());
 
     let (id, bytes) = result.unwrap();
-    
+
     let wire_id = u16::from_be_bytes([bytes[0], bytes[1]]);
     assert_eq!(wire_id, id, "Wire ID should match returned ID");
 }
@@ -86,7 +86,7 @@ fn test_query_with_id_different_domains() {
 #[test]
 fn test_invalid_domain_empty() {
     let result = MessageBuilder::build_query("", &RecordType::A);
-    
+
     let _ = result;
 }
 
@@ -111,9 +111,8 @@ fn test_long_domain() {
 
 #[test]
 fn test_single_label_domain() {
-    
     let result = MessageBuilder::build_query("localhost", &RecordType::A);
-    let _ = result; 
+    let _ = result;
 }
 
 #[test]
@@ -199,7 +198,6 @@ fn test_build_queries_from_fixtures() {
     let fixtures = fixtures::load_dns_fixtures();
 
     for (name, fixture) in fixtures.iter() {
-        
         let record_type = match fixture.record_type.as_str() {
             "A" => RecordType::A,
             "AAAA" => RecordType::AAAA,
@@ -219,7 +217,6 @@ fn test_build_queries_from_fixtures() {
 
 #[test]
 fn test_multiple_queries_sequential() {
-    
     for i in 0..10 {
         let domain = format!("test{}.com", i);
         let result = MessageBuilder::build_query(&domain, &RecordType::A);
@@ -235,7 +232,6 @@ fn test_query_with_numbers_in_domain() {
 
 #[test]
 fn test_query_with_underscores() {
-    
     let result = MessageBuilder::build_query("_service._tcp.example.com", &RecordType::SRV);
     assert!(result.is_ok());
 }

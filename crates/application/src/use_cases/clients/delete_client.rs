@@ -15,7 +15,6 @@ impl DeleteClientUseCase {
 
     #[instrument(skip(self))]
     pub async fn execute(&self, id: i64) -> Result<(), DomainError> {
-        
         let client = self
             .client_repo
             .get_by_id(id)

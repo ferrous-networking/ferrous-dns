@@ -64,7 +64,7 @@ fn test_query_stats_type_count() {
 
     assert_eq!(stats.type_count(RecordType::A), 100);
     assert_eq!(stats.type_count(RecordType::AAAA), 50);
-    assert_eq!(stats.type_count(RecordType::MX), 0); 
+    assert_eq!(stats.type_count(RecordType::MX), 0);
 }
 
 #[test]
@@ -76,9 +76,9 @@ fn test_query_stats_type_percentage() {
     let stats = QueryStats::default().with_analytics(queries_by_type);
 
     assert!((stats.type_percentage(RecordType::A) - 66.67).abs() < 0.1);
-    
+
     assert!((stats.type_percentage(RecordType::AAAA) - 33.33).abs() < 0.1);
-    
+
     assert_eq!(stats.type_percentage(RecordType::MX), 0.0);
 }
 

@@ -43,7 +43,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 })
                 .collect(),
             health_check: crate::dto::HealthCheckResponse {
-                enabled: true, 
+                enabled: true,
                 interval_seconds: config.dns.health_check.interval,
                 timeout_ms: config.dns.health_check.timeout,
                 failure_threshold: config.dns.health_check.failure_threshold,

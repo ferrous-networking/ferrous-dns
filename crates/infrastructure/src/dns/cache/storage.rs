@@ -27,7 +27,6 @@ pub struct DnsCache {
 }
 
 impl DnsCache {
-    
     pub fn new(
         max_entries: usize,
         eviction_strategy: EvictionStrategy,
@@ -105,10 +104,7 @@ impl DnsCache {
             let record = entry.value();
 
             if record.is_stale_usable() {
-                
-                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {
-                    
-                }
+                if !record.refreshing.swap(true, AtomicOrdering::Acquire) {}
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 self.promote_to_l1(domain, record_type, record);
@@ -323,7 +319,7 @@ impl DnsCache {
             EvictionStrategy::LFU => record.hit_count.load(AtomicOrdering::Relaxed) as f64,
             EvictionStrategy::HitRate => {
                 let hits = record.hit_count.load(AtomicOrdering::Relaxed);
-                let total = hits + 1; 
+                let total = hits + 1;
                 if total == 0 {
                     0.0
                 } else {

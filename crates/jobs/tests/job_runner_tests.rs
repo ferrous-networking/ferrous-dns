@@ -3,10 +3,12 @@ use ferrous_dns_application::use_cases::{
 };
 use ferrous_dns_jobs::{ClientSyncJob, JobRunner, RetentionJob};
 use std::sync::Arc;
-use tokio::time::{Duration, sleep};
+use tokio::time::{sleep, Duration};
 
 mod helpers;
-use helpers::{make_client, make_old_client, MockArpReader, MockClientRepository, MockHostnameResolver};
+use helpers::{
+    make_client, make_old_client, MockArpReader, MockClientRepository, MockHostnameResolver,
+};
 
 fn make_client_sync_job(
     repo: Arc<MockClientRepository>,
@@ -25,7 +27,6 @@ fn make_retention_job(repo: Arc<MockClientRepository>, retention_days: u32) -> R
 
 #[tokio::test]
 async fn test_job_runner_empty_starts_cleanly() {
-    
     JobRunner::new().start().await;
 }
 
@@ -70,13 +71,12 @@ async fn test_job_runner_with_all_jobs() {
 
 #[tokio::test]
 async fn test_job_runner_client_sync_fires_arp() {
-    
-    let repo = Arc::new(
-        MockClientRepository::with_clients(vec![make_client(1, "192.168.1.200")]).await,
-    );
-    let arp = Arc::new(MockArpReader::with_entries(vec![
-        ("192.168.1.200", "ca:fe:ba:be:00:01"),
-    ]));
+    let repo =
+        Arc::new(MockClientRepository::with_clients(vec![make_client(1, "192.168.1.200")]).await);
+    let arp = Arc::new(MockArpReader::with_entries(vec![(
+        "192.168.1.200",
+        "ca:fe:ba:be:00:01",
+    )]));
     let resolver = Arc::new(MockHostnameResolver::new());
 
     let sync_arp = Arc::new(SyncArpCacheUseCase::new(arp.clone(), repo.clone()));
@@ -96,11 +96,10 @@ async fn test_job_runner_client_sync_fires_arp() {
 
 #[tokio::test]
 async fn test_job_runner_retention_fires_and_cleans() {
-    
     let repo = Arc::new(
         MockClientRepository::with_clients(vec![
-            make_client(1, "192.168.1.1"),         
-            make_old_client(2, "192.168.1.2", 45), 
+            make_client(1, "192.168.1.1"),
+            make_old_client(2, "192.168.1.2", 45),
         ])
         .await,
     );
@@ -119,10 +118,8 @@ async fn test_job_runner_retention_fires_and_cleans() {
 
 #[tokio::test]
 async fn test_job_runner_both_jobs_run_concurrently() {
-    
-    let repo_sync = Arc::new(
-        MockClientRepository::with_clients(vec![make_client(1, "10.0.0.1")]).await,
-    );
+    let repo_sync =
+        Arc::new(MockClientRepository::with_clients(vec![make_client(1, "10.0.0.1")]).await);
     let repo_retention = Arc::new(
         MockClientRepository::with_clients(vec![
             make_client(1, "10.0.0.10"),
@@ -131,9 +128,10 @@ async fn test_job_runner_both_jobs_run_concurrently() {
         .await,
     );
 
-    let arp = Arc::new(MockArpReader::with_entries(vec![
-        ("10.0.0.1", "00:11:22:33:44:55"),
-    ]));
+    let arp = Arc::new(MockArpReader::with_entries(vec![(
+        "10.0.0.1",
+        "00:11:22:33:44:55",
+    )]));
     let resolver = Arc::new(MockHostnameResolver::new());
 
     let sync_arp = Arc::new(SyncArpCacheUseCase::new(arp.clone(), repo_sync.clone()));

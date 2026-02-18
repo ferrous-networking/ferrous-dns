@@ -1,6 +1,5 @@
 #[derive(Clone)]
 pub struct ResolverConfig {
-    
     pub cache_ttl: u32,
 
     pub query_timeout_ms: u64,
@@ -16,7 +15,6 @@ pub struct ResolverConfig {
 
 #[derive(Clone)]
 pub struct QueryFiltersConfig {
-    
     pub block_private_ptr: bool,
 
     pub block_non_fqdn: bool,
@@ -53,7 +51,6 @@ impl Default for QueryFiltersConfig {
 }
 
 impl ResolverConfig {
-    
     pub fn with_timeout(mut self, timeout_ms: u64) -> Self {
         self.query_timeout_ms = timeout_ms;
         self

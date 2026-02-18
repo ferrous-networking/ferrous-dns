@@ -7,12 +7,10 @@ use tokio::sync::mpsc;
 use tracing::{debug, warn};
 
 pub struct QueryEventLogger {
-    
     log_repo: Arc<dyn QueryLogRepository>,
 }
 
 impl QueryEventLogger {
-    
     pub fn new(log_repo: Arc<dyn QueryLogRepository>) -> Self {
         Self { log_repo }
     }
@@ -29,7 +27,6 @@ impl QueryEventLogger {
             let mut total_batches = 0u64;
 
             while let Some(event) = rx.recv().await {
-                
                 batch.push(event);
 
                 while let Ok(event) = rx.try_recv() {
@@ -58,7 +55,6 @@ impl QueryEventLogger {
                     tokio::spawn(async move {
                         Self::process_batch(repo, events).await;
                     });
-
                 }
             }
 
@@ -75,7 +71,6 @@ impl QueryEventLogger {
         let mut error_count = 0;
 
         for event in events {
-            
             let query_log = QueryLog {
                 id: None,
                 domain: event.domain,
@@ -91,7 +86,7 @@ impl QueryEventLogger {
                 upstream_server: Some(event.upstream_server),
                 response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),
                 timestamp: None,
-                query_source: QuerySource::Internal, 
+                query_source: QuerySource::Internal,
             };
 
             match repo.log_query(&query_log).await {

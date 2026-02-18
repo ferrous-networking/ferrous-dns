@@ -26,7 +26,6 @@ impl DnsTransport for TcpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        
         let mut stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
             .await
             .map_err(|_| {

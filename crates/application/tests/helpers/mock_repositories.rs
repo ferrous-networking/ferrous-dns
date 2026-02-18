@@ -247,12 +247,10 @@ impl QueryLogRepository for MockQueryLogRepository {
         _period_hours: u32,
         _granularity: &str,
     ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
-        
         Ok(Vec::new())
     }
 
     async fn count_queries_since(&self, _seconds_ago: i64) -> Result<u64, DomainError> {
-        
         let logs = self.logs.read().await;
         Ok(logs.len() as u64)
     }
@@ -261,7 +259,6 @@ impl QueryLogRepository for MockQueryLogRepository {
         &self,
         _period_hours: f32,
     ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
-        
         let logs = self.logs.read().await;
         let total_hits = logs
             .iter()
@@ -379,7 +376,7 @@ impl ClientRepository for MockClientRepository {
             query_count: 0,
             last_mac_update: None,
             last_hostname_update: None,
-            group_id: Some(1), 
+            group_id: Some(1),
         };
 
         clients.insert(id, client.clone());

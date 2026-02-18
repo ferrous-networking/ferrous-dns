@@ -10,7 +10,6 @@ use super::upstream::UpstreamPool;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
-    
     pub server: ServerConfig,
 
     pub dns: DnsConfig,
@@ -23,7 +22,6 @@ pub struct Config {
 }
 
 impl Config {
-    
     pub fn load(path: Option<&str>, cli_overrides: CliOverrides) -> Result<Self, ConfigError> {
         let mut config = if let Some(path) = path {
             Self::from_file(path)?

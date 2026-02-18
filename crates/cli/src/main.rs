@@ -17,7 +17,6 @@ mod server;
 #[command(version = "0.1.0")]
 #[command(about = "Ferrous DNS - High-performance DNS server with ad-blocking")]
 struct Cli {
-    
     #[arg(short = 'c', long, value_name = "FILE")]
     config: Option<String>,
 
@@ -73,10 +72,7 @@ async fn main() -> anyhow::Result<()> {
             use_cases.sync_arp.clone(),
             use_cases.sync_hostnames.clone(),
         ))
-        .with_retention(RetentionJob::new(
-            use_cases.cleanup_clients.clone(),
-            30, 
-        ))
+        .with_retention(RetentionJob::new(use_cases.cleanup_clients.clone(), 30))
         .with_query_log_retention(QueryLogRetentionJob::new(
             use_cases.cleanup_query_logs.clone(),
             config.database.queries_log_stored,

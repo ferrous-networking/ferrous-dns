@@ -213,7 +213,6 @@ impl GroupRepository for SqliteGroupRepository {
             .await
             .map_err(|e| {
                 if e.to_string().contains("FOREIGN KEY constraint failed") {
-                    
                     DomainError::GroupHasAssignedClients(0)
                 } else {
                     error!(error = %e, "Failed to delete group");

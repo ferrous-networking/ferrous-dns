@@ -14,7 +14,6 @@ pub struct PtrHostnameResolver {
 }
 
 impl PtrHostnameResolver {
-    
     pub fn new(pool_manager: Arc<PoolManager>, timeout_secs: u64) -> Self {
         Self {
             pool_manager,

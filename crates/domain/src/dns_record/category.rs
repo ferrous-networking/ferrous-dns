@@ -2,24 +2,22 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecordCategory {
-    
     Basic,
-    
+
     Advanced,
-    
+
     Dnssec,
-    
+
     Security,
-    
+
     Legacy,
-    
+
     Protocol,
-    
+
     Integrity,
 }
 
 impl RecordCategory {
-    
     pub fn as_str(&self) -> &'static str {
         match self {
             RecordCategory::Basic => "basic",

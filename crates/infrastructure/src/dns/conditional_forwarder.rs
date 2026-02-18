@@ -10,7 +10,6 @@ pub struct ConditionalForwarder {
 }
 
 impl ConditionalForwarder {
-    
     pub fn new(rules: Vec<ConditionalForward>) -> Self {
         debug!(rules_count = rules.len(), "Conditional forwarder created");
         Self {

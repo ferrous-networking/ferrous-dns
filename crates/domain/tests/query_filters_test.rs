@@ -2,7 +2,6 @@ use ferrous_dns_domain::{FqdnFilter, PrivateIpFilter};
 
 #[test]
 fn test_private_ipv4_detection() {
-    
     assert!(PrivateIpFilter::is_private_ip(&"10.0.0.1".parse().unwrap()));
     assert!(PrivateIpFilter::is_private_ip(
         &"10.255.255.254".parse().unwrap()
@@ -39,7 +38,6 @@ fn test_private_ipv4_detection() {
 
 #[test]
 fn test_private_ipv4_edge_cases() {
-    
     assert!(PrivateIpFilter::is_private_ip(&"10.0.0.0".parse().unwrap()));
     assert!(PrivateIpFilter::is_private_ip(
         &"10.255.255.255".parse().unwrap()
@@ -80,7 +78,6 @@ fn test_private_ipv4_edge_cases() {
 
 #[test]
 fn test_extract_ip_from_ptr_ipv4() {
-    
     let ip = PrivateIpFilter::extract_ip_from_ptr("1.0.168.192.in-addr.arpa");
     assert_eq!(ip, Some("192.168.0.1".parse().unwrap()));
 
@@ -97,7 +94,6 @@ fn test_extract_ip_from_ptr_ipv4() {
 
 #[test]
 fn test_is_private_ptr_query() {
-    
     assert!(PrivateIpFilter::is_private_ptr_query(
         "1.0.168.192.in-addr.arpa"
     ));
@@ -125,7 +121,6 @@ fn test_is_private_ptr_query() {
 
 #[test]
 fn test_is_fqdn() {
-    
     assert!(FqdnFilter::is_fqdn("google.com"));
     assert!(FqdnFilter::is_fqdn("sub.domain.com"));
     assert!(FqdnFilter::is_fqdn("a.b.c.d.com"));
@@ -138,14 +133,13 @@ fn test_is_fqdn() {
     assert!(!FqdnFilter::is_fqdn("desktop"));
     assert!(!FqdnFilter::is_fqdn("raspberry"));
 
-    assert!(!FqdnFilter::is_fqdn("google.com.")); 
+    assert!(!FqdnFilter::is_fqdn("google.com."));
     assert!(!FqdnFilter::is_fqdn(""));
     assert!(!FqdnFilter::is_fqdn("."));
 }
 
 #[test]
 fn test_is_local_hostname() {
-    
     assert!(FqdnFilter::is_local_hostname("nas"));
     assert!(FqdnFilter::is_local_hostname("servidor"));
     assert!(FqdnFilter::is_local_hostname("localhost"));
@@ -159,7 +153,6 @@ fn test_is_local_hostname() {
 
 #[test]
 fn test_fqdn_edge_cases() {
-    
     assert!(FqdnFilter::is_fqdn("a.b"));
     assert!(!FqdnFilter::is_fqdn("a"));
 

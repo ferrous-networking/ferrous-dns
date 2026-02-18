@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UpstreamPool {
-    
     pub name: String,
 
     pub strategy: UpstreamStrategy,
@@ -18,12 +17,11 @@ pub struct UpstreamPool {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
 pub enum UpstreamStrategy {
-    
     #[default]
     Parallel,
-    
+
     Failover,
-    
+
     Balanced,
 }
 

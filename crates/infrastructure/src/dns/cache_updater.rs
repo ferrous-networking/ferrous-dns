@@ -34,10 +34,8 @@ impl CacheUpdater {
     }
 
     pub fn start(self) {
-        
         self.start_updater();
         self.start_compaction();
-
     }
 
     fn start_updater(&self) {
@@ -56,7 +54,7 @@ impl CacheUpdater {
                 sleep(update_interval).await;
                 Self::update_cycle(&cache, &resolver, &query_log).await;
             }
-        }); 
+        });
     }
 
     fn start_compaction(&self) {
@@ -73,7 +71,7 @@ impl CacheUpdater {
                 sleep(compaction_interval).await;
                 Self::compaction_cycle(&cache);
             }
-        }); 
+        });
     }
 
     async fn update_cycle(
@@ -112,7 +110,6 @@ impl CacheUpdater {
                     debug!(domain = %domain, "No new records to refresh");
                 }
                 Err(e) => {
-                    
                     debug!(
                         domain = %domain,
                         record_type = %record_type,
@@ -185,7 +182,6 @@ impl CacheUpdater {
                 );
 
                 if let Some(log) = query_log {
-                    
                     let log_entry = QueryLog {
                         id: None,
                         domain: Arc::from(domain),
@@ -199,7 +195,7 @@ impl CacheUpdater {
                         upstream_server: resolution.upstream_server.clone(),
                         response_status: Some("NOERROR"),
                         timestamp: None,
-                        query_source: QuerySource::Internal, 
+                        query_source: QuerySource::Internal,
                     };
 
                     if let Err(e) = log.log_query(&log_entry).await {
@@ -218,10 +214,7 @@ impl CacheUpdater {
 
                 Ok(true)
             }
-            Ok(_) => {
-                
-                Ok(false)
-            }
+            Ok(_) => Ok(false),
             Err(e) => Err(e),
         }
     }

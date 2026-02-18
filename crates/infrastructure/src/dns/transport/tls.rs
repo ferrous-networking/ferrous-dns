@@ -57,7 +57,6 @@ impl TlsTransport {
         if entry.len() < MAX_IDLE_PER_HOST {
             entry.push(stream);
         }
-        
     }
 
     async fn connect_new(&self, timeout: Duration) -> Result<TlsStream<TcpStream>, DomainError> {
@@ -139,7 +138,6 @@ impl DnsTransport for TlsTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        
         if let Some(mut stream) = self.take_pooled() {
             match self
                 .send_on_stream(&mut stream, message_bytes, timeout)
@@ -154,7 +152,6 @@ impl DnsTransport for TlsTransport {
                     });
                 }
                 Err(_) => {
-                    
                     debug!(server = %self.server_addr, "Pooled TLS connection stale, reconnecting");
                 }
             }

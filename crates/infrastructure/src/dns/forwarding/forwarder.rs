@@ -25,7 +25,6 @@ impl DnsForwarder {
         record_type: &RecordType,
         timeout_ms: u64,
     ) -> Result<DnsResponse, DomainError> {
-        
         let server_addr: SocketAddr = server.parse().map_err(|e| {
             DomainError::InvalidDomainName(format!("Invalid server address: {}", e))
         })?;

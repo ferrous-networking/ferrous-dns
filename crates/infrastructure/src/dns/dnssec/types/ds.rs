@@ -34,9 +34,9 @@ impl DsRecord {
 
     fn validate_digest_length(digest_type: u8, length: usize) -> Result<(), DomainError> {
         let expected = match digest_type {
-            1 => 20, 
-            2 => 32, 
-            4 => 48, 
+            1 => 20,
+            2 => 32,
+            4 => 48,
             _ => return Ok(()),
         };
 

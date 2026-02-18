@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DatabaseConfig {
-    
     #[serde(default = "default_db_path")]
     pub path: String,
 

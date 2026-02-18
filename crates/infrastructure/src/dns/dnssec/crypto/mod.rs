@@ -7,14 +7,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct SignatureVerifier;
 
 impl SignatureVerifier {
-    
     pub fn verify_rrsig(
         &self,
         rrsig: &RrsigRecord,
         dnskey: &DnskeyRecord,
-        _rrset: &[String], 
+        _rrset: &[String],
     ) -> Result<bool, DomainError> {
-        
         if !self.is_time_valid(rrsig) {
             return Ok(false);
         }
@@ -47,7 +45,6 @@ impl SignatureVerifier {
         dnskey: &DnskeyRecord,
         owner_name: &str,
     ) -> Result<bool, DomainError> {
-        
         let key_tag = dnskey.calculate_key_tag();
         if key_tag != ds.key_tag {
             return Ok(false);
@@ -61,13 +58,11 @@ impl SignatureVerifier {
 
         let computed_digest = match ds.digest_type {
             2 => {
-                
                 let mut hasher = Sha256::new();
                 hasher.update(&dnskey_data);
                 hasher.finalize().to_vec()
             }
             4 => {
-                
                 let mut hasher = Sha384::new();
                 hasher.update(&dnskey_data);
                 hasher.finalize().to_vec()
@@ -89,7 +84,6 @@ impl SignatureVerifier {
         signature: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
-        
         if dnskey.public_key.len() < 3 {
             return Err(DomainError::InvalidDnsResponse(
                 "RSA public key too short".into(),
@@ -105,7 +99,7 @@ impl SignatureVerifier {
 
         match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, signature) {
             Ok(_) => Ok(true),
-            Err(_) => Ok(false), 
+            Err(_) => Ok(false),
         }
     }
 
@@ -115,7 +109,6 @@ impl SignatureVerifier {
         signature: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
-        
         if dnskey.public_key.len() != 64 {
             return Err(DomainError::InvalidDnsResponse(
                 "Invalid ECDSA P-256 public key length".into(),
@@ -145,7 +138,6 @@ impl SignatureVerifier {
         signature: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
-        
         if dnskey.public_key.len() != 32 {
             return Err(DomainError::InvalidDnsResponse(
                 "Invalid Ed25519 public key length".into(),
@@ -176,7 +168,6 @@ impl SignatureVerifier {
         let first_byte = key_data[0];
 
         let (exp_len, exp_start) = if first_byte == 0 {
-            
             if key_data.len() < 3 {
                 return Err(DomainError::InvalidDnsResponse(
                     "RSA key too short for long form".into(),
@@ -185,7 +176,6 @@ impl SignatureVerifier {
             let exp_len = u16::from_be_bytes([key_data[1], key_data[2]]) as usize;
             (exp_len, 3)
         } else {
-            
             (first_byte as usize, 1)
         };
 
@@ -249,7 +239,6 @@ impl SignatureVerifier {
         let name = name.trim_end_matches('.');
 
         if name.is_empty() || name == "." {
-            
             wire.push(0);
             return Ok(wire);
         }

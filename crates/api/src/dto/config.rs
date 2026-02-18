@@ -21,8 +21,8 @@ pub struct ServerConfigResponse {
 #[derive(Serialize, Debug, Clone)]
 pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
-    pub pools: Vec<UpstreamPoolResponse>,  
-    pub health_check: HealthCheckResponse, 
+    pub pools: Vec<UpstreamPoolResponse>,
+    pub health_check: HealthCheckResponse,
     pub query_timeout: u64,
     pub cache_enabled: bool,
     pub cache_ttl: u32,
@@ -115,7 +115,6 @@ pub struct BlockingConfigUpdate {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsDto {
-    
     pub never_forward_non_fqdn: bool,
 
     pub never_forward_reverse_lookups: bool,

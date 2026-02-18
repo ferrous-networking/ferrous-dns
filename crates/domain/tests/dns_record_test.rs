@@ -119,7 +119,6 @@ fn test_record_type_category() {
 
 #[test]
 fn test_record_category_consistency() {
-    
     let categories = RecordCategory::all();
     let mut strings: Vec<&str> = categories.iter().map(|c| c.as_str()).collect();
     strings.sort();

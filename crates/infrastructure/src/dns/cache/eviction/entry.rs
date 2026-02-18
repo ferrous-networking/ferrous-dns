@@ -24,7 +24,6 @@ impl PartialOrd for EvictionEntry {
 
 impl Ord for EvictionEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        
         other
             .score
             .partial_cmp(&self.score)

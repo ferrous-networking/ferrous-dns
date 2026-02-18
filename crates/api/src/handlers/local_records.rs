@@ -107,7 +107,6 @@ async fn delete_record(
     let local_domain = config.dns.local_domain.clone();
 
     if let Err(e) = save_config_to_file(&config).await {
-        
         config.dns.local_records.insert(idx, removed_record.clone());
         error!(error = %e, "Failed to save config file");
         return Err((
@@ -133,7 +132,6 @@ async fn delete_record(
 async fn save_config_to_file(
     config: &ferrous_dns_domain::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    
     let toml_str =
         toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 

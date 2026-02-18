@@ -4,7 +4,6 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecordType {
-    
     A,
     AAAA,
     CNAME,
@@ -49,7 +48,6 @@ pub enum RecordType {
 }
 
 impl RecordType {
-    
     pub fn as_str(&self) -> &'static str {
         match self {
             RecordType::A => "A",

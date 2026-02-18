@@ -3,10 +3,8 @@ use hickory_proto::rr::RecordType as HickoryRecordType;
 pub struct RecordTypeMapper;
 
 impl RecordTypeMapper {
-    
     pub fn to_hickory(record_type: &RecordType) -> HickoryRecordType {
         match record_type {
-            
             RecordType::A => HickoryRecordType::A,
             RecordType::AAAA => HickoryRecordType::AAAA,
             RecordType::CNAME => HickoryRecordType::CNAME,
@@ -26,7 +24,7 @@ impl RecordTypeMapper {
             RecordType::CAA => HickoryRecordType::CAA,
             RecordType::TLSA => HickoryRecordType::TLSA,
             RecordType::SSHFP => HickoryRecordType::SSHFP,
-            RecordType::DNAME => HickoryRecordType::ANAME, 
+            RecordType::DNAME => HickoryRecordType::ANAME,
 
             RecordType::RRSIG => HickoryRecordType::RRSIG,
             RecordType::NSEC => HickoryRecordType::NSEC,
@@ -40,7 +38,7 @@ impl RecordTypeMapper {
 
             RecordType::NULL => HickoryRecordType::NULL,
             RecordType::HINFO => HickoryRecordType::HINFO,
-            
+
             RecordType::WKS => HickoryRecordType::Unknown(11),
 
             RecordType::IPSECKEY => HickoryRecordType::Unknown(45),
@@ -54,7 +52,6 @@ impl RecordTypeMapper {
 
     pub fn from_hickory(hickory_type: HickoryRecordType) -> Option<RecordType> {
         match hickory_type {
-            
             HickoryRecordType::A => Some(RecordType::A),
             HickoryRecordType::AAAA => Some(RecordType::AAAA),
             HickoryRecordType::CNAME => Some(RecordType::CNAME),
@@ -87,7 +84,7 @@ impl RecordTypeMapper {
 
             HickoryRecordType::NULL => Some(RecordType::NULL),
             HickoryRecordType::HINFO => Some(RecordType::HINFO),
-            
+
             HickoryRecordType::Unknown(11) => Some(RecordType::WKS),
             HickoryRecordType::Unknown(45) => Some(RecordType::IPSECKEY),
             HickoryRecordType::Unknown(63) => Some(RecordType::ZONEMD),

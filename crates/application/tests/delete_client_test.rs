@@ -45,7 +45,6 @@ fn create_test_client_with_data(
 
 #[tokio::test]
 async fn test_delete_existing_client() {
-    
     let client = create_test_client_with_data(
         1,
         "192.168.1.100",
@@ -67,7 +66,6 @@ async fn test_delete_existing_client() {
 
 #[tokio::test]
 async fn test_delete_nonexistent_client() {
-    
     let repository = Arc::new(MockClientRepository::new());
     let use_case = DeleteClientUseCase::new(repository);
 
@@ -83,7 +81,6 @@ async fn test_delete_nonexistent_client() {
 
 #[tokio::test]
 async fn test_delete_client_from_multiple() {
-    
     let clients = vec![
         create_test_client_with_data(1, "192.168.1.100", None, None, 5),
         create_test_client_with_data(2, "192.168.1.101", None, None, 3),
@@ -108,7 +105,6 @@ async fn test_delete_client_from_multiple() {
 
 #[tokio::test]
 async fn test_delete_all_clients_sequentially() {
-    
     let clients = vec![
         create_test_client(1, "192.168.1.100"),
         create_test_client(2, "192.168.1.101"),
@@ -128,7 +124,6 @@ async fn test_delete_all_clients_sequentially() {
 
 #[tokio::test]
 async fn test_delete_client_idempotency() {
-    
     let client = create_test_client(1, "192.168.1.100");
 
     let repository = Arc::new(MockClientRepository::with_clients(vec![client]).await);
@@ -146,7 +141,6 @@ async fn test_delete_client_idempotency() {
 
 #[tokio::test]
 async fn test_delete_client_with_complete_data() {
-    
     let mut client = create_test_client_with_data(
         42,
         "10.0.0.50",
@@ -167,7 +161,6 @@ async fn test_delete_client_with_complete_data() {
 
 #[tokio::test]
 async fn test_delete_client_validates_existence_first() {
-    
     let repository = Arc::new(MockClientRepository::new());
     let use_case = DeleteClientUseCase::new(repository);
 
@@ -185,7 +178,6 @@ async fn test_delete_client_validates_existence_first() {
 
 #[tokio::test]
 async fn test_delete_with_zero_id() {
-    
     let repository = Arc::new(MockClientRepository::new());
     let use_case = DeleteClientUseCase::new(repository);
 
@@ -197,7 +189,6 @@ async fn test_delete_with_zero_id() {
 
 #[tokio::test]
 async fn test_delete_with_negative_id() {
-    
     let repository = Arc::new(MockClientRepository::new());
     let use_case = DeleteClientUseCase::new(repository);
 
@@ -209,7 +200,6 @@ async fn test_delete_with_negative_id() {
 
 #[tokio::test]
 async fn test_delete_with_very_large_id() {
-    
     let repository = Arc::new(MockClientRepository::new());
     let use_case = DeleteClientUseCase::new(repository);
 
@@ -221,7 +211,6 @@ async fn test_delete_with_very_large_id() {
 
 #[tokio::test]
 async fn test_concurrent_deletes_different_clients() {
-    
     let clients = vec![
         create_test_client(1, "192.168.1.1"),
         create_test_client(2, "192.168.1.2"),
@@ -249,7 +238,6 @@ async fn test_concurrent_deletes_different_clients() {
 
 #[tokio::test]
 async fn test_concurrent_delete_same_client() {
-    
     let client = create_test_client(1, "192.168.1.100");
 
     let repository = Arc::new(MockClientRepository::with_clients(vec![client]).await);

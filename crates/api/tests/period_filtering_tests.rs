@@ -5,7 +5,7 @@ fn test_parse_period_hours() {
     assert_eq!(parse_period("1h"), Some(1.0));
     assert_eq!(parse_period("24h"), Some(24.0));
     assert_eq!(parse_period("48h"), Some(48.0));
-    assert_eq!(parse_period("720h"), Some(720.0)); 
+    assert_eq!(parse_period("720h"), Some(720.0));
 }
 
 #[test]
@@ -42,14 +42,14 @@ fn test_parse_period_invalid_formats() {
     assert_eq!(parse_period("h"), None);
     assert_eq!(parse_period("m"), None);
     assert_eq!(parse_period("abc123"), None);
-    assert_eq!(parse_period("123"), None); 
+    assert_eq!(parse_period("123"), None);
 }
 
 #[test]
 fn test_parse_period_edge_cases() {
-    assert_eq!(parse_period("0h"), None); 
-    assert_eq!(parse_period("0.5h"), Some(0.5)); 
-    assert_eq!(parse_period("-1h"), None); 
+    assert_eq!(parse_period("0h"), None);
+    assert_eq!(parse_period("0.5h"), Some(0.5));
+    assert_eq!(parse_period("-1h"), None);
 }
 
 #[test]
@@ -62,7 +62,6 @@ fn test_validate_period_within_limits() {
 
 #[test]
 fn test_validate_period_caps_at_30_days() {
-    
     assert_eq!(validate_period(721.0), 720.0);
     assert_eq!(validate_period(1000.0), 720.0);
     assert_eq!(validate_period(10000.0), 720.0);
@@ -76,7 +75,6 @@ fn test_validate_period_edge_cases() {
 
 #[test]
 fn test_common_period_combinations() {
-    
     let periods = vec!["30m", "1h", "6h", "12h", "24h", "7d", "30d"];
 
     for period in periods {
@@ -90,7 +88,6 @@ fn test_common_period_combinations() {
 
 #[test]
 fn test_period_format_consistency() {
-    
     assert_eq!(parse_period("1d"), parse_period("24h"));
 
     assert_eq!(parse_period("1w"), parse_period("7d"));
@@ -100,11 +97,9 @@ fn test_period_format_consistency() {
 
 #[test]
 fn test_period_parsing_performance() {
-    
     for _ in 0..10000 {
         let _ = parse_period("24h");
         let _ = parse_period("7d");
         let _ = validate_period(168.0);
     }
-    
 }

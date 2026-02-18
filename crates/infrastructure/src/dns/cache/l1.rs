@@ -31,7 +31,6 @@ pub struct L1CacheStats {
 }
 
 impl L1CacheStats {
-    
     pub fn hit_rate(&self) -> f64 {
         if self.hits + self.misses == 0 {
             0.0
@@ -48,13 +47,10 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>
         let key = (CompactString::new(domain), *record_type);
 
         if let Some(entry) = cache.get(&key) {
-            
             if Instant::now() < entry.expires_at {
-                
                 L1_STATS.with(|stats| stats.borrow_mut().hits += 1);
                 return Some(Arc::clone(&entry.addresses));
             } else {
-                
                 cache.pop(&key);
                 L1_STATS.with(|stats| stats.borrow_mut().expirations += 1);
             }

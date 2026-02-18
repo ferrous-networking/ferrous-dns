@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LocalDnsRecord {
-    
     pub hostname: String,
 
     #[serde(default)]
@@ -17,16 +16,12 @@ pub struct LocalDnsRecord {
 }
 
 impl LocalDnsRecord {
-    
     pub fn fqdn(&self, default_domain: &Option<String>) -> String {
         if let Some(ref domain) = self.domain {
-            
             format!("{}.{}", self.hostname, domain)
         } else if let Some(ref default) = default_domain {
-            
             format!("{}.{}", self.hostname, default)
         } else {
-            
             self.hostname.clone()
         }
     }

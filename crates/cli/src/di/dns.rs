@@ -44,7 +44,7 @@ impl DnsServices {
         let pool_manager = Arc::new(PoolManager::new(
             config.dns.pools.clone(),
             health_checker.clone(),
-            emitter.clone(), 
+            emitter.clone(),
         )?);
 
         let logger = QueryEventLogger::new(repos.query_log.clone());
@@ -213,7 +213,6 @@ impl DnsServices {
         let mut error_count = 0;
 
         for record in records {
-            
             let fqdn = record.fqdn(default_domain);
 
             let ip: std::net::IpAddr = match record.ip.parse() {

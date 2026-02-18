@@ -5,13 +5,11 @@ use ferrous_dns_application::ports::{
     ArpReader, ArpTable, CacheStats, ClientRepository, HostnameResolver, QueryLogRepository,
     TimelineBucket,
 };
-use ferrous_dns_domain::{
-    Client, ClientStats, DomainError, QueryLog, QueryStats, RecordType,
-};
+use ferrous_dns_domain::{Client, ClientStats, DomainError, QueryLog, QueryStats, RecordType};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct MockArpReader {
@@ -284,7 +282,11 @@ impl ClientRepository for MockClientRepository {
         Ok(count)
     }
 
-    async fn update_hostname(&self, ip_address: IpAddr, hostname: String) -> Result<(), DomainError> {
+    async fn update_hostname(
+        &self,
+        ip_address: IpAddr,
+        hostname: String,
+    ) -> Result<(), DomainError> {
         let mut clients = self.clients.write().await;
         if let Some(c) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             c.hostname = Some(Arc::from(hostname));
@@ -394,7 +396,7 @@ impl ClientRepository for MockClientRepository {
 }
 
 pub struct MockQueryLogRepository {
-    logs: Arc<RwLock<Vec<(QueryLog, String)>>>, 
+    logs: Arc<RwLock<Vec<(QueryLog, String)>>>,
     delete_count: Arc<AtomicU64>,
 }
 
@@ -430,10 +432,7 @@ impl MockQueryLogRepository {
             timestamp: Some(timestamp.to_string()),
             query_source: Default::default(),
         };
-        self.logs
-            .write()
-            .await
-            .push((log, timestamp.to_string()));
+        self.logs.write().await.push((log, timestamp.to_string()));
     }
 
     pub async fn add_recent_log(&self, ip: &str) {
@@ -505,8 +504,7 @@ impl QueryLogRepository for MockQueryLogRepository {
     }
 
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
-        let cutoff =
-            (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
         let mut logs = self.logs.write().await;
         let before = logs.len();
         logs.retain(|(_, ts)| ts.as_str() >= cutoff.as_str());

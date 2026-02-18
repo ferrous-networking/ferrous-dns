@@ -16,8 +16,8 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
 
-    socket.set_recv_buffer_size(8 * 1024 * 1024)?; 
-    socket.set_send_buffer_size(4 * 1024 * 1024)?; 
+    socket.set_recv_buffer_size(8 * 1024 * 1024)?;
+    socket.set_send_buffer_size(4 * 1024 * 1024)?;
 
     socket.bind(&socket_addr.into())?;
     socket.set_nonblocking(true)?;

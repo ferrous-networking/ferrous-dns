@@ -99,7 +99,7 @@ async fn test_get_all_groups() {
     repo.create("Group 2".to_string(), None).await.unwrap();
 
     let groups = repo.get_all().await.unwrap();
-    assert!(groups.len() >= 3); 
+    assert!(groups.len() >= 3);
 
     assert!(groups[0].is_default);
     assert_eq!(groups[0].name.as_ref(), "Protected");

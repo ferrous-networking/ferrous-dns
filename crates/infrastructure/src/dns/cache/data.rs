@@ -48,7 +48,6 @@ impl DnssecStatus {
 
 #[derive(Clone, Debug)]
 pub enum CachedData {
-    
     IpAddresses(Arc<Vec<IpAddr>>),
 
     CanonicalName(Arc<String>),
@@ -57,12 +56,11 @@ pub enum CachedData {
 }
 
 impl CachedData {
-    
     pub fn is_empty(&self) -> bool {
         match self {
             CachedData::IpAddresses(addrs) => addrs.is_empty(),
             CachedData::CanonicalName(name) => name.is_empty(),
-            CachedData::NegativeResponse => false, 
+            CachedData::NegativeResponse => false,
         }
     }
 

@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlockingConfig {
-    
     pub enabled: bool,
 
     #[serde(default)]

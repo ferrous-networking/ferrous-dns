@@ -15,7 +15,6 @@ pub struct LocalRecordDto {
 }
 
 impl LocalRecordDto {
-    
     pub fn from_config(
         record: &ferrous_dns_domain::LocalDnsRecord,
         index: i64,
@@ -24,14 +23,14 @@ impl LocalRecordDto {
         let fqdn = record.fqdn(default_domain);
 
         Self {
-            id: index, 
+            id: index,
             hostname: record.hostname.clone(),
             domain: record.domain.clone(),
             fqdn,
             ip: record.ip.clone(),
             record_type: record.record_type.clone(),
             ttl: record.ttl.unwrap_or(300),
-            created_at: None, 
+            created_at: None,
         }
     }
 }

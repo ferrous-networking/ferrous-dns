@@ -12,9 +12,8 @@ use helpers::{DnsServerBuilder, UdpPoolBuilder};
 fn test_udp_transport_creation() {
     let addr: SocketAddr = "8.8.8.8:53".parse().unwrap();
     let transport = UdpTransport::new(addr);
-    
+
     assert_eq!(transport.protocol_name(), "UDP");
-    
 }
 
 #[test]
@@ -22,14 +21,12 @@ fn test_udp_transport_with_pool() {
     let addr = DnsServerBuilder::google_dns();
     let pool = UdpPoolBuilder::medium();
     let _transport = UdpTransport::with_pool(addr, pool);
-    
 }
 
 #[test]
 fn test_udp_transport_ipv6() {
     let addr = DnsServerBuilder::google_dns_ipv6();
     let _transport = UdpTransport::new(addr);
-    
 }
 
 #[test]
@@ -39,7 +36,6 @@ fn test_udp_transport_different_providers() {
 
     let cloudflare = UdpTransport::new(DnsServerBuilder::cloudflare_dns());
     assert_eq!(cloudflare.protocol_name(), "UDP");
-
 }
 
 #[test]
@@ -64,7 +60,7 @@ fn test_udp_pool_custom() {
 fn test_tcp_transport_creation() {
     let addr = DnsServerBuilder::google_dns();
     let transport = TcpTransport::new(addr);
-    
+
     assert_eq!(transport.protocol_name(), "TCP");
 }
 
@@ -72,23 +68,21 @@ fn test_tcp_transport_creation() {
 fn test_tcp_transport_ipv6() {
     let addr = DnsServerBuilder::cloudflare_dns_ipv6();
     let transport = TcpTransport::new(addr);
-    
+
     assert_eq!(transport.protocol_name(), "TCP");
 }
 
 #[test]
 fn test_length_prefix_encoding() {
-    
     let len: u16 = 300;
     let bytes = len.to_be_bytes();
-    assert_eq!(bytes[0], 1); 
+    assert_eq!(bytes[0], 1);
     assert_eq!(bytes[1], 44);
     assert_eq!(u16::from_be_bytes(bytes), 300);
 }
 
 #[test]
 fn test_tcp_length_prefix_various_sizes() {
-    
     let sizes = vec![0u16, 1, 255, 256, 512, 1024, 4096, u16::MAX];
 
     for size in sizes {
@@ -102,7 +96,7 @@ fn test_tcp_length_prefix_various_sizes() {
 fn test_tls_transport_creation() {
     let (addr, hostname) = DnsServerBuilder::cloudflare_tls();
     let transport = TlsTransport::new(addr, hostname.clone());
-    
+
     assert_eq!(transport.protocol_name(), "TLS");
 }
 
@@ -110,14 +104,12 @@ fn test_tls_transport_creation() {
 fn test_tls_transport_google() {
     let (addr, hostname) = DnsServerBuilder::google_tls();
     let transport = TlsTransport::new(addr, hostname.clone());
-    
+
     assert_eq!(transport.protocol_name(), "TLS");
 }
 
 #[test]
-fn test_shared_tls_config() {
-
-}
+fn test_shared_tls_config() {}
 
 #[test]
 fn test_tls_transport_different_hostnames() {
@@ -127,14 +119,13 @@ fn test_tls_transport_different_hostnames() {
     );
 
     let _google = TlsTransport::new("8.8.8.8:853".parse().unwrap(), "dns.google".to_string());
-
 }
 
 #[test]
 fn test_https_transport_creation() {
     let url = DnsServerBuilder::cloudflare_https();
     let transport = HttpsTransport::new(url.clone());
-    
+
     assert_eq!(transport.protocol_name(), "HTTPS");
 }
 
@@ -142,7 +133,7 @@ fn test_https_transport_creation() {
 fn test_https_transport_google() {
     let url = DnsServerBuilder::google_https();
     let transport = HttpsTransport::new(url.clone());
-    
+
     assert_eq!(transport.protocol_name(), "HTTPS");
 }
 
@@ -150,7 +141,6 @@ fn test_https_transport_google() {
 fn test_https_transport_custom_url() {
     let custom_url = "https://example.com/dns-query".to_string();
     let _transport = HttpsTransport::new(custom_url.clone());
-    
 }
 
 #[test]
@@ -163,7 +153,7 @@ fn test_https_transport_various_providers() {
 
     for provider in providers {
         let transport = HttpsTransport::new(provider.to_string());
-        
+
         assert_eq!(transport.protocol_name(), "HTTPS");
     }
 }

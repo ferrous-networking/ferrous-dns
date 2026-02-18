@@ -12,7 +12,6 @@ pub struct CacheStats {
 }
 
 impl CacheStats {
-    
     pub fn record_validation_hit(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.validation_hits
@@ -112,7 +111,6 @@ pub struct CacheStatsSnapshot {
 }
 
 impl CacheStatsSnapshot {
-    
     pub fn validation_hit_rate(&self) -> f64 {
         let total = self.total_validation_hits + self.total_validation_misses;
         if total == 0 {

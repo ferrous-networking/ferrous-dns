@@ -15,7 +15,6 @@ pub async fn create_manual_client(
     State(state): State<AppState>,
     Json(req): Json<CreateManualClientRequest>,
 ) -> Result<(StatusCode, Json<ClientResponse>), (StatusCode, String)> {
-    
     let ip_address = req.ip_address.parse().map_err(|_| {
         (
             StatusCode::BAD_REQUEST,

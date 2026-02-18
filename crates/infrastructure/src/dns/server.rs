@@ -69,21 +69,13 @@ impl RequestHandler for DnsServerHandler {
             Ok(addrs) => addrs,
             Err(DomainError::Blocked) => {
                 warn!(domain = %domain_ref, "Domain blocked");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::Refused,
-                )
-                .await;
+                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
+                    .await;
             }
             Err(e) => {
                 error!(error = %e, "Query resolution failed");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::ServFail,
-                )
-                .await;
+                return send_error_response(request, &mut response_handle, ResponseCode::ServFail)
+                    .await;
             }
         };
 

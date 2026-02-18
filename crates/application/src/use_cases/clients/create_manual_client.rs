@@ -29,7 +29,6 @@ impl CreateManualClientUseCase {
         hostname: Option<String>,
         mac_address: Option<String>,
     ) -> Result<Client, DomainError> {
-        
         if let Some(gid) = group_id {
             self.group_repo
                 .get_by_id(gid)

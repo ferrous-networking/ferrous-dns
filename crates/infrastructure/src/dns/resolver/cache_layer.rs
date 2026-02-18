@@ -15,7 +15,6 @@ pub struct CachedResolver {
 }
 
 impl CachedResolver {
-    
     pub fn new(inner: Arc<dyn DnsResolver>, cache: Arc<DnsCache>, cache_ttl: u32) -> Self {
         Self {
             inner,
@@ -45,40 +44,32 @@ impl CachedResolver {
 
                 match data {
                     CachedData::IpAddresses(addrs) => DnsResolution {
-                        
                         addresses: Arc::clone(&addrs),
                         cache_hit: true,
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
                     },
-                    CachedData::CanonicalName(_) => {
-                        
-                        DnsResolution {
-                            addresses: Arc::new(vec![]),
-                            cache_hit: true,
-                            dnssec_status: dnssec_str,
-                            cname: None,
-                            upstream_server: None,
-                        }
-                    }
-                    CachedData::NegativeResponse => {
-                        
-                        DnsResolution {
-                            addresses: Arc::new(vec![]),
-                            cache_hit: true,
-                            dnssec_status: dnssec_str,
-                            cname: None,
-                            upstream_server: None,
-                        }
-                    }
+                    CachedData::CanonicalName(_) => DnsResolution {
+                        addresses: Arc::new(vec![]),
+                        cache_hit: true,
+                        dnssec_status: dnssec_str,
+                        cname: None,
+                        upstream_server: None,
+                    },
+                    CachedData::NegativeResponse => DnsResolution {
+                        addresses: Arc::new(vec![]),
+                        cache_hit: true,
+                        dnssec_status: dnssec_str,
+                        cname: None,
+                        upstream_server: None,
+                    },
                 }
             })
     }
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
         if resolution.addresses.is_empty() {
-            
             let dynamic_ttl = self.negative_ttl_tracker.record_and_get_ttl(&query.domain);
             self.cache.insert(
                 &query.domain,
@@ -87,9 +78,7 @@ impl CachedResolver {
                 dynamic_ttl,
                 Some(DnssecStatus::Insecure),
             );
-
         } else {
-            
             let addresses = Arc::clone(&resolution.addresses);
             let dnssec_status = resolution
                 .dnssec_status
@@ -114,10 +103,8 @@ impl CachedResolver {
 #[async_trait]
 impl DnsResolver for CachedResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        
         if let Some(cached) = self.check_cache(query) {
             if cached.addresses.is_empty() {
-                
                 return Err(DomainError::NxDomain);
             }
             return Ok(cached);
@@ -131,12 +118,10 @@ impl DnsResolver for CachedResolver {
 
         match self.inner.resolve(query).await {
             Ok(resolution) => {
-                
                 self.store_in_cache(query, &resolution);
                 Ok(resolution)
             }
             Err(e) => {
-                
                 let dynamic_ttl = self.negative_ttl_tracker.record_and_get_ttl(&query.domain);
                 self.cache.insert(
                     &query.domain,

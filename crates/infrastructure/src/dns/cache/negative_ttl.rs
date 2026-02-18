@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub struct NegativeQueryTracker {
-    
     query_counts: Arc<DashMap<Arc<str>, QueryCounter>>,
 
     frequent_ttl: u32,
@@ -20,7 +19,6 @@ struct QueryCounter {
 }
 
 impl NegativeQueryTracker {
-    
     pub fn new() -> Self {
         Self {
             query_counts: Arc::new(DashMap::new()),
@@ -53,21 +51,18 @@ impl NegativeQueryTracker {
         let counter = entry.value();
 
         if counter.last_reset.elapsed() > Duration::from_secs(300) {
-            
             *entry.value_mut() = QueryCounter {
                 count: AtomicU64::new(1),
                 last_reset: Instant::now(),
             };
-            return self.rare_ttl; 
+            return self.rare_ttl;
         }
 
         let count = counter.count.fetch_add(1, Ordering::Relaxed) + 1;
 
         if count > self.frequency_threshold as u64 {
-            
             self.frequent_ttl
         } else {
-            
             self.rare_ttl
         }
     }
@@ -118,14 +113,13 @@ impl Default for NegativeQueryTracker {
 
 #[derive(Debug, Clone)]
 pub struct TrackerStats {
-    
     pub total_domains: usize,
-    
+
     pub frequent_domains: usize,
-    
+
     pub rare_domains: usize,
-    
+
     pub frequent_ttl: u32,
-    
+
     pub rare_ttl: u32,
 }

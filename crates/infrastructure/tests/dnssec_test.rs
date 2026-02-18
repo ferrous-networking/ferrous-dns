@@ -14,7 +14,7 @@ fn test_validation_entry_creation() {
 #[test]
 fn test_validation_entry_secure() {
     let entry = ValidationEntry::new(ValidationResult::Secure, 300);
-    
+
     assert!(!entry.is_expired());
 }
 
@@ -48,15 +48,15 @@ fn test_validation_entry_expiration() {
 #[test]
 fn test_validation_entry_short_ttl() {
     let entry = ValidationEntry::new(ValidationResult::Secure, 0);
-    
+
     thread::sleep(Duration::from_millis(100));
-    
+
     let _ = entry.is_expired();
 }
 
 #[test]
 fn test_validation_entry_long_ttl() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 86400); 
+    let entry = ValidationEntry::new(ValidationResult::Secure, 86400);
     assert!(!entry.is_expired());
 }
 
@@ -69,9 +69,7 @@ fn test_dnskey_entry_empty() {
 
 #[test]
 fn test_dnskey_entry_with_keys() {
-    let keys = vec![
-        
-    ];
+    let keys = vec![];
     let entry = DnskeyEntry::new(keys, 300);
     assert!(!entry.is_expired());
     assert_eq!(entry.keys().len(), 0);
@@ -92,7 +90,7 @@ fn test_dnskey_entry_ttl_variations() {
 
     for ttl in ttls {
         let entry = DnskeyEntry::new(vec![], ttl);
-        
+
         let _ = entry.is_expired();
     }
 }
@@ -106,9 +104,7 @@ fn test_ds_entry_empty() {
 
 #[test]
 fn test_ds_entry_with_records() {
-    let records = vec![
-        
-    ];
+    let records = vec![];
     let entry = DsEntry::new(records, 300);
     assert!(!entry.is_expired());
     assert_eq!(entry.records().len(), 0);
@@ -178,9 +174,8 @@ fn test_validation_results_all_states() {
 
 #[test]
 fn test_validation_result_edge_cases() {
-    
     let zero_ttl = ValidationEntry::new(ValidationResult::Secure, 0);
-    let _ = zero_ttl.is_expired(); 
+    let _ = zero_ttl.is_expired();
 
     let max_ttl = ValidationEntry::new(ValidationResult::Secure, u32::MAX);
     assert!(!max_ttl.is_expired());
@@ -188,7 +183,6 @@ fn test_validation_result_edge_cases() {
 
 #[test]
 fn test_cache_entry_lifecycle() {
-    
     let entry = DnskeyEntry::new(vec![], 2);
     assert!(!entry.is_expired());
 

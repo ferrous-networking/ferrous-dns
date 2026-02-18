@@ -15,7 +15,6 @@ impl DeleteClientSubnetUseCase {
 
     #[instrument(skip(self))]
     pub async fn execute(&self, id: i64) -> Result<(), DomainError> {
-        
         let subnet = self
             .subnet_repo
             .get_by_id(id)

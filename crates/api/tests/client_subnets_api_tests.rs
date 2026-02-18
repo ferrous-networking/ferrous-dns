@@ -376,7 +376,7 @@ async fn test_get_all_subnets_with_data() {
     assert!(arr[0]["id"].is_number());
     assert!(arr[0]["subnet_cidr"].is_string());
     assert!(arr[0]["group_id"].is_number());
-    assert!(arr[0]["group_name"].is_string()); 
+    assert!(arr[0]["group_name"].is_string());
 }
 
 #[tokio::test]
@@ -468,7 +468,7 @@ async fn test_create_manual_client_success() {
 
     assert!(json["id"].is_number());
     assert_eq!(json["ip_address"], "192.168.1.100");
-    
+
     assert!(json.get("group_id").is_some());
     assert!(json.get("hostname").is_some());
     assert!(json.get("mac_address").is_some());
@@ -583,5 +583,5 @@ async fn test_subnet_enriched_with_group_name() {
 
     let subnet = &json.as_array().unwrap()[0];
     assert_eq!(subnet["group_id"], 2);
-    assert_eq!(subnet["group_name"], "Office"); 
+    assert_eq!(subnet["group_name"], "Office");
 }

@@ -8,7 +8,6 @@ use helpers::MockBlocklistRepository;
 
 #[tokio::test]
 async fn test_get_empty_blocklist() {
-    
     let repository = Arc::new(MockBlocklistRepository::new());
     let use_case = GetBlocklistUseCase::new(repository);
 
@@ -207,7 +206,6 @@ async fn test_is_blocked_case_sensitive() {
     ]));
 
     assert!(repository.is_blocked("ads.com").await.unwrap());
-    
 }
 
 #[tokio::test]

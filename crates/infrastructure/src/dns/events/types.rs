@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct QueryEvent {
-    
     pub domain: Arc<str>,
 
     pub record_type: RecordType,
@@ -16,7 +15,6 @@ pub struct QueryEvent {
 }
 
 impl QueryEvent {
-    
     pub fn new(
         domain: impl Into<Arc<str>>,
         record_type: RecordType,

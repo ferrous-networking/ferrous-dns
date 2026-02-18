@@ -26,7 +26,6 @@ struct PoolWithStrategy {
 }
 
 impl PoolManager {
-    
     pub fn new(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
@@ -72,7 +71,6 @@ impl PoolManager {
     }
 
     pub fn from_config(config: &Config) -> Result<Self, DomainError> {
-        
         Self::new(
             config.dns.pools.clone(),
             None,
@@ -92,7 +90,6 @@ impl PoolManager {
         );
 
         for pool in &self.pools {
-            
             let healthy_refs: SmallVec<[&DnsProtocol; 8]> =
                 if let Some(ref checker) = self.health_checker {
                     pool.server_protocols

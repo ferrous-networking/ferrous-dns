@@ -7,7 +7,6 @@ use tokio::sync::Semaphore;
 use tracing::{debug, info};
 
 pub struct UdpSocketPool {
-    
     pools: DashMap<SocketAddr, Vec<Arc<UdpSocket>>>,
 
     max_per_server: usize,
@@ -20,7 +19,6 @@ pub struct UdpSocketPool {
 }
 
 impl UdpSocketPool {
-    
     pub fn new(max_per_server: usize, total_limit: usize) -> Self {
         info!(max_per_server, total_limit, "Initializing UDP socket pool");
 
@@ -34,7 +32,6 @@ impl UdpSocketPool {
     }
 
     pub async fn acquire(&self, server: SocketAddr) -> Result<PooledUdpSocket<'_>, std::io::Error> {
-        
         if let Some(mut entry) = self.pools.get_mut(&server) {
             if let Some(socket) = entry.pop() {
                 self.total_reused.fetch_add(1, Ordering::Relaxed);
@@ -44,7 +41,7 @@ impl UdpSocketPool {
                     socket,
                     server,
                     pool: self,
-                    _permit: None, 
+                    _permit: None,
                 });
             }
         }
@@ -77,8 +74,8 @@ impl UdpSocketPool {
 
         socket.set_reuse_address(true)?;
 
-        socket.set_recv_buffer_size(256 * 1024)?; 
-        socket.set_send_buffer_size(128 * 1024)?; 
+        socket.set_recv_buffer_size(256 * 1024)?;
+        socket.set_send_buffer_size(128 * 1024)?;
 
         let bind_addr: SocketAddr = if server.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
@@ -105,7 +102,6 @@ impl UdpSocketPool {
             );
         } else {
             debug!(server = %server, "Pool full, dropping socket");
-            
         }
     }
 
@@ -145,7 +141,6 @@ pub struct PooledUdpSocket<'a> {
 }
 
 impl<'a> PooledUdpSocket<'a> {
-    
     pub fn socket(&self) -> &UdpSocket {
         &self.socket
     }
@@ -157,25 +152,22 @@ impl<'a> PooledUdpSocket<'a> {
 
 impl<'a> Drop for PooledUdpSocket<'a> {
     fn drop(&mut self) {
-        
         self.pool.release(self.server, self.socket.clone());
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct PoolStats {
-    
     pub total_created: u64,
-    
+
     pub total_reused: u64,
-    
+
     pub total_pooled: usize,
-    
+
     pub servers: usize,
 }
 
 impl PoolStats {
-    
     pub fn reuse_rate(&self) -> f64 {
         if self.total_created == 0 {
             0.0

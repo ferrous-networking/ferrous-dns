@@ -10,7 +10,6 @@ pub struct QueryFilters {
 }
 
 impl QueryFilters {
-    
     pub fn new(
         block_private_ptr: bool,
         block_non_fqdn: bool,
@@ -24,7 +23,6 @@ impl QueryFilters {
     }
 
     pub fn apply(&self, mut query: DnsQuery) -> Result<DnsQuery, DomainError> {
-        
         if self.block_private_ptr && PrivateIpFilter::is_private_ptr_query(&query.domain) {
             return Err(DomainError::FilteredQuery(format!(
                 "Private PTR query blocked: {}",
@@ -40,7 +38,6 @@ impl QueryFilters {
                 )));
             }
         } else if let Some(ref domain) = self.local_domain {
-            
             if !query.domain.contains('.') {
                 debug!(
                     original = %query.domain,

@@ -14,17 +14,17 @@ const MAX_BATCH_SIZE: usize = 500;
 const FLUSH_INTERVAL_MS: u64 = 100;
 
 struct QueryLogEntry {
-    domain: CompactString,      
-    record_type: CompactString, 
-    client_ip: Arc<str>,        
+    domain: CompactString,
+    record_type: CompactString,
+    client_ip: Arc<str>,
     blocked: bool,
     response_time_ms: Option<i64>,
     cache_hit: bool,
     cache_refresh: bool,
     dnssec_status: Option<&'static str>,
-    upstream_server: Option<Arc<str>>, 
+    upstream_server: Option<Arc<str>>,
     response_status: Option<&'static str>,
-    query_source: CompactString, 
+    query_source: CompactString,
 }
 
 impl QueryLogEntry {
@@ -172,7 +172,6 @@ impl SqliteQueryLogRepository {
                 Err(e) => {
                     errors += 1;
                     if errors <= 3 {
-                        
                         warn!(error = %e, domain = %entry.domain, "Failed to insert query log entry");
                     }
                 }
@@ -392,16 +391,13 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
         let time_bucket_expr = match granularity {
             "minute" => "strftime('%Y-%m-%d %H:%M:00', created_at)".to_string(),
-            "quarter_hour" => {
-                
-                "strftime('%Y-%m-%d %H:', created_at) || \
+            "quarter_hour" => "strftime('%Y-%m-%d %H:', created_at) || \
                  printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
                  ':00'"
-                    .to_string()
-            }
+                .to_string(),
             "hour" => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(),
             "day" => "strftime('%Y-%m-%d 00:00:00', created_at)".to_string(),
-            _ => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(), 
+            _ => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(),
         };
 
         let sql = format!(

@@ -62,7 +62,6 @@ impl ParallelStrategy {
             while let Some(join_result) = futs.next().await {
                 match join_result {
                     Ok(Ok(r)) => {
-                        
                         let canceled = abort_handles.len().saturating_sub(1);
 
                         for handle in &abort_handles {

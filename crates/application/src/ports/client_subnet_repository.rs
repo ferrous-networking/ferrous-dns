@@ -3,7 +3,6 @@ use ferrous_dns_domain::{ClientSubnet, DomainError};
 
 #[async_trait]
 pub trait ClientSubnetRepository: Send + Sync {
-    
     async fn create(
         &self,
         subnet_cidr: String,

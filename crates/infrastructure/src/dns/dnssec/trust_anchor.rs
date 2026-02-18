@@ -3,7 +3,6 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 
 #[derive(Debug, Clone)]
 pub struct TrustAnchor {
-    
     pub domain: String,
 
     pub dnskey: DnskeyRecord,
@@ -12,7 +11,6 @@ pub struct TrustAnchor {
 }
 
 impl TrustAnchor {
-    
     pub fn new(domain: String, dnskey: DnskeyRecord, description: String) -> Self {
         Self {
             domain,
@@ -22,7 +20,6 @@ impl TrustAnchor {
     }
 
     pub fn matches(&self, dnskey: &DnskeyRecord) -> bool {
-        
         if self.dnskey.calculate_key_tag() != dnskey.calculate_key_tag() {
             return false;
         }
@@ -41,7 +38,6 @@ pub struct TrustAnchorStore {
 }
 
 impl TrustAnchorStore {
-    
     pub fn new() -> Self {
         Self {
             anchors: Self::default_root_anchors(),
@@ -55,18 +51,14 @@ impl TrustAnchorStore {
     }
 
     pub fn default_root_anchors() -> Vec<TrustAnchor> {
-        vec![
-            
-            TrustAnchor::new(
-                ".".to_string(),
-                Self::root_ksk_20326(),
-                "Root KSK-2017 (20326)".to_string(),
-            ),
-        ]
+        vec![TrustAnchor::new(
+            ".".to_string(),
+            Self::root_ksk_20326(),
+            "Root KSK-2017 (20326)".to_string(),
+        )]
     }
 
     fn root_ksk_20326() -> DnskeyRecord {
-        
         let public_key_b64 = concat!(
             "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3",
             "+/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv",
@@ -82,9 +74,9 @@ impl TrustAnchorStore {
             .expect("Failed to decode root KSK public key");
 
         DnskeyRecord {
-            flags: 257, 
+            flags: 257,
             protocol: 3,
-            algorithm: 8, 
+            algorithm: 8,
             public_key,
         }
     }
@@ -94,7 +86,6 @@ impl TrustAnchorStore {
     }
 
     pub fn is_trusted(&self, dnskey: &DnskeyRecord, domain: &str) -> bool {
-        
         let normalized_domain = if domain.ends_with('.') {
             domain.to_string()
         } else if domain.is_empty() || domain == "." {
@@ -126,7 +117,6 @@ impl TrustAnchorStore {
 
     #[allow(dead_code)]
     pub fn load_from_xml(&mut self, _xml_content: &str) -> Result<(), String> {
-        
         Err("XML trust anchor loading not yet implemented".to_string())
     }
 }

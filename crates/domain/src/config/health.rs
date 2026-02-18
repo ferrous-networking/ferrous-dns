@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HealthCheckConfig {
-    
     #[serde(default = "default_interval")]
     pub interval: u64,
 

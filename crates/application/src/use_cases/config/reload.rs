@@ -13,7 +13,6 @@ impl ReloadConfigUseCase {
     }
 
     pub async fn execute(&self, config_path: &str) -> Result<Config, DomainError> {
-        
         let new_config = Config::load(Some(config_path), Default::default())
             .map_err(|e| DomainError::InvalidDomainName(format!("Config load error: {}", e)))?;
 

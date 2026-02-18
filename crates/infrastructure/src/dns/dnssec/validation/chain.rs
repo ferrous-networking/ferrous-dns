@@ -10,7 +10,6 @@ use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationResult {
-    
     Secure,
 
     Insecure,
@@ -35,14 +34,13 @@ pub struct ChainVerifier {
     pool_manager: Arc<PoolManager>,
     trust_store: TrustAnchorStore,
     crypto_verifier: SignatureVerifier,
-    
+
     validated_keys: HashMap<String, Vec<DnskeyRecord>>,
-    
+
     dnssec_cache: Arc<DnssecCache>,
 }
 
 impl ChainVerifier {
-    
     pub fn new(
         pool_manager: Arc<PoolManager>,
         trust_store: TrustAnchorStore,
@@ -129,11 +127,9 @@ impl ChainVerifier {
         _parent_domain: &str,
         child_domain: &str,
     ) -> Result<(), DomainError> {
-        
         let ds_records = self.query_ds(child_domain).await?;
 
         if ds_records.is_empty() {
-            
             debug!(domain = %child_domain, "No DS records found (insecure)");
             return Err(DomainError::InvalidDnsResponse(
                 "No DS records found".into(),
@@ -153,7 +149,6 @@ impl ChainVerifier {
 
         for ds in &ds_records {
             for dnskey in &dnskey_records {
-                
                 match self.crypto_verifier.verify_ds(ds, dnskey, child_domain) {
                     Ok(true) => {
                         debug!(
@@ -196,7 +191,6 @@ impl ChainVerifier {
     }
 
     async fn query_ds(&self, domain: &str) -> Result<Vec<DsRecord>, DomainError> {
-        
         if let Some(records) = self.dnssec_cache.get_ds(domain) {
             debug!(
                 domain = %domain,
@@ -212,7 +206,6 @@ impl ChainVerifier {
 
         match result {
             Ok(_upstream_result) => {
-                
                 let records = Vec::new();
 
                 debug!(
@@ -233,7 +226,6 @@ impl ChainVerifier {
     }
 
     async fn query_dnskey(&self, domain: &str) -> Result<Vec<DnskeyRecord>, DomainError> {
-        
         if let Some(keys) = self.dnssec_cache.get_dnskey(domain) {
             debug!(
                 domain = %domain,
@@ -252,7 +244,6 @@ impl ChainVerifier {
 
         match result {
             Ok(_upstream_result) => {
-                
                 let keys = Vec::new();
 
                 debug!(

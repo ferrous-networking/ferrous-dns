@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
-    
     pub dns_port: u16,
 
     pub web_port: u16,

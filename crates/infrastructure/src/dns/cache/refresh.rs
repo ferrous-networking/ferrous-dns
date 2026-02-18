@@ -2,7 +2,6 @@ use super::storage::DnsCache;
 use ferrous_dns_domain::RecordType;
 
 impl DnsCache {
-    
     pub fn get_refresh_candidates(&self) -> Vec<(String, RecordType)> {
         let mut candidates = Vec::new();
         let mean_score = self.calculate_mean_score();

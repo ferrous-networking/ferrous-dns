@@ -20,7 +20,6 @@ pub enum Strategy {
 }
 
 impl Strategy {
-    
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],

@@ -1,24 +1,18 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 const PRIVATE_IPV4_RANGES: &[(u8, u8, u8, u8, u8)] = &[
-    (10, 0, 0, 0, 8),     
-    (172, 16, 0, 0, 12),  
-    (192, 168, 0, 0, 16), 
-    (169, 254, 0, 0, 16), 
-    (127, 0, 0, 0, 8),    
+    (10, 0, 0, 0, 8),
+    (172, 16, 0, 0, 12),
+    (192, 168, 0, 0, 16),
+    (169, 254, 0, 0, 16),
+    (127, 0, 0, 0, 8),
 ];
 
-const PRIVATE_IPV6_PREFIXES: &[&str] = &[
-    "fc00:", 
-    "fd00:", 
-    "fe80:", 
-    "::1",   
-];
+const PRIVATE_IPV6_PREFIXES: &[&str] = &["fc00:", "fd00:", "fe80:", "::1"];
 
 pub struct PrivateIpFilter;
 
 impl PrivateIpFilter {
-    
     pub fn is_private_ip(ip: &IpAddr) -> bool {
         match ip {
             IpAddr::V4(ipv4) => Self::is_private_ipv4(ipv4),
@@ -48,12 +42,9 @@ impl PrivateIpFilter {
     }
 
     pub fn extract_ip_from_ptr(domain: &str) -> Option<IpAddr> {
-        
         if let Some(ipv4_str) = domain.strip_suffix(".in-addr.arpa") {
-            
             let parts: Vec<&str> = ipv4_str.split('.').collect();
             if parts.len() == 4 {
-                
                 let reversed: Vec<&str> = parts.iter().rev().copied().collect();
                 if let Ok(ip) = reversed.join(".").parse::<Ipv4Addr>() {
                     return Some(IpAddr::V4(ip));
@@ -62,11 +53,9 @@ impl PrivateIpFilter {
         }
 
         if let Some(ipv6_hex) = domain.strip_suffix(".ip6.arpa") {
-            
             let nibbles: Vec<char> = ipv6_hex.chars().filter(|c| c.is_ascii_hexdigit()).collect();
 
             if nibbles.len() == 32 {
-                
                 let reversed: String = nibbles.iter().rev().collect();
 
                 let chunks: Vec<String> = reversed
@@ -99,9 +88,7 @@ impl PrivateIpFilter {
 pub struct FqdnFilter;
 
 impl FqdnFilter {
-    
     pub fn is_fqdn(domain: &str) -> bool {
-        
         let has_dot = domain.contains('.');
 
         let no_trailing_dot = !domain.ends_with('.');

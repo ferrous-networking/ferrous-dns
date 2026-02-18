@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct QueryMetrics {
-    
     total_events: Arc<AtomicU64>,
 
     successful_queries: Arc<AtomicU64>,
@@ -25,7 +24,6 @@ pub struct QueryMetrics {
 }
 
 impl QueryMetrics {
-    
     pub fn new() -> Self {
         Self {
             total_events: Arc::new(AtomicU64::new(0)),
@@ -40,7 +38,6 @@ impl QueryMetrics {
     }
 
     pub fn track(&self, event: &QueryEvent) {
-        
         self.total_events.fetch_add(1, Ordering::Relaxed);
 
         if event.success {

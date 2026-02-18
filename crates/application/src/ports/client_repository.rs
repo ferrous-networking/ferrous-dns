@@ -4,7 +4,6 @@ use std::net::IpAddr;
 
 #[async_trait]
 pub trait ClientRepository: Send + Sync {
-    
     async fn get_or_create(&self, ip_address: IpAddr) -> Result<Client, DomainError>;
 
     async fn update_last_seen(&self, ip_address: IpAddr) -> Result<(), DomainError>;

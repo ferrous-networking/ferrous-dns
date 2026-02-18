@@ -9,7 +9,6 @@ pub struct AtomicBloom {
 }
 
 impl AtomicBloom {
-    
     pub fn new(capacity: usize, fp_rate: f64) -> Self {
         let num_bits = Self::optimal_num_bits(capacity, fp_rate);
         let num_hashes = Self::optimal_num_hashes(capacity, num_bits);

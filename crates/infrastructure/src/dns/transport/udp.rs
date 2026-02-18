@@ -16,7 +16,6 @@ pub struct UdpTransport {
 }
 
 impl UdpTransport {
-    
     pub fn new(server_addr: SocketAddr) -> Self {
         Self {
             server_addr,
@@ -37,7 +36,6 @@ impl UdpTransport {
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
         if let Some(ref pool) = self.pool {
-            
             let pooled = pool.acquire(self.server_addr).await.map_err(|e| {
                 DomainError::InvalidDomainName(format!("Failed to acquire UDP socket: {}", e))
             })?;
@@ -107,7 +105,6 @@ impl UdpTransport {
                 protocol_used: "UDP",
             })
         } else {
-            
             self.send_without_pool(message_bytes, timeout).await
         }
     }
@@ -117,7 +114,6 @@ impl UdpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        
         let bind_addr: SocketAddr = if self.server_addr.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
         } else {

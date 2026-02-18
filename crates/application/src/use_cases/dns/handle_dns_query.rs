@@ -95,8 +95,7 @@ impl HandleDnsQueryUseCase {
                     tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
                 }
 
-                Ok(Arc::try_unwrap(resolution.addresses)
-                    .unwrap_or_else(|arc| (*arc).clone()))
+                Ok(Arc::try_unwrap(resolution.addresses).unwrap_or_else(|arc| (*arc).clone()))
             }
             Err(e) => {
                 let elapsed_micros = start.elapsed().as_micros() as u64;

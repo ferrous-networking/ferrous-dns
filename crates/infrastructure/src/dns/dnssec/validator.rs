@@ -8,7 +8,6 @@ use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct ValidatedResponse {
-    
     pub validation_status: ValidationResult,
 
     pub records: Vec<String>,
@@ -23,7 +22,6 @@ pub struct ValidatedResponse {
 }
 
 impl ValidatedResponse {
-    
     pub fn new(
         validation_status: ValidationResult,
         records: Vec<String>,
@@ -54,7 +52,6 @@ impl ValidatedResponse {
 }
 
 pub struct DnssecValidator {
-    
     pool_manager: Arc<PoolManager>,
 
     chain_verifier: ChainVerifier,
@@ -63,7 +60,6 @@ pub struct DnssecValidator {
 }
 
 impl DnssecValidator {
-    
     pub fn new(pool_manager: Arc<PoolManager>) -> Self {
         let trust_store = TrustAnchorStore::new();
         let dnssec_cache = Arc::new(DnssecCache::new());
@@ -192,12 +188,10 @@ impl DnssecValidator {
 
         match result {
             Ok(_upstream_result) => {
-                
                 debug!(domain = %domain, "DNSSEC check: DS query successful");
                 Ok(true)
             }
             Err(_) => {
-                
                 debug!(domain = %domain, "DNSSEC check: No DS records");
                 Ok(false)
             }
@@ -207,7 +201,7 @@ impl DnssecValidator {
     pub fn stats(&self) -> ValidatorStats {
         ValidatorStats {
             timeout_ms: self.timeout_ms,
-            trust_anchors_count: 1, 
+            trust_anchors_count: 1,
         }
     }
 }

@@ -12,9 +12,8 @@ pub use udp_pool::{PoolStats, UdpSocketPool};
 
 #[derive(Debug)]
 pub struct TransportResponse {
-    
     pub bytes: Vec<u8>,
-    
+
     pub protocol_used: &'static str,
 }
 
@@ -39,7 +38,6 @@ pub enum Transport {
 }
 
 impl Transport {
-    
     pub async fn send(
         &self,
         message_bytes: &[u8],

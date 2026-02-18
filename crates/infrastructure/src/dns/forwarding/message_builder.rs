@@ -8,9 +8,7 @@ use std::str::FromStr;
 pub struct MessageBuilder;
 
 impl MessageBuilder {
-    
     pub fn build_query(domain: &str, record_type: &RecordType) -> Result<Vec<u8>, DomainError> {
-        
         let name = Name::from_str(domain).map_err(|e| {
             DomainError::InvalidDomainName(format!("Invalid domain '{}': {}", domain, e))
         })?;

@@ -6,26 +6,24 @@ use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct DnsResponse {
-    
     pub addresses: Vec<IpAddr>,
-    
+
     pub cname: Option<String>,
-    
+
     pub rcode: ResponseCode,
-    
+
     pub truncated: bool,
-    
+
     pub min_ttl: Option<u32>,
-    
+
     pub raw_answers: Vec<Record>,
-    
+
     pub authority_records: Vec<Record>,
-    
+
     pub message: Message,
 }
 
 impl DnsResponse {
-    
     pub fn is_nodata(&self) -> bool {
         self.rcode == ResponseCode::NoError && self.addresses.is_empty() && self.cname.is_none()
     }
@@ -45,7 +43,6 @@ impl DnsResponse {
 pub struct ResponseParser;
 
 impl ResponseParser {
-    
     pub fn parse(response_bytes: &[u8]) -> Result<DnsResponse, DomainError> {
         let message = Message::from_vec(response_bytes).map_err(|e| {
             DomainError::InvalidDomainName(format!("Failed to parse DNS response: {}", e))
@@ -60,7 +57,6 @@ impl ResponseParser {
         let mut raw_answers = Vec::new();
 
         for record in message.answers() {
-            
             let record_ttl = record.ttl();
             min_ttl = Some(min_ttl.map_or(record_ttl, |current| current.min(record_ttl)));
 
@@ -78,7 +74,6 @@ impl ResponseParser {
                     }
                 }
                 _ => {
-                    
                     raw_answers.push(record.clone());
                 }
             }

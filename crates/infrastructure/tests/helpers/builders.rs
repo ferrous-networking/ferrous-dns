@@ -5,7 +5,6 @@ use std::sync::Arc;
 pub struct DnsServerBuilder;
 
 impl DnsServerBuilder {
-    
     pub fn google_dns() -> SocketAddr {
         "8.8.8.8:53".parse().unwrap()
     }
@@ -53,7 +52,6 @@ impl DnsServerBuilder {
 pub struct UdpPoolBuilder;
 
 impl UdpPoolBuilder {
-    
     pub fn small() -> Arc<ferrous_dns_infrastructure::dns::transport::UdpSocketPool> {
         Arc::new(ferrous_dns_infrastructure::dns::transport::UdpSocketPool::new(4, 50))
     }

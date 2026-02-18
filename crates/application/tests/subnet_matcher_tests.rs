@@ -18,7 +18,7 @@ impl MockClientSubnetRepository {
 
     fn add_subnet(&self, cidr: &str, group_id: i64) {
         let mut subnet = ClientSubnet::new(cidr.to_string(), group_id, None);
-        subnet.id = Some(1); 
+        subnet.id = Some(1);
         self.subnets.lock().unwrap().push(subnet);
     }
 }

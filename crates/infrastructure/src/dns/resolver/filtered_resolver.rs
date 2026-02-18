@@ -11,7 +11,6 @@ pub struct FilteredResolver {
 }
 
 impl FilteredResolver {
-    
     pub fn new(inner: Arc<dyn DnsResolver>, filters: QueryFilters) -> Self {
         Self { inner, filters }
     }
@@ -20,7 +19,6 @@ impl FilteredResolver {
 #[async_trait]
 impl DnsResolver for FilteredResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        
         let filtered_query = self.filters.apply(query.clone())?;
 
         if filtered_query.domain != query.domain {

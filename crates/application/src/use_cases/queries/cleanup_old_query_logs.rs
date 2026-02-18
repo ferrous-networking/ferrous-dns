@@ -13,7 +13,10 @@ impl CleanupOldQueryLogsUseCase {
     }
 
     pub async fn execute(&self, retention_days: u32) -> Result<u64, DomainError> {
-        let deleted = self.query_log_repo.delete_older_than(retention_days).await?;
+        let deleted = self
+            .query_log_repo
+            .delete_older_than(retention_days)
+            .await?;
         info!(deleted, retention_days, "Old query logs cleaned up");
         Ok(deleted)
     }

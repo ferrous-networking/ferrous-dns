@@ -1,6 +1,6 @@
 pub fn parse_period(period: &str) -> Option<f32> {
     if period.is_empty() {
-        return Some(24.0); 
+        return Some(24.0);
     }
 
     if period.len() < 2 {
@@ -15,10 +15,10 @@ pub fn parse_period(period: &str) -> Option<f32> {
     }
 
     match unit {
-        "m" => Some(num / 60.0),       
-        "h" => Some(num),              
-        "d" => Some(num * 24.0),       
-        "w" => Some(num * 24.0 * 7.0), 
+        "m" => Some(num / 60.0),
+        "h" => Some(num),
+        "d" => Some(num * 24.0),
+        "w" => Some(num * 24.0 * 7.0),
         _ => None,
     }
 }
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_parse_period_empty() {
-        assert_eq!(parse_period(""), Some(24.0)); 
+        assert_eq!(parse_period(""), Some(24.0));
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod tests {
         assert_eq!(validate_period(24.0), 24.0);
         assert_eq!(validate_period(168.0), 168.0);
         assert_eq!(validate_period(720.0), 720.0);
-        assert_eq!(validate_period(1000.0), 720.0); 
-        assert_eq!(validate_period(10000.0), 720.0); 
+        assert_eq!(validate_period(1000.0), 720.0);
+        assert_eq!(validate_period(10000.0), 720.0);
     }
 }
