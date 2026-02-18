@@ -1,7 +1,6 @@
 use ferrous_dns_domain::DomainError;
 use std::fmt;
 
-/// DNSKEY Record - Public key for DNSSEC
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnskeyRecord {
     pub flags: u16,

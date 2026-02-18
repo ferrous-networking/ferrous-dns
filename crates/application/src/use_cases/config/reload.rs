@@ -13,16 +13,14 @@ impl ReloadConfigUseCase {
     }
 
     pub async fn execute(&self, config_path: &str) -> Result<Config, DomainError> {
-        // Load new config from file
+        
         let new_config = Config::load(Some(config_path), Default::default())
             .map_err(|e| DomainError::InvalidDomainName(format!("Config load error: {}", e)))?;
 
-        // Validate
         new_config.validate().map_err(|e| {
             DomainError::InvalidDomainName(format!("Config validation error: {}", e))
         })?;
 
-        // Update in-memory config
         {
             let mut config = self.config.write().await;
             *config = new_config.clone();

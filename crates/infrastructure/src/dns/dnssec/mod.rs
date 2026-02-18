@@ -1,11 +1,3 @@
-//! DNSSEC validation module
-//!
-//! Provides comprehensive DNSSEC validation with:
-//! - Cache for validation results, DNSKEY, and DS records
-//! - Cryptographic signature verification (RSA, ECDSA, Ed25519)
-//! - Chain of trust validation
-//! - Trust anchor management
-
 pub mod cache;
 pub mod crypto;
 pub mod trust_anchor;

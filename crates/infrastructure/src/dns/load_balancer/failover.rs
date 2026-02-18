@@ -11,12 +11,6 @@ impl FailoverStrategy {
         Self
     }
 
-    /// Query servers sequentially until one succeeds.
-    ///
-    /// ## Phase 5: Query Event Logging
-    ///
-    /// The `emitter` parameter is passed through to `query_server()` to enable
-    /// comprehensive logging of all DNS queries, including failed attempts.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],

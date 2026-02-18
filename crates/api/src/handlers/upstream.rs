@@ -14,7 +14,6 @@ pub struct UpstreamHealthResponse {
     pub servers: HashMap<String, String>,
 }
 
-/// GET /api/health/upstreams - Get health status of all upstream servers
 pub async fn get_upstream_health(
     State(state): State<Arc<UpstreamState>>,
 ) -> Json<HashMap<String, String>> {

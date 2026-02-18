@@ -8,7 +8,6 @@ pub mod dns;
 pub mod groups;
 pub mod queries;
 
-// Re-export use cases
 pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
     CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,
@@ -29,6 +28,6 @@ pub use groups::{
     UpdateGroupUseCase,
 };
 pub use queries::{
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
-    Granularity, QueryRate, RateUnit,
+    CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetTimelineUseCase, Granularity, QueryRate, RateUnit,
 };

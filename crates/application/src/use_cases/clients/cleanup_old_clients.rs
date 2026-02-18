@@ -3,8 +3,6 @@ use ferrous_dns_domain::DomainError;
 use std::sync::Arc;
 use tracing::info;
 
-/// Use case: Clean up old clients (data retention)
-/// Should be run daily
 pub struct CleanupOldClientsUseCase {
     client_repo: Arc<dyn ClientRepository>,
 }

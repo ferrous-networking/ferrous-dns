@@ -8,17 +8,13 @@ use tracing::debug;
 
 use crate::dns::load_balancer::PoolManager;
 
-/// PTR-based hostname resolver using internal DNS transport
-///
-/// Uses the existing DNS transport layer (UDP/TCP/TLS/HTTPS) to perform
-/// reverse DNS lookups (PTR records) for IP addresses.
 pub struct PtrHostnameResolver {
     pool_manager: Arc<PoolManager>,
     timeout_secs: u64,
 }
 
 impl PtrHostnameResolver {
-    /// Create a new resolver with existing DNS transport infrastructure
+    
     pub fn new(pool_manager: Arc<PoolManager>, timeout_secs: u64) -> Self {
         Self {
             pool_manager,
@@ -26,9 +22,6 @@ impl PtrHostnameResolver {
         }
     }
 
-    /// Convert IP address to reverse DNS domain name
-    /// Example: 192.168.1.1 -> 1.1.168.192.in-addr.arpa
-    /// Example: 2001:db8::1 -> 1.0.0.0...0.8.b.d.0.1.0.0.2.ip6.arpa
     fn ip_to_reverse_domain(ip: &IpAddr) -> String {
         match ip {
             IpAddr::V4(ipv4) => {

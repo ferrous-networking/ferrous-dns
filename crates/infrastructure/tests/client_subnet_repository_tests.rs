@@ -9,7 +9,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
         .await
         .unwrap();
 
-    // Create groups table
     sqlx::query(
         r#"
         CREATE TABLE groups (
@@ -27,13 +26,11 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
-    // Insert test groups
     sqlx::query("INSERT INTO groups (id, name) VALUES (1, 'Office'), (2, 'Guest')")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Create client_subnets table
     sqlx::query(
         r#"
         CREATE TABLE client_subnets (
@@ -187,7 +184,6 @@ async fn test_delete_subnet_success() {
     let result = repo.delete(id).await;
     assert!(result.is_ok());
 
-    // Verify deletion
     let found = repo.get_by_id(id).await.unwrap();
     assert!(found.is_none());
 }
@@ -259,13 +255,11 @@ async fn test_delete_cascades_on_group_deletion() {
         .await
         .unwrap();
 
-    // Delete the group
     sqlx::query("DELETE FROM groups WHERE id = 1")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Subnets should be cascade deleted
     let subnets = repo.get_all().await.unwrap();
     assert_eq!(subnets.len(), 0);
 }

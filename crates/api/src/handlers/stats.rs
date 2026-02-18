@@ -16,7 +16,6 @@ pub async fn get_stats(
 ) -> Json<StatsResponse> {
     debug!(period = %params.period, "Fetching query statistics with Phase 4 analytics");
 
-    // Parse and validate period
     let period_hours = parse_period(&params.period)
         .map(validate_period)
         .unwrap_or(24.0);
@@ -33,17 +32,14 @@ pub async fn get_stats(
                 "Statistics with analytics retrieved successfully"
             );
 
-            // Convert HashMap<RecordType, u64> to HashMap<String, u64>
             let queries_by_type = stats
                 .queries_by_type
                 .iter()
                 .map(|(rt, count)| (rt.as_str().to_string(), *count))
                 .collect();
 
-            // Convert most_queried_type
             let most_queried_type = stats.most_queried_type.map(|rt| rt.as_str().to_string());
 
-            // Convert distribution
             let record_type_distribution = stats
                 .record_type_distribution
                 .iter()
@@ -53,7 +49,6 @@ pub async fn get_stats(
                 })
                 .collect();
 
-            // Get top 10 types
             let top_10_types = stats
                 .top_types(10)
                 .into_iter()

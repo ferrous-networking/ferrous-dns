@@ -1,26 +1,25 @@
 use std::fmt;
 
-/// Categories for DNS record types following Clean Architecture principles
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecordCategory {
-    /// Basic DNS records (A, AAAA, CNAME, MX, TXT, PTR)
+    
     Basic,
-    /// Advanced DNS records (SRV, SOA, NS, NAPTR, SVCB, HTTPS, DNAME, ANAME)
+    
     Advanced,
-    /// DNSSEC-related records (DS, DNSKEY, RRSIG, NSEC, NSEC3, etc.)
+    
     Dnssec,
-    /// Security and cryptography records (CAA, TLSA, SSHFP, IPSECKEY, OPENPGPKEY)
+    
     Security,
-    /// Legacy/informational records (NULL, HINFO, WKS)
+    
     Legacy,
-    /// Protocol support (OPT for EDNS0)
+    
     Protocol,
-    /// Zone integrity (ZONEMD)
+    
     Integrity,
 }
 
 impl RecordCategory {
-    /// Returns a human-readable name for the category
+    
     pub fn as_str(&self) -> &'static str {
         match self {
             RecordCategory::Basic => "basic",
@@ -33,7 +32,6 @@ impl RecordCategory {
         }
     }
 
-    /// Returns a descriptive label for the category
     pub fn label(&self) -> &'static str {
         match self {
             RecordCategory::Basic => "Basic DNS Records",
@@ -46,7 +44,6 @@ impl RecordCategory {
         }
     }
 
-    /// Get all categories
     pub fn all() -> &'static [RecordCategory] {
         &[
             RecordCategory::Basic,

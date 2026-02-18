@@ -75,7 +75,6 @@ pub struct QueryLog {
     pub response_status: Option<&'static str>,
     pub timestamp: Option<String>,
 
-    /// Phase 5: Source of the query (client, internal, dnssec_validation)
     pub query_source: QuerySource,
 }
 
@@ -115,7 +114,6 @@ impl QueryStats {
                 })
                 .collect();
 
-            // evita unwrap() — seguro contra NaN
             distribution.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
             self.record_type_distribution = distribution;

@@ -3,8 +3,6 @@ use ferrous_dns_domain::DomainError;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-/// Use case: Resolve hostnames for clients via PTR lookup
-/// Should be run periodically (e.g., every 5 minutes)
 pub struct SyncHostnamesUseCase {
     client_repo: Arc<dyn ClientRepository>,
     hostname_resolver: Arc<dyn HostnameResolver>,

@@ -16,7 +16,6 @@ pub async fn get_query_rate(
 ) -> Json<QueryRateResponse> {
     debug!(unit = %params.unit, "Fetching query rate");
 
-    // Parse unit parameter
     let rate_unit = match params.unit.as_str() {
         "second" => RateUnit::Second,
         "minute" => RateUnit::Minute,

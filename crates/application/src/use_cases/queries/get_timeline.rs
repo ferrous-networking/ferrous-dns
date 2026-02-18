@@ -9,7 +9,7 @@ pub struct GetTimelineUseCase {
 #[derive(Debug, Clone, Copy)]
 pub enum Granularity {
     Minute,
-    QuarterHour, // 15 minutes
+    QuarterHour, 
     Hour,
     Day,
 }
@@ -24,7 +24,7 @@ impl GetTimelineUseCase {
         period_hours: u32,
         granularity: Granularity,
     ) -> Result<Vec<TimelineBucket>, DomainError> {
-        // Validate and cap period to maximum 30 days
+        
         let period = period_hours.min(720);
 
         let gran_str = match granularity {

@@ -2,7 +2,6 @@ use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
 use std::hash::{Hash, Hasher};
 
-/// Cache key with inline domain storage.
 #[derive(Clone, Debug, Eq)]
 pub struct CacheKey {
     pub domain: CompactString,
@@ -34,7 +33,6 @@ impl PartialEq for CacheKey {
     }
 }
 
-/// Borrowed key for zero-allocation lookups in bloom filter and L1 cache.
 #[derive(Debug)]
 pub struct BorrowedKey<'a> {
     pub domain: &'a str,

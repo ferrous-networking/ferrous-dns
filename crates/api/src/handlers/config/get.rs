@@ -8,7 +8,6 @@ use crate::{
 use axum::{extract::State, Json};
 use tracing::{debug, instrument};
 
-/// Get current configuration
 #[instrument(skip(state), name = "api_get_config")]
 pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     debug!("Fetching current configuration");
@@ -44,7 +43,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 })
                 .collect(),
             health_check: crate::dto::HealthCheckResponse {
-                enabled: true, // Health check is always enabled in this version
+                enabled: true, 
                 interval_seconds: config.dns.health_check.interval,
                 timeout_ms: config.dns.health_check.timeout,
                 failure_threshold: config.dns.health_check.failure_threshold,
@@ -93,7 +92,6 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     })
 }
 
-/// Get settings (alias for get_config for backward compatibility)
 #[instrument(skip(state), name = "api_get_settings")]
 pub async fn get_settings(State(state): State<AppState>) -> Json<crate::dto::SettingsDto> {
     debug!("Fetching settings");

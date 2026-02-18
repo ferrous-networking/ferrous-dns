@@ -8,7 +8,6 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// L1 cache entry with expiration
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
     expires_at: Instant,
@@ -24,7 +23,6 @@ thread_local! {
     static L1_STATS: RefCell<L1CacheStats> = RefCell::new(L1CacheStats::default());
 }
 
-/// Statistics for L1 cache performance tracking
 #[derive(Default, Clone, Copy)]
 pub struct L1CacheStats {
     pub hits: u64,
@@ -33,7 +31,7 @@ pub struct L1CacheStats {
 }
 
 impl L1CacheStats {
-    /// Calculate hit rate (0.0 to 1.0)
+    
     pub fn hit_rate(&self) -> f64 {
         if self.hits + self.misses == 0 {
             0.0
@@ -43,9 +41,6 @@ impl L1CacheStats {
     }
 }
 
-/// Try to get IP addresses from L1 cache
-///
-/// Returns Some(addresses) if found and not expired, None otherwise
 #[inline]
 pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>> {
     L1_CACHE.with(|cache| {
@@ -53,25 +48,23 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>
         let key = (CompactString::new(domain), *record_type);
 
         if let Some(entry) = cache.get(&key) {
-            // Check if expired
+            
             if Instant::now() < entry.expires_at {
-                // Valid cache HIT
+                
                 L1_STATS.with(|stats| stats.borrow_mut().hits += 1);
                 return Some(Arc::clone(&entry.addresses));
             } else {
-                // Expired - remove it
+                
                 cache.pop(&key);
                 L1_STATS.with(|stats| stats.borrow_mut().expirations += 1);
             }
         }
 
-        // Cache MISS
         L1_STATS.with(|stats| stats.borrow_mut().misses += 1);
         None
     })
 }
 
-/// Insert IP addresses into L1 cache with TTL
 #[inline]
 pub fn l1_insert(
     domain: &str,
@@ -90,7 +83,6 @@ pub fn l1_insert(
     });
 }
 
-/// Get L1 cache statistics
 pub fn l1_cache_stats() -> L1CacheStats {
     L1_STATS.with(|stats| *stats.borrow())
 }

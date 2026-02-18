@@ -5,67 +5,42 @@ use super::local_records::LocalDnsRecord;
 use super::upstream::UpstreamPool;
 use super::upstream::UpstreamStrategy;
 
-/// Conditional forwarding rule for domain-specific DNS servers
-///
-/// Routes queries for specific domains to designated DNS servers instead of
-/// using the default upstream pools. Useful for:
-/// - Local network domains (*.home.lan → router DHCP server)
-/// - Corporate domains (*.corp.local → corporate DNS)
-/// - Development environments (*.dev.local → local DNS)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConditionalForward {
-    /// Domain pattern to match (e.g., "home.lan", "corp.local")
-    /// Matches both exact domain and all subdomains (*.domain)
+    
     pub domain: String,
 
-    /// DNS server to forward queries to (e.g., "192.168.1.1:53")
     pub server: String,
 
-    /// Optional: Specific record types to forward (e.g., ["A", "AAAA"])
-    /// If None, forwards all record types
     #[serde(default)]
     pub record_types: Option<Vec<String>>,
 }
 
 impl ConditionalForward {
-    /// Check if a query domain matches this forwarding rule
-    ///
-    /// Matches both exact domain and all subdomains.
-    /// Examples:
-    /// - Rule "home.lan" matches: "home.lan", "nas.home.lan", "server.home.lan"
-    /// - Rule "home.lan" does NOT match: "otherhome.lan", "google.com"
+    
     pub fn matches_domain(&self, query_domain: &str) -> bool {
         let query_lower = query_domain.to_lowercase();
         let rule_lower = self.domain.to_lowercase();
 
-        // Exact match
         if query_lower == rule_lower {
             return true;
         }
 
-        // Subdomain match (query ends with .domain)
         query_lower.ends_with(&format!(".{}", rule_lower))
     }
 
-    /// Check if a record type should be forwarded
-    ///
-    /// Returns true if:
-    /// - No record_types filter is set (forward all types), OR
-    /// - The query's record type is in the allowed list
     pub fn matches_record_type(&self, record_type: &str) -> bool {
         match &self.record_types {
-            None => true, // No filter = forward all types
+            None => true, 
             Some(types) => types.iter().any(|t| t.eq_ignore_ascii_case(record_type)),
         }
     }
 
-    /// Check if this rule matches a query (domain + record type)
     pub fn matches(&self, query_domain: &str, record_type: &str) -> bool {
         self.matches_domain(query_domain) && self.matches_record_type(record_type)
     }
 }
 
-/// DNS resolution configuration
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DnsConfig {
     #[serde(default)]
@@ -92,7 +67,6 @@ pub struct DnsConfig {
     #[serde(default)]
     pub health_check: HealthCheckConfig,
 
-    // Cache configuration
     #[serde(default = "default_cache_max_entries")]
     pub cache_max_entries: usize,
     #[serde(default = "default_cache_eviction_strategy")]
@@ -118,43 +92,24 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_adaptive_thresholds")]
     pub cache_adaptive_thresholds: bool,
 
-    // Query filters
-    /// Block reverse lookups (PTR queries) for private IP ranges
-    /// This prevents leaking internal network topology to upstream DNS servers
     #[serde(default = "default_true")]
     pub block_private_ptr: bool,
 
-    /// Block non-FQDN queries (queries without a domain, e.g., "nas", "servidor")
-    /// When enabled, only fully qualified domain names are forwarded to upstream
     #[serde(default = "default_false")]
     pub block_non_fqdn: bool,
 
-    /// Local domain to append to non-FQDN queries (e.g., "home.lan")
-    /// This is used for local hostname resolution
     #[serde(default)]
     pub local_domain: Option<String>,
 
-    // Conditional forwarding
-    /// Forward queries for specific domains to specific DNS servers
-    /// Example: Forward all *.home.lan queries to router at 192.168.1.1
     #[serde(default)]
     pub conditional_forwarding: Vec<ConditionalForward>,
 
-    /// Simplified conditional forwarding for Pi-hole-style UI
-    /// Local network in CIDR notation (e.g., "192.168.0.0/24")
-    /// When set with conditional_forward_router, automatically creates forwarding rule
     #[serde(default)]
     pub conditional_forward_network: Option<String>,
 
-    /// Router/DHCP server IP address (e.g., "192.168.0.1")
-    /// Used as the DNS server for conditional forwarding
     #[serde(default)]
     pub conditional_forward_router: Option<String>,
 
-    // Local DNS records
-    /// Static hostname → IP mappings cached permanently in memory
-    /// These records are preloaded on server startup and never expire from cache
-    /// Changes require editing this config file and restarting (or using Web UI)
     #[serde(default)]
     pub local_records: Vec<LocalDnsRecord>,
 }
@@ -193,7 +148,6 @@ impl Default for DnsConfig {
     }
 }
 
-// Default functions for DNS config
 fn default_query_timeout() -> u64 {
     2000
 }

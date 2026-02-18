@@ -16,7 +16,6 @@ pub async fn get_cache_stats(
 ) -> Json<CacheStatsResponse> {
     debug!(period = %params.period, "Fetching cache statistics");
 
-    // Parse and validate period
     let period_hours = parse_period(&params.period)
         .map(validate_period)
         .unwrap_or(24.0);

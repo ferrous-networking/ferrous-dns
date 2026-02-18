@@ -5,10 +5,6 @@ use ferrous_dns_infrastructure::dns::dnssec::{
 use std::thread;
 use std::time::Duration;
 
-// ============================================================================
-// ValidationEntry Tests
-// ============================================================================
-
 #[test]
 fn test_validation_entry_creation() {
     let entry = ValidationEntry::new(ValidationResult::Secure, 300);
@@ -18,7 +14,7 @@ fn test_validation_entry_creation() {
 #[test]
 fn test_validation_entry_secure() {
     let entry = ValidationEntry::new(ValidationResult::Secure, 300);
-    // Can't directly access result due to privacy, but can test behavior
+    
     assert!(!entry.is_expired());
 }
 
@@ -52,21 +48,17 @@ fn test_validation_entry_expiration() {
 #[test]
 fn test_validation_entry_short_ttl() {
     let entry = ValidationEntry::new(ValidationResult::Secure, 0);
-    // With 0 TTL, should expire immediately or very quickly
+    
     thread::sleep(Duration::from_millis(100));
-    // Behavior may vary, just ensure it doesn't panic
+    
     let _ = entry.is_expired();
 }
 
 #[test]
 fn test_validation_entry_long_ttl() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 86400); // 1 day
+    let entry = ValidationEntry::new(ValidationResult::Secure, 86400); 
     assert!(!entry.is_expired());
 }
-
-// ============================================================================
-// DnskeyEntry Tests
-// ============================================================================
 
 #[test]
 fn test_dnskey_entry_empty() {
@@ -78,7 +70,7 @@ fn test_dnskey_entry_empty() {
 #[test]
 fn test_dnskey_entry_with_keys() {
     let keys = vec![
-        // Mock DNSKEY records (empty for now, just testing storage)
+        
     ];
     let entry = DnskeyEntry::new(keys, 300);
     assert!(!entry.is_expired());
@@ -100,14 +92,10 @@ fn test_dnskey_entry_ttl_variations() {
 
     for ttl in ttls {
         let entry = DnskeyEntry::new(vec![], ttl);
-        // Should not panic
+        
         let _ = entry.is_expired();
     }
 }
-
-// ============================================================================
-// DsEntry Tests
-// ============================================================================
 
 #[test]
 fn test_ds_entry_empty() {
@@ -119,7 +107,7 @@ fn test_ds_entry_empty() {
 #[test]
 fn test_ds_entry_with_records() {
     let records = vec![
-        // Mock DS records
+        
     ];
     let entry = DsEntry::new(records, 300);
     assert!(!entry.is_expired());
@@ -146,17 +134,12 @@ fn test_ds_entry_various_ttls() {
     assert!(!long.is_expired());
 }
 
-// ============================================================================
-// Entry Comparison Tests
-// ============================================================================
-
 #[test]
 fn test_all_entry_types_implement_expiration() {
     let validation = ValidationEntry::new(ValidationResult::Secure, 300);
     let dnskey = DnskeyEntry::new(vec![], 300);
     let ds = DsEntry::new(vec![], 300);
 
-    // All should not be expired with same TTL
     assert!(!validation.is_expired());
     assert!(!dnskey.is_expired());
     assert!(!ds.is_expired());
@@ -168,21 +151,15 @@ fn test_entry_types_expire_independently() {
     let medium = DnskeyEntry::new(vec![], 5);
     let long = DsEntry::new(vec![], 10);
 
-    // Initially none expired
     assert!(!short.is_expired());
     assert!(!medium.is_expired());
     assert!(!long.is_expired());
 
-    // After 2 seconds, only short should be expired
     thread::sleep(Duration::from_secs(2));
     assert!(short.is_expired());
     assert!(!medium.is_expired());
     assert!(!long.is_expired());
 }
-
-// ============================================================================
-// ValidationResult Tests
-// ============================================================================
 
 #[test]
 fn test_validation_results_all_states() {
@@ -201,30 +178,23 @@ fn test_validation_results_all_states() {
 
 #[test]
 fn test_validation_result_edge_cases() {
-    // Test with 0 TTL
+    
     let zero_ttl = ValidationEntry::new(ValidationResult::Secure, 0);
-    let _ = zero_ttl.is_expired(); // Should not panic
+    let _ = zero_ttl.is_expired(); 
 
-    // Test with max TTL
     let max_ttl = ValidationEntry::new(ValidationResult::Secure, u32::MAX);
     assert!(!max_ttl.is_expired());
 }
 
-// ============================================================================
-// Cache Entry Lifecycle Tests
-// ============================================================================
-
 #[test]
 fn test_cache_entry_lifecycle() {
-    // Create entry
+    
     let entry = DnskeyEntry::new(vec![], 2);
     assert!(!entry.is_expired());
 
-    // Wait partial TTL
     thread::sleep(Duration::from_secs(1));
     assert!(!entry.is_expired());
 
-    // Wait until expired
     thread::sleep(Duration::from_secs(2));
     assert!(entry.is_expired());
 }
@@ -237,12 +207,10 @@ fn test_multiple_entries_different_expiry() {
         DsEntry::new(vec![], 3),
     ];
 
-    // All start not expired
     for entry in &entries {
         assert!(!entry.is_expired());
     }
 
-    // Check expiration at different times
     thread::sleep(Duration::from_millis(1500));
     assert!(entries[0].is_expired());
     assert!(!entries[1].is_expired());

@@ -1,7 +1,6 @@
 use ferrous_dns_domain::DomainError;
 use std::fmt;
 
-/// DS Record - Delegation Signer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DsRecord {
     pub key_tag: u16,
@@ -35,9 +34,9 @@ impl DsRecord {
 
     fn validate_digest_length(digest_type: u8, length: usize) -> Result<(), DomainError> {
         let expected = match digest_type {
-            1 => 20, // SHA-1
-            2 => 32, // SHA-256
-            4 => 48, // SHA-384
+            1 => 20, 
+            2 => 32, 
+            4 => 48, 
             _ => return Ok(()),
         };
 

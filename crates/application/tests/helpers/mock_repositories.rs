@@ -16,10 +16,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-// ============================================================================
-// Mock DnsResolver
-// ============================================================================
-
 #[derive(Clone)]
 pub struct MockDnsResolver {
     responses: Arc<RwLock<HashMap<String, DnsResolution>>>,
@@ -34,7 +30,6 @@ impl MockDnsResolver {
         }
     }
 
-    /// Configura uma resposta mock para um domínio específico
     pub async fn set_response(&self, domain: &str, resolution: DnsResolution) {
         self.responses
             .write()
@@ -42,7 +37,6 @@ impl MockDnsResolver {
             .insert(domain.to_string(), resolution);
     }
 
-    /// Configura múltiplas respostas de uma vez
     pub async fn set_responses(&self, responses: Vec<(&str, DnsResolution)>) {
         let mut map = self.responses.write().await;
         for (domain, resolution) in responses {
@@ -50,12 +44,10 @@ impl MockDnsResolver {
         }
     }
 
-    /// Configura o resolver para falhar
     pub async fn set_should_fail(&self, should_fail: bool) {
         *self.should_fail.write().await = should_fail;
     }
 
-    /// Limpa todas as respostas configuradas
     pub async fn clear(&self) {
         self.responses.write().await.clear();
     }
@@ -86,10 +78,6 @@ impl DnsResolver for MockDnsResolver {
     }
 }
 
-// ============================================================================
-// Mock BlocklistRepository
-// ============================================================================
-
 #[derive(Clone)]
 pub struct MockBlocklistRepository {
     blocked_domains: Arc<RwLock<Vec<BlockedDomain>>>,
@@ -102,7 +90,6 @@ impl MockBlocklistRepository {
         }
     }
 
-    /// Cria mock já populado com domínios bloqueados
     pub fn with_blocked_domains(domains: Vec<&str>) -> Self {
         let blocked = domains
             .into_iter()
@@ -118,7 +105,6 @@ impl MockBlocklistRepository {
         }
     }
 
-    /// Adiciona domínios bloqueados após criação
     pub async fn add_blocked_domains(&self, domains: Vec<&str>) {
         let mut blocked = self.blocked_domains.write().await;
         for domain in domains {
@@ -130,12 +116,10 @@ impl MockBlocklistRepository {
         }
     }
 
-    /// Limpa todos os domínios bloqueados
     pub async fn clear(&self) {
         self.blocked_domains.write().await.clear();
     }
 
-    /// Retorna quantidade de domínios bloqueados
     pub async fn count(&self) -> usize {
         self.blocked_domains.read().await.len()
     }
@@ -170,10 +154,6 @@ impl BlocklistRepository for MockBlocklistRepository {
     }
 }
 
-// ============================================================================
-// Mock QueryLogRepository
-// ============================================================================
-
 #[derive(Clone)]
 pub struct MockQueryLogRepository {
     logs: Arc<RwLock<Vec<QueryLog>>>,
@@ -186,17 +166,14 @@ impl MockQueryLogRepository {
         }
     }
 
-    /// Retorna todos os logs registrados
     pub async fn get_all_logs(&self) -> Vec<QueryLog> {
         self.logs.read().await.clone()
     }
 
-    /// Retorna quantidade de logs
     pub async fn count(&self) -> usize {
         self.logs.read().await.len()
     }
 
-    /// Retorna logs bloqueados
     pub async fn get_blocked_logs(&self) -> Vec<QueryLog> {
         self.logs
             .read()
@@ -207,7 +184,6 @@ impl MockQueryLogRepository {
             .collect()
     }
 
-    /// Retorna logs com cache hit
     pub async fn get_cache_hits(&self) -> Vec<QueryLog> {
         self.logs
             .read()
@@ -218,7 +194,6 @@ impl MockQueryLogRepository {
             .collect()
     }
 
-    /// Limpa todos os logs
     pub async fn clear(&self) {
         self.logs.write().await.clear();
     }
@@ -272,13 +247,12 @@ impl QueryLogRepository for MockQueryLogRepository {
         _period_hours: u32,
         _granularity: &str,
     ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
-        // Mock implementation - returns empty timeline
+        
         Ok(Vec::new())
     }
 
     async fn count_queries_since(&self, _seconds_ago: i64) -> Result<u64, DomainError> {
-        // Mock implementation - returns total count of logs
-        // In real tests, you can configure this by adding logs with specific timestamps
+        
         let logs = self.logs.read().await;
         Ok(logs.len() as u64)
     }
@@ -287,7 +261,7 @@ impl QueryLogRepository for MockQueryLogRepository {
         &self,
         _period_hours: f32,
     ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
-        // Mock implementation - returns basic cache stats
+        
         let logs = self.logs.read().await;
         let total_hits = logs
             .iter()
@@ -320,11 +294,11 @@ impl QueryLogRepository for MockQueryLogRepository {
             refresh_rate,
         })
     }
-}
 
-// ============================================================================
-// Mock ClientRepository
-// ============================================================================
+    async fn delete_older_than(&self, _days: u32) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+}
 
 #[derive(Clone)]
 pub struct MockClientRepository {
@@ -340,7 +314,6 @@ impl MockClientRepository {
         }
     }
 
-    /// Create mock with pre-populated clients
     pub async fn with_clients(clients: Vec<Client>) -> Self {
         let mut map = HashMap::new();
         let mut max_id = 0i64;
@@ -362,18 +335,15 @@ impl MockClientRepository {
         }
     }
 
-    /// Get count of clients
     pub async fn count(&self) -> usize {
         self.clients.read().await.len()
     }
 
-    /// Clear all clients
     pub async fn clear(&self) {
         self.clients.write().await.clear();
         *self.next_id.write().await = 1;
     }
 
-    /// Get all clients
     pub async fn get_all_clients(&self) -> Vec<Client> {
         self.clients.read().await.values().cloned().collect()
     }
@@ -390,12 +360,10 @@ impl ClientRepository for MockClientRepository {
     async fn get_or_create(&self, ip_address: IpAddr) -> Result<Client, DomainError> {
         let mut clients = self.clients.write().await;
 
-        // Find client by IP
         if let Some(client) = clients.values().find(|c| c.ip_address == ip_address) {
             return Ok(client.clone());
         }
 
-        // Create new client
         let mut next_id = self.next_id.write().await;
         let id = *next_id;
         *next_id += 1;
@@ -411,7 +379,7 @@ impl ClientRepository for MockClientRepository {
             query_count: 0,
             last_mac_update: None,
             last_hostname_update: None,
-            group_id: Some(1), // Default to Protected group
+            group_id: Some(1), 
         };
 
         clients.insert(id, client.clone());
@@ -421,14 +389,12 @@ impl ClientRepository for MockClientRepository {
     async fn update_last_seen(&self, ip_address: IpAddr) -> Result<(), DomainError> {
         let mut clients = self.clients.write().await;
 
-        // Find and update existing client
         if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             client.last_seen = Some(chrono::Utc::now().to_rfc3339());
             client.query_count += 1;
             return Ok(());
         }
 
-        // Create new client
         let mut next_id = self.next_id.write().await;
         let id = *next_id;
         *next_id += 1;
@@ -946,7 +912,7 @@ impl DnsResolutionBuilder {
 
     pub fn build(self) -> DnsResolution {
         DnsResolution {
-            addresses: self.addresses,
+            addresses: std::sync::Arc::new(self.addresses),
             cache_hit: self.cache_hit,
             dnssec_status: self.dnssec_status,
             cname: self.cname,

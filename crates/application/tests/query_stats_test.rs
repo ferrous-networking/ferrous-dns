@@ -4,9 +4,6 @@ use std::sync::Arc;
 mod helpers;
 use helpers::MockQueryLogRepository;
 
-// Estes testes estão simplificados porque MockQueryLogRepository não implementa
-// todos os métodos necessários (count(), clear(), get_all_logs(), etc.)
-
 #[tokio::test]
 async fn test_get_recent_queries_empty() {
     let repository_mock = Arc::new(MockQueryLogRepository::new());

@@ -3,8 +3,6 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// DNS Protocol types. Uses `Arc<str>` for hostname/url fields —
-/// cheap cloning when parallel strategy spawns tasks per server.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DnsProtocol {
     Udp {

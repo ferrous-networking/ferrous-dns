@@ -1,17 +1,8 @@
 use super::storage::DnsCache;
 use ferrous_dns_domain::RecordType;
 
-/// Extension methods for DnsCache refresh functionality
 impl DnsCache {
-    /// Get list of cache entries that should be refreshed proactively
-    ///
-    /// Returns candidates that:
-    /// - Are not expired
-    /// - Are not marked for deletion
-    /// - Are not negative responses (NXDOMAIN, etc)
-    /// - Should be refreshed based on refresh_threshold
-    /// - Have score >= mean score (prioritize important entries)
-    /// - Are not problematic record types (HTTPS often fails)
+    
     pub fn get_refresh_candidates(&self) -> Vec<(String, RecordType)> {
         let mut candidates = Vec::new();
         let mean_score = self.calculate_mean_score();
@@ -44,9 +35,6 @@ impl DnsCache {
         candidates
     }
 
-    /// Reset the refreshing flag for a domain/record type
-    ///
-    /// Called after a refresh operation completes (successfully or not)
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
         use super::key::CacheKey;
         use std::sync::atomic::Ordering as AtomicOrdering;
@@ -57,9 +45,6 @@ impl DnsCache {
         }
     }
 
-    /// Calculate mean score across all valid cache entries
-    ///
-    /// Used to prioritize which entries to refresh
     fn calculate_mean_score(&self) -> f64 {
         if self.cache.is_empty() {
             return self.get_threshold();

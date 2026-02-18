@@ -1,7 +1,6 @@
 use super::super::key::CacheKey;
 use std::cmp::Ordering;
 
-/// Entry for eviction priority queue
 #[derive(Clone)]
 pub struct EvictionEntry {
     pub key: CacheKey,
@@ -25,7 +24,7 @@ impl PartialOrd for EvictionEntry {
 
 impl Ord for EvictionEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Min-heap: lower score = higher priority for eviction
+        
         other
             .score
             .partial_cmp(&self.score)

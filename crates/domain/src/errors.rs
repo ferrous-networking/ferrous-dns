@@ -20,6 +20,12 @@ pub enum DomainError {
     #[error("I/O error: {0}")]
     IoError(String),
 
+    #[error("Domain is blocked")]
+    Blocked,
+
+    #[error("Domain not found (NXDOMAIN)")]
+    NxDomain,
+
     #[error("Query timeout")]
     QueryTimeout,
 

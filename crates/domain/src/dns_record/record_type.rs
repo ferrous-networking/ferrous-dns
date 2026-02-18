@@ -2,10 +2,9 @@ use super::RecordCategory;
 use std::fmt;
 use std::str::FromStr;
 
-/// DNS record type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecordType {
-    // Basic records
+    
     A,
     AAAA,
     CNAME,
@@ -13,7 +12,6 @@ pub enum RecordType {
     TXT,
     PTR,
 
-    // Advanced records
     SRV,
     SOA,
     NS,
@@ -23,43 +21,35 @@ pub enum RecordType {
     SVCB,
     HTTPS,
 
-    // Security & Modern records
     CAA,
     TLSA,
     SSHFP,
     DNAME,
 
-    // DNSSEC records
     RRSIG,
     NSEC,
     NSEC3,
     NSEC3PARAM,
 
-    // Child DNSSEC
     CDS,
     CDNSKEY,
 
-    // EDNS & Protocol Support
     OPT,
 
-    // Legacy/Informational records
     NULL,
     HINFO,
     WKS,
 
-    // Security & Cryptography (Extended)
     IPSECKEY,
     OPENPGPKEY,
 
-    // Zone Integrity
     ZONEMD,
 
-    // DNS Alias (ANAME)
     ANAME,
 }
 
 impl RecordType {
-    /// Convert to string representation
+    
     pub fn as_str(&self) -> &'static str {
         match self {
             RecordType::A => "A",
@@ -97,7 +87,6 @@ impl RecordType {
         }
     }
 
-    /// Convert to u16 type code (RFC 1035)
     pub fn to_u16(&self) -> u16 {
         match self {
             RecordType::A => 1,
@@ -135,7 +124,6 @@ impl RecordType {
         }
     }
 
-    /// Convert from u16 type code
     pub fn from_u16(code: u16) -> Option<Self> {
         match code {
             1 => Some(RecordType::A),
@@ -174,7 +162,6 @@ impl RecordType {
         }
     }
 
-    /// Get the category for this record type
     pub fn category(&self) -> RecordCategory {
         match self {
             RecordType::A
@@ -216,17 +203,14 @@ impl RecordType {
         }
     }
 
-    /// Check if this is a DNSSEC record type
     pub fn is_dnssec(&self) -> bool {
         matches!(self.category(), RecordCategory::Dnssec)
     }
 
-    /// Check if this is a basic record type
     pub fn is_basic(&self) -> bool {
         matches!(self.category(), RecordCategory::Basic)
     }
 
-    /// Check if this is a security-related record
     pub fn is_security_related(&self) -> bool {
         matches!(
             self.category(),
@@ -234,7 +218,6 @@ impl RecordType {
         )
     }
 
-    /// Check if this is a modern record type
     pub fn is_modern(&self) -> bool {
         matches!(
             self,
@@ -242,7 +225,6 @@ impl RecordType {
         )
     }
 
-    /// Get all record types for a category
     pub fn by_category(category: RecordCategory) -> Vec<RecordType> {
         use RecordType::*;
         match category {

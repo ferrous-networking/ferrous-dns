@@ -2,8 +2,6 @@ use super::RecordType;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-/// DNS query request from client.
-/// Uses `Arc<str>` for domain — all downstream clones are atomic increments (~1ns).
 #[derive(Debug, Clone)]
 pub struct DnsRequest {
     pub domain: Arc<str>,

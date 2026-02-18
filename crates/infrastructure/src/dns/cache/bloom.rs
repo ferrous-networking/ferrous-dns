@@ -2,14 +2,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
-/// Thread-safe Bloom filter for fast cache membership testing
-///
-/// A probabilistic data structure that can test whether an element is definitely
-/// not in the set or possibly in the set. Uses atomic operations for thread-safety
-/// without locks.
-///
-/// Used by DnsCache to quickly reject cache lookups for keys that were never inserted,
-/// avoiding expensive DashMap lookups.
 pub struct AtomicBloom {
     bits: Vec<AtomicU64>,
     num_bits: usize,
@@ -17,11 +9,7 @@ pub struct AtomicBloom {
 }
 
 impl AtomicBloom {
-    /// Create a new Bloom filter
-    ///
-    /// # Arguments
-    /// * `capacity` - Expected number of elements
-    /// * `fp_rate` - Desired false positive rate (e.g., 0.01 for 1%)
+    
     pub fn new(capacity: usize, fp_rate: f64) -> Self {
         let num_bits = Self::optimal_num_bits(capacity, fp_rate);
         let num_hashes = Self::optimal_num_hashes(capacity, num_bits);
@@ -34,13 +22,11 @@ impl AtomicBloom {
         }
     }
 
-    /// Check if a key might be in the set (no false negatives)
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
 
-        // Optimized path for common case (5 hashes)
         if num_hashes == 5 {
             let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
             let check0 = self.bits[idx0 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx0 % 64));
@@ -71,13 +57,11 @@ impl AtomicBloom {
         }
     }
 
-    /// Add a key to the set
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
 
-        // Optimized path for common case (5 hashes)
         if num_hashes == 5 {
             let idx0 = Self::nth_hash(h1, h2, 0, self.num_bits);
             self.bits[idx0 / 64].fetch_or(1u64 << (idx0 % 64), AtomicOrdering::Relaxed);
@@ -103,14 +87,12 @@ impl AtomicBloom {
         }
     }
 
-    /// Clear all bits in the filter
     pub fn clear(&self) {
         for word in &self.bits {
             word.store(0, AtomicOrdering::Relaxed);
         }
     }
 
-    // Helper functions for hashing
     #[inline]
     fn double_hash<K: Hash>(key: &K) -> (u64, u64) {
         let mut hasher1 = DefaultHasher::new();

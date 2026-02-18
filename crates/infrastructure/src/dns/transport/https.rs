@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 use std::time::Duration;
 use tracing::debug;
 
-/// Shared HTTP/2 client with connection pooling.
 static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .use_rustls_tls()
@@ -16,10 +15,8 @@ static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_else(|_| reqwest::Client::new())
 });
 
-/// Expected content type for DNS-over-HTTPS responses (RFC 8484 §4.2.1)
 const DNS_MESSAGE_CONTENT_TYPE: &str = "application/dns-message";
 
-/// DNS-over-HTTPS transport (RFC 8484)
 pub struct HttpsTransport {
     url: String,
 }
@@ -43,7 +40,6 @@ impl DnsTransport for HttpsTransport {
             "Sending DoH query"
         );
 
-        // POST with application/dns-message (RFC 8484 §4.1)
         let response = tokio::time::timeout(
             timeout,
             SHARED_CLIENT
@@ -61,7 +57,6 @@ impl DnsTransport for HttpsTransport {
             DomainError::InvalidDomainName(format!("DoH request to {} failed: {}", self.url, e))
         })?;
 
-        // Check HTTP status
         let status = response.status();
         if !status.is_success() {
             return Err(DomainError::InvalidDomainName(format!(
@@ -72,7 +67,6 @@ impl DnsTransport for HttpsTransport {
             )));
         }
 
-        // Read response body (raw DNS message)
         let response_bytes = tokio::time::timeout(timeout, response.bytes())
             .await
             .map_err(|_| {

@@ -16,7 +16,6 @@ impl BalancedStrategy {
         }
     }
 
-    /// comprehensive logging of all DNS queries.
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],

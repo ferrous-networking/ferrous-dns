@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info};
 
-/// Background job that periodically syncs ARP cache and hostnames
 pub struct ClientSyncJob {
     sync_arp: Arc<SyncArpCacheUseCase>,
     sync_hostnames: Arc<SyncHostnamesUseCase>,
@@ -19,8 +18,8 @@ impl ClientSyncJob {
         Self {
             sync_arp,
             sync_hostnames,
-            arp_interval_secs: 60,       // Every 60 seconds
-            hostname_interval_secs: 300, // Every 5 minutes
+            arp_interval_secs: 60,
+            hostname_interval_secs: 300,
         }
     }
 
@@ -33,7 +32,6 @@ impl ClientSyncJob {
     pub async fn start(self: Arc<Self>) {
         info!("Starting client sync background jobs");
 
-        // Spawn ARP sync task
         let arp_job = Arc::clone(&self);
         tokio::spawn(async move {
             let mut interval =
@@ -46,7 +44,6 @@ impl ClientSyncJob {
             }
         });
 
-        // Spawn hostname sync task
         let hostname_job = Arc::clone(&self);
         tokio::spawn(async move {
             let mut interval =

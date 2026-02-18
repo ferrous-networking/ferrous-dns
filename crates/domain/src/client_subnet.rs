@@ -1,7 +1,6 @@
 use std::net::IpAddr;
 use std::sync::Arc;
 
-/// Represents a subnet range for automatic group assignment
 #[derive(Debug, Clone)]
 pub struct ClientSubnet {
     pub id: Option<i64>,
@@ -24,7 +23,6 @@ impl ClientSubnet {
         }
     }
 
-    /// Validate CIDR format (basic check, full validation in repository)
     pub fn validate_cidr(cidr: &str) -> Result<(), String> {
         if cidr.is_empty() {
             return Err("CIDR cannot be empty".to_string());
@@ -38,9 +36,8 @@ impl ClientSubnet {
     }
 }
 
-/// Helper for subnet matching logic
 pub struct SubnetMatcher {
-    subnets: Vec<(ipnetwork::IpNetwork, i64)>, // (network, group_id)
+    subnets: Vec<(ipnetwork::IpNetwork, i64)>, 
 }
 
 impl SubnetMatcher {
@@ -58,15 +55,13 @@ impl SubnetMatcher {
         Ok(Self { subnets: networks })
     }
 
-    /// Find matching group for IP, returns most specific match
     pub fn find_group_for_ip(&self, ip: IpAddr) -> Option<i64> {
-        let mut best_match: Option<(u8, i64)> = None; // (prefix_len, group_id)
+        let mut best_match: Option<(u8, i64)> = None; 
 
         for (network, group_id) in &self.subnets {
             if network.contains(ip) {
                 let prefix = network.prefix();
 
-                // Keep most specific (largest prefix)
                 match best_match {
                     None => best_match = Some((prefix, *group_id)),
                     Some((existing_prefix, _)) if prefix > existing_prefix => {
@@ -122,7 +117,6 @@ mod tests {
 
         let matcher = SubnetMatcher::new(subnets).unwrap();
 
-        // Should match most specific
         let ip: IpAddr = "10.1.1.50".parse().unwrap();
         assert_eq!(matcher.find_group_for_ip(ip), Some(5));
     }

@@ -11,11 +11,8 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tracing::debug;
 
-/// Maximum idle connections per (addr, hostname) pair.
 const MAX_IDLE_PER_HOST: usize = 2;
 
-/// Shared TLS config — built once, reused for all DoT queries.
-/// Enables TLS session resumption (session tickets) automatically.
 static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(|| {
     let mut root_store = rustls::RootCertStore::empty();
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -33,11 +30,8 @@ type TlsConnection = TlsStream<TcpStream>;
 type PoolKey = (SocketAddr, String);
 type TlsConnectionPool = DashMap<PoolKey, Vec<TlsConnection>>;
 
-/// Global connection pool for TLS connections, keyed by (addr, hostname).
-/// Idle connections are reused to avoid repeated TCP+TLS handshakes.
 static TLS_POOL: LazyLock<TlsConnectionPool> = LazyLock::new(TlsConnectionPool::new);
 
-/// DNS-over-TLS transport (RFC 7858)
 pub struct TlsTransport {
     server_addr: SocketAddr,
     hostname: String,
@@ -51,24 +45,21 @@ impl TlsTransport {
         }
     }
 
-    /// Try to get an idle connection from the pool.
     fn take_pooled(&self) -> Option<TlsStream<TcpStream>> {
         let key = (self.server_addr, self.hostname.clone());
         let mut entry = TLS_POOL.get_mut(&key)?;
         entry.pop()
     }
 
-    /// Return a connection to the pool for reuse.
     fn return_to_pool(&self, stream: TlsStream<TcpStream>) {
         let key = (self.server_addr, self.hostname.clone());
         let mut entry = TLS_POOL.entry(key).or_default();
         if entry.len() < MAX_IDLE_PER_HOST {
             entry.push(stream);
         }
-        // If pool is full, connection is simply dropped (closed).
+        
     }
 
-    /// Establish a new TLS connection (TCP connect + TLS handshake).
     async fn connect_new(&self, timeout: Duration) -> Result<TlsStream<TcpStream>, DomainError> {
         let connector = tokio_rustls::TlsConnector::from(SHARED_TLS_CONFIG.clone());
 
@@ -79,7 +70,6 @@ impl TlsTransport {
             ))
         })?;
 
-        // TCP connect
         let tcp_stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
             .await
             .map_err(|_| {
@@ -95,7 +85,6 @@ impl TlsTransport {
                 ))
             })?;
 
-        // TLS handshake (session resumption happens automatically via rustls session cache)
         let tls_stream = tokio::time::timeout(timeout, connector.connect(server_name, tcp_stream))
             .await
             .map_err(|_| {
@@ -115,8 +104,6 @@ impl TlsTransport {
         Ok(tls_stream)
     }
 
-    /// Send a query over an existing TLS stream. Returns the stream on success
-    /// (for pooling) or None on failure.
     async fn send_on_stream(
         &self,
         stream: &mut TlsStream<TcpStream>,
@@ -152,7 +139,7 @@ impl DnsTransport for TlsTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        // Try reusing a pooled connection first
+        
         if let Some(mut stream) = self.take_pooled() {
             match self
                 .send_on_stream(&mut stream, message_bytes, timeout)
@@ -167,13 +154,12 @@ impl DnsTransport for TlsTransport {
                     });
                 }
                 Err(_) => {
-                    // Pooled connection was stale — fall through to new connection
+                    
                     debug!(server = %self.server_addr, "Pooled TLS connection stale, reconnecting");
                 }
             }
         }
 
-        // Establish new connection
         let mut stream = self.connect_new(timeout).await?;
 
         let response_bytes = self
@@ -186,7 +172,6 @@ impl DnsTransport for TlsTransport {
             "TLS response received"
         );
 
-        // Return connection to pool for reuse
         self.return_to_pool(stream);
 
         Ok(TransportResponse {

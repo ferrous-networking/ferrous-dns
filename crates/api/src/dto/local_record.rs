@@ -2,7 +2,6 @@ use ferrous_dns_domain::RecordType;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-/// DTO for local DNS record response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalRecordDto {
     pub id: i64,
@@ -16,7 +15,7 @@ pub struct LocalRecordDto {
 }
 
 impl LocalRecordDto {
-    /// Convert from config LocalDnsRecord (config-based, not DB)
+    
     pub fn from_config(
         record: &ferrous_dns_domain::LocalDnsRecord,
         index: i64,
@@ -25,19 +24,18 @@ impl LocalRecordDto {
         let fqdn = record.fqdn(default_domain);
 
         Self {
-            id: index, // Use array index as ID
+            id: index, 
             hostname: record.hostname.clone(),
             domain: record.domain.clone(),
             fqdn,
             ip: record.ip.clone(),
             record_type: record.record_type.clone(),
             ttl: record.ttl.unwrap_or(300),
-            created_at: None, // Config records don't have timestamps
+            created_at: None, 
         }
     }
 }
 
-/// DTO for creating a new local DNS record
 #[derive(Debug, Deserialize)]
 pub struct CreateLocalRecordRequest {
     pub hostname: String,
@@ -53,7 +51,6 @@ impl CreateLocalRecordRequest {
     }
 }
 
-/// DTO for updating a local DNS record
 #[derive(Debug, Deserialize)]
 pub struct UpdateLocalRecordRequest {
     pub hostname: String,

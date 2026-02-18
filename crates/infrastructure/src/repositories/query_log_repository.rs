@@ -14,17 +14,17 @@ const MAX_BATCH_SIZE: usize = 500;
 const FLUSH_INTERVAL_MS: u64 = 100;
 
 struct QueryLogEntry {
-    domain: CompactString,      // Inline if ≤24 chars
-    record_type: CompactString, // Inline (always ≤4 chars: A, AAAA, etc)
-    client_ip: Arc<str>,        // Shared, no clone cost
+    domain: CompactString,      
+    record_type: CompactString, 
+    client_ip: Arc<str>,        
     blocked: bool,
     response_time_ms: Option<i64>,
     cache_hit: bool,
     cache_refresh: bool,
     dnssec_status: Option<&'static str>,
-    upstream_server: Option<Arc<str>>, // Shared across entries
+    upstream_server: Option<Arc<str>>, 
     response_status: Option<&'static str>,
-    query_source: CompactString, // Inline (always ≤20 chars)
+    query_source: CompactString, 
 }
 
 impl QueryLogEntry {
@@ -126,26 +126,6 @@ impl SqliteQueryLogRepository {
         }
     }
 
-    /// Flush batch usando prepared statement único em transação.
-    ///
-    /// **FASE 4**: Otimizado para usar prepared statement reutilizável ao invés
-    /// de SQL dinâmico. Ganho: 10-20% em writes.
-    ///
-    /// **Antes (SQL Dinâmico)**:
-    /// ```sql
-    /// INSERT INTO query_log VALUES (?, ?, ?), (?, ?, ?), ... -- N tuples
-    /// ```
-    /// Problema: Cada batch size diferente = SQL diferente = parse overhead
-    ///
-    /// **Depois (Prepared Statement + Transaction)**:
-    /// ```sql
-    /// BEGIN;
-    /// INSERT INTO query_log VALUES (?, ?, ?); -- Reusa mesmo statement
-    /// INSERT INTO query_log VALUES (?, ?, ?); -- Reusa mesmo statement
-    /// ...
-    /// COMMIT;
-    /// ```
-    /// Benefício: SQLite cacheia o query plan, transação amortiza disk I/O
     async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
         let count = batch.len();
         if count == 0 {
@@ -192,7 +172,7 @@ impl SqliteQueryLogRepository {
                 Err(e) => {
                     errors += 1;
                     if errors <= 3 {
-                        // Log apenas primeiros erros
+                        
                         warn!(error = %e, domain = %entry.domain, "Failed to insert query log entry");
                     }
                 }
@@ -364,7 +344,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             let type_str: String = type_row.get("record_type");
             let count: i64 = type_row.get("count");
 
-            // Parse RecordType from string
             if let Ok(record_type) = type_str.parse::<ferrous_dns_domain::RecordType>() {
                 queries_by_type.insert(record_type, count as u64);
             }
@@ -411,11 +390,10 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "Fetching query timeline"
         );
 
-        // Build dynamic time bucket expression based on granularity
         let time_bucket_expr = match granularity {
             "minute" => "strftime('%Y-%m-%d %H:%M:00', created_at)".to_string(),
             "quarter_hour" => {
-                // Round minutes to nearest 15 (00, 15, 30, 45)
+                
                 "strftime('%Y-%m-%d %H:', created_at) || \
                  printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
                  ':00'"
@@ -423,7 +401,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             }
             "hour" => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(),
             "day" => "strftime('%Y-%m-%d 00:00:00', created_at)".to_string(),
-            _ => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(), // default to hour
+            _ => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(), 
         };
 
         let sql = format!(
@@ -543,6 +521,23 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             hit_rate,
             refresh_rate,
         })
+    }
+
+    async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
+        let result = sqlx::query(
+            "DELETE FROM query_log WHERE created_at < datetime('now', '-' || ? || ' days')",
+        )
+        .bind(days as i64)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to delete old query logs");
+            DomainError::DatabaseError(format!("Failed to delete old query logs: {}", e))
+        })?;
+
+        let deleted = result.rows_affected();
+        info!(deleted, days, "Old query logs deleted");
+        Ok(deleted)
     }
 }
 

@@ -8,19 +8,16 @@ use async_trait::async_trait;
 use ferrous_dns_domain::{DnsProtocol, DomainError};
 use std::time::Duration;
 
-// Re-export UDP pool for convenience
 pub use udp_pool::{PoolStats, UdpSocketPool};
 
-/// Result of a raw DNS transport operation
 #[derive(Debug)]
 pub struct TransportResponse {
-    /// Raw DNS response bytes (wire format)
+    
     pub bytes: Vec<u8>,
-    /// Which protocol was used
+    
     pub protocol_used: &'static str,
 }
 
-/// Trait for sending raw DNS messages over the wire
 #[async_trait]
 pub trait DnsTransport: Send + Sync {
     async fn send(
@@ -32,11 +29,6 @@ pub trait DnsTransport: Send + Sync {
     fn protocol_name(&self) -> &'static str;
 }
 
-/// Enum-dispatched transport — stack-allocated, no Box/vtable overhead.
-///
-/// This replaces `Box<dyn DnsTransport>` with static dispatch via match.
-/// For the hot path (UDP queries), this eliminates ~20ns of heap allocation
-/// and virtual dispatch per query.
 pub enum Transport {
     Udp(udp::UdpTransport),
     Tcp(tcp::TcpTransport),
@@ -47,7 +39,7 @@ pub enum Transport {
 }
 
 impl Transport {
-    /// Send a DNS query via the appropriate protocol (static dispatch).
+    
     pub async fn send(
         &self,
         message_bytes: &[u8],
@@ -63,7 +55,6 @@ impl Transport {
         }
     }
 
-    /// Protocol name for logging and metrics.
     pub fn protocol_name(&self) -> &'static str {
         match self {
             Self::Udp(_) => "UDP",
@@ -76,7 +67,6 @@ impl Transport {
     }
 }
 
-/// Create the appropriate transport for a given DnsProtocol (enum dispatch).
 pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {
     match protocol {
         DnsProtocol::Udp { addr } => Ok(Transport::Udp(udp::UdpTransport::new(*addr))),

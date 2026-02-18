@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 use tokio::time::sleep;
 use tracing::{debug, info};
 
-/// Background task manager for cache optimization
 pub struct CacheUpdater {
     cache: Arc<DnsCache>,
     resolver: Arc<HickoryDnsResolver>,
@@ -34,17 +33,13 @@ impl CacheUpdater {
         }
     }
 
-    /// Start the background updater and compaction tasks
-    /// Tasks run detached in background
     pub fn start(self) {
-        // Spawn tasks and detach (don't return handles)
+        
         self.start_updater();
         self.start_compaction();
 
-        // Tasks now run independently in background
     }
 
-    /// Start optimistic refresh task (detached)
     fn start_updater(&self) {
         let cache = Arc::clone(&self.cache);
         let resolver = Arc::clone(&self.resolver);
@@ -61,10 +56,9 @@ impl CacheUpdater {
                 sleep(update_interval).await;
                 Self::update_cycle(&cache, &resolver, &query_log).await;
             }
-        }); // ✅ Semicolon drops the JoinHandle
+        }); 
     }
 
-    /// Start background compaction task (detached)
     fn start_compaction(&self) {
         let cache = Arc::clone(&self.cache);
         let compaction_interval = self.compaction_interval;
@@ -79,10 +73,9 @@ impl CacheUpdater {
                 sleep(compaction_interval).await;
                 Self::compaction_cycle(&cache);
             }
-        }); // ✅ Semicolon drops the JoinHandle
+        }); 
     }
 
-    /// Run one update cycle
     async fn update_cycle(
         cache: &Arc<DnsCache>,
         resolver: &Arc<HickoryDnsResolver>,
@@ -90,7 +83,6 @@ impl CacheUpdater {
     ) {
         debug!("Starting cache update cycle");
 
-        // Get refresh candidates - now synchronous! ✅
         let candidates = cache.get_refresh_candidates();
 
         if candidates.is_empty() {
@@ -107,7 +99,6 @@ impl CacheUpdater {
         let mut refreshed = 0;
         let mut failed = 0;
 
-        // Refresh each candidate
         for (domain, record_type) in candidates {
             match Self::refresh_entry(cache, resolver, query_log, &domain, &record_type).await {
                 Ok(true) => {
@@ -121,8 +112,7 @@ impl CacheUpdater {
                     debug!(domain = %domain, "No new records to refresh");
                 }
                 Err(e) => {
-                    // Only log as debug - refresh failures are not critical
-                    // (could be temporary DNS issues, NXDOMAIN, etc)
+                    
                     debug!(
                         domain = %domain,
                         record_type = %record_type,
@@ -133,7 +123,6 @@ impl CacheUpdater {
                 }
             }
 
-            // Small delay between refreshes to avoid overwhelming upstream
             sleep(Duration::from_millis(10)).await;
         }
 
@@ -145,7 +134,6 @@ impl CacheUpdater {
         );
     }
 
-    /// Run one compaction cycle
     fn compaction_cycle(cache: &Arc<DnsCache>) {
         debug!("Starting background compaction cycle");
 
@@ -162,7 +150,6 @@ impl CacheUpdater {
         }
     }
 
-    /// Refresh a single cache entry
     async fn refresh_entry(
         cache: &Arc<DnsCache>,
         resolver: &Arc<HickoryDnsResolver>,
@@ -180,29 +167,25 @@ impl CacheUpdater {
 
         let query = DnsQuery::new(domain, *record_type);
 
-        // resolver.resolve() will validate DNSSEC if dnssec_enabled = true
         match resolver.resolve(&query).await {
             Ok(resolution) if !resolution.addresses.is_empty() => {
                 let response_time = start.elapsed().as_millis() as u64;
 
-                // Get TTL from cache or use default
                 let ttl = cache.get_ttl(domain, record_type).unwrap_or(3600);
 
-                // Insert with DNSSEC status from fresh validation!
                 let dnssec_status: Option<super::cache::DnssecStatus> =
                     resolution.dnssec_status.and_then(|s| s.parse().ok());
 
                 cache.insert(
                     domain,
                     *record_type,
-                    super::cache::CachedData::IpAddresses(Arc::new(resolution.addresses.clone())),
+                    super::cache::CachedData::IpAddresses(Arc::clone(&resolution.addresses)),
                     ttl,
                     dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );
 
-                // Log the refresh query if query_log is available
                 if let Some(log) = query_log {
-                    // Use localhost as client IP to indicate it's a background refresh
+                    
                     let log_entry = QueryLog {
                         id: None,
                         domain: Arc::from(domain),
@@ -216,7 +199,7 @@ impl CacheUpdater {
                         upstream_server: resolution.upstream_server.clone(),
                         response_status: Some("NOERROR"),
                         timestamp: None,
-                        query_source: QuerySource::Internal, // Cache refresh is internal
+                        query_source: QuerySource::Internal, 
                     };
 
                     if let Err(e) = log.log_query(&log_entry).await {
@@ -236,7 +219,7 @@ impl CacheUpdater {
                 Ok(true)
             }
             Ok(_) => {
-                // No addresses returned
+                
                 Ok(false)
             }
             Err(e) => Err(e),

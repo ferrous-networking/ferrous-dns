@@ -23,11 +23,9 @@ impl DnsServices {
     pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
         info!("Initializing DNS services with load balancing");
 
-        // PHASE 5: Create query event emitter (always enabled for internal query logging)
         info!("Query event logging enabled (parallel batch processing - 20,000+ queries/sec)");
         let (emitter, event_rx) = QueryEventEmitter::new_enabled();
 
-        // Health checker is always enabled
         let health_checker = {
             let checker = Arc::new(HealthChecker::new(
                 config.dns.health_check.failure_threshold,
@@ -43,25 +41,21 @@ impl DnsServices {
             Some(checker)
         };
 
-        // PHASE 5: Pass emitter to PoolManager
         let pool_manager = Arc::new(PoolManager::new(
             config.dns.pools.clone(),
             health_checker.clone(),
-            emitter.clone(), // ← Pass emitter for internal query logging
+            emitter.clone(), 
         )?);
 
-        // PHASE 5: Start query event logger background task
         let logger = QueryEventLogger::new(repos.query_log.clone());
         tokio::spawn(async move {
             logger.start_parallel_batch(event_rx).await.unwrap();
         });
         info!("Query event logger started - logging ALL DNS queries including DNSSEC validation");
 
-        // Start health checker in background (don't keep JoinHandle)
         if let Some(checker) = health_checker {
             let all_protocols = pool_manager.get_all_protocols();
 
-            // Spawn and detach - não guardar o JoinHandle
             let checker_clone = checker.clone();
             let interval = config.dns.health_check.interval;
             let timeout = config.dns.health_check.timeout;
@@ -89,7 +83,6 @@ impl DnsServices {
             config.dns.local_domain.clone(),
         );
 
-        // Configure conditional forwarding (Fase 3)
         if !config.dns.conditional_forwarding.is_empty() {
             let forwarder = Arc::new(ConditionalForwarder::new(
                 config.dns.conditional_forwarding.clone(),
@@ -180,7 +173,6 @@ impl DnsServices {
                 "Preloading local DNS records into permanent cache..."
             );
 
-            // Preload local records directly into cache
             Self::preload_local_records_into_cache(
                 &cache,
                 &config.dns.local_records,
@@ -209,10 +201,6 @@ impl DnsServices {
         })
     }
 
-    /// Preload local DNS records into permanent cache
-    ///
-    /// Loads static hostname → IP mappings from configuration into the cache
-    /// as permanent records that never expire and are immune to eviction.
     fn preload_local_records_into_cache(
         cache: &Arc<DnsCache>,
         records: &[ferrous_dns_domain::LocalDnsRecord],
@@ -225,10 +213,9 @@ impl DnsServices {
         let mut error_count = 0;
 
         for record in records {
-            // Build FQDN
+            
             let fqdn = record.fqdn(default_domain);
 
-            // Parse IP address
             let ip: std::net::IpAddr = match record.ip.parse() {
                 Ok(ip) => ip,
                 Err(_) => {
@@ -242,7 +229,6 @@ impl DnsServices {
                 }
             };
 
-            // Parse record type
             let record_type = match record.record_type.to_uppercase().as_str() {
                 "A" => RecordType::A,
                 "AAAA" => RecordType::AAAA,
@@ -274,14 +260,11 @@ impl DnsServices {
                 continue;
             }
 
-            // Create cached data
             use ferrous_dns_infrastructure::dns::CachedData;
             let data = CachedData::IpAddresses(StdArc::new(vec![ip]));
 
-            // Get TTL (default 300)
             let ttl = record.ttl.unwrap_or(300);
 
-            // Insert as permanent cache entry
             cache.insert_permanent(&fqdn, record_type, data, None);
 
             info!(

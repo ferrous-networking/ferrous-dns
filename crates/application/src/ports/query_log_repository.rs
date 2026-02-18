@@ -25,6 +25,7 @@ pub trait QueryLogRepository: Send + Sync {
     ) -> Result<Vec<TimelineBucket>, DomainError>;
     async fn count_queries_since(&self, seconds_ago: i64) -> Result<u64, DomainError>;
     async fn get_cache_stats(&self, period_hours: f32) -> Result<CacheStats, DomainError>;
+    async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError>;
 }
 
 #[derive(Debug, Clone)]

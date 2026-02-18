@@ -3,8 +3,6 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tracing::{debug, info};
 
-/// Prefetch prediction based on query patterns (Markov chain).
-/// Uses CompactString — domains ≤24 bytes live inline on stack.
 pub struct PrefetchPredictor {
     patterns: Arc<DashMap<CompactString, Vec<PredictionEntry>>>,
     max_predictions: usize,

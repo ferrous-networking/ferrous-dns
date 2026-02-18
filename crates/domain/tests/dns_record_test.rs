@@ -5,10 +5,6 @@ use std::str::FromStr;
 mod helpers;
 use helpers::DnsRecordBuilder;
 
-// ============================================================================
-// Tests for DnsRecord
-// ============================================================================
-
 #[test]
 fn test_dns_record_creation() {
     let record = DnsRecord::new(
@@ -77,10 +73,6 @@ fn test_dns_record_with_ipv6() {
     assert!(matches!(record.address, IpAddr::V6(_)));
 }
 
-// ============================================================================
-// Tests for RecordCategory
-// ============================================================================
-
 #[test]
 fn test_category_as_str() {
     assert_eq!(RecordCategory::Basic.as_str(), "basic");
@@ -127,7 +119,7 @@ fn test_record_type_category() {
 
 #[test]
 fn test_record_category_consistency() {
-    // Ensure all categories have unique string representations
+    
     let categories = RecordCategory::all();
     let mut strings: Vec<&str> = categories.iter().map(|c| c.as_str()).collect();
     strings.sort();

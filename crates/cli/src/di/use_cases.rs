@@ -1,14 +1,14 @@
 use super::Repositories;
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, CleanupOldClientsUseCase, CreateBlocklistSourceUseCase,
-    CreateClientSubnetUseCase, CreateGroupUseCase, CreateManualClientUseCase,
-    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase,
-    GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase, GetGroupsUseCase,
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
-    ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
-    UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
+    AssignClientGroupUseCase, CleanupOldClientsUseCase, CleanupOldQueryLogsUseCase,
+    CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
+    CreateManualClientUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
+    DeleteClientUseCase, DeleteGroupUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase,
+    GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
+    GetTimelineUseCase, ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
+    TrackClientUseCase, UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -32,6 +32,7 @@ pub struct UseCases {
     pub sync_arp: Arc<SyncArpCacheUseCase>,
     pub sync_hostnames: Arc<SyncHostnamesUseCase>,
     pub cleanup_clients: Arc<CleanupOldClientsUseCase>,
+    pub cleanup_query_logs: Arc<CleanupOldQueryLogsUseCase>,
     pub get_groups: Arc<GetGroupsUseCase>,
     pub create_group: Arc<CreateGroupUseCase>,
     pub update_group: Arc<UpdateGroupUseCase>,
@@ -58,7 +59,6 @@ impl UseCases {
         let arp_reader = Arc::new(LinuxArpReader::new());
         let hostname_resolver = Arc::new(PtrHostnameResolver::new(pool_manager, 5));
 
-        // Initialize SubnetMatcherService
         let subnet_matcher = Arc::new(SubnetMatcherService::new(repos.client_subnet.clone()));
 
         Self {
@@ -79,6 +79,7 @@ impl UseCases {
                 hostname_resolver,
             )),
             cleanup_clients: Arc::new(CleanupOldClientsUseCase::new(repos.client.clone())),
+            cleanup_query_logs: Arc::new(CleanupOldQueryLogsUseCase::new(repos.query_log.clone())),
             get_groups: Arc::new(GetGroupsUseCase::new(repos.group.clone())),
             create_group: Arc::new(CreateGroupUseCase::new(repos.group.clone())),
             update_group: Arc::new(UpdateGroupUseCase::new(repos.group.clone())),

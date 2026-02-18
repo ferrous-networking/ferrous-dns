@@ -16,7 +16,6 @@ pub async fn get_queries(
 ) -> Json<Vec<QueryResponse>> {
     debug!(period = %params.period, limit = params.limit, "Fetching recent queries");
 
-    // Parse and validate period
     let period_hours = parse_period(&params.period)
         .map(validate_period)
         .unwrap_or(24.0);

@@ -5,7 +5,6 @@ use ferrous_dns_domain::{ClientSubnet, DomainError};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 
-// Mock repository for testing
 struct MockClientSubnetRepository {
     subnets: Arc<Mutex<Vec<ClientSubnet>>>,
 }
@@ -19,7 +18,7 @@ impl MockClientSubnetRepository {
 
     fn add_subnet(&self, cidr: &str, group_id: i64) {
         let mut subnet = ClientSubnet::new(cidr.to_string(), group_id, None);
-        subnet.id = Some(1); // Mock ID
+        subnet.id = Some(1); 
         self.subnets.lock().unwrap().push(subnet);
     }
 }
@@ -124,15 +123,12 @@ async fn test_subnet_matcher_most_specific_wins() {
     let matcher = SubnetMatcherService::new(repo);
     matcher.refresh().await.unwrap();
 
-    // Most specific match (/32)
     let ip_host: IpAddr = "192.168.1.100".parse().unwrap();
     assert_eq!(matcher.find_group_for_ip(ip_host).await, Some(3));
 
-    // Match /24
     let ip_narrow: IpAddr = "192.168.1.50".parse().unwrap();
     assert_eq!(matcher.find_group_for_ip(ip_narrow).await, Some(2));
 
-    // Match /16
     let ip_broad: IpAddr = "192.168.2.1".parse().unwrap();
     assert_eq!(matcher.find_group_for_ip(ip_broad).await, Some(1));
 }
@@ -148,14 +144,11 @@ async fn test_subnet_matcher_cache_refresh() {
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     assert_eq!(matcher.find_group_for_ip(ip).await, Some(1));
 
-    // Add new subnet
     repo.add_subnet("10.0.0.0/8", 2);
 
-    // Should not be in cache yet
     let ip2: IpAddr = "10.0.0.1".parse().unwrap();
     assert_eq!(matcher.find_group_for_ip(ip2).await, None);
 
-    // After refresh, should find it
     matcher.refresh().await.unwrap();
     assert_eq!(matcher.find_group_for_ip(ip2).await, Some(2));
 }

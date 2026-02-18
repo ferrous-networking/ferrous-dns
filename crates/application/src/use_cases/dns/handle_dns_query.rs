@@ -33,7 +33,6 @@ impl HandleDnsQueryUseCase {
     pub async fn execute(&self, request: &DnsRequest) -> Result<Vec<IpAddr>, DomainError> {
         let start = Instant::now();
 
-        // Track client (fire-and-forget, don't block DNS response)
         if let Some(client_repo) = &self.client_repo {
             let client_repo = Arc::clone(client_repo);
             let client_ip = request.client_ip;
@@ -63,17 +62,11 @@ impl HandleDnsQueryUseCase {
                 query_source: QuerySource::Client,
             };
 
-            let logger = self.query_log.clone();
-            tokio::spawn(async move {
-                if let Err(e) = logger.log_query(&query_log).await {
-                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
-                }
-            });
+            if let Err(e) = self.query_log.log_query(&query_log).await {
+                tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
+            }
 
-            return Err(DomainError::InvalidDomainName(format!(
-                "Domain {} is blocked",
-                request.domain
-            )));
+            return Err(DomainError::Blocked);
         }
 
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
@@ -98,28 +91,20 @@ impl HandleDnsQueryUseCase {
                     query_source: QuerySource::Client,
                 };
 
-                let logger = self.query_log.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = logger.log_query(&query_log).await {
-                        tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
-                    }
-                });
+                if let Err(e) = self.query_log.log_query(&query_log).await {
+                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
+                }
 
-                Ok(resolution.addresses)
+                Ok(Arc::try_unwrap(resolution.addresses)
+                    .unwrap_or_else(|arc| (*arc).clone()))
             }
             Err(e) => {
                 let elapsed_micros = start.elapsed().as_micros() as u64;
-                let error_str = e.to_string();
-                let response_status: &'static str =
-                    if error_str.contains("NXDomain") || error_str.contains("no records found") {
-                        "NXDOMAIN"
-                    } else if error_str.contains("timeout") || error_str.contains("Timeout") {
-                        "TIMEOUT"
-                    } else if error_str.contains("refused") || error_str.contains("Refused") {
-                        "REFUSED"
-                    } else {
-                        "SERVFAIL"
-                    };
+                let response_status: &'static str = match &e {
+                    DomainError::NxDomain => "NXDOMAIN",
+                    DomainError::QueryTimeout => "TIMEOUT",
+                    _ => "SERVFAIL",
+                };
 
                 let query_log = QueryLog {
                     id: None,
@@ -137,12 +122,9 @@ impl HandleDnsQueryUseCase {
                     query_source: QuerySource::Client,
                 };
 
-                let logger = self.query_log.clone();
-                tokio::spawn(async move {
-                    if let Err(log_err) = logger.log_query(&query_log).await {
-                        tracing::warn!(error = %log_err, "Failed to log error query");
-                    }
-                });
+                if let Err(log_err) = self.query_log.log_query(&query_log).await {
+                    tracing::warn!(error = %log_err, "Failed to log error query");
+                }
 
                 Err(e)
             }

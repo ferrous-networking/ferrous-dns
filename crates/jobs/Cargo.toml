@@ -1,0 +1,16 @@
+[package]
+name = "ferrous-dns-jobs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+ferrous-dns-application.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+ferrous-dns-domain.workspace = true
+async-trait.workspace = true
+chrono.workspace = true

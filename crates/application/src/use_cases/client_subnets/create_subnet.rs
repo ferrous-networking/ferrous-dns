@@ -27,15 +27,13 @@ impl CreateClientSubnetUseCase {
         group_id: i64,
         comment: Option<String>,
     ) -> Result<ClientSubnet, DomainError> {
-        // Validate CIDR format
+        
         ClientSubnet::validate_cidr(&subnet_cidr).map_err(DomainError::InvalidCidr)?;
 
-        // Validate CIDR can be parsed
         let _network: ipnetwork::IpNetwork = subnet_cidr
             .parse()
             .map_err(|e| DomainError::InvalidCidr(format!("{}", e)))?;
 
-        // Verify group exists
         self.group_repo
             .get_by_id(group_id)
             .await?
@@ -44,7 +42,6 @@ impl CreateClientSubnetUseCase {
                 group_id
             )))?;
 
-        // Check for duplicates
         if self.subnet_repo.exists(&subnet_cidr).await? {
             return Err(DomainError::SubnetConflict(format!(
                 "Subnet {} already exists",

@@ -5,7 +5,6 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 
-/// DNS Forwarder for sending queries to specific servers
 pub struct DnsForwarder;
 
 impl Default for DnsForwarder {
@@ -19,7 +18,6 @@ impl DnsForwarder {
         Self
     }
 
-    /// Query a specific DNS server
     pub async fn query(
         &self,
         server: &str,
@@ -27,15 +25,13 @@ impl DnsForwarder {
         record_type: &RecordType,
         timeout_ms: u64,
     ) -> Result<DnsResponse, DomainError> {
-        // Parse server address
+        
         let server_addr: SocketAddr = server.parse().map_err(|e| {
             DomainError::InvalidDomainName(format!("Invalid server address: {}", e))
         })?;
 
-        // Build DNS query using MessageBuilder
         let request_bytes = MessageBuilder::build_query(domain, record_type)?;
 
-        // Send query via UDP
         let socket = UdpSocket::bind("0.0.0.0:0")
             .await
             .map_err(|e| DomainError::InvalidDomainName(format!("Failed to bind socket: {}", e)))?;
@@ -49,7 +45,6 @@ impl DnsForwarder {
             .await
             .map_err(|e| DomainError::InvalidDomainName(format!("Failed to send query: {}", e)))?;
 
-        // Receive response with timeout
         let mut response_buf = vec![0u8; 4096];
         let timeout = Duration::from_millis(timeout_ms);
 
@@ -60,7 +55,6 @@ impl DnsForwarder {
                 DomainError::InvalidDomainName(format!("Failed to receive response: {}", e))
             })?;
 
-        // Parse response using ResponseParser
         ResponseParser::parse(&response_buf[..len])
     }
 }

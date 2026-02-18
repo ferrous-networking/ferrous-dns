@@ -17,7 +17,6 @@ pub fn routes() -> Router<AppState> {
         .route("/local-records/{id}", delete(delete_record))
 }
 
-/// GET /api/local-records - Get all local DNS records from config
 async fn get_all_records(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LocalRecordDto>>, (StatusCode, String)> {
@@ -35,7 +34,6 @@ async fn get_all_records(
     Ok(Json(dtos))
 }
 
-/// POST /api/local-records - Create a new local DNS record
 async fn create_record(
     State(state): State<AppState>,
     Json(req): Json<CreateLocalRecordRequest>,
@@ -91,7 +89,6 @@ async fn create_record(
     Ok(Json(dto))
 }
 
-/// DELETE /api/local-records/:id - Delete a local DNS record
 async fn delete_record(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -110,7 +107,7 @@ async fn delete_record(
     let local_domain = config.dns.local_domain.clone();
 
     if let Err(e) = save_config_to_file(&config).await {
-        // Rollback - re-add to config at same position
+        
         config.dns.local_records.insert(idx, removed_record.clone());
         error!(error = %e, "Failed to save config file");
         return Err((
@@ -133,15 +130,13 @@ async fn delete_record(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Save configuration to TOML file
 async fn save_config_to_file(
     config: &ferrous_dns_domain::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Serialize to TOML
+    
     let toml_str =
         toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    // Write to file
     tokio::fs::write("ferrous-dns.toml", toml_str)
         .await
         .map_err(|e| format!("Failed to write config file: {}", e))?;
@@ -149,7 +144,6 @@ async fn save_config_to_file(
     Ok(())
 }
 
-/// Add a single record to permanent cache
 async fn reload_cache_with_record(
     state: &AppState,
     record: &LocalDnsRecord,
@@ -169,7 +163,6 @@ async fn reload_cache_with_record(
         }
     };
 
-    // Parse record type
     let record_type = match record.record_type.to_uppercase().as_str() {
         "A" => ferrous_dns_domain::RecordType::A,
         "AAAA" => ferrous_dns_domain::RecordType::AAAA,
@@ -197,7 +190,6 @@ async fn reload_cache_with_record(
     );
 }
 
-/// Remove a record from cache
 async fn clear_cache_record(
     state: &AppState,
     record: &LocalDnsRecord,

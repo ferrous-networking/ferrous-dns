@@ -13,7 +13,6 @@ pub struct UpstreamResult {
     pub latency_ms: u64,
 }
 
-/// Stack-allocated enum dispatch for load balancing strategies.
 pub enum Strategy {
     Parallel(ParallelStrategy),
     Balanced(BalancedStrategy),
@@ -21,12 +20,7 @@ pub enum Strategy {
 }
 
 impl Strategy {
-    /// Query upstream servers using the strategy.
-    ///
-    /// ## Phase 5: Query Event Logging
-    ///
-    /// The `emitter` parameter is passed through to `query_server()` to enable
-    /// comprehensive logging of all DNS queries, including DNSSEC validation.
+    
     pub async fn query_refs(
         &self,
         servers: &[&DnsProtocol],

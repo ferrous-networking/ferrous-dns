@@ -8,33 +8,22 @@ use super::logging::LoggingConfig;
 use super::server::ServerConfig;
 use super::upstream::UpstreamPool;
 
-/// Main configuration structure for Ferrous DNS
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
-    /// Server configuration (ports, bind address)
+    
     pub server: ServerConfig,
 
-    /// DNS resolution configuration
     pub dns: DnsConfig,
 
-    /// Ad-blocking configuration
     pub blocking: BlockingConfig,
 
-    /// Logging configuration
     pub logging: LoggingConfig,
 
-    /// Database configuration
     pub database: DatabaseConfig,
 }
 
 impl Config {
-    /// Load configuration from file or use defaults
-    ///
-    /// Priority order:
-    /// 1. Explicitly provided path
-    /// 2. ferrous-dns.toml in current directory
-    /// 3. /etc/ferrous-dns/config.toml
-    /// 4. Default configuration
+    
     pub fn load(path: Option<&str>, cli_overrides: CliOverrides) -> Result<Self, ConfigError> {
         let mut config = if let Some(path) = path {
             Self::from_file(path)?
@@ -51,14 +40,12 @@ impl Config {
         Ok(config)
     }
 
-    /// Load configuration from a specific file
     fn from_file(path: &str) -> Result<Self, ConfigError> {
         let contents = std::fs::read_to_string(path)
             .map_err(|e| ConfigError::FileRead(path.to_string(), e.to_string()))?;
         toml::from_str(&contents).map_err(|e| ConfigError::Parse(e.to_string()))
     }
 
-    /// Apply command-line overrides to configuration
     fn apply_cli_overrides(&mut self, overrides: CliOverrides) {
         if let Some(port) = overrides.dns_port {
             self.server.dns_port = port;
@@ -77,10 +64,6 @@ impl Config {
         }
     }
 
-    /// Normalize pool configuration
-    ///
-    /// If no pools are defined but upstream_servers exist,
-    /// create a default pool with all servers
     fn normalize_pools(&mut self) {
         if self.dns.pools.is_empty() && !self.dns.upstream_servers.is_empty() {
             self.dns.pools.push(UpstreamPool {
@@ -93,7 +76,6 @@ impl Config {
         }
     }
 
-    /// Validate configuration
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.server.dns_port == 0 {
             return Err(ConfigError::Validation("DNS port cannot be 0".to_string()));
@@ -117,7 +99,6 @@ impl Config {
         Ok(())
     }
 
-    /// Save configuration to file
     pub fn save(&self, path: &str) -> Result<(), ConfigError> {
         let toml_string = toml::to_string_pretty(self)
             .map_err(|e| ConfigError::Parse(format!("Failed to serialize config: {}", e)))?;
@@ -126,7 +107,6 @@ impl Config {
         Ok(())
     }
 
-    /// Get the path to the configuration file being used
     pub fn get_config_path() -> Option<String> {
         if std::path::Path::new("ferrous-dns.toml").exists() {
             Some("ferrous-dns.toml".to_string())
@@ -138,7 +118,6 @@ impl Config {
     }
 }
 
-/// Command-line overrides for configuration
 #[derive(Debug, Default)]
 pub struct CliOverrides {
     pub dns_port: Option<u16>,

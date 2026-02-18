@@ -27,7 +27,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
         .await
         .unwrap();
 
-    // Create groups table
     sqlx::query(
         r#"
         CREATE TABLE groups (
@@ -45,7 +44,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
-    // Insert test groups
     sqlx::query(
         "INSERT INTO groups (id, name) VALUES (1, 'Protected'), (2, 'Office'), (3, 'Guest')",
     )
@@ -53,7 +51,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
-    // Create clients table
     sqlx::query(
         r#"
         CREATE TABLE clients (
@@ -76,7 +73,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
-    // Create client_subnets table
     sqlx::query(
         r#"
         CREATE TABLE client_subnets (
@@ -305,7 +301,6 @@ async fn test_create_subnet_duplicate() {
         "group_id": 2
     });
 
-    // First creation should succeed
     let response1 = app
         .clone()
         .oneshot(
@@ -321,7 +316,6 @@ async fn test_create_subnet_duplicate() {
 
     assert_eq!(response1.status(), StatusCode::CREATED);
 
-    // Second creation with same CIDR should fail
     let response2 = app
         .oneshot(
             Request::builder()
@@ -341,7 +335,6 @@ async fn test_create_subnet_duplicate() {
 async fn test_get_all_subnets_with_data() {
     let (app, _pool) = create_test_app().await;
 
-    // Create multiple subnets
     let subnets = vec![
         json!({"subnet_cidr": "192.168.1.0/24", "group_id": 2, "comment": "Office"}),
         json!({"subnet_cidr": "10.0.0.0/8", "group_id": 3, "comment": "Guest"}),
@@ -361,7 +354,6 @@ async fn test_get_all_subnets_with_data() {
             .unwrap();
     }
 
-    // Get all subnets
     let response = app
         .oneshot(
             Request::builder()
@@ -381,18 +373,16 @@ async fn test_get_all_subnets_with_data() {
     let arr = json.as_array().unwrap();
     assert_eq!(arr.len(), 2);
 
-    // Verify structure
     assert!(arr[0]["id"].is_number());
     assert!(arr[0]["subnet_cidr"].is_string());
     assert!(arr[0]["group_id"].is_number());
-    assert!(arr[0]["group_name"].is_string()); // Should be enriched with group name
+    assert!(arr[0]["group_name"].is_string()); 
 }
 
 #[tokio::test]
 async fn test_delete_subnet_success() {
     let (app, _pool) = create_test_app().await;
 
-    // Create subnet
     let payload = json!({"subnet_cidr": "192.168.1.0/24", "group_id": 2});
     let create_response = app
         .clone()
@@ -416,7 +406,6 @@ async fn test_delete_subnet_success() {
     let json: Value = serde_json::from_slice(&body).unwrap();
     let subnet_id = json["id"].as_i64().unwrap();
 
-    // Delete subnet
     let response = app
         .oneshot(
             Request::builder()
@@ -479,7 +468,7 @@ async fn test_create_manual_client_success() {
 
     assert!(json["id"].is_number());
     assert_eq!(json["ip_address"], "192.168.1.100");
-    // Response should include these fields (values may vary)
+    
     assert!(json.get("group_id").is_some());
     assert!(json.get("hostname").is_some());
     assert!(json.get("mac_address").is_some());
@@ -594,5 +583,5 @@ async fn test_subnet_enriched_with_group_name() {
 
     let subnet = &json.as_array().unwrap()[0];
     assert_eq!(subnet["group_id"], 2);
-    assert_eq!(subnet["group_name"], "Office"); // Should be enriched
+    assert_eq!(subnet["group_name"], "Office"); 
 }

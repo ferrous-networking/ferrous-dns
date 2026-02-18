@@ -21,12 +21,10 @@ pub async fn get_timeline(
         "Fetching query timeline"
     );
 
-    // Parse period (e.g., "24h" -> 24, "7d" -> 168)
     let period_hours = parse_period(&params.period)
         .map(|h| validate_period(h) as u32)
         .unwrap_or(24);
 
-    // Parse granularity
     let granularity = match params.granularity.as_str() {
         "minute" => Granularity::Minute,
         "15min" | "quarter_hour" => Granularity::QuarterHour,

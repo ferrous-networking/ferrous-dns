@@ -6,8 +6,6 @@ use std::str::FromStr;
 use tokio::fs;
 use tracing::{debug, warn};
 
-/// Validate MAC address format
-/// Accepts formats: aa:bb:cc:dd:ee:ff or aa-bb-cc-dd-ee-ff
 fn is_valid_mac(mac: &str) -> bool {
     if mac.len() != 17 {
         return false;
@@ -31,7 +29,6 @@ fn is_valid_mac(mac: &str) -> bool {
         .all(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
-/// Linux ARP cache reader (reads /proc/net/arp)
 pub struct LinuxArpReader {
     arp_path: String,
 }
@@ -43,7 +40,6 @@ impl LinuxArpReader {
         }
     }
 
-    /// Create a new LinuxArpReader with a custom ARP file path (useful for testing)
     pub fn with_path(path: String) -> Self {
         Self { arp_path: path }
     }

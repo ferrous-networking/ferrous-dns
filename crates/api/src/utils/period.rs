@@ -1,24 +1,8 @@
-/// Parse period string like "24h", "30m", "7d", "1w" to hours (with decimals for minutes)
-/// Returns None if invalid format
-///
-/// # Examples
-/// ```
-/// use ferrous_dns_api::utils::parse_period;
-///
-/// assert_eq!(parse_period("1h"), Some(1.0));
-/// assert_eq!(parse_period("30m"), Some(0.5));
-/// assert_eq!(parse_period("24h"), Some(24.0));
-/// assert_eq!(parse_period("7d"), Some(168.0));
-/// assert_eq!(parse_period("1w"), Some(168.0));
-/// assert_eq!(parse_period("invalid"), None);
-/// assert_eq!(parse_period(""), Some(24.0)); // default
-/// ```
 pub fn parse_period(period: &str) -> Option<f32> {
     if period.is_empty() {
-        return Some(24.0); // default 24 hours
+        return Some(24.0); 
     }
 
-    // Handle edge case of single character
     if period.len() < 2 {
         return None;
     }
@@ -26,30 +10,19 @@ pub fn parse_period(period: &str) -> Option<f32> {
     let (value_str, unit) = period.split_at(period.len() - 1);
     let num: f32 = value_str.parse().ok()?;
 
-    // Ensure positive value
     if num <= 0.0 {
         return None;
     }
 
     match unit {
-        "m" => Some(num / 60.0),       // minutes to hours
-        "h" => Some(num),              // hours
-        "d" => Some(num * 24.0),       // days to hours
-        "w" => Some(num * 24.0 * 7.0), // weeks to hours
+        "m" => Some(num / 60.0),       
+        "h" => Some(num),              
+        "d" => Some(num * 24.0),       
+        "w" => Some(num * 24.0 * 7.0), 
         _ => None,
     }
 }
 
-/// Cap maximum period to 30 days (720 hours) for performance
-///
-/// # Examples
-/// ```
-/// use ferrous_dns_api::utils::validate_period;
-///
-/// assert_eq!(validate_period(24.0), 24.0);
-/// assert_eq!(validate_period(168.0), 168.0); // 7 days
-/// assert_eq!(validate_period(1000.0), 720.0); // Capped at 30 days
-/// ```
 pub fn validate_period(hours: f32) -> f32 {
     hours.min(720.0)
 }
@@ -87,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_parse_period_empty() {
-        assert_eq!(parse_period(""), Some(24.0)); // Default to 24h
+        assert_eq!(parse_period(""), Some(24.0)); 
     }
 
     #[test]
@@ -110,7 +83,7 @@ mod tests {
         assert_eq!(validate_period(24.0), 24.0);
         assert_eq!(validate_period(168.0), 168.0);
         assert_eq!(validate_period(720.0), 720.0);
-        assert_eq!(validate_period(1000.0), 720.0); // Capped
-        assert_eq!(validate_period(10000.0), 720.0); // Capped
+        assert_eq!(validate_period(1000.0), 720.0); 
+        assert_eq!(validate_period(10000.0), 720.0); 
     }
 }

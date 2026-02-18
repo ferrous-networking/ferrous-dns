@@ -1,7 +1,6 @@
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::fmt;
 
-/// RRSIG Record - Resource Record Signature
 #[derive(Debug, Clone)]
 pub struct RrsigRecord {
     pub type_covered: RecordType,

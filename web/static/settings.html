@@ -388,7 +388,7 @@
 </aside>
 
 <main style="padding:32px;width:100%;min-height:100vh">
-    <!-- Restart Warning Banner -->
+    
     <div x-show="restartRequired" x-cloak
          style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
         <i data-lucide="alert-triangle" style="width:20px;height:20px;color:#F59E0B;flex-shrink:0"></i>
@@ -396,19 +396,16 @@
             effect</p>
     </div>
 
-    <!-- Alert -->
     <div x-show="alert.show" :class="alert.type==='success'?'alert-success':'alert-error'" class="alert" x-cloak>
         <strong x-text="alert.message"></strong>
         <button @click="alert.show=false" style="font-size:20px;font-weight:700">&times;</button>
     </div>
 
-    <!-- Loading -->
     <div x-show="loading" x-cloak style="text-align:center;padding:40px">
         <div style="display:inline-block;width:40px;height:40px;border:4px solid var(--border-color);border-top-color:var(--color-primary);border-radius:50%;animation:spin 1s linear infinite"></div>
         <p style="margin-top:16px;color:var(--text-secondary)">Loading configuration...</p>
     </div>
 
-    <!-- Tabs -->
     <div x-show="!loading" style="margin-bottom:24px;border-bottom:1px solid var(--border-color)">
         <div style="display:flex;gap:8px">
             <button @click="currentTab='dnsbasic';setTimeout(()=>lucide.createIcons(),50)"
@@ -438,13 +435,11 @@
         </div>
     </div>
 
-    <!-- DNS Settings Tab -->
     <div x-show="currentTab==='dnsbasic'&&!loading" x-cloak>
         <div class="card">
             <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">🛡️ DNS Settings</h3>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Configure advanced DNS behavior</p>
 
-            <!-- Never forward non-FQDN -->
             <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
                 <div style="flex:1;margin-right:24px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -464,7 +459,6 @@
                 </div>
             </div>
 
-            <!-- Never forward reverse lookups -->
             <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
                 <div style="flex:1;margin-right:24px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -487,7 +481,6 @@
                 </div>
             </div>
 
-            <!-- Use Conditional Forwarding -->
             <div style="padding:16px 0">
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
                     <div style="flex:1;margin-right:24px">
@@ -509,7 +502,6 @@
                     </div>
                 </div>
 
-                <!-- Config fields -->
                 <div x-show="settings.conditional_forwarding_enabled" x-cloak
                      style="border-top:1px solid var(--border-color);padding-top:16px">
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:16px">
@@ -546,7 +538,6 @@
         </button>
     </div>
 
-    <!-- DNS Advanced Tab -->
     <div x-show="currentTab==='dnsadvanced'&&!loading" x-cloak>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px">
             <div class="strategy-card" :class="getFirstPoolStrategy()==='parallel'?'selected':''"
@@ -677,7 +668,6 @@
         </button>
     </div>
 
-    <!-- Cache Tab -->
     <div x-show="currentTab==='cache'&&!loading" x-cloak>
         <div class="card">
             <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">⚡ Cache Configuration</h3>
@@ -756,7 +746,6 @@
         </button>
     </div>
 
-    <!-- Ad Block Tab -->
     <div x-show="currentTab==='adblock'&&!loading" x-cloak>
         <div class="card">
             <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">🚫 Ad Blocking</h3>

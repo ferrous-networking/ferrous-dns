@@ -439,7 +439,6 @@
         <p style="font-size:14px;color:var(--text-secondary)">Manage DNS clients by IP, subnet or MAC address</p>
     </div>
 
-    <!-- STATS -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:32px">
         <div class="card" style="padding:20px">
             <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Total Clients</p>
@@ -459,11 +458,9 @@
         </div>
     </div>
 
-    <!-- ADD FORM -->
     <div class="card">
         <h2 style="font-size:20px;font-weight:700;margin-bottom:16px">Add Client or Subnet</h2>
 
-        <!-- Type Badge -->
         <div x-show="form.type" class="badge" :class="getBadgeClass()">
             <i data-lucide="circle" style="width:16px;height:16px"></i>
             <span x-text="getTypeLabel()"></span>
@@ -516,7 +513,6 @@
         </form>
     </div>
 
-    <!-- TABS -->
     <div class="card">
         <div class="tabs">
             <button @click="activeTab = 'known-clients'" class="tab" :class="{'active': activeTab === 'known-clients'}">
@@ -527,7 +523,6 @@
             </button>
         </div>
 
-        <!-- TAB: KNOWN CLIENTS -->
         <div x-show="activeTab === 'known-clients'">
             <div x-show="clients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
                 No clients discovered yet
@@ -561,9 +556,8 @@
             </table>
         </div>
 
-        <!-- TAB: CONFIGURED -->
         <div x-show="activeTab === 'configured'">
-            <!-- Configured Clients -->
+            
             <div style="margin-bottom:24px">
                 <h3 style="font-size:16px;font-weight:600;margin-bottom:12px;padding:12px 16px;background:var(--bg-tertiary);border-radius:8px">
                     Individual Clients
@@ -624,7 +618,6 @@
                 </table>
             </div>
 
-            <!-- Configured Subnets -->
             <div>
                 <h3 style="font-size:16px;font-weight:600;margin-bottom:12px;padding:12px 16px;background:var(--bg-tertiary);border-radius:8px">
                     Subnets
@@ -744,7 +737,7 @@
                     const res = await fetch('/api/clients?limit=1000');
                     if (res.ok) {
                         const all = await res.json();
-                        // For now, show all clients (ideally backend would have is_manual flag)
+                        
                         this.manualClients = all;
                     }
                 } catch (e) {
@@ -793,7 +786,6 @@
                     return;
                 }
 
-                // Check CIDR
                 if (v.includes('/')) {
                     if (this.isValidCIDR(v)) {
                         this.form.type = 'subnet';
@@ -804,14 +796,12 @@
                     return;
                 }
 
-                // Check MAC
                 if (this.isValidMAC(v)) {
                     this.form.type = 'mac';
                     this.form.error = 'MAC detected! Please enter the IP address.';
                     return;
                 }
 
-                // Check IP
                 if (this.isValidIP(v)) {
                     this.form.type = 'ip';
                 } else {

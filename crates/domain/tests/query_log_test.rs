@@ -41,7 +41,6 @@ fn test_distribution_sorted() {
 
     let stats = QueryStats::default().with_analytics(queries_by_type);
 
-    // Should be sorted by percentage descending
     assert_eq!(stats.record_type_distribution[0].0, RecordType::AAAA);
     assert_eq!(stats.record_type_distribution[1].0, RecordType::A);
     assert_eq!(stats.record_type_distribution[2].0, RecordType::MX);
@@ -65,7 +64,7 @@ fn test_query_stats_type_count() {
 
     assert_eq!(stats.type_count(RecordType::A), 100);
     assert_eq!(stats.type_count(RecordType::AAAA), 50);
-    assert_eq!(stats.type_count(RecordType::MX), 0); // Not present
+    assert_eq!(stats.type_count(RecordType::MX), 0); 
 }
 
 #[test]
@@ -76,11 +75,10 @@ fn test_query_stats_type_percentage() {
 
     let stats = QueryStats::default().with_analytics(queries_by_type);
 
-    // A = 100/150 = 66.67%
     assert!((stats.type_percentage(RecordType::A) - 66.67).abs() < 0.1);
-    // AAAA = 50/150 = 33.33%
+    
     assert!((stats.type_percentage(RecordType::AAAA) - 33.33).abs() < 0.1);
-    // MX = 0%
+    
     assert_eq!(stats.type_percentage(RecordType::MX), 0.0);
 }
 
@@ -88,7 +86,6 @@ fn test_query_stats_type_percentage() {
 fn test_query_stats_with_zero_queries() {
     let stats = QueryStats::default().with_analytics(HashMap::new());
 
-    // Should handle empty gracefully
     assert_eq!(stats.type_count(RecordType::A), 0);
     assert_eq!(stats.type_percentage(RecordType::A), 0.0);
     assert_eq!(stats.top_types(5).len(), 0);

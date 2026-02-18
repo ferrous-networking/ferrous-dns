@@ -2,7 +2,6 @@
 #[allow(dead_code)]
 use std::collections::HashMap;
 
-/// Fixture de resposta DNS para testes
 #[derive(Debug, Clone)]
 pub struct DnsResponseFixture {
     pub domain: String,
@@ -24,11 +23,9 @@ pub struct DnsAnswerFixture {
     pub data: String,
 }
 
-/// Carrega todas as fixtures de DNS (hardcoded para evitar dependência de serde)
 pub fn load_dns_fixtures() -> HashMap<String, DnsResponseFixture> {
     let mut fixtures = HashMap::new();
 
-    // google_a_record
     fixtures.insert(
         "google_a_record".to_string(),
         DnsResponseFixture {
@@ -49,7 +46,6 @@ pub fn load_dns_fixtures() -> HashMap<String, DnsResponseFixture> {
         },
     );
 
-    // cloudflare_aaaa_record
     fixtures.insert(
         "cloudflare_aaaa_record".to_string(),
         DnsResponseFixture {
@@ -70,7 +66,6 @@ pub fn load_dns_fixtures() -> HashMap<String, DnsResponseFixture> {
         },
     );
 
-    // nxdomain_response
     fixtures.insert(
         "nxdomain_response".to_string(),
         DnsResponseFixture {
@@ -87,7 +82,6 @@ pub fn load_dns_fixtures() -> HashMap<String, DnsResponseFixture> {
     fixtures
 }
 
-/// Pega uma fixture específica por nome
 pub fn get_fixture(name: &str) -> Option<DnsResponseFixture> {
     let fixtures = load_dns_fixtures();
     fixtures.get(name).cloned()

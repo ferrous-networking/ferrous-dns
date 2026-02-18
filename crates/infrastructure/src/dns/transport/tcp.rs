@@ -7,10 +7,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::debug;
 
-/// Maximum DNS message size over TCP (64KB - 2 byte length prefix)
 const MAX_TCP_MESSAGE_SIZE: usize = 65535;
 
-/// DNS over TCP transport
 pub struct TcpTransport {
     server_addr: SocketAddr,
 }
@@ -28,7 +26,7 @@ impl DnsTransport for TcpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        // Connect to server
+        
         let mut stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
             .await
             .map_err(|_| {
@@ -44,7 +42,6 @@ impl DnsTransport for TcpTransport {
                 ))
             })?;
 
-        // Send: 2-byte length prefix + message (RFC 1035 §4.2.2)
         let length = message_bytes.len() as u16;
         let length_bytes = length.to_be_bytes();
 
@@ -73,7 +70,6 @@ impl DnsTransport for TcpTransport {
             "TCP query sent"
         );
 
-        // Receive: read 2-byte length prefix first
         let response_bytes = tokio::time::timeout(timeout, async {
             let mut len_buf = [0u8; 2];
             stream.read_exact(&mut len_buf).await.map_err(|e| {
@@ -92,7 +88,6 @@ impl DnsTransport for TcpTransport {
                 )));
             }
 
-            // Read the DNS message
             let mut response = vec![0u8; response_len];
             stream.read_exact(&mut response).await.map_err(|e| {
                 DomainError::InvalidDomainName(format!(
@@ -128,7 +123,6 @@ impl DnsTransport for TcpTransport {
     }
 }
 
-/// Helper: send DNS message over an existing TCP-like stream (used by TLS transport)
 pub(crate) async fn send_with_length_prefix<S>(
     stream: &mut S,
     message_bytes: &[u8],
@@ -153,7 +147,6 @@ where
     Ok(())
 }
 
-/// Helper: read DNS message from a TCP-like stream with length prefix
 pub(crate) async fn read_with_length_prefix<S>(stream: &mut S) -> Result<Vec<u8>, DomainError>
 where
     S: AsyncReadExt + Unpin,

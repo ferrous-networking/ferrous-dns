@@ -1,26 +1,3 @@
-//! DNS Resolver module with Decorator Pattern
-//!
-//! This module implements a flexible resolver architecture using the Decorator Pattern.
-//! Each decorator adds a specific responsibility:
-//!
-//! - **Filters**: Query validation and transformation (outermost)
-//! - **Cache**: Response caching with prefetch support
-//! - **DNSSEC**: Response validation with DNSSEC
-//! - **Core**: Actual DNS resolution (innermost)
-//!
-//! ## Example Usage
-//!
-//! ```ignore
-//! use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
-//! use ferrous_dns_infrastructure::dns::resolver::QueryFilters;
-//!
-//! let resolver = ResolverBuilder::new(pool_manager)
-//!     .with_cache(cache)
-//!     .with_dnssec()
-//!     .with_filters(QueryFilters::default())
-//!     .build();
-//! ```
-
 pub mod builder;
 pub mod cache_layer;
 pub mod config;

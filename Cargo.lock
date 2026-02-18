@@ -590,6 +590,7 @@ dependencies = [
  "ferrous-dns-application",
  "ferrous-dns-domain",
  "ferrous-dns-infrastructure",
+ "ferrous-dns-jobs",
  "hickory-server",
  "socket2",
  "sqlx",
@@ -672,6 +673,18 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "webpki-roots 1.0.6",
+]
+
+[[package]]
+name = "ferrous-dns-jobs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "ferrous-dns-application",
+ "ferrous-dns-domain",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

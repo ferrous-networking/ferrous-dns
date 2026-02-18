@@ -2,7 +2,6 @@ use ferrous_dns_domain::{DnsQuery, DomainError, FqdnFilter, PrivateIpFilter};
 use std::sync::Arc;
 use tracing::debug;
 
-/// Query filters for privacy and security
 #[derive(Clone)]
 pub struct QueryFilters {
     pub block_private_ptr: bool,
@@ -11,7 +10,7 @@ pub struct QueryFilters {
 }
 
 impl QueryFilters {
-    /// Create new query filters
+    
     pub fn new(
         block_private_ptr: bool,
         block_non_fqdn: bool,
@@ -24,12 +23,8 @@ impl QueryFilters {
         }
     }
 
-    /// Apply all filters to a query
-    ///
-    /// Returns Ok(modified_query) if query passes all filters
-    /// Returns Err(DomainError) if query should be blocked
     pub fn apply(&self, mut query: DnsQuery) -> Result<DnsQuery, DomainError> {
-        // Filter 1: Block private PTR queries
+        
         if self.block_private_ptr && PrivateIpFilter::is_private_ptr_query(&query.domain) {
             return Err(DomainError::FilteredQuery(format!(
                 "Private PTR query blocked: {}",
@@ -37,7 +32,6 @@ impl QueryFilters {
             )));
         }
 
-        // Filter 2: Block/transform non-FQDN queries
         if self.block_non_fqdn {
             if FqdnFilter::is_local_hostname(&query.domain) {
                 return Err(DomainError::FilteredQuery(format!(
@@ -46,7 +40,7 @@ impl QueryFilters {
                 )));
             }
         } else if let Some(ref domain) = self.local_domain {
-            // If not blocking, try to append local domain to non-FQDN queries
+            
             if !query.domain.contains('.') {
                 debug!(
                     original = %query.domain,
@@ -60,7 +54,6 @@ impl QueryFilters {
         Ok(query)
     }
 
-    /// Check if filters are enabled
     pub fn is_enabled(&self) -> bool {
         self.block_private_ptr || self.block_non_fqdn || self.local_domain.is_some()
     }

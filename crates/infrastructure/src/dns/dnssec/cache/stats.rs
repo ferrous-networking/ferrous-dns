@@ -1,7 +1,6 @@
 use compact_str::CompactString;
 use dashmap::DashMap;
 
-/// Cache statistics tracker
 #[derive(Debug, Default)]
 pub struct CacheStats {
     pub(super) validation_hits: DashMap<CompactString, u64>,
@@ -13,7 +12,7 @@ pub struct CacheStats {
 }
 
 impl CacheStats {
-    /// Record a validation hit
+    
     pub fn record_validation_hit(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.validation_hits
@@ -22,7 +21,6 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Record a validation miss
     pub fn record_validation_miss(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.validation_misses
@@ -31,7 +29,6 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Record a DNSKEY hit
     pub fn record_dnskey_hit(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.dnskey_hits
@@ -40,7 +37,6 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Record a DNSKEY miss
     pub fn record_dnskey_miss(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.dnskey_misses
@@ -49,7 +45,6 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Record a DS hit
     pub fn record_ds_hit(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.ds_hits
@@ -58,7 +53,6 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Record a DS miss
     pub fn record_ds_miss(&self, domain: &str) {
         let key = CompactString::new(domain);
         self.ds_misses
@@ -67,37 +61,30 @@ impl CacheStats {
             .or_insert(1);
     }
 
-    /// Get total validation hits
     pub fn total_validation_hits(&self) -> u64 {
         self.validation_hits.iter().map(|e| *e.value()).sum()
     }
 
-    /// Get total validation misses
     pub fn total_validation_misses(&self) -> u64 {
         self.validation_misses.iter().map(|e| *e.value()).sum()
     }
 
-    /// Get total DNSKEY hits
     pub fn total_dnskey_hits(&self) -> u64 {
         self.dnskey_hits.iter().map(|e| *e.value()).sum()
     }
 
-    /// Get total DNSKEY misses
     pub fn total_dnskey_misses(&self) -> u64 {
         self.dnskey_misses.iter().map(|e| *e.value()).sum()
     }
 
-    /// Get total DS hits
     pub fn total_ds_hits(&self) -> u64 {
         self.ds_hits.iter().map(|e| *e.value()).sum()
     }
 
-    /// Get total DS misses
     pub fn total_ds_misses(&self) -> u64 {
         self.ds_misses.iter().map(|e| *e.value()).sum()
     }
 
-    /// Calculate hit rate for validations
     pub fn validation_hit_rate(&self) -> f64 {
         let hits = self.total_validation_hits();
         let misses = self.total_validation_misses();
@@ -111,7 +98,6 @@ impl CacheStats {
     }
 }
 
-/// Snapshot of cache statistics
 #[derive(Debug, Clone)]
 pub struct CacheStatsSnapshot {
     pub validation_entries: usize,
@@ -126,7 +112,7 @@ pub struct CacheStatsSnapshot {
 }
 
 impl CacheStatsSnapshot {
-    /// Calculate validation hit rate
+    
     pub fn validation_hit_rate(&self) -> f64 {
         let total = self.total_validation_hits + self.total_validation_misses;
         if total == 0 {
@@ -136,7 +122,6 @@ impl CacheStatsSnapshot {
         }
     }
 
-    /// Calculate DNSKEY hit rate
     pub fn dnskey_hit_rate(&self) -> f64 {
         let total = self.total_dnskey_hits + self.total_dnskey_misses;
         if total == 0 {
@@ -146,7 +131,6 @@ impl CacheStatsSnapshot {
         }
     }
 
-    /// Calculate DS hit rate
     pub fn ds_hit_rate(&self) -> f64 {
         let total = self.total_ds_hits + self.total_ds_misses;
         if total == 0 {

@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::RwLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// Cached DNS record with metadata (MEMORY-OPTIMIZED)
 #[derive(Debug)]
 pub struct CachedRecord {
     pub data: CachedData,
@@ -20,8 +19,6 @@ pub struct CachedRecord {
     pub marked_for_deletion: AtomicBool,
     pub refreshing: AtomicBool,
 
-    /// Permanent records never expire and are immune to eviction
-    /// Used for local DNS records that should always be available
     pub permanent: bool,
 }
 
@@ -88,29 +85,6 @@ impl CachedRecord {
         }
     }
 
-    /// Create a permanent cache record that never expires
-    ///
-    /// Permanent records are used for local DNS records and are:
-    /// - Never expired (is_expired() always returns false)
-    /// - Never evicted from cache (immune to eviction pressure)
-    /// - Preloaded on server startup
-    /// - Only removed when explicitly deleted or server restarts
-    ///
-    /// # Arguments
-    /// * `data` - DNS response data (IP addresses, CNAMEs)
-    /// * `ttl` - TTL for metadata purposes (not used for expiration)
-    /// * `record_type` - DNS record type (A, AAAA, etc.)
-    ///
-    /// # Example
-    /// ```ignore
-    /// let data = CachedData {
-    ///     addresses: vec!["192.168.1.100".parse().unwrap()],
-    ///     cname: None,
-    /// };
-    /// let record = CachedRecord::permanent(data, 300, RecordType::A);
-    /// assert!(!record.is_expired()); // Never expires
-    /// assert!(record.permanent);
-    /// ```
     pub fn permanent(data: CachedData, ttl: u32, record_type: RecordType) -> Self {
         let now = Instant::now();
         let now_unix = SystemTime::now()
@@ -118,30 +92,24 @@ impl CachedRecord {
             .unwrap()
             .as_secs();
 
-        // For permanent records, use a very far future date (1 year)
-        // instead of u64::MAX to avoid overflow
-        let expires_at = now + Duration::from_secs(365 * 24 * 60 * 60); // 1 year
+        let expires_at = now + Duration::from_secs(365 * 24 * 60 * 60); 
 
         Self {
             data,
-            dnssec_status: DnssecStatus::Unknown, // Local records don't use DNSSEC
+            dnssec_status: DnssecStatus::Unknown, 
             expires_at,
             inserted_at: now,
             hit_count: AtomicU64::new(0),
             last_access: AtomicU64::new(now_unix),
             ttl,
             record_type,
-            access_history: None, // Permanent records don't need LFUK tracking
+            access_history: None, 
             marked_for_deletion: AtomicBool::new(false),
             refreshing: AtomicBool::new(false),
             permanent: true,
         }
     }
 
-    /// Check if the record has expired
-    ///
-    /// Permanent records NEVER expire, regardless of TTL or age.
-    /// Regular records expire when current time >= expires_at.
     pub fn is_expired(&self) -> bool {
         if self.permanent {
             return false;

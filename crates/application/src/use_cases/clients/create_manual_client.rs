@@ -29,7 +29,7 @@ impl CreateManualClientUseCase {
         hostname: Option<String>,
         mac_address: Option<String>,
     ) -> Result<Client, DomainError> {
-        // Verify group exists if specified
+        
         if let Some(gid) = group_id {
             self.group_repo
                 .get_by_id(gid)
@@ -40,10 +40,8 @@ impl CreateManualClientUseCase {
                 )))?;
         }
 
-        // Get or create client
         let mut client = self.client_repo.get_or_create(ip_address).await?;
 
-        // Update optional fields if provided
         if let Some(hostname) = hostname {
             self.client_repo
                 .update_hostname(ip_address, hostname)
@@ -54,7 +52,6 @@ impl CreateManualClientUseCase {
             self.client_repo.update_mac_address(ip_address, mac).await?;
         }
 
-        // Assign group if specified
         if let (Some(client_id), Some(gid)) = (client.id, group_id) {
             self.client_repo.assign_group(client_id, gid).await?;
             client.group_id = Some(gid);

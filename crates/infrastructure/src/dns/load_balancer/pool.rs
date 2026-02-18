@@ -13,12 +13,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-/// Manages multiple upstream DNS pools with load balancing strategies.
-///
-/// ## Phase 5: Query Event Logging
-///
-/// The `emitter` field is used to pass query events through to `query_server()`
-/// for comprehensive logging of all DNS queries, including DNSSEC validation.
 pub struct PoolManager {
     pools: Vec<PoolWithStrategy>,
     health_checker: Option<Arc<HealthChecker>>,
@@ -32,12 +26,7 @@ struct PoolWithStrategy {
 }
 
 impl PoolManager {
-    /// Creates a new pool manager.
-    ///
-    /// ## Phase 5: Query Event Logging
-    ///
-    /// The `emitter` parameter enables comprehensive query logging. Use
-    /// `QueryEventEmitter::new_disabled()` to disable logging (zero overhead).
+    
     pub fn new(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
@@ -83,7 +72,7 @@ impl PoolManager {
     }
 
     pub fn from_config(config: &Config) -> Result<Self, DomainError> {
-        // When creating from config, use disabled emitter (will be replaced in DI)
+        
         Self::new(
             config.dns.pools.clone(),
             None,
@@ -103,7 +92,7 @@ impl PoolManager {
         );
 
         for pool in &self.pools {
-            // SmallVec of refs — stack-allocated for ≤8 servers, zero DnsProtocol cloning
+            
             let healthy_refs: SmallVec<[&DnsProtocol; 8]> =
                 if let Some(ref checker) = self.health_checker {
                     pool.server_protocols
@@ -119,7 +108,6 @@ impl PoolManager {
                 continue;
             }
 
-            // PHASE 5: Pass emitter to strategy
             match pool
                 .strategy
                 .query_refs(

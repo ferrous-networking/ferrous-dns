@@ -362,7 +362,7 @@
     </div>
 </main>
 <script>
-    // Store charts OUTSIDE Alpine.js to avoid Proxy wrapping issues
+    
     const appCharts = {
         timeline: null,
         queryTypes: null,
@@ -383,20 +383,16 @@
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
 
-                // Initial data load (ALL data including queries for chart creation)
                 await this.loadAllData();
                 await this.$nextTick();
 
-                // Initialize charts after a delay
                 setTimeout(() => {
                     this.initCharts();
                     this.chartsReady = true;
                     lucide.createIcons();
 
-                    // Load chart data immediately after charts are ready
                     this.loadChartsData();
 
-                    // Start polling only after charts are fully initialized
                     setTimeout(() => this.startPolling(), 100);
                 }, 500);
             },
@@ -410,11 +406,11 @@
                 await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadQueryTypes(), this.loadCacheMetrics()])
             },
             async loadQuickStats() {
-                // Only load stats and cache metrics (no chart updates)
+                
                 await Promise.all([this.loadStats(), this.loadCacheMetrics()])
             },
             async loadChartsData() {
-                // Only load data that updates charts
+                
                 if (!this.chartsReady) return;
                 await Promise.all([this.loadQueryTypes(), this.loadTimelineData()])
             },
@@ -438,9 +434,9 @@
             },
             getRateColor() {
                 const queries = this.queryRate.queries || 0;
-                if (queries >= 10000) return '#EF4444'; // Red for > 10k q/s
-                if (queries >= 1000) return '#F59E0B';  // Yellow for 1k-10k q/s
-                return '#10B981';                        // Green for < 1k q/s
+                if (queries >= 10000) return '#EF4444'; 
+                if (queries >= 1000) return '#F59E0B';  
+                return '#10B981';                        
             },
             async loadQueryTypes() {
                 try {
@@ -459,7 +455,6 @@
                         });
                         this.cacheStats = {cache, upstream};
 
-                        // Timeline data is now loaded separately via loadTimelineData()
                     }
                 } catch (e) {
                     console.error(e)
@@ -471,29 +466,24 @@
                 }
 
                 try {
-                    // Request 24 hours of data grouped in 15-minute intervals from backend
+                    
                     const res = await fetch('/api/queries/timeline?period=24h&granularity=15min');
                     if (res.ok) {
                         const timeline = await res.json();
 
-                        // Generate 24-hour labels for the last 24 hours in 15-min intervals (96 data points)
                         const now = new Date();
                         const timeLabels = [];
                         const totalCounts = [];
                         const blockedCounts = [];
                         const unblockedCounts = [];
 
-                        // Create a map using Unix timestamps as keys (timezone-agnostic)
                         const dataMap = new Map();
                         timeline.buckets.forEach(b => {
-                            // Parse backend timestamp as UTC (backend uses SQLite datetime which is UTC)
-                            // Convert "2026-02-14 14:15:00" to "2026-02-14T14:15:00Z" for proper UTC parsing
+                            
                             const utcTime = new Date(b.timestamp.replace(' ', 'T') + 'Z');
 
-                            // Round to 15-min boundary for consistent matching
                             utcTime.setUTCMinutes(Math.floor(utcTime.getUTCMinutes() / 15) * 15, 0, 0);
 
-                            // Use Unix timestamp (milliseconds since epoch) as key - timezone-agnostic
                             const timeKey = utcTime.getTime();
                             dataMap.set(timeKey, {
                                 total: b.total,
@@ -502,38 +492,32 @@
                             });
                         });
 
-                        // Generate last 24 hours of labels and data (96 intervals of 15 minutes)
                         for (let i = 95; i >= 0; i--) {
                             const bucketTime = new Date(now.getTime() - (i * 15 * 60 * 1000));
 
-                            // Round down to nearest 15 minutes
                             bucketTime.setMinutes(Math.floor(bucketTime.getMinutes() / 15) * 15, 0, 0);
 
-                            // Use Unix timestamp for lookup (timezone-agnostic)
                             const timeKey = bucketTime.getTime();
 
-                            // Label format - show only full hours (:00) using local time for display
                             const hour = bucketTime.getHours();
                             const minute = bucketTime.getMinutes();
                             if (minute === 0) {
                                 timeLabels.push(`${hour}:00`);
                             } else {
-                                timeLabels.push(''); // Empty label for :15, :30, :45 to reduce clutter
+                                timeLabels.push(''); 
                             }
 
-                            // Get data from map or use 0
                             const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0};
                             totalCounts.push(data.total);
                             blockedCounts.push(data.blocked);
                             unblockedCounts.push(data.unblocked);
                         }
 
-                        // Update chart with blocked and unblocked queries (stacked)
                         if (appCharts.timeline && appCharts.timeline.data &&
                             appCharts.timeline.data.datasets[0] && appCharts.timeline.data.datasets[1]) {
                             appCharts.timeline.data.labels = timeLabels;
-                            appCharts.timeline.data.datasets[0].data = blockedCounts;    // Red area
-                            appCharts.timeline.data.datasets[1].data = unblockedCounts;  // Blue area
+                            appCharts.timeline.data.datasets[0].data = blockedCounts;    
+                            appCharts.timeline.data.datasets[1].data = unblockedCounts;  
                             appCharts.timeline.update('none');
                         }
                     }
@@ -547,7 +531,7 @@
                 }
 
                 try {
-                    // Filter out invalid string keys like "undefined" or "null"
+                    
                     const validTypes = {};
                     Object.entries(this.queryTypes).forEach(([key, value]) => {
                         if (key !== 'undefined' && key !== 'null' && value > 0) {
@@ -556,7 +540,7 @@
                     });
 
                     if (!appCharts.queryTypes && Object.keys(validTypes).length > 0) {
-                        // Create chart if it doesn't exist yet
+                        
                         const ctx2 = document.getElementById('queryTypesChart');
                         if (ctx2) {
                             appCharts.queryTypes = new Chart(ctx2.getContext('2d'), {
@@ -577,7 +561,7 @@
                             });
                         }
                     } else if (appCharts.queryTypes && appCharts.queryTypes.data && appCharts.queryTypes.canvas && Object.keys(validTypes).length > 0) {
-                        // Update existing chart only if canvas is still valid
+                        
                         appCharts.queryTypes.data.labels = Object.keys(validTypes);
                         appCharts.queryTypes.data.datasets[0].data = Object.values(validTypes);
                         appCharts.queryTypes.update('none');
@@ -591,7 +575,7 @@
 
                 try {
                     if (!appCharts.cacheSource && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
-                        // Create chart if it doesn't exist yet
+                        
                         const ctx3 = document.getElementById('cacheSourceChart');
                         if (ctx3) {
                             appCharts.cacheSource = new Chart(ctx3.getContext('2d'), {
@@ -612,7 +596,7 @@
                             });
                         }
                     } else if (appCharts.cacheSource && appCharts.cacheSource.data && appCharts.cacheSource.canvas && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
-                        // Update existing chart only if canvas is still valid
+                        
                         appCharts.cacheSource.data.datasets[0].data = [this.cacheStats.cache, this.cacheStats.upstream];
                         appCharts.cacheSource.update('none');
                     }
@@ -639,7 +623,7 @@
             },
             initCharts() {
                 try {
-                    // Destroy existing charts before creating new ones
+                    
                     if (appCharts.timeline) {
                         appCharts.timeline.destroy();
                         appCharts.timeline = null;
@@ -658,11 +642,10 @@
                         appCharts.timeline = new Chart(ctx1.getContext('2d'), {
                             type: 'line',
                             data: {
-                                // 96 data points = 24 hours * 4 intervals (every 15 minutes)
-                                // Show labels only for full hours (:00) - grid lines still appear every 30min
+                                
                                 labels: Array.from({length: 96}, (_, i) => {
                                     const mins = (i * 15) % 60;
-                                    // Show label ONLY for :00 (full hours), empty for :15, :30, :45
+                                    
                                     return mins === 0 ? `${Math.floor(i / 4)}:00` : '';
                                 }),
                                 datasets: [{
@@ -694,7 +677,7 @@
                                     tooltip: {
                                         callbacks: {
                                             title: function (context) {
-                                                // Show actual time in tooltip
+                                                
                                                 const index = context[0].dataIndex;
                                                 const minsAgo = (95 - index) * 15;
                                                 const date = new Date(Date.now() - minsAgo * 60 * 1000);
@@ -708,14 +691,14 @@
                                 scales: {
                                     y: {
                                         beginAtZero: true,
-                                        stacked: true  // Stack blocked + unblocked
+                                        stacked: true  
                                     },
                                     x: {
-                                        stacked: true,  // Enable stacking
+                                        stacked: true,  
                                         ticks: {
                                             maxRotation: 0,
-                                            autoSkip: false,  // Don't skip labels - we control which ones to show
-                                            maxTicksLimit: 48  // Show up to 48 labels (every 30 minutes for 24h)
+                                            autoSkip: false,  
+                                            maxTicksLimit: 48  
                                         },
                                         grid: {
                                             display: true
@@ -769,17 +752,15 @@
                 }
             },
             startPolling() {
-                // Rate polling: Query rate every 1 second
+                
                 this.pollingIntervals.rate = setInterval(() => {
                     this.loadQueryRate()
                 }, 1000);
 
-                // Fast polling: Stats and cache metrics every 1 second
                 this.pollingIntervals.fast = setInterval(() => {
                     this.loadQuickStats()
                 }, 1000);
 
-                // Slow polling: Chart updates every 1 minute
                 this.pollingIntervals.slow = setInterval(() => {
                     this.loadChartsData()
                 }, 60000);

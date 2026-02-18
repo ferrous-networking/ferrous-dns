@@ -12,18 +12,6 @@ use ferrous_dns_application::ports::DnsResolver;
 use std::sync::Arc;
 use tracing::info;
 
-/// Builder for constructing a DNS resolver with decorators
-///
-/// Example usage:
-/// ```ignore
-/// use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
-///
-/// let resolver = ResolverBuilder::new(pool_manager)
-///     .with_cache(cache)
-///     .with_dnssec()
-///     .with_filters(filters)
-///     .build();
-/// ```
 pub struct ResolverBuilder {
     pool_manager: Arc<PoolManager>,
     config: ResolverConfig,
@@ -34,7 +22,7 @@ pub struct ResolverBuilder {
 }
 
 impl ResolverBuilder {
-    /// Create a new builder with required dependencies
+    
     pub fn new(pool_manager: Arc<PoolManager>) -> Self {
         Self {
             pool_manager,
@@ -46,49 +34,36 @@ impl ResolverBuilder {
         }
     }
 
-    /// Set resolver configuration
     pub fn with_config(mut self, config: ResolverConfig) -> Self {
         self.config = config;
         self
     }
 
-    /// Enable caching layer
     pub fn with_cache(mut self, cache: Arc<DnsCache>) -> Self {
         self.cache = Some(cache);
         self
     }
 
-    /// Enable DNSSEC validation
     pub fn with_dnssec(mut self) -> Self {
         self.config.dnssec_enabled = true;
         self
     }
 
-    /// Add conditional forwarding
     pub fn with_conditional_forwarder(mut self, forwarder: Arc<ConditionalForwarder>) -> Self {
         self.conditional_forwarder = Some(forwarder);
         self
     }
 
-    /// Add prefetch predictor
     pub fn with_prefetch(mut self, predictor: Arc<PrefetchPredictor>) -> Self {
         self.prefetch_predictor = Some(predictor);
         self
     }
 
-    /// Add query filters
     pub fn with_filters(mut self, filters: QueryFilters) -> Self {
         self.filters = Some(filters);
         self
     }
 
-    /// Build the resolver with all configured decorators
-    ///
-    /// Decorator stack (outside to inside):
-    /// 1. Filters (outermost - validates queries first)
-    /// 2. Cache (second - checks cache before resolution)
-    /// 3. DNSSEC (third - validates upstream responses)
-    /// 4. Core (innermost - performs actual DNS queries)
     pub fn build(self) -> Arc<dyn DnsResolver> {
         info!(
             dnssec = self.config.dnssec_enabled,
@@ -97,17 +72,14 @@ impl ResolverBuilder {
             "Building DNS resolver"
         );
 
-        // Start with core resolver (innermost layer)
         let mut core = CoreResolver::new(self.pool_manager.clone(), self.config.query_timeout_ms);
 
-        // Add conditional forwarding to core if configured
         if let Some(forwarder) = self.conditional_forwarder {
             core = core.with_conditional_forwarder(forwarder);
         }
 
         let mut resolver: Arc<dyn DnsResolver> = Arc::new(core);
 
-        // Add DNSSEC layer if enabled
         if self.config.dnssec_enabled {
             resolver = Arc::new(DnssecResolver::new(
                 resolver,
@@ -116,11 +88,9 @@ impl ResolverBuilder {
             ));
         }
 
-        // Add cache layer if configured
         if let Some(cache) = self.cache {
             let mut cached = CachedResolver::new(resolver, cache, self.config.cache_ttl);
 
-            // Add prefetch if configured
             if let Some(predictor) = self.prefetch_predictor {
                 cached = cached.with_prefetch(predictor);
             }
@@ -128,7 +98,6 @@ impl ResolverBuilder {
             resolver = Arc::new(cached);
         }
 
-        // Add filters layer (outermost)
         if let Some(filters) = self.filters {
             resolver = Arc::new(FilteredResolver::new(resolver, filters));
         }

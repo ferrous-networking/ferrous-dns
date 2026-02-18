@@ -70,7 +70,6 @@ not-an-ip        0x1         0x2         11:22:33:44:55:66     *        eth0
     let reader = LinuxArpReader::with_path(temp_file.path().to_str().unwrap().to_string());
     let arp_table = reader.read_arp_table().await.unwrap();
 
-    // Only valid IPs should be included
     assert_eq!(arp_table.len(), 1);
 }
 
@@ -114,7 +113,6 @@ another bad
     let reader = LinuxArpReader::with_path(temp_file.path().to_str().unwrap().to_string());
     let arp_table = reader.read_arp_table().await.unwrap();
 
-    // Should only parse valid lines
     assert_eq!(arp_table.len(), 2);
 }
 
@@ -132,7 +130,6 @@ fe80::1          0x1         0x2         11:22:33:44:55:66     *        eth0
     let reader = LinuxArpReader::with_path(temp_file.path().to_str().unwrap().to_string());
     let arp_table = reader.read_arp_table().await.unwrap();
 
-    // Should support both IPv4 and IPv6
     assert_eq!(arp_table.len(), 2);
     assert!(arp_table.contains_key(&"192.168.1.1".parse::<IpAddr>().unwrap()));
     assert!(arp_table.contains_key(&"fe80::1".parse::<IpAddr>().unwrap()));

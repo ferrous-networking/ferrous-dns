@@ -10,6 +10,5 @@ pub trait DnsHandler: Send + Sync {
         request: &DnsRequest,
     ) -> Result<Vec<IpAddr>, DomainError>;
 
-    /// Check if domain is blocked
     async fn is_blocked(&self, domain: &str) -> Result<bool, DomainError>;
 }

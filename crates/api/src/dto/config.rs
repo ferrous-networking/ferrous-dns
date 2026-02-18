@@ -21,8 +21,8 @@ pub struct ServerConfigResponse {
 #[derive(Serialize, Debug, Clone)]
 pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
-    pub pools: Vec<UpstreamPoolResponse>,  // ✅ NOVO
-    pub health_check: HealthCheckResponse, // ✅ NOVO
+    pub pools: Vec<UpstreamPoolResponse>,  
+    pub health_check: HealthCheckResponse, 
     pub query_timeout: u64,
     pub cache_enabled: bool,
     pub cache_ttl: u32,
@@ -42,14 +42,12 @@ pub struct DnsConfigResponse {
     pub conditional_forward_router: Option<String>,
 }
 
-// ✅ NOVO: Conditional forwarding response
 #[derive(Serialize, Debug, Clone)]
 pub struct ConditionalForwardingResponse {
     pub domain: String,
     pub server: String,
 }
 
-// ✅ NOVO: Pool response
 #[derive(Serialize, Debug, Clone)]
 pub struct UpstreamPoolResponse {
     pub name: String,
@@ -58,7 +56,6 @@ pub struct UpstreamPoolResponse {
     pub servers: Vec<String>,
 }
 
-// ✅ NOVO: Health check response
 #[derive(Serialize, Debug, Clone)]
 pub struct HealthCheckResponse {
     pub enabled: bool,
@@ -116,32 +113,25 @@ pub struct BlockingConfigUpdate {
     pub whitelist: Option<Vec<String>>,
 }
 
-/// DTO for DNS settings (Pi-hole style)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsDto {
-    /// Never forward non-FQDN queries (queries without dots)
+    
     pub never_forward_non_fqdn: bool,
 
-    /// Never forward reverse lookups for private IP ranges
     pub never_forward_reverse_lookups: bool,
 
-    /// Enable conditional forwarding
     pub conditional_forwarding_enabled: bool,
 
-    /// Local network in CIDR notation (e.g., "192.168.0.0/24")
     #[serde(default)]
     pub local_network_cidr: String,
 
-    /// Router IP address (e.g., "192.168.0.1")
     #[serde(default)]
     pub router_ip: String,
 
-    /// Local domain name (e.g., "home.lan")
     #[serde(default)]
     pub local_domain: String,
 }
 
-/// Response for settings update
 #[derive(Debug, Clone, Serialize)]
 pub struct SettingsUpdateResponse {
     pub success: bool,

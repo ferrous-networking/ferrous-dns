@@ -263,7 +263,7 @@
 </aside>
 </aside>
 <main style="padding:24px">
-    <!-- Header -->
+    
     <div style="margin-bottom:24px">
         <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">🖥️ Local DNS
             Settings</h1>
@@ -271,7 +271,6 @@
             rules</p>
     </div>
 
-    <!-- Tabs -->
     <div style="border-bottom:1px solid var(--border-color);margin-bottom:24px">
         <div style="display:flex;gap:32px;margin-bottom:-1px">
             <button @click="activeTab = 'records'"
@@ -291,9 +290,8 @@
         </div>
     </div>
 
-    <!-- DNS Records Tab -->
     <div x-show="activeTab === 'records'" x-cloak>
-        <!-- Info Box -->
+        
         <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:24px">
             <div style="display:flex;gap:12px">
                 <i data-lucide="info" style="width:20px;height:20px;color:#3B82F6;flex-shrink:0"></i>
@@ -314,7 +312,6 @@
             </div>
         </div>
 
-        <!-- Stats Cards -->
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
             <div class="card" style="padding:24px">
                 <p style="font-size:14px;color:var(--text-secondary);margin-bottom:8px">Total Records</p>
@@ -332,7 +329,6 @@
             </div>
         </div>
 
-        <!-- Inline Add Form -->
         <div class="card" style="padding:16px;margin-bottom:16px">
             <div style="display:grid;grid-template-columns:150px 1fr 1fr 120px 100px auto;gap:12px;align-items:end">
                 <div>
@@ -373,7 +369,6 @@
             </div>
         </div>
 
-        <!-- Records Table -->
         <div class="card" style="overflow:hidden">
             <table style="width:100%;border-collapse:collapse">
                 <thead style="background:var(--bg-tertiary)">
@@ -428,7 +423,6 @@
         </div>
     </div>
 
-    <!-- Conditional Forwarding Tab -->
     <div x-show="activeTab === 'forwarding'" x-cloak>
         <p style="color:var(--text-secondary);margin-bottom:16px">Configure domain-specific DNS forwarders</p>
 

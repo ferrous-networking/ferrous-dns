@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
-/// Cache metrics
 #[derive(Default)]
 pub struct CacheMetrics {
     pub hits: AtomicU64,

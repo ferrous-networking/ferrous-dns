@@ -1,8 +1,6 @@
 use super::RecordType;
 use std::sync::Arc;
 
-/// DNS query (domain + record type).
-/// Uses `Arc<str>` for zero-cost cloning across resolver → cache → prefetch layers.
 #[derive(Debug, Clone)]
 pub struct DnsQuery {
     pub domain: Arc<str>,

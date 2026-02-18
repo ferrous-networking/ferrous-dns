@@ -7,16 +7,13 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-/// DNSSEC validation decorator for DNS resolver
-///
-/// Wraps another resolver and adds DNSSEC validation
 pub struct DnssecResolver {
     inner: Arc<dyn DnsResolver>,
     validator: Arc<Mutex<DnssecValidator>>,
 }
 
 impl DnssecResolver {
-    /// Wrap a resolver with DNSSEC validation
+    
     pub fn new(
         inner: Arc<dyn DnsResolver>,
         pool_manager: Arc<PoolManager>,
@@ -34,7 +31,6 @@ impl DnssecResolver {
         }
     }
 
-    /// Create with existing validator (for testing)
     pub fn with_validator(
         inner: Arc<dyn DnsResolver>,
         validator: Arc<Mutex<DnssecValidator>>,
@@ -46,20 +42,17 @@ impl DnssecResolver {
 #[async_trait]
 impl DnsResolver for DnssecResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        // First, resolve via inner resolver
+        
         let mut resolution = self.inner.resolve(query).await?;
 
-        // Skip DNSSEC validation for cache hits (already validated)
         if resolution.cache_hit {
             return Ok(resolution);
         }
 
-        // Skip DNSSEC validation if no addresses
         if resolution.addresses.is_empty() {
             return Ok(resolution);
         }
 
-        // Perform DNSSEC validation
         debug!(
             domain = %query.domain,
             record_type = %query.record_type,
@@ -89,7 +82,6 @@ impl DnsResolver for DnssecResolver {
                     "DNSSEC validation failed, returning insecure status"
                 );
 
-                // Don't fail the query, just mark as insecure
                 resolution.dnssec_status = Some("insecure");
                 Ok(resolution)
             }

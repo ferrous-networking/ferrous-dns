@@ -22,7 +22,6 @@ pub struct StatsResponse {
     pub avg_cache_time_ms: f64,
     pub avg_upstream_time_ms: f64,
 
-    // Phase 4: Analytics
     pub queries_by_type: HashMap<String, u64>,
     pub most_queried_type: Option<String>,
     pub record_type_distribution: Vec<TypeDistribution>,

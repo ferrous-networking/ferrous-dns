@@ -61,7 +61,7 @@ impl DnsResolver for CoreResolver {
                         );
 
                         return Ok(DnsResolution {
-                            addresses,
+                            addresses: Arc::new(addresses),
                             cache_hit: false,
                             dnssec_status: None,
                             cname: None,
@@ -75,7 +75,7 @@ impl DnsResolver for CoreResolver {
                             server = %server,
                             "Conditional forwarding failed, falling back to upstream"
                         );
-                        // Continue to normal upstream resolution
+                        
                     }
                 }
             }
@@ -86,7 +86,7 @@ impl DnsResolver for CoreResolver {
             .query(&query.domain, &query.record_type, self.query_timeout_ms)
             .await?;
 
-        let addresses = result.response.addresses;
+        let addresses = Arc::new(result.response.addresses);
         let upstream_server = Some(result.server.to_string());
 
         debug!(

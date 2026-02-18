@@ -1,12 +1,11 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use std::net::IpAddr;
+use std::sync::Arc;
 
-/// Result of a DNS resolution with metadata.
-/// Uses `&'static str` for dnssec_status (only 5 possible values).
 #[derive(Debug, Clone)]
 pub struct DnsResolution {
-    pub addresses: Vec<IpAddr>,
+    pub addresses: Arc<Vec<IpAddr>>,
     pub cache_hit: bool,
     pub dnssec_status: Option<&'static str>,
     pub cname: Option<String>,
@@ -16,7 +15,7 @@ pub struct DnsResolution {
 impl DnsResolution {
     pub fn new(addresses: Vec<IpAddr>, cache_hit: bool) -> Self {
         Self {
-            addresses,
+            addresses: Arc::new(addresses),
             cache_hit,
             dnssec_status: None,
             cname: None,
@@ -30,7 +29,7 @@ impl DnsResolution {
         dnssec_status: Option<&'static str>,
     ) -> Self {
         Self {
-            addresses,
+            addresses: Arc::new(addresses),
             cache_hit,
             dnssec_status,
             cname: None,
@@ -45,7 +44,7 @@ impl DnsResolution {
         cname: Option<String>,
     ) -> Self {
         Self {
-            addresses,
+            addresses: Arc::new(addresses),
             cache_hit,
             dnssec_status,
             cname,

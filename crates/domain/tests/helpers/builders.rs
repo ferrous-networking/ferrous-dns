@@ -4,7 +4,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Builder pattern for QueryLog - facilita criação de objetos de teste
 pub struct QueryLogBuilder {
     domain: Arc<str>,
     record_type: RecordType,
@@ -68,7 +67,6 @@ impl Default for QueryLogBuilder {
     }
 }
 
-/// Builder pattern for DnsRecord
 pub struct DnsRecordBuilder {
     domain: String,
     record_type: RecordType,
@@ -117,7 +115,6 @@ impl Default for DnsRecordBuilder {
     }
 }
 
-/// Helper functions para criar DnsProtocol facilmente
 pub struct DnsProtocolBuilder;
 
 impl DnsProtocolBuilder {

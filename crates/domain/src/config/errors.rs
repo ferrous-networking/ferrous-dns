@@ -1,4 +1,3 @@
-/// Configuration errors
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("Failed to read config file {0}: {1}")]

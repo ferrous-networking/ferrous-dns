@@ -99,7 +99,6 @@ impl GroupRepository for SqliteGroupRepository {
 
         let id = result.last_insert_rowid();
 
-        // Fetch and return the created group
         self.get_by_id(id)
             .await?
             .ok_or_else(|| DomainError::DatabaseError("Failed to fetch created group".to_string()))
@@ -165,7 +164,6 @@ impl GroupRepository for SqliteGroupRepository {
     ) -> Result<Group, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        // Fetch current group to determine what to update
         let current = self
             .get_by_id(id)
             .await?
@@ -202,7 +200,6 @@ impl GroupRepository for SqliteGroupRepository {
             )));
         }
 
-        // Fetch and return the updated group
         self.get_by_id(id)
             .await?
             .ok_or_else(|| DomainError::DatabaseError("Failed to fetch updated group".to_string()))
@@ -216,7 +213,7 @@ impl GroupRepository for SqliteGroupRepository {
             .await
             .map_err(|e| {
                 if e.to_string().contains("FOREIGN KEY constraint failed") {
-                    // Get the actual count for a better error message
+                    
                     DomainError::GroupHasAssignedClients(0)
                 } else {
                     error!(error = %e, "Failed to delete group");

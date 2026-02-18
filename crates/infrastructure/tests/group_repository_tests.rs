@@ -8,7 +8,6 @@ async fn create_test_db() -> SqlitePool {
         .await
         .unwrap();
 
-    // Create groups table
     sqlx::query(
         "CREATE TABLE groups (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +23,6 @@ async fn create_test_db() -> SqlitePool {
     .await
     .unwrap();
 
-    // Create clients table for foreign key tests
     sqlx::query(
         "CREATE TABLE clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,13 +41,11 @@ async fn create_test_db() -> SqlitePool {
     .await
     .unwrap();
 
-    // Enable foreign keys
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Insert Protected group
     sqlx::query(
         "INSERT INTO groups (id, name, enabled, comment, is_default)
          VALUES (1, 'Protected', 1, 'Default group', 1)",
@@ -103,9 +99,8 @@ async fn test_get_all_groups() {
     repo.create("Group 2".to_string(), None).await.unwrap();
 
     let groups = repo.get_all().await.unwrap();
-    assert!(groups.len() >= 3); // Protected + 2 created
+    assert!(groups.len() >= 3); 
 
-    // Protected should be first (is_default DESC)
     assert!(groups[0].is_default);
     assert_eq!(groups[0].name.as_ref(), "Protected");
 }
@@ -166,13 +161,11 @@ async fn test_foreign_key_prevents_deletion() {
     let pool = create_test_db().await;
     let repo = SqliteGroupRepository::new(pool.clone());
 
-    // Create a client in the Protected group
     sqlx::query("INSERT INTO clients (ip_address, group_id) VALUES ('192.168.1.1', 1)")
         .execute(&pool)
         .await
         .unwrap();
 
-    // Try to delete Protected group (has clients)
     let result = repo.delete(1).await;
     assert!(result.is_err());
 }
@@ -182,7 +175,6 @@ async fn test_count_clients_in_group() {
     let pool = create_test_db().await;
     let repo = SqliteGroupRepository::new(pool.clone());
 
-    // Insert clients in Protected group
     sqlx::query(
         "INSERT INTO clients (ip_address, group_id) VALUES ('192.168.1.1', 1), ('192.168.1.2', 1)",
     )
@@ -199,7 +191,6 @@ async fn test_get_clients_in_group() {
     let pool = create_test_db().await;
     let repo = SqliteGroupRepository::new(pool.clone());
 
-    // Insert client in Protected group
     sqlx::query("INSERT INTO clients (ip_address, group_id) VALUES ('192.168.1.1', 1)")
         .execute(&pool)
         .await

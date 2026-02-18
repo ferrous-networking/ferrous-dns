@@ -28,7 +28,6 @@ async fn test_get_query_rate_empty_repository() {
 async fn test_get_query_rate_with_data() {
     let repository_mock = Arc::new(MockQueryLogRepository::new());
 
-    // Add some mock queries
     for i in 0..150 {
         let query = QueryLog {
             id: None,
@@ -64,7 +63,6 @@ async fn test_get_query_rate_with_data() {
 async fn test_get_query_rate_formatted_with_k() {
     let repository_mock = Arc::new(MockQueryLogRepository::new());
 
-    // Add 1500 mock queries
     for i in 0..1500 {
         let query = QueryLog {
             id: None,
@@ -100,16 +98,15 @@ async fn test_get_query_rate_formatted_with_k() {
 async fn test_get_query_rate_different_units() {
     let repository_mock = Arc::new(MockQueryLogRepository::new());
 
-    // Add 9500 mock queries
     for i in 0..9500 {
         let query = QueryLog {
             id: None,
             domain: format!("example{}.com", i % 1000).into(),
             record_type: RecordType::A,
             client_ip: IpAddr::from_str("192.168.1.1").unwrap(),
-            blocked: i % 10 == 0, // 10% blocked
+            blocked: i % 10 == 0, 
             response_time_ms: Some(10),
-            cache_hit: i % 3 == 0, // 33% cache hits
+            cache_hit: i % 3 == 0, 
             cache_refresh: false,
             dnssec_status: None,
             upstream_server: Some("8.8.8.8".to_string()),
@@ -124,17 +121,14 @@ async fn test_get_query_rate_different_units() {
         repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
     );
 
-    // Test with Second unit
     let result_second = use_case.execute(RateUnit::Second).await.unwrap();
     assert_eq!(result_second.queries, 9500);
     assert_eq!(result_second.rate, "9.5k q/s");
 
-    // Test with Minute unit
     let result_minute = use_case.execute(RateUnit::Minute).await.unwrap();
     assert_eq!(result_minute.queries, 9500);
     assert_eq!(result_minute.rate, "9.5k q/m");
 
-    // Test with Hour unit
     let result_hour = use_case.execute(RateUnit::Hour).await.unwrap();
     assert_eq!(result_hour.queries, 9500);
     assert_eq!(result_hour.rate, "9.5k q/h");
@@ -146,9 +140,6 @@ async fn test_rate_unit_conversion() {
     let use_case = GetQueryRateUseCase::new(
         repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
     );
-
-    // The mock will return the same count for all units
-    // In real implementation, different units query different time windows
 
     let second_result = use_case.execute(RateUnit::Second).await.unwrap();
     assert!(second_result.rate.ends_with("q/s"));

@@ -2,7 +2,6 @@ use crate::{dto::UpdateConfigRequest, state::AppState};
 use axum::{extract::State, Json};
 use tracing::{debug, error, info, instrument};
 
-/// Update configuration
 #[instrument(skip(state), name = "api_update_config")]
 pub async fn update_config(
     State(state): State<AppState>,
@@ -106,7 +105,6 @@ pub async fn update_config(
     }
 }
 
-/// Update settings (alias for update_config)
 #[instrument(skip(state), name = "api_update_settings")]
 pub async fn update_settings(
     State(state): State<AppState>,
@@ -115,7 +113,6 @@ pub async fn update_settings(
     update_config(State(state), Json(request)).await
 }
 
-/// Reload configuration from disk
 #[instrument(skip(state), name = "api_reload_config")]
 pub async fn reload_config(State(state): State<AppState>) -> Json<serde_json::Value> {
     info!("Config reload requested");

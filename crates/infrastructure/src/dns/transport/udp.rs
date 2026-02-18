@@ -8,20 +8,15 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tracing::{debug, warn};
 
-/// Maximum UDP DNS response size with EDNS(0)
 const MAX_UDP_RESPONSE_SIZE: usize = 4096;
 
-/// DNS over UDP transport with optional socket pooling.
-///
-/// When a pool is provided, sockets are reused to reduce latency (10-20% improvement).
-/// Without a pool, sockets are created per query (legacy behavior).
 pub struct UdpTransport {
     server_addr: SocketAddr,
     pool: Option<Arc<UdpSocketPool>>,
 }
 
 impl UdpTransport {
-    /// Create new UDP transport without pooling (legacy).
+    
     pub fn new(server_addr: SocketAddr) -> Self {
         Self {
             server_addr,
@@ -29,13 +24,6 @@ impl UdpTransport {
         }
     }
 
-    /// Create new UDP transport with socket pooling (recommended).
-    ///
-    /// # Example
-    /// ```ignore
-    /// let pool = Arc::new(UdpSocketPool::new(8, 100));
-    /// let transport = UdpTransport::with_pool(server_addr, pool);
-    /// ```
     pub fn with_pool(server_addr: SocketAddr, pool: Arc<UdpSocketPool>) -> Self {
         Self {
             server_addr,
@@ -43,21 +31,19 @@ impl UdpTransport {
         }
     }
 
-    /// Send query using pooled socket (if available) or create new socket.
     async fn send_with_pool(
         &self,
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
         if let Some(ref pool) = self.pool {
-            // Use pooled socket
+            
             let pooled = pool.acquire(self.server_addr).await.map_err(|e| {
                 DomainError::InvalidDomainName(format!("Failed to acquire UDP socket: {}", e))
             })?;
 
             let socket = pooled.socket();
 
-            // Send query
             let bytes_sent =
                 tokio::time::timeout(timeout, socket.send_to(message_bytes, self.server_addr))
                     .await
@@ -81,7 +67,6 @@ impl UdpTransport {
                 "UDP query sent"
             );
 
-            // Receive response
             let mut recv_buf = vec![0u8; MAX_UDP_RESPONSE_SIZE];
 
             let (bytes_received, from_addr) =
@@ -100,7 +85,6 @@ impl UdpTransport {
                         ))
                     })?;
 
-            // Validate response source
             if from_addr.ip() != self.server_addr.ip() {
                 warn!(
                     expected = %self.server_addr,
@@ -123,18 +107,17 @@ impl UdpTransport {
                 protocol_used: "UDP",
             })
         } else {
-            // Legacy behavior: create socket per query
+            
             self.send_without_pool(message_bytes, timeout).await
         }
     }
 
-    /// Legacy send without pooling (creates socket per query).
     async fn send_without_pool(
         &self,
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        // Bind to ephemeral port (0 = OS assigns)
+        
         let bind_addr: SocketAddr = if self.server_addr.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
         } else {
@@ -145,7 +128,6 @@ impl UdpTransport {
             DomainError::InvalidDomainName(format!("Failed to bind UDP socket: {}", e))
         })?;
 
-        // Send query
         let bytes_sent =
             tokio::time::timeout(timeout, socket.send_to(message_bytes, self.server_addr))
                 .await
@@ -169,7 +151,6 @@ impl UdpTransport {
             "UDP query sent"
         );
 
-        // Receive response
         let mut recv_buf = vec![0u8; MAX_UDP_RESPONSE_SIZE];
 
         let (bytes_received, from_addr) =
@@ -188,7 +169,6 @@ impl UdpTransport {
                     ))
                 })?;
 
-        // Validate response came from expected server
         if from_addr.ip() != self.server_addr.ip() {
             warn!(
                 expected = %self.server_addr,

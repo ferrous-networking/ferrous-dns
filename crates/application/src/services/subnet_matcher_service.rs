@@ -6,7 +6,6 @@ use tracing::{debug, instrument};
 
 use crate::ports::ClientSubnetRepository;
 
-/// Service that maintains cached subnet matcher for fast lookups
 pub struct SubnetMatcherService {
     subnet_repo: Arc<dyn ClientSubnetRepository>,
     matcher: Arc<RwLock<Option<SubnetMatcher>>>,
@@ -20,7 +19,6 @@ impl SubnetMatcherService {
         }
     }
 
-    /// Initialize/refresh the matcher from database
     #[instrument(skip(self))]
     pub async fn refresh(&self) -> Result<(), DomainError> {
         let subnets = self.subnet_repo.get_all().await?;
@@ -31,7 +29,6 @@ impl SubnetMatcherService {
         Ok(())
     }
 
-    /// Find group_id for IP address, returns None if no match
     #[instrument(skip(self))]
     pub async fn find_group_for_ip(&self, ip: IpAddr) -> Option<i64> {
         let matcher = self.matcher.read().await;

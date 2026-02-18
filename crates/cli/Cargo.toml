@@ -13,6 +13,7 @@ path = "src/main.rs"
 ferrous-dns-domain.workspace = true
 ferrous-dns-application.workspace = true
 ferrous-dns-infrastructure.workspace = true
+ferrous-dns-jobs.workspace = true
 ferrous-dns-api.workspace = true
 
 tokio.workspace = true

@@ -386,12 +386,10 @@
         <p style="font-size:14px;color:var(--text-secondary)">Manage blocklist sources for DNS filtering</p>
     </div>
 
-    <!-- Tab Bar (extensible for future tabs) -->
     <div class="tab-bar">
         <button class="tab-btn active">DNS Blocklist</button>
     </div>
 
-    <!-- Add / Edit Form -->
     <div style="margin-bottom:24px">
         <div class="card" style="padding:24px">
             <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
@@ -445,7 +443,6 @@
         </div>
     </div>
 
-    <!-- Blocklist Sources Table -->
     <div class="card">
         <table class="table">
             <thead>
@@ -636,7 +633,7 @@
 
                     if (res.ok) {
                         await this.loadSources();
-                        this.cancelForm(); // reset form to blank "Add" state
+                        this.cancelForm(); 
                     } else {
                         const errorText = await res.text();
                         this.formError = errorText || 'Failed to save blocklist source';

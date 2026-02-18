@@ -4,19 +4,13 @@ use tracing::{debug, warn};
 
 use super::forwarding::DnsForwarder;
 
-/// Conditional forwarder routes queries to specific DNS servers based on domain patterns
-///
-/// This allows routing:
-/// - Local domains (*.home.lan) → Router DHCP server
-/// - Corporate domains (*.corp.local) → Corporate DNS
-/// - Development domains (*.dev.local) → Local development DNS
 pub struct ConditionalForwarder {
     rules: Vec<ConditionalForward>,
     forwarder: Arc<DnsForwarder>,
 }
 
 impl ConditionalForwarder {
-    /// Create a new conditional forwarder with the given rules
+    
     pub fn new(rules: Vec<ConditionalForward>) -> Self {
         debug!(rules_count = rules.len(), "Conditional forwarder created");
         Self {
@@ -25,11 +19,6 @@ impl ConditionalForwarder {
         }
     }
 
-    /// Find a matching rule for a query
-    ///
-    /// Returns the first rule that matches both:
-    /// 1. The query's domain (exact or subdomain match)
-    /// 2. The query's record type (if rule has type filter)
     pub fn find_matching_rule(&self, query: &DnsQuery) -> Option<&ConditionalForward> {
         let record_type_str = query.record_type.to_string();
 
@@ -49,9 +38,6 @@ impl ConditionalForwarder {
         None
     }
 
-    /// Query a specific server for a domain
-    ///
-    /// This bypasses normal upstream pools and queries the specified server directly.
     pub async fn query_specific_server(
         &self,
         query: &DnsQuery,
@@ -91,9 +77,6 @@ impl ConditionalForwarder {
         }
     }
 
-    /// Check if conditional forwarding should be used for this query
-    ///
-    /// Returns Some((rule, server)) if a rule matches, None otherwise
     pub fn should_forward(&self, query: &DnsQuery) -> Option<(&ConditionalForward, String)> {
         self.find_matching_rule(query)
             .map(|rule| (rule, rule.server.clone()))
