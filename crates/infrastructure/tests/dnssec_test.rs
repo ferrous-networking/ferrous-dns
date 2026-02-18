@@ -1,7 +1,12 @@
+use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::{
     cache::{DnskeyEntry, DsEntry, ValidationEntry},
-    DnskeyRecord, DsRecord, SignatureVerifier, ValidationResult,
+    ChainVerifier, DnskeyRecord, DnssecCache, DsRecord, SignatureVerifier, TrustAnchorStore,
+    ValidationResult,
 };
+use ferrous_dns_infrastructure::dns::events::QueryEventEmitter;
+use ferrous_dns_infrastructure::dns::load_balancer::PoolManager;
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -449,4 +454,53 @@ fn test_verify_rrsig_key_tag_mismatch() {
         .verify_rrsig(&rrsig, &dnskey, "example.com.", &[])
         .unwrap();
     assert!(!result, "Key tag mismatch should return false");
+}
+
+// ============================================================================
+// ChainVerifier::get_zone_keys — public API tests
+// ============================================================================
+
+fn make_chain_verifier_for_test() -> ChainVerifier {
+    let pool = UpstreamPool {
+        name: "test".into(),
+        strategy: UpstreamStrategy::Parallel,
+        priority: 1,
+        servers: vec!["udp://127.0.0.1:5353".into()],
+        weight: None,
+    };
+    let pm =
+        Arc::new(PoolManager::new(vec![pool], None, QueryEventEmitter::new_disabled()).unwrap());
+    ChainVerifier::new(pm, TrustAnchorStore::empty(), Arc::new(DnssecCache::new()))
+}
+
+#[test]
+fn test_chain_verifier_get_zone_keys_returns_none_initially() {
+    let verifier = make_chain_verifier_for_test();
+    assert!(verifier.get_zone_keys("example.com.").is_none());
+    assert!(verifier.get_zone_keys(".").is_none());
+    assert!(verifier.get_zone_keys("com.").is_none());
+}
+
+// ============================================================================
+// ValidationResult::as_str — all variants
+// ============================================================================
+
+#[test]
+fn test_validation_result_as_str_secure() {
+    assert_eq!(ValidationResult::Secure.as_str(), "Secure");
+}
+
+#[test]
+fn test_validation_result_as_str_insecure() {
+    assert_eq!(ValidationResult::Insecure.as_str(), "Insecure");
+}
+
+#[test]
+fn test_validation_result_as_str_bogus() {
+    assert_eq!(ValidationResult::Bogus.as_str(), "Bogus");
+}
+
+#[test]
+fn test_validation_result_as_str_indeterminate() {
+    assert_eq!(ValidationResult::Indeterminate.as_str(), "Indeterminate");
 }
