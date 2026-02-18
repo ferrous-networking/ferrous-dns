@@ -66,6 +66,7 @@ impl DnsResolver for CoreResolver {
                             dnssec_status: None,
                             cname: None,
                             upstream_server: Some(format!("conditional:{}", server)),
+                            min_ttl: None,
                         });
                     }
                     Err(e) => {
@@ -102,6 +103,7 @@ impl DnsResolver for CoreResolver {
             dnssec_status: None,
             cname: None,
             upstream_server,
+            min_ttl: result.response.min_ttl,
         })
     }
 }

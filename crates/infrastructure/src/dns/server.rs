@@ -65,8 +65,8 @@ impl RequestHandler for DnsServerHandler {
         let dns_request = ferrous_dns_domain::DnsRequest::new(&*domain, our_record_type, client_ip);
         let domain_ref = &dns_request.domain;
 
-        let addresses = match self.use_case.execute(&dns_request).await {
-            Ok(addrs) => addrs,
+        let resolution = match self.use_case.execute(&dns_request).await {
+            Ok(res) => res,
             Err(DomainError::Blocked) => {
                 warn!(domain = %domain_ref, "Domain blocked");
                 return send_error_response(request, &mut response_handle, ResponseCode::Refused)
@@ -78,6 +78,9 @@ impl RequestHandler for DnsServerHandler {
                     .await;
             }
         };
+
+        let ttl = resolution.min_ttl.unwrap_or(60);
+        let addresses = resolution.addresses;
 
         if addresses.is_empty() {
             debug!(domain = %domain_ref, "No records found (NODATA)");
@@ -98,12 +101,12 @@ impl RequestHandler for DnsServerHandler {
 
         let builder = MessageResponseBuilder::from_message_request(request);
         let mut answers = Vec::with_capacity(addresses.len());
-        for addr in &addresses {
-            let rdata = match addr {
-                IpAddr::V4(ipv4) => RData::A(hickory_proto::rr::rdata::A(*ipv4)),
-                IpAddr::V6(ipv6) => RData::AAAA(hickory_proto::rr::rdata::AAAA(*ipv6)),
+        for addr in addresses.iter() {
+            let rdata = match *addr {
+                IpAddr::V4(ipv4) => RData::A(hickory_proto::rr::rdata::A(ipv4)),
+                IpAddr::V6(ipv6) => RData::AAAA(hickory_proto::rr::rdata::AAAA(ipv6)),
             };
-            answers.push(Record::from_rdata(record_name.clone(), 60, rdata));
+            answers.push(Record::from_rdata(record_name.clone(), ttl, rdata));
         }
 
         debug!(domain = %domain_ref, answers = addresses.len(), "Sending response");

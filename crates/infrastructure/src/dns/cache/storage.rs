@@ -222,6 +222,14 @@ impl DnsCache {
         self.cache.get(&key).map(|entry| entry.ttl)
     }
 
+    pub fn get_remaining_ttl(&self, domain: &str, record_type: &RecordType) -> Option<u32> {
+        let key = CacheKey::new(domain, *record_type);
+        self.cache.get(&key).map(|entry| {
+            let elapsed = entry.inserted_at.elapsed().as_secs() as u32;
+            entry.ttl.saturating_sub(elapsed)
+        })
+    }
+
     pub fn strategy(&self) -> EvictionStrategy {
         self.eviction_strategy
     }

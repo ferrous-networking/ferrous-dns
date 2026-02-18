@@ -1,8 +1,8 @@
 use crate::ports::{
-    BlocklistRepository, ClientRepository, DnsResolver, QueryLogRepository, WhitelistRepository,
+    BlocklistRepository, ClientRepository, DnsResolution, DnsResolver, QueryLogRepository,
+    WhitelistRepository,
 };
 use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -35,7 +35,7 @@ impl HandleDnsQueryUseCase {
         self
     }
 
-    pub async fn execute(&self, request: &DnsRequest) -> Result<Vec<IpAddr>, DomainError> {
+    pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
         let start = Instant::now();
 
         if let Some(client_repo) = &self.client_repo {
@@ -105,7 +105,7 @@ impl HandleDnsQueryUseCase {
                     tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
                 }
 
-                Ok(Arc::try_unwrap(resolution.addresses).unwrap_or_else(|arc| (*arc).clone()))
+                Ok(resolution)
             }
             Err(e) => {
                 let elapsed_micros = start.elapsed().as_micros() as u64;

@@ -41,6 +41,9 @@ impl CachedResolver {
                 );
 
                 let dnssec_str = dnssec_status.map(|s| s.as_str());
+                let remaining_ttl = self
+                    .cache
+                    .get_remaining_ttl(&query.domain, &query.record_type);
 
                 match data {
                     CachedData::IpAddresses(addrs) => DnsResolution {
@@ -49,6 +52,7 @@ impl CachedResolver {
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
+                        min_ttl: remaining_ttl,
                     },
                     CachedData::CanonicalName(_) => DnsResolution {
                         addresses: Arc::new(vec![]),
@@ -56,6 +60,7 @@ impl CachedResolver {
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
+                        min_ttl: remaining_ttl,
                     },
                     CachedData::NegativeResponse => DnsResolution {
                         addresses: Arc::new(vec![]),
@@ -63,6 +68,7 @@ impl CachedResolver {
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
+                        min_ttl: remaining_ttl,
                     },
                 }
             })
@@ -85,11 +91,13 @@ impl CachedResolver {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DnssecStatus::Insecure);
 
+            let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
+
             self.cache.insert(
                 &query.domain,
                 query.record_type,
                 CachedData::IpAddresses(addresses),
-                self.cache_ttl,
+                ttl,
                 Some(dnssec_status),
             );
 

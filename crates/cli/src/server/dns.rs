@@ -10,7 +10,16 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
 
     info!(bind_address = %socket_addr, "Starting DNS server");
 
-    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    let domain = if socket_addr.is_ipv4() {
+        Domain::IPV4
+    } else {
+        Domain::IPV6
+    };
+    let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
+
+    if socket_addr.is_ipv6() {
+        socket.set_only_v6(false)?;
+    }
 
     socket.set_reuse_address(true)?;
     #[cfg(unix)]

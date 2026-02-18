@@ -1117,6 +1117,7 @@ impl DnsResolutionBuilder {
             dnssec_status: self.dnssec_status,
             cname: self.cname,
             upstream_server: self.upstream_server,
+            min_ttl: None,
         }
     }
 }

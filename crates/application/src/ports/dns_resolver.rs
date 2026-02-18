@@ -10,6 +10,7 @@ pub struct DnsResolution {
     pub dnssec_status: Option<&'static str>,
     pub cname: Option<String>,
     pub upstream_server: Option<String>,
+    pub min_ttl: Option<u32>,
 }
 
 impl DnsResolution {
@@ -20,6 +21,7 @@ impl DnsResolution {
             dnssec_status: None,
             cname: None,
             upstream_server: None,
+            min_ttl: None,
         }
     }
 
@@ -34,6 +36,7 @@ impl DnsResolution {
             dnssec_status,
             cname: None,
             upstream_server: None,
+            min_ttl: None,
         }
     }
 
@@ -49,6 +52,7 @@ impl DnsResolution {
             dnssec_status,
             cname,
             upstream_server: None,
+            min_ttl: None,
         }
     }
 }
