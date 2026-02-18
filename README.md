@@ -106,10 +106,9 @@ docker-compose up -d
 ```bash
 docker run -d \
   -p 5353:5353/udp \
-  -p 3000:3000 \
+  -p 5353:5353/tcp \
+  -p 8080:8080 \
   -e FERROUS_DNS_PORT=5353 \
-  -e FERROUS_WEB_PORT=3000 \
-  -e FERROUS_LOG_LEVEL=debug \
   ghcr.io/andersonviudes/ferrous-dns:latest
 ```
 

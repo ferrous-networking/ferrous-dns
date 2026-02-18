@@ -14,21 +14,33 @@ RUN apk add --no-cache \
 # Create app directory
 WORKDIR /app
 
-# Copy workspace manifests
+# Copy only workspace and crate manifests (cache invalidated only by dep changes)
 COPY Cargo.toml Cargo.lock ./
-COPY crates/ ./crates/
+COPY crates/cli/Cargo.toml ./crates/cli/
+COPY crates/domain/Cargo.toml ./crates/domain/
+COPY crates/application/Cargo.toml ./crates/application/
+COPY crates/infrastructure/Cargo.toml ./crates/infrastructure/
+COPY crates/jobs/Cargo.toml ./crates/jobs/
+COPY crates/api/Cargo.toml ./crates/api/
 
-# Build dependencies first (cached layer)
-RUN mkdir -p crates/cli/src && \
-    echo "fn main() {}" > crates/cli/src/main.rs && \
+# Create stub sources for all crates to compile dependencies only
+RUN mkdir -p crates/cli/src crates/domain/src crates/application/src \
+             crates/infrastructure/src crates/jobs/src crates/api/src && \
+    echo 'fn main() {}' > crates/cli/src/main.rs && \
+    touch crates/domain/src/lib.rs crates/application/src/lib.rs \
+          crates/infrastructure/src/lib.rs crates/jobs/src/lib.rs \
+          crates/api/src/lib.rs && \
     cargo build --release && \
-    rm -rf crates/cli/src
+    rm -rf crates/*/src
 
-# Copy actual source code
+# Copy actual source code and web assets (required for include_str! at compile time)
 COPY crates/ ./crates/
+COPY web/ ./web/
 
 # Build the application (static binary)
-RUN cargo build --release --bin ferrous-dns && \
+# Touch all source files to ensure cargo detects changes vs stub artifacts (timestamp fix)
+RUN find crates -name "*.rs" -exec touch {} + && \
+    cargo build --release --bin ferrous-dns && \
     strip target/release/ferrous-dns
 
 # ============================================================================
@@ -48,15 +60,17 @@ RUN apk add --no-cache \
 # Copy binary from builder
 COPY --from=builder /app/target/release/ferrous-dns /usr/local/bin/ferrous-dns
 
+# Copy default config and migrations to a stable path outside the volume.
+# The entrypoint will bootstrap these into /data/ on first run.
+COPY --chown=ferrous:ferrous ferrous-dns.toml /usr/local/share/ferrous-dns/ferrous-dns.toml
+COPY --chown=ferrous:ferrous migrations/ /usr/local/share/ferrous-dns/migrations/
+
 # Copy entrypoint script
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh && \
     chown root:root /usr/local/bin/ferrous-dns && \
     chmod 755 /usr/local/bin/ferrous-dns
-
-# Expose ports
-EXPOSE 53/udp 53/tcp 8080/tcp
 
 # Set working directory
 WORKDIR /data
@@ -82,4 +96,3 @@ VOLUME ["/data"]
 
 # Entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["serve"]

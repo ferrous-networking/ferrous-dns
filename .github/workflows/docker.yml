@@ -186,6 +186,7 @@ jobs:
           docker run -d --name ferrous-dns-test \
             -p 5353:53/udp \
             -p 8080:8080 \
+            --cap-add NET_BIND_SERVICE \
             ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
 
           # Wait for startup
@@ -231,19 +232,14 @@ jobs:
             docker pull ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
             ```
 
-            **GitHub Container Registry:**
-            ```bash
-            docker pull ${{ env.REGISTRY_IMAGE_GHCR }}:${{ github.ref_name }}
-            docker pull ${{ env.REGISTRY_IMAGE_GHCR }}:latest
-            ```
-
             ### Quick Start:
             ```bash
             docker run -d \
               --name ferrous-dns \
               -p 53:53/udp \
               -p 8080:8080 \
-              ${{ env.REGISTRY_IMAGE_GHCR }}:latest
+              --cap-add NET_BIND_SERVICE \
+              ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
             ```
 
             🎉 Release complete!

@@ -5,6 +5,22 @@
 
 set -e
 
+SHARE_DIR="/usr/local/share/ferrous-dns"
+
+# Bootstrap default config if not present (first run or fresh volume)
+if [ ! -f "/data/config/ferrous-dns.toml" ]; then
+    echo "No config found at /data/config/ferrous-dns.toml — copying default..."
+    mkdir -p /data/config
+    cp "$SHARE_DIR/ferrous-dns.toml" /data/config/ferrous-dns.toml
+fi
+
+# Bootstrap migrations if not present (first run or fresh volume)
+# The app resolves ./migrations relative to WORKDIR (/data)
+if [ ! -d "/data/migrations" ]; then
+    echo "No migrations found at /data/migrations — copying bundled migrations..."
+    cp -r "$SHARE_DIR/migrations" /data/migrations
+fi
+
 # Initialize args array
 ARGS=""
 
@@ -26,7 +42,7 @@ if [ -n "$FERROUS_BIND_ADDRESS" ] && [ "$FERROUS_BIND_ADDRESS" != "0.0.0.0" ]; t
     ARGS="$ARGS --bind $FERROUS_BIND_ADDRESS"
 fi
 
-if [ -n "$FERROUS_DATABASE" ] && [ "$FERROUS_DATABASE" != "/var/lib/ferrous-dns/ferrous.db" ]; then
+if [ -n "$FERROUS_DATABASE" ] && [ "$FERROUS_DATABASE" != "/data/db/ferrous.db" ]; then
     ARGS="$ARGS --database $FERROUS_DATABASE"
 fi
 
