@@ -105,10 +105,15 @@ async fn fetch_url(url: &str, client: &reqwest::Client) -> Result<String, String
         .map_err(|e| format!("read error for {}: {}", url, e))
 }
 
-pub async fn compile_block_index(
-    pool: &SqlitePool,
-    client: &reqwest::Client,
-) -> Result<BlockIndex, DomainError> {
+// ── Private helpers for compile_block_index ──────────────────────────────────
+
+struct SourceLoad {
+    default_group_id: i64,
+    sources: Vec<SourceMeta>,
+    url_tasks: Vec<(u8, String)>,
+}
+
+async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
     let default_group_id: i64 = sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
         .fetch_optional(pool)
         .await
@@ -142,8 +147,29 @@ pub async fn compile_block_index(
         })
         .collect();
 
+    let url_tasks: Vec<(u8, String)> = source_rows
+        .iter()
+        .take(63)
+        .enumerate()
+        .filter_map(|(idx, row)| {
+            let url: Option<String> = row.get("url");
+            url.map(|u| (idx as u8, u))
+        })
+        .collect();
+
+    Ok(SourceLoad {
+        default_group_id,
+        sources,
+        url_tasks,
+    })
+}
+
+fn build_group_masks(
+    sources: &[SourceMeta],
+    default_group_id: i64,
+) -> (SourceBitSet, HashMap<i64, SourceBitSet>) {
     let mut default_mask: SourceBitSet = MANUAL_SOURCE_BIT;
-    for src in &sources {
+    for src in sources {
         if src.group_id == default_group_id {
             default_mask |= 1u64 << src.bit;
         }
@@ -152,48 +178,47 @@ pub async fn compile_block_index(
     let mut group_masks: HashMap<i64, SourceBitSet> = HashMap::new();
     group_masks.insert(default_group_id, default_mask);
 
-    for src in &sources {
+    for src in sources {
         if src.group_id != default_group_id {
             let entry = group_masks.entry(src.group_id).or_insert(default_mask);
             *entry |= 1u64 << src.bit;
         }
     }
 
+    (default_mask, group_masks)
+}
+
+async fn fetch_sources_parallel(
+    url_tasks: Vec<(u8, String)>,
+    client: &reqwest::Client,
+) -> HashMap<u8, Vec<ParsedEntry>> {
     struct FetchResult {
         bit: u8,
         text: Option<String>,
     }
 
-    let fetch_tasks: Vec<_> = source_rows
-        .iter()
-        .take(63)
-        .enumerate()
-        .filter_map(|(idx, row)| {
-            let url: Option<String> = row.get("url");
-            url.map(|u| {
-                let client = client.clone();
-                let bit = idx as u8;
-                tokio::spawn(async move {
-                    let text = match fetch_url(&u, &client).await {
-                        Ok(t) => {
-                            info!(url = %u, "Fetched blocklist source");
-                            Some(t)
-                        }
-                        Err(e) => {
-                            warn!(url = %u, error = %e, "Failed to fetch blocklist source");
-                            None
-                        }
-                    };
-                    FetchResult { bit, text }
-                })
+    let tasks: Vec<_> = url_tasks
+        .into_iter()
+        .map(|(bit, u)| {
+            let client = client.clone();
+            tokio::spawn(async move {
+                let text = match fetch_url(&u, &client).await {
+                    Ok(t) => {
+                        info!(url = %u, "Fetched blocklist source");
+                        Some(t)
+                    }
+                    Err(e) => {
+                        warn!(url = %u, error = %e, "Failed to fetch blocklist source");
+                        None
+                    }
+                };
+                FetchResult { bit, text }
             })
         })
         .collect();
 
-    let fetch_results = join_all(fetch_tasks).await;
-
     let mut source_entries: HashMap<u8, Vec<ParsedEntry>> = HashMap::new();
-    for result in fetch_results {
+    for result in join_all(tasks).await {
         match result {
             Ok(fr) => {
                 if let Some(text) = fr.text {
@@ -205,41 +230,59 @@ pub async fn compile_block_index(
             }
         }
     }
+    source_entries
+}
 
-    let manual_rows = sqlx::query("SELECT domain FROM blocklist")
+async fn load_manual_domains(pool: &SqlitePool) -> Result<Vec<String>, DomainError> {
+    let rows = sqlx::query("SELECT domain FROM blocklist")
         .fetch_all(pool)
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
-    let manual_domains: Vec<String> = manual_rows
+    let domains: Vec<String> = rows
         .iter()
         .map(|row| row.get::<String, _>("domain").to_ascii_lowercase())
         .collect();
 
-    info!(
-        count = manual_domains.len(),
-        "Loaded manual blocklist entries"
-    );
+    info!(count = domains.len(), "Loaded manual blocklist entries");
+    Ok(domains)
+}
 
-    let mut exact_count: usize = manual_domains.len();
-    for entries in source_entries.values() {
-        for e in entries {
-            if matches!(e, ParsedEntry::Exact(_)) {
-                exact_count += 1;
-            }
-        }
-    }
+struct BlockIndexData {
+    total_exact: usize,
+    bloom: AtomicBloom,
+    exact: DashMap<CompactString, SourceBitSet, FxBuildHasher>,
+    wildcard: SuffixTrie,
+    wildcard_bloom: AtomicBloom,
+    patterns: Vec<(AhoCorasick, SourceBitSet)>,
+}
+
+fn build_exact_and_wildcard(
+    manual_domains: &[String],
+    source_entries: &HashMap<u8, Vec<ParsedEntry>>,
+) -> BlockIndexData {
+    let exact_count: usize = manual_domains.len()
+        + source_entries
+            .values()
+            .flat_map(|entries| entries.iter())
+            .filter(|e| matches!(e, ParsedEntry::Exact(_)))
+            .count();
+
+    let wildcard_count: usize = source_entries
+        .values()
+        .flat_map(|entries| entries.iter())
+        .filter(|e| matches!(e, ParsedEntry::Wildcard(_)))
+        .count();
 
     let bloom_capacity = (exact_count + 100).max(1000);
     let bloom = AtomicBloom::new(bloom_capacity, 0.001);
-
+    let wildcard_bloom = AtomicBloom::new(wildcard_count.max(100) * 3, 0.001);
     let exact: DashMap<CompactString, SourceBitSet, FxBuildHasher> =
         DashMap::with_capacity_and_hasher(exact_count, FxBuildHasher);
-
     let mut wildcard = SuffixTrie::new();
     let mut patterns_by_source: HashMap<u8, Vec<String>> = HashMap::new();
 
-    for domain in &manual_domains {
+    for domain in manual_domains {
         bloom.set(domain);
         exact
             .entry(CompactString::new(domain))
@@ -247,7 +290,7 @@ pub async fn compile_block_index(
             .or_insert(MANUAL_SOURCE_BIT);
     }
 
-    for (bit, entries) in &source_entries {
+    for (bit, entries) in source_entries {
         let source_bit: SourceBitSet = 1u64 << bit;
         for entry in entries {
             match entry {
@@ -260,6 +303,9 @@ pub async fn compile_block_index(
                 }
                 ParsedEntry::Wildcard(pattern) => {
                     wildcard.insert_wildcard(pattern, source_bit);
+                    // Populate wildcard bloom with the base domain (without "*.")
+                    let base = pattern.strip_prefix("*.").unwrap_or(pattern);
+                    wildcard_bloom.set(&base);
                 }
                 ParsedEntry::Pattern(pat) => {
                     patterns_by_source
@@ -289,7 +335,41 @@ pub async fn compile_block_index(
         }
     }
 
-    let total_exact = exact.len();
+    BlockIndexData {
+        total_exact: exact.len(),
+        bloom,
+        exact,
+        wildcard,
+        wildcard_bloom,
+        patterns,
+    }
+}
+
+// ── Public entry point ────────────────────────────────────────────────────────
+
+pub async fn compile_block_index(
+    pool: &SqlitePool,
+    client: &reqwest::Client,
+) -> Result<BlockIndex, DomainError> {
+    let SourceLoad {
+        default_group_id,
+        sources,
+        url_tasks,
+    } = load_sources(pool).await?;
+
+    let (_, group_masks) = build_group_masks(&sources, default_group_id);
+    let source_entries = fetch_sources_parallel(url_tasks, client).await;
+    let manual_domains = load_manual_domains(pool).await?;
+
+    let BlockIndexData {
+        total_exact,
+        bloom,
+        exact,
+        wildcard,
+        wildcard_bloom,
+        patterns,
+    } = build_exact_and_wildcard(&manual_domains, &source_entries);
+
     info!(
         exact = total_exact,
         wildcards = "built",
@@ -307,9 +387,50 @@ pub async fn compile_block_index(
         exact,
         bloom,
         wildcard,
+        wildcard_bloom,
         patterns,
         allowlists,
     })
+}
+
+// ── Private helpers for build_allowlist_index ─────────────────────────────────
+
+struct WsFetch {
+    group_id: i64,
+    text: Option<String>,
+}
+
+async fn fetch_allowlists_parallel(
+    url_tasks: Vec<(i64, String)>,
+    client: &reqwest::Client,
+) -> Vec<WsFetch> {
+    let tasks: Vec<_> = url_tasks
+        .into_iter()
+        .map(|(group_id, u)| {
+            let client = client.clone();
+            tokio::spawn(async move {
+                let text = match fetch_url(&u, &client).await {
+                    Ok(t) => Some(t),
+                    Err(e) => {
+                        warn!(url = %u, error = %e, "Failed to fetch whitelist source");
+                        None
+                    }
+                };
+                WsFetch { group_id, text }
+            })
+        })
+        .collect();
+
+    let mut results = Vec::new();
+    for result in join_all(tasks).await {
+        match result {
+            Ok(wf) => results.push(wf),
+            Err(e) => {
+                warn!(error = %e, "Whitelist source fetch task panicked");
+            }
+        }
+    }
+    results
 }
 
 async fn build_allowlist_index(
@@ -317,18 +438,20 @@ async fn build_allowlist_index(
     client: &reqwest::Client,
     _default_group_id: i64,
 ) -> Result<AllowlistIndex, DomainError> {
-    let mut allowlists = AllowlistIndex::new();
-
     let whitelist_rows = sqlx::query("SELECT domain FROM whitelist")
         .fetch_all(pool)
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
+    let mut allowlists = AllowlistIndex::with_global_capacity(whitelist_rows.len());
+
     for row in &whitelist_rows {
         let domain: String = row.get("domain");
+        let domain_lc = domain.to_ascii_lowercase();
+        allowlists.global_bloom.set(&domain_lc);
         allowlists
             .global_exact
-            .insert(CompactString::new(domain.to_ascii_lowercase()));
+            .insert(CompactString::new(domain_lc));
     }
 
     let ws_rows = sqlx::query(
@@ -338,60 +461,33 @@ async fn build_allowlist_index(
     .await
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
-    struct WsFetch {
-        group_id: i64,
-        text: Option<String>,
-    }
-
-    let ws_tasks: Vec<_> = ws_rows
+    let url_tasks: Vec<(i64, String)> = ws_rows
         .iter()
         .filter_map(|row| {
             let url: Option<String> = row.get("url");
-            url.map(|u| {
-                let group_id: i64 = row.get("group_id");
-                let client = client.clone();
-                tokio::spawn(async move {
-                    let text = match fetch_url(&u, &client).await {
-                        Ok(t) => Some(t),
-                        Err(e) => {
-                            warn!(url = %u, error = %e, "Failed to fetch whitelist source");
-                            None
-                        }
-                    };
-                    WsFetch { group_id, text }
-                })
-            })
+            url.map(|u| (row.get::<i64, _>("group_id"), u))
         })
         .collect();
 
-    let ws_results = join_all(ws_tasks).await;
+    for wf in fetch_allowlists_parallel(url_tasks, client).await {
+        if let Some(text) = wf.text {
+            let group_id = wf.group_id;
+            let exact_set = allowlists
+                .group_exact
+                .entry(group_id)
+                .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
+            let trie = allowlists.group_wildcard.entry(group_id).or_default();
 
-    for result in ws_results {
-        match result {
-            Ok(wf) => {
-                if let Some(text) = wf.text {
-                    let group_id = wf.group_id;
-                    let exact_set = allowlists
-                        .group_exact
-                        .entry(group_id)
-                        .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
-                    let trie = allowlists.group_wildcard.entry(group_id).or_default();
-
-                    for entry in parse_list_text(&text) {
-                        match entry {
-                            ParsedEntry::Exact(domain) => {
-                                exact_set.insert(CompactString::new(domain));
-                            }
-                            ParsedEntry::Wildcard(pattern) => {
-                                trie.insert_wildcard(&pattern, 1u64);
-                            }
-                            ParsedEntry::Pattern(_) => {}
-                        }
+            for entry in parse_list_text(&text) {
+                match entry {
+                    ParsedEntry::Exact(domain) => {
+                        exact_set.insert(CompactString::new(domain));
                     }
+                    ParsedEntry::Wildcard(pattern) => {
+                        trie.insert_wildcard(&pattern, 1u64);
+                    }
+                    ParsedEntry::Pattern(_) => {}
                 }
-            }
-            Err(e) => {
-                warn!(error = %e, "Whitelist source fetch task panicked");
             }
         }
     }

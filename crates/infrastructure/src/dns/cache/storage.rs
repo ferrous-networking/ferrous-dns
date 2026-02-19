@@ -1,5 +1,5 @@
 use super::bloom::AtomicBloom;
-use super::eviction::{EvictionEntry, EvictionStrategy};
+use super::eviction::EvictionStrategy;
 use super::key::{BorrowedKey, CacheKey};
 use super::l1::{l1_get, l1_insert};
 use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
@@ -139,7 +139,9 @@ impl DnsCache {
         dnssec_status: Option<DnssecStatus>,
     ) {
         let key = CacheKey::new(domain, record_type);
-        self.bloom.set(&key);
+        if !self.cache.contains_key(&key) {
+            self.bloom.set(&key);
+        }
 
         if self.cache.len() >= self.max_entries {
             self.evict_entries();
@@ -236,7 +238,9 @@ impl DnsCache {
 
     fn promote_to_l1(&self, domain: &str, record_type: &RecordType, record: &CachedRecord) {
         if let CachedData::IpAddresses(ref addresses) = record.data {
-            l1_insert(domain, record_type, Arc::clone(addresses), record.ttl);
+            if l1_get(domain, record_type).is_none() {
+                l1_insert(domain, record_type, Arc::clone(addresses), record.ttl);
+            }
         }
     }
 
@@ -269,55 +273,51 @@ impl DnsCache {
     }
 
     fn evict_by_strategy(&self, count: usize) {
-        let mut candidates: Vec<EvictionEntry> = self
-            .cache
-            .iter()
-            .filter_map(|entry| {
-                let record = entry.value();
-                if record.is_marked_for_deletion() {
-                    return None;
-                }
-                let score = self.compute_score(record);
-                let last_access = record.last_access.load(AtomicOrdering::Relaxed);
-                Some(EvictionEntry {
-                    key: entry.key().clone(),
-                    score,
-                    last_access,
-                })
-            })
-            .collect();
+        const EVICTION_SAMPLE_SIZE: usize = 8;
 
-        if candidates.is_empty() {
-            self.evict_random_entry();
+        if self.cache.is_empty() {
             return;
         }
 
-        candidates.sort_by(|a, b| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        let mut total_evicted = 0usize;
+        let mut last_worst_score = f64::MAX;
 
-        let threshold = self.get_threshold();
-        let evicted_count = candidates
-            .iter()
-            .take(count)
-            .filter(|candidate| candidate.score < threshold)
-            .filter_map(|candidate| self.cache.remove(&candidate.key))
-            .count();
+        for _ in 0..count {
+            let mut worst_key: Option<CacheKey> = None;
+            let mut worst_score = f64::MAX;
+            let mut sampled = 0usize;
 
-        if evicted_count < count {
-            for _ in 0..(count - evicted_count) {
-                self.evict_random_entry();
+            for entry in self.cache.iter() {
+                let record = entry.value();
+                if record.is_marked_for_deletion() {
+                    continue;
+                }
+                let score = self.compute_score(record);
+                if score < worst_score {
+                    worst_score = score;
+                    worst_key = Some(entry.key().clone());
+                }
+                sampled += 1;
+                if sampled >= EVICTION_SAMPLE_SIZE {
+                    break;
+                }
+            }
+
+            if let Some(key) = worst_key {
+                self.cache.remove(&key);
+                total_evicted += 1;
+                last_worst_score = worst_score;
             }
         }
 
         self.metrics
             .evictions
-            .fetch_add(evicted_count as u64, AtomicOrdering::Relaxed);
+            .fetch_add(total_evicted as u64, AtomicOrdering::Relaxed);
 
-        if self.adaptive_thresholds && !candidates.is_empty() {
-            self.adjust_threshold(&candidates);
+        if self.adaptive_thresholds && last_worst_score < f64::MAX {
+            let current = self.get_threshold();
+            let new_threshold = (current * 0.9) + (last_worst_score * 0.1);
+            self.set_threshold(new_threshold);
         }
     }
 
@@ -337,26 +337,12 @@ impl DnsCache {
             EvictionStrategy::LFUK => {
                 let access_time = record.last_access.load(AtomicOrdering::Relaxed) as f64;
                 let hits = record.hit_count.load(AtomicOrdering::Relaxed) as f64;
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as f64;
+                let now = super::coarse_clock::coarse_now_secs() as f64;
                 let inserted_unix = record.inserted_at.elapsed().as_secs() as f64;
                 let age = now - inserted_unix;
                 let k_value = 0.5;
                 hits / (age.powf(k_value).max(1.0)) * (1.0 / (now - access_time + 1.0))
             }
         }
-    }
-
-    fn adjust_threshold(&self, candidates: &[EvictionEntry]) {
-        if candidates.is_empty() {
-            return;
-        }
-
-        let sorted: Vec<f64> = candidates.iter().map(|c| c.score).collect();
-        let median_index = sorted.len() / 2;
-        let new_threshold = sorted[median_index];
-        self.set_threshold(new_threshold);
     }
 }

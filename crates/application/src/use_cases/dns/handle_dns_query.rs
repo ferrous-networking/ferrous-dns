@@ -97,12 +97,9 @@ impl HandleDnsQueryUseCase {
                 group_id: Some(group_id),
             };
 
-            let log_repo = Arc::clone(&self.query_log);
-            tokio::spawn(async move {
-                if let Err(e) = log_repo.log_query(&query_log).await {
-                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
-                }
-            });
+            if let Err(e) = self.query_log.log_query(&query_log).await {
+                tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
+            }
 
             return Err(DomainError::Blocked);
         }
@@ -130,12 +127,9 @@ impl HandleDnsQueryUseCase {
                     group_id: Some(group_id),
                 };
 
-                let log_repo = Arc::clone(&self.query_log);
-                tokio::spawn(async move {
-                    if let Err(e) = log_repo.log_query(&query_log).await {
-                        tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
-                    }
-                });
+                if let Err(e) = self.query_log.log_query(&query_log).await {
+                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
+                }
 
                 Ok(resolution)
             }
@@ -164,12 +158,9 @@ impl HandleDnsQueryUseCase {
                     group_id: Some(group_id),
                 };
 
-                let log_repo = Arc::clone(&self.query_log);
-                tokio::spawn(async move {
-                    if let Err(log_err) = log_repo.log_query(&query_log).await {
-                        tracing::warn!(error = %log_err, "Failed to log error query");
-                    }
-                });
+                if let Err(log_err) = self.query_log.log_query(&query_log).await {
+                    tracing::warn!(error = %log_err, "Failed to log error query");
+                }
 
                 Err(e)
             }

@@ -5,7 +5,6 @@ use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::{Name, RData, Record};
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
-use std::borrow::Cow;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -20,12 +19,8 @@ impl DnsServerHandler {
         Self { use_case }
     }
 
-    fn normalize_domain(domain: &str) -> Cow<'_, str> {
-        if domain.ends_with('.') {
-            Cow::Owned(domain.trim_end_matches('.').to_string())
-        } else {
-            Cow::Borrowed(domain)
-        }
+    fn normalize_domain(domain: &str) -> &str {
+        domain.trim_end_matches('.')
     }
 }
 
@@ -62,7 +57,7 @@ impl RequestHandler for DnsServerHandler {
             }
         };
 
-        let dns_request = ferrous_dns_domain::DnsRequest::new(&*domain, our_record_type, client_ip);
+        let dns_request = ferrous_dns_domain::DnsRequest::new(domain, our_record_type, client_ip);
         let domain_ref = &dns_request.domain;
 
         let resolution = match self.use_case.execute(&dns_request).await {

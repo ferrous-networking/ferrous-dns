@@ -13,7 +13,7 @@ pub mod storage;
 
 pub use bloom::AtomicBloom;
 pub use data::{CachedData, DnssecStatus};
-pub use eviction::{EvictionEntry, EvictionStrategy};
+pub use eviction::EvictionStrategy;
 pub use key::{BorrowedKey, CacheKey};
 pub use metrics::CacheMetrics;
 pub use negative_ttl::{NegativeQueryTracker, TrackerStats};

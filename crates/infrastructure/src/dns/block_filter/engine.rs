@@ -3,6 +3,7 @@ use super::compiler::compile_block_index;
 use super::decision_cache::{
     decision_l0_clear, decision_l0_get, decision_l0_set, BlockDecisionCache,
 };
+use crate::dns::cache::coarse_clock::coarse_now_secs;
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -15,10 +16,9 @@ use std::cell::RefCell;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
-type GroupL0Cache = LruCache<IpAddr, (i64, Instant), FxBuildHasher>;
+type GroupL0Cache = LruCache<IpAddr, (i64, u64), FxBuildHasher>;
 
 thread_local! {
     static GROUP_L0: RefCell<GroupL0Cache> =
@@ -137,7 +137,7 @@ impl BlockFilterEnginePort for BlockFilterEngine {
         if let Some(gid) = GROUP_L0.with(|c| {
             let mut cache = c.borrow_mut();
             if let Some(&(gid, expires)) = cache.get(&ip) {
-                if Instant::now() < expires {
+                if coarse_now_secs() < expires {
                     return Some(gid);
                 }
                 cache.pop(&ip);
@@ -149,8 +149,7 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
         let gid = self.resolve_group_uncached(ip);
         GROUP_L0.with(|c| {
-            c.borrow_mut()
-                .put(ip, (gid, Instant::now() + Duration::from_secs(60)));
+            c.borrow_mut().put(ip, (gid, coarse_now_secs() + 60));
         });
         gid
     }

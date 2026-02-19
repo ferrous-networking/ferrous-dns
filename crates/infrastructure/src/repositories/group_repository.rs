@@ -1,3 +1,4 @@
+use super::client_row_mapper::{row_to_client, ClientRow, CLIENT_SELECT};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::GroupRepository;
 use ferrous_dns_domain::{Client, DomainError, Group};
@@ -6,19 +7,6 @@ use std::sync::Arc;
 use tracing::{error, instrument};
 
 type GroupRow = (i64, String, i64, Option<String>, i64, String, String);
-
-type ClientRow = (
-    i64,
-    String,
-    Option<String>,
-    Option<String>,
-    String,
-    String,
-    i64,
-    Option<String>,
-    Option<String>,
-    Option<i64>,
-);
 
 pub struct SqliteGroupRepository {
     pool: SqlitePool,
@@ -41,34 +29,6 @@ impl SqliteGroupRepository {
             created_at: Some(created_at),
             updated_at: Some(updated_at),
         }
-    }
-
-    fn row_to_client(row: ClientRow) -> Option<Client> {
-        let (
-            id,
-            ip,
-            mac,
-            hostname,
-            first_seen,
-            last_seen,
-            query_count,
-            last_mac_update,
-            last_hostname_update,
-            group_id,
-        ) = row;
-
-        Some(Client {
-            id: Some(id),
-            ip_address: ip.parse().ok()?,
-            mac_address: mac.map(|s| Arc::from(s.as_str())),
-            hostname: hostname.map(|s| Arc::from(s.as_str())),
-            first_seen: Some(first_seen),
-            last_seen: Some(last_seen),
-            query_count: query_count as u64,
-            last_mac_update,
-            last_hostname_update,
-            group_id,
-        })
     }
 }
 
@@ -232,12 +192,10 @@ impl GroupRepository for SqliteGroupRepository {
 
     #[instrument(skip(self))]
     async fn get_clients_in_group(&self, group_id: i64) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(
-            "SELECT id, ip_address, mac_address, hostname, first_seen, last_seen,
-                    query_count, last_mac_update, last_hostname_update, group_id
-             FROM clients WHERE group_id = ?
-             ORDER BY last_seen DESC",
-        )
+        let rows = sqlx::query_as::<_, ClientRow>(&format!(
+            "{} WHERE group_id = ? ORDER BY last_seen DESC",
+            CLIENT_SELECT
+        ))
         .bind(group_id)
         .fetch_all(&self.pool)
         .await
@@ -246,7 +204,7 @@ impl GroupRepository for SqliteGroupRepository {
             DomainError::DatabaseError(e.to_string())
         })?;
 
-        Ok(rows.into_iter().filter_map(Self::row_to_client).collect())
+        Ok(rows.into_iter().filter_map(row_to_client).collect())
     }
 
     #[instrument(skip(self))]

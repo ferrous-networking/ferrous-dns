@@ -110,6 +110,7 @@ impl CachedRecord {
         }
     }
 
+    #[inline(always)]
     pub fn is_expired(&self) -> bool {
         if self.permanent {
             return false;
@@ -117,12 +118,13 @@ impl CachedRecord {
         Instant::now() >= self.expires_at
     }
 
+    #[inline(always)]
     pub fn is_stale_usable(&self) -> bool {
         let now = Instant::now();
         let age = now.duration_since(self.inserted_at).as_secs();
         let max_stale_age = (self.ttl as u64) * 2;
 
-        self.is_expired() && age < max_stale_age
+        now >= self.expires_at && age < max_stale_age
     }
 
     pub fn age_secs(&self) -> u64 {
@@ -134,16 +136,19 @@ impl CachedRecord {
             .store(true, AtomicOrdering::Relaxed);
     }
 
+    #[inline(always)]
     pub fn is_marked_for_deletion(&self) -> bool {
         self.marked_for_deletion.load(AtomicOrdering::Relaxed)
     }
 
+    #[inline(always)]
     pub fn should_refresh(&self, threshold: f64) -> bool {
         let elapsed = self.inserted_at.elapsed().as_secs_f64();
         let ttl_seconds = self.ttl as f64;
         elapsed >= (ttl_seconds * threshold)
     }
 
+    #[inline(always)]
     pub fn record_hit(&self) {
         self.hit_count.fetch_add(1, AtomicOrdering::Relaxed);
         self.last_access.store(

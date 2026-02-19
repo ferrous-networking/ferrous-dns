@@ -1,6 +1,7 @@
 pub mod blocklist_repository;
 pub mod blocklist_source_repository;
 pub mod client_repository;
+pub(crate) mod client_row_mapper;
 pub mod client_subnet_repository;
 pub mod config_repository;
 pub mod group_repository;

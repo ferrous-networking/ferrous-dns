@@ -1,4 +1,4 @@
-use std::collections::hash_map::DefaultHasher;
+use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
@@ -94,14 +94,10 @@ impl AtomicBloom {
 
     #[inline]
     fn double_hash<K: Hash>(key: &K) -> (u64, u64) {
-        let mut hasher1 = DefaultHasher::new();
-        key.hash(&mut hasher1);
-        let h1 = hasher1.finish();
-
-        let mut hasher2 = DefaultHasher::new();
-        h1.hash(&mut hasher2);
-        let h2 = hasher2.finish();
-
+        let mut hasher = FxHasher::default();
+        key.hash(&mut hasher);
+        let h1 = hasher.finish();
+        let h2 = h1.wrapping_mul(0x517cc1b727220a95).rotate_right(17);
         (h1, h2)
     }
 

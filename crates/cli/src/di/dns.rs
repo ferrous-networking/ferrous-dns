@@ -23,147 +23,24 @@ impl DnsServices {
     pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
         info!("Initializing DNS services with load balancing");
 
-        info!("Query event logging enabled (parallel batch processing - 20,000+ queries/sec)");
-        let (emitter, event_rx) = QueryEventEmitter::new_enabled();
+        let emitter = Self::setup_event_logger(repos);
+        let health_checker = Self::setup_health_checker(config);
+        let pool_manager =
+            Self::setup_pool_manager(config, health_checker.clone(), emitter.clone())?;
 
-        let health_checker = {
-            let checker = Arc::new(HealthChecker::new(
-                config.dns.health_check.failure_threshold,
-                config.dns.health_check.success_threshold,
-            ));
-
-            info!(
-                interval_seconds = config.dns.health_check.interval,
-                timeout_ms = config.dns.health_check.timeout,
-                "Health checker enabled"
-            );
-
-            Some(checker)
-        };
-
-        let pool_manager = Arc::new(PoolManager::new(
-            config.dns.pools.clone(),
-            health_checker.clone(),
-            emitter.clone(),
-        )?);
-
-        let logger = QueryEventLogger::new(repos.query_log.clone());
-        tokio::spawn(async move {
-            logger.start_parallel_batch(event_rx).await.unwrap();
-        });
-        info!("Query event logger started - logging ALL DNS queries including DNSSEC validation");
-
-        if let Some(checker) = health_checker {
-            let all_protocols = pool_manager.get_all_protocols();
-
-            let checker_clone = checker.clone();
-            let interval = config.dns.health_check.interval;
-            let timeout = config.dns.health_check.timeout;
-
-            tokio::spawn(async move {
-                checker_clone.run(all_protocols, interval, timeout).await;
-            });
-
-            info!("Health checker background task started");
-        }
+        Self::start_health_checker_task(health_checker, &pool_manager, config);
 
         let timeout_ms = config.dns.query_timeout * 1000;
-
         let pool_manager_clone = Arc::clone(&pool_manager);
 
-        let mut resolver = HickoryDnsResolver::new_with_pools(
-            pool_manager,
-            timeout_ms,
-            config.dns.dnssec_enabled,
-            Some(repos.query_log.clone()),
-        )?
-        .with_query_filters(
-            config.dns.block_private_ptr,
-            config.dns.block_non_fqdn,
-            config.dns.local_domain.clone(),
-        );
+        let mut resolver = Self::build_resolver(pool_manager, config, repos, timeout_ms)?;
+        let cache = Self::build_cache(config);
 
-        if !config.dns.conditional_forwarding.is_empty() {
-            let forwarder = Arc::new(ConditionalForwarder::new(
-                config.dns.conditional_forwarding.clone(),
-            ));
-            resolver = resolver.with_conditional_forwarder(forwarder);
-
-            info!(
-                rules_count = config.dns.conditional_forwarding.len(),
-                "Conditional forwarding enabled"
-            );
-        }
-
-        info!(
-            dnssec_enabled = config.dns.dnssec_enabled,
-            pools = config.dns.pools.len(),
-            block_private_ptr = config.dns.block_private_ptr,
-            block_non_fqdn = config.dns.block_non_fqdn,
-            local_domain = ?config.dns.local_domain,
-            conditional_forwarding_rules = config.dns.conditional_forwarding.len(),
-            "DNS resolver created with all features"
-        );
-
-        let cache = if config.dns.cache_enabled {
-            let eviction_strategy = match config.dns.cache_eviction_strategy.as_str() {
-                "lfu" => EvictionStrategy::LFU,
-                "lfu-k" => EvictionStrategy::LFUK,
-                _ => EvictionStrategy::HitRate,
-            };
-
-            info!(
-                strategy = config.dns.cache_eviction_strategy.as_str(),
-                max_entries = config.dns.cache_max_entries,
-                "Cache enabled"
-            );
-
-            let cache = Arc::new(DnsCache::new(
-                config.dns.cache_max_entries,
-                eviction_strategy,
-                config.dns.cache_min_hit_rate,
-                config.dns.cache_refresh_threshold,
-                config.dns.cache_lfuk_history_size,
-                config.dns.cache_batch_eviction_percentage,
-                config.dns.cache_adaptive_thresholds,
-            ));
-
+        if config.dns.cache_enabled {
             resolver = resolver.with_cache(cache.clone(), config.dns.cache_ttl);
-            cache
-        } else {
-            Arc::new(DnsCache::new(
-                0,
-                EvictionStrategy::HitRate,
-                0.0,
-                0.0,
-                0,
-                0.0,
-                false,
-            ))
-        };
-
-        if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
-            info!("Starting cache background tasks");
-
-            let resolver_for_updater = HickoryDnsResolver::new_with_pools(
-                pool_manager_clone.clone(),
-                timeout_ms,
-                false,
-                None,
-            )?
-            .with_cache(cache.clone(), config.dns.cache_ttl);
-
-            let updater = CacheUpdater::new(
-                cache.clone(),
-                Arc::new(resolver_for_updater),
-                Some(repos.query_log.clone()),
-                60,
-                config.dns.cache_compaction_interval,
-            );
-
-            updater.start();
-            info!("Cache background tasks started");
         }
+
+        Self::start_cache_updater(&cache, &pool_manager_clone, config, repos, timeout_ms)?;
 
         let resolver = Arc::new(resolver);
 
@@ -172,13 +49,11 @@ impl DnsServices {
                 count = config.dns.local_records.len(),
                 "Preloading local DNS records into permanent cache..."
             );
-
             Self::preload_local_records_into_cache(
                 &cache,
                 &config.dns.local_records,
                 &config.dns.local_domain,
             );
-
             info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
         }
 
@@ -202,6 +77,163 @@ impl DnsServices {
             handler_use_case,
             pool_manager: pool_manager_clone,
         })
+    }
+
+    fn setup_event_logger(repos: &Repositories) -> QueryEventEmitter {
+        info!("Query event logging enabled (parallel batch processing - 20,000+ queries/sec)");
+        let (emitter, event_rx) = QueryEventEmitter::new_enabled();
+        let logger = QueryEventLogger::new(repos.query_log.clone());
+        tokio::spawn(async move {
+            logger.start_parallel_batch(event_rx).await.unwrap();
+        });
+        info!("Query event logger started - logging ALL DNS queries including DNSSEC validation");
+        emitter
+    }
+
+    fn setup_health_checker(config: &Config) -> Option<Arc<HealthChecker>> {
+        let checker = Arc::new(HealthChecker::new(
+            config.dns.health_check.failure_threshold,
+            config.dns.health_check.success_threshold,
+        ));
+        info!(
+            interval_seconds = config.dns.health_check.interval,
+            timeout_ms = config.dns.health_check.timeout,
+            "Health checker enabled"
+        );
+        Some(checker)
+    }
+
+    fn setup_pool_manager(
+        config: &Config,
+        health_checker: Option<Arc<HealthChecker>>,
+        emitter: QueryEventEmitter,
+    ) -> anyhow::Result<Arc<PoolManager>> {
+        Ok(Arc::new(PoolManager::new(
+            config.dns.pools.clone(),
+            health_checker,
+            emitter,
+        )?))
+    }
+
+    fn start_health_checker_task(
+        health_checker: Option<Arc<HealthChecker>>,
+        pool_manager: &Arc<PoolManager>,
+        config: &Config,
+    ) {
+        if let Some(checker) = health_checker {
+            let all_protocols = pool_manager.get_all_protocols();
+            let checker_clone = checker.clone();
+            let interval = config.dns.health_check.interval;
+            let timeout = config.dns.health_check.timeout;
+            tokio::spawn(async move {
+                checker_clone.run(all_protocols, interval, timeout).await;
+            });
+            info!("Health checker background task started");
+        }
+    }
+
+    fn build_resolver(
+        pool_manager: Arc<PoolManager>,
+        config: &Config,
+        repos: &Repositories,
+        timeout_ms: u64,
+    ) -> anyhow::Result<HickoryDnsResolver> {
+        let mut resolver = HickoryDnsResolver::new_with_pools(
+            pool_manager,
+            timeout_ms,
+            config.dns.dnssec_enabled,
+            Some(repos.query_log.clone()),
+        )?
+        .with_query_filters(
+            config.dns.block_private_ptr,
+            config.dns.block_non_fqdn,
+            config.dns.local_domain.clone(),
+        );
+
+        if !config.dns.conditional_forwarding.is_empty() {
+            let forwarder = Arc::new(ConditionalForwarder::new(
+                config.dns.conditional_forwarding.clone(),
+            ));
+            resolver = resolver.with_conditional_forwarder(forwarder);
+            info!(
+                rules_count = config.dns.conditional_forwarding.len(),
+                "Conditional forwarding enabled"
+            );
+        }
+
+        info!(
+            dnssec_enabled = config.dns.dnssec_enabled,
+            pools = config.dns.pools.len(),
+            block_private_ptr = config.dns.block_private_ptr,
+            block_non_fqdn = config.dns.block_non_fqdn,
+            local_domain = ?config.dns.local_domain,
+            conditional_forwarding_rules = config.dns.conditional_forwarding.len(),
+            "DNS resolver created with all features"
+        );
+
+        Ok(resolver)
+    }
+
+    fn build_cache(config: &Config) -> Arc<DnsCache> {
+        if config.dns.cache_enabled {
+            let eviction_strategy = match config.dns.cache_eviction_strategy.as_str() {
+                "lfu" => EvictionStrategy::LFU,
+                "lfu-k" => EvictionStrategy::LFUK,
+                _ => EvictionStrategy::HitRate,
+            };
+            info!(
+                strategy = config.dns.cache_eviction_strategy.as_str(),
+                max_entries = config.dns.cache_max_entries,
+                "Cache enabled"
+            );
+            Arc::new(DnsCache::new(
+                config.dns.cache_max_entries,
+                eviction_strategy,
+                config.dns.cache_min_hit_rate,
+                config.dns.cache_refresh_threshold,
+                config.dns.cache_lfuk_history_size,
+                config.dns.cache_batch_eviction_percentage,
+                config.dns.cache_adaptive_thresholds,
+            ))
+        } else {
+            Arc::new(DnsCache::new(
+                0,
+                EvictionStrategy::HitRate,
+                0.0,
+                0.0,
+                0,
+                0.0,
+                false,
+            ))
+        }
+    }
+
+    fn start_cache_updater(
+        cache: &Arc<DnsCache>,
+        pool_manager: &Arc<PoolManager>,
+        config: &Config,
+        repos: &Repositories,
+        timeout_ms: u64,
+    ) -> anyhow::Result<()> {
+        if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
+            info!("Starting cache background tasks");
+
+            let resolver_for_updater =
+                HickoryDnsResolver::new_with_pools(pool_manager.clone(), timeout_ms, false, None)?
+                    .with_cache(cache.clone(), config.dns.cache_ttl);
+
+            let updater = CacheUpdater::new(
+                cache.clone(),
+                Arc::new(resolver_for_updater),
+                Some(repos.query_log.clone()),
+                60,
+                config.dns.cache_compaction_interval,
+            );
+
+            updater.start();
+            info!("Cache background tasks started");
+        }
+        Ok(())
     }
 
     fn preload_local_records_into_cache(
