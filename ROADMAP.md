@@ -27,10 +27,10 @@
 - [x] Client groups
 - [ ] Wildcard domain blocking (`*.ads.com`)
 - [ ] Whitelist support
-- [ ] Blocklist functionality
+- [x] Blocklist functionality
 - [x] blocklist url import
 - [ ] blocklist regex support
-- [ ] button allows and block in the queries.html list 
+- [x] button allows and block in the queries.html list 
 
 ### 🔮 v0.3.0 - Advanced Features
 
