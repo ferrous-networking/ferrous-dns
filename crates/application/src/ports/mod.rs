@@ -10,6 +10,7 @@ mod group_repository;
 mod hostname_resolver;
 mod managed_domain_repository;
 mod query_log_repository;
+mod regex_filter_repository;
 mod whitelist_repository;
 mod whitelist_source_repository;
 
@@ -25,6 +26,7 @@ pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;
 pub use query_log_repository::{CacheStats, QueryLogRepository, TimelineBucket};
+pub use regex_filter_repository::RegexFilterRepository;
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

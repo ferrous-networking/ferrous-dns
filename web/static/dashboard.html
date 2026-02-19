@@ -181,8 +181,7 @@
             <canvas id="queryTypesChart" style="max-height:250px"></canvas>
         </div>
         <div class="card" style="padding:24px"><h3
-                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache vs
-            Upstream</h3>
+                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Source</h3>
             <canvas id="cacheSourceChart" style="max-height:250px"></canvas>
         </div>
     </div>
@@ -202,7 +201,7 @@
             queryRate: {queries: 0, rate: '0 q/s'},
             cacheMetrics: {},
             blockFilterStats: {total_blocked_domains: 0},
-            cacheStats: {cache: 0, upstream: 0},
+            sourceStats: {cache: 0, upstream: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
             queryTypes: {},
             chartsReady: false,
             pollingIntervals: {fast: null, slow: null},
@@ -286,12 +285,22 @@
                         queries.forEach(q => {
                             this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
                         });
-                        let cache = 0, upstream = 0;
+                        const src = {cache: 0, upstream: 0, blocklist: 0, managed_domain: 0, regex_filter: 0};
                         queries.forEach(q => {
-                            if (q.blocked) return;
-                            if (q.cache_hit) cache++; else upstream++
+                            if (q.cache_hit) {
+                                src.cache++;
+                            } else if (q.blocked) {
+                                const bs = q.block_source;
+                                if (bs === 'managed_domain') src.managed_domain++;
+                                else if (bs === 'regex_filter') src.regex_filter++;
+                                else src.blocklist++;
+                            } else {
+                                src.upstream++;
+                            }
                         });
-                        this.cacheStats = {cache, upstream};
+                        this.sourceStats = src;
+                        this.updateQueryTypesChart();
+                        this.updateCacheSourceChart();
 
                     }
                 } catch (e) {
@@ -377,8 +386,18 @@
                         }
                     });
 
+                    const pctTooltip = {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const val = context.parsed;
+                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                            }
+                        }
+                    };
                     if (!appCharts.queryTypes && Object.keys(validTypes).length > 0) {
-                        
+
                         const ctx2 = document.getElementById('queryTypesChart');
                         if (ctx2) {
                             appCharts.queryTypes = new Chart(ctx2.getContext('2d'), {
@@ -394,12 +413,12 @@
                                     responsive: true,
                                     maintainAspectRatio: true,
                                     aspectRatio: 1.5,
-                                    plugins: {legend: {position: 'right'}}
+                                    plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
                                 }
                             });
                         }
                     } else if (appCharts.queryTypes && appCharts.queryTypes.data && appCharts.queryTypes.canvas && Object.keys(validTypes).length > 0) {
-                        
+
                         appCharts.queryTypes.data.labels = Object.keys(validTypes);
                         appCharts.queryTypes.data.datasets[0].data = Object.values(validTypes);
                         appCharts.queryTypes.update('none');
@@ -411,31 +430,52 @@
             updateCacheSourceChart() {
                 if (!this.chartsReady) return;
 
+                const SOURCE_DEF = [
+                    {key: 'cache',          label: '⚡ Cache',          color: '#A855F7'},
+                    {key: 'upstream',       label: '🌐 Upstream',       color: '#3B82F6'},
+                    {key: 'blocklist',      label: '🚫 Blocklist',      color: '#EF4444'},
+                    {key: 'managed_domain', label: '🔶 Managed Domain', color: '#F97316'},
+                    {key: 'regex_filter',   label: '🔵 Regex Filter',   color: '#8B5CF6'},
+                ];
+                const pctTooltip = {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const val = context.parsed;
+                            const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                            return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                        }
+                    }
+                };
+
                 try {
-                    if (!appCharts.cacheSource && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
-                        
+                    const active = SOURCE_DEF.filter(e => (this.sourceStats[e.key] || 0) > 0);
+                    if (active.length === 0) return;
+                    const labels = active.map(e => e.label);
+                    const data   = active.map(e => this.sourceStats[e.key]);
+                    const colors = active.map(e => e.color);
+
+                    if (!appCharts.cacheSource) {
                         const ctx3 = document.getElementById('cacheSourceChart');
                         if (ctx3) {
                             appCharts.cacheSource = new Chart(ctx3.getContext('2d'), {
                                 type: 'doughnut',
                                 data: {
-                                    labels: ['⚡ Cache', '🌐 Upstream'],
-                                    datasets: [{
-                                        data: [this.cacheStats.cache, this.cacheStats.upstream],
-                                        backgroundColor: ['#A855F7', '#3B82F6']
-                                    }]
+                                    labels,
+                                    datasets: [{data, backgroundColor: colors}]
                                 },
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
                                     aspectRatio: 1.5,
-                                    plugins: {legend: {position: 'right'}}
+                                    plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
                                 }
                             });
                         }
-                    } else if (appCharts.cacheSource && appCharts.cacheSource.data && appCharts.cacheSource.canvas && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
-                        
-                        appCharts.cacheSource.data.datasets[0].data = [this.cacheStats.cache, this.cacheStats.upstream];
+                    } else if (appCharts.cacheSource.data && appCharts.cacheSource.canvas) {
+                        appCharts.cacheSource.data.labels = labels;
+                        appCharts.cacheSource.data.datasets[0].data = data;
+                        appCharts.cacheSource.data.datasets[0].backgroundColor = colors;
                         appCharts.cacheSource.update('none');
                     }
                 } catch (e) {
@@ -557,6 +597,16 @@
                         });
                     }
 
+                    const doughnutPctTooltip = {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const val = context.parsed;
+                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
+                            }
+                        }
+                    };
                     const ctx2 = document.getElementById('queryTypesChart');
                     if (ctx2 && Object.keys(this.queryTypes).length > 0) {
                         appCharts.queryTypes = new Chart(ctx2.getContext('2d'), {
@@ -572,26 +622,34 @@
                                 responsive: true,
                                 maintainAspectRatio: true,
                                 aspectRatio: 1.5,
-                                plugins: {legend: {position: 'right'}}
+                                plugins: {legend: {position: 'right'}, tooltip: doughnutPctTooltip}
                             }
                         })
                     }
+                    const SOURCE_DEF_INIT = [
+                        {key: 'cache',          label: '⚡ Cache',          color: '#A855F7'},
+                        {key: 'upstream',       label: '🌐 Upstream',       color: '#3B82F6'},
+                        {key: 'blocklist',      label: '🚫 Blocklist',      color: '#EF4444'},
+                        {key: 'managed_domain', label: '🔶 Managed Domain', color: '#F97316'},
+                        {key: 'regex_filter',   label: '🔵 Regex Filter',   color: '#8B5CF6'},
+                    ];
                     const ctx3 = document.getElementById('cacheSourceChart');
-                    if (ctx3 && (this.cacheStats.cache > 0 || this.cacheStats.upstream > 0)) {
+                    const activeInit = SOURCE_DEF_INIT.filter(e => (this.sourceStats[e.key] || 0) > 0);
+                    if (ctx3 && activeInit.length > 0) {
                         appCharts.cacheSource = new Chart(ctx3.getContext('2d'), {
                             type: 'doughnut',
                             data: {
-                                labels: ['⚡ Cache', '🌐 Upstream'],
+                                labels: activeInit.map(e => e.label),
                                 datasets: [{
-                                    data: [this.cacheStats.cache, this.cacheStats.upstream],
-                                    backgroundColor: ['#A855F7', '#3B82F6']
+                                    data: activeInit.map(e => this.sourceStats[e.key]),
+                                    backgroundColor: activeInit.map(e => e.color)
                                 }]
                             },
                             options: {
                                 responsive: true,
                                 maintainAspectRatio: true,
                                 aspectRatio: 1.5,
-                                plugins: {legend: {position: 'right'}}
+                                plugins: {legend: {position: 'right'}, tooltip: doughnutPctTooltip}
                             }
                         })
                     }

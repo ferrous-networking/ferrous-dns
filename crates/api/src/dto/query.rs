@@ -40,4 +40,6 @@ pub struct QueryResponse {
     pub dnssec_status: Option<String>,
     pub upstream_server: Option<String>,
     pub query_source: String,
+    /// Which filter layer blocked this query: "blocklist", "managed_domain", "regex_filter", or null
+    pub block_source: Option<String>,
 }

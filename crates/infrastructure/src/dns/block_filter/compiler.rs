@@ -4,6 +4,7 @@ use crate::dns::cache::bloom::AtomicBloom;
 use aho_corasick::AhoCorasick;
 use compact_str::CompactString;
 use dashmap::{DashMap, DashSet};
+use fancy_regex::Regex;
 use ferrous_dns_domain::DomainError;
 use futures::future::join_all;
 use rustc_hash::FxBuildHasher;
@@ -361,6 +362,55 @@ fn build_exact_and_wildcard(
     }
 }
 
+struct RegexFilterMaps {
+    block_patterns: HashMap<i64, Vec<Regex>>,
+    allow_patterns: HashMap<i64, Vec<Regex>>,
+}
+
+async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMaps, DomainError> {
+    let rows = sqlx::query("SELECT pattern, action, group_id FROM regex_filters WHERE enabled = 1")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+    let mut block_patterns: HashMap<i64, Vec<Regex>> = HashMap::new();
+    let mut allow_patterns: HashMap<i64, Vec<Regex>> = HashMap::new();
+
+    for row in &rows {
+        let pattern: String = row.get("pattern");
+        let action: String = row.get("action");
+        let group_id: i64 = row.get("group_id");
+
+        match Regex::new(&format!("(?i){}", &pattern)) {
+            Ok(re) => {
+                if action == "deny" {
+                    block_patterns.entry(group_id).or_default().push(re);
+                } else {
+                    allow_patterns.entry(group_id).or_default().push(re);
+                }
+            }
+            Err(e) => {
+                warn!(
+                    pattern = %pattern,
+                    error = %e,
+                    "Skipping invalid regex filter pattern during compilation"
+                );
+            }
+        }
+    }
+
+    info!(
+        block_regex = block_patterns.values().map(|v| v.len()).sum::<usize>(),
+        allow_regex = allow_patterns.values().map(|v| v.len()).sum::<usize>(),
+        "Loaded regex filter patterns"
+    );
+
+    Ok(RegexFilterMaps {
+        block_patterns,
+        allow_patterns,
+    })
+}
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 pub async fn compile_block_index(
@@ -377,6 +427,7 @@ pub async fn compile_block_index(
     let source_entries = fetch_sources_parallel(url_tasks, client).await;
     let manual_domains = load_manual_domains(pool).await?;
     let managed_domain_entries = load_managed_domains_for_index(pool).await?;
+    let regex_filter_maps = load_regex_filters_for_index(pool).await?;
 
     let BlockIndexData {
         total_exact,
@@ -393,7 +444,7 @@ pub async fn compile_block_index(
             if entry.domain.starts_with("*.") {
                 managed_deny_wildcards
                     .entry(entry.group_id)
-                    .or_insert_with(SuffixTrie::new)
+                    .or_default()
                     .insert_wildcard(&entry.domain, 1u64);
             } else {
                 managed_denies
@@ -426,6 +477,8 @@ pub async fn compile_block_index(
         allowlists,
         managed_denies,
         managed_deny_wildcards,
+        allow_regex_patterns: regex_filter_maps.allow_patterns,
+        block_regex_patterns: regex_filter_maps.block_patterns,
     })
 }
 
@@ -496,7 +549,7 @@ async fn build_allowlist_index(
                 allowlists
                     .group_wildcard
                     .entry(entry.group_id)
-                    .or_insert_with(SuffixTrie::new)
+                    .or_default()
                     .insert_wildcard(&entry.domain, 1u64);
             } else {
                 allowlists

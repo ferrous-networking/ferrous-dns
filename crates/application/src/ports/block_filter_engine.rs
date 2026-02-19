@@ -1,10 +1,11 @@
 use async_trait::async_trait;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{BlockSource, DomainError};
 use std::net::IpAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterDecision {
-    Block,
+    /// Query is blocked; the inner value identifies which layer matched.
+    Block(BlockSource),
     Allow,
 }
 

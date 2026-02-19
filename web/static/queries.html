@@ -208,8 +208,24 @@
                     <td style="font-size:13px" x-text="query.client"></td>
                     <td>
                         <span class="badge"
-                              :style="query.cache_hit ? 'background:rgba(168,85,247,0.1);color:#A855F7' : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
-                              x-text="query.cache_hit ? 'Cache' : 'Upstream'"></span>
+                              :style="query.cache_hit
+                                ? 'background:rgba(168,85,247,0.1);color:#A855F7'
+                                : query.block_source === 'blocklist'
+                                  ? 'background:rgba(239,68,68,0.1);color:#ef4444'
+                                  : query.block_source === 'managed_domain'
+                                    ? 'background:rgba(249,115,22,0.1);color:#f97316'
+                                    : query.block_source === 'regex_filter'
+                                      ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
+                                      : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
+                              x-text="query.cache_hit
+                                ? 'Cache'
+                                : query.block_source === 'blocklist'
+                                  ? 'Blocklist'
+                                  : query.block_source === 'managed_domain'
+                                    ? 'Managed Domain'
+                                    : query.block_source === 'regex_filter'
+                                      ? 'Regex Filter'
+                                      : 'Upstream'"></span>
                     </td>
                     <td style="font-size:13px" x-text="formatResponseTime(query)"></td>
                 </tr>

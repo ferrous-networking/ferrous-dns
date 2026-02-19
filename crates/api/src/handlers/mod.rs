@@ -14,6 +14,7 @@ pub mod managed_domains;
 pub mod manual_clients;
 pub mod queries;
 pub mod rate;
+pub mod regex_filters;
 pub mod stats;
 pub mod timeline;
 pub mod whitelist;

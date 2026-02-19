@@ -156,33 +156,33 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
-        if let Some(blocked) = decision_l0_get(domain, group_id) {
-            return if blocked {
-                FilterDecision::Block
-            } else {
-                FilterDecision::Allow
+        // L0: thread-local decision cache
+        if let Some(cached_source) = decision_l0_get(domain, group_id) {
+            return match cached_source {
+                Some(source) => FilterDecision::Block(source),
+                None => FilterDecision::Allow,
             };
         }
 
-        if let Some(blocked) = self.decision_cache.get(domain, group_id) {
-            decision_l0_set(domain, group_id, blocked);
-            return if blocked {
-                FilterDecision::Block
-            } else {
-                FilterDecision::Allow
+        // L1: shared decision cache
+        if let Some(cached_source) = self.decision_cache.get(domain, group_id) {
+            decision_l0_set(domain, group_id, cached_source);
+            return match cached_source {
+                Some(source) => FilterDecision::Block(source),
+                None => FilterDecision::Allow,
             };
         }
 
+        // Full block filter pipeline
         let guard = self.index.load();
-        let blocked = guard.is_blocked(domain, group_id);
+        let block_source = guard.is_blocked(domain, group_id);
 
-        self.decision_cache.set(domain, group_id, blocked);
-        decision_l0_set(domain, group_id, blocked);
+        self.decision_cache.set(domain, group_id, block_source);
+        decision_l0_set(domain, group_id, block_source);
 
-        if blocked {
-            FilterDecision::Block
-        } else {
-            FilterDecision::Allow
+        match block_source {
+            Some(source) => FilterDecision::Block(source),
+            None => FilterDecision::Allow,
         }
     }
 

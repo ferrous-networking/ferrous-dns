@@ -2,13 +2,14 @@ use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
     CreateGroupUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
-    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
-    DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
-    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
-    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
-    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
-    UpdateBlocklistSourceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
+    DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
+    GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
+    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, UpdateBlocklistSourceUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
     UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
@@ -53,4 +54,8 @@ pub struct AppState {
     pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
     pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
     pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
+    pub get_regex_filters: Arc<GetRegexFiltersUseCase>,
+    pub create_regex_filter: Arc<CreateRegexFilterUseCase>,
+    pub update_regex_filter: Arc<UpdateRegexFilterUseCase>,
+    pub delete_regex_filter: Arc<DeleteRegexFilterUseCase>,
 }

@@ -29,6 +29,7 @@ ahash = "0.8"
 bloomfilter = "1.0"
 arc-swap = "1.7"
 aho-corasick = "1.1"
+fancy-regex = "0.13"
 hostname = "0.4"
 async-trait = "0.1"
 axum = { version = "0.8.8", features = ["macros"] }

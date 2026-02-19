@@ -98,6 +98,7 @@ impl HandleDnsQueryUseCase {
                     timestamp: None,
                     query_source: QuerySource::Client,
                     group_id: Some(self.block_filter.resolve_group(request.client_ip)),
+                    block_source: None,
                 };
 
                 if let Err(e) = self.query_log.log_query(&query_log).await {
@@ -111,7 +112,7 @@ impl HandleDnsQueryUseCase {
         let group_id = self.block_filter.resolve_group(request.client_ip);
         let decision = self.block_filter.check(&request.domain, group_id);
 
-        if matches!(decision, FilterDecision::Block) {
+        if let FilterDecision::Block(block_source) = decision {
             let query_log = QueryLog {
                 id: None,
                 domain: Arc::clone(&request.domain),
@@ -127,6 +128,7 @@ impl HandleDnsQueryUseCase {
                 timestamp: None,
                 query_source: QuerySource::Client,
                 group_id: Some(group_id),
+                block_source: Some(block_source),
             };
 
             if let Err(e) = self.query_log.log_query(&query_log).await {
@@ -155,6 +157,7 @@ impl HandleDnsQueryUseCase {
                     timestamp: None,
                     query_source: QuerySource::Client,
                     group_id: Some(group_id),
+                    block_source: None,
                 };
 
                 if let Err(e) = self.query_log.log_query(&query_log).await {
@@ -186,6 +189,7 @@ impl HandleDnsQueryUseCase {
                     timestamp: None,
                     query_source: QuerySource::Client,
                     group_id: Some(group_id),
+                    block_source: None,
                 };
 
                 if let Err(log_err) = self.query_log.log_query(&query_log).await {

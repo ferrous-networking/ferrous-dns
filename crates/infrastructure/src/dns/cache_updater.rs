@@ -198,6 +198,7 @@ impl CacheUpdater {
                         timestamp: None,
                         query_source: QuerySource::Internal,
                         group_id: None,
+                        block_source: None,
                     };
 
                     if let Err(e) = log.log_query(&log_entry).await {

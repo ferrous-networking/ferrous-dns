@@ -1,3 +1,4 @@
+use crate::block_source::BlockSource;
 use crate::dns_record::RecordType;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -79,6 +80,9 @@ pub struct QueryLog {
 
     /// The group_id resolved for the client that issued this query.
     pub group_id: Option<i64>,
+
+    /// Which filtering layer caused this query to be blocked, if any.
+    pub block_source: Option<BlockSource>,
 }
 
 #[derive(Debug, Clone)]

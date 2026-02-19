@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use compact_str::CompactString;
 use ferrous_dns_application::ports::QueryLogRepository;
-use ferrous_dns_domain::{DomainError, QueryLog, QuerySource, QueryStats};
+use ferrous_dns_domain::{BlockSource, DomainError, QueryLog, QuerySource, QueryStats};
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -14,19 +14,19 @@ const MAX_BATCH_SIZE: usize = 500;
 const FLUSH_INTERVAL_MS: u64 = 100;
 
 /// Number of columns per row in `query_log` INSERT.
-const COLS_PER_ROW: usize = 12;
+const COLS_PER_ROW: usize = 13;
 /// SQLite's default SQLITE_LIMIT_VARIABLE_NUMBER is 999.
 /// Each chunk inserts at most this many rows in a single statement.
-const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW; // 83
+const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW; // 76
 
 /// Build `INSERT INTO query_log (...) VALUES (?,…), (?,…), …` for `n` rows.
 fn build_multi_insert_sql(n: usize) -> String {
     debug_assert!(n > 0 && n <= ROWS_PER_CHUNK);
     const HEADER: &str = "INSERT INTO query_log \
         (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-         cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id) \
+         cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source) \
         VALUES ";
-    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?)";
+    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?)";
     let mut sql = String::with_capacity(HEADER.len() + n * (PLACEHOLDER.len() + 1));
     sql.push_str(HEADER);
     for i in 0..n {
@@ -51,6 +51,7 @@ struct QueryLogEntry {
     response_status: Option<&'static str>,
     query_source: CompactString,
     group_id: Option<i64>,
+    block_source: Option<&'static str>,
 }
 
 impl QueryLogEntry {
@@ -68,6 +69,7 @@ impl QueryLogEntry {
             response_status: q.response_status,
             query_source: CompactString::from(q.query_source.as_str()),
             group_id: q.group_id,
+            block_source: q.block_source.map(|s| s.to_str()),
         }
     }
 }
@@ -112,6 +114,15 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         .unwrap_or_else(|| "client".to_string());
     let query_source = QuerySource::from_str(&query_source_str).unwrap_or(QuerySource::Client);
 
+    let block_source: Option<BlockSource> =
+        row.get::<Option<String>, _>("block_source")
+            .and_then(|s| match s.as_str() {
+                "blocklist" => Some(BlockSource::Blocklist),
+                "managed_domain" => Some(BlockSource::ManagedDomain),
+                "regex_filter" => Some(BlockSource::RegexFilter),
+                _ => None,
+            });
+
     Some(QueryLog {
         id: Some(row.get("id")),
         domain: Arc::from(domain_str.as_str()),
@@ -129,6 +140,7 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         timestamp: Some(row.get("created_at")),
         query_source,
         group_id: row.get("group_id"),
+        block_source,
     })
 }
 
@@ -226,7 +238,8 @@ impl SqliteQueryLogRepository {
                     .bind(entry.upstream_server.as_deref())
                     .bind(entry.response_status)
                     .bind(entry.query_source.as_str())
-                    .bind(entry.group_id);
+                    .bind(entry.group_id)
+                    .bind(entry.block_source);
             }
             match q.execute(&mut *tx).await {
                 Ok(r) => inserted += r.rows_affected() as usize,
@@ -287,7 +300,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         );
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
                     datetime(created_at) as created_at
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
@@ -338,7 +351,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let total = count_row.get::<i64, _>("total") as u64;
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
                     datetime(created_at) as created_at
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')

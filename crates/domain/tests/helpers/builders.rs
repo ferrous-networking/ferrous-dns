@@ -58,6 +58,7 @@ impl QueryLogBuilder {
             timestamp: None,
             query_source: Default::default(),
             group_id: None,
+            block_source: None,
         }
     }
 }

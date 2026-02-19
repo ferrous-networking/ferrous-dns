@@ -3,16 +3,17 @@ use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CleanupOldClientsUseCase, CleanupOldQueryLogsUseCase,
     CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
-    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateWhitelistSourceUseCase,
-    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteWhitelistSourceUseCase,
-    GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
-    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase,
-    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
-    ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
-    UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateWhitelistSourceUseCase,
+    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
+    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
+    DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
+    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
+    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
+    GetConfigUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
+    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, ReloadConfigUseCase, SyncArpCacheUseCase,
+    SyncHostnamesUseCase, TrackClientUseCase, UpdateBlocklistSourceUseCase, UpdateConfigUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -61,6 +62,10 @@ pub struct UseCases {
     pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
     pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
     pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
+    pub get_regex_filters: Arc<GetRegexFiltersUseCase>,
+    pub create_regex_filter: Arc<CreateRegexFilterUseCase>,
+    pub update_regex_filter: Arc<UpdateRegexFilterUseCase>,
+    pub delete_regex_filter: Arc<DeleteRegexFilterUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
 }
 
@@ -162,6 +167,21 @@ impl UseCases {
             )),
             delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
                 repos.managed_domain.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            get_regex_filters: Arc::new(GetRegexFiltersUseCase::new(repos.regex_filter.clone())),
+            create_regex_filter: Arc::new(CreateRegexFilterUseCase::new(
+                repos.regex_filter.clone(),
+                repos.group.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            update_regex_filter: Arc::new(UpdateRegexFilterUseCase::new(
+                repos.regex_filter.clone(),
+                repos.group.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            delete_regex_filter: Arc::new(DeleteRegexFilterUseCase::new(
+                repos.regex_filter.clone(),
                 repos.block_filter_engine.clone(),
             )),
             subnet_matcher,

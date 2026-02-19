@@ -85,4 +85,10 @@ pub enum DomainError {
 
     #[error("Invalid managed domain: {0}")]
     InvalidManagedDomain(String),
+
+    #[error("Regex filter not found: {0}")]
+    RegexFilterNotFound(String),
+
+    #[error("Invalid regex filter: {0}")]
+    InvalidRegexFilter(String),
 }

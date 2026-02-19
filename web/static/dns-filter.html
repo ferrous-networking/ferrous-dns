@@ -249,6 +249,7 @@
         <button class="tab-btn" :class="activeTab === 'blocklist' ? 'active' : ''" @click="switchTab('blocklist')">DNS Blocklist</button>
         <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')">DNS Allowlist</button>
         <button class="tab-btn" :class="activeTab === 'managed' ? 'active' : ''" @click="switchTab('managed')">Managed Domains</button>
+        <button class="tab-btn" :class="activeTab === 'regex' ? 'active' : ''" @click="switchTab('regex')">Regex Filters</button>
     </div>
 
     <!-- BLOCKLIST TAB -->
@@ -659,6 +660,148 @@
             </table>
         </div>
     </div><!-- end managed domains tab -->
+
+    <!-- REGEX FILTERS TAB -->
+    <div x-show="activeTab === 'regex'">
+        <div style="margin-bottom:24px">
+            <div class="card" style="padding:24px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
+                    x-text="rgEditingFilter ? 'Edit Regex Filter' : 'Add Regex Filter'">Add Regex Filter</h2>
+
+                <form @submit.prevent="rgSaveFilter()">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="rgForm.name"
+                                   placeholder="e.g. Block Ad Networks" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Regex Pattern <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="rgForm.pattern"
+                                   placeholder="e.g. ^ads\..*\.com$" required
+                                   style="font-family:monospace">
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Action</label>
+                            <select class="input" x-model="rgForm.action">
+                                <option value="deny">Deny (Block)</option>
+                                <option value="allow">Allow (Override)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Group</label>
+                            <select class="input" x-model="rgForm.group_id">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id" x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
+                                <input type="checkbox" x-model="rgForm.enabled" style="width:18px;height:18px;cursor:pointer">
+                                <span class="form-label" style="margin:0">Enabled</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <textarea class="textarea" x-model="rgForm.comment"
+                                  placeholder="Add a description for this filter"></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:12px">
+                        <button type="submit" class="btn btn-primary" x-text="rgEditingFilter ? 'Update Filter' : 'Add Filter'"></button>
+                        <button type="button" class="btn btn-secondary" @click="rgCancelForm()">Cancel</button>
+                    </div>
+
+                    <div x-show="rgFormError" x-text="rgFormError"
+                         style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Regex</th>
+                    <th>Action</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                    <th>Group</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="filter in rgFilters" :key="filter.id">
+                    <tr>
+                        <td>
+                            <span style="font-weight:500;color:var(--text-primary)" x-text="filter.name"></span>
+                        </td>
+                        <td>
+                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="filter.pattern"></span>
+                        </td>
+                        <td>
+                            <span class="badge"
+                                  :style="filter.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
+                                  x-text="filter.action === 'deny' ? 'Deny' : 'Allow'">
+                            </span>
+                        </td>
+                        <td>
+                            <button class="badge"
+                                    :class="filter.enabled ? 'badge-success' : 'badge-inactive'"
+                                    @click="rgToggleStatus(filter)"
+                                    :title="filter.enabled ? 'Click to disable' : 'Click to enable'"
+                                    x-text="filter.enabled ? 'Enabled' : 'Disabled'">
+                            </button>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px" x-text="filter.comment || '-'"></span>
+                        </td>
+                        <td>
+                            <select class="group-select"
+                                    :value="filter.group_id"
+                                    @change="rgChangeGroup(filter, parseInt($event.target.value))">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id"
+                                            :selected="group.id === filter.group_id"
+                                            x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button @click="rgEditFilter(filter)" class="btn-icon" title="Edit">
+                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="rgDeleteFilter(filter)" class="btn-icon" title="Delete"
+                                        style="color:var(--color-error)">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="rgFilters.length === 0 && !rgLoading">
+                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                        <i data-lucide="regex" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                        <p style="margin:0">No regex filters found. Add one to block or allow domains matching a pattern.</p>
+                    </td>
+                </tr>
+                <tr x-show="rgLoading">
+                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        Loading...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div><!-- end regex filters tab -->
 </main>
 
 <script>
@@ -708,10 +851,24 @@
             },
             mFormError: '',
 
+            // --- REGEX FILTERS ---
+            rgFilters: [],
+            rgLoading: false,
+            rgEditingFilter: null,
+            rgForm: {
+                name: '',
+                pattern: '',
+                action: 'deny',
+                group_id: 1,
+                comment: '',
+                enabled: true
+            },
+            rgFormError: '',
+
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups(), this.loadManagedDomains()]);
+                await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups(), this.loadManagedDomains(), this.loadRegexFilters()]);
                 await this.$nextTick();
                 scheduleLucide(0);
             },
@@ -1157,6 +1314,150 @@
                     }
                 } catch (e) {
                     console.error('Error deleting managed domain:', e);
+                    alert('Network error: ' + e.message);
+                }
+            },
+
+            // ===================== REGEX FILTERS =====================
+
+            async loadRegexFilters() {
+                this.rgLoading = true;
+                try {
+                    const res = await fetch('/api/regex-filters');
+                    if (res.ok) {
+                        this.rgFilters = await res.json();
+                        await this.$nextTick();
+                        scheduleLucide(0);
+                    }
+                } catch (e) {
+                    console.error('Failed to load regex filters:', e);
+                } finally {
+                    this.rgLoading = false;
+                }
+            },
+
+            rgEditFilter(filter) {
+                this.rgEditingFilter = filter;
+                this.rgForm = {
+                    name: filter.name,
+                    pattern: filter.pattern,
+                    action: filter.action,
+                    group_id: filter.group_id,
+                    comment: filter.comment || '',
+                    enabled: filter.enabled
+                };
+                this.rgFormError = '';
+                this.$nextTick(() => scheduleLucide());
+            },
+
+            rgCancelForm() {
+                this.rgEditingFilter = null;
+                this.rgFormError = '';
+                this.rgForm = {
+                    name: '',
+                    pattern: '',
+                    action: 'deny',
+                    group_id: this.defaultGroupId(),
+                    comment: '',
+                    enabled: true
+                };
+            },
+
+            async rgSaveFilter() {
+                this.rgFormError = '';
+
+                const payload = {
+                    name: this.rgForm.name.trim(),
+                    pattern: this.rgForm.pattern.trim(),
+                    action: this.rgForm.action,
+                    group_id: parseInt(this.rgForm.group_id),
+                    comment: this.rgForm.comment.trim() || null,
+                    enabled: this.rgForm.enabled
+                };
+
+                try {
+                    let res;
+                    if (this.rgEditingFilter) {
+                        res = await fetch(`/api/regex-filters/${this.rgEditingFilter.id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        res = await fetch('/api/regex-filters', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    }
+
+                    if (res.ok) {
+                        await this.loadRegexFilters();
+                        this.rgCancelForm();
+                    } else {
+                        const errorText = await res.text();
+                        this.rgFormError = errorText || 'Failed to save regex filter';
+                    }
+                } catch (e) {
+                    console.error('Error saving regex filter:', e);
+                    this.rgFormError = 'Network error: ' + e.message;
+                }
+            },
+
+            async rgToggleStatus(filter) {
+                try {
+                    const res = await fetch(`/api/regex-filters/${filter.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({enabled: !filter.enabled})
+                    });
+                    if (res.ok) {
+                        filter.enabled = !filter.enabled;
+                    } else {
+                        alert('Failed to toggle status');
+                    }
+                } catch (e) {
+                    console.error('Error toggling regex filter status:', e);
+                }
+            },
+
+            async rgChangeGroup(filter, newGroupId) {
+                try {
+                    const res = await fetch(`/api/regex-filters/${filter.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_id: newGroupId})
+                    });
+                    if (res.ok) {
+                        filter.group_id = newGroupId;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to change group: ' + errorText);
+                        await this.loadRegexFilters();
+                    }
+                } catch (e) {
+                    console.error('Error changing regex filter group:', e);
+                    await this.loadRegexFilters();
+                }
+            },
+
+            async rgDeleteFilter(filter) {
+                if (!confirm(`Delete regex filter "${filter.name}" (${filter.pattern})? This cannot be undone.`)) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/regex-filters/${filter.id}`, {
+                        method: 'DELETE'
+                    });
+                    if (res.ok) {
+                        await this.loadRegexFilters();
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to delete: ' + errorText);
+                    }
+                } catch (e) {
+                    console.error('Error deleting regex filter:', e);
                     alert('Network error: ' + e.message);
                 }
             },

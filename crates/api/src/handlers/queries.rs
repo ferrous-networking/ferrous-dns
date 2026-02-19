@@ -40,6 +40,7 @@ pub async fn get_queries(
                     dnssec_status: q.dnssec_status.map(|s| s.to_string()),
                     upstream_server: q.upstream_server,
                     query_source: q.query_source.as_str().to_string(),
+                    block_source: q.block_source.map(|s| s.to_str().to_string()),
                 })
                 .collect();
 

@@ -88,6 +88,7 @@ impl QueryEventLogger {
                 timestamp: None,
                 query_source: QuerySource::Internal,
                 group_id: None,
+                block_source: None,
             };
 
             match repo.log_query(&query_log).await {
@@ -138,6 +139,7 @@ impl QueryEventLogger {
                     timestamp: None,
                     query_source: QuerySource::Internal,
                     group_id: None,
+                    block_source: None,
                 };
 
                 if let Err(e) = self.log_repo.log_query(&query_log).await {

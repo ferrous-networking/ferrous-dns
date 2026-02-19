@@ -44,6 +44,7 @@ reqwest.workspace = true
 chrono = "0.4.43"
 arc-swap.workspace = true
 aho-corasick.workspace = true
+fancy-regex.workspace = true
 
 [dev-dependencies]
 tempfile = "3.8"

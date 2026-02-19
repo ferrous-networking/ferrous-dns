@@ -37,6 +37,7 @@ use ferrous_dns_infrastructure::{
         client_repository::SqliteClientRepository,
         client_subnet_repository::SqliteClientSubnetRepository,
         group_repository::SqliteGroupRepository,
+        regex_filter_repository::SqliteRegexFilterRepository,
     },
 };
 use http_body_util::BodyExt;
@@ -115,6 +116,25 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::query(
+        r#"
+        CREATE TABLE regex_filters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            pattern TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('allow', 'deny')),
+            group_id INTEGER NOT NULL DEFAULT 1,
+            comment TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
 }
 
@@ -123,6 +143,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
     let client_repo = Arc::new(SqliteClientRepository::new(pool.clone()));
     let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
     let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
+    let regex_filter_repo = Arc::new(SqliteRegexFilterRepository::new(pool.clone()));
 
     let config = Arc::new(RwLock::new(Config::default()));
     let cache = Arc::new(DnsCache::new(
@@ -229,6 +250,23 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         )),
         delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
             Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        get_regex_filters: Arc::new(ferrous_dns_application::use_cases::GetRegexFiltersUseCase::new(
+            regex_filter_repo.clone(),
+        )),
+        create_regex_filter: Arc::new(ferrous_dns_application::use_cases::CreateRegexFilterUseCase::new(
+            regex_filter_repo.clone(),
+            group_repo.clone(),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        update_regex_filter: Arc::new(ferrous_dns_application::use_cases::UpdateRegexFilterUseCase::new(
+            regex_filter_repo.clone(),
+            group_repo.clone(),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        delete_regex_filter: Arc::new(ferrous_dns_application::use_cases::DeleteRegexFilterUseCase::new(
+            regex_filter_repo.clone(),
             Arc::new(NullBlockFilterEngine),
         )),
         subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),

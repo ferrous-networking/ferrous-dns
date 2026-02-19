@@ -3,6 +3,8 @@ use crate::dns::cache::bloom::AtomicBloom;
 use aho_corasick::AhoCorasick;
 use compact_str::CompactString;
 use dashmap::{DashMap, DashSet};
+use fancy_regex::Regex;
+use ferrous_dns_domain::BlockSource;
 use rustc_hash::FxBuildHasher;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -79,6 +81,10 @@ pub struct BlockIndex {
     pub allowlists: AllowlistIndex,
     pub managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>>,
     pub managed_deny_wildcards: HashMap<i64, SuffixTrie>,
+    /// User-defined regex allow rules (action=allow): group_id → compiled patterns
+    pub allow_regex_patterns: HashMap<i64, Vec<Regex>>,
+    /// User-defined regex block rules (action=deny): group_id → compiled patterns
+    pub block_regex_patterns: HashMap<i64, Vec<Regex>>,
 }
 
 impl BlockIndex {
@@ -92,52 +98,79 @@ impl BlockIndex {
         })
     }
 
+    /// Returns `None` if the domain is not blocked, or `Some(source)` identifying
+    /// which filter layer caused the block.
     #[inline]
-    pub fn is_blocked(&self, domain: &str, group_id: i64) -> bool {
+    pub fn is_blocked(&self, domain: &str, group_id: i64) -> Option<BlockSource> {
+        // L0/L1: allowlists (group exact/wildcard + global exact/wildcard)
         if self.allowlists.is_allowed(domain, group_id) {
-            return false;
+            return None;
         }
 
-        if let Some(set) = self.managed_denies.get(&group_id) {
-            if set.contains(domain) {
-                return true;
+        // Allow regex rules (user-defined, group-scoped)
+        if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
+            for r in regexes {
+                if r.is_match(domain).unwrap_or(false) {
+                    return None;
+                }
             }
         }
 
+        // Managed deny rules — exact match
+        if let Some(set) = self.managed_denies.get(&group_id) {
+            if set.contains(domain) {
+                return Some(BlockSource::ManagedDomain);
+            }
+        }
+
+        // Managed deny rules — wildcard match
         if let Some(trie) = self.managed_deny_wildcards.get(&group_id) {
             if trie.lookup(domain) != 0 {
-                return true;
+                return Some(BlockSource::ManagedDomain);
+            }
+        }
+
+        // Block regex rules (user-defined, group-scoped)
+        if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+            for r in regexes {
+                if r.is_match(domain).unwrap_or(false) {
+                    return Some(BlockSource::RegexFilter);
+                }
             }
         }
 
         let mask = self.group_mask(group_id);
 
+        // Bloom filter fast-path: if miss, definitely not in blocklist
         let bloom_hit = self.bloom.check(&domain);
+        if !bloom_hit {
+            return None;
+        }
 
-        if bloom_hit {
-            if let Some(entry) = self.exact.get(domain) {
-                if entry.value() & mask != 0 {
-                    return true;
-                }
+        // Exact match from blocklist sources
+        if let Some(entry) = self.exact.get(domain) {
+            if entry.value() & mask != 0 {
+                return Some(BlockSource::Blocklist);
             }
         }
 
+        // Wildcard + Aho-Corasick patterns from blocklist sources
         self.check_wildcard_and_patterns(domain, mask)
     }
 
     #[inline]
-    fn check_wildcard_and_patterns(&self, domain: &str, mask: SourceBitSet) -> bool {
+    fn check_wildcard_and_patterns(&self, domain: &str, mask: SourceBitSet) -> Option<BlockSource> {
         let wildcard_bits = self.wildcard.lookup(domain);
         if wildcard_bits & mask != 0 {
-            return true;
+            return Some(BlockSource::Blocklist);
         }
 
         for (ac, source_mask) in &self.patterns {
             if source_mask & mask != 0 && ac.is_match(domain) {
-                return true;
+                return Some(BlockSource::Blocklist);
             }
         }
 
-        false
+        None
     }
 }

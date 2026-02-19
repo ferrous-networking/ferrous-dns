@@ -1,3 +1,4 @@
+pub mod block_source;
 pub mod blocklist;
 pub mod blocklist_source;
 pub mod client;
@@ -12,9 +13,11 @@ pub mod group;
 pub mod managed_domain;
 pub mod query_filters;
 pub mod query_log;
+pub mod regex_filter;
 pub mod whitelist;
 pub mod whitelist_source;
 
+pub use block_source::BlockSource;
 pub use blocklist::BlockedDomain;
 pub use blocklist_source::BlocklistSource;
 pub use client::{Client, ClientStats};
@@ -32,5 +35,6 @@ pub use group::{Group, GroupStats};
 pub use managed_domain::{DomainAction, ManagedDomain};
 pub use query_filters::{FqdnFilter, PrivateIpFilter};
 pub use query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
+pub use regex_filter::RegexFilter;
 pub use whitelist::WhitelistedDomain;
 pub use whitelist_source::WhitelistSource;

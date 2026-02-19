@@ -44,6 +44,7 @@ async fn test_get_query_rate_with_data() {
             timestamp: None,
             query_source: QuerySource::Client,
             group_id: None,
+            block_source: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -80,6 +81,7 @@ async fn test_get_query_rate_formatted_with_k() {
             timestamp: None,
             query_source: QuerySource::Client,
             group_id: None,
+            block_source: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -116,6 +118,7 @@ async fn test_get_query_rate_different_units() {
             timestamp: None,
             query_source: QuerySource::Client,
             group_id: None,
+            block_source: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
