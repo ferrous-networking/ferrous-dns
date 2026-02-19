@@ -10,6 +10,18 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use tracing::{debug, info};
 
+pub struct DnsCacheConfig {
+    pub max_entries: usize,
+    pub eviction_strategy: EvictionStrategy,
+    pub min_threshold: f64,
+    pub refresh_threshold: f64,
+    pub lfuk_history_size: usize,
+    pub batch_eviction_percentage: f64,
+    pub adaptive_thresholds: bool,
+    pub min_frequency: u64,
+    pub min_lfuk_score: f64,
+}
+
 pub struct DnsCache {
     pub(super) cache: Arc<DashMap<CacheKey, CachedRecord, FxBuildHasher>>,
     pub(super) max_entries: usize,
@@ -20,6 +32,8 @@ pub struct DnsCache {
     pub(super) lfuk_history_size: usize,
     pub(super) batch_eviction_percentage: f64,
     pub(super) adaptive_thresholds: bool,
+    pub(super) min_frequency: u64,
+    pub(super) min_lfuk_score: f64,
     pub(super) metrics: Arc<CacheMetrics>,
     pub(super) compaction_counter: Arc<AtomicUsize>,
     pub(super) use_probabilistic_eviction: bool,
@@ -27,37 +41,34 @@ pub struct DnsCache {
 }
 
 impl DnsCache {
-    pub fn new(
-        max_entries: usize,
-        eviction_strategy: EvictionStrategy,
-        min_threshold: f64,
-        refresh_threshold: f64,
-        lfuk_history_size: usize,
-        batch_eviction_percentage: f64,
-        adaptive_thresholds: bool,
-    ) -> Self {
+    pub fn new(config: DnsCacheConfig) -> Self {
         info!(
-            max_entries,
-            ?eviction_strategy,
-            min_threshold,
-            refresh_threshold,
-            adaptive_thresholds,
+            max_entries = config.max_entries,
+            ?config.eviction_strategy,
+            config.min_threshold,
+            config.refresh_threshold,
+            config.adaptive_thresholds,
             "Initializing DNS cache"
         );
 
-        let cache =
-            DashMap::with_capacity_and_hasher_and_shard_amount(max_entries, FxBuildHasher, 512);
-        let bloom = AtomicBloom::new(max_entries * 2, 0.01);
+        let cache = DashMap::with_capacity_and_hasher_and_shard_amount(
+            config.max_entries,
+            FxBuildHasher,
+            512,
+        );
+        let bloom = AtomicBloom::new(config.max_entries * 2, 0.01);
 
         Self {
             cache: Arc::new(cache),
-            max_entries,
-            eviction_strategy,
-            min_threshold_bits: AtomicU64::new(min_threshold.to_bits()),
-            refresh_threshold,
-            lfuk_history_size,
-            batch_eviction_percentage,
-            adaptive_thresholds,
+            max_entries: config.max_entries,
+            eviction_strategy: config.eviction_strategy,
+            min_threshold_bits: AtomicU64::new(config.min_threshold.to_bits()),
+            refresh_threshold: config.refresh_threshold,
+            lfuk_history_size: config.lfuk_history_size,
+            batch_eviction_percentage: config.batch_eviction_percentage,
+            adaptive_thresholds: config.adaptive_thresholds,
+            min_frequency: config.min_frequency,
+            min_lfuk_score: config.min_lfuk_score,
             metrics: Arc::new(CacheMetrics::default()),
             compaction_counter: Arc::new(AtomicUsize::new(0)),
             use_probabilistic_eviction: true,
@@ -324,7 +335,14 @@ impl DnsCache {
     pub(super) fn compute_score(&self, record: &CachedRecord) -> f64 {
         match self.eviction_strategy {
             EvictionStrategy::LRU => record.last_access.load(AtomicOrdering::Relaxed) as f64,
-            EvictionStrategy::LFU => record.hit_count.load(AtomicOrdering::Relaxed) as f64,
+            EvictionStrategy::LFU => {
+                let hits = record.hit_count.load(AtomicOrdering::Relaxed);
+                if self.min_frequency > 0 && hits < self.min_frequency {
+                    -(self.min_frequency as f64 - hits as f64)
+                } else {
+                    hits as f64
+                }
+            }
             EvictionStrategy::HitRate => {
                 let hits = record.hit_count.load(AtomicOrdering::Relaxed);
                 let total = hits + 1;
@@ -341,7 +359,12 @@ impl DnsCache {
                 let inserted_unix = record.inserted_at.elapsed().as_secs() as f64;
                 let age = now - inserted_unix;
                 let k_value = 0.5;
-                hits / (age.powf(k_value).max(1.0)) * (1.0 / (now - access_time + 1.0))
+                let score = hits / (age.powf(k_value).max(1.0)) * (1.0 / (now - access_time + 1.0));
+                if self.min_lfuk_score > 0.0 && score < self.min_lfuk_score {
+                    score - self.min_lfuk_score
+                } else {
+                    score
+                }
             }
         }
     }

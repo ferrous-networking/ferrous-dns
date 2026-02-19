@@ -16,64 +16,84 @@
     </script>
     <link rel="stylesheet" href="/static/shared.css">
     <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
+        }
+
         .card {
             padding: 24px;
-            margin-bottom: 20px
+            margin-bottom: 24px
+        }
+
+        .card-stat {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            transition: all .2s
+        }
+
+        .card-stat:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px)
         }
 
         .btn {
-            padding: 10px 20px;
-            border-radius: 6px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
             font-weight: 500;
             cursor: pointer;
-            transition: all .2s;
+            border: none;
+            transition: all 0.15s;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 8px
+        }
+
+        .btn-primary { background: var(--color-primary); color: white }
+        .btn-primary:hover { background: #2563EB }
+        .btn-success { background: var(--color-success); color: white }
+        .btn-success:hover { background: #059669 }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
+        .btn-secondary:hover { background: var(--border-color) }
+
+        .btn-icon {
+            padding: 8px;
+            border-radius: 8px;
+            background: none;
             border: none;
-            font-size: 14px
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s
         }
 
-        .btn-primary {
-            background: var(--color-primary);
-            color: white
-        }
+        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary) }
 
-        .btn-primary:hover {
-            background: #2563EB
-        }
-
-        .btn-success {
-            background: var(--color-success);
-            color: white
-        }
-
-        .btn-success:hover {
-            background: #059669
-        }
-
-        .btn-gray {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color)
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px
         }
 
         .tab-btn {
-            padding: 12px 20px;
-            border: none;
-            background: none;
-            border-bottom: 2px solid transparent;
+            padding: 12px 16px;
+            font-size: 14px;
             font-weight: 500;
-            cursor: pointer;
-            transition: all .2s;
             color: var(--text-secondary);
-            font-size: 14px
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all .15s
         }
 
         .tab-btn.active {
-            border-color: var(--color-primary);
-            color: var(--color-primary)
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary)
         }
+
+        .tab-btn:hover { color: var(--text-primary) }
 
         .strategy-card {
             padding: 16px;
@@ -84,30 +104,44 @@
             background: var(--bg-secondary)
         }
 
-        .strategy-card:hover {
-            border-color: var(--color-primary)
-        }
+        .strategy-card:hover { border-color: var(--color-primary) }
 
         .strategy-card.selected {
             border-color: var(--color-primary);
             background: rgba(59, 130, 246, 0.05)
         }
 
-        input[type="text"], input[type="number"], select {
+        .input, select, input[type="text"], input[type="number"] {
             width: 100%;
-            padding: 10px;
+            padding: 10px 12px;
             border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background: var(--bg-secondary);
+            border-radius: 8px;
+            background: var(--bg-primary);
             color: var(--text-primary);
-            font-size: 14px
+            font-size: 14px;
+            box-sizing: border-box
         }
+
+        .input:focus, select:focus, input[type="text"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--color-primary)
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary)
+        }
+
+        .form-group { margin-bottom: 16px }
 
         label {
             font-size: 14px;
             font-weight: 500;
             color: var(--text-secondary);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             display: block
         }
 
@@ -139,12 +173,11 @@
             background: var(--text-tertiary);
             border-radius: 12px;
             cursor: pointer;
-            transition: background .3s
+            transition: background .3s;
+            flex-shrink: 0
         }
 
-        .toggle-switch.active {
-            background: var(--color-success)
-        }
+        .toggle-switch.active { background: var(--color-success) }
 
         .toggle-slider {
             position: absolute;
@@ -157,8 +190,10 @@
             transition: transform .3s
         }
 
-        .toggle-switch.active .toggle-slider {
-            transform: translateX(24px)
+        .toggle-switch.active .toggle-slider { transform: translateX(24px) }
+
+        @keyframes spin {
+            to { transform: rotate(360deg) }
         }
     </style>
 </head>
@@ -172,20 +207,21 @@
         <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
-        </div>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span></div>
-        <div class="status-item"><i data-lucide="zap" style="width:14px;height:14px"></i><span
-                x-text="stats.queries_total+' queries'">Running</span></div>
+            <span>Active</span>
+        </div>
+        <div class="status-item">
+            <i data-lucide="zap" style="width:14px;height:14px"></i>
+            <span x-text="stats.queries_total+' queries'">Running</span>
+        </div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
             <div class="nav-section-title">MAIN</div>
             <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item"><i data-lucide="file-text"
-                                                        class="nav-icon"></i><span>Query Log</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
         </div>
         <div class="nav-section">
             <div class="nav-section-title">NETWORK MANAGEMENT</div>
@@ -217,18 +253,22 @@
     </div>
 </aside>
 
-<main style="padding:32px;width:100%;min-height:100vh">
-    
+<main style="padding:24px">
+
+    <div style="margin-bottom:24px">
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">Settings</h1>
+        <p style="font-size:14px;color:var(--text-secondary)">Configure DNS server behavior, upstream pools, and cache settings</p>
+    </div>
+
     <div x-show="restartRequired" x-cloak
          style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
         <i data-lucide="alert-triangle" style="width:20px;height:20px;color:#F59E0B;flex-shrink:0"></i>
-        <p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take
-            effect</p>
+        <p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take effect</p>
     </div>
 
     <div x-show="alert.show" :class="alert.type==='success'?'alert-success':'alert-error'" class="alert" x-cloak>
         <strong x-text="alert.message"></strong>
-        <button @click="alert.show=false" style="font-size:20px;font-weight:700">&times;</button>
+        <button @click="alert.show=false" style="font-size:20px;font-weight:700;background:none;border:none;cursor:pointer">&times;</button>
     </div>
 
     <div x-show="loading" x-cloak style="text-align:center;padding:40px">
@@ -236,38 +276,19 @@
         <p style="margin-top:16px;color:var(--text-secondary)">Loading configuration...</p>
     </div>
 
-    <div x-show="!loading" style="margin-bottom:24px;border-bottom:1px solid var(--border-color)">
-        <div style="display:flex;gap:8px">
-            <button @click="currentTab='dnsbasic';scheduleLucide()"
-                    :class="currentTab==='dnsbasic'?'tab-btn active':'tab-btn'">
-                <i data-lucide="shield"
-                   style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> DNS
-                Settings
-            </button>
-            <button @click="currentTab='dnsadvanced';scheduleLucide()"
-                    :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">
-                <i data-lucide="globe"
-                   style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> DNS
-                Advanced
-            </button>
-            <button @click="currentTab='cache';scheduleLucide()"
-                    :class="currentTab==='cache'?'tab-btn active':'tab-btn'">
-                <i data-lucide="zap"
-                   style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> Cache
-                Settings
-            </button>
-            <button @click="currentTab='adblock';scheduleLucide()"
-                    :class="currentTab==='adblock'?'tab-btn active':'tab-btn'">
-                <i data-lucide="shield-off"
-                   style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px"></i> Ad
-                Blocking
-            </button>
-        </div>
+    <div x-show="!loading" class="tab-bar">
+        <button @click="currentTab='dnsbasic';scheduleLucide()"
+                :class="currentTab==='dnsbasic'?'tab-btn active':'tab-btn'">DNS Settings</button>
+        <button @click="currentTab='dnsadvanced';scheduleLucide()"
+                :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">DNS Advanced</button>
+        <button @click="currentTab='cache';scheduleLucide()"
+                :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
     </div>
 
+    <!-- DNS SETTINGS TAB -->
     <div x-show="currentTab==='dnsbasic'&&!loading" x-cloak>
         <div class="card">
-            <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">🛡️ DNS Settings</h3>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DNS Settings</h2>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Configure advanced DNS behavior</p>
 
             <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
@@ -293,17 +314,14 @@
                 <div style="flex:1;margin-right:24px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                         <i data-lucide="lock" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                        <h4 style="font-size:16px;font-weight:600;margin:0">Never forward reverse lookups for private IP
-                            ranges</h4>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Never forward reverse lookups for private IP ranges</h4>
                     </div>
                     <p style="font-size:13px;color:var(--text-secondary);margin:0">All reverse lookups for private IP
                         ranges (i.e., <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">192.168.0.x/24</code>,
-                        etc.) which are not found in <code
-                                style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">local-records</code>
+                        etc.) which are not found in <code style="padding:2px 6px;background:var(--bg-tertiary);border-radius:4px">local-records</code>
                         or the DHCP leases are answered with "no such domain" rather than being forwarded upstream.</p>
                     <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0">The set of prefixes affected is
-                        the list given in <a href="https://tools.ietf.org/html/rfc6303"
-                                             style="color:var(--color-primary)" target="_blank">RFC6303</a>.</p>
+                        the list given in <a href="https://tools.ietf.org/html/rfc6303" style="color:var(--color-primary)" target="_blank">RFC6303</a>.</p>
                 </div>
                 <div @click="settings.never_forward_reverse_lookups=!settings.never_forward_reverse_lookups"
                      :class="settings.never_forward_reverse_lookups?'active':''" class="toggle-switch">
@@ -323,8 +341,7 @@
                             network. As a result, tables such as Top Clients will only show IP addresses.</p>
                         <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">One solution is to
                             configure Ferrous DNS to forward these requests to your DHCP server (most likely your
-                            router), but only for devices on your home network. To configure this we will need to know
-                            the IP address of your DHCP server and which addresses belong to your local network.</p>
+                            router), but only for devices on your home network.</p>
                     </div>
                     <div @click="toggleConditionalForwarding()"
                          :class="settings.conditional_forwarding_enabled?'active':''" class="toggle-switch">
@@ -334,27 +351,11 @@
 
                 <div x-show="settings.conditional_forwarding_enabled" x-cloak
                      style="border-top:1px solid var(--border-color);padding-top:16px">
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:16px">
-                        <div>
-                            <label>Local network in CIDR notation</label>
-                            <input type="text" x-model="settings.local_network_cidr" placeholder="192.168.0.0/24"
-                                   style="font-family:monospace">
-                            <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Example: 192.168.0.0/24
-                                or 10.0.0.0/8</p>
-                        </div>
-                        <div>
-                            <label>IP address of your DHCP server (router)</label>
-                            <input type="text" x-model="settings.router_ip" placeholder="192.168.0.1"
-                                   style="font-family:monospace">
-                            <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Usually your router's
-                                IP</p>
-                        </div>
-                    </div>
-                    <div style="margin-bottom:16px">
-                        <label>Local domain name (optional)</label>
+                    <div class="form-group">
+                        <label class="form-label">Local domain name <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
                         <input type="text" x-model="settings.local_domain" placeholder="fritz.box"
                                style="max-width:400px;font-family:monospace">
-                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Optional: Like <code
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Like <code
                                 style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">fritz.box</code>
                             to ensure queries to devices ending in your local domain name won't leave your network</p>
                     </div>
@@ -362,12 +363,12 @@
             </div>
         </div>
 
-        <button @click="saveDnsSettings()" class="btn btn-success"><i data-lucide="save"
-                                                                      style="width:16px;height:16px"></i> Save DNS
-            Settings
+        <button @click="saveDnsSettings()" class="btn btn-success">
+            <i data-lucide="save" style="width:16px;height:16px"></i> Save DNS Settings
         </button>
     </div>
 
+    <!-- DNS ADVANCED TAB -->
     <div x-show="currentTab==='dnsadvanced'&&!loading" x-cloak>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px">
             <div class="strategy-card" :class="getFirstPoolStrategy()==='parallel'?'selected':''"
@@ -376,11 +377,10 @@
                     <i data-lucide="zap" style="width:28px;height:28px;color:#A855F7"></i>
                     <h3 style="font-weight:700;font-size:16px">Parallel</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Sends query to all upstreams,
-                    returns fastest response</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Sends query to all upstreams, returns fastest response</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
-                    <span>Latency: <strong style="color:#10B981">⚡ Best</strong></span>
-                    <span>Network: <strong style="color:#EF4444">💸 High</strong></span>
+                    <span>Latency: <strong style="color:#10B981">Best</strong></span>
+                    <span>Network: <strong style="color:#EF4444">High</strong></span>
                 </div>
             </div>
             <div class="strategy-card" :class="getFirstPoolStrategy()==='balanced'?'selected':''"
@@ -389,11 +389,10 @@
                     <i data-lucide="scale" style="width:28px;height:28px;color:#3B82F6"></i>
                     <h3 style="font-weight:700;font-size:16px">Balanced</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Round-robin load distribution
-                    across upstreams</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Round-robin load distribution across upstreams</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
-                    <span>Latency: <strong style="color:#F59E0B">⚖️ Medium</strong></span>
-                    <span>Network: <strong style="color:#F59E0B">💵 Medium</strong></span>
+                    <span>Latency: <strong style="color:#F59E0B">Medium</strong></span>
+                    <span>Network: <strong style="color:#F59E0B">Medium</strong></span>
                 </div>
             </div>
             <div class="strategy-card" :class="getFirstPoolStrategy()==='failover'?'selected':''"
@@ -402,186 +401,231 @@
                     <i data-lucide="arrow-down" style="width:28px;height:28px;color:#10B981"></i>
                     <h3 style="font-weight:700;font-size:16px">Failover</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Primary server, switch on
-                    failure</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Primary server, switch on failure</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
-                    <span>Latency: <strong>📶 Depends</strong></span>
-                    <span>Network: <strong style="color:#10B981">💰 Low</strong></span>
+                    <span>Latency: <strong>Depends</strong></span>
+                    <span>Network: <strong style="color:#10B981">Low</strong></span>
                 </div>
             </div>
         </div>
 
         <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h3 style="font-size:18px;font-weight:700">🎯 Upstream DNS Pools</h3>
-                <button @click="addPool()" class="btn btn-primary"><i data-lucide="plus"
-                                                                      style="width:16px;height:16px"></i> Add Pool
+                <h2 style="font-size:18px;font-weight:700;color:var(--text-primary)">Upstream DNS Pools</h2>
+                <button @click="addPool()" class="btn btn-primary">
+                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Pool
                 </button>
             </div>
             <template x-for="(pool,idx) in config.dns.pools" :key="idx">
                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px;background:var(--bg-tertiary)">
                     <div style="display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:12px;margin-bottom:16px">
-                        <div><label>Pool Name</label><input type="text" x-model="pool.name"
-                                                            placeholder="google-primary"></div>
-                        <div><label>Strategy</label><select x-model="pool.strategy">
-                            <option value="parallel">⚡ Parallel</option>
-                            <option value="balanced">⚖️ Balanced</option>
-                            <option value="failover">🔁 Failover</option>
-                        </select></div>
-                        <div><label>Priority</label><input type="number" x-model.number="pool.priority" min="1"
-                                                           placeholder="1"></div>
+                        <div>
+                            <label class="form-label">Pool Name</label>
+                            <input type="text" x-model="pool.name" placeholder="google-primary">
+                        </div>
+                        <div>
+                            <label class="form-label">Strategy</label>
+                            <select x-model="pool.strategy">
+                                <option value="parallel">Parallel</option>
+                                <option value="balanced">Balanced</option>
+                                <option value="failover">Failover</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Priority</label>
+                            <input type="number" x-model.number="pool.priority" min="1" placeholder="1">
+                        </div>
                         <div style="display:flex;align-items:flex-end">
-                            <button @click="removePool(idx)" class="btn btn-gray" style="padding:10px"><i
-                                    data-lucide="trash-2" style="width:16px;height:16px"></i></button>
+                            <button @click="removePool(idx)" class="btn-icon" style="padding:10px">
+                                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                            </button>
                         </div>
                     </div>
-                    <div><label>Servers</label>
+                    <div>
+                        <label class="form-label">Servers</label>
                         <div style="display:flex;flex-direction:column;gap:8px">
                             <template x-for="(srv,sidx) in pool.servers" :key="sidx">
                                 <div style="display:flex;gap:8px">
-                                    <input type="text" x-model="pool.servers[sidx]" placeholder="8.8.8.8:53"
-                                           style="flex:1">
-                                    <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:6px;min-width:40px;text-align:center">
+                                    <input type="text" x-model="pool.servers[sidx]" placeholder="8.8.8.8:53" style="flex:1">
+                                    <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:40px;text-align:center;display:flex;align-items:center;justify-content:center">
                                         <span x-text="getServerHealth(srv)==='Healthy'?'✅':getServerHealth(srv)==='Unhealthy'?'❌':'❓'"></span>
                                     </div>
-                                    <button @click="pool.servers.splice(sidx,1)" class="btn btn-gray"
-                                            style="padding:10px"><i data-lucide="trash-2"
-                                                                    style="width:16px;height:16px"></i></button>
+                                    <button @click="pool.servers.splice(sidx,1)" class="btn-icon" style="padding:10px">
+                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    </button>
                                 </div>
                             </template>
-                            <button @click="pool.servers.push('')" class="btn btn-primary" style="width:fit-content"><i
-                                    data-lucide="plus" style="width:16px;height:16px"></i> Add Server
+                            <button @click="pool.servers.push('')" class="btn btn-primary" style="width:fit-content">
+                                <i data-lucide="plus" style="width:16px;height:16px"></i> Add Server
                             </button>
                         </div>
                     </div>
                 </div>
             </template>
             <div x-show="config.dns.pools.length===0"
-                 style="text-align:center;padding:40px;color:var(--text-secondary)">No pools configured. Click "Add
-                Pool" to create one.
+                 style="text-align:center;padding:40px;color:var(--text-secondary)">
+                <i data-lucide="server" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;opacity:0.5"></i>
+                <p style="margin:0">No pools configured. Click "Add Pool" to create one.</p>
             </div>
         </div>
 
         <div class="card">
-            <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">🩺 Health Check Configuration</h3>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
-                <div><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                                  x-model="config.dns.health_check.enabled"
-                                                                                                  style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable Health Checking</span></label>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Health Check Configuration</h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div style="grid-column:1/-1">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" x-model="config.dns.health_check.enabled"
+                               style="width:18px;height:18px;accent-color:var(--color-primary)">
+                        <span>Enable Health Checking</span>
+                    </label>
                 </div>
-                <div x-show="config.dns.health_check.enabled"><label>Interval (seconds)</label><input type="number"
-                                                                                                      x-model.number="config.dns.health_check.interval_seconds">
+                <div x-show="config.dns.health_check.enabled">
+                    <label class="form-label">Interval (seconds)</label>
+                    <input type="number" x-model.number="config.dns.health_check.interval_seconds">
                 </div>
-                <div x-show="config.dns.health_check.enabled"><label>Timeout (ms)</label><input type="number"
-                                                                                                x-model.number="config.dns.health_check.timeout_ms">
+                <div x-show="config.dns.health_check.enabled">
+                    <label class="form-label">Timeout (ms)</label>
+                    <input type="number" x-model.number="config.dns.health_check.timeout_ms">
                 </div>
-                <div x-show="config.dns.health_check.enabled"><label>Failure Threshold</label><input type="number"
-                                                                                                     x-model.number="config.dns.health_check.failure_threshold">
+                <div x-show="config.dns.health_check.enabled">
+                    <label class="form-label">Failure Threshold</label>
+                    <input type="number" x-model.number="config.dns.health_check.failure_threshold">
                 </div>
             </div>
         </div>
 
         <div class="card">
-            <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">⚙️ General DNS Settings</h3>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">General DNS Settings</h2>
             <div style="display:flex;flex-direction:column;gap:12px">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                             x-model="config.dns.dnssec_enabled"
-                                                                                             style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable DNSSEC Validation ✨</span></label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                             x-model="config.dns.cache_enabled"
-                                                                                             style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable DNS Cache</span></label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" x-model="config.dns.dnssec_enabled"
+                           style="width:18px;height:18px;accent-color:var(--color-primary)">
+                    <span>Enable DNSSEC Validation</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" x-model="config.dns.cache_enabled"
+                           style="width:18px;height:18px;accent-color:var(--color-primary)">
+                    <span>Enable DNS Cache</span>
+                </label>
             </div>
         </div>
 
-        <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i>
-            Save Advanced Settings
+        <button @click="saveConfig()" class="btn btn-success">
+            <i data-lucide="save" style="width:16px;height:16px"></i> Save Advanced Settings
         </button>
     </div>
 
+    <!-- CACHE SETTINGS TAB -->
     <div x-show="currentTab==='cache'&&!loading" x-cloak>
-        <div class="card">
-            <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">⚡ Cache Configuration</h3>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-bottom:20px">
-                <div><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                                  x-model="config.dns.cache_enabled"
-                                                                                                  style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable DNS Cache</span></label>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)">
+                        <i data-lucide="database" style="width:24px;height:24px;color:#3B82F6"></i>
+                    </div>
+                    <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Entries</p>
                 </div>
-                <div x-show="config.dns.cache_enabled"><label>Cache TTL (seconds)</label><input type="number"
-                                                                                                x-model.number="config.dns.cache_ttl"
-                                                                                                min="1"></div>
-                <div x-show="config.dns.cache_enabled"><label>Max Cache Entries</label><input type="number"
-                                                                                              x-model.number="config.dns.cache_max_entries"
-                                                                                              min="100"></div>
+                <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="cacheStats.total_entries||0">0</p>
             </div>
-            <div x-show="config.dns.cache_enabled" style="border-top:1px solid var(--border-color);padding-top:20px">
-                <h4 style="font-size:16px;font-weight:600;margin-bottom:16px">🔧 Advanced Settings</h4>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
-                    <div><label>Eviction Strategy</label><select x-model="config.dns.cache_eviction_strategy">
-                        <option value="lru">LRU (Least Recently Used)</option>
-                        <option value="lfu">LFU (Least Frequently Used)</option>
-                        <option value="lfu-k">LFU-K (Adaptive)</option>
-                        <option value="hit-rate">Hit Rate Based</option>
-                    </select></div>
-                    <div><label>Min Hit Rate</label><input type="number" x-model.number="config.dns.cache_min_hit_rate"
-                                                           step="0.1" min="0" max="1"></div>
-                    <div><label>Refresh Threshold</label><input type="number"
-                                                                x-model.number="config.dns.cache_refresh_threshold"
-                                                                step="0.1" min="0" max="1"></div>
-                    <div><label>Compaction Interval (s)</label><input type="number"
-                                                                      x-model.number="config.dns.cache_compaction_interval"
-                                                                      min="60"></div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)">
+                        <i data-lucide="target" style="width:24px;height:24px;color:#10B981"></i>
+                    </div>
+                    <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Hit Rate</p>
                 </div>
-                <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                                 x-model="config.dns.cache_optimistic_refresh"
-                                                                                                 style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable Optimistic Refresh</span></label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox"
-                                                                                                 x-model="config.dns.cache_adaptive_thresholds"
-                                                                                                 style="width:20px;height:20px;accent-color:var(--color-primary)"><span>Enable Adaptive Thresholds</span></label>
+                <p style="font-size:32px;font-weight:700;color:#10B981" x-text="(cacheStats.hit_rate||0).toFixed(1)+'%'">0%</p>
+            </div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)">
+                        <i data-lucide="zap" style="width:24px;height:24px;color:#A855F7"></i>
+                    </div>
+                    <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Hits</p>
                 </div>
+                <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="cacheStats.total_hits||0">0</p>
+            </div>
+            <div class="card-stat">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                    <div style="padding:12px;border-radius:8px;background:rgba(245,158,11,0.1)">
+                        <i data-lucide="x-circle" style="width:24px;height:24px;color:#F59E0B"></i>
+                    </div>
+                    <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Misses</p>
+                </div>
+                <p style="font-size:32px;font-weight:700;color:#F59E0B" x-text="cacheStats.total_misses||0">0</p>
             </div>
         </div>
 
         <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                <h3 style="font-size:18px;font-weight:700">📊 Cache Statistics</h3>
-                <button @click="loadCacheStats()" class="btn btn-primary"><i data-lucide="refresh-cw"
-                                                                             style="width:16px;height:16px"></i> Refresh
-                </button>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Configuration</h2>
+
+            <div style="margin-bottom:20px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" x-model="config.dns.cache_enabled"
+                           style="width:18px;height:18px;accent-color:var(--color-primary)">
+                    <span style="font-weight:500">Enable DNS Cache</span>
+                </label>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px">
-                <div style="background:rgba(59,130,246,0.1);padding:20px;border-radius:8px;text-align:center">
-                    <div style="font-size:32px;font-weight:700;color:#3B82F6"
-                         x-text="cacheStats.total_entries||0"></div>
-                    <div style="font-size:12px;color:#3B82F6;margin-top:4px">Total Entries</div>
+
+            <div x-show="config.dns.cache_enabled">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+                    <div class="form-group">
+                        <label class="form-label">Cache TTL (seconds)</label>
+                        <input type="number" x-model.number="config.dns.cache_ttl" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Cache Entries</label>
+                        <input type="number" x-model.number="config.dns.cache_max_entries" min="100">
+                    </div>
                 </div>
-                <div style="background:rgba(16,185,129,0.1);padding:20px;border-radius:8px;text-align:center">
-                    <div style="font-size:32px;font-weight:700;color:#10B981"
-                         x-text="cacheStats.hit_rate?((cacheStats.hit_rate*100).toFixed(1)+'%'):'0%'"></div>
-                    <div style="font-size:12px;color:#10B981;margin-top:4px">Hit Rate</div>
-                </div>
-                <div style="background:rgba(168,85,247,0.1);padding:20px;border-radius:8px;text-align:center">
-                    <div style="font-size:32px;font-weight:700;color:#A855F7" x-text="cacheStats.total_hits||0"></div>
-                    <div style="font-size:12px;color:#A855F7;margin-top:4px">Total Hits</div>
-                </div>
-                <div style="background:rgba(245,158,11,0.1);padding:20px;border-radius:8px;text-align:center">
-                    <div style="font-size:32px;font-weight:700;color:#F59E0B" x-text="cacheStats.total_misses||0"></div>
-                    <div style="font-size:12px;color:#F59E0B;margin-top:4px">Total Misses</div>
+
+                <div style="border-top:1px solid var(--border-color);padding-top:20px">
+                    <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text-primary)">Advanced Settings</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                        <div class="form-group">
+                            <label class="form-label">Eviction Strategy</label>
+                            <select x-model="config.dns.cache_eviction_strategy">
+                                <option value="lru">LRU (Least Recently Used)</option>
+                                <option value="lfu">LFU (Least Frequently Used)</option>
+                                <option value="lfu-k">LFU-K (Adaptive)</option>
+                                <option value="hit-rate">Hit Rate Based</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Min Hit Rate</label>
+                            <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" max="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Refresh Threshold</label>
+                            <input type="number" x-model.number="config.dns.cache_refresh_threshold" step="0.1" min="0" max="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Compaction Interval (s)</label>
+                            <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60">
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" x-model="config.dns.cache_optimistic_refresh"
+                                   style="width:18px;height:18px;accent-color:var(--color-primary)">
+                            <span>Enable Optimistic Refresh</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds"
+                                   style="width:18px;height:18px;accent-color:var(--color-primary)">
+                            <span>Enable Adaptive Thresholds</span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <button @click="saveConfig()" class="btn btn-success"><i data-lucide="save" style="width:16px;height:16px"></i>
-            Save Cache Settings
+        <button @click="saveConfig()" class="btn btn-success">
+            <i data-lucide="save" style="width:16px;height:16px"></i> Save Cache Settings
         </button>
     </div>
 
-    <div x-show="currentTab==='adblock'&&!loading" x-cloak>
-        <div class="card">
-            <h3 style="font-size:18px;font-weight:700;margin-bottom:16px">🚫 Ad Blocking</h3>
-            <p style="color:var(--text-secondary)">Ad blocking configuration (coming soon)</p>
-        </div>
-    </div>
 </main>
 
 <script>
@@ -611,8 +655,6 @@
                 never_forward_non_fqdn: false,
                 never_forward_reverse_lookups: false,
                 conditional_forwarding_enabled: false,
-                local_network_cidr: '',
-                router_ip: '',
                 local_domain: ''
             },
             cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
@@ -620,7 +662,6 @@
             restartRequired: false,
             alert: {show: false, type: 'success', message: ''},
             async init() {
-                console.log('Settings init...');
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats()]);
@@ -666,7 +707,6 @@
                     const res = await fetch('/api/config');
                     if (res.ok) {
                         const data = await res.json();
-                        console.log('Config loaded:', data);
                         this.config = {
                             ...this.config, ...data,
                             dns: {
@@ -795,8 +835,6 @@
             toggleConditionalForwarding() {
                 this.settings.conditional_forwarding_enabled = !this.settings.conditional_forwarding_enabled;
                 if (!this.settings.conditional_forwarding_enabled) {
-                    this.settings.local_network_cidr = '';
-                    this.settings.router_ip = '';
                     this.settings.local_domain = ''
                 }
             },
@@ -809,10 +847,5 @@
         }
     }
 </script>
-<style>@keyframes spin {
-           to {
-               transform: rotate(360deg)
-           }
-       }</style>
 </body>
 </html>

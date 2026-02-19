@@ -2,7 +2,7 @@ use super::Repositories;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
-    cache::{DnsCache, EvictionStrategy},
+    cache::{DnsCache, DnsCacheConfig, EvictionStrategy},
     cache_updater::CacheUpdater,
     events::QueryEventEmitter,
     query_logger::QueryEventLogger,
@@ -186,25 +186,29 @@ impl DnsServices {
                 max_entries = config.dns.cache_max_entries,
                 "Cache enabled"
             );
-            Arc::new(DnsCache::new(
-                config.dns.cache_max_entries,
+            Arc::new(DnsCache::new(DnsCacheConfig {
+                max_entries: config.dns.cache_max_entries,
                 eviction_strategy,
-                config.dns.cache_min_hit_rate,
-                config.dns.cache_refresh_threshold,
-                config.dns.cache_lfuk_history_size,
-                config.dns.cache_batch_eviction_percentage,
-                config.dns.cache_adaptive_thresholds,
-            ))
+                min_threshold: config.dns.cache_min_hit_rate,
+                refresh_threshold: config.dns.cache_refresh_threshold,
+                lfuk_history_size: config.dns.cache_lfuk_history_size,
+                batch_eviction_percentage: config.dns.cache_batch_eviction_percentage,
+                adaptive_thresholds: config.dns.cache_adaptive_thresholds,
+                min_frequency: config.dns.cache_min_frequency,
+                min_lfuk_score: config.dns.cache_min_lfuk_score,
+            }))
         } else {
-            Arc::new(DnsCache::new(
-                0,
-                EvictionStrategy::HitRate,
-                0.0,
-                0.0,
-                0,
-                0.0,
-                false,
-            ))
+            Arc::new(DnsCache::new(DnsCacheConfig {
+                max_entries: 0,
+                eviction_strategy: EvictionStrategy::HitRate,
+                min_threshold: 0.0,
+                refresh_threshold: 0.0,
+                lfuk_history_size: 0,
+                batch_eviction_percentage: 0.0,
+                adaptive_thresholds: false,
+                min_frequency: 0,
+                min_lfuk_score: 0.0,
+            }))
         }
     }
 

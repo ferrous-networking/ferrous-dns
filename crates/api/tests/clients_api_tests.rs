@@ -109,13 +109,17 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
 
     let config = Arc::new(RwLock::new(Config::default()));
     let cache = Arc::new(DnsCache::new(
-        0,
-        ferrous_dns_infrastructure::dns::EvictionStrategy::LRU,
-        0.0,
-        0.0,
-        0,
-        0.0,
-        false,
+        ferrous_dns_infrastructure::dns::DnsCacheConfig {
+            max_entries: 0,
+            eviction_strategy: ferrous_dns_infrastructure::dns::EvictionStrategy::LRU,
+            min_threshold: 0.0,
+            refresh_threshold: 0.0,
+            lfuk_history_size: 0,
+            batch_eviction_percentage: 0.0,
+            adaptive_thresholds: false,
+            min_frequency: 0,
+            min_lfuk_score: 0.0,
+        },
     ));
 
     use ferrous_dns_domain::config::upstream::{UpstreamPool, UpstreamStrategy};

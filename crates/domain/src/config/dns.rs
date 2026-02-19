@@ -83,8 +83,6 @@ pub struct DnsConfig {
     pub cache_lfuk_history_size: usize,
     #[serde(default = "default_cache_batch_eviction_percentage")]
     pub cache_batch_eviction_percentage: f64,
-    #[serde(default = "default_cache_lazy_expiration")]
-    pub cache_lazy_expiration: bool,
     #[serde(default = "default_cache_compaction_interval")]
     pub cache_compaction_interval: u64,
     #[serde(default = "default_cache_adaptive_thresholds")]
@@ -101,12 +99,6 @@ pub struct DnsConfig {
 
     #[serde(default)]
     pub conditional_forwarding: Vec<ConditionalForward>,
-
-    #[serde(default)]
-    pub conditional_forward_network: Option<String>,
-
-    #[serde(default)]
-    pub conditional_forward_router: Option<String>,
 
     #[serde(default)]
     pub local_records: Vec<LocalDnsRecord>,
@@ -132,15 +124,12 @@ impl Default for DnsConfig {
             cache_refresh_threshold: default_cache_refresh_threshold(),
             cache_lfuk_history_size: default_cache_lfuk_history_size(),
             cache_batch_eviction_percentage: default_cache_batch_eviction_percentage(),
-            cache_lazy_expiration: default_cache_lazy_expiration(),
             cache_compaction_interval: default_cache_compaction_interval(),
             cache_adaptive_thresholds: default_cache_adaptive_thresholds(),
             block_private_ptr: true,
             block_non_fqdn: false,
             local_domain: None,
             conditional_forwarding: vec![],
-            conditional_forward_network: None,
-            conditional_forward_router: None,
             local_records: vec![],
         }
     }
@@ -196,10 +185,6 @@ fn default_cache_lfuk_history_size() -> usize {
 
 fn default_cache_batch_eviction_percentage() -> f64 {
     0.1
-}
-
-fn default_cache_lazy_expiration() -> bool {
-    true
 }
 
 fn default_cache_compaction_interval() -> u64 {

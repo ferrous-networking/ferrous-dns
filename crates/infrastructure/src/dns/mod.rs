@@ -15,7 +15,8 @@ pub mod transport;
 
 pub use block_filter::BlockFilterEngine;
 pub use cache::{
-    CacheKey, CacheMetrics, CachedData, CachedRecord, DnsCache, DnssecStatus, EvictionStrategy,
+    CacheKey, CacheMetrics, CachedData, CachedRecord, DnsCache, DnsCacheConfig, DnssecStatus,
+    EvictionStrategy,
 };
 pub use cache_updater::CacheUpdater;
 pub use cache_warming::{CacheWarmer, WarmingStats};

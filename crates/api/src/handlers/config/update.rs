@@ -57,6 +57,12 @@ pub async fn update_config(
         if let Some(score) = dns_update.cache_min_lfuk_score {
             config.dns.cache_min_lfuk_score = score;
         }
+        if let Some(interval) = dns_update.cache_compaction_interval {
+            config.dns.cache_compaction_interval = interval;
+        }
+        if let Some(threshold) = dns_update.cache_refresh_threshold {
+            config.dns.cache_refresh_threshold = threshold;
+        }
         if let Some(refresh) = dns_update.cache_optimistic_refresh {
             config.dns.cache_optimistic_refresh = refresh;
         }

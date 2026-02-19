@@ -18,4 +18,4 @@ pub use key::{BorrowedKey, CacheKey};
 pub use metrics::CacheMetrics;
 pub use negative_ttl::{NegativeQueryTracker, TrackerStats};
 pub use record::CachedRecord;
-pub use storage::DnsCache;
+pub use storage::{DnsCache, DnsCacheConfig};

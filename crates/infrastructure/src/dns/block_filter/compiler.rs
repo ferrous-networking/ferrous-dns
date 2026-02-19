@@ -253,7 +253,6 @@ struct BlockIndexData {
     bloom: AtomicBloom,
     exact: DashMap<CompactString, SourceBitSet, FxBuildHasher>,
     wildcard: SuffixTrie,
-    wildcard_bloom: AtomicBloom,
     patterns: Vec<(AhoCorasick, SourceBitSet)>,
 }
 
@@ -268,15 +267,8 @@ fn build_exact_and_wildcard(
             .filter(|e| matches!(e, ParsedEntry::Exact(_)))
             .count();
 
-    let wildcard_count: usize = source_entries
-        .values()
-        .flat_map(|entries| entries.iter())
-        .filter(|e| matches!(e, ParsedEntry::Wildcard(_)))
-        .count();
-
     let bloom_capacity = (exact_count + 100).max(1000);
     let bloom = AtomicBloom::new(bloom_capacity, 0.001);
-    let wildcard_bloom = AtomicBloom::new(wildcard_count.max(100) * 3, 0.001);
     let exact: DashMap<CompactString, SourceBitSet, FxBuildHasher> =
         DashMap::with_capacity_and_hasher(exact_count, FxBuildHasher);
     let mut wildcard = SuffixTrie::new();
@@ -303,9 +295,6 @@ fn build_exact_and_wildcard(
                 }
                 ParsedEntry::Wildcard(pattern) => {
                     wildcard.insert_wildcard(pattern, source_bit);
-                    // Populate wildcard bloom with the base domain (without "*.")
-                    let base = pattern.strip_prefix("*.").unwrap_or(pattern);
-                    wildcard_bloom.set(&base);
                 }
                 ParsedEntry::Pattern(pat) => {
                     patterns_by_source
@@ -340,7 +329,6 @@ fn build_exact_and_wildcard(
         bloom,
         exact,
         wildcard,
-        wildcard_bloom,
         patterns,
     }
 }
@@ -366,7 +354,6 @@ pub async fn compile_block_index(
         bloom,
         exact,
         wildcard,
-        wildcard_bloom,
         patterns,
     } = build_exact_and_wildcard(&manual_domains, &source_entries);
 
@@ -387,7 +374,6 @@ pub async fn compile_block_index(
         exact,
         bloom,
         wildcard,
-        wildcard_bloom,
         patterns,
         allowlists,
     })
@@ -443,12 +429,11 @@ async fn build_allowlist_index(
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
-    let mut allowlists = AllowlistIndex::with_global_capacity(whitelist_rows.len());
+    let mut allowlists = AllowlistIndex::new();
 
     for row in &whitelist_rows {
         let domain: String = row.get("domain");
         let domain_lc = domain.to_ascii_lowercase();
-        allowlists.global_bloom.set(&domain_lc);
         allowlists
             .global_exact
             .insert(CompactString::new(domain_lc));
