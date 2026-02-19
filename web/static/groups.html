@@ -7,168 +7,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        let _lucideTimer = null;
+        function scheduleLucide(delay = 50) {
+            clearTimeout(_lucideTimer);
+            _lucideTimer = setTimeout(() => lucide.createIcons(), delay);
+        }
+    </script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root {
-            --color-primary: #3B82F6;
-            --color-success: #10B981;
-            --color-warning: #F59E0B;
-            --color-error: #EF4444;
-            --bg-primary: #F9FAFB;
-            --bg-secondary: #FFFFFF;
-            --bg-tertiary: #F3F4F6;
-            --text-primary: #111827;
-            --text-secondary: #6B7280;
-            --text-tertiary: #9CA3AF;
-            --border-color: #E5E7EB
-        }
-
-        .dark {
-            --bg-primary: #0F172A;
-            --bg-secondary: #1E293B;
-            --bg-tertiary: #334155;
-            --text-primary: #F1F5F9;
-            --text-secondary: #CBD5E1;
-            --text-tertiary: #94A3B8;
-            --border-color: #334155
-        }
-
         body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            padding-left: 260px;
-            margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
-        }
-
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 260px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto
-        }
-
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 24px 16px 16px
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            padding: 8px;
-            background: var(--color-primary);
-            color: white;
-            border-radius: 8px
-        }
-
-        .logo-text h1 {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0
-        }
-
-        .logo-subtitle {
-            font-size: 11px;
-            color: var(--text-tertiary)
-        }
-
-        .status-box {
-            margin: 0 16px 16px;
-            padding: 12px;
-            background: var(--bg-tertiary);
-            border-radius: 8px
-        }
-
-        .status-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            text-transform: uppercase
-        }
-
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 6px
-        }
-
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--color-success);
-            animation: pulse 2s infinite
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                box-shadow: 0 0 0 0 var(--color-success)
-            }
-            50% {
-                box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2)
-            }
-        }
-
-        .nav-section {
-            margin-bottom: 24px
-        }
-
-        .nav-section-title {
-            padding: 8px 16px;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text-tertiary);
-            text-transform: uppercase
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 16px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            transition: all .2s;
-            font-size: 14px
-        }
-
-        .nav-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary)
-        }
-
-        .nav-item.active {
-            background: var(--bg-tertiary);
-            color: var(--color-primary);
-            font-weight: 600;
-            border-left: 3px solid var(--color-primary)
-        }
-
-        .nav-icon {
-            width: 18px;
-            height: 18px
-        }
-
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 16px;
-            border-top: 1px solid var(--border-color)
         }
 
         .theme-btn {
@@ -189,12 +38,6 @@
         .theme-btn:hover {
             background: var(--bg-tertiary);
             color: var(--text-primary)
-        }
-
-        .card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            border: 1px solid var(--border-color)
         }
 
         .btn {
@@ -532,7 +375,7 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await this.loadGroups();
                 await this.$nextTick();
-                lucide.createIcons();
+                scheduleLucide(0);
             },
 
             async loadGroups() {
@@ -541,7 +384,7 @@
                     if (res.ok) {
                         this.groups = await res.json();
                         await this.$nextTick();
-                        lucide.createIcons();
+                        scheduleLucide(0);
                     }
                 } catch (e) {
                     console.error('Failed to load groups:', e);
@@ -556,7 +399,7 @@
                     comment: group.comment || ''
                 };
                 this.error = '';
-                this.$nextTick(() => lucide.createIcons());
+                this.$nextTick(() => scheduleLucide());
             },
 
             cancelForm() {

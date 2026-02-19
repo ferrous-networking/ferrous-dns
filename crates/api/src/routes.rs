@@ -32,5 +32,6 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))
         .merge(handlers::local_records::routes())
+        .merge(handlers::block_filter::routes())
         .with_state(state)
 }

@@ -76,6 +76,9 @@ pub struct QueryLog {
     pub timestamp: Option<String>,
 
     pub query_source: QuerySource,
+
+    /// The group_id resolved for the client that issued this query.
+    pub group_id: Option<i64>,
 }
 
 #[derive(Debug, Clone)]

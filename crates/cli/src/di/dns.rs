@@ -185,11 +185,13 @@ impl DnsServices {
         let handler_use_case = Arc::new(
             HandleDnsQueryUseCase::new(
                 resolver.clone(),
-                repos.blocklist.clone(),
-                repos.whitelist.clone(),
+                repos.block_filter_engine.clone(),
                 repos.query_log.clone(),
             )
-            .with_client_tracking(repos.client.clone()),
+            .with_client_tracking(
+                repos.client.clone(),
+                config.database.client_tracking_interval,
+            ),
         );
 
         info!("DNS services initialized successfully with load balancing");

@@ -1,4 +1,4 @@
-use super::cache::DnsCache;
+use super::cache::{coarse_clock, DnsCache};
 use crate::dns::HickoryDnsResolver;
 use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, QueryLog, QuerySource};
@@ -51,6 +51,7 @@ impl CacheUpdater {
             );
 
             loop {
+                coarse_clock::tick();
                 sleep(update_interval).await;
                 Self::update_cycle(&cache, &resolver, &query_log).await;
             }
@@ -196,6 +197,7 @@ impl CacheUpdater {
                         response_status: Some("NOERROR"),
                         timestamp: None,
                         query_source: QuerySource::Internal,
+                        group_id: None,
                     };
 
                     if let Err(e) = log.log_query(&log_entry).await {

@@ -5,12 +5,13 @@ use ferrous_dns_application::use_cases::{
     CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
     CreateManualClientUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
     DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase,
-    DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
-    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase,
-    GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, ReloadConfigUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateBlocklistSourceUseCase,
-    UpdateConfigUseCase, UpdateGroupUseCase, UpdateWhitelistSourceUseCase,
+    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
+    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
+    GetConfigUseCase, GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
+    ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
+    UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -25,6 +26,7 @@ pub struct UseCases {
     pub get_timeline: Arc<GetTimelineUseCase>,
     pub get_query_rate: Arc<GetQueryRateUseCase>,
     pub get_blocklist: Arc<GetBlocklistUseCase>,
+    pub get_block_filter_stats: Arc<GetBlockFilterStatsUseCase>,
     pub get_cache_stats: Arc<GetCacheStatsUseCase>,
     pub get_config: Arc<GetConfigUseCase>,
     pub update_config: Arc<UpdateConfigUseCase>,
@@ -74,6 +76,9 @@ impl UseCases {
             get_timeline: Arc::new(GetTimelineUseCase::new(repos.query_log.clone())),
             get_query_rate: Arc::new(GetQueryRateUseCase::new(repos.query_log.clone())),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(repos.blocklist.clone())),
+            get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(
+                repos.block_filter_engine.clone(),
+            )),
             get_cache_stats: Arc::new(GetCacheStatsUseCase::new(repos.query_log.clone())),
             get_config: Arc::new(GetConfigUseCase::new(repos.config.clone())),
             update_config: Arc::new(UpdateConfigUseCase::new(repos.config.clone())),

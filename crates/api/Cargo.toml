@@ -19,6 +19,7 @@ chrono = "0.4"
 hostname = "0.4"
 
 [dev-dependencies]
+async-trait.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

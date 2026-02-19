@@ -1,4 +1,5 @@
 mod arp_reader;
+mod block_filter_engine;
 mod blocklist_repository;
 mod blocklist_source_repository;
 mod client_repository;
@@ -12,6 +13,7 @@ mod whitelist_repository;
 mod whitelist_source_repository;
 
 pub use arp_reader::{ArpReader, ArpTable};
+pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
 pub use blocklist_repository::BlocklistRepository;
 pub use blocklist_source_repository::BlocklistSourceRepository;
 pub use client_repository::ClientRepository;

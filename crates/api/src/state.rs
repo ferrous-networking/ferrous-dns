@@ -3,10 +3,10 @@ use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
     CreateGroupUseCase, CreateManualClientUseCase, CreateWhitelistSourceUseCase,
     DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase,
-    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
-    GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
+    DeleteGroupUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
+    GetClientsUseCase, GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
     UpdateBlocklistSourceUseCase, UpdateGroupUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
@@ -42,6 +42,7 @@ pub struct AppState {
     pub create_whitelist_source: Arc<CreateWhitelistSourceUseCase>,
     pub update_whitelist_source: Arc<UpdateWhitelistSourceUseCase>,
     pub delete_whitelist_source: Arc<DeleteWhitelistSourceUseCase>,
+    pub get_block_filter_stats: Arc<GetBlockFilterStatsUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
     pub config: Arc<RwLock<Config>>,
     pub cache: Arc<DnsCache>,

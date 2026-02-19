@@ -1,3 +1,4 @@
+pub mod block_filter;
 pub mod blocklist;
 pub mod blocklist_source;
 pub mod cache;
@@ -28,7 +29,7 @@ pub use client_subnet::{
 pub use config::*;
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use hostname::HostnameResponse;
-pub use query::{QueryParams, QueryResponse};
+pub use query::{PaginatedQueries, QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};
 pub use stats::{StatsQuery, StatsResponse, TopType, TypeDistribution};
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};

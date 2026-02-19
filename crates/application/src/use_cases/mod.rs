@@ -1,3 +1,4 @@
+pub mod block_filter;
 pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
@@ -10,6 +11,7 @@ pub mod queries;
 pub mod whitelist;
 pub mod whitelist_sources;
 
+pub use block_filter::GetBlockFilterStatsUseCase;
 pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
     CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,

@@ -25,6 +25,7 @@ struct QueryLogEntry {
     upstream_server: Option<Arc<str>>,
     response_status: Option<&'static str>,
     query_source: CompactString,
+    group_id: Option<i64>,
 }
 
 impl QueryLogEntry {
@@ -41,6 +42,7 @@ impl QueryLogEntry {
             upstream_server: q.upstream_server.as_ref().map(|s| Arc::from(s.as_str())),
             response_status: q.response_status,
             query_source: CompactString::from(q.query_source.as_str()),
+            group_id: q.group_id,
         }
     }
 }
@@ -145,8 +147,8 @@ impl SqliteQueryLogRepository {
 
         let insert_sql = "INSERT INTO query_log \
             (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-             cache_refresh, dnssec_status, upstream_server, response_status, query_source) \
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+             cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id) \
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         let mut inserted = 0;
         let mut errors = 0;
@@ -164,6 +166,7 @@ impl SqliteQueryLogRepository {
                 .bind(entry.upstream_server.as_ref().map(|s| s.as_ref()))
                 .bind(entry.response_status)
                 .bind(entry.query_source.as_str())
+                .bind(entry.group_id)
                 .execute(&mut *tx)
                 .await;
 
@@ -228,7 +231,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         );
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source,
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id,
                     datetime(created_at) as created_at
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
@@ -280,12 +283,108 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     response_status,
                     timestamp: Some(row.get("created_at")),
                     query_source,
+                    group_id: row.get("group_id"),
                 })
             })
             .collect();
 
         debug!(count = entries.len(), "Recent queries fetched successfully");
         Ok(entries)
+    }
+
+    #[instrument(skip(self))]
+    async fn get_recent_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+        period_hours: f32,
+    ) -> Result<(Vec<QueryLog>, u64), DomainError> {
+        debug!(
+            limit = limit,
+            offset = offset,
+            period_hours = period_hours,
+            "Fetching paginated queries"
+        );
+
+        let count_row = sqlx::query(
+            "SELECT COUNT(*) as total FROM query_log
+             WHERE created_at >= datetime('now', '-' || ? || ' hours')",
+        )
+        .bind(period_hours)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to count queries");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+
+        let total = count_row.get::<i64, _>("total") as u64;
+
+        let rows = sqlx::query(
+            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id,
+                    datetime(created_at) as created_at
+             FROM query_log
+             WHERE created_at >= datetime('now', '-' || ? || ' hours')
+             ORDER BY created_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(period_hours)
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch paginated queries");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+
+        let entries: Vec<QueryLog> = rows
+            .into_iter()
+            .filter_map(|row| {
+                let client_ip_str: String = row.get("client_ip");
+                let record_type_str: String = row.get("record_type");
+                let domain_str: String = row.get("domain");
+
+                let dnssec_status: Option<&'static str> = row
+                    .get::<Option<String>, _>("dnssec_status")
+                    .and_then(|s| to_static_dnssec(&s));
+                let response_status: Option<&'static str> = row
+                    .get::<Option<String>, _>("response_status")
+                    .and_then(|s| to_static_response_status(&s));
+
+                let query_source_str: String = row
+                    .get::<Option<String>, _>("query_source")
+                    .unwrap_or_else(|| "client".to_string());
+                let query_source =
+                    QuerySource::from_str(&query_source_str).unwrap_or(QuerySource::Client);
+
+                Some(QueryLog {
+                    id: Some(row.get("id")),
+                    domain: Arc::from(domain_str.as_str()),
+                    record_type: record_type_str.parse().ok()?,
+                    client_ip: client_ip_str.parse().ok()?,
+                    blocked: row.get::<i64, _>("blocked") != 0,
+                    response_time_ms: row
+                        .get::<Option<i64>, _>("response_time_ms")
+                        .map(|t| t as u64),
+                    cache_hit: row.get::<i64, _>("cache_hit") != 0,
+                    cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
+                    dnssec_status,
+                    upstream_server: row.get::<Option<String>, _>("upstream_server"),
+                    response_status,
+                    timestamp: Some(row.get("created_at")),
+                    query_source,
+                    group_id: row.get("group_id"),
+                })
+            })
+            .collect();
+
+        debug!(
+            count = entries.len(),
+            total = total,
+            "Paginated queries fetched"
+        );
+        Ok((entries, total))
     }
 
     #[instrument(skip(self))]

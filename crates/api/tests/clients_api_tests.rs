@@ -5,12 +5,33 @@ use axum::{
 };
 use ferrous_dns_api::{create_api_routes, AppState};
 use ferrous_dns_application::{
-    ports::ClientRepository,
+    ports::{BlockFilterEnginePort, ClientRepository, FilterDecision},
     use_cases::{
-        DeleteClientUseCase, GetBlocklistUseCase, GetClientsUseCase, GetQueryStatsUseCase,
-        GetRecentQueriesUseCase,
+        DeleteClientUseCase, GetBlockFilterStatsUseCase, GetBlocklistUseCase, GetClientsUseCase,
+        GetQueryStatsUseCase, GetRecentQueriesUseCase,
     },
 };
+
+struct NullBlockFilterEngine;
+
+#[async_trait::async_trait]
+impl BlockFilterEnginePort for NullBlockFilterEngine {
+    fn resolve_group(&self, _ip: std::net::IpAddr) -> i64 {
+        1
+    }
+    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
+        FilterDecision::Allow
+    }
+    async fn reload(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn load_client_groups(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    fn compiled_domain_count(&self) -> usize {
+        0
+    }
+}
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
@@ -204,6 +225,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
         get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
         ))),
+        get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
         config,
         cache,
         dns_resolver: Arc::new(

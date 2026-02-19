@@ -146,11 +146,10 @@ impl CachedRecord {
 
     pub fn record_hit(&self) {
         self.hit_count.fetch_add(1, AtomicOrdering::Relaxed);
-        let now_unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        self.last_access.store(now_unix, AtomicOrdering::Relaxed);
+        self.last_access.store(
+            super::coarse_clock::coarse_now_secs(),
+            AtomicOrdering::Relaxed,
+        );
     }
 
     pub fn hit_rate(&self) -> f64 {

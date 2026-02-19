@@ -83,6 +83,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
+name = "arc-swap"
+version = "1.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9f3647c145568cec02c42054e07bdf9a5a698e15b466fb2341bfc393cd24aa5"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -604,6 +613,7 @@ dependencies = [
 name = "ferrous-dns-api"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "ferrous-dns-application",
@@ -647,6 +657,8 @@ dependencies = [
 name = "ferrous-dns-infrastructure"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
+ "arc-swap",
  "async-trait",
  "base64",
  "chrono",

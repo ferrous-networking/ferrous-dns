@@ -1,3 +1,4 @@
+pub mod block_filter;
 pub mod cache;
 pub mod cache_updater;
 pub mod cache_warming;
@@ -12,6 +13,7 @@ pub mod resolver;
 pub mod server;
 pub mod transport;
 
+pub use block_filter::BlockFilterEngine;
 pub use cache::{
     CacheKey, CacheMetrics, CachedData, CachedRecord, DnsCache, DnssecStatus, EvictionStrategy,
 };

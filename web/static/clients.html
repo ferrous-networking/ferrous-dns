@@ -7,58 +7,30 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        let _lucideTimer = null;
+        function scheduleLucide(delay = 50) {
+            clearTimeout(_lucideTimer);
+            _lucideTimer = setTimeout(() => lucide.createIcons(), delay);
+        }
+    </script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root {
-            --color-primary: #3B82F6;
-            --color-success: #10B981;
-            --color-warning: #F59E0B;
-            --color-error: #EF4444;
-            --bg-primary: #F9FAFB;
-            --bg-secondary: #FFFFFF;
-            --bg-tertiary: #F3F4F6;
-            --text-primary: #111827;
-            --text-secondary: #6B7280;
-            --text-tertiary: #9CA3AF;
-            --border-color: #E5E7EB
-        }
-
-        .dark {
-            --bg-primary: #0F172A;
-            --bg-secondary: #1E293B;
-            --bg-tertiary: #334155;
-            --text-primary: #F1F5F9;
-            --text-secondary: #CBD5E1;
-            --text-tertiary: #94A3B8;
-            --border-color: #334155
-        }
-
         body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            padding-left: 260px;
-            margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
         }
 
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 260px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto
-        }
-
         .card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
             padding: 24px;
             margin-bottom: 24px
+        }
+
+        .status-item {
+            margin-bottom: 4px
+        }
+
+        .status-indicator {
+            animation: none
         }
 
         .btn {
@@ -703,14 +675,14 @@
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await this.loadAll();
-                setTimeout(() => lucide.createIcons(), 100);
+                scheduleLucide(100);
             },
 
             toggleTheme() {
                 this.theme = this.theme === 'light' ? 'dark' : 'light';
                 localStorage.setItem('theme', this.theme);
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                setTimeout(() => lucide.createIcons(), 50);
+                scheduleLucide();
             },
 
             async loadAll() {
@@ -898,7 +870,7 @@
                 if (res.ok) {
                     this.resetForm();
                     await this.loadAll();
-                    setTimeout(() => lucide.createIcons(), 50);
+                    scheduleLucide();
                     alert('Client added successfully!');
                 } else {
                     const error = await res.text();
@@ -920,7 +892,7 @@
                 if (res.ok) {
                     this.resetForm();
                     await this.loadAll();
-                    setTimeout(() => lucide.createIcons(), 50);
+                    scheduleLucide();
                     alert('Subnet added successfully!');
                 } else {
                     const error = await res.text();
@@ -944,7 +916,7 @@
                     const res = await fetch(`/api/clients/${id}`, {method: 'DELETE'});
                     if (res.ok) {
                         await this.loadAll();
-                        setTimeout(() => lucide.createIcons(), 50);
+                        scheduleLucide();
                         alert('Client deleted!');
                     } else {
                         alert('Failed: ' + await res.text());
@@ -961,7 +933,7 @@
                     const res = await fetch(`/api/client-subnets/${id}`, {method: 'DELETE'});
                     if (res.ok) {
                         await this.loadAll();
-                        setTimeout(() => lucide.createIcons(), 50);
+                        scheduleLucide();
                         alert('Subnet deleted!');
                     } else {
                         alert('Failed: ' + await res.text());
@@ -1020,7 +992,7 @@
                     }
 
                     await this.loadAll();
-                    setTimeout(() => lucide.createIcons(), 100);
+                    scheduleLucide(100);
                     this.selectedClients = [];
                     this.selectAllClients = false;
 
@@ -1059,7 +1031,7 @@
                     }
 
                     await this.loadAll();
-                    setTimeout(() => lucide.createIcons(), 100);
+                    scheduleLucide(100);
                     this.selectedSubnets = [];
                     this.selectAllSubnets = false;
 

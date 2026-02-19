@@ -73,4 +73,10 @@ pub enum DomainError {
 
     #[error("Invalid whitelist source: {0}")]
     InvalidWhitelistSource(String),
+
+    #[error("Block filter fetch error: {0}")]
+    BlockFilterFetchError(String),
+
+    #[error("Block filter compile error: {0}")]
+    BlockFilterCompileError(String),
 }

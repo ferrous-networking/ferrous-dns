@@ -4,12 +4,22 @@ use serde::{Deserialize, Serialize};
 pub struct QueryParams {
     #[serde(default = "default_limit")]
     pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
     #[serde(default = "default_period")]
     pub period: String,
 }
 
 fn default_limit() -> u32 {
     10000
+}
+
+#[derive(Serialize, Debug)]
+pub struct PaginatedQueries {
+    pub data: Vec<QueryResponse>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
 }
 
 fn default_period() -> String {

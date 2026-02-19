@@ -1,4 +1,5 @@
 pub mod bloom;
+pub mod coarse_clock;
 pub mod compaction;
 pub mod data;
 pub mod eviction;
@@ -14,7 +15,6 @@ pub use bloom::AtomicBloom;
 pub use data::{CachedData, DnssecStatus};
 pub use eviction::{EvictionEntry, EvictionStrategy};
 pub use key::{BorrowedKey, CacheKey};
-pub use l1::{l1_cache_stats, L1CacheStats};
 pub use metrics::CacheMetrics;
 pub use negative_ttl::{NegativeQueryTracker, TrackerStats};
 pub use record::CachedRecord;

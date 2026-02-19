@@ -1,4 +1,4 @@
-use crate::{ClientSyncJob, QueryLogRetentionJob, RetentionJob};
+use crate::{BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob};
 use std::sync::Arc;
 use tracing::info;
 
@@ -6,6 +6,7 @@ pub struct JobRunner {
     client_sync: Option<ClientSyncJob>,
     retention: Option<RetentionJob>,
     query_log_retention: Option<QueryLogRetentionJob>,
+    blocklist_sync: Option<BlocklistSyncJob>,
 }
 
 impl JobRunner {
@@ -14,6 +15,7 @@ impl JobRunner {
             client_sync: None,
             retention: None,
             query_log_retention: None,
+            blocklist_sync: None,
         }
     }
 
@@ -32,6 +34,11 @@ impl JobRunner {
         self
     }
 
+    pub fn with_blocklist_sync(mut self, job: BlocklistSyncJob) -> Self {
+        self.blocklist_sync = Some(job);
+        self
+    }
+
     pub async fn start(self) {
         info!("Starting background job runner");
 
@@ -44,6 +51,10 @@ impl JobRunner {
         }
 
         if let Some(job) = self.query_log_retention {
+            Arc::new(job).start().await;
+        }
+
+        if let Some(job) = self.blocklist_sync {
             Arc::new(job).start().await;
         }
 

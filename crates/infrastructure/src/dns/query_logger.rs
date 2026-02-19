@@ -87,6 +87,7 @@ impl QueryEventLogger {
                 response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),
                 timestamp: None,
                 query_source: QuerySource::Internal,
+                group_id: None,
             };
 
             match repo.log_query(&query_log).await {
@@ -136,6 +137,7 @@ impl QueryEventLogger {
                     response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),
                     timestamp: None,
                     query_source: QuerySource::Internal,
+                    group_id: None,
                 };
 
                 if let Err(e) = self.log_repo.log_query(&query_log).await {

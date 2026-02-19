@@ -19,4 +19,15 @@ impl GetRecentQueriesUseCase {
     ) -> Result<Vec<QueryLog>, DomainError> {
         self.repository.get_recent(limit, period_hours).await
     }
+
+    pub async fn execute_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+        period_hours: f32,
+    ) -> Result<(Vec<QueryLog>, u64), DomainError> {
+        self.repository
+            .get_recent_paged(limit, offset, period_hours)
+            .await
+    }
 }

@@ -19,25 +19,6 @@ thread_local! {
             NonZeroUsize::new(512).unwrap(),
             FxBuildHasher
         ));
-
-    static L1_STATS: RefCell<L1CacheStats> = RefCell::new(L1CacheStats::default());
-}
-
-#[derive(Default, Clone, Copy)]
-pub struct L1CacheStats {
-    pub hits: u64,
-    pub misses: u64,
-    pub expirations: u64,
-}
-
-impl L1CacheStats {
-    pub fn hit_rate(&self) -> f64 {
-        if self.hits + self.misses == 0 {
-            0.0
-        } else {
-            self.hits as f64 / (self.hits + self.misses) as f64
-        }
-    }
 }
 
 #[inline]
@@ -48,15 +29,11 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>
 
         if let Some(entry) = cache.get(&key) {
             if Instant::now() < entry.expires_at {
-                L1_STATS.with(|stats| stats.borrow_mut().hits += 1);
                 return Some(Arc::clone(&entry.addresses));
-            } else {
-                cache.pop(&key);
-                L1_STATS.with(|stats| stats.borrow_mut().expirations += 1);
             }
+            cache.pop(&key);
         }
 
-        L1_STATS.with(|stats| stats.borrow_mut().misses += 1);
         None
     })
 }
@@ -77,8 +54,4 @@ pub fn l1_insert(
         };
         cache.put(key, entry);
     });
-}
-
-pub fn l1_cache_stats() -> L1CacheStats {
-    L1_STATS.with(|stats| *stats.borrow())
 }

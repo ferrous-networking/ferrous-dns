@@ -8,182 +8,15 @@
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        let _lucideTimer = null;
+        function scheduleLucide(delay = 50) {
+            clearTimeout(_lucideTimer);
+            _lucideTimer = setTimeout(() => lucide.createIcons(), delay);
+        }
+    </script>
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        :root {
-            --color-primary: #3B82F6;
-            --color-success: #10B981;
-            --color-warning: #F59E0B;
-            --color-error: #EF4444;
-            --bg-primary: #F9FAFB;
-            --bg-secondary: #FFFFFF;
-            --bg-tertiary: #F3F4F6;
-            --text-primary: #111827;
-            --text-secondary: #6B7280;
-            --text-tertiary: #9CA3AF;
-            --border-color: #E5E7EB
-        }
-
-        .dark {
-            --bg-primary: #0F172A;
-            --bg-secondary: #1E293B;
-            --bg-tertiary: #334155;
-            --text-primary: #F1F5F9;
-            --text-secondary: #CBD5E1;
-            --text-tertiary: #94A3B8;
-            --border-color: #334155
-        }
-
-        body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            padding-left: 260px;
-            margin: 0
-        }
-
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 260px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto
-        }
-
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 24px 16px 16px
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            padding: 8px;
-            background: var(--color-primary);
-            color: white;
-            border-radius: 8px
-        }
-
-        .logo-text h1 {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0
-        }
-
-        .logo-subtitle {
-            font-size: 11px;
-            color: var(--text-tertiary)
-        }
-
-        .status-box {
-            margin: 0 16px 16px;
-            padding: 12px;
-            background: var(--bg-tertiary);
-            border-radius: 8px
-        }
-
-        .status-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            text-transform: uppercase
-        }
-
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 6px
-        }
-
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--color-success);
-            animation: pulse 2s infinite
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                box-shadow: 0 0 0 0 var(--color-success)
-            }
-            50% {
-                box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2)
-            }
-        }
-
-        .nav-section {
-            margin-bottom: 24px
-        }
-
-        .nav-section-title {
-            padding: 8px 16px;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text-tertiary);
-            text-transform: uppercase
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 16px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 14px;
-            transition: all .2s
-        }
-
-        .nav-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary)
-        }
-
-        .nav-item.active {
-            background: var(--bg-tertiary);
-            color: var(--color-primary);
-            font-weight: 600;
-            border-left: 3px solid var(--color-primary)
-        }
-
-        .nav-icon {
-            width: 18px;
-            height: 18px
-        }
-
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 16px;
-            border-top: 1px solid var(--border-color)
-        }
-
-        .theme-btn {
-            width: 100%;
-            padding: 8px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            color: var(--text-secondary)
-        }
-
         .card-stat {
             background: var(--bg-secondary);
             border-radius: 12px;
@@ -195,12 +28,6 @@
         .card-stat:hover {
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transform: translateY(-2px)
-        }
-
-        .card {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            border: 1px solid var(--border-color)
         }
     </style>
 </head>
@@ -276,7 +103,7 @@
                 </div>
                 <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="stats.queries_total||0">0</p>
+            <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(stats.queries_total)">0</p>
         </div>
         <div class="card-stat">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
@@ -285,7 +112,7 @@
                 </div>
                 <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="stats.queries_blocked||0">0</p>
+            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_blocked)">0</p>
         </div>
         <div class="card-stat">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
@@ -299,13 +126,12 @@
         </div>
         <div class="card-stat">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,0.1)">
-                    <i data-lucide="zap" style="width:24px;height:24px;color:#10B981"></i>
+                <div style="padding:12px;border-radius:8px;background:rgba(249,115,22,0.1)">
+                    <i data-lucide="shield-check" style="width:24px;height:24px;color:#F97316"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Cache Time</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked Domains</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#10B981" x-text="formatTime(stats.avg_cache_time_ms||0)">0
-                ms</p>
+            <p style="font-size:32px;font-weight:700;color:#F97316" x-text="formatNumber(blockFilterStats.total_blocked_domains)">0</p>
         </div>
     </div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Performance</h2>
@@ -315,17 +141,17 @@
                 <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="cacheMetrics.total_hits||0">0</p>
+                       x-text="formatNumber(cacheMetrics.total_hits)">0</p>
                     <p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">
                         0%</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
             <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="archive" style="width:32px;height:32px;color:#3B82F6"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Misses</p>
+                <i data-lucide="clock" style="width:32px;height:32px;color:#3B82F6"></i>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Time</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="cacheMetrics.total_misses||0">0</p></div>
+                       x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
@@ -333,7 +159,7 @@
                 <i data-lucide="refresh-cw" style="width:32px;height:32px;color:#F59E0B"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="cacheMetrics.total_refreshes||0">0</p></div>
+                       x-text="formatNumber(cacheMetrics.total_refreshes)">0</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
@@ -341,7 +167,7 @@
                 <i data-lucide="database" style="width:32px;height:32px;color:#10B981"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
-                       x-text="cacheMetrics.total_entries||0">0</p></div>
+                       x-text="formatNumber(cacheMetrics.total_entries)">0</p></div>
             </div>
         </div>
     </div>
@@ -375,10 +201,12 @@
             stats: {},
             queryRate: {queries: 0, rate: '0 q/s'},
             cacheMetrics: {},
+            blockFilterStats: {total_blocked_domains: 0},
             cacheStats: {cache: 0, upstream: 0},
             queryTypes: {},
             chartsReady: false,
-            pollingIntervals: {fast: null, slow: null, rate: null},
+            pollingIntervals: {fast: null, slow: null},
+            _ctrl: {},
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
@@ -389,21 +217,26 @@
                 setTimeout(() => {
                     this.initCharts();
                     this.chartsReady = true;
-                    lucide.createIcons();
+                    scheduleLucide(0);
 
                     this.loadChartsData();
 
                     setTimeout(() => this.startPolling(), 100);
                 }, 500);
+
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) this.stopPolling();
+                    else this.startPolling();
+                });
             },
             toggleTheme() {
                 this.theme = this.theme === 'light' ? 'dark' : 'light';
                 localStorage.setItem('theme', this.theme);
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                setTimeout(() => lucide.createIcons(), 50)
+                scheduleLucide()
             },
             async loadAllData() {
-                await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadQueryTypes(), this.loadCacheMetrics()])
+                await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadQueryTypes(), this.loadCacheMetrics(), this.loadBlockFilterStats()])
             },
             async loadQuickStats() {
                 
@@ -415,21 +248,25 @@
                 await Promise.all([this.loadQueryTypes(), this.loadTimelineData()])
             },
             async loadStats() {
+                this._ctrl.stats?.abort();
+                this._ctrl.stats = new AbortController();
                 try {
-                    const res = await fetch('/api/stats?period=24h');
+                    const res = await fetch('/api/stats?period=24h', {signal: this._ctrl.stats.signal});
                     if (res.ok) this.stats = await res.json()
                 } catch (e) {
-                    console.error(e)
+                    if (e.name !== 'AbortError') console.error(e)
                 }
             },
             async loadQueryRate() {
+                this._ctrl.rate?.abort();
+                this._ctrl.rate = new AbortController();
                 try {
-                    const res = await fetch('/api/stats/rate?unit=second');
+                    const res = await fetch('/api/stats/rate?unit=second', {signal: this._ctrl.rate.signal});
                     if (res.ok) {
                         this.queryRate = await res.json();
                     }
                 } catch (e) {
-                    console.error('Error loading query rate:', e);
+                    if (e.name !== 'AbortError') console.error('Error loading query rate:', e);
                 }
             },
             getRateColor() {
@@ -440,9 +277,10 @@
             },
             async loadQueryTypes() {
                 try {
-                    const res = await fetch('/api/queries?period=24h');
+                    const res = await fetch('/api/queries?period=24h&limit=500');
                     if (res.ok) {
-                        const queries = await res.json();
+                        const result = await res.json();
+                        const queries = result.data || result;
 
                         this.queryTypes = {};
                         queries.forEach(q => {
@@ -604,9 +442,19 @@
                     console.error('Error updating cache source chart:', e);
                 }
             },
-            async loadCacheMetrics() {
+            async loadBlockFilterStats() {
                 try {
-                    const res = await fetch('/api/cache/stats?period=24h');
+                    const res = await fetch('/api/block-filter/stats');
+                    if (res.ok) this.blockFilterStats = await res.json()
+                } catch (e) {
+                    console.error(e)
+                }
+            },
+            async loadCacheMetrics() {
+                this._ctrl.cache?.abort();
+                this._ctrl.cache = new AbortController();
+                try {
+                    const res = await fetch('/api/cache/stats?period=24h', {signal: this._ctrl.cache.signal});
                     if (res.ok) {
                         const m = await res.json();
                         this.cacheMetrics = {
@@ -618,7 +466,7 @@
                         }
                     }
                 } catch (e) {
-                    console.error(e)
+                    if (e.name !== 'AbortError') console.error(e)
                 }
             },
             initCharts() {
@@ -752,28 +600,27 @@
                 }
             },
             startPolling() {
-                
-                this.pollingIntervals.rate = setInterval(() => {
-                    this.loadQueryRate()
-                }, 1000);
-
+                this.stopPolling();
                 this.pollingIntervals.fast = setInterval(() => {
-                    this.loadQuickStats()
-                }, 1000);
-
+                    this.loadStats();
+                    this.loadQueryRate();
+                    this.loadCacheMetrics();
+                }, 5000);
                 this.pollingIntervals.slow = setInterval(() => {
-                    this.loadChartsData()
+                    this.loadChartsData();
                 }, 60000);
             },
             stopPolling() {
-                if (this.pollingIntervals.rate) clearInterval(this.pollingIntervals.rate);
-                if (this.pollingIntervals.fast) clearInterval(this.pollingIntervals.fast);
-                if (this.pollingIntervals.slow) clearInterval(this.pollingIntervals.slow);
+                clearInterval(this.pollingIntervals.fast);
+                clearInterval(this.pollingIntervals.slow);
             },
             formatTime(ms) {
                 if (!ms) return '0 ms';
                 if (ms < 1000) return `${Math.round(ms)} µs`;
                 return `${(ms / 1000).toFixed(1)} ms`
+            },
+            formatNumber(n) {
+                return (n || 0).toLocaleString();
             }
         }
     }

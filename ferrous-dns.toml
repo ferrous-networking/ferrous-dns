@@ -66,3 +66,6 @@ level = "info"
 path = "ferrous-dns.db"
 log_queries = true
 queries_log_stored = 30
+# Minimum seconds between consecutive last-seen DB writes for the same client IP.
+# Reduce to track clients more frequently; increase to lower SQLite write pressure.
+client_tracking_interval = 60

@@ -27,6 +27,8 @@ fastrand = "2.0"
 lru = "0.12"
 ahash = "0.8"
 bloomfilter = "1.0"
+arc-swap = "1.7"
+aho-corasick = "1.1"
 hostname = "0.4"
 async-trait = "0.1"
 axum = { version = "0.8.8", features = ["macros"] }

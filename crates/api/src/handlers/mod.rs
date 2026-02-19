@@ -1,3 +1,4 @@
+pub mod block_filter;
 pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
