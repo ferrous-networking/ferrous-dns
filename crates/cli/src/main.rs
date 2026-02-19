@@ -121,6 +121,10 @@ async fn main() -> anyhow::Result<()> {
         config: config_arc,
         cache: dns_services.cache.clone(),
         dns_resolver: dns_services.resolver.clone(),
+        get_managed_domains: use_cases.get_managed_domains,
+        create_managed_domain: use_cases.create_managed_domain,
+        update_managed_domain: use_cases.update_managed_domain,
+        delete_managed_domain: use_cases.delete_managed_domain,
     };
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);

@@ -10,6 +10,7 @@ pub mod groups;
 pub mod health;
 pub mod hostname;
 pub mod local_records;
+pub mod managed_domains;
 pub mod manual_clients;
 pub mod queries;
 pub mod rate;

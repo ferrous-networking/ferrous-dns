@@ -6,6 +6,7 @@ use ferrous_dns_infrastructure::repositories::{
     client_repository::SqliteClientRepository,
     client_subnet_repository::SqliteClientSubnetRepository,
     config_repository::SqliteConfigRepository, group_repository::SqliteGroupRepository,
+    managed_domain_repository::SqliteManagedDomainRepository,
     query_log_repository::SqliteQueryLogRepository,
     whitelist_repository::SqliteWhitelistRepository,
     whitelist_source_repository::SqliteWhitelistSourceRepository,
@@ -23,6 +24,7 @@ pub struct Repositories {
     pub client: Arc<SqliteClientRepository>,
     pub group: Arc<SqliteGroupRepository>,
     pub client_subnet: Arc<SqliteClientSubnetRepository>,
+    pub managed_domain: Arc<SqliteManagedDomainRepository>,
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
@@ -52,7 +54,8 @@ impl Repositories {
             config: Arc::new(SqliteConfigRepository::new(pool.clone())),
             client: Arc::new(SqliteClientRepository::new(pool.clone())),
             group: Arc::new(SqliteGroupRepository::new(pool.clone())),
-            client_subnet: Arc::new(SqliteClientSubnetRepository::new(pool)),
+            client_subnet: Arc::new(SqliteClientSubnetRepository::new(pool.clone())),
+            managed_domain: Arc::new(SqliteManagedDomainRepository::new(pool)),
             block_filter_engine,
         })
     }

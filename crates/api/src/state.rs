@@ -1,13 +1,15 @@
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
-    CreateGroupUseCase, CreateManualClientUseCase, CreateWhitelistSourceUseCase,
-    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
-    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
-    GetClientsUseCase, GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    CreateGroupUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
+    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
+    DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
+    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
+    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
+    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
-    UpdateBlocklistSourceUseCase, UpdateGroupUseCase, UpdateWhitelistSourceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{cache::DnsCache, HickoryDnsResolver};
@@ -47,4 +49,8 @@ pub struct AppState {
     pub config: Arc<RwLock<Config>>,
     pub cache: Arc<DnsCache>,
     pub dns_resolver: Arc<HickoryDnsResolver>,
+    pub get_managed_domains: Arc<GetManagedDomainsUseCase>,
+    pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
+    pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
+    pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
 }

@@ -29,6 +29,7 @@ pub fn create_api_routes(state: AppState) -> Router {
         .merge(handlers::client_subnets::routes())
         .merge(handlers::blocklist_sources::routes())
         .merge(handlers::whitelist_sources::routes())
+        .merge(handlers::managed_domains::routes())
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))
         .merge(handlers::local_records::routes())

@@ -3,15 +3,16 @@ use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, CleanupOldClientsUseCase, CleanupOldQueryLogsUseCase,
     CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
-    CreateManualClientUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
-    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase,
-    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
-    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
-    GetConfigUseCase, GetGroupsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateWhitelistSourceUseCase,
+    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
+    DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteWhitelistSourceUseCase,
+    GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetConfigUseCase,
+    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
     ReloadConfigUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
     UpdateBlocklistSourceUseCase, UpdateConfigUseCase, UpdateGroupUseCase,
-    UpdateWhitelistSourceUseCase,
+    UpdateManagedDomainUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
@@ -56,6 +57,10 @@ pub struct UseCases {
     pub create_whitelist_source: Arc<CreateWhitelistSourceUseCase>,
     pub update_whitelist_source: Arc<UpdateWhitelistSourceUseCase>,
     pub delete_whitelist_source: Arc<DeleteWhitelistSourceUseCase>,
+    pub get_managed_domains: Arc<GetManagedDomainsUseCase>,
+    pub create_managed_domain: Arc<CreateManagedDomainUseCase>,
+    pub update_managed_domain: Arc<UpdateManagedDomainUseCase>,
+    pub delete_managed_domain: Arc<DeleteManagedDomainUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
 }
 
@@ -141,6 +146,23 @@ impl UseCases {
             )),
             delete_whitelist_source: Arc::new(DeleteWhitelistSourceUseCase::new(
                 repos.whitelist_source.clone(),
+            )),
+            get_managed_domains: Arc::new(GetManagedDomainsUseCase::new(
+                repos.managed_domain.clone(),
+            )),
+            create_managed_domain: Arc::new(CreateManagedDomainUseCase::new(
+                repos.managed_domain.clone(),
+                repos.group.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(
+                repos.managed_domain.clone(),
+                repos.group.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
+                repos.managed_domain.clone(),
+                repos.block_filter_engine.clone(),
             )),
             subnet_matcher,
         }

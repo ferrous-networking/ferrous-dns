@@ -7,6 +7,7 @@ pub mod clients;
 pub mod config;
 pub mod dns;
 pub mod groups;
+pub mod managed_domains;
 pub mod queries;
 pub mod whitelist;
 pub mod whitelist_sources;
@@ -30,6 +31,10 @@ pub use dns::HandleDnsQueryUseCase;
 pub use groups::{
     AssignClientGroupUseCase, CreateGroupUseCase, DeleteGroupUseCase, GetGroupsUseCase,
     UpdateGroupUseCase,
+};
+pub use managed_domains::{
+    CreateManagedDomainUseCase, DeleteManagedDomainUseCase, GetManagedDomainsUseCase,
+    UpdateManagedDomainUseCase,
 };
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,

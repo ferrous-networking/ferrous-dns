@@ -79,4 +79,10 @@ pub enum DomainError {
 
     #[error("Block filter compile error: {0}")]
     BlockFilterCompileError(String),
+
+    #[error("Managed domain not found: {0}")]
+    ManagedDomainNotFound(String),
+
+    #[error("Invalid managed domain: {0}")]
+    InvalidManagedDomain(String),
 }

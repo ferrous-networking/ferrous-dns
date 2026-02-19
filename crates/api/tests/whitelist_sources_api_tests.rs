@@ -257,6 +257,23 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         delete_whitelist_source: Arc::new(DeleteWhitelistSourceUseCase::new(
             whitelist_source_repo.clone(),
         )),
+        get_managed_domains: Arc::new(ferrous_dns_application::use_cases::GetManagedDomainsUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone()),
+        ))),
+        create_managed_domain: Arc::new(ferrous_dns_application::use_cases::CreateManagedDomainUseCase::new(
+            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        update_managed_domain: Arc::new(ferrous_dns_application::use_cases::UpdateManagedDomainUseCase::new(
+            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
+            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            Arc::new(NullBlockFilterEngine),
+        )),
         subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         get_timeline: Arc::new(GetTimelineUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),

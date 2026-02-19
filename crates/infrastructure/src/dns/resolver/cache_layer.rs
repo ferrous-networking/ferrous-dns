@@ -110,6 +110,10 @@ impl CachedResolver {
 
 #[async_trait]
 impl DnsResolver for CachedResolver {
+    fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        self.check_cache(query)
+    }
+
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         if let Some(cached) = self.check_cache(query) {
             if cached.addresses.is_empty() {

@@ -8,6 +8,7 @@ pub mod config;
 pub mod group;
 pub mod hostname;
 pub mod local_record;
+pub mod managed_domain;
 pub mod query;
 pub mod rate;
 pub mod stats;
@@ -16,6 +17,9 @@ pub mod whitelist;
 pub mod whitelist_source;
 
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
+pub use managed_domain::{
+    CreateManagedDomainRequest, ManagedDomainResponse, UpdateManagedDomainRequest,
+};
 
 pub use blocklist::BlocklistResponse;
 pub use blocklist_source::{

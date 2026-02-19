@@ -248,6 +248,7 @@
     <div class="tab-bar">
         <button class="tab-btn" :class="activeTab === 'blocklist' ? 'active' : ''" @click="switchTab('blocklist')">DNS Blocklist</button>
         <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')">DNS Allowlist</button>
+        <button class="tab-btn" :class="activeTab === 'managed' ? 'active' : ''" @click="switchTab('managed')">Managed Domains</button>
     </div>
 
     <!-- BLOCKLIST TAB -->
@@ -517,6 +518,147 @@
             </table>
         </div>
     </div><!-- end allowlist tab -->
+
+    <!-- MANAGED DOMAINS TAB -->
+    <div x-show="activeTab === 'managed'">
+        <div style="margin-bottom:24px">
+            <div class="card" style="padding:24px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)"
+                    x-text="mEditingDomain ? 'Edit Managed Domain' : 'Add Managed Domain'">Add Managed Domain</h2>
+
+                <form @submit.prevent="mSaveDomain()">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Name <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="mForm.name"
+                                   placeholder="e.g. Block Ads" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Domain <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="mForm.domain"
+                                   placeholder="e.g. ads.example.com or *.x.com" required>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Action</label>
+                            <select class="input" x-model="mForm.action">
+                                <option value="deny">Deny (Block)</option>
+                                <option value="allow">Allow (Override)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Group</label>
+                            <select class="input" x-model="mForm.group_id">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id" x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
+                                <input type="checkbox" x-model="mForm.enabled" style="width:18px;height:18px;cursor:pointer">
+                                <span class="form-label" style="margin:0">Enabled</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Comment <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <textarea class="textarea" x-model="mForm.comment"
+                                  placeholder="Add a description for this rule"></textarea>
+                    </div>
+
+                    <div style="display:flex;gap:12px">
+                        <button type="submit" class="btn btn-primary" x-text="mEditingDomain ? 'Update Domain' : 'Add Domain'"></button>
+                        <button type="button" class="btn btn-secondary" @click="mCancelForm()">Cancel</button>
+                    </div>
+
+                    <div x-show="mFormError" x-text="mFormError"
+                         style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Domain</th>
+                    <th>Action</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                    <th>Group</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="domain in mSources" :key="domain.id">
+                    <tr>
+                        <td>
+                            <span style="font-weight:500;color:var(--text-primary)" x-text="domain.name"></span>
+                        </td>
+                        <td>
+                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="domain.domain"></span>
+                        </td>
+                        <td>
+                            <span class="badge"
+                                  :style="domain.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
+                                  x-text="domain.action === 'deny' ? 'Deny' : 'Allow'">
+                            </span>
+                        </td>
+                        <td>
+                            <button class="badge"
+                                    :class="domain.enabled ? 'badge-success' : 'badge-inactive'"
+                                    @click="mToggleStatus(domain)"
+                                    :title="domain.enabled ? 'Click to disable' : 'Click to enable'"
+                                    x-text="domain.enabled ? 'Enabled' : 'Disabled'">
+                            </button>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px" x-text="domain.comment || '-'"></span>
+                        </td>
+                        <td>
+                            <select class="group-select"
+                                    :value="domain.group_id"
+                                    @change="mChangeGroup(domain, parseInt($event.target.value))">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id"
+                                            :selected="group.id === domain.group_id"
+                                            x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button @click="mEditDomain(domain)" class="btn-icon" title="Edit">
+                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="mDeleteDomain(domain)" class="btn-icon" title="Delete"
+                                        style="color:var(--color-error)">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="mSources.length === 0 && !mLoading">
+                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                        <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                        <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
+                    </td>
+                </tr>
+                <tr x-show="mLoading">
+                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        Loading...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div><!-- end managed domains tab -->
 </main>
 
 <script>
@@ -552,10 +694,24 @@
             },
             wFormError: '',
 
+            // --- MANAGED DOMAINS ---
+            mSources: [],
+            mLoading: false,
+            mEditingDomain: null,
+            mForm: {
+                name: '',
+                domain: '',
+                action: 'deny',
+                group_id: 1,
+                comment: '',
+                enabled: true
+            },
+            mFormError: '',
+
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups()]);
+                await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups(), this.loadManagedDomains()]);
                 await this.$nextTick();
                 scheduleLucide(0);
             },
@@ -857,6 +1013,150 @@
                     }
                 } catch (e) {
                     console.error('Error deleting allowlist source:', e);
+                    alert('Network error: ' + e.message);
+                }
+            },
+
+            // ===================== MANAGED DOMAINS =====================
+
+            async loadManagedDomains() {
+                this.mLoading = true;
+                try {
+                    const res = await fetch('/api/managed-domains');
+                    if (res.ok) {
+                        this.mSources = await res.json();
+                        await this.$nextTick();
+                        scheduleLucide(0);
+                    }
+                } catch (e) {
+                    console.error('Failed to load managed domains:', e);
+                } finally {
+                    this.mLoading = false;
+                }
+            },
+
+            mEditDomain(domain) {
+                this.mEditingDomain = domain;
+                this.mForm = {
+                    name: domain.name,
+                    domain: domain.domain,
+                    action: domain.action,
+                    group_id: domain.group_id,
+                    comment: domain.comment || '',
+                    enabled: domain.enabled
+                };
+                this.mFormError = '';
+                this.$nextTick(() => scheduleLucide());
+            },
+
+            mCancelForm() {
+                this.mEditingDomain = null;
+                this.mFormError = '';
+                this.mForm = {
+                    name: '',
+                    domain: '',
+                    action: 'deny',
+                    group_id: this.defaultGroupId(),
+                    comment: '',
+                    enabled: true
+                };
+            },
+
+            async mSaveDomain() {
+                this.mFormError = '';
+
+                const payload = {
+                    name: this.mForm.name.trim(),
+                    domain: this.mForm.domain.trim().toLowerCase(),
+                    action: this.mForm.action,
+                    group_id: parseInt(this.mForm.group_id),
+                    comment: this.mForm.comment.trim() || null,
+                    enabled: this.mForm.enabled
+                };
+
+                try {
+                    let res;
+                    if (this.mEditingDomain) {
+                        res = await fetch(`/api/managed-domains/${this.mEditingDomain.id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        res = await fetch('/api/managed-domains', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                    }
+
+                    if (res.ok) {
+                        await this.loadManagedDomains();
+                        this.mCancelForm();
+                    } else {
+                        const errorText = await res.text();
+                        this.mFormError = errorText || 'Failed to save managed domain';
+                    }
+                } catch (e) {
+                    console.error('Error saving managed domain:', e);
+                    this.mFormError = 'Network error: ' + e.message;
+                }
+            },
+
+            async mToggleStatus(domain) {
+                try {
+                    const res = await fetch(`/api/managed-domains/${domain.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({enabled: !domain.enabled})
+                    });
+                    if (res.ok) {
+                        domain.enabled = !domain.enabled;
+                    } else {
+                        alert('Failed to toggle status');
+                    }
+                } catch (e) {
+                    console.error('Error toggling managed domain status:', e);
+                }
+            },
+
+            async mChangeGroup(domain, newGroupId) {
+                try {
+                    const res = await fetch(`/api/managed-domains/${domain.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_id: newGroupId})
+                    });
+                    if (res.ok) {
+                        domain.group_id = newGroupId;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to change group: ' + errorText);
+                        await this.loadManagedDomains();
+                    }
+                } catch (e) {
+                    console.error('Error changing managed domain group:', e);
+                    await this.loadManagedDomains();
+                }
+            },
+
+            async mDeleteDomain(domain) {
+                if (!confirm(`Delete managed domain "${domain.name}" (${domain.domain})? This cannot be undone.`)) {
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/managed-domains/${domain.id}`, {
+                        method: 'DELETE'
+                    });
+                    if (res.ok) {
+                        await this.loadManagedDomains();
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to delete: ' + errorText);
+                    }
+                } catch (e) {
+                    console.error('Error deleting managed domain:', e);
                     alert('Network error: ' + e.message);
                 }
             },

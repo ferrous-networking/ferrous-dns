@@ -30,14 +30,15 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
         0
     }
 }
+
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
     repositories::{
-        blocklist_source_repository::SqliteBlocklistSourceRepository,
         client_repository::SqliteClientRepository,
         client_subnet_repository::SqliteClientSubnetRepository,
         group_repository::SqliteGroupRepository,
+        managed_domain_repository::SqliteManagedDomainRepository,
     },
 };
 use http_body_util::BodyExt;
@@ -118,15 +119,16 @@ async fn create_test_db() -> sqlx::SqlitePool {
 
     sqlx::query(
         r#"
-        CREATE TABLE blocklist_sources (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL UNIQUE,
-            url         TEXT,
-            group_id    INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id) ON DELETE RESTRICT,
-            comment     TEXT,
-            enabled     BOOLEAN NOT NULL DEFAULT 1,
-            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE managed_domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            domain TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('allow', 'deny')),
+            group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id),
+            comment TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
         "#,
     )
@@ -143,7 +145,8 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
     let client_repo = Arc::new(SqliteClientRepository::new(pool.clone()));
     let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
     let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
-    let blocklist_source_repo = Arc::new(SqliteBlocklistSourceRepository::new(pool.clone()));
+    let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
+    let null_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
 
     let config = Arc::new(RwLock::new(Config::default()));
     let cache = Arc::new(DnsCache::new(
@@ -198,18 +201,20 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
         create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
         delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
-        get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(blocklist_source_repo.clone())),
+        get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),
+        ))),
         create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
+            Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())),
             group_repo.clone(),
         )),
         update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
+            Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())),
             group_repo.clone(),
         )),
-        delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
-        )),
+        delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(Arc::new(
+            ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),
+        ))),
         get_whitelist: Arc::new(ferrous_dns_application::use_cases::GetWhitelistUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::whitelist_repository::SqliteWhitelistRepository::new(pool.clone()),
         ))),
@@ -227,22 +232,20 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         delete_whitelist_source: Arc::new(ferrous_dns_application::use_cases::DeleteWhitelistSourceUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone()),
         ))),
-        get_managed_domains: Arc::new(ferrous_dns_application::use_cases::GetManagedDomainsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone()),
-        ))),
-        create_managed_domain: Arc::new(ferrous_dns_application::use_cases::CreateManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
+        get_managed_domains: Arc::new(GetManagedDomainsUseCase::new(managed_domain_repo.clone())),
+        create_managed_domain: Arc::new(CreateManagedDomainUseCase::new(
+            managed_domain_repo.clone(),
+            group_repo.clone(),
+            null_engine.clone(),
         )),
-        update_managed_domain: Arc::new(ferrous_dns_application::use_cases::UpdateManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
+        update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(
+            managed_domain_repo.clone(),
+            group_repo.clone(),
+            null_engine.clone(),
         )),
-        delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
+        delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
+            managed_domain_repo.clone(),
+            null_engine.clone(),
         )),
         subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(Arc::new(
@@ -265,13 +268,13 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
 }
 
 #[tokio::test]
-async fn test_get_all_sources_empty() {
+async fn test_get_all_managed_domains_empty() {
     let (app, _pool) = create_test_app().await;
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -288,21 +291,22 @@ async fn test_get_all_sources_empty() {
 }
 
 #[tokio::test]
-async fn test_create_source_success() {
+async fn test_create_managed_domain_deny_success() {
     let (app, _pool) = create_test_app().await;
 
     let payload = json!({
-        "name": "AdGuard DNS",
-        "url": "https://adguard.com/list.txt",
+        "name": "Block Ads",
+        "domain": "ads.example.com",
+        "action": "deny",
         "group_id": 1,
-        "comment": "Main ad list",
+        "comment": "Block ads domain",
         "enabled": true
     });
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -317,24 +321,30 @@ async fn test_create_source_success() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert!(json["id"].is_number());
-    assert_eq!(json["name"], "AdGuard DNS");
-    assert_eq!(json["url"], "https://adguard.com/list.txt");
+    assert_eq!(json["name"], "Block Ads");
+    assert_eq!(json["domain"], "ads.example.com");
+    assert_eq!(json["action"], "deny");
     assert_eq!(json["group_id"], 1);
-    assert_eq!(json["comment"], "Main ad list");
+    assert_eq!(json["comment"], "Block ads domain");
     assert_eq!(json["enabled"], true);
     assert!(json["created_at"].is_string());
 }
 
 #[tokio::test]
-async fn test_create_source_defaults() {
+async fn test_create_managed_domain_allow_success() {
     let (app, _pool) = create_test_app().await;
 
-    let payload = json!({ "name": "Minimal List" });
+    let payload = json!({
+        "name": "Allow Company",
+        "domain": "mycompany.com",
+        "action": "allow",
+        "group_id": 1
+    });
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -348,82 +358,25 @@ async fn test_create_source_defaults() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(json["name"], "Minimal List");
-    assert_eq!(json["group_id"], 1);
+    assert_eq!(json["action"], "allow");
     assert_eq!(json["enabled"], true);
-    assert!(json["url"].is_null());
+    assert!(json["comment"].is_null());
 }
 
 #[tokio::test]
-async fn test_create_source_duplicate_name() {
-    let (app, _pool) = create_test_app().await;
-
-    let payload = json!({ "name": "Duplicate List" });
-
-    app.clone()
-        .oneshot(
-            Request::builder()
-                .uri("/blocklist-sources")
-                .method("POST")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/blocklist-sources")
-                .method("POST")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn test_create_source_invalid_url() {
+async fn test_create_managed_domain_invalid_action() {
     let (app, _pool) = create_test_app().await;
 
     let payload = json!({
-        "name": "Bad URL List",
-        "url": "ftp://not-http.com/list.txt"
+        "name": "Bad Action",
+        "domain": "ads.example.com",
+        "action": "block"
     });
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
-                .method("POST")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn test_create_source_invalid_group() {
-    let (app, _pool) = create_test_app().await;
-
-    let payload = json!({
-        "name": "Bad Group List",
-        "group_id": 999
-    });
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -436,16 +389,83 @@ async fn test_create_source_invalid_group() {
 }
 
 #[tokio::test]
-async fn test_get_source_by_id() {
+async fn test_create_managed_domain_duplicate_name() {
     let (app, _pool) = create_test_app().await;
 
-    let payload = json!({ "name": "Get By ID List" });
+    let payload = json!({
+        "name": "Duplicate",
+        "domain": "ads.example.com",
+        "action": "deny"
+    });
+
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/managed-domains")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/managed-domains")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_create_managed_domain_invalid_group() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "name": "Bad Group",
+        "domain": "ads.example.com",
+        "action": "deny",
+        "group_id": 999
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/managed-domains")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_get_managed_domain_by_id() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "name": "Get By ID",
+        "domain": "ads.example.com",
+        "action": "deny"
+    });
 
     let create_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -466,7 +486,7 @@ async fn test_get_source_by_id() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(format!("/blocklist-sources/{}", id))
+                .uri(format!("/managed-domains/{}", id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -479,17 +499,17 @@ async fn test_get_source_by_id() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["id"], id);
-    assert_eq!(json["name"], "Get By ID List");
+    assert_eq!(json["name"], "Get By ID");
 }
 
 #[tokio::test]
-async fn test_get_source_not_found() {
+async fn test_get_managed_domain_not_found() {
     let (app, _pool) = create_test_app().await;
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/999")
+                .uri("/managed-domains/999")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -500,16 +520,21 @@ async fn test_get_source_not_found() {
 }
 
 #[tokio::test]
-async fn test_update_source_toggle_enabled() {
+async fn test_update_managed_domain_toggle_enabled() {
     let (app, _pool) = create_test_app().await;
 
-    let payload = json!({ "name": "Toggle List", "enabled": true });
+    let payload = json!({
+        "name": "Toggle Domain",
+        "domain": "ads.example.com",
+        "action": "deny",
+        "enabled": true
+    });
 
     let create_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -531,7 +556,7 @@ async fn test_update_source_toggle_enabled() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(format!("/blocklist-sources/{}", id))
+                .uri(format!("/managed-domains/{}", id))
                 .method("PUT")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&update_payload).unwrap()))
@@ -549,14 +574,14 @@ async fn test_update_source_toggle_enabled() {
 }
 
 #[tokio::test]
-async fn test_update_source_not_found() {
+async fn test_update_managed_domain_not_found() {
     let (app, _pool) = create_test_app().await;
 
     let update_payload = json!({ "enabled": false });
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/999")
+                .uri("/managed-domains/999")
                 .method("PUT")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&update_payload).unwrap()))
@@ -569,16 +594,20 @@ async fn test_update_source_not_found() {
 }
 
 #[tokio::test]
-async fn test_delete_source_success() {
+async fn test_delete_managed_domain_success() {
     let (app, _pool) = create_test_app().await;
 
-    let payload = json!({ "name": "To Delete" });
+    let payload = json!({
+        "name": "To Delete",
+        "domain": "ads.example.com",
+        "action": "deny"
+    });
 
     let create_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .method("POST")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_string(&payload).unwrap()))
@@ -599,7 +628,7 @@ async fn test_delete_source_success() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(format!("/blocklist-sources/{}", id))
+                .uri(format!("/managed-domains/{}", id))
                 .method("DELETE")
                 .body(Body::empty())
                 .unwrap(),
@@ -611,13 +640,13 @@ async fn test_delete_source_success() {
 }
 
 #[tokio::test]
-async fn test_delete_source_not_found() {
+async fn test_delete_managed_domain_not_found() {
     let (app, _pool) = create_test_app().await;
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/999")
+                .uri("/managed-domains/999")
                 .method("DELETE")
                 .body(Body::empty())
                 .unwrap(),
@@ -629,22 +658,22 @@ async fn test_delete_source_not_found() {
 }
 
 #[tokio::test]
-async fn test_get_all_sources_after_create() {
+async fn test_get_all_managed_domains_after_create() {
     let (app, _pool) = create_test_app().await;
 
-    let sources = vec![
-        json!({"name": "List A", "url": "https://example.com/a.txt"}),
-        json!({"name": "List B", "group_id": 2}),
+    let domains = vec![
+        json!({"name": "Domain A", "domain": "a.example.com", "action": "deny"}),
+        json!({"name": "Domain B", "domain": "b.example.com", "action": "allow", "group_id": 2}),
     ];
 
-    for source in &sources {
+    for domain in &domains {
         app.clone()
             .oneshot(
                 Request::builder()
-                    .uri("/blocklist-sources")
+                    .uri("/managed-domains")
                     .method("POST")
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_string(source).unwrap()))
+                    .body(Body::from(serde_json::to_string(domain).unwrap()))
                     .unwrap(),
             )
             .await
@@ -654,7 +683,7 @@ async fn test_get_all_sources_after_create() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources")
+                .uri("/managed-domains")
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -3,12 +3,14 @@
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    BlocklistRepository, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
-    GroupRepository, QueryLogRepository, WhitelistRepository, WhitelistSourceRepository,
+    BlockFilterEnginePort, BlocklistRepository, BlocklistSourceRepository, ClientRepository,
+    DnsResolution, DnsResolver, FilterDecision, GroupRepository, ManagedDomainRepository,
+    QueryLogRepository, WhitelistRepository, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
-    blocklist::BlockedDomain, BlocklistSource, Client, ClientStats, DnsQuery, DomainError, Group,
-    QueryLog, QueryStats, RecordType, WhitelistSource, WhitelistedDomain,
+    blocklist::BlockedDomain, BlocklistSource, Client, ClientStats, DnsQuery, DomainAction,
+    DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType, WhitelistSource,
+    WhitelistedDomain,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -1202,5 +1204,198 @@ mod tests {
 
         assert_eq!(log_repo.count().await, 1);
         assert_eq!(log_repo.get_cache_hits().await.len(), 1);
+    }
+}
+
+// ── MockManagedDomainRepository ────────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct MockManagedDomainRepository {
+    domains: Arc<RwLock<Vec<ManagedDomain>>>,
+    next_id: Arc<RwLock<i64>>,
+}
+
+impl MockManagedDomainRepository {
+    pub fn new() -> Self {
+        Self {
+            domains: Arc::new(RwLock::new(Vec::new())),
+            next_id: Arc::new(RwLock::new(1)),
+        }
+    }
+
+    pub async fn count(&self) -> usize {
+        self.domains.read().await.len()
+    }
+
+    pub async fn get_all_domains(&self) -> Vec<ManagedDomain> {
+        self.domains.read().await.clone()
+    }
+}
+
+impl Default for MockManagedDomainRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ManagedDomainRepository for MockManagedDomainRepository {
+    async fn create(
+        &self,
+        name: String,
+        domain: String,
+        action: DomainAction,
+        group_id: i64,
+        comment: Option<String>,
+        enabled: bool,
+    ) -> Result<ManagedDomain, DomainError> {
+        let mut domains = self.domains.write().await;
+
+        if domains.iter().any(|d| d.name.as_ref() == name.as_str()) {
+            return Err(DomainError::InvalidManagedDomain(format!(
+                "Managed domain '{}' already exists",
+                name
+            )));
+        }
+
+        let mut next_id = self.next_id.write().await;
+        let id = *next_id;
+        *next_id += 1;
+
+        let managed = ManagedDomain {
+            id: Some(id),
+            name: Arc::from(name.as_str()),
+            domain: Arc::from(domain.as_str()),
+            action,
+            group_id,
+            comment: comment.as_deref().map(Arc::from),
+            enabled,
+            created_at: Some("2026-01-01 00:00:00".to_string()),
+            updated_at: Some("2026-01-01 00:00:00".to_string()),
+        };
+
+        domains.push(managed.clone());
+        Ok(managed)
+    }
+
+    async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError> {
+        let domains = self.domains.read().await;
+        Ok(domains.iter().find(|d| d.id == Some(id)).cloned())
+    }
+
+    async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError> {
+        Ok(self.domains.read().await.clone())
+    }
+
+    async fn update(
+        &self,
+        id: i64,
+        name: Option<String>,
+        domain: Option<String>,
+        action: Option<DomainAction>,
+        group_id: Option<i64>,
+        comment: Option<String>,
+        enabled: Option<bool>,
+    ) -> Result<ManagedDomain, DomainError> {
+        let mut domains = self.domains.write().await;
+
+        let managed = domains
+            .iter_mut()
+            .find(|d| d.id == Some(id))
+            .ok_or_else(|| {
+                DomainError::ManagedDomainNotFound(format!("Managed domain {} not found", id))
+            })?;
+
+        if let Some(n) = name {
+            managed.name = Arc::from(n.as_str());
+        }
+        if let Some(d) = domain {
+            managed.domain = Arc::from(d.as_str());
+        }
+        if let Some(a) = action {
+            managed.action = a;
+        }
+        if let Some(gid) = group_id {
+            managed.group_id = gid;
+        }
+        if let Some(c) = comment {
+            managed.comment = Some(Arc::from(c.as_str()));
+        }
+        if let Some(e) = enabled {
+            managed.enabled = e;
+        }
+
+        Ok(managed.clone())
+    }
+
+    async fn delete(&self, id: i64) -> Result<(), DomainError> {
+        let mut domains = self.domains.write().await;
+        let len_before = domains.len();
+        domains.retain(|d| d.id != Some(id));
+        if domains.len() == len_before {
+            return Err(DomainError::ManagedDomainNotFound(format!(
+                "Managed domain {} not found",
+                id
+            )));
+        }
+        Ok(())
+    }
+}
+
+// ── MockBlockFilterEngine ──────────────────────────────────────────────────────
+
+#[derive(Clone)]
+pub struct MockBlockFilterEngine {
+    reload_count: Arc<RwLock<u32>>,
+    should_fail_reload: Arc<RwLock<bool>>,
+}
+
+impl MockBlockFilterEngine {
+    pub fn new() -> Self {
+        Self {
+            reload_count: Arc::new(RwLock::new(0)),
+            should_fail_reload: Arc::new(RwLock::new(false)),
+        }
+    }
+
+    pub async fn reload_count(&self) -> u32 {
+        *self.reload_count.read().await
+    }
+
+    pub async fn set_should_fail_reload(&self, fail: bool) {
+        *self.should_fail_reload.write().await = fail;
+    }
+}
+
+impl Default for MockBlockFilterEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl BlockFilterEnginePort for MockBlockFilterEngine {
+    fn resolve_group(&self, _ip: IpAddr) -> i64 {
+        1
+    }
+
+    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
+        FilterDecision::Allow
+    }
+
+    async fn reload(&self) -> Result<(), DomainError> {
+        if *self.should_fail_reload.read().await {
+            return Err(DomainError::DatabaseError("Mock reload failed".to_string()));
+        }
+        *self.reload_count.write().await += 1;
+        Ok(())
+    }
+
+    async fn load_client_groups(&self) -> Result<(), DomainError> {
+        Ok(())
+    }
+
+    fn compiled_domain_count(&self) -> usize {
+        0
     }
 }

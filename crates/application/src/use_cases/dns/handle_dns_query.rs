@@ -76,6 +76,38 @@ impl HandleDnsQueryUseCase {
             }
         }
 
+        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
+
+        // DNS cache check before block filter: if the domain is already cached it
+        // was previously allowed, so we can return immediately and skip the block
+        // pipeline entirely.
+        if let Some(cached) = self.resolver.try_cache(&dns_query) {
+            if !cached.addresses.is_empty() {
+                let query_log = QueryLog {
+                    id: None,
+                    domain: Arc::clone(&request.domain),
+                    record_type: request.record_type,
+                    client_ip: request.client_ip,
+                    blocked: false,
+                    response_time_ms: Some(start.elapsed().as_micros() as u64),
+                    cache_hit: true,
+                    cache_refresh: false,
+                    dnssec_status: cached.dnssec_status,
+                    upstream_server: None,
+                    response_status: Some("NOERROR"),
+                    timestamp: None,
+                    query_source: QuerySource::Client,
+                    group_id: Some(self.block_filter.resolve_group(request.client_ip)),
+                };
+
+                if let Err(e) = self.query_log.log_query(&query_log).await {
+                    tracing::warn!(error = %e, domain = %request.domain, "Failed to log cached query");
+                }
+
+                return Ok(cached);
+            }
+        }
+
         let group_id = self.block_filter.resolve_group(request.client_ip);
         let decision = self.block_filter.check(&request.domain, group_id);
 
@@ -103,8 +135,6 @@ impl HandleDnsQueryUseCase {
 
             return Err(DomainError::Blocked);
         }
-
-        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
 
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
