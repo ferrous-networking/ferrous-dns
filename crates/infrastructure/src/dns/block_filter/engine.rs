@@ -1,7 +1,8 @@
 use super::block_index::BlockIndex;
 use super::compiler::compile_block_index;
 use super::decision_cache::{
-    decision_l0_clear, decision_l0_get, decision_l0_set, BlockDecisionCache,
+    decision_key, decision_l0_clear, decision_l0_get_by_key, decision_l0_set_by_key,
+    BlockDecisionCache,
 };
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use arc_swap::ArcSwap;
@@ -20,10 +21,12 @@ use tracing::{error, info, warn};
 
 type GroupL0Cache = LruCache<IpAddr, (i64, u64), FxBuildHasher>;
 
+const GROUP_L0_CAPACITY: usize = 256;
+
 thread_local! {
     static GROUP_L0: RefCell<GroupL0Cache> =
         RefCell::new(LruCache::with_hasher(
-            NonZeroUsize::new(32).unwrap(),
+            NonZeroUsize::new(GROUP_L0_CAPACITY).unwrap(),
             FxBuildHasher,
         ));
 }
@@ -156,29 +159,28 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
-        // L0: thread-local decision cache
-        if let Some(cached_source) = decision_l0_get(domain, group_id) {
+        let key = decision_key(domain, group_id);
+
+        if let Some(cached_source) = decision_l0_get_by_key(key) {
             return match cached_source {
                 Some(source) => FilterDecision::Block(source),
                 None => FilterDecision::Allow,
             };
         }
 
-        // L1: shared decision cache
-        if let Some(cached_source) = self.decision_cache.get(domain, group_id) {
-            decision_l0_set(domain, group_id, cached_source);
+        if let Some(cached_source) = self.decision_cache.get_by_key(key) {
+            decision_l0_set_by_key(key, cached_source);
             return match cached_source {
                 Some(source) => FilterDecision::Block(source),
                 None => FilterDecision::Allow,
             };
         }
 
-        // Full block filter pipeline
         let guard = self.index.load();
         let block_source = guard.is_blocked(domain, group_id);
 
-        self.decision_cache.set(domain, group_id, block_source);
-        decision_l0_set(domain, group_id, block_source);
+        self.decision_cache.set_by_key(key, block_source);
+        decision_l0_set_by_key(key, block_source);
 
         match block_source {
             Some(source) => FilterDecision::Block(source),

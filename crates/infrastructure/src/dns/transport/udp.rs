@@ -101,7 +101,7 @@ impl UdpTransport {
             );
 
             Ok(TransportResponse {
-                bytes: recv_buf,
+                bytes: bytes::Bytes::from(recv_buf),
                 protocol_used: "UDP",
             })
         } else {
@@ -183,7 +183,7 @@ impl UdpTransport {
         );
 
         Ok(TransportResponse {
-            bytes: recv_buf,
+            bytes: bytes::Bytes::from(recv_buf),
             protocol_used: "UDP",
         })
     }

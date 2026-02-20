@@ -17,6 +17,7 @@ pub struct HickoryDnsResolver {
 
 struct BuilderState {
     pool_manager: Arc<PoolManager>,
+    dnssec_pool_manager: Option<Arc<PoolManager>>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     cache_ttl: u32,
@@ -40,6 +41,7 @@ impl HickoryDnsResolver {
 
         let builder_state = BuilderState {
             pool_manager: pool_manager.clone(),
+            dnssec_pool_manager: None,
             config: config.clone(),
             cache: None,
             cache_ttl: 3600,
@@ -56,6 +58,12 @@ impl HickoryDnsResolver {
             inner,
             builder_state,
         })
+    }
+
+    pub fn with_dnssec_pool_manager(mut self, pool_manager: Arc<PoolManager>) -> Self {
+        self.builder_state.dnssec_pool_manager = Some(pool_manager);
+        self.rebuild();
+        self
     }
 
     pub fn with_cache(mut self, cache: Arc<DnsCache>, cache_ttl: u32) -> Self {
@@ -96,6 +104,10 @@ impl HickoryDnsResolver {
     fn rebuild(&mut self) {
         let mut builder = ResolverBuilder::new(self.builder_state.pool_manager.clone())
             .with_config(self.builder_state.config.clone());
+
+        if let Some(dnssec_pm) = &self.builder_state.dnssec_pool_manager {
+            builder = builder.with_dnssec_pool_manager(dnssec_pm.clone());
+        }
 
         if let Some(cache) = &self.builder_state.cache {
             builder = builder.with_cache(cache.clone());

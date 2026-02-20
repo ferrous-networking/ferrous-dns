@@ -1,17 +1,19 @@
 use crate::dns::cache::coarse_clock::coarse_now_secs;
+use ahash::RandomState as AHashRandomState;
+use dashmap::DashMap;
 use ferrous_dns_domain::BlockSource;
 use lru::LruCache;
-use rustc_hash::{FxBuildHasher, FxHasher};
+use rustc_hash::FxBuildHasher;
 use std::cell::RefCell;
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+use std::sync::OnceLock;
 
 const TTL_SECS: u64 = 60;
 const L0_CAPACITY: usize = 256;
 const L1_CAPACITY: usize = 100_000;
 
-/// Cache encoding: 0 = allow, 1 = Blocklist, 2 = ManagedDomain, 3 = RegexFilter
 const CACHE_ALLOW: u8 = 0;
 
 fn encode_source(source: Option<BlockSource>) -> u8 {
@@ -29,14 +31,28 @@ fn decode_source(val: u8) -> Option<BlockSource> {
     }
 }
 
-fn decision_key(domain: &str, group_id: i64) -> u64 {
-    let mut h = FxHasher::default();
+static DECISION_HASH_STATE: OnceLock<AHashRandomState> = OnceLock::new();
+
+#[inline]
+fn decision_hash_state() -> &'static AHashRandomState {
+    DECISION_HASH_STATE.get_or_init(|| {
+        AHashRandomState::with_seeds(
+            0xf4a5_f3e1_c2b0_a9d7,
+            0x8e6b_4c2a_0f1d_e3c9,
+            0x7a2c_1e5b_9d4f_6a8e,
+            0x3c7a_2e4b_6f8d_0a1c,
+        )
+    })
+}
+
+#[inline]
+pub fn decision_key(domain: &str, group_id: i64) -> u64 {
+    let mut h = decision_hash_state().build_hasher();
     domain.hash(&mut h);
     group_id.hash(&mut h);
     h.finish()
 }
 
-// (encoded_source, timestamp)
 type BlockL0Cache = LruCache<u64, (u8, u64), FxBuildHasher>;
 
 thread_local! {
@@ -47,12 +63,10 @@ thread_local! {
         ));
 }
 
-/// Returns `None` on cache miss, `Some(None)` for cached allow, `Some(Some(source))` for cached block.
 #[inline]
-pub fn decision_l0_get(domain: &str, group_id: i64) -> Option<Option<BlockSource>> {
+pub fn decision_l0_get_by_key(key: u64) -> Option<Option<BlockSource>> {
     BLOCK_L0.with(|c| {
         let mut c = c.borrow_mut();
-        let key = decision_key(domain, group_id);
         if let Some(&(encoded, inserted_at)) = c.get(&key) {
             if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
                 return Some(decode_source(encoded));
@@ -64,12 +78,10 @@ pub fn decision_l0_get(domain: &str, group_id: i64) -> Option<Option<BlockSource
 }
 
 #[inline]
-pub fn decision_l0_set(domain: &str, group_id: i64, source: Option<BlockSource>) {
+pub fn decision_l0_set_by_key(key: u64, source: Option<BlockSource>) {
     BLOCK_L0.with(|c| {
-        c.borrow_mut().put(
-            decision_key(domain, group_id),
-            (encode_source(source), coarse_now_secs()),
-        );
+        c.borrow_mut()
+            .put(key, (encode_source(source), coarse_now_secs()));
     });
 }
 
@@ -78,49 +90,53 @@ pub fn decision_l0_clear() {
 }
 
 pub struct BlockDecisionCache {
-    inner: Mutex<LruCache<u64, (u8, u64), FxBuildHasher>>,
+    inner: DashMap<u64, (u8, u64), FxBuildHasher>,
+    len: AtomicUsize,
 }
 
 impl BlockDecisionCache {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(LruCache::with_hasher(
-                NonZeroUsize::new(L1_CAPACITY).unwrap(),
-                FxBuildHasher,
-            )),
-        }
-    }
-
-    /// Returns `None` on cache miss, `Some(None)` for cached allow, `Some(Some(source))` for cached block.
-    #[inline]
-    pub fn get(&self, domain: &str, group_id: i64) -> Option<Option<BlockSource>> {
-        let key = decision_key(domain, group_id);
-        let mut cache = self.inner.lock().unwrap();
-        let result = cache.get(&key).copied();
-        match result {
-            Some((encoded, inserted_at))
-                if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS =>
-            {
-                Some(decode_source(encoded))
-            }
-            Some(_) => {
-                cache.pop(&key);
-                None
-            }
-            None => None,
+            inner: DashMap::with_capacity_and_hasher(L1_CAPACITY, FxBuildHasher),
+            len: AtomicUsize::new(0),
         }
     }
 
     #[inline]
-    pub fn set(&self, domain: &str, group_id: i64, source: Option<BlockSource>) {
-        self.inner.lock().unwrap().put(
-            decision_key(domain, group_id),
-            (encode_source(source), coarse_now_secs()),
-        );
+    pub fn get_by_key(&self, key: u64) -> Option<Option<BlockSource>> {
+        if let Some(entry) = self.inner.get(&key) {
+            let (encoded, inserted_at) = *entry;
+            if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
+                return Some(decode_source(encoded));
+            }
+            drop(entry);
+            if self.inner.remove(&key).is_some() {
+                self.len.fetch_sub(1, AtomicOrdering::Relaxed);
+            }
+        }
+        None
+    }
+
+    #[inline]
+    pub fn set_by_key(&self, key: u64, source: Option<BlockSource>) {
+        if self.len.load(AtomicOrdering::Relaxed) >= L1_CAPACITY {
+            return;
+        }
+        let value = (encode_source(source), coarse_now_secs());
+        match self.inner.entry(key) {
+            dashmap::Entry::Vacant(e) => {
+                e.insert(value);
+                self.len.fetch_add(1, AtomicOrdering::Relaxed);
+            }
+            dashmap::Entry::Occupied(mut e) => {
+                e.insert(value);
+            }
+        }
     }
 
     pub fn clear(&self) {
-        self.inner.lock().unwrap().clear();
+        self.inner.clear();
+        self.len.store(0, AtomicOrdering::Relaxed);
     }
 }
 

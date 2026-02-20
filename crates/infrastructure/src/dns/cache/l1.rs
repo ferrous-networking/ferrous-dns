@@ -28,14 +28,16 @@ thread_local! {
 }
 
 #[inline]
-pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<Arc<Vec<IpAddr>>> {
+pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<(Arc<Vec<IpAddr>>, u32)> {
     L1_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let key = (domain_hash(domain), *record_type);
 
         if let Some(entry) = cache.get(&key) {
-            if coarse_now_secs() < entry.expires_secs {
-                return Some(Arc::clone(&entry.addresses));
+            let now = coarse_now_secs();
+            if now < entry.expires_secs {
+                let remaining = (entry.expires_secs - now) as u32;
+                return Some((Arc::clone(&entry.addresses), remaining));
             }
             cache.pop(&key);
         }

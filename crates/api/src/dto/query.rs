@@ -34,7 +34,7 @@ pub struct QueryResponse {
     #[serde(rename = "type")]
     pub record_type: String,
     pub blocked: bool,
-    pub response_time_ms: Option<u64>,
+    pub response_time_us: Option<u64>,
     pub cache_hit: bool,
     pub cache_refresh: bool,
     pub dnssec_status: Option<String>,

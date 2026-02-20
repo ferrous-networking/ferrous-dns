@@ -14,6 +14,7 @@ use tracing::info;
 
 pub struct ResolverBuilder {
     pool_manager: Arc<PoolManager>,
+    dnssec_pool_manager: Option<Arc<PoolManager>>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     conditional_forwarder: Option<Arc<ConditionalForwarder>>,
@@ -25,12 +26,18 @@ impl ResolverBuilder {
     pub fn new(pool_manager: Arc<PoolManager>) -> Self {
         Self {
             pool_manager,
+            dnssec_pool_manager: None,
             config: ResolverConfig::default(),
             cache: None,
             conditional_forwarder: None,
             prefetch_predictor: None,
             filters: None,
         }
+    }
+
+    pub fn with_dnssec_pool_manager(mut self, pool_manager: Arc<PoolManager>) -> Self {
+        self.dnssec_pool_manager = Some(pool_manager);
+        self
     }
 
     pub fn with_config(mut self, config: ResolverConfig) -> Self {
@@ -80,9 +87,13 @@ impl ResolverBuilder {
         let mut resolver: Arc<dyn DnsResolver> = Arc::new(core);
 
         if self.config.dnssec_enabled {
+            let dnssec_pm = self
+                .dnssec_pool_manager
+                .clone()
+                .unwrap_or_else(|| self.pool_manager.clone());
             resolver = Arc::new(DnssecResolver::new(
                 resolver,
-                self.pool_manager.clone(),
+                dnssec_pm,
                 self.config.query_timeout_ms,
             ));
         }

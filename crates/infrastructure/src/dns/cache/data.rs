@@ -50,7 +50,7 @@ impl DnssecStatus {
 pub enum CachedData {
     IpAddresses(Arc<Vec<IpAddr>>),
 
-    CanonicalName(Arc<String>),
+    CanonicalName(Arc<str>),
 
     NegativeResponse,
 }
@@ -75,7 +75,7 @@ impl CachedData {
         }
     }
 
-    pub fn as_canonical_name(&self) -> Option<&Arc<String>> {
+    pub fn as_canonical_name(&self) -> Option<&Arc<str>> {
         match self {
             CachedData::CanonicalName(name) => Some(name),
             _ => None,

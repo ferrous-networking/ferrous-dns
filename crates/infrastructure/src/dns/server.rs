@@ -1,7 +1,7 @@
 use crate::dns::forwarding::RecordTypeMapper;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::DomainError;
-use hickory_proto::op::ResponseCode;
+use hickory_proto::op::{MessageType, ResponseCode};
 use hickory_proto::rr::{Name, RData, Record};
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
@@ -81,8 +81,10 @@ impl RequestHandler for DnsServerHandler {
             debug!(domain = %domain_ref, "No records found (NODATA)");
             let builder = MessageResponseBuilder::from_message_request(request);
             let mut header = *request.header();
+            header.set_message_type(MessageType::Response);
             header.set_recursion_available(true);
-            let response = builder.build(header, &[], &[] as &[Record], &[], &[]);
+            let authority = resolution.authority_records;
+            let response = builder.build(header, &[], authority.iter(), &[], &[]);
             return match response_handle.send_response(response).await {
                 Ok(info) => info,
                 Err(e) => {
@@ -106,6 +108,7 @@ impl RequestHandler for DnsServerHandler {
 
         debug!(domain = %domain_ref, answers = addresses.len(), "Sending response");
         let mut header = *request.header();
+        header.set_message_type(MessageType::Response);
         header.set_recursion_available(true);
         let response = builder.build(header, answers.iter(), &[], &[], &[]);
         match response_handle.send_response(response).await {
@@ -126,6 +129,7 @@ async fn send_error_response<R: ResponseHandler>(
     debug!(code = ?code, "Sending error response");
     let builder = MessageResponseBuilder::from_message_request(request);
     let mut header = *request.header();
+    header.set_message_type(MessageType::Response);
     header.set_response_code(code);
     header.set_recursion_available(true);
     let response = builder.build(header, &[], &[], &[], &[]);

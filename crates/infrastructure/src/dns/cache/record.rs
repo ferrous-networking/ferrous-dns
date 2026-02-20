@@ -1,24 +1,30 @@
+use super::coarse_clock::coarse_now_secs;
 use super::data::{CachedData, DnssecStatus};
 use ferrous_dns_domain::RecordType;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
 use std::sync::RwLock;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 #[derive(Debug)]
 pub struct CachedRecord {
     pub data: CachedData,
     pub dnssec_status: DnssecStatus,
-    pub expires_at: Instant,
-    pub inserted_at: Instant,
+    /// Expiry as a coarse Unix timestamp (seconds).  Avoids `Instant::now()`
+    /// in the read hot path — coarse_now_secs() is an AtomicU64 load (~3 ns)
+    /// vs a VDSO/syscall call (~20 ns – 2 µs depending on kernel config).
+    pub expires_at_secs: u64,
+    /// Insertion time as a coarse Unix timestamp (seconds).
+    pub inserted_at_secs: u64,
     pub hit_count: AtomicU64,
     pub last_access: AtomicU64,
     pub ttl: u32,
     pub record_type: RecordType,
+    /// Per-access timestamps used only by the LFUK eviction scorer.
+    /// Uses `Instant` for sub-second precision in the scoring window.
     pub access_history: Option<Box<RwLock<VecDeque<Instant>>>>,
     pub marked_for_deletion: AtomicBool,
     pub refreshing: AtomicBool,
-
     pub permanent: bool,
 }
 
@@ -33,8 +39,8 @@ impl Clone for CachedRecord {
         Self {
             data: self.data.clone(),
             dnssec_status: self.dnssec_status,
-            expires_at: self.expires_at,
-            inserted_at: self.inserted_at,
+            expires_at_secs: self.expires_at_secs,
+            inserted_at_secs: self.inserted_at_secs,
             hit_count: AtomicU64::new(self.hit_count.load(AtomicOrdering::Relaxed)),
             last_access: AtomicU64::new(self.last_access.load(AtomicOrdering::Relaxed)),
             ttl: self.ttl,
@@ -57,11 +63,7 @@ impl CachedRecord {
         use_lfuk: bool,
         dnssec_status: Option<DnssecStatus>,
     ) -> Self {
-        let now = Instant::now();
-        let now_unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let now_secs = coarse_now_secs();
 
         let access_history = if use_lfuk {
             Some(Box::new(RwLock::new(VecDeque::with_capacity(10))))
@@ -72,10 +74,10 @@ impl CachedRecord {
         Self {
             data,
             dnssec_status: dnssec_status.unwrap_or(DnssecStatus::Unknown),
-            expires_at: now + Duration::from_secs(ttl as u64),
-            inserted_at: now,
+            expires_at_secs: now_secs + ttl as u64,
+            inserted_at_secs: now_secs,
             hit_count: AtomicU64::new(0),
-            last_access: AtomicU64::new(now_unix),
+            last_access: AtomicU64::new(now_secs),
             ttl,
             record_type,
             access_history,
@@ -86,21 +88,15 @@ impl CachedRecord {
     }
 
     pub fn permanent(data: CachedData, ttl: u32, record_type: RecordType) -> Self {
-        let now = Instant::now();
-        let now_unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        let expires_at = now + Duration::from_secs(365 * 24 * 60 * 60);
+        let now_secs = coarse_now_secs();
 
         Self {
             data,
             dnssec_status: DnssecStatus::Unknown,
-            expires_at,
-            inserted_at: now,
+            expires_at_secs: u64::MAX,
+            inserted_at_secs: now_secs,
             hit_count: AtomicU64::new(0),
-            last_access: AtomicU64::new(now_unix),
+            last_access: AtomicU64::new(now_secs),
             ttl,
             record_type,
             access_history: None,
@@ -115,20 +111,40 @@ impl CachedRecord {
         if self.permanent {
             return false;
         }
-        Instant::now() >= self.expires_at
+        coarse_now_secs() >= self.expires_at_secs
+    }
+
+    /// Like `is_expired` but reuses a pre-computed `now_secs` to avoid a
+    /// redundant `coarse_now_secs()` call when the caller already has one.
+    #[inline(always)]
+    pub fn is_expired_at_secs(&self, now_secs: u64) -> bool {
+        if self.permanent {
+            return false;
+        }
+        now_secs >= self.expires_at_secs
     }
 
     #[inline(always)]
     pub fn is_stale_usable(&self) -> bool {
-        let now = Instant::now();
-        let age = now.duration_since(self.inserted_at).as_secs();
+        let now_secs = coarse_now_secs();
+        let age = now_secs.saturating_sub(self.inserted_at_secs);
         let max_stale_age = (self.ttl as u64) * 2;
 
-        now >= self.expires_at && age < max_stale_age
+        now_secs >= self.expires_at_secs && age < max_stale_age
+    }
+
+    /// Like `is_stale_usable` but reuses a pre-computed `now_secs` to avoid a
+    /// redundant `coarse_now_secs()` call when the caller already has one.
+    #[inline(always)]
+    pub fn is_stale_usable_at_secs(&self, now_secs: u64) -> bool {
+        let age = now_secs.saturating_sub(self.inserted_at_secs);
+        let max_stale_age = (self.ttl as u64) * 2;
+
+        now_secs >= self.expires_at_secs && age < max_stale_age
     }
 
     pub fn age_secs(&self) -> u64 {
-        Instant::now().duration_since(self.inserted_at).as_secs()
+        coarse_now_secs().saturating_sub(self.inserted_at_secs)
     }
 
     pub fn mark_for_deletion(&self) {
@@ -143,7 +159,7 @@ impl CachedRecord {
 
     #[inline(always)]
     pub fn should_refresh(&self, threshold: f64) -> bool {
-        let elapsed = self.inserted_at.elapsed().as_secs_f64();
+        let elapsed = coarse_now_secs().saturating_sub(self.inserted_at_secs) as f64;
         let ttl_seconds = self.ttl as f64;
         elapsed >= (ttl_seconds * threshold)
     }
@@ -159,7 +175,7 @@ impl CachedRecord {
 
     pub fn hit_rate(&self) -> f64 {
         let hits = self.hit_count.load(AtomicOrdering::Relaxed) as f64;
-        let age_secs = self.inserted_at.elapsed().as_secs_f64();
+        let age_secs = coarse_now_secs().saturating_sub(self.inserted_at_secs) as f64;
 
         if age_secs > 0.0 {
             hits / age_secs

@@ -465,6 +465,11 @@ pub async fn compile_block_index(
     let allowlists =
         build_allowlist_index(pool, client, default_group_id, &managed_domain_entries).await?;
 
+    let has_advanced_rules = !managed_denies.is_empty()
+        || !managed_deny_wildcards.is_empty()
+        || !regex_filter_maps.allow_patterns.is_empty()
+        || !regex_filter_maps.block_patterns.is_empty();
+
     Ok(BlockIndex {
         sources,
         group_masks,
@@ -479,6 +484,7 @@ pub async fn compile_block_index(
         managed_deny_wildcards,
         allow_regex_patterns: regex_filter_maps.allow_patterns,
         block_regex_patterns: regex_filter_maps.block_patterns,
+        has_advanced_rules,
     })
 }
 

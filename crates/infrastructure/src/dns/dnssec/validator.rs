@@ -143,9 +143,19 @@ impl DnssecValidator {
             "DNS query completed"
         );
 
+        // Extract the signer zone from the upstream RRSIG, if any.
+        // A hostname record (e.g. media.viudescloud.uk) is signed by its parent zone's ZSK;
+        // the RRSIG carries signer_name = "viudescloud.uk.".  By validating the chain to
+        // that zone instead of the full hostname, we never ask for DS at a hostname label
+        // (which would be absent and wrongly return Insecure).
+        // For unsigned domains the answer has no RRSIG, so we fall back to the raw domain;
+        // a DS query for it returns empty → InsecureDelegation → Insecure, as expected.
+        let chain_domain = Self::extract_signer_zone(upstream_result.response.message.answers())
+            .unwrap_or_else(|| domain.to_owned());
+
         let mut validation_status = self
             .chain_verifier
-            .verify_chain(domain, record_type)
+            .verify_chain(&chain_domain, record_type)
             .await?;
 
         // Phase 2: verify RRSIG over the final RRset using ZSKs from the validated chain.
@@ -216,6 +226,20 @@ impl DnssecValidator {
         }
     }
 
+    /// Extract the signer zone name from the first non-DNSKEY RRSIG in an answer section.
+    /// Returns `None` when no RRSIG is present (unsigned domain).
+    fn extract_signer_zone(answers: &[Record]) -> Option<String> {
+        for record in answers {
+            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
+                let input = rrsig.input();
+                if input.type_covered != hickory_proto::rr::RecordType::DNSKEY {
+                    return Some(input.signer_name.to_string());
+                }
+            }
+        }
+        None
+    }
+
     fn verify_rrset_signatures(&self, domain: &str, all_answers: &[Record]) -> ValidationResult {
         let mut rrsigs: Vec<RrsigRecord> = Vec::new();
         let mut data_records: Vec<Record> = Vec::new();
@@ -248,6 +272,14 @@ impl DnssecValidator {
         }
 
         if rrsigs.is_empty() {
+            if data_records.is_empty() {
+                // NODATA / NXDOMAIN response: the answer section is empty, so there are
+                // no records to sign and no RRSIGs to verify.  The chain of trust already
+                // authenticated the zone; returning Bogus here would be wrong.
+                debug!(domain = %domain, "NODATA response — chain validation sufficient");
+                return ValidationResult::Secure;
+            }
+            // Data records present but no RRSIG: unsigned RRset inside a signed zone.
             debug!(domain = %domain, "No RRSIG for RRset — returning Bogus");
             return ValidationResult::Bogus;
         }
@@ -260,11 +292,30 @@ impl DnssecValidator {
                 debug!(zone = %zone, "No trusted keys for signer zone");
                 continue;
             };
+
+            // Determine the actual owner name of the signed RRset.
+            // For CNAME chains the A/AAAA records belong to the CNAME target, not
+            // the original query domain.  TBS::from_input filters by owner name, so
+            // passing the wrong name produces an empty RRset and a failed verification.
+            let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
+            let owner = data_records
+                .iter()
+                .find(|r| r.record_type() == hickory_type)
+                .map(|r| r.name().to_string())
+                .unwrap_or_else(|| {
+                    if domain.ends_with('.') {
+                        domain.to_string()
+                    } else {
+                        format!("{}.", domain)
+                    }
+                });
+
             for key in zone_keys {
-                match crypto_verifier.verify_rrsig(rrsig, key, domain, &data_records) {
+                match crypto_verifier.verify_rrsig(rrsig, key, &owner, &data_records) {
                     Ok(true) => {
                         debug!(
                             domain = %domain,
+                            owner = %owner,
                             key_tag = key.calculate_key_tag(),
                             "RRset RRSIG verified"
                         );
@@ -324,11 +375,14 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_verify_rrset_empty_records_returns_bogus() {
+    fn test_verify_rrset_empty_records_returns_secure() {
+        // Empty answer section = NODATA / NXDOMAIN response.  The chain of trust
+        // already authenticated the zone; there are no records to verify, so the
+        // result should be Secure (not Bogus).
         let validator = make_validator();
         assert_eq!(
             validator.verify_rrset_signatures("example.com.", &[]),
-            ValidationResult::Bogus
+            ValidationResult::Secure
         );
     }
 

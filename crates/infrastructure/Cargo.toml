@@ -25,6 +25,7 @@ hostname.workspace = true
 dashmap.workspace = true
 futures.workspace = true
 rustc-hash.workspace = true
+ahash.workspace = true
 compact_str.workspace = true
 smallvec.workspace = true
 
@@ -33,6 +34,7 @@ socket2.workspace = true
 
 # DNSSEC Crypto (FASE 2)
 ring.workspace = true
+sha1.workspace = true
 sha2.workspace = true
 base64.workspace = true
 
@@ -41,6 +43,7 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 webpki-roots.workspace = true
 reqwest.workspace = true
+bytes.workspace = true
 chrono = "0.4.43"
 arc-swap.workspace = true
 aho-corasick.workspace = true

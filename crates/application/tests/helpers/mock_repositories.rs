@@ -1133,6 +1133,7 @@ impl DnsResolutionBuilder {
             cname: self.cname,
             upstream_server: self.upstream_server,
             min_ttl: None,
+            authority_records: vec![],
         }
     }
 }
@@ -1189,7 +1190,7 @@ mod tests {
             record_type: RecordType::A,
             client_ip: IpAddr::from_str("192.168.1.1").unwrap(),
             blocked: false,
-            response_time_ms: Some(10),
+            response_time_us: Some(10),
             cache_hit: true,
             cache_refresh: false,
             dnssec_status: None,

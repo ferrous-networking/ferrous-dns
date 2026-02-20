@@ -1,15 +1,14 @@
-use super::super::dnssec::{DnssecCache, DnssecValidator};
+use super::super::dnssec::DnssecValidatorPool;
 use super::super::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 pub struct DnssecResolver {
     inner: Arc<dyn DnsResolver>,
-    validator: Arc<Mutex<DnssecValidator>>,
+    validator: Arc<DnssecValidatorPool>,
 }
 
 impl DnssecResolver {
@@ -18,22 +17,23 @@ impl DnssecResolver {
         pool_manager: Arc<PoolManager>,
         query_timeout_ms: u64,
     ) -> Self {
-        let cache = Arc::new(DnssecCache::new());
-        let validator =
-            DnssecValidator::with_cache(pool_manager, cache).with_timeout(query_timeout_ms);
+        let pool_size = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
 
-        info!("DNSSEC validation layer enabled");
+        info!(pool_size, "DNSSEC validation layer enabled");
 
         Self {
             inner,
-            validator: Arc::new(Mutex::new(validator)),
+            validator: Arc::new(DnssecValidatorPool::new(
+                pool_manager,
+                query_timeout_ms,
+                pool_size,
+            )),
         }
     }
 
-    pub fn with_validator(
-        inner: Arc<dyn DnsResolver>,
-        validator: Arc<Mutex<DnssecValidator>>,
-    ) -> Self {
+    pub fn with_pool(inner: Arc<dyn DnsResolver>, validator: Arc<DnssecValidatorPool>) -> Self {
         Self { inner, validator }
     }
 }
@@ -57,9 +57,8 @@ impl DnsResolver for DnssecResolver {
             "Performing DNSSEC validation"
         );
 
-        let mut validator = self.validator.lock().await;
-
-        match validator
+        match self
+            .validator
             .validate_query(&query.domain, query.record_type)
             .await
         {

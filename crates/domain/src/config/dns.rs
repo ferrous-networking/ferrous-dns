@@ -88,6 +88,9 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_adaptive_thresholds")]
     pub cache_adaptive_thresholds: bool,
 
+    #[serde(default = "default_cache_shard_amount")]
+    pub cache_shard_amount: usize,
+
     #[serde(default = "default_true")]
     pub block_private_ptr: bool,
 
@@ -126,6 +129,7 @@ impl Default for DnsConfig {
             cache_batch_eviction_percentage: default_cache_batch_eviction_percentage(),
             cache_compaction_interval: default_cache_compaction_interval(),
             cache_adaptive_thresholds: default_cache_adaptive_thresholds(),
+            cache_shard_amount: default_cache_shard_amount(),
             block_private_ptr: true,
             block_non_fqdn: false,
             local_domain: None,
@@ -193,4 +197,14 @@ fn default_cache_compaction_interval() -> u64 {
 
 fn default_cache_adaptive_thresholds() -> bool {
     false
+}
+
+fn default_cache_shard_amount() -> usize {
+    // Auto-detect: 4× CPU cores, rounded up to the next power of two.
+    // Examples: RPi 4 (4 cores) → 16, 8-core server → 32, 16-core → 64.
+    // Clamped to [8, 256] to stay sensible on exotic hardware.
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    (cpus * 4).next_power_of_two().clamp(8, 256)
 }

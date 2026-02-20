@@ -167,7 +167,7 @@ impl CacheUpdater {
 
         match resolver.resolve(&query).await {
             Ok(resolution) if !resolution.addresses.is_empty() => {
-                let response_time = start.elapsed().as_millis() as u64;
+                let response_time = start.elapsed().as_micros() as u64;
 
                 let ttl = cache.get_ttl(domain, record_type).unwrap_or(3600);
 
@@ -189,7 +189,7 @@ impl CacheUpdater {
                         record_type: *record_type,
                         client_ip: IpAddr::from([127, 0, 0, 1]),
                         blocked: false,
-                        response_time_ms: Some(response_time),
+                        response_time_us: Some(response_time),
                         cache_hit: false,
                         cache_refresh: true,
                         dnssec_status: resolution.dnssec_status,

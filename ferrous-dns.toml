@@ -21,6 +21,11 @@ cache_lfuk_history_size = 10
 cache_batch_eviction_percentage = 0.1
 cache_compaction_interval = 600
 cache_adaptive_thresholds = false
+# Número de shards internos do cache (DashMap).
+# Quando omitido, é detectado automaticamente: 4× cores da CPU arredondado
+# para potência de 2 (RPi 4 → 16, servidor 8 cores → 32, 16 cores → 64).
+# Descomente apenas se quiser forçar um valor específico:
+# cache_shard_amount = 64
 block_private_ptr = true
 block_non_fqdn = true
 local_domain = "lan"

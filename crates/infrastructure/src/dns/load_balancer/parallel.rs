@@ -6,7 +6,7 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub struct ParallelStrategy;
 
@@ -36,7 +36,6 @@ impl ParallelStrategy {
             "Racing all upstreams with immediate cancellation"
         );
 
-        let mut abort_handles = Vec::with_capacity(servers.len());
         let mut futs = FuturesUnordered::new();
 
         let domain_arc: std::sync::Arc<str> = domain.into();
@@ -46,12 +45,13 @@ impl ParallelStrategy {
             let record_type = *record_type;
             let emitter = emitter.clone();
 
-            let handle = tokio::spawn(async move {
+            // No tokio::spawn — push the future directly so there is no per-upstream
+            // task allocation. DNS queries are I/O-bound; all futures make progress
+            // when their sockets are ready. Cancellation of the losing upstreams is
+            // implicit: dropping `futs` when we return cancels the pending futures.
+            futs.push(async move {
                 query_server(&protocol, &domain, &record_type, timeout_ms, &emitter).await
             });
-
-            abort_handles.push(handle.abort_handle());
-            futs.push(handle);
         }
 
         let total_queries = servers.len();
@@ -59,44 +59,29 @@ impl ParallelStrategy {
         let result = timeout(Duration::from_millis(timeout_ms), async {
             let mut failed_count = 0;
 
-            while let Some(join_result) = futs.next().await {
-                match join_result {
-                    Ok(Ok(r)) => {
-                        let canceled = abort_handles.len().saturating_sub(1);
-
-                        for handle in &abort_handles {
-                            handle.abort();
-                        }
-
+            while let Some(result) = futs.next().await {
+                match result {
+                    Ok(r) => {
                         debug!(
                             server = %r.server_addr,
                             latency_ms = r.latency_ms,
-                            canceled_queries = canceled,
-                            "Fastest response, canceled remaining queries"
+                            "Fastest response, dropping remaining futures"
                         );
 
+                        // Returning here drops `futs`, cancelling pending futures.
                         return Ok(UpstreamResult {
                             response: r.response,
                             server: r.server_addr,
                             latency_ms: r.latency_ms,
                         });
                     }
-                    Ok(Err(e)) => {
+                    Err(e) => {
                         failed_count += 1;
                         debug!(
                             error = %e,
                             failed = failed_count,
                             total = total_queries,
                             "Server failed in parallel race"
-                        );
-                    }
-                    Err(e) => {
-                        failed_count += 1;
-                        warn!(
-                            error = %e,
-                            failed = failed_count,
-                            total = total_queries,
-                            "Task panicked in parallel race"
                         );
                     }
                 }
@@ -108,10 +93,6 @@ impl ParallelStrategy {
             )))
         })
         .await;
-
-        for handle in &abort_handles {
-            handle.abort();
-        }
 
         match result {
             Ok(r) => r,

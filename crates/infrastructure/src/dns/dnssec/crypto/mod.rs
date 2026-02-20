@@ -6,7 +6,8 @@ use hickory_proto::dnssec::tbs::TBS;
 use hickory_proto::dnssec::Algorithm;
 use hickory_proto::rr::{DNSClass, Name, Record, SerialNumber};
 use ring::signature;
-use sha2::{Digest, Sha256, Sha384};
+use sha1::Digest as Sha1Digest;
+use sha2::{Sha256, Sha384};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -33,8 +34,17 @@ impl SignatureVerifier {
             return Ok(false);
         }
 
+        // Name::from_str treats strings without a trailing dot as relative names,
+        // which omit the root label (0x00) from the wire format.  DNSSEC signatures
+        // are always computed over absolute (FQDN) names.  Append a trailing dot if
+        // the caller omitted it so TBS construction uses the correct wire encoding.
+        let fqdn = if domain.ends_with('.') {
+            domain.to_owned()
+        } else {
+            format!("{}.", domain)
+        };
         let name =
-            Name::from_str(domain).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+            Name::from_str(&fqdn).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let signer_name = Name::from_str(&rrsig.signer_name)
             .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
@@ -55,9 +65,22 @@ impl SignatureVerifier {
         let data_to_verify = tbs.as_ref();
 
         match rrsig.algorithm {
+            // RSA/SHA-1 (RFC 3110) — kept for legacy zones
+            5 | 7 => self.verify_rsa_sha1(data_to_verify, &rrsig.signature, dnskey),
+            // RSA/SHA-256 (RFC 5702)
             8 => self.verify_rsa_sha256(data_to_verify, &rrsig.signature, dnskey),
+            // RSA/SHA-512 (RFC 5702)
+            10 => self.verify_rsa_sha512(data_to_verify, &rrsig.signature, dnskey),
+            // ECDSA P-256/SHA-256 (RFC 6605)
             13 => self.verify_ecdsa_p256(data_to_verify, &rrsig.signature, dnskey),
+            // ECDSA P-384/SHA-384 (RFC 6605)
+            14 => self.verify_ecdsa_p384(data_to_verify, &rrsig.signature, dnskey),
+            // Ed25519 (RFC 8080)
             15 => self.verify_ed25519(data_to_verify, &rrsig.signature, dnskey),
+            // Ed448 (RFC 8080) — requires a library beyond ring; treat as unsupported
+            16 => Err(DomainError::InvalidDnsResponse(
+                "Ed448 (algorithm 16) is not supported by this build".into(),
+            )),
             _ => Err(DomainError::InvalidDnsResponse(format!(
                 "Unsupported DNSSEC algorithm: {}",
                 rrsig.algorithm
@@ -83,11 +106,19 @@ impl SignatureVerifier {
         let dnskey_data = self.build_dnskey_data(dnskey, owner_name)?;
 
         let computed_digest = match ds.digest_type {
+            // SHA-1 (RFC 4034) — mandatory but deprecated
+            1 => {
+                let mut hasher = sha1::Sha1::new();
+                hasher.update(&dnskey_data);
+                hasher.finalize().to_vec()
+            }
+            // SHA-256 (RFC 4509)
             2 => {
                 let mut hasher = Sha256::new();
                 hasher.update(&dnskey_data);
                 hasher.finalize().to_vec()
             }
+            // SHA-384 (RFC 6605)
             4 => {
                 let mut hasher = Sha384::new();
                 hasher.update(&dnskey_data);
@@ -104,10 +135,38 @@ impl SignatureVerifier {
         Ok(computed_digest == ds.digest)
     }
 
+    // -------------------------------------------------------------------------
+    // RSA variants
+    // -------------------------------------------------------------------------
+
+    /// RSA/SHA-1 — algorithms 5 (RSASHA1) and 7 (RSASHA1-NSEC3-SHA1).
+    /// Kept for reading legacy signed zones; new zones MUST NOT use these.
+    fn verify_rsa_sha1(
+        &self,
+        data: &[u8],
+        sig: &[u8],
+        dnskey: &DnskeyRecord,
+    ) -> Result<bool, DomainError> {
+        let (exponent, modulus) = self.parse_rsa_key(&dnskey.public_key)?;
+        let public_key = signature::RsaPublicKeyComponents {
+            n: &modulus,
+            e: &exponent,
+        };
+        match public_key.verify(
+            &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            data,
+            sig,
+        ) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// RSA/SHA-256 — algorithm 8 (RFC 5702).
     fn verify_rsa_sha256(
         &self,
         data: &[u8],
-        signature: &[u8],
+        sig: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
         if dnskey.public_key.len() < 3 {
@@ -123,16 +182,42 @@ impl SignatureVerifier {
             e: &exponent,
         };
 
-        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, signature) {
+        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, sig) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
     }
 
+    /// RSA/SHA-512 — algorithm 10 (RFC 5702).
+    fn verify_rsa_sha512(
+        &self,
+        data: &[u8],
+        sig: &[u8],
+        dnskey: &DnskeyRecord,
+    ) -> Result<bool, DomainError> {
+        let (exponent, modulus) = self.parse_rsa_key(&dnskey.public_key)?;
+        let public_key = signature::RsaPublicKeyComponents {
+            n: &modulus,
+            e: &exponent,
+        };
+        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA512, data, sig) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // ECDSA variants
+    // -------------------------------------------------------------------------
+
+    /// ECDSA P-256/SHA-256 — algorithm 13 (RFC 6605).
+    ///
+    /// DNSSEC key:       bare X||Y (64 bytes)  → prepend 0x04 for ring (65 bytes)
+    /// DNSSEC signature: fixed-size R||S (64 bytes) → use FIXED, not ASN1
     fn verify_ecdsa_p256(
         &self,
         data: &[u8],
-        signature: &[u8],
+        sig: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
         if dnskey.public_key.len() != 64 {
@@ -141,27 +226,74 @@ impl SignatureVerifier {
             ));
         }
 
-        if signature.len() != 64 {
+        if sig.len() != 64 {
             return Err(DomainError::InvalidDnsResponse(
                 "Invalid ECDSA P-256 signature length".into(),
             ));
         }
 
-        let public_key = signature::UnparsedPublicKey::new(
-            &signature::ECDSA_P256_SHA256_ASN1,
-            &dnskey.public_key,
-        );
+        // RFC 6605 §4: DNSSEC ECDSA P-256 keys are bare X||Y (64 bytes).
+        // ring requires uncompressed SEC1 form: 0x04 || X || Y (65 bytes).
+        let mut pk = Vec::with_capacity(65);
+        pk.push(0x04);
+        pk.extend_from_slice(&dnskey.public_key);
 
-        match public_key.verify(data, signature) {
+        // RFC 6605 §4: DNSSEC ECDSA signatures are fixed-size R||S (64 bytes),
+        // not ASN.1 DER — use FIXED variant, not ASN1.
+        let public_key =
+            signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, &pk);
+
+        match public_key.verify(data, sig) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
     }
 
+    /// ECDSA P-384/SHA-384 — algorithm 14 (RFC 6605).
+    ///
+    /// DNSSEC key:       bare X||Y (96 bytes)  → prepend 0x04 for ring (97 bytes)
+    /// DNSSEC signature: fixed-size R||S (96 bytes) → use FIXED, not ASN1
+    fn verify_ecdsa_p384(
+        &self,
+        data: &[u8],
+        sig: &[u8],
+        dnskey: &DnskeyRecord,
+    ) -> Result<bool, DomainError> {
+        if dnskey.public_key.len() != 96 {
+            return Err(DomainError::InvalidDnsResponse(
+                "Invalid ECDSA P-384 public key length".into(),
+            ));
+        }
+
+        if sig.len() != 96 {
+            return Err(DomainError::InvalidDnsResponse(
+                "Invalid ECDSA P-384 signature length".into(),
+            ));
+        }
+
+        // RFC 6605 §4: bare X||Y (96 bytes) → 0x04 || X || Y (97 bytes).
+        let mut pk = Vec::with_capacity(97);
+        pk.push(0x04);
+        pk.extend_from_slice(&dnskey.public_key);
+
+        let public_key =
+            signature::UnparsedPublicKey::new(&signature::ECDSA_P384_SHA384_FIXED, &pk);
+
+        match public_key.verify(data, sig) {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Edwards-curve variants
+    // -------------------------------------------------------------------------
+
+    /// Ed25519 — algorithm 15 (RFC 8080).
     fn verify_ed25519(
         &self,
         data: &[u8],
-        signature: &[u8],
+        sig: &[u8],
         dnskey: &DnskeyRecord,
     ) -> Result<bool, DomainError> {
         if dnskey.public_key.len() != 32 {
@@ -170,7 +302,7 @@ impl SignatureVerifier {
             ));
         }
 
-        if signature.len() != 64 {
+        if sig.len() != 64 {
             return Err(DomainError::InvalidDnsResponse(
                 "Invalid Ed25519 signature length".into(),
             ));
@@ -178,11 +310,15 @@ impl SignatureVerifier {
 
         let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, &dnskey.public_key);
 
-        match public_key.verify(data, signature) {
+        match public_key.verify(data, sig) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
     fn parse_rsa_key(&self, key_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>), DomainError> {
         if key_data.is_empty() {

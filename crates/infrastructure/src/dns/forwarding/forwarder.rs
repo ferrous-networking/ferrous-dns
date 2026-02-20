@@ -44,7 +44,7 @@ impl DnsForwarder {
             .await
             .map_err(|e| DomainError::InvalidDomainName(format!("Failed to send query: {}", e)))?;
 
-        let mut response_buf = vec![0u8; 4096];
+        let mut response_buf = [0u8; 4096];
         let timeout = Duration::from_millis(timeout_ms);
 
         let len = tokio::time::timeout(timeout, socket.recv(&mut response_buf))

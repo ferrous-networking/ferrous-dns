@@ -1,13 +1,20 @@
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
+use dashmap::DashMap;
 use ferrous_dns_domain::DomainError;
 use std::net::SocketAddr;
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::debug;
 
 const MAX_TCP_MESSAGE_SIZE: usize = 65535;
+const MAX_IDLE_TCP_PER_HOST: usize = 2;
+
+type TcpConnectionPool = DashMap<SocketAddr, Vec<TcpStream>>;
+
+static TCP_POOL: LazyLock<TcpConnectionPool> = LazyLock::new(TcpConnectionPool::new);
 
 pub struct TcpTransport {
     server_addr: SocketAddr,
@@ -17,16 +24,20 @@ impl TcpTransport {
     pub fn new(server_addr: SocketAddr) -> Self {
         Self { server_addr }
     }
-}
 
-#[async_trait]
-impl DnsTransport for TcpTransport {
-    async fn send(
-        &self,
-        message_bytes: &[u8],
-        timeout: Duration,
-    ) -> Result<TransportResponse, DomainError> {
-        let mut stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
+    fn take_pooled(&self) -> Option<TcpStream> {
+        TCP_POOL.get_mut(&self.server_addr)?.pop()
+    }
+
+    fn return_to_pool(&self, stream: TcpStream) {
+        let mut entry = TCP_POOL.entry(self.server_addr).or_default();
+        if entry.len() < MAX_IDLE_TCP_PER_HOST {
+            entry.push(stream);
+        }
+    }
+
+    async fn connect_new(&self, timeout: Duration) -> Result<TcpStream, DomainError> {
+        let stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
             .await
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
@@ -41,27 +52,59 @@ impl DnsTransport for TcpTransport {
                 ))
             })?;
 
-        let length = message_bytes.len() as u16;
-        let length_bytes = length.to_be_bytes();
-
-        tokio::time::timeout(timeout, async {
-            stream.write_all(&length_bytes).await?;
-            stream.write_all(message_bytes).await?;
-            stream.flush().await
-        })
-        .await
-        .map_err(|_| {
+        // Disable Nagle algorithm: DNS messages are small and complete in a single
+        // write, so buffering for coalescing adds unnecessary latency (10–40 ms).
+        stream.set_nodelay(true).map_err(|e| {
             DomainError::InvalidDomainName(format!(
-                "Timeout sending TCP query to {}",
-                self.server_addr
-            ))
-        })?
-        .map_err(|e| {
-            DomainError::InvalidDomainName(format!(
-                "Failed to send TCP query to {}: {}",
+                "Failed to set TCP_NODELAY on {}: {}",
                 self.server_addr, e
             ))
         })?;
+
+        Ok(stream)
+    }
+}
+
+#[async_trait]
+impl DnsTransport for TcpTransport {
+    async fn send(
+        &self,
+        message_bytes: &[u8],
+        timeout: Duration,
+    ) -> Result<TransportResponse, DomainError> {
+        // Try a pooled connection first; fall back to a new one if unavailable or stale.
+        let mut stream = match self.take_pooled() {
+            Some(s) => s,
+            None => self.connect_new(timeout).await?,
+        };
+
+        let send_result = tokio::time::timeout(timeout, async {
+            send_with_length_prefix(&mut stream, message_bytes).await
+        })
+        .await;
+
+        // On any send failure (stale pooled connection, etc.), open a fresh connection.
+        let mut stream = match send_result {
+            Ok(Ok(())) => stream,
+            _ => {
+                let mut fresh = self.connect_new(timeout).await?;
+                tokio::time::timeout(timeout, send_with_length_prefix(&mut fresh, message_bytes))
+                    .await
+                    .map_err(|_| {
+                        DomainError::InvalidDomainName(format!(
+                            "Timeout sending TCP query to {}",
+                            self.server_addr
+                        ))
+                    })?
+                    .map_err(|e| {
+                        DomainError::InvalidDomainName(format!(
+                            "Failed to send TCP query to {}: {}",
+                            self.server_addr, e
+                        ))
+                    })?;
+                fresh
+            }
+        };
 
         debug!(
             server = %self.server_addr,
@@ -70,32 +113,7 @@ impl DnsTransport for TcpTransport {
         );
 
         let response_bytes = tokio::time::timeout(timeout, async {
-            let mut len_buf = [0u8; 2];
-            stream.read_exact(&mut len_buf).await.map_err(|e| {
-                DomainError::InvalidDomainName(format!(
-                    "Failed to read TCP response length from {}: {}",
-                    self.server_addr, e
-                ))
-            })?;
-
-            let response_len = u16::from_be_bytes(len_buf) as usize;
-
-            if response_len > MAX_TCP_MESSAGE_SIZE {
-                return Err(DomainError::InvalidDomainName(format!(
-                    "TCP response too large: {} bytes (max {})",
-                    response_len, MAX_TCP_MESSAGE_SIZE
-                )));
-            }
-
-            let mut response = vec![0u8; response_len];
-            stream.read_exact(&mut response).await.map_err(|e| {
-                DomainError::InvalidDomainName(format!(
-                    "Failed to read TCP response from {}: {}",
-                    self.server_addr, e
-                ))
-            })?;
-
-            Ok(response)
+            read_with_length_prefix(&mut stream).await
         })
         .await
         .map_err(|_| {
@@ -111,8 +129,10 @@ impl DnsTransport for TcpTransport {
             "TCP response received"
         );
 
+        self.return_to_pool(stream);
+
         Ok(TransportResponse {
-            bytes: response_bytes,
+            bytes: bytes::Bytes::from(response_bytes),
             protocol_used: "TCP",
         })
     }

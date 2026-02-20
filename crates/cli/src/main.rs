@@ -1,3 +1,8 @@
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 use clap::Parser;
 use ferrous_dns_api::AppState;
 use ferrous_dns_domain::CliOverrides;

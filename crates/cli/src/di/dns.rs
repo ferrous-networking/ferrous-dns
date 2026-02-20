@@ -28,12 +28,24 @@ impl DnsServices {
         let pool_manager =
             Self::setup_pool_manager(config, health_checker.clone(), emitter.clone())?;
 
-        Self::start_health_checker_task(health_checker, &pool_manager, config);
+        Self::start_health_checker_task(health_checker.clone(), &pool_manager, config);
 
         let timeout_ms = config.dns.query_timeout * 1000;
         let pool_manager_clone = Arc::clone(&pool_manager);
 
-        let mut resolver = Self::build_resolver(pool_manager, config, repos, timeout_ms)?;
+        let pool_manager_for_dnssec = Arc::new(PoolManager::new(
+            config.dns.pools.clone(),
+            health_checker,
+            QueryEventEmitter::new_disabled(),
+        )?);
+
+        let mut resolver = Self::build_resolver(
+            pool_manager,
+            pool_manager_for_dnssec,
+            config,
+            repos,
+            timeout_ms,
+        )?;
         let cache = Self::build_cache(config);
 
         if config.dns.cache_enabled {
@@ -86,7 +98,7 @@ impl DnsServices {
         tokio::spawn(async move {
             logger.start_parallel_batch(event_rx).await.unwrap();
         });
-        info!("Query event logger started - logging ALL DNS queries including DNSSEC validation");
+        info!("Query event logger started - logging client DNS queries");
         emitter
     }
 
@@ -134,6 +146,7 @@ impl DnsServices {
 
     fn build_resolver(
         pool_manager: Arc<PoolManager>,
+        pool_manager_for_dnssec: Arc<PoolManager>,
         config: &Config,
         repos: &Repositories,
         timeout_ms: u64,
@@ -149,6 +162,10 @@ impl DnsServices {
             config.dns.block_non_fqdn,
             config.dns.local_domain.clone(),
         );
+
+        if config.dns.dnssec_enabled {
+            resolver = resolver.with_dnssec_pool_manager(pool_manager_for_dnssec);
+        }
 
         if !config.dns.conditional_forwarding.is_empty() {
             let forwarder = Arc::new(ConditionalForwarder::new(
@@ -196,6 +213,7 @@ impl DnsServices {
                 adaptive_thresholds: config.dns.cache_adaptive_thresholds,
                 min_frequency: config.dns.cache_min_frequency,
                 min_lfuk_score: config.dns.cache_min_lfuk_score,
+                shard_amount: config.dns.cache_shard_amount,
             }))
         } else {
             Arc::new(DnsCache::new(DnsCacheConfig {
@@ -208,6 +226,7 @@ impl DnsServices {
                 adaptive_thresholds: false,
                 min_frequency: 0,
                 min_lfuk_score: 0.0,
+                shard_amount: 4,
             }))
         }
     }

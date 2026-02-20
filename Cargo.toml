@@ -24,12 +24,12 @@ ferrous-dns-api = { path = "crates/api" }
 
 tokio = { version = "1", features = ["full"] }
 fastrand = "2.0"
-lru = "0.12"
+lru = "0.16.3"
 ahash = "0.8"
-bloomfilter = "1.0"
+bloomfilter = "3.0.1"
 arc-swap = "1.7"
 aho-corasick = "1.1"
-fancy-regex = "0.13"
+fancy-regex = "0.17.0"
 hostname = "0.4"
 async-trait = "0.1"
 axum = { version = "0.8.8", features = ["macros"] }
@@ -50,12 +50,13 @@ toml = "0.9.8"
 dashmap = "6.1"
 futures = "0.3"
 rustc-hash = "2.1.0"
-compact_str = "0.8.1"
+compact_str = "0.9.0"
 smallvec = "1.15.1"
 socket2 = "0.6.2"
 
 # DNSSEC Crypto (FASE 2)
 ring = "0.17"
+sha1 = "0.10"
 sha2 = "0.10"
 base64 = "0.22.1"
 
@@ -64,6 +65,8 @@ rustls = "0.23"
 tokio-rustls = "0.26"
 webpki-roots = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+bytes = "1"
+mimalloc = { version = "0.1", default-features = false }
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION PROFILES

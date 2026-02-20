@@ -152,7 +152,7 @@ impl DnsTransport for TlsTransport {
                     debug!(server = %self.server_addr, "TLS query via pooled connection");
                     self.return_to_pool(stream);
                     return Ok(TransportResponse {
-                        bytes: response_bytes,
+                        bytes: bytes::Bytes::from(response_bytes),
                         protocol_used: "TLS",
                     });
                 }
@@ -177,7 +177,7 @@ impl DnsTransport for TlsTransport {
         self.return_to_pool(stream);
 
         Ok(TransportResponse {
-            bytes: response_bytes,
+            bytes: bytes::Bytes::from(response_bytes),
             protocol_used: "TLS",
         })
     }

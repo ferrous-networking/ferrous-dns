@@ -423,7 +423,7 @@ impl MockQueryLogRepository {
             record_type: RecordType::A,
             client_ip: ip.parse().unwrap(),
             blocked: false,
-            response_time_ms: Some(10),
+            response_time_us: Some(10),
             cache_hit: false,
             cache_refresh: false,
             dnssec_status: None,

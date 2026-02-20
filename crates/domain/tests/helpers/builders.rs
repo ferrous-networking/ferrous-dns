@@ -9,7 +9,7 @@ pub struct QueryLogBuilder {
     record_type: RecordType,
     client_ip: IpAddr,
     blocked: bool,
-    response_time_ms: Option<u64>,
+    response_time_us: Option<u64>,
     cache_hit: bool,
     cache_refresh: bool,
 }
@@ -21,7 +21,7 @@ impl QueryLogBuilder {
             record_type: RecordType::A,
             client_ip: IpAddr::from_str("192.168.1.100").unwrap(),
             blocked: false,
-            response_time_ms: Some(10),
+            response_time_us: Some(10),
             cache_hit: false,
             cache_refresh: false,
         }
@@ -49,7 +49,7 @@ impl QueryLogBuilder {
             record_type: self.record_type,
             client_ip: self.client_ip,
             blocked: self.blocked,
-            response_time_ms: self.response_time_ms,
+            response_time_us: self.response_time_us,
             cache_hit: self.cache_hit,
             cache_refresh: self.cache_refresh,
             dnssec_status: None,

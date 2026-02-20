@@ -68,7 +68,7 @@ pub struct QueryLog {
     pub record_type: RecordType,
     pub client_ip: IpAddr,
     pub blocked: bool,
-    pub response_time_ms: Option<u64>,
+    pub response_time_us: Option<u64>,
     pub cache_hit: bool,
     pub cache_refresh: bool,
     pub dnssec_status: Option<&'static str>,

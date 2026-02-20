@@ -46,7 +46,7 @@ impl DnsTransport for HttpsTransport {
                 .post(&self.url)
                 .header("Content-Type", DNS_MESSAGE_CONTENT_TYPE)
                 .header("Accept", DNS_MESSAGE_CONTENT_TYPE)
-                .body(message_bytes.to_vec())
+                .body(bytes::Bytes::copy_from_slice(message_bytes))
                 .send(),
         )
         .await
@@ -89,7 +89,7 @@ impl DnsTransport for HttpsTransport {
         );
 
         Ok(TransportResponse {
-            bytes: response_bytes.to_vec(),
+            bytes: response_bytes,
             protocol_used: "HTTPS",
         })
     }

@@ -61,7 +61,7 @@ impl QueryLogEntry {
             record_type: CompactString::from(q.record_type.as_str()),
             client_ip: Arc::from(q.client_ip.to_string()),
             blocked: q.blocked,
-            response_time_ms: q.response_time_ms.map(|t| t as i64),
+            response_time_ms: q.response_time_us.map(|t| t as i64),
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
@@ -129,8 +129,8 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         record_type: record_type_str.parse().ok()?,
         client_ip: client_ip_str.parse().ok()?,
         blocked: row.get::<i64, _>("blocked") != 0,
-        response_time_ms: row
-            .get::<Option<i64>, _>("response_time_ms")
+        response_time_us: row
+            .get::<Option<i64>, _>("response_time_ms") // column kept as-is (SQLite no ALTER COLUMN)
             .map(|t| t as u64),
         cache_hit: row.get::<i64, _>("cache_hit") != 0,
         cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
@@ -304,6 +304,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     datetime(created_at) as created_at
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'
              ORDER BY created_at DESC
              LIMIT ?",
         )
@@ -338,7 +339,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
         let count_row = sqlx::query(
             "SELECT COUNT(*) as total FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')",
+             WHERE created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'",
         )
         .bind(period_hours)
         .fetch_one(&self.pool)
@@ -355,6 +357,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     datetime(created_at) as created_at
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'
              ORDER BY created_at DESC
              LIMIT ? OFFSET ?",
         )
@@ -396,7 +399,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 AVG(CASE WHEN cache_hit = 0 AND blocked = 0 THEN response_time_ms END) as avg_upstream_time
              FROM query_log
              WHERE response_time_ms IS NOT NULL
-               AND created_at >= datetime('now', '-' || ? || ' hours')",
+               AND created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'",
         )
         .bind(period_hours)
         .fetch_one(&self.pool)
@@ -418,6 +422,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "SELECT record_type, COUNT(*) as count
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'
              GROUP BY record_type",
         )
         .bind(period_hours)
@@ -498,6 +503,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END) as unblocked
              FROM query_log
              WHERE created_at >= datetime('now', '-' || ? || ' hours')
+               AND query_source = 'client'
              GROUP BY time_bucket
              ORDER BY time_bucket ASC",
             time_bucket_expr

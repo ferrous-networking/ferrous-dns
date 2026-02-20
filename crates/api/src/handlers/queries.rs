@@ -34,7 +34,7 @@ pub async fn get_queries(
                     client: q.client_ip.to_string(),
                     record_type: q.record_type.as_str().to_string(),
                     blocked: q.blocked,
-                    response_time_ms: q.response_time_ms,
+                    response_time_us: q.response_time_us,
                     cache_hit: q.cache_hit,
                     cache_refresh: q.cache_refresh,
                     dnssec_status: q.dnssec_status.map(|s| s.to_string()),

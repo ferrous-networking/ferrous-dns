@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{DnsQuery, DomainError};
+use hickory_proto::rr::Record;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -11,6 +12,8 @@ pub struct DnsResolution {
     pub cname: Option<String>,
     pub upstream_server: Option<String>,
     pub min_ttl: Option<u32>,
+    /// Records from the AUTHORITY section of the upstream response (e.g. SOA for NODATA).
+    pub authority_records: Vec<Record>,
 }
 
 impl DnsResolution {
@@ -22,6 +25,7 @@ impl DnsResolution {
             cname: None,
             upstream_server: None,
             min_ttl: None,
+            authority_records: vec![],
         }
     }
 
@@ -37,6 +41,7 @@ impl DnsResolution {
             cname: None,
             upstream_server: None,
             min_ttl: None,
+            authority_records: vec![],
         }
     }
 
@@ -53,6 +58,7 @@ impl DnsResolution {
             cname,
             upstream_server: None,
             min_ttl: None,
+            authority_records: vec![],
         }
     }
 }

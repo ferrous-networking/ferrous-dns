@@ -11,6 +11,9 @@ pub enum DomainError {
     #[error("DNSSEC validation failed: {0}")]
     DnssecValidationFailed(String),
 
+    #[error("Insecure DNSSEC delegation: no DS records")]
+    InsecureDelegation,
+
     #[error("Invalid DNS response: {0}")]
     InvalidDnsResponse(String),
 

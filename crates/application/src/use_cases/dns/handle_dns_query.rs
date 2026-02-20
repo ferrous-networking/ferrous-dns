@@ -3,15 +3,18 @@ use crate::ports::{
     QueryLogRepository,
 };
 use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
+use lru::LruCache;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::net::IpAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+const LAST_SEEN_CAPACITY: usize = 8_192;
+
 thread_local! {
-    static LAST_SEEN_TRACKER: RefCell<HashMap<IpAddr, Instant>> =
-        RefCell::new(HashMap::new());
+    static LAST_SEEN_TRACKER: RefCell<LruCache<IpAddr, Instant>> =
+        RefCell::new(LruCache::new(NonZeroUsize::new(LAST_SEEN_CAPACITY).unwrap()));
 }
 
 pub struct HandleDnsQueryUseCase {
@@ -53,13 +56,12 @@ impl HandleDnsQueryUseCase {
         if let Some(client_repo) = &self.client_repo {
             let needs_update = LAST_SEEN_TRACKER.with(|t| {
                 let mut tracker = t.borrow_mut();
-                let now = Instant::now();
-                match tracker.get(&request.client_ip) {
-                    Some(&last) if now.duration_since(last) < self.client_tracking_interval => {
+                match tracker.peek(&request.client_ip) {
+                    Some(&last) if start.duration_since(last) < self.client_tracking_interval => {
                         false
                     }
                     _ => {
-                        tracker.insert(request.client_ip, now);
+                        tracker.put(request.client_ip, start);
                         true
                     }
                 }
@@ -89,7 +91,7 @@ impl HandleDnsQueryUseCase {
                     record_type: request.record_type,
                     client_ip: request.client_ip,
                     blocked: false,
-                    response_time_ms: Some(start.elapsed().as_micros() as u64),
+                    response_time_us: Some(start.elapsed().as_micros() as u64),
                     cache_hit: true,
                     cache_refresh: false,
                     dnssec_status: cached.dnssec_status,
@@ -119,7 +121,7 @@ impl HandleDnsQueryUseCase {
                 record_type: request.record_type,
                 client_ip: request.client_ip,
                 blocked: true,
-                response_time_ms: Some(start.elapsed().as_millis() as u64),
+                response_time_us: Some(start.elapsed().as_micros() as u64),
                 cache_hit: false,
                 cache_refresh: false,
                 dnssec_status: None,
@@ -148,7 +150,7 @@ impl HandleDnsQueryUseCase {
                     record_type: request.record_type,
                     client_ip: request.client_ip,
                     blocked: false,
-                    response_time_ms: Some(response_time_us),
+                    response_time_us: Some(response_time_us),
                     cache_hit: resolution.cache_hit,
                     cache_refresh: false,
                     dnssec_status: resolution.dnssec_status,
@@ -180,7 +182,7 @@ impl HandleDnsQueryUseCase {
                     record_type: request.record_type,
                     client_ip: request.client_ip,
                     blocked: false,
-                    response_time_ms: Some(elapsed_micros),
+                    response_time_us: Some(elapsed_micros),
                     cache_hit: false,
                     cache_refresh: false,
                     dnssec_status: None,
