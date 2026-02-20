@@ -3,9 +3,33 @@ use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, Evic
 use std::net::IpAddr;
 use std::sync::Arc;
 
+/// Cria um cache com refresh_threshold=0.0 (qualquer entrada passa o filtro de tempo)
+/// e access_window_secs configurável para testes de refresh.
+fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
+    DnsCache::new(DnsCacheConfig {
+        max_entries: 100,
+        eviction_strategy: EvictionStrategy::HitRate,
+        min_threshold: 0.0,
+        refresh_threshold: 0.0, // toda entrada qualifica pelo tempo imediatamente
+        lfuk_history_size: 10,
+        batch_eviction_percentage: 0.2,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs,
+    })
+}
+
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
     CachedData::IpAddresses(Arc::new(vec![addr]))
+}
+
+/// Cria dados CNAME que NÃO vão para o cache L1 (apenas IpAddresses usam L1).
+/// Usar isso em testes que precisam que cache.get() incremente hit_count no L2.
+fn make_cname_data(name: &str) -> CachedData {
+    CachedData::CanonicalName(Arc::from(name))
 }
 
 fn create_cache(
@@ -25,6 +49,7 @@ fn create_cache(
         min_frequency,
         min_lfuk_score,
         shard_amount: 4,
+        access_window_secs: 7200,
     })
 }
 
@@ -253,4 +278,196 @@ fn test_lfuk_eviction_respects_min_score() {
             .is_some(),
         "domain0 with high LFUK score should survive eviction"
     );
+}
+
+// ─── Testes de refresh_record e get_refresh_candidates ───────────────────────
+
+#[test]
+fn test_refresh_candidates_requires_hit_count() {
+    // Entradas sem nenhum hit no cache L2 NÃO devem ser candidatas,
+    // mesmo que o threshold de tempo seja 0 (passam imediatamente).
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "never-hit.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        300,
+        None,
+    );
+
+    // Não chamamos cache.get() → hit_count permanece 0
+    let candidates = cache.get_refresh_candidates();
+    assert!(
+        candidates.is_empty(),
+        "Entrada sem hits não deve ser candidata ao refresh; candidates={:?}",
+        candidates
+    );
+}
+
+#[test]
+fn test_refresh_candidates_with_recent_access() {
+    // Entrada com hit_count > 0 e access_window grande DEVE ser candidata.
+    // Usa CNAME para evitar L1 cache (apenas IpAddresses vão para L1).
+    // Sem L1, cache.get() vai para L2 e chama record_hit(), incrementando hit_count.
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "popular.com",
+        RecordType::CNAME,
+        make_cname_data("alias.popular.com"),
+        300,
+        None,
+    );
+
+    // Simular um cache hit (vai para L2 pois CNAME não está em L1)
+    cache.get(&Arc::from("popular.com"), &RecordType::CNAME);
+
+    let candidates = cache.get_refresh_candidates();
+    assert!(
+        candidates.iter().any(|(d, _)| d == "popular.com"),
+        "Entrada com hit deve ser candidata; candidates={:?}",
+        candidates
+    );
+}
+
+#[test]
+fn test_refresh_candidates_access_window_zero_excludes_entries() {
+    // Com access_window_secs = 0 apenas entradas acessadas no mesmo segundo
+    // exato podem ser candidatas; na prática o coarse clock pode ter avançado
+    // (ou não), mas entradas com hit_count = 0 são sempre excluídas.
+    // Este teste garante que o filtro de hit_count é a primeira barreira.
+    let cache_no_window = create_refresh_cache(0);
+
+    cache_no_window.insert(
+        "zero-window.com",
+        RecordType::A,
+        make_ip_data("5.5.5.5"),
+        300,
+        None,
+    );
+
+    // hit_count=0 → nunca candidato, independente da janela
+    let candidates = cache_no_window.get_refresh_candidates();
+    assert!(
+        candidates.is_empty(),
+        "Sem hits nunca deve ser candidato mesmo com window=0"
+    );
+}
+
+#[test]
+fn test_refresh_record_updates_ttl_fields() {
+    // refresh_record() deve atualizar o TTL e tornar a entrada acessível.
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "renew.com",
+        RecordType::A,
+        make_ip_data("9.9.9.9"),
+        300,
+        None,
+    );
+
+    // Verificar TTL original
+    assert_eq!(cache.get_ttl("renew.com", &RecordType::A), Some(300));
+
+    // Renovar com novo TTL
+    let renewed = cache.refresh_record(
+        "renew.com",
+        &RecordType::A,
+        7200,
+        make_ip_data("9.9.9.9"),
+        None,
+    );
+    assert!(
+        renewed,
+        "refresh_record deve retornar true quando a entrada existe"
+    );
+
+    // TTL atualizado
+    assert_eq!(
+        cache.get_ttl("renew.com", &RecordType::A),
+        Some(7200),
+        "get_ttl deve retornar o novo TTL após refresh_record"
+    );
+
+    // Entrada ainda acessível
+    assert!(
+        cache.get(&Arc::from("renew.com"), &RecordType::A).is_some(),
+        "Entrada deve continuar acessível após refresh_record"
+    );
+}
+
+#[test]
+fn test_refresh_record_preserves_hit_count_for_subsequent_candidates() {
+    // Demonstra a diferença entre cache.insert() (reseta hit_count) e
+    // cache.refresh_record() (preserva hit_count).
+    //
+    // Com refresh_record(): depois de renovar, a entrada continua sendo candidata
+    // porque hit_count foi preservado.
+    let cache = create_refresh_cache(u64::MAX);
+
+    // Usa CNAME para evitar L1: cache.get() vai para L2 e chama record_hit()
+    cache.insert(
+        "keep-alive.com",
+        RecordType::CNAME,
+        make_cname_data("alias.keep-alive.com"),
+        300,
+        None,
+    );
+    cache.get(&Arc::from("keep-alive.com"), &RecordType::CNAME); // hit_count = 1
+
+    // Antes do refresh: deve ser candidata
+    let before = cache.get_refresh_candidates();
+    assert!(
+        before.iter().any(|(d, _)| d == "keep-alive.com"),
+        "Entrada deve ser candidata antes do refresh; candidates={:?}",
+        before
+    );
+
+    // Renovar via refresh_record (preserva hit_count)
+    cache.refresh_record(
+        "keep-alive.com",
+        &RecordType::CNAME,
+        300,
+        make_cname_data("alias.keep-alive.com"),
+        None,
+    );
+
+    // Depois do refresh_record: AINDA deve ser candidata porque hit_count foi preservado
+    let after = cache.get_refresh_candidates();
+    assert!(
+        after.iter().any(|(d, _)| d == "keep-alive.com"),
+        "Entrada deve continuar candidata após refresh_record (hit_count preservado); candidates={:?}",
+        after
+    );
+}
+
+#[test]
+fn test_refresh_record_returns_false_for_missing_entry() {
+    // refresh_record em entrada inexistente deve retornar false sem panic.
+    let cache = create_refresh_cache(u64::MAX);
+
+    let result = cache.refresh_record(
+        "nonexistent.com",
+        &RecordType::A,
+        300,
+        make_ip_data("1.1.1.1"),
+        None,
+    );
+
+    assert!(
+        !result,
+        "refresh_record deve retornar false para entrada inexistente"
+    );
+}
+
+#[test]
+fn test_access_window_secs_getter() {
+    // Verifica que o getter access_window_secs() retorna o valor correto.
+    let cache = create_refresh_cache(3600);
+    assert_eq!(cache.access_window_secs(), 3600);
+
+    let cache2 = create_refresh_cache(86400);
+    assert_eq!(cache2.access_window_secs(), 86400);
 }

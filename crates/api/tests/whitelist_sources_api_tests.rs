@@ -214,6 +214,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             min_frequency: 0,
             min_lfuk_score: 0.0,
             shard_amount: 4,
+            access_window_secs: 7200,
         },
     ));
 

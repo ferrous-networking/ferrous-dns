@@ -19,6 +19,7 @@ fn test_config_default_values() {
     assert!((config.cache_batch_eviction_percentage - 0.1).abs() < f64::EPSILON);
     assert_eq!(config.cache_compaction_interval, 300);
     assert!(!config.cache_adaptive_thresholds);
+    assert_eq!(config.cache_access_window_secs, 7200);
     assert!(config.block_private_ptr);
     assert!(!config.block_non_fqdn);
     assert!(config.local_domain.is_none());
@@ -74,6 +75,7 @@ fn test_config_deserialization_with_all_fields() {
         cache_batch_eviction_percentage = 0.2
         cache_compaction_interval = 120
         cache_adaptive_thresholds = true
+        cache_access_window_secs = 3600
         block_private_ptr = false
         block_non_fqdn = true
         local_domain = "home.lan"
@@ -91,6 +93,7 @@ fn test_config_deserialization_with_all_fields() {
     assert_eq!(config.cache_min_frequency, 20);
     assert_eq!(config.cache_min_lfuk_score, 2.0);
     assert!(config.cache_adaptive_thresholds);
+    assert_eq!(config.cache_access_window_secs, 3600);
     assert!(!config.block_private_ptr);
     assert!(config.block_non_fqdn);
     assert_eq!(config.local_domain, Some("home.lan".to_string()));

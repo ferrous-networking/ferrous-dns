@@ -214,6 +214,7 @@ impl DnsServices {
                 min_frequency: config.dns.cache_min_frequency,
                 min_lfuk_score: config.dns.cache_min_lfuk_score,
                 shard_amount: config.dns.cache_shard_amount,
+                access_window_secs: config.dns.cache_access_window_secs,
             }))
         } else {
             Arc::new(DnsCache::new(DnsCacheConfig {
@@ -227,6 +228,7 @@ impl DnsServices {
                 min_frequency: 0,
                 min_lfuk_score: 0.0,
                 shard_amount: 4,
+                access_window_secs: 0,
             }))
         }
     }

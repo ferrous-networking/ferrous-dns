@@ -21,6 +21,10 @@ cache_lfuk_history_size = 10
 cache_batch_eviction_percentage = 0.1
 cache_compaction_interval = 600
 cache_adaptive_thresholds = false
+# Janela de tempo (segundos) desde o último acesso para manter a entrada viva via refresh otimista.
+# Entradas com ao menos 1 hit acessadas dentro dessa janela serão renovadas antes de expirar.
+# Ex.: 7200 = 2h, 43200 = 12h, 86400 = 24h
+cache_access_window_secs = 7200
 # Número de shards internos do cache (DashMap).
 # Quando omitido, é detectado automaticamente: 4× cores da CPU arredondado
 # para potência de 2 (RPi 4 → 16, servidor 8 cores → 32, 16 cores → 64).

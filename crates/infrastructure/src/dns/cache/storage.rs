@@ -22,6 +22,7 @@ pub struct DnsCacheConfig {
     pub min_frequency: u64,
     pub min_lfuk_score: f64,
     pub shard_amount: usize,
+    pub access_window_secs: u64,
 }
 
 pub struct DnsCache {
@@ -40,6 +41,7 @@ pub struct DnsCache {
     pub(super) compaction_counter: Arc<AtomicUsize>,
     pub(super) use_probabilistic_eviction: bool,
     pub(super) bloom: Arc<AtomicBloom>,
+    pub(super) access_window_secs: u64,
 }
 
 impl DnsCache {
@@ -75,6 +77,7 @@ impl DnsCache {
             compaction_counter: Arc::new(AtomicUsize::new(0)),
             use_probabilistic_eviction: true,
             bloom: Arc::new(bloom),
+            access_window_secs: config.access_window_secs,
         }
     }
 
@@ -259,6 +262,48 @@ impl DnsCache {
 
     pub fn strategy(&self) -> EvictionStrategy {
         self.eviction_strategy
+    }
+
+    pub fn access_window_secs(&self) -> u64 {
+        self.access_window_secs
+    }
+
+    /// Atualiza TTL de uma entrada existente in-place, preservando `hit_count` e `last_access`.
+    /// Retorna `true` se a entrada foi encontrada e atualizada, `false` caso contrário.
+    pub fn refresh_record(
+        &self,
+        domain: &str,
+        record_type: &RecordType,
+        new_ttl: u32,
+        new_data: CachedData,
+        dnssec_status: Option<DnssecStatus>,
+    ) -> bool {
+        let key = CacheKey::from_str(domain, *record_type);
+        let now = coarse_now_secs();
+
+        if let Some(mut entry) = self.cache.get_mut(&key) {
+            let record = entry.value_mut();
+            if record.permanent || record.is_marked_for_deletion() {
+                return false;
+            }
+            record.expires_at_secs = now + new_ttl as u64;
+            record.inserted_at_secs = now;
+            record.ttl = new_ttl;
+            record.data = new_data.clone();
+            if let Some(ds) = dnssec_status {
+                record.dnssec_status = ds;
+            }
+            record
+                .refreshing
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+
+            if let CachedData::IpAddresses(ref addresses) = new_data {
+                l1_insert(domain, record_type, Arc::clone(addresses), new_ttl);
+            }
+            true
+        } else {
+            false
+        }
     }
 
     fn promote_to_l1(

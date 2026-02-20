@@ -62,6 +62,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             cache_refresh_threshold: config.dns.cache_refresh_threshold,
             cache_optimistic_refresh: config.dns.cache_optimistic_refresh,
             cache_adaptive_thresholds: config.dns.cache_adaptive_thresholds,
+            cache_access_window_secs: config.dns.cache_access_window_secs,
             block_non_fqdn: config.dns.block_non_fqdn,
             block_private_ptr: config.dns.block_private_ptr,
             local_domain: config.dns.local_domain.clone(),

@@ -604,6 +604,11 @@
                             <label class="form-label">Compaction Interval (s)</label>
                             <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60">
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Access Window (s)</label>
+                            <input type="number" x-model.number="config.dns.cache_access_window_secs" min="0" step="3600">
+                            <small style="color:var(--text-secondary)">Entradas com 1+ hits acessadas dentro desta janela são renovadas (ex.: 7200=2h, 86400=24h)</small>
+                        </div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:12px">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -648,7 +653,8 @@
                     cache_refresh_threshold: 0.8,
                     cache_compaction_interval: 300,
                     cache_optimistic_refresh: true,
-                    cache_adaptive_thresholds: true
+                    cache_adaptive_thresholds: true,
+                    cache_access_window_secs: 7200
                 }
             },
             settings: {
@@ -725,7 +731,8 @@
                                 cache_refresh_threshold: data.dns?.cache_refresh_threshold ?? 0.8,
                                 cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
                                 cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
-                                cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true
+                                cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
+                                cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200
                             }
                         };
                         if (this.config.dns.pools.length === 0 && data.dns?.upstream_servers?.length > 0) {

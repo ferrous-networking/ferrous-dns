@@ -174,13 +174,18 @@ impl CacheUpdater {
                 let dnssec_status: Option<super::cache::DnssecStatus> =
                     resolution.dnssec_status.and_then(|s| s.parse().ok());
 
-                cache.insert(
+                let refreshed = cache.refresh_record(
                     domain,
-                    *record_type,
-                    super::cache::CachedData::IpAddresses(Arc::clone(&resolution.addresses)),
+                    record_type,
                     ttl,
+                    super::cache::CachedData::IpAddresses(Arc::clone(&resolution.addresses)),
                     dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );
+
+                if !refreshed {
+                    // Entrada foi removida entre a seleção e o refresh; ignora
+                    return Ok(false);
+                }
 
                 if let Some(log) = query_log {
                     let log_entry = QueryLog {

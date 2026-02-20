@@ -69,6 +69,9 @@ pub async fn update_config(
         if let Some(adaptive) = dns_update.cache_adaptive_thresholds {
             config.dns.cache_adaptive_thresholds = adaptive;
         }
+        if let Some(window) = dns_update.cache_access_window_secs {
+            config.dns.cache_access_window_secs = window;
+        }
         if let Some(block_non_fqdn) = dns_update.block_non_fqdn {
             config.dns.block_non_fqdn = block_non_fqdn;
         }
