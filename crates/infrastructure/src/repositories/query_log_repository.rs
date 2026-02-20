@@ -41,7 +41,7 @@ fn build_multi_insert_sql(n: usize) -> String {
 struct QueryLogEntry {
     domain: CompactString,
     record_type: CompactString,
-    client_ip: Arc<str>,
+    client_ip: CompactString,
     blocked: bool,
     response_time_ms: Option<i64>,
     cache_hit: bool,
@@ -59,7 +59,7 @@ impl QueryLogEntry {
         Self {
             domain: CompactString::from(q.domain.as_ref()),
             record_type: CompactString::from(q.record_type.as_str()),
-            client_ip: Arc::from(q.client_ip.to_string()),
+            client_ip: CompactString::from(q.client_ip.to_string()),
             blocked: q.blocked,
             response_time_ms: q.response_time_us.map(|t| t as i64),
             cache_hit: q.cache_hit,
@@ -229,7 +229,7 @@ impl SqliteQueryLogRepository {
                 q = q
                     .bind(entry.domain.as_str())
                     .bind(entry.record_type.as_str())
-                    .bind(entry.client_ip.as_ref())
+                    .bind(entry.client_ip.as_str())
                     .bind(if entry.blocked { 1i64 } else { 0i64 })
                     .bind(entry.response_time_ms)
                     .bind(if entry.cache_hit { 1i64 } else { 0i64 })
@@ -273,6 +273,10 @@ impl SqliteQueryLogRepository {
 #[async_trait]
 impl QueryLogRepository for SqliteQueryLogRepository {
     async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError> {
+        self.log_query_sync(query)
+    }
+
+    fn log_query_sync(&self, query: &QueryLog) -> Result<(), DomainError> {
         let entry = QueryLogEntry::from_query_log(query);
         match self.sender.try_send(entry) {
             Ok(()) => Ok(()),

@@ -708,6 +708,7 @@ dependencies = [
  "chrono",
  "compact_str",
  "dashmap",
+ "equivalent",
  "fancy-regex",
  "fastrand",
  "ferrous-dns-application",

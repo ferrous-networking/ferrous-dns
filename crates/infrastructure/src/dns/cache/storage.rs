@@ -112,7 +112,7 @@ impl DnsCache {
             return Some((CachedData::IpAddresses(arc_data), None, Some(remaining_ttl)));
         }
 
-        let key = CacheKey::new(Arc::clone(domain), *record_type);
+        let key = CacheKey::new(domain.as_ref(), *record_type);
         if let Some(entry) = self.cache.get(&key) {
             let record = entry.value();
 
@@ -127,8 +127,10 @@ impl DnsCache {
             }
 
             if record.is_expired_at_secs(now_secs) {
+                // Mark for deletion while holding the existing ref — avoids a
+                // second DashMap lock acquisition that lazy_remove() would cause.
+                record.mark_for_deletion();
                 drop(entry);
-                self.lazy_remove(&key);
                 self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
                 return None;
             }
@@ -276,12 +278,6 @@ impl DnsCache {
         }
     }
 
-    fn lazy_remove(&self, key: &CacheKey) {
-        if let Some(entry) = self.cache.get(key) {
-            entry.value().mark_for_deletion();
-        }
-    }
-
     fn evict_random_entry(&self) {
         if let Some(entry) = self.cache.iter().next() {
             let key = entry.key().clone();
@@ -311,6 +307,8 @@ impl DnsCache {
             return;
         }
 
+        // Single clock read shared across all eviction iterations.
+        let now_secs = coarse_now_secs();
         let mut total_evicted = 0usize;
         let mut last_worst_score = f64::MAX;
 
@@ -318,12 +316,23 @@ impl DnsCache {
             let mut worst_key: Option<CacheKey> = None;
             let mut worst_score = f64::MAX;
             let mut sampled = 0usize;
+            // If we find an already-expired entry we evict it for free and skip
+            // the score-based path entirely for this iteration.
+            let mut expired_key: Option<CacheKey> = None;
 
             for entry in self.cache.iter() {
                 let record = entry.value();
                 if record.is_marked_for_deletion() {
                     continue;
                 }
+
+                // Free eviction: no scoring needed, just collect the key and break
+                // so the iterator is fully dropped before we call remove().
+                if record.is_expired_at_secs(now_secs) {
+                    expired_key = Some(entry.key().clone());
+                    break;
+                }
+
                 let score = self.compute_score(record);
                 if score < worst_score {
                     worst_score = score;
@@ -334,8 +343,12 @@ impl DnsCache {
                     break;
                 }
             }
+            // Iterator is out of scope here — safe to acquire write locks below.
 
-            if let Some(key) = worst_key {
+            if let Some(key) = expired_key {
+                self.cache.remove(&key);
+                total_evicted += 1;
+            } else if let Some(key) = worst_key {
                 self.cache.remove(&key);
                 total_evicted += 1;
                 last_worst_score = worst_score;

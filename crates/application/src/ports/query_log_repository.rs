@@ -15,6 +15,15 @@ pub struct TimelineBucket {
 #[async_trait]
 pub trait QueryLogRepository: Send + Sync {
     async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError>;
+
+    /// Synchronous, non-allocating version of `log_query` for the hot path.
+    /// Avoids the `async_trait` `Box::pin` heap allocation when the
+    /// underlying implementation is purely synchronous (e.g. channel send).
+    fn log_query_sync(&self, query: &QueryLog) -> Result<(), DomainError> {
+        let _ = query;
+        Ok(())
+    }
+
     async fn get_recent(&self, limit: u32, period_hours: f32)
         -> Result<Vec<QueryLog>, DomainError>;
     async fn get_recent_paged(

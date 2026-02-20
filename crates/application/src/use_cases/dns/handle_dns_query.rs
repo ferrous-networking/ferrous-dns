@@ -103,7 +103,7 @@ impl HandleDnsQueryUseCase {
                     block_source: None,
                 };
 
-                if let Err(e) = self.query_log.log_query(&query_log).await {
+                if let Err(e) = self.query_log.log_query_sync(&query_log) {
                     tracing::warn!(error = %e, domain = %request.domain, "Failed to log cached query");
                 }
 

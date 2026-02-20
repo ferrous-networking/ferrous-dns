@@ -1,7 +1,7 @@
+use crate::dns::cache::coarse_clock::coarse_now_secs;
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 pub struct NegativeQueryTracker {
     query_counts: Arc<DashMap<Arc<str>, QueryCounter>>,
@@ -15,7 +15,10 @@ pub struct NegativeQueryTracker {
 
 struct QueryCounter {
     count: AtomicU64,
-    last_reset: Instant,
+    /// Coarse Unix timestamp (seconds) of the last counter reset.
+    /// Using `coarse_now_secs()` instead of `Instant` avoids a VDSO/syscall
+    /// on every negative-response path (~50 ns → ~3 ns).
+    last_reset: u64,
 }
 
 impl NegativeQueryTracker {
@@ -40,20 +43,22 @@ impl NegativeQueryTracker {
     pub fn record_and_get_ttl(&self, domain: &Arc<str>) -> u32 {
         let domain_arc = Arc::clone(domain);
 
+        let now = coarse_now_secs();
+
         let mut entry = self
             .query_counts
             .entry(domain_arc)
             .or_insert_with(|| QueryCounter {
                 count: AtomicU64::new(0),
-                last_reset: Instant::now(),
+                last_reset: now,
             });
 
         let counter = entry.value();
 
-        if counter.last_reset.elapsed() > Duration::from_secs(300) {
+        if now.saturating_sub(counter.last_reset) >= 300 {
             *entry.value_mut() = QueryCounter {
                 count: AtomicU64::new(1),
-                last_reset: Instant::now(),
+                last_reset: now,
             };
             return self.rare_ttl;
         }
@@ -91,9 +96,10 @@ impl NegativeQueryTracker {
 
     pub fn cleanup_old_entries(&self) -> usize {
         let mut removed = 0;
+        let now = coarse_now_secs();
 
         self.query_counts.retain(|_domain, counter| {
-            if counter.last_reset.elapsed() > Duration::from_secs(300) {
+            if now.saturating_sub(counter.last_reset) >= 300 {
                 removed += 1;
                 false
             } else {

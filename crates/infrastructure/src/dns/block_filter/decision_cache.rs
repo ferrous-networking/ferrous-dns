@@ -104,17 +104,19 @@ impl BlockDecisionCache {
 
     #[inline]
     pub fn get_by_key(&self, key: u64) -> Option<Option<BlockSource>> {
-        if let Some(entry) = self.inner.get(&key) {
-            let (encoded, inserted_at) = *entry;
-            if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
-                return Some(decode_source(encoded));
-            }
-            drop(entry);
-            if self.inner.remove(&key).is_some() {
-                self.len.fetch_sub(1, AtomicOrdering::Relaxed);
+        match self.inner.entry(key) {
+            dashmap::Entry::Vacant(_) => None,
+            dashmap::Entry::Occupied(e) => {
+                let (encoded, inserted_at) = *e.get();
+                if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
+                    Some(decode_source(encoded))
+                } else {
+                    e.remove();
+                    self.len.fetch_sub(1, AtomicOrdering::Relaxed);
+                    None
+                }
             }
         }
-        None
     }
 
     #[inline]

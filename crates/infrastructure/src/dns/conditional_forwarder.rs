@@ -19,10 +19,10 @@ impl ConditionalForwarder {
     }
 
     pub fn find_matching_rule(&self, query: &DnsQuery) -> Option<&ConditionalForward> {
-        let record_type_str = query.record_type.to_string();
+        let record_type_str = query.record_type.as_str();
 
         for rule in &self.rules {
-            if rule.matches(&query.domain, &record_type_str) {
+            if rule.matches(&query.domain, record_type_str) {
                 debug!(
                     domain = %query.domain,
                     record_type = %query.record_type,
