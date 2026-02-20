@@ -39,7 +39,7 @@ pub enum DomainError {
     NotFound(String),
 
     #[error("Group not found: {0}")]
-    GroupNotFound(String),
+    GroupNotFound(i64),
 
     #[error("Protected group cannot be disabled")]
     ProtectedGroupCannotBeDisabled,
@@ -66,13 +66,13 @@ pub enum DomainError {
     ClientNotFound(String),
 
     #[error("Blocklist source not found: {0}")]
-    BlocklistSourceNotFound(String),
+    BlocklistSourceNotFound(i64),
 
     #[error("Invalid blocklist source: {0}")]
     InvalidBlocklistSource(String),
 
     #[error("Whitelist source not found: {0}")]
-    WhitelistSourceNotFound(String),
+    WhitelistSourceNotFound(i64),
 
     #[error("Invalid whitelist source: {0}")]
     InvalidWhitelistSource(String),
@@ -84,13 +84,13 @@ pub enum DomainError {
     BlockFilterCompileError(String),
 
     #[error("Managed domain not found: {0}")]
-    ManagedDomainNotFound(String),
+    ManagedDomainNotFound(i64),
 
     #[error("Invalid managed domain: {0}")]
     InvalidManagedDomain(String),
 
     #[error("Regex filter not found: {0}")]
-    RegexFilterNotFound(String),
+    RegexFilterNotFound(i64),
 
     #[error("Invalid regex filter: {0}")]
     InvalidRegexFilter(String),

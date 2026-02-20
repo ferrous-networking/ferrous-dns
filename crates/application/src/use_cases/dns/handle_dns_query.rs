@@ -50,6 +50,26 @@ impl HandleDnsQueryUseCase {
         self
     }
 
+    fn base_query_log(request: &DnsRequest, response_time_us: u64, group_id: i64) -> QueryLog {
+        QueryLog {
+            id: None,
+            domain: Arc::clone(&request.domain),
+            record_type: request.record_type,
+            client_ip: request.client_ip,
+            blocked: false,
+            response_time_us: Some(response_time_us),
+            cache_hit: false,
+            cache_refresh: false,
+            dnssec_status: None,
+            upstream_server: None,
+            response_status: Some("NOERROR"),
+            timestamp: None,
+            query_source: QuerySource::Client,
+            group_id: Some(group_id),
+            block_source: None,
+        }
+    }
+
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
         let start = Instant::now();
 
@@ -79,6 +99,7 @@ impl HandleDnsQueryUseCase {
         }
 
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
+        let group_id = self.block_filter.resolve_group(request.client_ip);
 
         // DNS cache check before block filter: if the domain is already cached it
         // was previously allowed, so we can return immediately and skip the block
@@ -86,21 +107,9 @@ impl HandleDnsQueryUseCase {
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if !cached.addresses.is_empty() {
                 let query_log = QueryLog {
-                    id: None,
-                    domain: Arc::clone(&request.domain),
-                    record_type: request.record_type,
-                    client_ip: request.client_ip,
-                    blocked: false,
-                    response_time_us: Some(start.elapsed().as_micros() as u64),
                     cache_hit: true,
-                    cache_refresh: false,
                     dnssec_status: cached.dnssec_status,
-                    upstream_server: None,
-                    response_status: Some("NOERROR"),
-                    timestamp: None,
-                    query_source: QuerySource::Client,
-                    group_id: Some(self.block_filter.resolve_group(request.client_ip)),
-                    block_source: None,
+                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
                 };
 
                 if let Err(e) = self.query_log.log_query_sync(&query_log) {
@@ -111,26 +120,14 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        let group_id = self.block_filter.resolve_group(request.client_ip);
         let decision = self.block_filter.check(&request.domain, group_id);
 
         if let FilterDecision::Block(block_source) = decision {
             let query_log = QueryLog {
-                id: None,
-                domain: Arc::clone(&request.domain),
-                record_type: request.record_type,
-                client_ip: request.client_ip,
                 blocked: true,
-                response_time_us: Some(start.elapsed().as_micros() as u64),
-                cache_hit: false,
-                cache_refresh: false,
-                dnssec_status: None,
-                upstream_server: None,
                 response_status: Some("BLOCKED"),
-                timestamp: None,
-                query_source: QuerySource::Client,
-                group_id: Some(group_id),
                 block_source: Some(block_source),
+                ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
             };
 
             if let Err(e) = self.query_log.log_query(&query_log).await {
@@ -142,24 +139,11 @@ impl HandleDnsQueryUseCase {
 
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
-                let response_time_us = start.elapsed().as_micros() as u64;
-
                 let query_log = QueryLog {
-                    id: None,
-                    domain: Arc::clone(&request.domain),
-                    record_type: request.record_type,
-                    client_ip: request.client_ip,
-                    blocked: false,
-                    response_time_us: Some(response_time_us),
                     cache_hit: resolution.cache_hit,
-                    cache_refresh: false,
                     dnssec_status: resolution.dnssec_status,
                     upstream_server: resolution.upstream_server.clone(),
-                    response_status: Some("NOERROR"),
-                    timestamp: None,
-                    query_source: QuerySource::Client,
-                    group_id: Some(group_id),
-                    block_source: None,
+                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
                 };
 
                 if let Err(e) = self.query_log.log_query(&query_log).await {
@@ -169,7 +153,6 @@ impl HandleDnsQueryUseCase {
                 Ok(resolution)
             }
             Err(e) => {
-                let elapsed_micros = start.elapsed().as_micros() as u64;
                 let response_status: &'static str = match &e {
                     DomainError::NxDomain => "NXDOMAIN",
                     DomainError::QueryTimeout => "TIMEOUT",
@@ -177,21 +160,8 @@ impl HandleDnsQueryUseCase {
                 };
 
                 let query_log = QueryLog {
-                    id: None,
-                    domain: Arc::clone(&request.domain),
-                    record_type: request.record_type,
-                    client_ip: request.client_ip,
-                    blocked: false,
-                    response_time_us: Some(elapsed_micros),
-                    cache_hit: false,
-                    cache_refresh: false,
-                    dnssec_status: None,
-                    upstream_server: None,
                     response_status: Some(response_status),
-                    timestamp: None,
-                    query_source: QuerySource::Client,
-                    group_id: Some(group_id),
-                    block_source: None,
+                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
                 };
 
                 if let Err(log_err) = self.query_log.log_query(&query_log).await {

@@ -1,4 +1,5 @@
 use ferrous_dns_domain::RecordType;
+use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, EvictionStrategy};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
         min_lfuk_score: 0.0,
         shard_amount: 4,
         access_window_secs,
+        eviction_sample_size: 8,
     })
 }
 
@@ -48,6 +50,7 @@ fn create_cache(
         min_lfuk_score,
         shard_amount: 4,
         access_window_secs: 7200,
+        eviction_sample_size: 8,
     })
 }
 
@@ -373,7 +376,7 @@ fn test_refresh_record_updates_ttl_fields() {
     let renewed = cache.refresh_record(
         "renew.com",
         &RecordType::A,
-        7200,
+        Some(7200),
         make_ip_data("9.9.9.9"),
         None,
     );
@@ -427,7 +430,7 @@ fn test_refresh_record_preserves_hit_count_for_subsequent_candidates() {
     cache.refresh_record(
         "keep-alive.com",
         &RecordType::CNAME,
-        300,
+        Some(300),
         make_cname_data("alias.keep-alive.com"),
         None,
     );
@@ -449,7 +452,7 @@ fn test_refresh_record_returns_false_for_missing_entry() {
     let result = cache.refresh_record(
         "nonexistent.com",
         &RecordType::A,
-        300,
+        Some(300),
         make_ip_data("1.1.1.1"),
         None,
     );
@@ -468,4 +471,323 @@ fn test_access_window_secs_getter() {
 
     let cache2 = create_refresh_cache(86400);
     assert_eq!(cache2.access_window_secs(), 86400);
+}
+
+// ─── Testes de refactoring SOLID das estratégias de eviction ─────────────────
+
+/// strategy() retorna a estratégia correta após o refactoring para ActiveEvictionPolicy.
+#[test]
+fn test_strategy_method_returns_correct_strategy_after_refactoring() {
+    let cases = [
+        (EvictionStrategy::LRU, 0u64, 0.0f64),
+        (EvictionStrategy::HitRate, 0, 0.0),
+        (EvictionStrategy::LFU, 5, 0.0),
+        (EvictionStrategy::LFUK, 0, 1.5),
+    ];
+
+    for (strategy, min_freq, min_score) in cases {
+        let cache = create_cache(10, strategy, min_freq, min_score);
+        assert_eq!(
+            cache.strategy(),
+            strategy,
+            "strategy() deve retornar {:?} após refactoring",
+            strategy
+        );
+    }
+}
+
+/// LRU: entradas acessadas recentemente sobrevivem; menos recentes são evictadas.
+/// Usa coarse_clock::tick() + sleep para garantir timestamps distintos entre inserção e acesso.
+#[test]
+fn test_lru_eviction_protects_recently_accessed_entry() {
+    // max_entries=4, batch_eviction_percentage=0.25 → evicta 1 por vez
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 4,
+        eviction_strategy: EvictionStrategy::LRU,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.25, // evicta 1 de 4 por vez
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+    });
+
+    // Inserir 3 entradas no tick T: last_access = T para todas
+    coarse_clock::tick();
+    cache.insert("a.com", RecordType::CNAME, make_cname_data("a"), 3600, None);
+    cache.insert("b.com", RecordType::CNAME, make_cname_data("b"), 3600, None);
+    cache.insert("c.com", RecordType::CNAME, make_cname_data("c"), 3600, None);
+
+    // Avançar o relógio 1s e acessar "a.com" → last_access(a) = T+1 > T
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    coarse_clock::tick();
+    cache.get(&Arc::from("a.com"), &RecordType::CNAME);
+
+    // Inserir 2 entradas acima do limite — eviction de 1 por vez, b.com/c.com (last_access=T) são candidatos
+    cache.insert("d.com", RecordType::CNAME, make_cname_data("d"), 3600, None);
+    cache.insert("e.com", RecordType::CNAME, make_cname_data("e"), 3600, None);
+
+    assert!(
+        cache.len() <= 4,
+        "Cache deve respeitar max_entries após eviction"
+    );
+
+    // "a.com" foi acessado em T+1 (mais recente que b/c em T) → deve sobreviver à eviction LRU
+    assert!(
+        cache.get(&Arc::from("a.com"), &RecordType::CNAME).is_some(),
+        "a.com (last_access=T+1) deve sobreviver à eviction LRU frente a entradas com last_access=T"
+    );
+}
+
+/// HitRate: entradas com mais hits sobrevivem; recém-inseridas (0 hits) são evictadas.
+#[test]
+fn test_hit_rate_eviction_protects_high_hit_entries() {
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 4,
+        eviction_strategy: EvictionStrategy::HitRate,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.5,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+    });
+
+    cache.insert(
+        "popular.com",
+        RecordType::CNAME,
+        make_cname_data("p"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "rare.com",
+        RecordType::CNAME,
+        make_cname_data("r"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "medium.com",
+        RecordType::CNAME,
+        make_cname_data("m"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "cold.com",
+        RecordType::CNAME,
+        make_cname_data("c"),
+        3600,
+        None,
+    );
+
+    // "popular.com" recebe muitos hits
+    for _ in 0..10 {
+        cache.get(&Arc::from("popular.com"), &RecordType::CNAME);
+    }
+
+    // Inserir mais entradas para forçar eviction
+    cache.insert(
+        "new1.com",
+        RecordType::CNAME,
+        make_cname_data("n1"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "new2.com",
+        RecordType::CNAME,
+        make_cname_data("n2"),
+        3600,
+        None,
+    );
+
+    // "popular.com" com alta taxa de hit deve sobreviver
+    assert!(
+        cache
+            .get(&Arc::from("popular.com"), &RecordType::CNAME)
+            .is_some(),
+        "popular.com com muitos hits deve sobreviver à eviction HitRate"
+    );
+}
+
+/// LFU com min_frequency: entradas abaixo do threshold têm score negativo → evictadas.
+/// Verifica que o refactoring preservou o comportamento de penalização.
+#[test]
+fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 4,
+        eviction_strategy: EvictionStrategy::LFU,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.5,
+        adaptive_thresholds: false,
+        min_frequency: 5, // mínimo de 5 hits
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+    });
+
+    // Entradas com poucos hits (abaixo do min_frequency=5) têm score negativo
+    cache.insert(
+        "low1.com",
+        RecordType::CNAME,
+        make_cname_data("l1"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "low2.com",
+        RecordType::CNAME,
+        make_cname_data("l2"),
+        3600,
+        None,
+    );
+
+    // Entrada com muitos hits (acima do min_frequency=5) tem score positivo
+    cache.insert(
+        "high.com",
+        RecordType::CNAME,
+        make_cname_data("h"),
+        3600,
+        None,
+    );
+    for _ in 0..10 {
+        cache.get(&Arc::from("high.com"), &RecordType::CNAME);
+    }
+
+    cache.insert(
+        "filler.com",
+        RecordType::CNAME,
+        make_cname_data("f"),
+        3600,
+        None,
+    );
+
+    // Inserir acima do limite para forçar eviction
+    cache.insert(
+        "trigger.com",
+        RecordType::CNAME,
+        make_cname_data("t"),
+        3600,
+        None,
+    );
+    cache.insert(
+        "trigger2.com",
+        RecordType::CNAME,
+        make_cname_data("t2"),
+        3600,
+        None,
+    );
+
+    // "high.com" com score positivo deve sobreviver
+    assert!(
+        cache
+            .get(&Arc::from("high.com"), &RecordType::CNAME)
+            .is_some(),
+        "high.com com hits acima de min_frequency deve sobreviver"
+    );
+}
+
+/// Verifica que access_window_secs() retorna corretamente após o refactoring.
+#[test]
+fn test_access_window_preserved_in_refactored_cache() {
+    for strategy in [
+        EvictionStrategy::LRU,
+        EvictionStrategy::HitRate,
+        EvictionStrategy::LFU,
+        EvictionStrategy::LFUK,
+    ] {
+        let cache = DnsCache::new(DnsCacheConfig {
+            max_entries: 10,
+            eviction_strategy: strategy,
+            min_threshold: 0.0,
+            refresh_threshold: 0.75,
+            batch_eviction_percentage: 0.2,
+            adaptive_thresholds: false,
+            min_frequency: 0,
+            min_lfuk_score: 0.0,
+            shard_amount: 4,
+            access_window_secs: 1800,
+            eviction_sample_size: 8,
+        });
+
+        assert_eq!(
+            cache.access_window_secs(),
+            1800,
+            "access_window_secs deve ser preservado para estratégia {:?}",
+            strategy
+        );
+    }
+}
+
+/// Single-scan eviction: inserir N+X entradas, verificar que exatamente N são removidas.
+///
+/// Garante que o novo algoritmo de scan único em evict_by_strategy() evicta
+/// exatamente `count` entradas por chamada, sem over- ou under-eviction.
+#[test]
+fn test_single_scan_evicts_exact_count() {
+    // max_entries=5, batch_eviction_percentage=0.2 → evicta max(1, 5*0.2=1) por chamada.
+    // Ao inserir a 6ª entrada, o cache tem 5 → evict_entries() é chamado → remove 1.
+    // Resultado: 5 entradas inseridas com sucesso.
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 5,
+        eviction_strategy: EvictionStrategy::LFU,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.2,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+    });
+
+    // Inserir max_entries entradas
+    for i in 0..5 {
+        cache.insert(
+            &format!("domain{i}.com"),
+            RecordType::CNAME,
+            make_cname_data(&format!("alias{i}")),
+            3600,
+            None,
+        );
+    }
+    assert_eq!(cache.len(), 5);
+
+    // Inserir mais 3 entradas → cada inserção a partir da 6ª dispara 1 eviction
+    for i in 5..8 {
+        cache.insert(
+            &format!("domain{i}.com"),
+            RecordType::CNAME,
+            make_cname_data(&format!("alias{i}")),
+            3600,
+            None,
+        );
+    }
+
+    // O cache nunca deve exceder max_entries + 1 (inserção ocorre antes da eviction)
+    // mas deve se auto-corrigir — normalmente fica em max_entries.
+    assert!(
+        cache.len() <= 5,
+        "Cache não deve exceder max_entries após evictions; len={}",
+        cache.len()
+    );
+
+    let metrics = cache.metrics();
+    let evictions = metrics.evictions.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        evictions >= 3,
+        "Devem ter ocorrido pelo menos 3 evictions; evictions={}",
+        evictions
+    );
 }

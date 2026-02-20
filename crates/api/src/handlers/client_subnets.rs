@@ -74,7 +74,7 @@ async fn create_subnet(
         }
         Err(DomainError::InvalidCidr(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
         Err(DomainError::SubnetConflict(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to create subnet");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

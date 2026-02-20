@@ -19,10 +19,7 @@ impl DeleteGroupUseCase {
             .group_repo
             .get_by_id(id)
             .await?
-            .ok_or(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                id
-            )))?;
+            .ok_or(DomainError::GroupNotFound(id))?;
 
         if group.is_default {
             return Err(DomainError::ProtectedGroupCannotBeDeleted);

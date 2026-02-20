@@ -35,9 +35,10 @@ impl UpdateRegexFilterUseCase {
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<RegexFilter, DomainError> {
-        self.repo.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::RegexFilterNotFound(format!("Regex filter {} not found", id))
-        })?;
+        self.repo
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::RegexFilterNotFound(id))?;
 
         if let Some(ref n) = name {
             RegexFilter::validate_name(n).map_err(DomainError::InvalidRegexFilter)?;
@@ -56,7 +57,7 @@ impl UpdateRegexFilterUseCase {
             self.group_repo
                 .get_by_id(gid)
                 .await?
-                .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", gid)))?;
+                .ok_or(DomainError::GroupNotFound(gid))?;
         }
 
         let updated = self

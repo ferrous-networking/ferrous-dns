@@ -41,7 +41,7 @@ impl CreateRegexFilterUseCase {
         self.group_repo
             .get_by_id(group_id)
             .await?
-            .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", group_id)))?;
+            .ok_or(DomainError::GroupNotFound(group_id))?;
 
         let filter = self
             .repo

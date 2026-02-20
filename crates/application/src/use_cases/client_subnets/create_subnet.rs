@@ -36,10 +36,7 @@ impl CreateClientSubnetUseCase {
         self.group_repo
             .get_by_id(group_id)
             .await?
-            .ok_or(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                group_id
-            )))?;
+            .ok_or(DomainError::GroupNotFound(group_id))?;
 
         if self.subnet_repo.exists(&subnet_cidr).await? {
             return Err(DomainError::SubnetConflict(format!(

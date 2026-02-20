@@ -145,9 +145,10 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
     ) -> Result<RegexFilter, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let current = self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::RegexFilterNotFound(format!("Regex filter {} not found", id))
-        })?;
+        let current = self
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::RegexFilterNotFound(id))?;
 
         let final_name = name.unwrap_or_else(|| current.name.to_string());
         let final_pattern = pattern.unwrap_or_else(|| current.pattern.to_string());
@@ -187,10 +188,7 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
         })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::RegexFilterNotFound(format!(
-                "Regex filter {} not found",
-                id
-            )));
+            return Err(DomainError::RegexFilterNotFound(id));
         }
 
         self.get_by_id(id).await?.ok_or_else(|| {
@@ -210,10 +208,7 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
             })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::RegexFilterNotFound(format!(
-                "Regex filter {} not found",
-                id
-            )));
+            return Err(DomainError::RegexFilterNotFound(id));
         }
 
         Ok(())

@@ -4,109 +4,106 @@ use ferrous_dns_domain::RecordType;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
+const POPULAR_DOMAINS: &[&str] = &[
+    "google.com",
+    "youtube.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "linkedin.com",
+    "reddit.com",
+    "tiktok.com",
+    "pinterest.com",
+    "amazon.com",
+    "apple.com",
+    "microsoft.com",
+    "github.com",
+    "stackoverflow.com",
+    "cloudflare.com",
+    "openai.com",
+    "anthropic.com",
+    "nvidia.com",
+    "vercel.com",
+    "netflix.com",
+    "spotify.com",
+    "twitch.tv",
+    "discord.com",
+    "vimeo.com",
+    "soundcloud.com",
+    "zoom.us",
+    "slack.com",
+    "notion.so",
+    "figma.com",
+    "wikipedia.org",
+    "medium.com",
+    "cnn.com",
+    "bbc.com",
+    "nytimes.com",
+    "theguardian.com",
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "forbes.com",
+    "ebay.com",
+    "walmart.com",
+    "target.com",
+    "bestbuy.com",
+    "etsy.com",
+    "shopify.com",
+    "aliexpress.com",
+    "mercadolivre.com.br",
+    "alibaba.com",
+    "docker.com",
+    "kubernetes.io",
+    "python.org",
+    "rust-lang.org",
+    "nodejs.org",
+    "golang.org",
+    "mozilla.org",
+    "chromium.org",
+    "ubuntu.com",
+    "archlinux.org",
+    "jsdelivr.net",
+    "unpkg.com",
+    "cdnjs.com",
+    "fonts.googleapis.com",
+    "ajax.googleapis.com",
+    "code.jquery.com",
+    "maxcdn.com",
+    "akamai.com",
+    "google-analytics.com",
+    "doubleclick.net",
+    "googlesyndication.com",
+    "googleadservices.com",
+    "facebook.net",
+    "scorecardresearch.com",
+    "wordpress.com",
+    "wix.com",
+    "squarespace.com",
+    "paypal.com",
+    "stripe.com",
+    "mailchimp.com",
+    "dropbox.com",
+    "drive.google.com",
+    "docs.google.com",
+    "gmail.com",
+    "outlook.com",
+    "yahoo.com",
+    "hotmail.com",
+    "protonmail.com",
+];
+
 pub struct CacheWarmer {
     pool_manager: Arc<PoolManager>,
-    popular_domains: Vec<String>,
+    popular_domains: &'static [&'static str],
 }
 
 impl CacheWarmer {
     pub fn new(pool_manager: Arc<PoolManager>) -> Self {
-        let popular_domains = vec![
-            "google.com",
-            "youtube.com",
-            "facebook.com",
-            "twitter.com",
-            "x.com",
-            "instagram.com",
-            "linkedin.com",
-            "reddit.com",
-            "tiktok.com",
-            "pinterest.com",
-            "amazon.com",
-            "apple.com",
-            "microsoft.com",
-            "github.com",
-            "stackoverflow.com",
-            "cloudflare.com",
-            "openai.com",
-            "anthropic.com",
-            "nvidia.com",
-            "vercel.com",
-            "netflix.com",
-            "spotify.com",
-            "twitch.tv",
-            "discord.com",
-            "vimeo.com",
-            "soundcloud.com",
-            "zoom.us",
-            "slack.com",
-            "notion.so",
-            "figma.com",
-            "wikipedia.org",
-            "medium.com",
-            "cnn.com",
-            "bbc.com",
-            "nytimes.com",
-            "theguardian.com",
-            "reuters.com",
-            "bloomberg.com",
-            "wsj.com",
-            "forbes.com",
-            "ebay.com",
-            "walmart.com",
-            "target.com",
-            "bestbuy.com",
-            "etsy.com",
-            "shopify.com",
-            "aliexpress.com",
-            "mercadolivre.com.br",
-            "alibaba.com",
-            "docker.com",
-            "kubernetes.io",
-            "python.org",
-            "rust-lang.org",
-            "nodejs.org",
-            "golang.org",
-            "mozilla.org",
-            "chromium.org",
-            "ubuntu.com",
-            "archlinux.org",
-            "jsdelivr.net",
-            "unpkg.com",
-            "cdnjs.com",
-            "fonts.googleapis.com",
-            "ajax.googleapis.com",
-            "code.jquery.com",
-            "maxcdn.com",
-            "akamai.com",
-            "google-analytics.com",
-            "doubleclick.net",
-            "googlesyndication.com",
-            "googleadservices.com",
-            "facebook.net",
-            "scorecardresearch.com",
-            "wordpress.com",
-            "wix.com",
-            "squarespace.com",
-            "paypal.com",
-            "stripe.com",
-            "mailchimp.com",
-            "dropbox.com",
-            "drive.google.com",
-            "docs.google.com",
-            "gmail.com",
-            "outlook.com",
-            "yahoo.com",
-            "hotmail.com",
-            "protonmail.com",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect();
-
         Self {
             pool_manager,
-            popular_domains,
+            popular_domains: POPULAR_DOMAINS,
         }
     }
 
@@ -118,25 +115,27 @@ impl CacheWarmer {
         let start = std::time::Instant::now();
         let mut stats = WarmingStats::default();
 
-        for domain in &self.popular_domains {
+        for domain in self.popular_domains {
             match self
                 .pool_manager
                 .query(domain, &RecordType::A, timeout_ms)
                 .await
             {
                 Ok(result) => {
-                    let addrs = result.response.addresses.clone();
-                    if !addrs.is_empty() {
+                    let is_nxdomain = result.response.is_nxdomain();
+                    let is_nodata = result.response.is_nodata();
+                    let addresses = result.response.addresses;
+                    if !addresses.is_empty() {
                         cache.insert(
                             domain,
                             RecordType::A,
-                            CachedData::IpAddresses(Arc::new(addrs)),
+                            CachedData::IpAddresses(Arc::new(addresses)),
                             ttl,
                             Some(DnssecStatus::Unknown),
                         );
                         stats.successful_a += 1;
                         debug!(domain = %domain, "Warmed A record");
-                    } else if result.response.is_nxdomain() || result.response.is_nodata() {
+                    } else if is_nxdomain || is_nodata {
                         cache.insert(
                             domain,
                             RecordType::A,
@@ -158,12 +157,12 @@ impl CacheWarmer {
                 .query(domain, &RecordType::AAAA, timeout_ms)
                 .await
             {
-                let addrs = result.response.addresses.clone();
-                if !addrs.is_empty() {
+                let addresses = result.response.addresses;
+                if !addresses.is_empty() {
                     cache.insert(
                         domain,
                         RecordType::AAAA,
-                        CachedData::IpAddresses(Arc::new(addrs)),
+                        CachedData::IpAddresses(Arc::new(addresses)),
                         ttl,
                         Some(DnssecStatus::Unknown),
                     );

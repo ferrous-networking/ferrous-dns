@@ -713,9 +713,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
         let source = sources
             .iter_mut()
             .find(|s| s.id == Some(id))
-            .ok_or_else(|| {
-                DomainError::BlocklistSourceNotFound(format!("Blocklist source {} not found", id))
-            })?;
+            .ok_or(DomainError::BlocklistSourceNotFound(id))?;
 
         if let Some(n) = name {
             source.name = Arc::from(n.as_str());
@@ -741,10 +739,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
         let len_before = sources.len();
         sources.retain(|s| s.id != Some(id));
         if sources.len() == len_before {
-            return Err(DomainError::BlocklistSourceNotFound(format!(
-                "Blocklist source {} not found",
-                id
-            )));
+            return Err(DomainError::BlocklistSourceNotFound(id));
         }
         Ok(())
     }
@@ -829,7 +824,7 @@ impl GroupRepository for MockGroupRepository {
         let group = groups
             .iter_mut()
             .find(|g| g.id == Some(id))
-            .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", id)))?;
+            .ok_or(DomainError::GroupNotFound(id))?;
 
         if let Some(n) = name {
             group.name = Arc::from(n.as_str());
@@ -848,10 +843,7 @@ impl GroupRepository for MockGroupRepository {
         let len_before = groups.len();
         groups.retain(|g| g.id != Some(id));
         if groups.len() == len_before {
-            return Err(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                id
-            )));
+            return Err(DomainError::GroupNotFound(id));
         }
         Ok(())
     }
@@ -1034,9 +1026,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
         let source = sources
             .iter_mut()
             .find(|s| s.id == Some(id))
-            .ok_or_else(|| {
-                DomainError::WhitelistSourceNotFound(format!("Whitelist source {} not found", id))
-            })?;
+            .ok_or(DomainError::WhitelistSourceNotFound(id))?;
 
         if let Some(n) = name {
             source.name = Arc::from(n.as_str());
@@ -1062,10 +1052,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
         let len_before = sources.len();
         sources.retain(|s| s.id != Some(id));
         if sources.len() == len_before {
-            return Err(DomainError::WhitelistSourceNotFound(format!(
-                "Whitelist source {} not found",
-                id
-            )));
+            return Err(DomainError::WhitelistSourceNotFound(id));
         }
         Ok(())
     }
@@ -1304,9 +1291,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
         let managed = domains
             .iter_mut()
             .find(|d| d.id == Some(id))
-            .ok_or_else(|| {
-                DomainError::ManagedDomainNotFound(format!("Managed domain {} not found", id))
-            })?;
+            .ok_or(DomainError::ManagedDomainNotFound(id))?;
 
         if let Some(n) = name {
             managed.name = Arc::from(n.as_str());
@@ -1335,10 +1320,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
         let len_before = domains.len();
         domains.retain(|d| d.id != Some(id));
         if domains.len() == len_before {
-            return Err(DomainError::ManagedDomainNotFound(format!(
-                "Managed domain {} not found",
-                id
-            )));
+            return Err(DomainError::ManagedDomainNotFound(id));
         }
         Ok(())
     }

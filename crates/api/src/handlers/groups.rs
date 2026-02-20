@@ -100,7 +100,7 @@ async fn update_group(
             let client_count = state.get_groups.count_clients_in_group(id).await.ok();
             Ok(Json(GroupResponse::from_group(group, client_count)))
         }
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::NOT_FOUND, e.to_string())),
         Err(DomainError::ProtectedGroupCannotBeDisabled) => Err((
             StatusCode::BAD_REQUEST,
             "Cannot disable the default Protected group".to_string(),
@@ -119,7 +119,7 @@ async fn delete_group(
 ) -> Result<StatusCode, (StatusCode, String)> {
     match state.delete_group.execute(id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::NOT_FOUND, e.to_string())),
         Err(DomainError::ProtectedGroupCannotBeDeleted) => Err((
             StatusCode::FORBIDDEN,
             "Cannot delete the default Protected group".to_string(),

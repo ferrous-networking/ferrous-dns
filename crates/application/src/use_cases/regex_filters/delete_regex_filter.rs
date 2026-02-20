@@ -22,9 +22,10 @@ impl DeleteRegexFilterUseCase {
 
     #[instrument(skip(self))]
     pub async fn execute(&self, id: i64) -> Result<(), DomainError> {
-        self.repo.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::RegexFilterNotFound(format!("Regex filter {} not found", id))
-        })?;
+        self.repo
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::RegexFilterNotFound(id))?;
 
         self.repo.delete(id).await?;
 

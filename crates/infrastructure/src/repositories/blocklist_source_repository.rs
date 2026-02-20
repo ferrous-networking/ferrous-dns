@@ -130,9 +130,10 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
     ) -> Result<BlocklistSource, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let current = self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::BlocklistSourceNotFound(format!("Blocklist source {} not found", id))
-        })?;
+        let current = self
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::BlocklistSourceNotFound(id))?;
 
         let final_name = name.unwrap_or_else(|| current.name.to_string());
         let final_url: Option<String> = match url {
@@ -171,10 +172,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
         })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::BlocklistSourceNotFound(format!(
-                "Blocklist source {} not found",
-                id
-            )));
+            return Err(DomainError::BlocklistSourceNotFound(id));
         }
 
         self.get_by_id(id).await?.ok_or_else(|| {
@@ -194,10 +192,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
             })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::BlocklistSourceNotFound(format!(
-                "Blocklist source {} not found",
-                id
-            )));
+            return Err(DomainError::BlocklistSourceNotFound(id));
         }
 
         Ok(())

@@ -91,7 +91,7 @@ async fn create_regex_filter(
             Json(RegexFilterResponse::from_domain(filter)),
         )),
         Err(DomainError::InvalidRegexFilter(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to create regex filter");
             Err((StatusCode::BAD_REQUEST, e.to_string()))
@@ -128,9 +128,9 @@ async fn update_regex_filter(
         .await
     {
         Ok(filter) => Ok(Json(RegexFilterResponse::from_domain(filter))),
-        Err(DomainError::RegexFilterNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::RegexFilterNotFound(_)) => Err((StatusCode::NOT_FOUND, e.to_string())),
         Err(DomainError::InvalidRegexFilter(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to update regex filter");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -144,7 +144,7 @@ async fn delete_regex_filter(
 ) -> Result<StatusCode, (StatusCode, String)> {
     match state.delete_regex_filter.execute(id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(DomainError::RegexFilterNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::RegexFilterNotFound(_)) => Err((StatusCode::NOT_FOUND, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to delete regex filter");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

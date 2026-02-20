@@ -136,9 +136,10 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
     ) -> Result<ManagedDomain, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let current = self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::ManagedDomainNotFound(format!("Managed domain {} not found", id))
-        })?;
+        let current = self
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::ManagedDomainNotFound(id))?;
 
         let final_name = name.unwrap_or_else(|| current.name.to_string());
         let final_domain = domain.unwrap_or_else(|| current.domain.to_string());
@@ -176,10 +177,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::ManagedDomainNotFound(format!(
-                "Managed domain {} not found",
-                id
-            )));
+            return Err(DomainError::ManagedDomainNotFound(id));
         }
 
         self.get_by_id(id).await?.ok_or_else(|| {
@@ -199,10 +197,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
             })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::ManagedDomainNotFound(format!(
-                "Managed domain {} not found",
-                id
-            )));
+            return Err(DomainError::ManagedDomainNotFound(id));
         }
 
         Ok(())

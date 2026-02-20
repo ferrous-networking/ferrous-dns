@@ -32,7 +32,7 @@ pub async fn assign_client_to_group(
             group_id: client.group_id,
         })),
         Err(DomainError::NotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to assign client to group");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

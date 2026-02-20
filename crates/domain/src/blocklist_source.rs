@@ -35,35 +35,14 @@ impl BlocklistSource {
     }
 
     pub fn validate_name(name: &str) -> Result<(), String> {
-        if name.is_empty() {
-            return Err("Blocklist source name cannot be empty".to_string());
-        }
-
-        if name.len() > 200 {
-            return Err("Blocklist source name cannot exceed 200 characters".to_string());
-        }
-
-        Ok(())
+        crate::validators::validate_source_name(name, "Blocklist source")
     }
 
     pub fn validate_url(url: &Option<Arc<str>>) -> Result<(), String> {
-        if let Some(u) = url {
-            if u.len() > 2048 {
-                return Err("URL cannot exceed 2048 characters".to_string());
-            }
-            if !u.starts_with("http://") && !u.starts_with("https://") {
-                return Err("URL must start with http:// or https://".to_string());
-            }
-        }
-        Ok(())
+        crate::validators::validate_url(url)
     }
 
     pub fn validate_comment(comment: &Option<Arc<str>>) -> Result<(), String> {
-        if let Some(c) = comment {
-            if c.len() > 500 {
-                return Err("Comment cannot exceed 500 characters".to_string());
-            }
-        }
-        Ok(())
+        crate::validators::validate_comment(comment)
     }
 }

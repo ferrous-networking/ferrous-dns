@@ -130,9 +130,10 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
     ) -> Result<WhitelistSource, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let current = self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::WhitelistSourceNotFound(format!("Whitelist source {} not found", id))
-        })?;
+        let current = self
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::WhitelistSourceNotFound(id))?;
 
         let final_name = name.unwrap_or_else(|| current.name.to_string());
         let final_url: Option<String> = match url {
@@ -171,10 +172,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
         })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::WhitelistSourceNotFound(format!(
-                "Whitelist source {} not found",
-                id
-            )));
+            return Err(DomainError::WhitelistSourceNotFound(id));
         }
 
         self.get_by_id(id).await?.ok_or_else(|| {
@@ -194,10 +192,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
             })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::WhitelistSourceNotFound(format!(
-                "Whitelist source {} not found",
-                id
-            )));
+            return Err(DomainError::WhitelistSourceNotFound(id));
         }
 
         Ok(())

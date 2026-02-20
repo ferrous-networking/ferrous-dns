@@ -25,10 +25,7 @@ impl UpdateGroupUseCase {
             .group_repo
             .get_by_id(id)
             .await?
-            .ok_or(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                id
-            )))?;
+            .ok_or(DomainError::GroupNotFound(id))?;
 
         if let Some(ref n) = name {
             Group::validate_name(n).map_err(DomainError::InvalidGroupName)?;

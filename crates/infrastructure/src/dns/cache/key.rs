@@ -17,14 +17,6 @@ impl CacheKey {
             record_type,
         }
     }
-
-    #[inline]
-    pub fn from_str(domain: &str, record_type: RecordType) -> Self {
-        Self {
-            domain: CompactString::from(domain),
-            record_type,
-        }
-    }
 }
 
 impl Hash for CacheKey {

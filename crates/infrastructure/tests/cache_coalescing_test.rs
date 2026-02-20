@@ -63,6 +63,7 @@ fn make_cache() -> Arc<DnsCache> {
         min_lfuk_score: 0.0,
         shard_amount: 4,
         access_window_secs: 7200,
+        eviction_sample_size: 8,
     }))
 }
 

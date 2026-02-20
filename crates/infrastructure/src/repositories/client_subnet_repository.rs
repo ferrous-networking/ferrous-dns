@@ -56,7 +56,7 @@ impl ClientSubnetRepository for SqliteClientSubnetRepository {
             if e.to_string().contains("UNIQUE constraint failed") {
                 DomainError::SubnetConflict(format!("Subnet '{}' already exists", subnet_cidr))
             } else if e.to_string().contains("FOREIGN KEY constraint failed") {
-                DomainError::GroupNotFound(format!("Group {} not found", group_id))
+                DomainError::GroupNotFound(group_id)
             } else {
                 error!(error = %e, "Failed to create client subnet");
                 DomainError::DatabaseError(e.to_string())

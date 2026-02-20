@@ -35,9 +35,10 @@ impl UpdateManagedDomainUseCase {
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<ManagedDomain, DomainError> {
-        self.repo.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::ManagedDomainNotFound(format!("Managed domain {} not found", id))
-        })?;
+        self.repo
+            .get_by_id(id)
+            .await?
+            .ok_or(DomainError::ManagedDomainNotFound(id))?;
 
         if let Some(ref n) = name {
             ManagedDomain::validate_name(n).map_err(DomainError::InvalidManagedDomain)?;
@@ -56,7 +57,7 @@ impl UpdateManagedDomainUseCase {
             self.group_repo
                 .get_by_id(gid)
                 .await?
-                .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", gid)))?;
+                .ok_or(DomainError::GroupNotFound(gid))?;
         }
 
         let updated = self

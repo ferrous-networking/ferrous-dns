@@ -14,6 +14,7 @@ pub mod managed_domain;
 pub mod query_filters;
 pub mod query_log;
 pub mod regex_filter;
+pub mod validators;
 pub mod whitelist;
 pub mod whitelist_source;
 

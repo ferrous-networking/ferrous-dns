@@ -80,6 +80,7 @@ impl CacheUpdater {
         resolver: &Arc<HickoryDnsResolver>,
         query_log: &Option<Arc<dyn QueryLogRepository>>,
     ) {
+        coarse_clock::tick();
         debug!("Starting cache update cycle");
 
         let candidates = cache.get_refresh_candidates();
@@ -108,9 +109,11 @@ impl CacheUpdater {
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 Ok(false) => {
+                    cache.reset_refreshing(&domain, &record_type);
                     debug!(domain = %domain, "No new records to refresh");
                 }
                 Err(e) => {
+                    cache.reset_refreshing(&domain, &record_type);
                     debug!(
                         domain = %domain,
                         record_type = %record_type,
@@ -169,15 +172,13 @@ impl CacheUpdater {
             Ok(resolution) if !resolution.addresses.is_empty() => {
                 let response_time = start.elapsed().as_micros() as u64;
 
-                let ttl = cache.get_ttl(domain, record_type).unwrap_or(3600);
-
                 let dnssec_status: Option<super::cache::DnssecStatus> =
                     resolution.dnssec_status.and_then(|s| s.parse().ok());
 
                 let refreshed = cache.refresh_record(
                     domain,
                     record_type,
-                    ttl,
+                    None,
                     super::cache::CachedData::IpAddresses(Arc::clone(&resolution.addresses)),
                     dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );

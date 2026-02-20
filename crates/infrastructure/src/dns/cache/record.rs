@@ -143,10 +143,6 @@ impl CachedRecord {
         now_secs >= self.expires_at_secs && age < max_stale_age
     }
 
-    pub fn age_secs(&self) -> u64 {
-        coarse_now_secs().saturating_sub(self.inserted_at_secs)
-    }
-
     pub fn mark_for_deletion(&self) {
         self.marked_for_deletion
             .store(true, AtomicOrdering::Relaxed);
@@ -182,10 +178,6 @@ impl CachedRecord {
         } else {
             hits
         }
-    }
-
-    pub fn frequency(&self) -> u64 {
-        self.hit_count.load(AtomicOrdering::Relaxed)
     }
 
     pub fn lfuk_score(&self) -> f64 {

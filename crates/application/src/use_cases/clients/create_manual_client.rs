@@ -33,10 +33,7 @@ impl CreateManualClientUseCase {
             self.group_repo
                 .get_by_id(gid)
                 .await?
-                .ok_or(DomainError::GroupNotFound(format!(
-                    "Group {} not found",
-                    gid
-                )))?;
+                .ok_or(DomainError::GroupNotFound(gid))?;
         }
 
         let mut client = self.client_repo.get_or_create(ip_address).await?;

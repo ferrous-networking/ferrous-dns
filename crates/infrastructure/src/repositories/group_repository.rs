@@ -127,7 +127,7 @@ impl GroupRepository for SqliteGroupRepository {
         let current = self
             .get_by_id(id)
             .await?
-            .ok_or_else(|| DomainError::GroupNotFound(format!("Group {} not found", id)))?;
+            .ok_or(DomainError::GroupNotFound(id))?;
 
         let final_name = name.unwrap_or_else(|| current.name.to_string());
         let final_enabled = enabled.unwrap_or(current.enabled);
@@ -154,10 +154,7 @@ impl GroupRepository for SqliteGroupRepository {
         })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                id
-            )));
+            return Err(DomainError::GroupNotFound(id));
         }
 
         self.get_by_id(id)
@@ -181,10 +178,7 @@ impl GroupRepository for SqliteGroupRepository {
             })?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::GroupNotFound(format!(
-                "Group {} not found",
-                id
-            )));
+            return Err(DomainError::GroupNotFound(id));
         }
 
         Ok(())

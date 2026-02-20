@@ -40,7 +40,7 @@ pub async fn create_manual_client(
                 group_id: client.group_id,
             }),
         )),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to create manual client");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))

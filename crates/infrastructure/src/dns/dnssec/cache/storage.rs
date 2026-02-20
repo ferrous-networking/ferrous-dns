@@ -95,9 +95,7 @@ impl DnssecCache {
     }
 
     pub fn get_dnskey(&self, domain: &str) -> Option<Vec<DnskeyRecord>> {
-        let key = Arc::from(domain);
-
-        if let Some(entry) = self.dnskeys.get(&key) {
+        if let Some(entry) = self.dnskeys.get(domain) {
             if !entry.is_expired() {
                 self.stats.record_dnskey_hit(domain);
 
@@ -109,7 +107,7 @@ impl DnssecCache {
                 return Some(entry.keys().to_vec());
             } else {
                 drop(entry);
-                self.dnskeys.remove(&key);
+                self.dnskeys.remove(domain);
 
                 debug!(
                     domain = %domain,
@@ -136,9 +134,7 @@ impl DnssecCache {
     }
 
     pub fn get_ds(&self, domain: &str) -> Option<Vec<DsRecord>> {
-        let key = Arc::from(domain);
-
-        if let Some(entry) = self.ds_records.get(&key) {
+        if let Some(entry) = self.ds_records.get(domain) {
             if !entry.is_expired() {
                 self.stats.record_ds_hit(domain);
 
@@ -150,7 +146,7 @@ impl DnssecCache {
                 return Some(entry.records().to_vec());
             } else {
                 drop(entry);
-                self.ds_records.remove(&key);
+                self.ds_records.remove(domain);
 
                 debug!(
                     domain = %domain,

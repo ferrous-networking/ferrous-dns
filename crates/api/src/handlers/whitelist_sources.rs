@@ -79,7 +79,7 @@ async fn create_whitelist_source(
             Json(WhitelistSourceResponse::from_source(source)),
         )),
         Err(DomainError::InvalidWhitelistSource(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to create whitelist source");
             Err((StatusCode::BAD_REQUEST, e.to_string()))
@@ -105,9 +105,11 @@ async fn update_whitelist_source(
         .await
     {
         Ok(source) => Ok(Json(WhitelistSourceResponse::from_source(source))),
-        Err(DomainError::WhitelistSourceNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::WhitelistSourceNotFound(_)) => {
+            Err((StatusCode::NOT_FOUND, e.to_string()))
+        }
         Err(DomainError::InvalidWhitelistSource(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(DomainError::GroupNotFound(msg)) => Err((StatusCode::BAD_REQUEST, msg)),
+        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to update whitelist source");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -121,7 +123,9 @@ async fn delete_whitelist_source(
 ) -> Result<StatusCode, (StatusCode, String)> {
     match state.delete_whitelist_source.execute(id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(DomainError::WhitelistSourceNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e @ DomainError::WhitelistSourceNotFound(_)) => {
+            Err((StatusCode::NOT_FOUND, e.to_string()))
+        }
         Err(e) => {
             error!(error = %e, "Failed to delete whitelist source");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
