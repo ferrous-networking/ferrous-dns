@@ -7,7 +7,6 @@ use fancy_regex::Regex;
 use ferrous_dns_domain::BlockSource;
 use rustc_hash::FxBuildHasher;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub type SourceBitSet = u64;
 
@@ -15,10 +14,6 @@ pub const MANUAL_SOURCE_BIT: u64 = 1u64 << 63;
 
 #[derive(Debug, Clone)]
 pub struct SourceMeta {
-    #[allow(dead_code)]
-    pub id: i64,
-    #[allow(dead_code)]
-    pub name: Arc<str>,
     pub group_id: i64,
     pub bit: u8,
 }
@@ -69,8 +64,6 @@ impl Default for AllowlistIndex {
 }
 
 pub struct BlockIndex {
-    #[allow(dead_code)]
-    pub sources: Vec<SourceMeta>,
     pub group_masks: HashMap<i64, SourceBitSet>,
     pub default_group_id: i64,
     pub total_blocked_domains: usize,

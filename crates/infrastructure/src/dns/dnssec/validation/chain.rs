@@ -421,22 +421,6 @@ impl ChainVerifier {
 
         domain.split('.').rev().map(|s| s.to_string()).collect()
     }
-
-    #[allow(dead_code)]
-    fn parent_domain(domain: &str) -> Option<String> {
-        let domain = domain.trim_end_matches('.');
-
-        if domain.is_empty() || domain == "." {
-            return None;
-        }
-
-        let parts: Vec<&str> = domain.split('.').collect();
-        if parts.len() <= 1 {
-            return Some(".".to_string());
-        }
-
-        Some(format!("{}.", parts[1..].join(".")))
-    }
 }
 
 #[cfg(test)]

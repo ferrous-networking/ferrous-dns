@@ -173,7 +173,6 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             eviction_strategy: ferrous_dns_infrastructure::dns::EvictionStrategy::LRU,
             min_threshold: 0.0,
             refresh_threshold: 0.0,
-            lfuk_history_size: 0,
             batch_eviction_percentage: 0.0,
             adaptive_thresholds: false,
             min_frequency: 0,

@@ -114,11 +114,6 @@ impl TrustAnchorStore {
     pub fn get_all_anchors(&self) -> &[TrustAnchor] {
         &self.anchors
     }
-
-    #[allow(dead_code)]
-    pub fn load_from_xml(&mut self, _xml_content: &str) -> Result<(), String> {
-        Err("XML trust anchor loading not yet implemented".to_string())
-    }
 }
 
 impl Default for TrustAnchorStore {

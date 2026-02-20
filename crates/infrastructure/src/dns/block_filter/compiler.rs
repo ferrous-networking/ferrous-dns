@@ -10,7 +10,6 @@ use futures::future::join_all;
 use rustc_hash::FxBuildHasher;
 use sqlx::{Row, SqlitePool};
 use std::collections::HashMap;
-use std::sync::Arc;
 use tracing::{info, warn};
 
 #[derive(Debug)]
@@ -141,8 +140,6 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         .take(63)
         .enumerate()
         .map(|(idx, row)| SourceMeta {
-            id: row.get("id"),
-            name: Arc::from(row.get::<String, _>("name").as_str()),
             group_id: row.get("group_id"),
             bit: idx as u8,
         })
@@ -471,7 +468,6 @@ pub async fn compile_block_index(
         || !regex_filter_maps.block_patterns.is_empty();
 
     Ok(BlockIndex {
-        sources,
         group_masks,
         default_group_id,
         total_blocked_domains: total_exact,

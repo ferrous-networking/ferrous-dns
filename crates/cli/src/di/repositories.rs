@@ -5,7 +5,7 @@ use ferrous_dns_infrastructure::repositories::{
     blocklist_source_repository::SqliteBlocklistSourceRepository,
     client_repository::SqliteClientRepository,
     client_subnet_repository::SqliteClientSubnetRepository,
-    config_repository::SqliteConfigRepository, group_repository::SqliteGroupRepository,
+    group_repository::SqliteGroupRepository,
     managed_domain_repository::SqliteManagedDomainRepository,
     query_log_repository::SqliteQueryLogRepository,
     regex_filter_repository::SqliteRegexFilterRepository,
@@ -21,7 +21,6 @@ pub struct Repositories {
     pub blocklist_source: Arc<SqliteBlocklistSourceRepository>,
     pub whitelist: Arc<SqliteWhitelistRepository>,
     pub whitelist_source: Arc<SqliteWhitelistSourceRepository>,
-    pub config: Arc<SqliteConfigRepository>,
     pub client: Arc<SqliteClientRepository>,
     pub group: Arc<SqliteGroupRepository>,
     pub client_subnet: Arc<SqliteClientSubnetRepository>,
@@ -35,7 +34,6 @@ impl Repositories {
         let blocklist = SqliteBlocklistRepository::load(pool.clone()).await?;
         let whitelist = SqliteWhitelistRepository::load(pool.clone()).await?;
 
-        // Determine the default group id for the BlockFilterEngine
         let default_group_id: i64 =
             sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
                 .fetch_optional(&pool)
@@ -53,7 +51,6 @@ impl Repositories {
             blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(pool.clone())),
             whitelist: Arc::new(whitelist),
             whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(pool.clone())),
-            config: Arc::new(SqliteConfigRepository::new(pool.clone())),
             client: Arc::new(SqliteClientRepository::new(pool.clone())),
             group: Arc::new(SqliteGroupRepository::new(pool.clone())),
             client_subnet: Arc::new(SqliteClientSubnetRepository::new(pool.clone())),

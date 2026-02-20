@@ -106,48 +106,4 @@ impl QueryEventLogger {
             success_count, error_count, "QueryEventLogger: Batch processing complete"
         );
     }
-
-    #[allow(dead_code)]
-    pub fn start_sequential(
-        self,
-        mut rx: mpsc::UnboundedReceiver<QueryEvent>,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            debug!("QueryEventLogger: Starting sequential consumer");
-
-            let mut count = 0u64;
-
-            while let Some(event) = rx.recv().await {
-                count += 1;
-
-                let query_log = QueryLog {
-                    id: None,
-                    domain: event.domain,
-                    record_type: event.record_type,
-                    client_ip: "127.0.0.1".parse().unwrap(),
-                    blocked: false,
-                    response_time_us: Some(event.response_time_us),
-                    cache_hit: false,
-                    cache_refresh: false,
-                    dnssec_status: None,
-                    upstream_server: Some(event.upstream_server),
-                    response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),
-                    timestamp: None,
-                    query_source: QuerySource::Internal,
-                    group_id: None,
-                    block_source: None,
-                };
-
-                if let Err(e) = self.log_repo.log_query(&query_log).await {
-                    warn!(
-                        error = %e,
-                        domain = %query_log.domain,
-                        "QueryEventLogger: Failed to log query event"
-                    );
-                }
-            }
-
-            debug!(count, "QueryEventLogger: Sequential consumer shutting down");
-        })
-    }
 }

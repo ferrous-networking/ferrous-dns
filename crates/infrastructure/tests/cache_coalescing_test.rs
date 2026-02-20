@@ -56,7 +56,7 @@ fn make_cache() -> Arc<DnsCache> {
         eviction_strategy: EvictionStrategy::LRU,
         min_threshold: 2.0,
         refresh_threshold: 0.75,
-        lfuk_history_size: 10,
+
         batch_eviction_percentage: 0.2,
         adaptive_thresholds: false,
         min_frequency: 0,

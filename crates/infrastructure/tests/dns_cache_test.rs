@@ -11,7 +11,6 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
         eviction_strategy: EvictionStrategy::HitRate,
         min_threshold: 0.0,
         refresh_threshold: 0.0, // toda entrada qualifica pelo tempo imediatamente
-        lfuk_history_size: 10,
         batch_eviction_percentage: 0.2,
         adaptive_thresholds: false,
         min_frequency: 0,
@@ -43,7 +42,6 @@ fn create_cache(
         eviction_strategy: strategy,
         min_threshold: 2.0,
         refresh_threshold: 0.75,
-        lfuk_history_size: 10,
         batch_eviction_percentage: 0.2,
         adaptive_thresholds: false,
         min_frequency,

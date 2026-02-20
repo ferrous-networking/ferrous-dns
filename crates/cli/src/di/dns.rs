@@ -11,7 +11,6 @@ use ferrous_dns_infrastructure::dns::{
 use std::sync::Arc;
 use tracing::{info, warn};
 
-#[allow(dead_code)]
 pub struct DnsServices {
     pub resolver: Arc<HickoryDnsResolver>,
     pub cache: Arc<DnsCache>,
@@ -208,7 +207,6 @@ impl DnsServices {
                 eviction_strategy,
                 min_threshold: config.dns.cache_min_hit_rate,
                 refresh_threshold: config.dns.cache_refresh_threshold,
-                lfuk_history_size: config.dns.cache_lfuk_history_size,
                 batch_eviction_percentage: config.dns.cache_batch_eviction_percentage,
                 adaptive_thresholds: config.dns.cache_adaptive_thresholds,
                 min_frequency: config.dns.cache_min_frequency,
@@ -222,7 +220,6 @@ impl DnsServices {
                 eviction_strategy: EvictionStrategy::HitRate,
                 min_threshold: 0.0,
                 refresh_threshold: 0.0,
-                lfuk_history_size: 0,
                 batch_eviction_percentage: 0.0,
                 adaptive_thresholds: false,
                 min_frequency: 0,
