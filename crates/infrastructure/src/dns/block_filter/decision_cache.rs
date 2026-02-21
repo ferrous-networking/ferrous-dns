@@ -131,7 +131,12 @@ impl BlockDecisionCache {
                 self.inner.remove(k);
             }
             if self.inner.len() >= L1_CAPACITY {
-                if let Some(k) = self.inner.iter().map(|e| *e.key()).next() {
+                let oldest = self
+                    .inner
+                    .iter()
+                    .min_by_key(|e| e.value().1)
+                    .map(|e| *e.key());
+                if let Some(k) = oldest {
                     self.inner.remove(&k);
                 }
             }
