@@ -1,4 +1,5 @@
 use ferrous_dns_application::ports::BlockFilterEnginePort;
+use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::dns::BlockFilterEngine;
 use ferrous_dns_infrastructure::repositories::{
     blocklist_repository::SqliteBlocklistRepository,
@@ -30,32 +31,40 @@ pub struct Repositories {
 }
 
 impl Repositories {
-    pub async fn new(pool: SqlitePool) -> Result<Self, ferrous_dns_domain::DomainError> {
-        let blocklist = SqliteBlocklistRepository::load(pool.clone()).await?;
-        let whitelist = SqliteWhitelistRepository::load(pool.clone()).await?;
+    pub async fn new(
+        write_pool: SqlitePool,
+        read_pool: SqlitePool,
+        db_config: &DatabaseConfig,
+    ) -> Result<Self, ferrous_dns_domain::DomainError> {
+        let blocklist = SqliteBlocklistRepository::load(write_pool.clone()).await?;
+        let whitelist = SqliteWhitelistRepository::load(write_pool.clone()).await?;
 
         let default_group_id: i64 =
             sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
-                .fetch_optional(&pool)
+                .fetch_optional(&write_pool)
                 .await
                 .map_err(|e| ferrous_dns_domain::DomainError::DatabaseError(e.to_string()))?
                 .map(|row| row.get::<i64, _>("id"))
                 .unwrap_or(1);
 
         let block_filter_engine: Arc<dyn BlockFilterEnginePort> =
-            Arc::new(BlockFilterEngine::new(pool.clone(), default_group_id).await?);
+            Arc::new(BlockFilterEngine::new(write_pool.clone(), default_group_id).await?);
 
         Ok(Self {
-            query_log: Arc::new(SqliteQueryLogRepository::new(pool.clone())),
+            query_log: Arc::new(SqliteQueryLogRepository::new(
+                write_pool.clone(),
+                read_pool,
+                db_config,
+            )),
             blocklist: Arc::new(blocklist),
-            blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(pool.clone())),
+            blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(write_pool.clone())),
             whitelist: Arc::new(whitelist),
-            whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(pool.clone())),
-            client: Arc::new(SqliteClientRepository::new(pool.clone())),
-            group: Arc::new(SqliteGroupRepository::new(pool.clone())),
-            client_subnet: Arc::new(SqliteClientSubnetRepository::new(pool.clone())),
-            managed_domain: Arc::new(SqliteManagedDomainRepository::new(pool.clone())),
-            regex_filter: Arc::new(SqliteRegexFilterRepository::new(pool)),
+            whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(write_pool.clone())),
+            client: Arc::new(SqliteClientRepository::new(write_pool.clone(), db_config)),
+            group: Arc::new(SqliteGroupRepository::new(write_pool.clone())),
+            client_subnet: Arc::new(SqliteClientSubnetRepository::new(write_pool.clone())),
+            managed_domain: Arc::new(SqliteManagedDomainRepository::new(write_pool.clone())),
+            regex_filter: Arc::new(SqliteRegexFilterRepository::new(write_pool)),
             block_filter_engine,
         })
     }

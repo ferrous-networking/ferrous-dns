@@ -1,4 +1,5 @@
 use ferrous_dns_application::ports::QueryLogRepository;
+use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -64,7 +65,8 @@ async fn insert_log(
 #[tokio::test]
 async fn test_get_stats_empty() {
     let pool = create_test_db().await;
-    let repo = SqliteQueryLogRepository::new(pool);
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
 
     let stats = repo.get_stats(24.0).await.unwrap();
 
@@ -90,7 +92,8 @@ async fn test_get_stats_cache_hits_count() {
         insert_log(&pool, false, false, None, "client", None).await;
     }
 
-    let repo = SqliteQueryLogRepository::new(pool);
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 5);
@@ -113,7 +116,8 @@ async fn test_get_stats_blocklist_breakdown() {
         insert_log(&pool, false, true, Some("regex_filter"), "client", None).await;
     }
 
-    let repo = SqliteQueryLogRepository::new(pool);
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 6);
@@ -132,7 +136,8 @@ async fn test_get_stats_excludes_internal_query_source() {
     insert_log(&pool, false, false, None, "internal", None).await;
     insert_log(&pool, true, false, None, "dnssec_validation", None).await;
 
-    let repo = SqliteQueryLogRepository::new(pool);
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 1);
@@ -157,7 +162,8 @@ async fn test_get_stats_period_filter() {
     )
     .await;
 
-    let repo = SqliteQueryLogRepository::new(pool);
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
     // period = 1 hour: old query should be excluded
     let stats = repo.get_stats(1.0).await.unwrap();
 

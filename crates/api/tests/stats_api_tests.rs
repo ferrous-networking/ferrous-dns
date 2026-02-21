@@ -11,7 +11,7 @@ use ferrous_dns_application::{
         GetRecentQueriesUseCase,
     },
 };
-use ferrous_dns_domain::Config;
+use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
     repositories::{
@@ -150,14 +150,21 @@ async fn create_test_db() -> sqlx::SqlitePool {
 }
 
 async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
-    let client_repo = Arc::new(SqliteClientRepository::new(pool.clone()));
+    let client_repo = Arc::new(SqliteClientRepository::new(
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
     let group_repo = Arc::new(
         ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(
             pool.clone(),
         ),
     );
     let regex_filter_repo = Arc::new(SqliteRegexFilterRepository::new(pool.clone()));
-    let query_log_repo = Arc::new(SqliteQueryLogRepository::new(pool.clone()));
+    let query_log_repo = Arc::new(SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
 
     let config = Arc::new(RwLock::new(Config::default()));
     let cache = Arc::new(DnsCache::new(

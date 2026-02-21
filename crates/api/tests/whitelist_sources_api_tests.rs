@@ -30,7 +30,7 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
         0
     }
 }
-use ferrous_dns_domain::Config;
+use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
     repositories::{
@@ -193,7 +193,10 @@ async fn create_test_db() -> sqlx::SqlitePool {
 async fn create_test_app() -> (Router, sqlx::SqlitePool) {
     let pool = create_test_db().await;
 
-    let client_repo = Arc::new(SqliteClientRepository::new(pool.clone()));
+    let client_repo = Arc::new(SqliteClientRepository::new(
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
     let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
     let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
     let blocklist_source_repo = Arc::new(SqliteBlocklistSourceRepository::new(pool.clone()));
@@ -237,10 +240,10 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
 
     let state = AppState {
         get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
@@ -317,13 +320,13 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         )),
         subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         get_timeline: Arc::new(GetTimelineUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_query_rate: Arc::new(GetQueryRateUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_cache_stats: Arc::new(GetCacheStatsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
         config,

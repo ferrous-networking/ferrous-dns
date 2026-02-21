@@ -88,11 +88,11 @@ async fn async_main() -> anyhow::Result<()> {
     info!("Starting Ferrous DNS Server v{}", env!("CARGO_PKG_VERSION"));
 
     let database_url = format!("sqlite:{}", config.database.path);
-    let pool = bootstrap::init_database(&database_url).await?;
+    let (write_pool, read_pool) = bootstrap::init_database(&database_url, &config.database).await?;
 
     let config_arc = Arc::new(RwLock::new(config.clone()));
 
-    let repos = di::Repositories::new(pool).await?;
+    let repos = di::Repositories::new(write_pool, read_pool, &config.database).await?;
     let dns_services = di::DnsServices::new(&config, &repos).await?;
     let use_cases = di::UseCases::new(&repos, dns_services.pool_manager.clone());
 

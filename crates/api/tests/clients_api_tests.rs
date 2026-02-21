@@ -32,7 +32,7 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
         0
     }
 }
-use ferrous_dns_domain::Config;
+use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
     repositories::{
@@ -127,7 +127,10 @@ async fn create_test_db() -> sqlx::SqlitePool {
 
 async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::SqlitePool) {
     let pool = create_test_db().await;
-    let client_repo = Arc::new(SqliteClientRepository::new(pool.clone()));
+    let client_repo = Arc::new(SqliteClientRepository::new(
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
     let group_repo = Arc::new(
         ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(
             pool.clone(),
@@ -173,12 +176,12 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
     let state = AppState {
         get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
-                pool.clone(),
+                pool.clone(), pool.clone(), &DatabaseConfig::default(),
             ),
         ))),
         get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
-                pool.clone(),
+                pool.clone(), pool.clone(), &DatabaseConfig::default(),
             ),
         ))),
         get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
@@ -285,13 +288,13 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
         ))),
         get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_query_rate: Arc::new(ferrous_dns_application::use_cases::GetQueryRateUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone()),
+            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
         config,
@@ -337,6 +340,7 @@ async fn test_get_clients_with_data() {
 
     repo.update_last_seen(ip1).await.unwrap();
     repo.update_last_seen(ip2).await.unwrap();
+    repo.flush_writes().await;
     repo.update_mac_address(ip1, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
@@ -381,6 +385,7 @@ async fn test_get_clients_with_pagination() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let response = app
         .clone()
@@ -421,6 +426,7 @@ async fn test_get_client_stats() {
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
+        repo.flush_writes().await;
 
         if i <= 3 {
             repo.update_mac_address(ip, format!("aa:bb:cc:dd:ee:{:02x}", i))
@@ -463,6 +469,7 @@ async fn test_get_clients_json_structure() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
@@ -534,6 +541,7 @@ async fn test_delete_client_success() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(clients.len(), 1);
@@ -584,6 +592,7 @@ async fn test_delete_client_with_complete_data() {
 
     let ip: IpAddr = "192.168.1.200".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
@@ -619,6 +628,7 @@ async fn test_delete_client_from_multiple() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(clients.len(), 3);
@@ -648,6 +658,7 @@ async fn test_delete_client_idempotency() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let clients = repo.get_all(100, 0).await.unwrap();
     let client_id = clients[0].id.unwrap();
@@ -708,6 +719,7 @@ async fn test_delete_multiple_clients_sequentially() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let mut clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(clients.len(), 5);
@@ -742,6 +754,7 @@ async fn test_delete_client_verifies_not_in_get_all() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let clients_before = repo.get_all(100, 0).await.unwrap();
     let delete_id = clients_before[1].id.unwrap();

@@ -320,6 +320,51 @@ impl Config {
                 "client_tracking_interval",
                 toml_edit::Value::from(self.database.client_tracking_interval as i64),
             );
+            set_val(
+                t,
+                "query_log_channel_capacity",
+                toml_edit::Value::from(self.database.query_log_channel_capacity as i64),
+            );
+            set_val(
+                t,
+                "query_log_max_batch_size",
+                toml_edit::Value::from(self.database.query_log_max_batch_size as i64),
+            );
+            set_val(
+                t,
+                "query_log_flush_interval_ms",
+                toml_edit::Value::from(self.database.query_log_flush_interval_ms as i64),
+            );
+            set_val(
+                t,
+                "query_log_sample_rate",
+                toml_edit::Value::from(self.database.query_log_sample_rate as i64),
+            );
+            set_val(
+                t,
+                "client_channel_capacity",
+                toml_edit::Value::from(self.database.client_channel_capacity as i64),
+            );
+            set_val(
+                t,
+                "write_pool_max_connections",
+                toml_edit::Value::from(self.database.write_pool_max_connections as i64),
+            );
+            set_val(
+                t,
+                "read_pool_max_connections",
+                toml_edit::Value::from(self.database.read_pool_max_connections as i64),
+            );
+            set_val(
+                t,
+                "write_busy_timeout_secs",
+                toml_edit::Value::from(self.database.write_busy_timeout_secs as i64),
+            );
+            set_val(
+                t,
+                "wal_autocheckpoint",
+                toml_edit::Value::from(self.database.wal_autocheckpoint as i64),
+            );
         }
 
         std::fs::write(path, doc.to_string())

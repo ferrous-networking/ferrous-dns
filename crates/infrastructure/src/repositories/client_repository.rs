@@ -1,13 +1,11 @@
 use super::client_row_mapper::{row_to_client, ClientRow, CLIENT_SELECT};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::ClientRepository;
-use ferrous_dns_domain::{Client, ClientStats, DomainError};
+use ferrous_dns_domain::{config::DatabaseConfig, Client, ClientStats, DomainError};
 use sqlx::SqlitePool;
 use std::net::IpAddr;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, instrument, warn};
-
-const CLIENT_CHANNEL_CAPACITY: usize = 4_096;
 
 enum ClientMsg {
     IpSeen(IpAddr),
@@ -20,8 +18,8 @@ pub struct SqliteClientRepository {
 }
 
 impl SqliteClientRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        let (sender, receiver) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
+    pub fn new(pool: SqlitePool, cfg: &DatabaseConfig) -> Self {
+        let (sender, receiver) = mpsc::channel(cfg.client_channel_capacity);
         let write_pool = pool.clone();
         tokio::spawn(async move {
             Self::track_loop(write_pool, receiver).await;

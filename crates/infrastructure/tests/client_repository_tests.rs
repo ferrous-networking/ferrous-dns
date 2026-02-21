@@ -1,4 +1,5 @@
 use ferrous_dns_application::ports::ClientRepository;
+use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::repositories::client_repository::SqliteClientRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::net::IpAddr;
@@ -65,7 +66,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
 #[tokio::test]
 async fn test_update_last_seen_creates_client() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -79,7 +80,7 @@ async fn test_update_last_seen_creates_client() {
 #[tokio::test]
 async fn test_update_last_seen_increments_count() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
 
@@ -95,7 +96,7 @@ async fn test_update_last_seen_increments_count() {
 #[tokio::test]
 async fn test_update_mac_address() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -113,7 +114,7 @@ async fn test_update_mac_address() {
 #[tokio::test]
 async fn test_update_hostname() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -131,7 +132,7 @@ async fn test_update_hostname() {
 #[tokio::test]
 async fn test_get_all_with_pagination() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     for i in 1..=10 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -149,7 +150,7 @@ async fn test_get_all_with_pagination() {
 #[tokio::test]
 async fn test_get_active_clients() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool.clone());
+    let repo = SqliteClientRepository::new(pool.clone(), &DatabaseConfig::default());
 
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -171,7 +172,7 @@ async fn test_get_active_clients() {
 #[tokio::test]
 async fn test_get_stats() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -200,7 +201,7 @@ async fn test_get_stats() {
 #[tokio::test]
 async fn test_delete_older_than() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool.clone());
+    let repo = SqliteClientRepository::new(pool.clone(), &DatabaseConfig::default());
 
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -225,7 +226,7 @@ async fn test_delete_older_than() {
 #[tokio::test]
 async fn test_get_needs_mac_update() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool.clone());
+    let repo = SqliteClientRepository::new(pool.clone(), &DatabaseConfig::default());
 
     for i in 1..=3 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -253,7 +254,7 @@ async fn test_get_needs_mac_update() {
 #[tokio::test]
 async fn test_get_needs_hostname_update() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool.clone());
+    let repo = SqliteClientRepository::new(pool.clone(), &DatabaseConfig::default());
 
     for i in 1..=3 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -281,7 +282,7 @@ async fn test_get_needs_hostname_update() {
 #[tokio::test]
 async fn test_delete_existing_client() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -300,7 +301,7 @@ async fn test_delete_existing_client() {
 #[tokio::test]
 async fn test_delete_nonexistent_client() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let result = repo.delete(9999).await;
 
@@ -316,7 +317,7 @@ async fn test_delete_nonexistent_client() {
 #[tokio::test]
 async fn test_delete_client_removes_from_get_all() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     for i in 1..=3 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -338,7 +339,7 @@ async fn test_delete_client_removes_from_get_all() {
 #[tokio::test]
 async fn test_delete_client_with_mac_and_hostname() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -364,7 +365,7 @@ async fn test_delete_client_with_mac_and_hostname() {
 #[tokio::test]
 async fn test_delete_updates_stats() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -386,7 +387,7 @@ async fn test_delete_updates_stats() {
 #[tokio::test]
 async fn test_delete_all_clients() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     for i in 1..=3 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
@@ -411,7 +412,7 @@ async fn test_delete_all_clients() {
 #[tokio::test]
 async fn test_delete_idempotency() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
@@ -434,7 +435,7 @@ async fn test_delete_idempotency() {
 #[tokio::test]
 async fn test_delete_with_invalid_id() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let invalid_ids = vec![0i64, -1i64, -999i64, i64::MAX];
 
@@ -451,7 +452,7 @@ async fn test_delete_with_invalid_id() {
 #[tokio::test]
 async fn test_delete_preserves_other_clients() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool.clone());
+    let repo = SqliteClientRepository::new(pool.clone(), &DatabaseConfig::default());
 
     let ips: Vec<IpAddr> = (1..=10)
         .map(|i| format!("192.168.1.{}", i).parse().unwrap())
@@ -482,7 +483,7 @@ async fn test_delete_preserves_other_clients() {
 #[tokio::test]
 async fn test_delete_client_cascade_behavior() {
     let pool = create_test_db().await;
-    let repo = SqliteClientRepository::new(pool);
+    let repo = SqliteClientRepository::new(pool, &DatabaseConfig::default());
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
