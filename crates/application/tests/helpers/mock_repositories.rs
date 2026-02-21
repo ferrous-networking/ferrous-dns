@@ -8,9 +8,9 @@ use ferrous_dns_application::ports::{
     QueryLogRepository, WhitelistRepository, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
-    blocklist::BlockedDomain, BlocklistSource, Client, ClientStats, DnsQuery, DomainAction,
-    DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType, WhitelistSource,
-    WhitelistedDomain,
+    blocklist::BlockedDomain, BlockSource, BlocklistSource, Client, ClientStats, DnsQuery,
+    DomainAction, DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType,
+    WhitelistSource, WhitelistedDomain,
 };
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -241,6 +241,20 @@ impl QueryLogRepository for MockQueryLogRepository {
         let logs = self.logs.read().await;
         let queries_total = logs.len() as u64;
         let queries_blocked = logs.iter().filter(|l| l.blocked).count() as u64;
+        let queries_cache_hits = logs.iter().filter(|l| l.cache_hit).count() as u64;
+        let queries_upstream = logs.iter().filter(|l| !l.cache_hit && !l.blocked).count() as u64;
+        let queries_blocked_by_blocklist = logs
+            .iter()
+            .filter(|l| l.block_source == Some(BlockSource::Blocklist))
+            .count() as u64;
+        let queries_blocked_by_managed_domain = logs
+            .iter()
+            .filter(|l| l.block_source == Some(BlockSource::ManagedDomain))
+            .count() as u64;
+        let queries_blocked_by_regex_filter = logs
+            .iter()
+            .filter(|l| l.block_source == Some(BlockSource::RegexFilter))
+            .count() as u64;
 
         Ok(QueryStats {
             queries_total,
@@ -251,6 +265,11 @@ impl QueryLogRepository for MockQueryLogRepository {
             avg_query_time_ms: 0.0,
             avg_cache_time_ms: 0.0,
             avg_upstream_time_ms: 0.0,
+            queries_cache_hits,
+            queries_upstream,
+            queries_blocked_by_blocklist,
+            queries_blocked_by_managed_domain,
+            queries_blocked_by_regex_filter,
             queries_by_type: HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),
@@ -1082,11 +1101,6 @@ impl DnsResolutionBuilder {
         self
     }
 
-    pub fn with_addresses(mut self, addrs: Vec<&str>) -> Self {
-        self.addresses = addrs.iter().map(|a| IpAddr::from_str(a).unwrap()).collect();
-        self
-    }
-
     pub fn cache_hit(mut self) -> Self {
         self.cache_hit = true;
         self
@@ -1099,11 +1113,6 @@ impl DnsResolutionBuilder {
 
     pub fn with_dnssec(mut self, status: &'static str) -> Self {
         self.dnssec_status = Some(status);
-        self
-    }
-
-    pub fn with_cname(mut self, cname: &str) -> Self {
-        self.cname = Some(cname.to_string());
         self
     }
 

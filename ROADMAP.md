@@ -25,27 +25,23 @@
                    
 - [x] Auto detect Client ip and mac address                         
 - [x] Client groups
-- [ ] Wildcard domain blocking (`*.ads.com`)
-- [ ] Whitelist support
+- [x] Wildcard domain blocking (`*.ads.com`)
+- [x] Whitelist support
 - [x] Blocklist functionality
 - [x] blocklist url import
-- [ ] blocklist regex support
+- [x] blocklist regex support
 - [x] button allows and block in the queries.html list 
 
 ### 🔮 v0.3.0 - Advanced Features
-
 
 - [ ] Advanced analytics and graphs
 - [ ] Query filtering rules
 - [ ] Conditional forwarding
 - [ ] Client identification
-- [ ] Docker images on Docker Hub
 - [ ] Comprehensive documentation
 
 ### 🎯 v0.4.0 - Performance & Scale
 
-- [ ] Multi-level caching (L1 memory, L2 disk)
-- [ ] High Availability (HA) mode
 - [ ] Prometheus metrics
 - [ ] Performance benchmarks vs competitors
 - [ ] Memory optimizations
@@ -53,6 +49,8 @@
 ### 🌟 v1.0.0 - Production Ready
 
 - [ ] Security audit
+- [ ] Auth login form, and api - key
+- [ ] Api compatible pi-hole
 - [ ] Comprehensive test coverage (>80%)
 - [ ] Production deployment guide
 - [ ] API v1 stable

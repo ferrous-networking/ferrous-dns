@@ -244,13 +244,6 @@
             <a href="/settings.html" class="nav-item active"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
-    <div class="sidebar-footer">
-        <button @click="toggleTheme()" class="theme-btn">
-            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
-            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
-            <span>Theme</span>
-        </button>
-    </div>
 </aside>
 
 <main style="padding:24px">
@@ -283,6 +276,8 @@
                 :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">DNS Advanced</button>
         <button @click="currentTab='cache';scheduleLucide()"
                 :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
+        <button @click="currentTab='webinterface';scheduleLucide()"
+                :class="currentTab==='webinterface'?'tab-btn active':'tab-btn'">Web Interface</button>
     </div>
 
     <!-- DNS SETTINGS TAB -->
@@ -377,7 +372,7 @@
                     <i data-lucide="zap" style="width:28px;height:28px;color:#A855F7"></i>
                     <h3 style="font-weight:700;font-size:16px">Parallel</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Sends query to all upstreams, returns fastest response</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Sends the query to all upstream servers simultaneously and returns the fastest response. Best latency at the cost of higher network usage.</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
                     <span>Latency: <strong style="color:#10B981">Best</strong></span>
                     <span>Network: <strong style="color:#EF4444">High</strong></span>
@@ -389,7 +384,7 @@
                     <i data-lucide="scale" style="width:28px;height:28px;color:#3B82F6"></i>
                     <h3 style="font-weight:700;font-size:16px">Balanced</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Round-robin load distribution across upstreams</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Distributes queries across upstream servers in round-robin order, spreading load evenly across all configured servers.</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
                     <span>Latency: <strong style="color:#F59E0B">Medium</strong></span>
                     <span>Network: <strong style="color:#F59E0B">Medium</strong></span>
@@ -398,10 +393,10 @@
             <div class="strategy-card" :class="getFirstPoolStrategy()==='failover'?'selected':''"
                  @click="setFirstPoolStrategy('failover')">
                 <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-                    <i data-lucide="arrow-down" style="width:28px;height:28px;color:#10B981"></i>
+                    <i data-lucide="shield-alert" style="width:28px;height:28px;color:#10B981"></i>
                     <h3 style="font-weight:700;font-size:16px">Failover</h3>
                 </div>
-                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Primary server, switch on failure</p>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Queries always go to the primary server. Automatically switches to the next server only when the primary becomes unreachable.</p>
                 <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)">
                     <span>Latency: <strong>Depends</strong></span>
                     <span>Network: <strong style="color:#10B981">Low</strong></span>
@@ -410,8 +405,46 @@
         </div>
 
         <div class="card">
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">General Settings</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Core DNS resolution behavior settings.</p>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">DNSSEC Validation</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Validates DNSSEC cryptographic signatures on upstream responses to protect against DNS spoofing and cache poisoning attacks. When enabled, Ferrous DNS rejects responses that fail signature verification.</p>
+                    <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Requires upstream servers that support DNSSEC. May slightly increase response latency due to signature validation overhead.</p>
+                </div>
+                <div @click="config.dns.dnssec_enabled=!config.dns.dnssec_enabled"
+                     :class="config.dns.dnssec_enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="database" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Enable DNS Cache</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Stores DNS responses in memory so repeated queries are answered instantly without contacting upstream servers. Dramatically reduces resolution latency for frequently accessed domains.</p>
+                    <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Disable only for debugging purposes. Detailed cache configuration is available in the Cache Settings tab.</p>
+                </div>
+                <div @click="config.dns.cache_enabled=!config.dns.cache_enabled"
+                     :class="config.dns.cache_enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h2 style="font-size:18px;font-weight:700;color:var(--text-primary)">Upstream DNS Pools</h2>
+                <div>
+                    <h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px">Upstream DNS Pools</h2>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Groups of upstream servers used to resolve DNS queries. Each pool can have its own strategy and priority.</p>
+                </div>
                 <button @click="addPool()" class="btn btn-primary">
                     <i data-lucide="plus" style="width:16px;height:16px"></i> Add Pool
                 </button>
@@ -470,43 +503,63 @@
         </div>
 
         <div class="card">
-            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Health Check Configuration</h2>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                <div style="grid-column:1/-1">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                        <input type="checkbox" x-model="config.dns.health_check.enabled"
-                               style="width:18px;height:18px;accent-color:var(--color-primary)">
-                        <span>Enable Health Checking</span>
-                    </label>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Health Check Configuration</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Periodically probes each upstream server to detect failures. Unhealthy servers are automatically excluded from the pool until they recover.</p>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:32px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="timer" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Check Interval</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">How often each upstream server is probed. Lower values detect failures faster but generate more background traffic.</p>
                 </div>
-                <div x-show="config.dns.health_check.enabled">
-                    <label class="form-label">Interval (seconds)</label>
-                    <input type="number" x-model.number="config.dns.health_check.interval_seconds">
-                </div>
-                <div x-show="config.dns.health_check.enabled">
-                    <label class="form-label">Timeout (ms)</label>
-                    <input type="number" x-model.number="config.dns.health_check.timeout_ms">
-                </div>
-                <div x-show="config.dns.health_check.enabled">
-                    <label class="form-label">Failure Threshold</label>
-                    <input type="number" x-model.number="config.dns.health_check.failure_threshold">
+                <div style="flex-shrink:0;width:150px">
+                    <input type="number" x-model.number="config.dns.health_check.interval_seconds" min="5" placeholder="30" style="width:100%;text-align:right">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
                 </div>
             </div>
-        </div>
 
-        <div class="card">
-            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">General DNS Settings</h2>
-            <div style="display:flex;flex-direction:column;gap:12px">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input type="checkbox" x-model="config.dns.dnssec_enabled"
-                           style="width:18px;height:18px;accent-color:var(--color-primary)">
-                    <span>Enable DNSSEC Validation</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input type="checkbox" x-model="config.dns.cache_enabled"
-                           style="width:18px;height:18px;accent-color:var(--color-primary)">
-                    <span>Enable DNS Cache</span>
-                </label>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:32px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="clock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Probe Timeout</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum time to wait for a health probe response before the attempt is counted as a failure.</p>
+                </div>
+                <div style="flex-shrink:0;width:150px">
+                    <input type="number" x-model.number="config.dns.health_check.timeout_ms" min="100" placeholder="2000" style="width:100%;text-align:right">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">milliseconds</p>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:32px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="alert-triangle" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Failure Threshold</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Number of consecutive failed probes required before a server is marked as unhealthy and removed from the active rotation.</p>
+                </div>
+                <div style="flex-shrink:0;width:150px">
+                    <input type="number" x-model.number="config.dns.health_check.failure_threshold" min="1" placeholder="3" style="width:100%;text-align:right">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">failures</p>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
+                <div style="flex:1;margin-right:32px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="check-circle" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Recovery Threshold</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Number of consecutive successful probes required before a previously unhealthy server is returned to the active rotation.</p>
+                </div>
+                <div style="flex-shrink:0;width:150px">
+                    <input type="number" x-model.number="config.dns.health_check.success_threshold" min="1" placeholder="2" style="width:100%;text-align:right">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">successes</p>
+                </div>
             </div>
         </div>
 
@@ -558,77 +611,224 @@
         </div>
 
         <div class="card">
-            <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Configuration</h2>
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Cache Configuration</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Configure how DNS responses are stored and managed in memory to minimise upstream queries and latency.</p>
 
-            <div style="margin-bottom:20px">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                    <input type="checkbox" x-model="config.dns.cache_enabled"
-                           style="width:18px;height:18px;accent-color:var(--color-primary)">
-                    <span style="font-weight:500">Enable DNS Cache</span>
-                </label>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="database" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Enable DNS Cache</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Stores DNS responses in memory so repeated queries are answered instantly without contacting upstream servers. Dramatically reduces latency for frequently accessed domains.</p>
+                </div>
+                <div @click="config.dns.cache_enabled=!config.dns.cache_enabled"
+                     :class="config.dns.cache_enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
             </div>
 
             <div x-show="config.dns.cache_enabled">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
-                    <div class="form-group">
-                        <label class="form-label">Cache TTL (seconds)</label>
-                        <input type="number" x-model.number="config.dns.cache_ttl" min="1">
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="clock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Default Cache TTL</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Time-to-live applied to cached entries that carry no TTL of their own. Does not override TTLs already present in upstream responses.</p>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Max Cache Entries</label>
-                        <input type="number" x-model.number="config.dns.cache_max_entries" min="100">
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_ttl" min="1" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
                     </div>
                 </div>
 
-                <div style="border-top:1px solid var(--border-color);padding-top:20px">
-                    <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text-primary)">Advanced Settings</h3>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-                        <div class="form-group">
-                            <label class="form-label">Eviction Strategy</label>
-                            <select x-model="config.dns.cache_eviction_strategy">
-                                <option value="lru">LRU (Least Recently Used)</option>
-                                <option value="lfu">LFU (Least Frequently Used)</option>
-                                <option value="lfu-k">LFU-K (Adaptive)</option>
-                                <option value="hit-rate">Hit Rate Based</option>
-                            </select>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="layers" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Maximum Cache Size</h4>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Min Hit Rate</label>
-                            <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" max="1">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Refresh Threshold</label>
-                            <input type="number" x-model.number="config.dns.cache_refresh_threshold" step="0.1" min="0" max="1">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Compaction Interval (s)</label>
-                            <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Access Window (s)</label>
-                            <input type="number" x-model.number="config.dns.cache_access_window_secs" min="0" step="3600">
-                            <small style="color:var(--text-secondary)">Entradas com 1+ hits acessadas dentro desta janela são renovadas (ex.: 7200=2h, 86400=24h)</small>
-                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Upper limit on the number of DNS records held in memory. When full, the configured eviction strategy determines which entries are removed to make room for new ones.</p>
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:12px">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                            <input type="checkbox" x-model="config.dns.cache_optimistic_refresh"
-                                   style="width:18px;height:18px;accent-color:var(--color-primary)">
-                            <span>Enable Optimistic Refresh</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                            <input type="checkbox" x-model="config.dns.cache_adaptive_thresholds"
-                                   style="width:18px;height:18px;accent-color:var(--color-primary)">
-                            <span>Enable Adaptive Thresholds</span>
-                        </label>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_max_entries" min="100" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">entries</p>
                     </div>
                 </div>
+
+                <div style="padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="filter" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Eviction Strategy</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px">Algorithm used to select which cache entries are removed when the cache reaches its size limit.</p>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                        <div :style="config.dns.cache_eviction_strategy==='lru'?'border:2px solid #10B981;background:rgba(16,185,129,0.07)':'border:1px solid var(--border-color);background:var(--bg-tertiary)'"
+                             style="border-radius:16px;padding:18px;cursor:pointer" @click="config.dns.cache_eviction_strategy='lru'">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                                <i data-lucide="clock-3" style="width:16px;height:16px;color:#F59E0B"></i>
+                                <span style="font-size:13px;font-weight:600">LRU — Least Recently Used</span>
+                            </div>
+                            <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">Removes the entry that was accessed least recently. Simple and predictable — entries not queried for a while are first to go. Well suited for workloads where recent access reliably predicts future demand.</p>
+                        </div>
+                        <div :style="config.dns.cache_eviction_strategy==='lfu'?'border:2px solid #10B981;background:rgba(16,185,129,0.07)':'border:1px solid var(--border-color);background:var(--bg-tertiary)'"
+                             style="border-radius:16px;padding:18px;cursor:pointer" @click="config.dns.cache_eviction_strategy='lfu'">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                                <i data-lucide="bar-chart" style="width:16px;height:16px;color:#A855F7"></i>
+                                <span style="font-size:13px;font-weight:600">LFU — Least Frequently Used</span>
+                            </div>
+                            <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">Removes entries with the lowest total hit count. Keeps the most-queried domains in cache indefinitely. May cause cache pollution where old popular entries crowd out newer, more relevant ones.</p>
+                        </div>
+                        <div :style="config.dns.cache_eviction_strategy==='lfu-k'?'border:2px solid #10B981;background:rgba(16,185,129,0.07)':'border:1px solid var(--border-color);background:var(--bg-tertiary)'"
+                             style="border-radius:16px;padding:18px;cursor:pointer" @click="config.dns.cache_eviction_strategy='lfu-k'">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                                <i data-lucide="activity" style="width:16px;height:16px;color:#3B82F6"></i>
+                                <span style="font-size:13px;font-weight:600">LFU-K — Adaptive</span>
+                            </div>
+                            <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">Uses the K most recent access timestamps to compute frequency, making it responsive to shifting access patterns. Balances LFU's popularity bias with LRU's recency awareness for adaptive workloads.</p>
+                        </div>
+                        <div :style="config.dns.cache_eviction_strategy==='hit_rate'?'border:2px solid #10B981;background:rgba(16,185,129,0.07)':'border:1px solid var(--border-color);background:var(--bg-tertiary)'"
+                             style="border-radius:16px;padding:18px;cursor:pointer" @click="config.dns.cache_eviction_strategy='hit_rate'">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                                <i data-lucide="target" style="width:16px;height:16px;color:#10B981"></i>
+                                <span style="font-size:13px;font-weight:600">Hit Rate Based &nbsp;<span style="font-size:11px;color:#10B981;font-weight:500">(recommended)</span></span>
+                            </div>
+                            <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">Scores entries by hits relative to their TTL. A frequently queried short-TTL record scores higher than one with equal hits but a longer TTL. Ideal for DNS — correctly values CDN and dynamic records that matter most.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="refresh-cw" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Optimistic Refresh</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Proactively re-fetches cache entries in the background before they expire, so clients always receive a fresh response with zero added latency. Triggered when a cached entry has consumed more than the configured Refresh Threshold of its TTL.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Only applies to entries that meet the Minimum Hit Rate and Minimum Frequency thresholds below.</p>
+                    </div>
+                    <div @click="config.dns.cache_optimistic_refresh=!config.dns.cache_optimistic_refresh"
+                         :class="config.dns.cache_optimistic_refresh?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.cache_optimistic_refresh">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:32px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="gauge" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Refresh Threshold</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Fraction of a cache entry's TTL that must have elapsed before a background refresh is triggered. A value of <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">0.75</code> means the entry is refreshed when 75% of its TTL has passed.</p>
+                        </div>
+                        <div style="flex-shrink:0;width:150px">
+                            <input type="number" x-model.number="config.dns.cache_refresh_threshold" step="0.05" min="0.1" max="0.99" style="width:100%;text-align:right">
+                            <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">0.1 – 0.99</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.cache_optimistic_refresh">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:32px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="bar-chart-2" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Hit Rate</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Minimum cache hits per minute an entry must receive to qualify for optimistic refresh. Entries accessed less frequently are allowed to expire normally and are only re-fetched on the next client request.</p>
+                        </div>
+                        <div style="flex-shrink:0;width:150px">
+                            <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" style="width:100%;text-align:right">
+                            <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">hits / min</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.cache_optimistic_refresh">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:32px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="hash" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Frequency</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Minimum total number of hits an entry must accumulate before it is eligible for optimistic refresh. Prevents very recently added entries from being immediately scheduled for background re-fetches.</p>
+                        </div>
+                        <div style="flex-shrink:0;width:150px">
+                            <input type="number" x-model.number="config.dns.cache_min_frequency" min="1" style="width:100%;text-align:right">
+                            <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">total hits</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="calendar" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Access Window</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Time window within which an entry must have been accessed at least once to remain eligible for optimistic refresh. Entries not accessed within this window will expire normally rather than being proactively renewed.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Example: 7200 = 2 h &nbsp;·&nbsp; 43200 = 12 h &nbsp;·&nbsp; 86400 = 24 h.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_access_window_secs" min="0" step="3600" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="sliders" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Adaptive Thresholds</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Automatically tunes eviction thresholds based on observed cache behaviour. When enabled, Ferrous DNS continuously adjusts Min Hit Rate and Min Frequency to maintain an optimal working set without manual tuning.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">When enabled, the manually configured Min Hit Rate and Min Frequency values are overridden by the adaptive engine.</p>
+                    </div>
+                    <div @click="config.dns.cache_adaptive_thresholds=!config.dns.cache_adaptive_thresholds"
+                         :class="config.dns.cache_adaptive_thresholds?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="archive" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Compaction Interval</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Interval between full cache compaction passes that scan for and remove all expired entries. Lower values free memory more promptly; higher values reduce CPU overhead at the cost of holding stale entries slightly longer.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
+                    </div>
+                </div>
+
             </div>
         </div>
 
         <button @click="saveConfig()" class="btn btn-success">
             <i data-lucide="save" style="width:16px;height:16px"></i> Save Cache Settings
         </button>
+    </div>
+
+    <!-- WEB INTERFACE TAB -->
+    <div x-show="currentTab==='webinterface'&&!loading" x-cloak>
+        <div class="card">
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Appearance</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Choose the color scheme for the web interface</p>
+            <div class="form-group" style="max-width:240px">
+                <label class="form-label">Theme</label>
+                <select x-model="theme"
+                        @change="localStorage.setItem('theme', theme); document.documentElement.classList.toggle('dark', theme === 'dark'); scheduleLucide()">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
+        </div>
     </div>
 
 </main>
@@ -803,7 +1003,7 @@
             async saveConfig() {
                 try {
                     const res = await fetch('/api/config', {
-                        method: 'PUT',
+                        method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(this.config)
                     });

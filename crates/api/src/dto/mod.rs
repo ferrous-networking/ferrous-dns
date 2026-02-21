@@ -37,7 +37,7 @@ pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGro
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};
-pub use stats::{StatsQuery, StatsResponse, TopType, TypeDistribution};
+pub use stats::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistribution};
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
 pub use whitelist::WhitelistResponse;
 pub use whitelist_source::{

@@ -1,5 +1,5 @@
 use crate::{
-    dto::{StatsQuery, StatsResponse, TopType, TypeDistribution},
+    dto::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistribution},
     state::AppState,
     utils::{parse_period, validate_period},
 };
@@ -71,6 +71,13 @@ pub async fn get_stats(
                 most_queried_type,
                 record_type_distribution,
                 top_10_types,
+                source_stats: QuerySourceStats {
+                    cache_hits: stats.queries_cache_hits,
+                    upstream: stats.queries_upstream,
+                    blocked_by_blocklist: stats.queries_blocked_by_blocklist,
+                    blocked_by_managed_domain: stats.queries_blocked_by_managed_domain,
+                    blocked_by_regex_filter: stats.queries_blocked_by_regex_filter,
+                },
             })
         }
         Err(e) => {

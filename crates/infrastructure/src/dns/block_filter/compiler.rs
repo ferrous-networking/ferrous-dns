@@ -105,8 +105,6 @@ async fn fetch_url(url: &str, client: &reqwest::Client) -> Result<String, String
         .map_err(|e| format!("read error for {}: {}", url, e))
 }
 
-// ── Private helpers for compile_block_index ──────────────────────────────────
-
 struct SourceLoad {
     default_group_id: i64,
     sources: Vec<SourceMeta>,
@@ -408,8 +406,6 @@ async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMa
     })
 }
 
-// ── Public entry point ────────────────────────────────────────────────────────
-
 pub async fn compile_block_index(
     pool: &SqlitePool,
     client: &reqwest::Client,
@@ -483,8 +479,6 @@ pub async fn compile_block_index(
         has_advanced_rules,
     })
 }
-
-// ── Private helpers for build_allowlist_index ─────────────────────────────────
 
 struct WsFetch {
     group_id: i64,

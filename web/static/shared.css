@@ -15,13 +15,26 @@
 }
 
 .dark {
-    --bg-primary: #0F172A;
-    --bg-secondary: #1E293B;
-    --bg-tertiary: #334155;
-    --text-primary: #F1F5F9;
-    --text-secondary: #CBD5E1;
-    --text-tertiary: #94A3B8;
-    --border-color: #334155
+    --bg-primary: #111111;
+    --bg-secondary: #1A1A1A;
+    --bg-tertiary: #242424;
+    --text-primary: #EBEBEB;
+    --text-secondary: #888888;
+    --text-tertiary: #666666;
+    --border-color: #303030
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    color-scheme: dark
+}
+
+.dark .card-stat:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important
 }
 
 body {

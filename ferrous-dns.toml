@@ -1,57 +1,57 @@
 [server]
-dns_port = 53
-web_port = 8080
-bind_address = "0.0.0.0"
+dns_port = 53          # UDP/TCP port for DNS queries
+web_port = 8080        # HTTP port for the web dashboard and REST API
+bind_address = "0.0.0.0" # Address to bind on; 0.0.0.0 listens on all interfaces
 
 [dns]
-upstream_servers = []
-query_timeout = 5
-cache_enabled = true
-cache_ttl = 7200
-dnssec_enabled = true
-default_strategy = "Parallel"
-cache_max_entries = 200000
-cache_eviction_strategy = "hit_rate"
-cache_optimistic_refresh = true
-cache_min_hit_rate = 2.0
-cache_min_frequency = 10
-cache_min_lfuk_score = 1.5
-cache_refresh_threshold = 0.75
-cache_lfuk_history_size = 10
-cache_batch_eviction_percentage = 0.1
-cache_compaction_interval = 600
-cache_adaptive_thresholds = false
-# Janela de tempo (segundos) desde o último acesso para manter a entrada viva via refresh otimista.
-# Entradas com ao menos 1 hit acessadas dentro dessa janela serão renovadas antes de expirar.
-# Ex.: 7200 = 2h, 43200 = 12h, 86400 = 24h
+upstream_servers = []  # Fallback upstream DNS servers (used when no pool matches)
+query_timeout = 5      # Seconds to wait for an upstream response before timing out
+cache_enabled = true   # Enable in-memory DNS response cache
+cache_ttl = 7200       # Default TTL (seconds) for cached entries when the record has none
+dnssec_enabled = true  # Validate DNSSEC signatures on upstream responses
+default_strategy = "Parallel" # Resolution strategy: "Parallel" (fastest wins) or "Sequential"
+cache_max_entries = 200000    # Maximum number of entries the cache can hold
+cache_eviction_strategy = "hit_rate" # Eviction policy: "hit_rate", "lfu", or "lru"
+cache_optimistic_refresh = true      # Refresh entries in the background before they expire
+cache_min_hit_rate = 2.0             # Minimum hit rate (hits/min) to keep an entry alive via optimistic refresh
+cache_min_frequency = 10             # Minimum total hits required before an entry is eligible for optimistic refresh
+cache_min_lfuk_score = 1.5           # Minimum LFU-K score threshold for eviction candidates
+cache_refresh_threshold = 0.75       # Fraction of TTL remaining at which a background refresh is triggered (0.75 = 75%)
+cache_lfuk_history_size = 10         # Number of recent access timestamps tracked per entry for LFU-K scoring
+cache_batch_eviction_percentage = 0.1 # Fraction of cache to evict in one pass when the cache is full (0.1 = 10%)
+cache_compaction_interval = 600      # Seconds between full cache compaction runs (removes expired entries)
+cache_adaptive_thresholds = false    # Automatically tune eviction thresholds based on observed hit rates
+# Time window (seconds) since last access within which an entry is eligible for optimistic refresh.
+# Entries accessed at least once within this window will be renewed before expiry.
+# e.g. 7200 = 2h, 43200 = 12h, 86400 = 24h
 cache_access_window_secs = 7200
-# Número de shards internos do cache (DashMap).
-# Quando omitido, é detectado automaticamente: 4× cores da CPU arredondado
-# para potência de 2 (RPi 4 → 16, servidor 8 cores → 32, 16 cores → 64).
-# Descomente apenas se quiser forçar um valor específico:
+# Number of internal cache shards (DashMap).
+# When omitted, auto-detected as 4× CPU cores rounded up to the next power of 2
+# (e.g. RPi 4 → 16, 8-core server → 32, 16-core → 64).
+# Uncomment only if you need to force a specific value:
 # cache_shard_amount = 64
-block_private_ptr = true
-block_non_fqdn = true
-local_domain = "lan"
+block_private_ptr = true  # Block PTR lookups for private/RFC-1918 IP ranges
+block_non_fqdn = true     # Block queries for names that are not fully qualified domain names
+local_domain = "lan"      # Local domain suffix appended to short hostnames
 
 [[dns.pools]]
-name = "cloudflare"
-strategy = "Parallel"
-priority = 1
+name = "cloudflare"       # Pool name (used in logs and conditional forwarding rules)
+strategy = "Parallel"     # Query strategy for this pool: "Parallel" or "Sequential"
+priority = 1              # Lower value = higher priority when multiple pools are available
 servers = [
-    "tls://1.1.1.1:853",
-    "tls://1.0.0.1:853",
+    "https://1.1.1.1/dns-query",
+    "https://1.0.0.1/dns-query",
 ]
 
 [dns.health_check]
-interval = 30
-timeout = 2000
-failure_threshold = 3
-success_threshold = 2
+interval = 30          # Seconds between health check probes for each upstream server
+timeout = 2000         # Milliseconds to wait for a health check response
+failure_threshold = 3  # Consecutive failures before marking a server as unhealthy
+success_threshold = 2  # Consecutive successes required to mark a server as healthy again
 
 [[dns.conditional_forwarding]]
-domain = "lan"
-server = "10.0.0.1:53"
+domain = "lan"         # Queries for this domain are forwarded to the specified server
+server = "10.0.0.1:53" # DNS server to forward matching queries to
 
 [[dns.local_records]]
 hostname = "viudes"
@@ -60,18 +60,25 @@ ip = "10.0.10.1"
 record_type = "A"
 ttl = 300
 
+[[dns.local_records]]
+hostname = "kakarot"
+domain = "server"
+ip = "10.0.1.1"
+record_type = "A"
+ttl = 300
+
 [blocking]
-enabled = true
-custom_blocked = []
-whitelist = []
+enabled = true         # Enable DNS-based ad/malware blocking
+custom_blocked = []    # Additional domains to block (beyond downloaded blocklists)
+whitelist = []         # Domains to always allow, even if present in a blocklist
 
 [logging]
-level = "info"
+level = "info"         # Log verbosity: "error", "warn", "info", "debug", or "trace"
 
 [database]
-path = "ferrous-dns.db"
-log_queries = true
-queries_log_stored = 30
+path = "ferrous-dns.db"      # Path to the SQLite database file
+log_queries = true           # Store every DNS query in the database for analytics
+queries_log_stored = 30      # Days to retain query log entries before automatic cleanup
 # Minimum seconds between consecutive last-seen DB writes for the same client IP.
 # Reduce to track clients more frequently; increase to lower SQLite write pressure.
 client_tracking_interval = 60

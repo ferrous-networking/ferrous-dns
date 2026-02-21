@@ -184,7 +184,6 @@ impl CacheUpdater {
                 );
 
                 if !refreshed {
-                    // Entrada foi removida entre a seleção e o refresh; ignora
                     return Ok(false);
                 }
 

@@ -151,7 +151,7 @@ impl DnsResolver for CachedResolver {
                     if let Some(arc_res) = rx.borrow().clone() {
                         return Ok(DnsResolution {
                             addresses: Arc::clone(&arc_res.addresses),
-                            cache_hit: true,
+                            cache_hit: false, // follower aguardou resolução upstream, não leu do cache
                             dnssec_status: arc_res.dnssec_status,
                             cname: None,
                             upstream_server: None,

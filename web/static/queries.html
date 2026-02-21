@@ -161,31 +161,30 @@
                                                          class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
-    <div class="sidebar-footer">
-        <button @click="toggleTheme()" class="theme-btn">
-            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
-            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
-            <span>Theme</span>
-        </button>
-    </div>
 </aside>
 <main style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Query Log</h2>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">DNS query history — last 24h</p>
+        </div>
+    </div>
     <div class="card" style="margin-bottom:24px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:center">
-            <div>
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Show:</label>
+        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
                 <select x-model.number="pageSize" @change="currentPage=1;loadQueries()"
-                        style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                 </select>
             </div>
-            <div>
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">Category:</label>
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
                 <select x-model="category" @change="currentPage=1"
-                        style="width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="">All Queries</option>
                     <option value="allowed">Allowed</option>
                     <option value="blocked">Blocked</option>
@@ -193,47 +192,12 @@
                     <option value="upstream">Upstream</option>
                 </select>
             </div>
-            <div>
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;display:block">&nbsp;</label>
+            <div style="margin-left:auto">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" x-model="autoRefresh"
                            style="width:16px;height:16px;accent-color:var(--color-primary)">
-                    <span style="font-size:14px;color:var(--text-secondary)">Auto-refresh (1s)</span>
+                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
                 </label>
-            </div>
-        </div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="check-circle" style="width:32px;height:32px;color:var(--color-success)"></i>
-                <div><p style="font-size:12px;color:var(--text-secondary)">Allowed</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.allowed">0</p>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="shield-ban" style="width:32px;height:32px;color:var(--color-error)"></i>
-                <div><p style="font-size:12px;color:var(--text-secondary)">Blocked</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.blocked">0</p>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
-                <div><p style="font-size:12px;color:var(--text-secondary)">Cache Hits</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.cacheHits">0</p>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="server" style="width:32px;height:32px;color:var(--color-info)"></i>
-                <div><p style="font-size:12px;color:var(--text-secondary)">Upstream</p>
-                    <p style="font-size:24px;font-weight:700;color:var(--text-primary)" x-text="stats.upstream">0</p>
-                </div>
             </div>
         </div>
     </div>

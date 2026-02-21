@@ -5,7 +5,6 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 use tracing::{error, instrument};
 
-// (id, name, domain, action, group_id, comment, enabled, created_at, updated_at)
 type ManagedDomainRow = (
     i64,
     String,

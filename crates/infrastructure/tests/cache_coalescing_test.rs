@@ -132,10 +132,13 @@ async fn test_coalescing_cache_hit_flag_for_waiters() {
         .filter(|r| !r.as_ref().unwrap().as_ref().unwrap().cache_hit)
         .count();
 
-    assert_eq!(upstream_hits, 1, "exactly 1 result should be from upstream");
     assert_eq!(
-        cache_hits, 5,
-        "exactly 5 results should be marked as cache hits"
+        upstream_hits, 6,
+        "all 6 results are upstream-equivalent: followers aguardaram resolução upstream"
+    );
+    assert_eq!(
+        cache_hits, 0,
+        "followers não são cache hits — esperaram pelo upstream via coalescing"
     );
 }
 

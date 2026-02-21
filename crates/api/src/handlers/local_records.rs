@@ -132,14 +132,11 @@ async fn delete_record(
 async fn save_config_to_file(
     config: &ferrous_dns_domain::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let toml_str =
-        toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    tokio::fs::write("ferrous-dns.toml", toml_str)
-        .await
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
-
-    Ok(())
+    let path = ferrous_dns_domain::Config::get_config_path()
+        .unwrap_or_else(|| "ferrous-dns.toml".to_string());
+    config
+        .save_local_records(&path)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 async fn reload_cache_with_record(

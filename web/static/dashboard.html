@@ -86,13 +86,6 @@
                                                          class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
-    <div class="sidebar-footer">
-        <button @click="toggleTheme()" class="theme-btn">
-            <i data-lucide="sun" x-show="theme==='light'" style="width:16px;height:16px"></i>
-            <i data-lucide="moon" x-show="theme==='dark'" style="width:16px;height:16px"></i>
-            <span>Theme</span>
-        </button>
-    </div>
 </aside>
 <main style="padding:24px">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
@@ -194,6 +187,27 @@
         cacheSource: null
     };
 
+    // Gera (e persiste) uma cor distinta para cada label de gráfico.
+    // Usa hash djb2 + ângulo dourado no espaço HSL para máxima separação de matizes.
+    // A cor fica salva no localStorage, então o mesmo label sempre recebe a mesma cor
+    // mesmo que novos tipos apareçam ou a ordem mude no futuro.
+    function labelToColor(label) {
+        const storageKey = 'dns-chart-color:' + label;
+        const cached = localStorage.getItem(storageKey);
+        if (cached) return cached;
+
+        // djb2 hash
+        let hash = 5381;
+        for (let i = 0; i < label.length; i++) {
+            hash = (((hash << 5) + hash) ^ label.charCodeAt(i)) >>> 0;
+        }
+        // Ângulo dourado (~137.508°) distribui matizes de forma maximamente uniforme
+        const hue = Math.round((hash * 137.508) % 360);
+        const color = `hsl(${hue},70%,52%)`;
+        localStorage.setItem(storageKey, color);
+        return color;
+    }
+
     function app() {
         return {
             theme: 'light',
@@ -235,23 +249,45 @@
                 scheduleLucide()
             },
             async loadAllData() {
-                await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadQueryTypes(), this.loadCacheMetrics(), this.loadBlockFilterStats()])
+                // loadQueryTypes is NOT included here to avoid a race condition with loadStats():
+                // if loadQueryTypes finishes first, it falls back to the 500-query sample
+                // before loadStats has populated stats.queries_by_type, causing size instability.
+                // loadStats already updates both queryTypes and sourceStats charts directly.
+                await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadCacheMetrics(), this.loadBlockFilterStats()])
             },
             async loadQuickStats() {
                 
                 await Promise.all([this.loadStats(), this.loadCacheMetrics()])
             },
             async loadChartsData() {
-                
                 if (!this.chartsReady) return;
-                await Promise.all([this.loadQueryTypes(), this.loadTimelineData()])
+                await Promise.all([this.loadQueryTypes(), this.loadTimelineData()]);
+                this.updateQueryTypesChart();
+                this.updateCacheSourceChart();
             },
             async loadStats() {
                 this._ctrl.stats?.abort();
                 this._ctrl.stats = new AbortController();
                 try {
                     const res = await fetch('/api/stats?period=24h', {signal: this._ctrl.stats.signal});
-                    if (res.ok) this.stats = await res.json()
+                    if (res.ok) {
+                        this.stats = await res.json();
+                        // Usar queries_by_type do servidor (sem limite de 500 queries)
+                        // para o gráfico Query Types ser sempre preciso
+                        if (this.stats.queries_by_type) {
+                            this.queryTypes = {...this.stats.queries_by_type};
+                        }
+                        if (this.stats.source_stats) {
+                            const ss = this.stats.source_stats;
+                            this.sourceStats = {
+                                cache:          ss.cache_hits            || 0,
+                                upstream:       ss.upstream              || 0,
+                                blocklist:      ss.blocked_by_blocklist  || 0,
+                                managed_domain: ss.blocked_by_managed_domain || 0,
+                                regex_filter:   ss.blocked_by_regex_filter   || 0,
+                            };
+                        }
+                    }
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
                 }
@@ -281,27 +317,15 @@
                         const result = await res.json();
                         const queries = result.data || result;
 
-                        this.queryTypes = {};
-                        queries.forEach(q => {
-                            this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
-                        });
-                        const src = {cache: 0, upstream: 0, blocklist: 0, managed_domain: 0, regex_filter: 0};
-                        queries.forEach(q => {
-                            if (q.cache_hit) {
-                                src.cache++;
-                            } else if (q.blocked) {
-                                const bs = q.block_source;
-                                if (bs === 'managed_domain') src.managed_domain++;
-                                else if (bs === 'regex_filter') src.regex_filter++;
-                                else src.blocklist++;
-                            } else {
-                                src.upstream++;
-                            }
-                        });
-                        this.sourceStats = src;
-                        this.updateQueryTypesChart();
-                        this.updateCacheSourceChart();
-
+                        // Query Types: usa dados do servidor via loadStats() (sem limite).
+                        // Fallback para contagem local só se stats ainda não carregou.
+                        if (!this.stats.queries_by_type || Object.keys(this.stats.queries_by_type).length === 0) {
+                            this.queryTypes = {};
+                            queries.forEach(q => {
+                                this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
+                            });
+                            this.updateQueryTypesChart();
+                        }
                     }
                 } catch (e) {
                     console.error(e)
@@ -406,7 +430,7 @@
                                     labels: Object.keys(validTypes),
                                     datasets: [{
                                         data: Object.values(validTypes),
-                                        backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#A855F7']
+                                        backgroundColor: Object.keys(validTypes).map(labelToColor)
                                     }]
                                 },
                                 options: {
@@ -419,9 +443,20 @@
                         }
                     } else if (appCharts.queryTypes && appCharts.queryTypes.data && appCharts.queryTypes.canvas && Object.keys(validTypes).length > 0) {
 
-                        appCharts.queryTypes.data.labels = Object.keys(validTypes);
-                        appCharts.queryTypes.data.datasets[0].data = Object.values(validTypes);
-                        appCharts.queryTypes.update('none');
+                        const newLabels = Object.keys(validTypes);
+                        const newData   = Object.values(validTypes);
+                        const curLabels = appCharts.queryTypes.data.labels;
+                        const curData   = appCharts.queryTypes.data.datasets[0].data;
+                        const labelsChanged = newLabels.length !== curLabels.length ||
+                            newLabels.some((l, i) => l !== curLabels[i]);
+                        const dataChanged = newData.length !== curData.length ||
+                            newData.some((v, i) => v !== curData[i]);
+                        if (labelsChanged || dataChanged) {
+                            appCharts.queryTypes.data.labels = newLabels;
+                            appCharts.queryTypes.data.datasets[0].data = newData;
+                            appCharts.queryTypes.data.datasets[0].backgroundColor = newLabels.map(labelToColor);
+                            appCharts.queryTypes.update('none');
+                        }
                     }
                 } catch (e) {
                     console.error('Error updating query types chart:', e);
@@ -431,11 +466,11 @@
                 if (!this.chartsReady) return;
 
                 const SOURCE_DEF = [
-                    {key: 'cache',          label: '⚡ Cache',          color: '#A855F7'},
-                    {key: 'upstream',       label: '🌐 Upstream',       color: '#3B82F6'},
-                    {key: 'blocklist',      label: '🚫 Blocklist',      color: '#EF4444'},
-                    {key: 'managed_domain', label: '🔶 Managed Domain', color: '#F97316'},
-                    {key: 'regex_filter',   label: '🔵 Regex Filter',   color: '#8B5CF6'},
+                    {key: 'cache',          label: '⚡ Cache'},
+                    {key: 'upstream',       label: '🌐 Upstream'},
+                    {key: 'blocklist',      label: '🚫 Blocklist'},
+                    {key: 'managed_domain', label: '🔶 Managed Domain'},
+                    {key: 'regex_filter',   label: '🔵 Regex Filter'},
                 ];
                 const pctTooltip = {
                     callbacks: {
@@ -453,7 +488,7 @@
                     if (active.length === 0) return;
                     const labels = active.map(e => e.label);
                     const data   = active.map(e => this.sourceStats[e.key]);
-                    const colors = active.map(e => e.color);
+                    const colors = active.map(e => labelToColor(e.label));
 
                     if (!appCharts.cacheSource) {
                         const ctx3 = document.getElementById('cacheSourceChart');
@@ -473,10 +508,18 @@
                             });
                         }
                     } else if (appCharts.cacheSource.data && appCharts.cacheSource.canvas) {
-                        appCharts.cacheSource.data.labels = labels;
-                        appCharts.cacheSource.data.datasets[0].data = data;
-                        appCharts.cacheSource.data.datasets[0].backgroundColor = colors;
-                        appCharts.cacheSource.update('none');
+                        const curLabels = appCharts.cacheSource.data.labels;
+                        const curData   = appCharts.cacheSource.data.datasets[0].data;
+                        const labelsChanged = labels.length !== curLabels.length ||
+                            labels.some((l, i) => l !== curLabels[i]);
+                        const dataChanged = data.length !== curData.length ||
+                            data.some((v, i) => v !== curData[i]);
+                        if (labelsChanged || dataChanged) {
+                            appCharts.cacheSource.data.labels = labels;
+                            appCharts.cacheSource.data.datasets[0].data = data;
+                            appCharts.cacheSource.data.datasets[0].backgroundColor = colors;
+                            appCharts.cacheSource.update('none');
+                        }
                     }
                 } catch (e) {
                     console.error('Error updating cache source chart:', e);
@@ -615,7 +658,7 @@
                                 labels: Object.keys(this.queryTypes),
                                 datasets: [{
                                     data: Object.values(this.queryTypes),
-                                    backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#A855F7']
+                                    backgroundColor: Object.keys(this.queryTypes).map(labelToColor)
                                 }]
                             },
                             options: {
@@ -627,11 +670,11 @@
                         })
                     }
                     const SOURCE_DEF_INIT = [
-                        {key: 'cache',          label: '⚡ Cache',          color: '#A855F7'},
-                        {key: 'upstream',       label: '🌐 Upstream',       color: '#3B82F6'},
-                        {key: 'blocklist',      label: '🚫 Blocklist',      color: '#EF4444'},
-                        {key: 'managed_domain', label: '🔶 Managed Domain', color: '#F97316'},
-                        {key: 'regex_filter',   label: '🔵 Regex Filter',   color: '#8B5CF6'},
+                        {key: 'cache',          label: '⚡ Cache'},
+                        {key: 'upstream',       label: '🌐 Upstream'},
+                        {key: 'blocklist',      label: '🚫 Blocklist'},
+                        {key: 'managed_domain', label: '🔶 Managed Domain'},
+                        {key: 'regex_filter',   label: '🔵 Regex Filter'},
                     ];
                     const ctx3 = document.getElementById('cacheSourceChart');
                     const activeInit = SOURCE_DEF_INIT.filter(e => (this.sourceStats[e.key] || 0) > 0);
@@ -642,7 +685,7 @@
                                 labels: activeInit.map(e => e.label),
                                 datasets: [{
                                     data: activeInit.map(e => this.sourceStats[e.key]),
-                                    backgroundColor: activeInit.map(e => e.color)
+                                    backgroundColor: activeInit.map(e => labelToColor(e.label))
                                 }]
                             },
                             options: {
@@ -672,10 +715,10 @@
                 clearInterval(this.pollingIntervals.fast);
                 clearInterval(this.pollingIntervals.slow);
             },
-            formatTime(ms) {
-                if (!ms) return '0 ms';
-                if (ms < 1000) return `${Math.round(ms)} µs`;
-                return `${(ms / 1000).toFixed(1)} ms`
+            formatTime(us) {
+                if (!us) return '0 µs';
+                if (us < 1000) return `${Math.round(us)} µs`;
+                return `${(us / 1000).toFixed(1)} ms`
             },
             formatNumber(n) {
                 return (n || 0).toLocaleString();

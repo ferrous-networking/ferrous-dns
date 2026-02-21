@@ -8,7 +8,6 @@ use tracing::debug;
 static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .use_rustls_tls()
-        .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(4)
         .http2_prior_knowledge()
         .build()

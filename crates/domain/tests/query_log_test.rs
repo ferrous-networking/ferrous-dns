@@ -2,6 +2,39 @@ use ferrous_dns_domain::{QueryStats, RecordType};
 use std::collections::HashMap;
 
 #[test]
+fn test_query_stats_default_source_fields() {
+    let stats = QueryStats::default();
+    assert_eq!(stats.queries_cache_hits, 0);
+    assert_eq!(stats.queries_upstream, 0);
+    assert_eq!(stats.queries_blocked_by_blocklist, 0);
+    assert_eq!(stats.queries_blocked_by_managed_domain, 0);
+    assert_eq!(stats.queries_blocked_by_regex_filter, 0);
+}
+
+#[test]
+fn test_query_stats_source_fields_not_altered_by_analytics() {
+    let stats = QueryStats {
+        queries_cache_hits: 10,
+        queries_upstream: 20,
+        queries_blocked_by_blocklist: 5,
+        queries_blocked_by_managed_domain: 3,
+        queries_blocked_by_regex_filter: 2,
+        ..Default::default()
+    };
+
+    let mut by_type = HashMap::new();
+    by_type.insert(RecordType::A, 100u64);
+    let stats = stats.with_analytics(by_type);
+
+    // with_analytics must not touch source fields
+    assert_eq!(stats.queries_cache_hits, 10);
+    assert_eq!(stats.queries_upstream, 20);
+    assert_eq!(stats.queries_blocked_by_blocklist, 5);
+    assert_eq!(stats.queries_blocked_by_managed_domain, 3);
+    assert_eq!(stats.queries_blocked_by_regex_filter, 2);
+}
+
+#[test]
 fn test_query_stats_with_analytics() {
     let mut queries_by_type = HashMap::new();
     queries_by_type.insert(RecordType::A, 100);

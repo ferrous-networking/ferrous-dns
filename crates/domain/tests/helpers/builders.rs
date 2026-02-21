@@ -1,5 +1,5 @@
-#[allow(dead_code)]
-use ferrous_dns_domain::{DnsProtocol, DnsRecord, QueryLog, RecordType};
+#![allow(dead_code)]
+use ferrous_dns_domain::{BlockSource, DnsProtocol, DnsRecord, QueryLog, QuerySource, RecordType};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -12,6 +12,8 @@ pub struct QueryLogBuilder {
     response_time_us: Option<u64>,
     cache_hit: bool,
     cache_refresh: bool,
+    block_source: Option<BlockSource>,
+    query_source: QuerySource,
 }
 
 impl QueryLogBuilder {
@@ -24,6 +26,8 @@ impl QueryLogBuilder {
             response_time_us: Some(10),
             cache_hit: false,
             cache_refresh: false,
+            block_source: None,
+            query_source: QuerySource::Client,
         }
     }
 
@@ -42,6 +46,26 @@ impl QueryLogBuilder {
         self
     }
 
+    pub fn cache_hit(mut self, cache_hit: bool) -> Self {
+        self.cache_hit = cache_hit;
+        self
+    }
+
+    pub fn response_time_us(mut self, us: u64) -> Self {
+        self.response_time_us = Some(us);
+        self
+    }
+
+    pub fn block_source(mut self, src: BlockSource) -> Self {
+        self.block_source = Some(src);
+        self
+    }
+
+    pub fn query_source(mut self, src: QuerySource) -> Self {
+        self.query_source = src;
+        self
+    }
+
     pub fn build(self) -> QueryLog {
         QueryLog {
             id: None,
@@ -56,9 +80,9 @@ impl QueryLogBuilder {
             upstream_server: None,
             response_status: None,
             timestamp: None,
-            query_source: Default::default(),
+            query_source: self.query_source,
             group_id: None,
-            block_source: None,
+            block_source: self.block_source,
         }
     }
 }
