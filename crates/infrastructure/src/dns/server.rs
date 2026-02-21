@@ -1,8 +1,9 @@
 use crate::dns::forwarding::RecordTypeMapper;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::DomainError;
-use hickory_proto::op::{MessageType, ResponseCode};
+use ferrous_dns_domain::{DomainError, RecordType};
+use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::{Name, RData, Record};
+use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use std::net::IpAddr;
@@ -10,6 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
+#[derive(Clone)]
 pub struct DnsServerHandler {
     use_case: Arc<HandleDnsQueryUseCase>,
 }
@@ -22,7 +24,90 @@ impl DnsServerHandler {
     fn normalize_domain(domain: &str) -> &str {
         domain.trim_end_matches('.')
     }
+
+    /// Fast-path cache probe: no block-filter, no logging, no allocation on miss.
+    /// Returns `Some((addresses, ttl))` when the domain is cached with ≥1 address.
+    pub fn try_fast_path(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+    ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
+        self.use_case.try_cache_direct(domain, record_type)
+    }
+
+    /// Fallback for the custom UDP loop: parse `raw` with hickory_proto, run the
+    /// full use-case pipeline (block-filter, upstream, logging), and serialize
+    /// the response back to wire bytes.
+    ///
+    /// Returns `None` only when the packet cannot be parsed at all.
+    pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {
+        let query_msg = Message::from_vec(raw).ok()?;
+
+        // Clone the query section so we can drop query_msg before the .await.
+        let queries: Vec<_> = query_msg.queries().to_vec();
+        let query_info = queries.first()?;
+
+        let domain_name = query_info.name().to_utf8();
+        let domain = domain_name.trim_end_matches('.');
+        let hickory_rt = query_info.query_type();
+
+        let our_rt = RecordTypeMapper::from_hickory(hickory_rt)?;
+        let dns_request = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip);
+
+        let query_id = query_msg.id();
+        let rd = query_msg.recursion_desired();
+        drop(query_msg); // must not cross .await
+
+        let resolution = match self.use_case.execute(&dns_request).await {
+            Ok(res) => res,
+            Err(DomainError::Blocked) => {
+                return Some(build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::Refused,
+                ))
+            }
+            Err(_) => {
+                return Some(build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::ServFail,
+                ))
+            }
+        };
+
+        let ttl = resolution.min_ttl.unwrap_or(60);
+        let addresses = &resolution.addresses;
+
+        let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
+        resp.set_recursion_desired(rd);
+        resp.set_recursion_available(true);
+        for q in &queries {
+            resp.add_query(q.clone());
+        }
+
+        if addresses.is_empty() {
+            for record in resolution.authority_records {
+                resp.add_name_server(record);
+            }
+        } else {
+            let record_name = Name::from_str(domain).unwrap_or_else(|_| Name::root());
+            for addr in addresses.iter() {
+                let rdata = match *addr {
+                    IpAddr::V4(ipv4) => RData::A(hickory_proto::rr::rdata::A(ipv4)),
+                    IpAddr::V6(ipv6) => RData::AAAA(hickory_proto::rr::rdata::AAAA(ipv6)),
+                };
+                resp.add_answer(Record::from_rdata(record_name.clone(), ttl, rdata));
+            }
+        }
+
+        encode_message(&resp)
+    }
 }
+
+// ── Hickory RequestHandler (TCP + UDP fallback via ServerFuture) ──────────────
 
 #[async_trait::async_trait]
 impl RequestHandler for DnsServerHandler {
@@ -119,6 +204,31 @@ impl RequestHandler for DnsServerHandler {
             }
         }
     }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn encode_message(msg: &Message) -> Option<Vec<u8>> {
+    let mut buf = Vec::with_capacity(512);
+    let mut encoder = BinEncoder::new(&mut buf);
+    msg.emit(&mut encoder).ok()?;
+    Some(buf)
+}
+
+fn build_error_wire(
+    id: u16,
+    rd: bool,
+    queries: &[hickory_proto::op::Query],
+    code: ResponseCode,
+) -> Vec<u8> {
+    let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
+    resp.set_recursion_desired(rd);
+    resp.set_recursion_available(true);
+    resp.set_response_code(code);
+    for q in queries {
+        resp.add_query(q.clone());
+    }
+    encode_message(&resp).unwrap_or_default()
 }
 
 async fn send_error_response<R: ResponseHandler>(

@@ -13,6 +13,7 @@ tracing.workspace = true
 ipnetwork = "0.20"
 lru.workspace = true
 hickory-proto.workspace = true
+libc.workspace = true
 
 [dev-dependencies]
 chrono = "0.4"

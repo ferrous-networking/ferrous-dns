@@ -146,37 +146,45 @@ impl DnsResolver for CachedResolver {
         };
 
         if !is_leader {
-            match rx.changed().await {
-                Ok(()) => {
-                    if let Some(arc_res) = rx.borrow().clone() {
-                        return Ok(DnsResolution {
-                            addresses: Arc::clone(&arc_res.addresses),
-                            cache_hit: false, // follower aguardou resolução upstream, não leu do cache
-                            dnssec_status: arc_res.dnssec_status,
-                            cname: None,
-                            upstream_server: None,
-                            min_ttl: arc_res.min_ttl,
-                            authority_records: vec![],
-                        });
-                    }
-                }
-                Err(_) => {
-                    if let Some(cached) = self.check_cache(query) {
-                        return if cached.addresses.is_empty() {
-                            Err(DomainError::NxDomain)
-                        } else {
-                            Ok(cached)
-                        };
-                    }
-                    return match self.inner.resolve(query).await {
-                        Ok(r) => {
-                            self.store_in_cache(query, &r);
-                            Ok(r)
-                        }
-                        Err(e) => Err(e),
-                    };
+            // Happy path: leader sent the result before closing the channel.
+            if let Ok(()) = rx.changed().await {
+                if let Some(arc_res) = rx.borrow().clone() {
+                    return Ok(DnsResolution {
+                        addresses: Arc::clone(&arc_res.addresses),
+                        cache_hit: false, // follower waited for upstream resolution, not a cache read
+                        dnssec_status: arc_res.dnssec_status,
+                        cname: None,
+                        upstream_server: None,
+                        min_ttl: arc_res.min_ttl,
+                        authority_records: vec![],
+                    });
                 }
             }
+
+            // Unified fallback (Err = channel closed, or Ok but borrow is None):
+            // 1. The leader may have sent before we subscribed — the value is still readable via borrow().
+            if let Some(arc_res) = rx.borrow().clone() {
+                return Ok(DnsResolution {
+                    addresses: Arc::clone(&arc_res.addresses),
+                    cache_hit: false,
+                    dnssec_status: arc_res.dnssec_status,
+                    cname: None,
+                    upstream_server: None,
+                    min_ttl: arc_res.min_ttl,
+                    authority_records: vec![],
+                });
+            }
+
+            // 2. Cache: leader may have stored a result or NegativeResponse.
+            if let Some(cached) = self.check_cache(query) {
+                return if cached.addresses.is_empty() {
+                    Err(DomainError::NxDomain)
+                } else {
+                    Ok(cached)
+                };
+            }
+
+            // 3. Last resort: leader failed (timeout, SERVFAIL) and cache is empty.
             return match self.inner.resolve(query).await {
                 Ok(r) => {
                     self.store_in_cache(query, &r);

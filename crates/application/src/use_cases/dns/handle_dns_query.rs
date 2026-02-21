@@ -2,7 +2,7 @@ use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
     QueryLogRepository,
 };
-use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource};
+use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType};
 use lru::LruCache;
 use std::cell::RefCell;
 use std::net::IpAddr;
@@ -13,8 +13,39 @@ use std::time::{Duration, Instant};
 const LAST_SEEN_CAPACITY: usize = 8_192;
 
 thread_local! {
-    static LAST_SEEN_TRACKER: RefCell<LruCache<IpAddr, Instant>> =
+    // Stores coarse nanosecond timestamps (CLOCK_MONOTONIC_COARSE) rather than
+    // `Instant` values.  Resolution ~1-4 ms is more than enough for a 60-second
+    // client-tracking interval, and it avoids storing a platform-specific opaque
+    // type in the LRU.
+    static LAST_SEEN_TRACKER: RefCell<LruCache<IpAddr, u64>> =
         RefCell::new(LruCache::new(NonZeroUsize::new(LAST_SEEN_CAPACITY).unwrap()));
+}
+
+/// Coarse monotonic nanoseconds for interval comparisons.
+///
+/// Uses `CLOCK_MONOTONIC_COARSE` on Linux (~5-15 ns, ~1-4 ms resolution).
+/// NOT suitable for sub-millisecond latency measurement — use `Instant` for that.
+/// Falls back to `SystemTime` nanoseconds on non-Linux platforms.
+#[cfg(target_os = "linux")]
+#[inline]
+fn coarse_now_ns() -> u64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: ts is valid; CLOCK_MONOTONIC_COARSE is available on Linux >= 2.6.32.
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_COARSE, &mut ts) };
+    ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+}
+
+#[cfg(not(target_os = "linux"))]
+#[inline]
+fn coarse_now_ns() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64
 }
 
 pub struct HandleDnsQueryUseCase {
@@ -70,18 +101,41 @@ impl HandleDnsQueryUseCase {
         }
     }
 
+    /// Fast path: checks only the DNS cache, bypassing block-filter, client
+    /// tracking, and query logging.  Returns `Some((addresses, ttl))` on a
+    /// non-empty cache hit, `None` on a miss or an empty result.
+    ///
+    /// Safe to call because only domains that were previously resolved (and
+    /// therefore allowed) ever reach the cache.
+    pub fn try_cache_direct(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+    ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
+        let query = DnsQuery::new(Arc::from(domain), record_type);
+        let resolution = self.resolver.try_cache(&query)?;
+        if resolution.addresses.is_empty() {
+            return None;
+        }
+        let ttl = resolution.min_ttl.unwrap_or(60);
+        Some((resolution.addresses, ttl))
+    }
+
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
+        // `Instant::now()` (CLOCK_MONOTONIC) for sub-microsecond response-time
+        // accuracy.  `coarse_now_ns()` (CLOCK_MONOTONIC_COARSE) only for the
+        // 60-second client-tracking interval where 1-4 ms resolution is fine.
         let start = Instant::now();
 
         if let Some(client_repo) = &self.client_repo {
+            let now_ns = coarse_now_ns();
+            let interval_ns = self.client_tracking_interval.as_nanos() as u64;
             let needs_update = LAST_SEEN_TRACKER.with(|t| {
                 let mut tracker = t.borrow_mut();
                 match tracker.peek(&request.client_ip) {
-                    Some(&last) if start.duration_since(last) < self.client_tracking_interval => {
-                        false
-                    }
+                    Some(&last_ns) if now_ns.saturating_sub(last_ns) < interval_ns => false,
                     _ => {
-                        tracker.put(request.client_ip, start);
+                        tracker.put(request.client_ip, now_ns);
                         true
                     }
                 }
@@ -130,7 +184,7 @@ impl HandleDnsQueryUseCase {
                 ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
             };
 
-            if let Err(e) = self.query_log.log_query(&query_log).await {
+            if let Err(e) = self.query_log.log_query_sync(&query_log) {
                 tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
             }
 
@@ -146,7 +200,7 @@ impl HandleDnsQueryUseCase {
                     ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
                 };
 
-                if let Err(e) = self.query_log.log_query(&query_log).await {
+                if let Err(e) = self.query_log.log_query_sync(&query_log) {
                     tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
                 }
 
@@ -164,7 +218,7 @@ impl HandleDnsQueryUseCase {
                     ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
                 };
 
-                if let Err(log_err) = self.query_log.log_query(&query_log).await {
+                if let Err(log_err) = self.query_log.log_query_sync(&query_log) {
                     tracing::warn!(error = %log_err, "Failed to log error query");
                 }
 

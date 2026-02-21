@@ -48,6 +48,7 @@ chrono = "0.4.43"
 arc-swap.workspace = true
 aho-corasick.workspace = true
 fancy-regex.workspace = true
+libc.workspace = true
 equivalent = "1"
 
 [dev-dependencies]

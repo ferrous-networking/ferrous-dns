@@ -69,6 +69,7 @@ async fn test_update_last_seen_creates_client() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let client = repo.get_or_create(ip).await.unwrap();
     assert_eq!(client.ip_address, ip);
@@ -85,6 +86,7 @@ async fn test_update_last_seen_increments_count() {
     repo.update_last_seen(ip).await.unwrap();
     repo.update_last_seen(ip).await.unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let client = repo.get_or_create(ip).await.unwrap();
     assert_eq!(client.query_count, 3);
@@ -97,6 +99,7 @@ async fn test_update_mac_address() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
@@ -114,6 +117,7 @@ async fn test_update_hostname() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     repo.update_hostname(ip, "my-device.local".to_string())
         .await
@@ -133,6 +137,7 @@ async fn test_get_all_with_pagination() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let clients = repo.get_all(5, 0).await.unwrap();
     assert_eq!(clients.len(), 5);
@@ -150,6 +155,7 @@ async fn test_get_active_clients() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     sqlx::query(
         "UPDATE clients SET last_seen = datetime('now', '-31 days') WHERE ip_address IN ('192.168.1.1', '192.168.1.2')",
@@ -170,6 +176,7 @@ async fn test_get_stats() {
     for i in 1..=5 {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
+        repo.flush_writes().await;
 
         if i <= 3 {
             repo.update_mac_address(ip, format!("aa:bb:cc:dd:ee:{:02x}", i))
@@ -199,6 +206,7 @@ async fn test_delete_older_than() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     sqlx::query(
         "UPDATE clients SET last_seen = datetime('now', '-31 days') WHERE ip_address IN ('192.168.1.1', '192.168.1.2')",
@@ -223,6 +231,7 @@ async fn test_get_needs_mac_update() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let ip1: IpAddr = "192.168.1.1".parse().unwrap();
     repo.update_mac_address(ip1, "aa:bb:cc:dd:ee:01".to_string())
@@ -250,6 +259,7 @@ async fn test_get_needs_hostname_update() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let ip1: IpAddr = "192.168.1.1".parse().unwrap();
     repo.update_hostname(ip1, "device1.local".to_string())
@@ -275,6 +285,7 @@ async fn test_delete_existing_client() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let client = repo.get_or_create(ip).await.unwrap();
     let client_id = client.id.unwrap();
@@ -311,6 +322,7 @@ async fn test_delete_client_removes_from_get_all() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let all_clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(all_clients.len(), 3);
@@ -330,6 +342,8 @@ async fn test_delete_client_with_mac_and_hostname() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
+
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
@@ -356,6 +370,7 @@ async fn test_delete_updates_stats() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let stats_before = repo.get_stats().await.unwrap();
     assert_eq!(stats_before.total_clients, 5);
@@ -377,6 +392,7 @@ async fn test_delete_all_clients() {
         let ip: IpAddr = format!("192.168.1.{}", i).parse().unwrap();
         repo.update_last_seen(ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let all_clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(all_clients.len(), 3);
@@ -399,6 +415,7 @@ async fn test_delete_idempotency() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
 
     let client = repo.get_or_create(ip).await.unwrap();
     let client_id = client.id.unwrap();
@@ -443,6 +460,7 @@ async fn test_delete_preserves_other_clients() {
     for ip in &ips {
         repo.update_last_seen(*ip).await.unwrap();
     }
+    repo.flush_writes().await;
 
     let all_clients = repo.get_all(100, 0).await.unwrap();
     assert_eq!(all_clients.len(), 10);
@@ -468,6 +486,8 @@ async fn test_delete_client_cascade_behavior() {
 
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     repo.update_last_seen(ip).await.unwrap();
+    repo.flush_writes().await;
+
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();

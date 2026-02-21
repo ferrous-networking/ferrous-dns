@@ -4,15 +4,69 @@ use ferrous_dns_application::ports::ClientRepository;
 use ferrous_dns_domain::{Client, ClientStats, DomainError};
 use sqlx::SqlitePool;
 use std::net::IpAddr;
-use tracing::{error, instrument};
+use tokio::sync::{mpsc, oneshot};
+use tracing::{error, instrument, warn};
+
+const CLIENT_CHANNEL_CAPACITY: usize = 4_096;
+
+enum ClientMsg {
+    IpSeen(IpAddr),
+    Flush(oneshot::Sender<()>),
+}
 
 pub struct SqliteClientRepository {
     pool: SqlitePool,
+    sender: mpsc::Sender<ClientMsg>,
 }
 
 impl SqliteClientRepository {
     pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        let (sender, receiver) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
+        let write_pool = pool.clone();
+        tokio::spawn(async move {
+            Self::track_loop(write_pool, receiver).await;
+        });
+        Self { pool, sender }
+    }
+
+    async fn track_loop(pool: SqlitePool, mut receiver: mpsc::Receiver<ClientMsg>) {
+        while let Some(msg) = receiver.recv().await {
+            match msg {
+                ClientMsg::IpSeen(ip) => {
+                    let ip_str = ip.to_string();
+                    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    if let Err(e) = sqlx::query(
+                        "INSERT INTO clients (ip_address, first_seen, last_seen, query_count)
+                         VALUES (?, ?, ?, 1)
+                         ON CONFLICT(ip_address) DO UPDATE SET
+                             last_seen = ?,
+                             query_count = query_count + 1,
+                             updated_at = ?",
+                    )
+                    .bind(&ip_str)
+                    .bind(&timestamp)
+                    .bind(&timestamp)
+                    .bind(&timestamp)
+                    .bind(&timestamp)
+                    .execute(&pool)
+                    .await
+                    {
+                        warn!(error = %e, %ip, "Failed to update client last_seen");
+                    }
+                }
+                ClientMsg::Flush(ack) => {
+                    let _ = ack.send(());
+                }
+            }
+        }
+    }
+
+    pub async fn flush_writes(&self) {
+        let (tx, rx) = oneshot::channel();
+        if self.sender.send(ClientMsg::Flush(tx)).await.is_ok() {
+            let _ = rx.await;
+        }
     }
 }
 
@@ -57,31 +111,8 @@ impl ClientRepository for SqliteClientRepository {
         }
     }
 
-    #[instrument(skip(self))]
     async fn update_last_seen(&self, ip_address: IpAddr) -> Result<(), DomainError> {
-        let ip_str = ip_address.to_string();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
-        sqlx::query(
-            "INSERT INTO clients (ip_address, first_seen, last_seen, query_count)
-             VALUES (?, ?, ?, 1)
-             ON CONFLICT(ip_address) DO UPDATE SET
-                 last_seen = ?,
-                 query_count = query_count + 1,
-                 updated_at = ?",
-        )
-        .bind(&ip_str)
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .bind(&now)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, ip = %ip_address, "Failed to update last_seen");
-            DomainError::DatabaseError(e.to_string())
-        })?;
-
+        let _ = self.sender.try_send(ClientMsg::IpSeen(ip_address));
         Ok(())
     }
 

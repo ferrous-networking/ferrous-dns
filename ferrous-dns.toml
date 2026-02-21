@@ -29,7 +29,7 @@ cache_access_window_secs = 7200
 # When omitted, auto-detected as 4× CPU cores rounded up to the next power of 2
 # (e.g. RPi 4 → 16, 8-core server → 32, 16-core → 64).
 # Uncomment only if you need to force a specific value:
-# cache_shard_amount = 64
+ cache_shard_amount = 512
 block_private_ptr = true  # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true     # Block queries for names that are not fully qualified domain names
 local_domain = "lan"      # Local domain suffix appended to short hostnames

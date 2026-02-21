@@ -68,6 +68,8 @@ webpki-roots = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 bytes = "1"
 mimalloc = { version = "0.1", default-features = false }
+core_affinity = "0.8"
+libc = "0.2"
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION PROFILES

@@ -11,6 +11,7 @@ use ferrous_dns_jobs::{
     BlocklistSyncJob, ClientSyncJob, JobRunner, QueryLogRetentionJob, RetentionJob,
 };
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
@@ -43,8 +44,33 @@ struct Cli {
     log_level: Option<String>,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    let core_ids = core_affinity::get_core_ids().unwrap_or_default();
+    let num_workers = core_ids.len().max(1);
+    let core_ids = Arc::new(core_ids);
+    let counter = Arc::new(AtomicUsize::new(0));
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_workers)
+        .thread_name("ferrous-dns-worker")
+        .on_thread_start({
+            let core_ids = core_ids.clone();
+            let counter = counter.clone();
+            move || {
+                if !core_ids.is_empty() {
+                    let idx = counter.fetch_add(1, Ordering::Relaxed) % core_ids.len();
+                    core_affinity::set_for_current(core_ids[idx]);
+                }
+            }
+        })
+        .enable_all()
+        .build()
+        .expect("Failed to build tokio runtime");
+
+    runtime.block_on(async_main())
+}
+
+async fn async_main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let cli_overrides = CliOverrides {

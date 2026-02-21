@@ -65,7 +65,7 @@ impl UdpTransport {
                 "UDP query sent"
             );
 
-            let mut recv_buf = vec![0u8; MAX_UDP_RESPONSE_SIZE];
+            let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
 
             let (bytes_received, from_addr) =
                 tokio::time::timeout(timeout, socket.recv_from(&mut recv_buf))
@@ -91,8 +91,6 @@ impl UdpTransport {
                 );
             }
 
-            recv_buf.truncate(bytes_received);
-
             debug!(
                 server = %self.server_addr,
                 bytes_received = bytes_received,
@@ -101,7 +99,7 @@ impl UdpTransport {
             );
 
             Ok(TransportResponse {
-                bytes: bytes::Bytes::from(recv_buf),
+                bytes: bytes::Bytes::copy_from_slice(&recv_buf[..bytes_received]),
                 protocol_used: "UDP",
             })
         } else {
@@ -147,7 +145,7 @@ impl UdpTransport {
             "UDP query sent"
         );
 
-        let mut recv_buf = vec![0u8; MAX_UDP_RESPONSE_SIZE];
+        let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
 
         let (bytes_received, from_addr) =
             tokio::time::timeout(timeout, socket.recv_from(&mut recv_buf))
@@ -173,8 +171,6 @@ impl UdpTransport {
             );
         }
 
-        recv_buf.truncate(bytes_received);
-
         debug!(
             server = %self.server_addr,
             bytes_received = bytes_received,
@@ -183,7 +179,7 @@ impl UdpTransport {
         );
 
         Ok(TransportResponse {
-            bytes: bytes::Bytes::from(recv_buf),
+            bytes: bytes::Bytes::copy_from_slice(&recv_buf[..bytes_received]),
             protocol_used: "UDP",
         })
     }
