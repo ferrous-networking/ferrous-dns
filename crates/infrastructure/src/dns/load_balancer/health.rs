@@ -86,7 +86,7 @@ impl HealthChecker {
         let start = std::time::Instant::now();
         let timeout_duration = Duration::from_millis(timeout_ms);
 
-        let query_bytes = match MessageBuilder::build_query("google.com", &RecordType::A) {
+        let query_bytes = match MessageBuilder::build_query("google.com", &RecordType::A, false) {
             Ok(b) => b,
             Err(e) => {
                 self.mark_failed(&server_str, None, Some(e.to_string()));

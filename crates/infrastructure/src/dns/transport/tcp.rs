@@ -52,8 +52,6 @@ impl TcpTransport {
                 ))
             })?;
 
-        // Disable Nagle algorithm: DNS messages are small and complete in a single
-        // write, so buffering for coalescing adds unnecessary latency (10–40 ms).
         stream.set_nodelay(true).map_err(|e| {
             DomainError::InvalidDomainName(format!(
                 "Failed to set TCP_NODELAY on {}: {}",
@@ -72,7 +70,6 @@ impl DnsTransport for TcpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        // Try a pooled connection first; fall back to a new one if unavailable or stale.
         let mut stream = match self.take_pooled() {
             Some(s) => s,
             None => self.connect_new(timeout).await?,
@@ -83,7 +80,6 @@ impl DnsTransport for TcpTransport {
         })
         .await;
 
-        // On any send failure (stale pooled connection, etc.), open a fresh connection.
         let mut stream = match send_result {
             Ok(Ok(())) => stream,
             _ => {

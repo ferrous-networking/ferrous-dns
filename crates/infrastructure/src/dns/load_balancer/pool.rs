@@ -83,6 +83,7 @@ impl PoolManager {
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        dnssec_ok: bool,
     ) -> Result<UpstreamResult, DomainError> {
         debug!(
             total_pools = self.pools.len(),
@@ -112,6 +113,7 @@ impl PoolManager {
                     domain,
                     record_type,
                     timeout_ms,
+                    dnssec_ok,
                     &self.emitter,
                 )
                 .await

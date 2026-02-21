@@ -1,4 +1,4 @@
-use super::PtrHostnameResolver;
+use ferrous_dns_infrastructure::system::PtrHostnameResolver;
 use std::net::IpAddr;
 
 #[test]

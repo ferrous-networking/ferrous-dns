@@ -18,12 +18,13 @@ pub async fn query_server(
     domain: &str,
     record_type: &RecordType,
     timeout_ms: u64,
+    dnssec_ok: bool,
     emitter: &QueryEventEmitter,
 ) -> Result<QueryAttemptResult, DomainError> {
     let start = Instant::now();
     let timeout_duration = Duration::from_millis(timeout_ms);
 
-    let query_bytes = MessageBuilder::build_query(domain, record_type)?;
+    let query_bytes = MessageBuilder::build_query(domain, record_type, dnssec_ok)?;
 
     let dns_transport = transport::create_transport(protocol)?;
 

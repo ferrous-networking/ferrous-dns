@@ -1,4 +1,7 @@
-use super::client_row_mapper::{row_to_client, ClientRow, CLIENT_SELECT};
+use super::client_row_mapper::{
+    row_to_client, ClientRow, CLIENT_SELECT_ACTIVE, CLIENT_SELECT_ALL, CLIENT_SELECT_BY_ID,
+    CLIENT_SELECT_BY_IP, CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE, CLIENT_SELECT_NEEDS_MAC_UPDATE,
+};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::ClientRepository;
 use ferrous_dns_domain::{config::DatabaseConfig, Client, ClientStats, DomainError};
@@ -74,15 +77,14 @@ impl ClientRepository for SqliteClientRepository {
     async fn get_or_create(&self, ip_address: IpAddr) -> Result<Client, DomainError> {
         let ip_str = ip_address.to_string();
 
-        let existing: Option<ClientRow> =
-            sqlx::query_as::<_, ClientRow>(&format!("{} WHERE ip_address = ?", CLIENT_SELECT))
-                .bind(&ip_str)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "Failed to query client");
-                    DomainError::DatabaseError(e.to_string())
-                })?;
+        let existing: Option<ClientRow> = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_BY_IP)
+            .bind(&ip_str)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to query client");
+                DomainError::DatabaseError(e.to_string())
+            })?;
 
         if let Some(row) = existing {
             let client = row_to_client(row)
@@ -221,36 +223,30 @@ impl ClientRepository for SqliteClientRepository {
 
     #[instrument(skip(self))]
     async fn get_all(&self, limit: u32, offset: u32) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(&format!(
-            "{} ORDER BY last_seen DESC LIMIT ? OFFSET ?",
-            CLIENT_SELECT
-        ))
-        .bind(limit as i64)
-        .bind(offset as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch clients");
-            DomainError::DatabaseError(e.to_string())
-        })?;
+        let rows = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_ALL)
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to fetch clients");
+                DomainError::DatabaseError(e.to_string())
+            })?;
 
         Ok(rows.into_iter().filter_map(row_to_client).collect())
     }
 
     #[instrument(skip(self))]
     async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(&format!(
-            "{} WHERE last_seen > datetime('now', ?) ORDER BY last_seen DESC LIMIT ?",
-            CLIENT_SELECT
-        ))
-        .bind(format!("-{} days", days))
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch active clients");
-            DomainError::DatabaseError(e.to_string())
-        })?;
+        let rows = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_ACTIVE)
+            .bind(format!("-{} days", days))
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to fetch active clients");
+                DomainError::DatabaseError(e.to_string())
+            })?;
 
         Ok(rows.into_iter().filter_map(row_to_client).collect())
     }
@@ -298,47 +294,35 @@ impl ClientRepository for SqliteClientRepository {
 
     #[instrument(skip(self))]
     async fn get_needs_mac_update(&self, limit: u32) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(&format!(
-            "{} WHERE (last_mac_update IS NULL
-                       OR last_mac_update < datetime('now', '-5 minutes'))
-             AND last_seen > datetime('now', '-1 day')
-             ORDER BY last_seen DESC LIMIT ?",
-            CLIENT_SELECT
-        ))
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch clients needing MAC update");
-            DomainError::DatabaseError(e.to_string())
-        })?;
+        let rows = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_NEEDS_MAC_UPDATE)
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to fetch clients needing MAC update");
+                DomainError::DatabaseError(e.to_string())
+            })?;
 
         Ok(rows.into_iter().filter_map(row_to_client).collect())
     }
 
     #[instrument(skip(self))]
     async fn get_needs_hostname_update(&self, limit: u32) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(&format!(
-            "{} WHERE (last_hostname_update IS NULL
-                       OR last_hostname_update < datetime('now', '-1 hour'))
-             AND last_seen > datetime('now', '-7 days')
-             ORDER BY last_seen DESC LIMIT ?",
-            CLIENT_SELECT
-        ))
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch clients needing hostname update");
-            DomainError::DatabaseError(e.to_string())
-        })?;
+        let rows = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE)
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to fetch clients needing hostname update");
+                DomainError::DatabaseError(e.to_string())
+            })?;
 
         Ok(rows.into_iter().filter_map(row_to_client).collect())
     }
 
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<Client>, DomainError> {
-        let row = sqlx::query_as::<_, ClientRow>(&format!("{} WHERE id = ?", CLIENT_SELECT))
+        let row = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_BY_ID)
             .bind(id)
             .fetch_optional(&self.pool)
             .await

@@ -1,14 +1,19 @@
 use axum::{
-    http::header,
+    http::{header, HeaderValue, Method},
     response::{Html, IntoResponse},
     routing::get,
     Router,
 };
 use ferrous_dns_api::{create_api_routes, AppState};
 use std::net::SocketAddr;
+use tower_http::cors::CorsLayer;
 use tracing::info;
 
-pub async fn start_web_server(bind_addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
+pub async fn start_web_server(
+    bind_addr: SocketAddr,
+    state: AppState,
+    cors_allowed_origins: &[String],
+) -> anyhow::Result<()> {
     info!(
         bind_address = %bind_addr,
         dashboard_url = format!("http://{}", bind_addr),
@@ -16,7 +21,7 @@ pub async fn start_web_server(bind_addr: SocketAddr, state: AppState) -> anyhow:
         "Starting web server"
     );
 
-    let app = create_app(state);
+    let app = create_app(state, cors_allowed_origins);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     info!("Web server started successfully");
@@ -26,7 +31,25 @@ pub async fn start_web_server(bind_addr: SocketAddr, state: AppState) -> anyhow:
     Ok(())
 }
 
-fn create_app(state: AppState) -> Router {
+fn build_cors_layer(allowed_origins: &[String]) -> CorsLayer {
+    if allowed_origins == ["*"] {
+        return CorsLayer::permissive();
+    }
+    build_strict_cors(allowed_origins)
+}
+
+fn build_strict_cors(allowed_origins: &[String]) -> CorsLayer {
+    let origins: Vec<HeaderValue> = allowed_origins
+        .iter()
+        .filter_map(|o| o.parse().ok())
+        .collect();
+    CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+}
+
+fn create_app(state: AppState, cors_allowed_origins: &[String]) -> Router {
     Router::new()
         .nest("/api", create_api_routes(state))
         .route("/static/shared.css", get(shared_css_handler))
@@ -38,6 +61,7 @@ fn create_app(state: AppState) -> Router {
         .route("/local-dns-settings.html", get(local_dns_settings_handler))
         .route("/settings.html", get(settings_handler))
         .route("/dns-filter.html", get(dns_filter_handler))
+        .layer(build_cors_layer(cors_allowed_origins))
 }
 
 async fn shared_css_handler() -> impl IntoResponse {

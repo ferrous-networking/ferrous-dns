@@ -78,7 +78,11 @@ impl ResolverBuilder {
             "Building DNS resolver"
         );
 
-        let mut core = CoreResolver::new(self.pool_manager.clone(), self.config.query_timeout_ms);
+        let mut core = CoreResolver::new(
+            self.pool_manager.clone(),
+            self.config.query_timeout_ms,
+            self.config.dnssec_enabled,
+        );
 
         if let Some(forwarder) = self.conditional_forwarder {
             core = core.with_conditional_forwarder(forwarder);
@@ -100,6 +104,7 @@ impl ResolverBuilder {
 
         if let Some(cache) = self.cache {
             let tracker = Arc::new(NegativeQueryTracker::new());
+            tracker.start_cleanup_task();
             let mut cached = CachedResolver::new(resolver, cache, self.config.cache_ttl, tracker);
 
             if let Some(predictor) = self.prefetch_predictor {

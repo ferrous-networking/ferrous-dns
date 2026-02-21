@@ -4,6 +4,29 @@ use ferrous_dns_domain::{
     DomainError,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeGranularity {
+    Minute,
+    QuarterHour,
+    Hour,
+    Day,
+}
+
+impl TimeGranularity {
+    pub fn as_sql_expr(self) -> &'static str {
+        match self {
+            Self::Minute => "strftime('%Y-%m-%d %H:%M:00', created_at)",
+            Self::QuarterHour => {
+                "strftime('%Y-%m-%d %H:', created_at) || \
+                printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
+                ':00'"
+            }
+            Self::Hour => "strftime('%Y-%m-%d %H:00:00', created_at)",
+            Self::Day => "strftime('%Y-%m-%d 00:00:00', created_at)",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TimelineBucket {
     pub timestamp: String,
@@ -36,7 +59,7 @@ pub trait QueryLogRepository: Send + Sync {
     async fn get_timeline(
         &self,
         period_hours: u32,
-        granularity: &str,
+        granularity: TimeGranularity,
     ) -> Result<Vec<TimelineBucket>, DomainError>;
     async fn count_queries_since(&self, seconds_ago: i64) -> Result<u64, DomainError>;
     async fn get_cache_stats(&self, period_hours: f32) -> Result<CacheStats, DomainError>;

@@ -21,7 +21,7 @@ impl PtrHostnameResolver {
         }
     }
 
-    fn ip_to_reverse_domain(ip: &IpAddr) -> String {
+    pub fn ip_to_reverse_domain(ip: &IpAddr) -> String {
         match ip {
             IpAddr::V4(ipv4) => {
                 let octets = ipv4.octets();
@@ -57,7 +57,7 @@ impl HostnameResolver for PtrHostnameResolver {
 
         match self
             .pool_manager
-            .query(&reverse_domain, &RecordType::PTR, timeout_ms)
+            .query(&reverse_domain, &RecordType::PTR, timeout_ms, false)
             .await
         {
             Ok(result) => {
@@ -88,7 +88,3 @@ impl HostnameResolver for PtrHostnameResolver {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "hostname_resolver_tests.rs"]
-mod tests;

@@ -1,8 +1,8 @@
-use super::*;
-use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
-use crate::dns::events::QueryEventEmitter;
-use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
+use ferrous_dns_infrastructure::dns::dnssec::trust_anchor::TrustAnchorStore;
+use ferrous_dns_infrastructure::dns::dnssec::{DnskeyRecord, DnssecValidator, ValidationResult};
+use ferrous_dns_infrastructure::dns::PoolManager;
+use ferrous_dns_infrastructure::dns::QueryEventEmitter;
 use hickory_proto::rr::rdata::A;
 use hickory_proto::rr::{Name, RData, Record};
 use std::net::Ipv4Addr;
@@ -109,7 +109,6 @@ fn test_verify_rrset_rrsig_present_no_zone_keys_returns_bogus() {
 
 #[test]
 fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
-    use crate::dns::dnssec::types::DnskeyRecord;
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
         crypto::Ed25519SigningKey, Algorithm, PublicKey, PublicKeyBuf, SigSigner, SigningKey,
@@ -152,9 +151,7 @@ fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
     let rrsig_record =
         Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
 
-    validator
-        .chain_verifier
-        .insert_zone_keys_for_test("example.com.", vec![our_dnskey]);
+    validator.insert_zone_keys_for_test("example.com.", vec![our_dnskey]);
 
     let answers = vec![a_record, rrsig_record];
     assert_eq!(
@@ -165,7 +162,6 @@ fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
 
 #[test]
 fn test_verify_rrset_wrong_zone_key_returns_bogus() {
-    use crate::dns::dnssec::types::DnskeyRecord;
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
         crypto::Ed25519SigningKey, Algorithm, PublicKeyBuf, SigSigner, SigningKey,
@@ -210,9 +206,7 @@ fn test_verify_rrset_wrong_zone_key_returns_bogus() {
         algorithm: 15,
         public_key: vec![0u8; 32],
     };
-    validator
-        .chain_verifier
-        .insert_zone_keys_for_test("example.com.", vec![wrong_key]);
+    validator.insert_zone_keys_for_test("example.com.", vec![wrong_key]);
 
     let answers = vec![a_record, rrsig_record];
     assert_eq!(

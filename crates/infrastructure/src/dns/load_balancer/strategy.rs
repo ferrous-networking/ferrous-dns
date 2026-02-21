@@ -26,19 +26,20 @@ impl Strategy {
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        dnssec_ok: bool,
         emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         match self {
             Self::Parallel(s) => {
-                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                s.query_refs(servers, domain, record_type, timeout_ms, dnssec_ok, emitter)
                     .await
             }
             Self::Balanced(s) => {
-                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                s.query_refs(servers, domain, record_type, timeout_ms, dnssec_ok, emitter)
                     .await
             }
             Self::Failover(s) => {
-                s.query_refs(servers, domain, record_type, timeout_ms, emitter)
+                s.query_refs(servers, domain, record_type, timeout_ms, dnssec_ok, emitter)
                     .await
             }
         }

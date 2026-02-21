@@ -25,7 +25,7 @@ pub use dns_resolver::{DnsResolution, DnsResolver};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;
-pub use query_log_repository::{CacheStats, QueryLogRepository, TimelineBucket};
+pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket};
 pub use regex_filter_repository::RegexFilterRepository;
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;

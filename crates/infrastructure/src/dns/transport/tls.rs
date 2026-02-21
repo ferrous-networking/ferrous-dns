@@ -23,9 +23,6 @@ static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(||
         .with_root_certificates(root_store)
         .with_no_client_auth();
 
-    // Enable TLS session resumption: stores up to 64 session tickets in memory.
-    // On reconnection after a stale connection, the client sends the ticket and
-    // the server skips the full handshake (~50 ms → ~5 ms round-trip).
     config.resumption = rustls::client::Resumption::in_memory_sessions(64);
 
     Arc::new(config)

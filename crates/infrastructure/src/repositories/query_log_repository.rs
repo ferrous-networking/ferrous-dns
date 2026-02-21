@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use compact_str::CompactString;
-use ferrous_dns_application::ports::QueryLogRepository;
+use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::{
     config::DatabaseConfig, BlockSource, DomainError, QueryLog, QuerySource, QueryStats,
 };
@@ -214,6 +214,20 @@ impl SqliteQueryLogRepository {
                 }
             }
         }
+    }
+
+    fn build_timeline_sql(bucket_expr: &'static str) -> String {
+        format!(
+            "SELECT {bucket_expr} as time_bucket, \
+             COUNT(*) as total, \
+             SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked, \
+             SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END) as unblocked \
+             FROM query_log \
+             WHERE created_at >= datetime('now', '-' || ? || ' hours') \
+               AND query_source = 'client' \
+             GROUP BY time_bucket \
+             ORDER BY time_bucket ASC"
+        )
     }
 
     async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
@@ -508,38 +522,11 @@ impl QueryLogRepository for SqliteQueryLogRepository {
     async fn get_timeline(
         &self,
         period_hours: u32,
-        granularity: &str,
+        granularity: TimeGranularity,
     ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
-        debug!(
-            period_hours = period_hours,
-            granularity = granularity,
-            "Fetching query timeline"
-        );
+        debug!(period_hours = period_hours, "Fetching query timeline");
 
-        let time_bucket_expr = match granularity {
-            "minute" => "strftime('%Y-%m-%d %H:%M:00', created_at)".to_string(),
-            "quarter_hour" => "strftime('%Y-%m-%d %H:', created_at) || \
-                 printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
-                 ':00'"
-                .to_string(),
-            "hour" => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(),
-            "day" => "strftime('%Y-%m-%d 00:00:00', created_at)".to_string(),
-            _ => "strftime('%Y-%m-%d %H:00:00', created_at)".to_string(),
-        };
-
-        let sql = format!(
-            "SELECT
-                {} as time_bucket,
-                COUNT(*) as total,
-                SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
-                SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END) as unblocked
-             FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')
-               AND query_source = 'client'
-             GROUP BY time_bucket
-             ORDER BY time_bucket ASC",
-            time_bucket_expr
-        );
+        let sql = Self::build_timeline_sql(granularity.as_sql_expr());
 
         let rows = sqlx::query(&sql)
             .bind(period_hours as i64)

@@ -8,4 +8,4 @@ pub use cleanup_old_query_logs::CleanupOldQueryLogsUseCase;
 pub use get_rate::{GetQueryRateUseCase, QueryRate, RateUnit};
 pub use get_recent::GetRecentQueriesUseCase;
 pub use get_stats::GetQueryStatsUseCase;
-pub use get_timeline::{GetTimelineUseCase, Granularity};
+pub use get_timeline::GetTimelineUseCase;

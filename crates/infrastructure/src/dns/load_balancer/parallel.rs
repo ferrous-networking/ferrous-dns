@@ -21,6 +21,7 @@ impl ParallelStrategy {
         domain: &str,
         record_type: &RecordType,
         timeout_ms: u64,
+        dnssec_ok: bool,
         emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
@@ -45,16 +46,13 @@ impl ParallelStrategy {
             let record_type = *record_type;
             let emitter = emitter.clone();
 
-            // No tokio::spawn — push the future directly so there is no per-upstream
-            // task allocation. DNS queries are I/O-bound; all futures make progress
-            // when their sockets are ready. Cancellation of the losing upstreams is
-            // implicit: dropping `futs` when we return cancels the pending futures.
             futs.push(async move {
                 query_server(
                     &protocol,
                     &domain,
                     &record_type,
                     per_server_timeout_ms,
+                    dnssec_ok,
                     &emitter,
                 )
                 .await
@@ -75,7 +73,6 @@ impl ParallelStrategy {
                             "Fastest response, dropping remaining futures"
                         );
 
-                        // Returning here drops `futs`, cancelling pending futures.
                         return Ok(UpstreamResult {
                             response: r.response,
                             server: r.server_addr,

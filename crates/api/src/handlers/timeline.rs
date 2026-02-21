@@ -7,8 +7,17 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use ferrous_dns_application::use_cases::Granularity;
+use ferrous_dns_application::ports::TimeGranularity;
 use tracing::{debug, error, instrument};
+
+fn parse_granularity(s: &str) -> TimeGranularity {
+    match s {
+        "minute" => TimeGranularity::Minute,
+        "15min" | "quarter_hour" => TimeGranularity::QuarterHour,
+        "day" => TimeGranularity::Day,
+        _ => TimeGranularity::Hour,
+    }
+}
 
 #[instrument(skip(state), name = "api_get_timeline")]
 pub async fn get_timeline(
@@ -25,13 +34,7 @@ pub async fn get_timeline(
         .map(|h| validate_period(h) as u32)
         .unwrap_or(24);
 
-    let granularity = match params.granularity.as_str() {
-        "minute" => Granularity::Minute,
-        "15min" | "quarter_hour" => Granularity::QuarterHour,
-        "hour" => Granularity::Hour,
-        "day" => Granularity::Day,
-        _ => Granularity::Hour,
-    };
+    let granularity = parse_granularity(&params.granularity);
 
     match state.get_timeline.execute(period_hours, granularity).await {
         Ok(buckets) => {

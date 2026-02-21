@@ -29,7 +29,7 @@ impl DnsForwarder {
             DomainError::InvalidDomainName(format!("Invalid server address: {}", e))
         })?;
 
-        let request_bytes = MessageBuilder::build_query(domain, record_type)?;
+        let request_bytes = MessageBuilder::build_query(domain, record_type, false)?;
 
         let socket = UdpSocket::bind("0.0.0.0:0")
             .await

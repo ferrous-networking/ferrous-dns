@@ -27,14 +27,12 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for i in 0..num_workers {
-        // UDP — custom fast-path recv/send loop (bypasses Hickory serialization)
         let udp_socket = Arc::new(create_udp_socket(domain, socket_addr)?);
         let handler_udp = handler.clone();
         join_set.spawn(async move {
             run_udp_worker(udp_socket, handler_udp, i).await;
         });
 
-        // TCP — Hickory ServerFuture (unchanged; handles large/complex queries)
         let tcp_listener = create_tcp_listener(domain, socket_addr)?;
         let handler_tcp = (*handler).clone();
         join_set.spawn(async move {
@@ -79,7 +77,6 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
         let query_buf = &recv_buf[..n];
         let client_ip = from.ip();
 
-        // ── Fast path ─────────────────────────────────────────────────────────
         if let Some(fast_query) = fast_path::parse_query(query_buf) {
             if let Some((addresses, ttl)) =
                 handler.try_fast_path(fast_query.domain(), fast_query.record_type)
@@ -93,7 +90,6 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
             }
         }
 
-        // ── Fallback: full pipeline, spawned so the recv loop is never blocked ─
         let handler_clone = handler.clone();
         let socket_clone = socket.clone();
         let owned_buf = query_buf.to_vec();

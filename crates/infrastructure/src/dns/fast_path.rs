@@ -38,7 +38,6 @@ impl FastPathQuery {
 /// * QCLASS other than IN (1)
 /// * DNSSEC OK bit set in an EDNS0 OPT record
 pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
-    // Minimum: 12 header + 1 root label + 4 QTYPE/QCLASS = 17
     if buf.len() < 17 {
         return None;
     }
@@ -46,7 +45,6 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     let id = u16::from_be_bytes([buf[0], buf[1]]);
     let flags = u16::from_be_bytes([buf[2], buf[3]]);
 
-    // Bits 15..11: QR + OPCODE. Both must be 0 for a plain QUERY.
     if flags & 0xF800 != 0 {
         return None;
     }
@@ -60,7 +58,6 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         return None;
     }
 
-    // ── Parse QNAME ──────────────────────────────────────────────────────────
     let mut pos = 12;
     let mut domain_buf = [0u8; MAX_DOMAIN_LEN + 1];
     let mut domain_len = 0usize;
@@ -72,11 +69,9 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         }
         let label_len = buf[pos] as usize;
         if label_len == 0 {
-            pos += 1; // consume the null terminator
+            pos += 1;
             break;
         }
-        // Non-zero top two bits → compression pointer (0xC0) or extended label.
-        // Both are uncommon in queries; reject for safety.
         if label_len & 0xC0 != 0 {
             return None;
         }
@@ -102,7 +97,6 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         pos += label_len;
     }
 
-    // ── QTYPE + QCLASS ────────────────────────────────────────────────────────
     if pos + 4 > buf.len() {
         return None;
     }
@@ -111,7 +105,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     pos += 4;
 
     if qclass != 1 {
-        return None; // not IN class
+        return None;
     }
 
     let record_type = match qtype {
@@ -124,20 +118,17 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     let mut client_max_size: u16 = 512;
     let mut has_edns = false;
 
-    // ── Scan additional records for EDNS0 OPT ────────────────────────────────
     if arcount > 0 {
         let mut ar_pos = question_end;
         for _ in 0..arcount {
             if ar_pos >= buf.len() {
                 break;
             }
-            // OPT NAME must be 0x00 (root label). Any other name is unexpected.
             if buf[ar_pos] != 0x00 {
                 return None;
             }
             ar_pos += 1;
 
-            // Need TYPE(2) + CLASS(2) + TTL(4) + RDLEN(2) = 10 bytes minimum
             if ar_pos + 9 > buf.len() {
                 return None;
             }
@@ -146,23 +137,21 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
             ar_pos += 2;
 
             if rr_type == 41 {
-                // OPT record — client supports EDNS0
                 has_edns = true;
-                // CLASS = requestor's UDP payload size
                 let udp_size = u16::from_be_bytes([buf[ar_pos], buf[ar_pos + 1]]);
                 client_max_size = udp_size.max(512);
                 ar_pos += 2;
 
-                // TTL encodes extended RCODE (1 byte) | version (1 byte) | DO+Z flags (2 bytes)
-                // DO bit is bit 15 of the two-byte flags sub-field.
                 if ar_pos + 4 > buf.len() {
+                    return None;
+                }
+                if !is_valid_edns_version(buf[ar_pos + 1]) {
                     return None;
                 }
                 let do_flags = u16::from_be_bytes([buf[ar_pos + 2], buf[ar_pos + 3]]);
                 ar_pos += 4;
 
                 if do_flags & 0x8000 != 0 {
-                    // DNSSEC OK — let Hickory handle it
                     return None;
                 }
 
@@ -172,9 +161,8 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
                 let rdlen = u16::from_be_bytes([buf[ar_pos], buf[ar_pos + 1]]) as usize;
                 ar_pos += 2 + rdlen;
             } else {
-                // Skip other record types (CLASS + TTL + RDLEN + RDATA)
-                ar_pos += 2; // CLASS
-                ar_pos += 4; // TTL
+                ar_pos += 2;
+                ar_pos += 4;
                 if ar_pos + 2 > buf.len() {
                     return None;
                 }
@@ -193,4 +181,8 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         domain_buf,
         domain_len,
     })
+}
+
+fn is_valid_edns_version(version_byte: u8) -> bool {
+    version_byte == 0
 }

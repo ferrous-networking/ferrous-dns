@@ -8,7 +8,7 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tracing::{debug, warn};
 
-fn validate_response_id(
+pub fn validate_response_id(
     query_bytes: &[u8],
     response_bytes: &[u8],
     server: SocketAddr,
@@ -31,6 +31,22 @@ fn validate_response_id(
         return Err(DomainError::InvalidDomainName(format!(
             "DNS message ID mismatch from {}: expected {}, got {}",
             server, query_id, response_id
+        )));
+    }
+    Ok(())
+}
+
+fn validate_response_source(from: SocketAddr, expected: SocketAddr) -> Result<(), DomainError> {
+    if from.ip() != expected.ip() {
+        warn!(
+            expected = %expected.ip(),
+            actual = %from.ip(),
+            "Rejecting UDP response from unexpected source (anti-spoofing)"
+        );
+        return Err(DomainError::InvalidDomainName(format!(
+            "UDP response from unexpected source: expected {}, got {}",
+            expected.ip(),
+            from.ip()
         )));
     }
     Ok(())
@@ -111,14 +127,7 @@ impl UdpTransport {
                         ))
                     })?;
 
-            if from_addr.ip() != self.server_addr.ip() {
-                warn!(
-                    expected = %self.server_addr,
-                    received_from = %from_addr,
-                    "UDP response from unexpected source"
-                );
-            }
-
+            validate_response_source(from_addr, self.server_addr)?;
             validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
 
             debug!(
@@ -193,14 +202,7 @@ impl UdpTransport {
                     ))
                 })?;
 
-        if from_addr.ip() != self.server_addr.ip() {
-            warn!(
-                expected = %self.server_addr,
-                received_from = %from_addr,
-                "UDP response from unexpected source"
-            );
-        }
-
+        validate_response_source(from_addr, self.server_addr)?;
         validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
 
         debug!(
@@ -216,10 +218,6 @@ impl UdpTransport {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "udp_test.rs"]
-mod tests;
 
 #[async_trait]
 impl DnsTransport for UdpTransport {

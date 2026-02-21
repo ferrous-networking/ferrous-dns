@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     ArpReader, ArpTable, CacheStats, ClientRepository, HostnameResolver, QueryLogRepository,
-    TimelineBucket,
+    TimeGranularity, TimelineBucket,
 };
 use ferrous_dns_domain::{Client, ClientStats, DomainError, QueryLog, QueryStats, RecordType};
 use std::collections::HashMap;
@@ -504,7 +504,7 @@ impl QueryLogRepository for MockQueryLogRepository {
     async fn get_timeline(
         &self,
         _period_hours: u32,
-        _granularity: &str,
+        _granularity: TimeGranularity,
     ) -> Result<Vec<TimelineBucket>, DomainError> {
         Ok(Vec::new())
     }

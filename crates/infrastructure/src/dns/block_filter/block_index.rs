@@ -100,17 +100,11 @@ impl BlockIndex {
     /// which filter layer caused the block.
     #[inline]
     pub fn is_blocked(&self, domain: &str, group_id: i64) -> Option<BlockSource> {
-        // L0/L1: allowlists (group exact/wildcard + global exact/wildcard)
         if self.allowlists.is_allowed(domain, group_id) {
             return None;
         }
 
-        // Managed-deny and regex rules — only evaluated when at least one such
-        // rule exists across all groups.  When `has_advanced_rules` is false
-        // (the common home-server case), we skip four HashMap::get calls and
-        // jump straight to the bloom filter, saving ~60–80 ns per query.
         if self.has_advanced_rules {
-            // Allow regex rules (user-defined, group-scoped)
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
                 for r in regexes {
                     if r.is_match(domain).unwrap_or(false) {
@@ -119,21 +113,18 @@ impl BlockIndex {
                 }
             }
 
-            // Managed deny rules — exact match
             if let Some(set) = self.managed_denies.get(&group_id) {
                 if set.contains(domain) {
                     return Some(BlockSource::ManagedDomain);
                 }
             }
 
-            // Managed deny rules — wildcard match
             if let Some(trie) = self.managed_deny_wildcards.get(&group_id) {
                 if trie.lookup(domain) != 0 {
                     return Some(BlockSource::ManagedDomain);
                 }
             }
 
-            // Block regex rules (user-defined, group-scoped)
             if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
                 for r in regexes {
                     if r.is_match(domain).unwrap_or(false) {
@@ -145,20 +136,17 @@ impl BlockIndex {
 
         let mask = self.group_mask(group_id);
 
-        // Bloom filter fast-path: if miss, definitely not in blocklist
         let bloom_hit = self.bloom.check(&domain);
         if !bloom_hit {
             return None;
         }
 
-        // Exact match from blocklist sources
         if let Some(entry) = self.exact.get(domain) {
             if entry.value() & mask != 0 {
                 return Some(BlockSource::Blocklist);
             }
         }
 
-        // Wildcard + Aho-Corasick patterns from blocklist sources
         self.check_wildcard_and_patterns(domain, mask)
     }
 

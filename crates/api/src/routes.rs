@@ -1,6 +1,8 @@
 use crate::handlers;
+use crate::middleware::require_api_key;
 use crate::state::AppState;
 use axum::{
+    middleware,
     routing::{delete, get, post, put},
     Router,
 };
@@ -35,5 +37,9 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/settings", post(handlers::update_settings))
         .merge(handlers::local_records::routes())
         .merge(handlers::block_filter::routes())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_key,
+        ))
         .with_state(state)
 }

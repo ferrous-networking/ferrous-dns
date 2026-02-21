@@ -2,6 +2,8 @@ use crate::dns::cache::coarse_clock::coarse_now_secs;
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
+use tracing::debug;
 
 pub struct NegativeQueryTracker {
     query_counts: Arc<DashMap<Arc<str>, QueryCounter>>,
@@ -109,6 +111,20 @@ impl NegativeQueryTracker {
         });
 
         removed
+    }
+
+    pub fn start_cleanup_task(self: &Arc<Self>) {
+        let tracker = Arc::clone(self);
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(60);
+            loop {
+                tokio::time::sleep(interval).await;
+                let removed = tracker.cleanup_old_entries();
+                if removed > 0 {
+                    debug!(removed, "Negative TTL tracker entries cleaned up");
+                }
+            }
+        });
     }
 }
 

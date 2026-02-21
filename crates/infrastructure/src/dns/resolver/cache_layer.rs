@@ -96,20 +96,22 @@ impl CachedResolver {
         )
     }
 
-    fn insert_negative(&self, query: &DnsQuery) {
-        let dynamic_ttl = self.negative_ttl_tracker.record_and_get_ttl(&query.domain);
+    fn insert_negative(&self, query: &DnsQuery, authority_records: &[Record]) {
+        let ttl = extract_negative_ttl(authority_records)
+            .map(clamp_negative_ttl)
+            .unwrap_or_else(|| self.negative_ttl_tracker.record_and_get_ttl(&query.domain));
         self.cache.insert(
             query.domain.as_ref(),
             query.record_type,
             CachedData::NegativeResponse,
-            dynamic_ttl,
+            ttl,
             Some(DnssecStatus::Insecure),
         );
     }
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
         if resolution.addresses.is_empty() {
-            self.insert_negative(query);
+            self.insert_negative(query, &resolution.authority_records);
         } else {
             let addresses = Arc::clone(&resolution.addresses);
             let dnssec_status = resolution
@@ -220,8 +222,10 @@ impl CachedResolver {
                 }
             }
             Err(_) => {
-                self.insert_negative(query);
-                self.inflight.remove(&key);
+                self.insert_negative(query, &[]);
+                if let Some((_, tx)) = self.inflight.remove(&key) {
+                    let _ = tx.send(None);
+                }
             }
         }
 
@@ -253,6 +257,22 @@ impl DnsResolver for CachedResolver {
 
         self.resolve_as_leader(query, key).await
     }
+}
+
+fn extract_negative_ttl(authority_records: &[Record]) -> Option<u32> {
+    authority_records.iter().find_map(|r| {
+        if let RData::SOA(soa) = r.data() {
+            Some(soa.minimum().min(r.ttl()))
+        } else {
+            None
+        }
+    })
+}
+
+fn clamp_negative_ttl(ttl: u32) -> u32 {
+    const MIN_NEGATIVE_TTL: u32 = 30;
+    const MAX_NEGATIVE_TTL: u32 = 3_600;
+    ttl.clamp(MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL)
 }
 
 /// Synthesizes a minimal SOA record for negative DNS responses served from cache.

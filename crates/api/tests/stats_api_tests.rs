@@ -308,6 +308,7 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
         dns_resolver: Arc::new(
             HickoryDnsResolver::new_with_pools(pool_manager, 5000, false, None).unwrap(),
         ),
+        api_key: None,
     };
 
     create_api_routes(state)

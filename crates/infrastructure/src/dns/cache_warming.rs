@@ -118,7 +118,7 @@ impl CacheWarmer {
         for domain in self.popular_domains {
             match self
                 .pool_manager
-                .query(domain, &RecordType::A, timeout_ms)
+                .query(domain, &RecordType::A, timeout_ms, false)
                 .await
             {
                 Ok(result) => {
@@ -154,7 +154,7 @@ impl CacheWarmer {
 
             if let Ok(result) = self
                 .pool_manager
-                .query(domain, &RecordType::AAAA, timeout_ms)
+                .query(domain, &RecordType::AAAA, timeout_ms, false)
                 .await
             {
                 let addresses = result.response.addresses;

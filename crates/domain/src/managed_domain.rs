@@ -83,8 +83,6 @@ impl ManagedDomain {
             return Err("Domain cannot exceed 253 characters".to_string());
         }
 
-        // If domain contains '*', it must be exactly the "*.suffix" prefix form.
-        // Reject "*x.com", "x.*.com", "x.com*", etc.
         if domain.contains('*') && !domain.starts_with("*.") {
             return Err("Wildcard must be a prefix: use '*.example.com' format".to_string());
         }

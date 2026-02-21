@@ -1,9 +1,8 @@
-use super::*;
-use crate::dns::dnssec::cache::DnssecCache;
-use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
-use crate::dns::events::QueryEventEmitter;
-use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
+use ferrous_dns_infrastructure::dns::dnssec::trust_anchor::TrustAnchorStore;
+use ferrous_dns_infrastructure::dns::dnssec::{ChainVerifier, DnskeyRecord, DnssecCache};
+use ferrous_dns_infrastructure::dns::PoolManager;
+use ferrous_dns_infrastructure::dns::QueryEventEmitter;
 use std::sync::Arc;
 
 fn make_chain_verifier() -> ChainVerifier {

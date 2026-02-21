@@ -52,7 +52,6 @@ impl DnssecValidatorPool {
         let n = self.validators.len();
         let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
 
-        // Fast path: grab the first idle slot without blocking.
         for i in 0..n {
             let idx = (start + i) % n;
             if let Ok(mut v) = self.validators[idx].try_lock() {
@@ -60,7 +59,6 @@ impl DnssecValidatorPool {
             }
         }
 
-        // All slots busy — wait on the starting slot (provides back-pressure).
         self.validators[start]
             .lock()
             .await

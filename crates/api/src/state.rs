@@ -58,4 +58,5 @@ pub struct AppState {
     pub create_regex_filter: Arc<CreateRegexFilterUseCase>,
     pub update_regex_filter: Arc<UpdateRegexFilterUseCase>,
     pub delete_regex_filter: Arc<DeleteRegexFilterUseCase>,
+    pub api_key: Option<Arc<str>>,
 }

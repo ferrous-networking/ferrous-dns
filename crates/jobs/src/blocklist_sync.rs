@@ -36,8 +36,6 @@ impl BlocklistSyncJob {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(self.interval_secs));
-            // Consume the first (immediate) tick so the first reload happens
-            // after one full interval, not at startup.
             interval.tick().await;
 
             loop {

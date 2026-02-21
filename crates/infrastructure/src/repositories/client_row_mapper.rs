@@ -23,6 +23,68 @@ pub(crate) const CLIENT_SELECT: &str = "SELECT id, ip_address, mac_address, host
             group_id
      FROM clients";
 
+pub(crate) const CLIENT_SELECT_BY_IP: &str = "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients WHERE ip_address = ?";
+
+pub(crate) const CLIENT_SELECT_BY_ID: &str = "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients WHERE id = ?";
+
+pub(crate) const CLIENT_SELECT_ALL: &str = "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients ORDER BY last_seen DESC LIMIT ? OFFSET ?";
+
+pub(crate) const CLIENT_SELECT_ACTIVE: &str = "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients WHERE last_seen > datetime('now', ?) ORDER BY last_seen DESC LIMIT ?";
+
+pub(crate) const CLIENT_SELECT_NEEDS_MAC_UPDATE: &str =
+    "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients WHERE (last_mac_update IS NULL
+                         OR last_mac_update < datetime('now', '-5 minutes'))
+     AND last_seen > datetime('now', '-1 day')
+     ORDER BY last_seen DESC LIMIT ?";
+
+pub(crate) const CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE: &str =
+    "SELECT id, ip_address, mac_address, hostname,
+            datetime(first_seen) as first_seen,
+            datetime(last_seen) as last_seen,
+            query_count,
+            datetime(last_mac_update) as last_mac_update,
+            datetime(last_hostname_update) as last_hostname_update,
+            group_id
+     FROM clients WHERE (last_hostname_update IS NULL
+                         OR last_hostname_update < datetime('now', '-1 hour'))
+     AND last_seen > datetime('now', '-7 days')
+     ORDER BY last_seen DESC LIMIT ?";
+
 pub(crate) fn row_to_client(row: ClientRow) -> Option<Client> {
     let (
         id,

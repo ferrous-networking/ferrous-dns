@@ -43,7 +43,6 @@ impl DnsServerHandler {
     pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
-        // Clone the query section so we can drop query_msg before the .await.
         let queries: Vec<_> = query_msg.queries().to_vec();
         let query_info = queries.first()?;
 
@@ -56,7 +55,7 @@ impl DnsServerHandler {
 
         let query_id = query_msg.id();
         let rd = query_msg.recursion_desired();
-        drop(query_msg); // must not cross .await
+        drop(query_msg);
 
         let resolution = match self.use_case.execute(&dns_request).await {
             Ok(res) => res,
@@ -106,8 +105,6 @@ impl DnsServerHandler {
         encode_message(&resp)
     }
 }
-
-// ── Hickory RequestHandler (TCP + UDP fallback via ServerFuture) ──────────────
 
 #[async_trait::async_trait]
 impl RequestHandler for DnsServerHandler {
@@ -205,8 +202,6 @@ impl RequestHandler for DnsServerHandler {
         }
     }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn encode_message(msg: &Message) -> Option<Vec<u8>> {
     let mut buf = Vec::with_capacity(512);

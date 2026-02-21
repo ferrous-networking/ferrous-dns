@@ -11,7 +11,7 @@ pub struct QueryParams {
 }
 
 fn default_limit() -> u32 {
-    10000
+    100
 }
 
 #[derive(Serialize, Debug)]

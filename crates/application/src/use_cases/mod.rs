@@ -39,7 +39,7 @@ pub use managed_domains::{
 };
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, Granularity, QueryRate, RateUnit,
+    GetTimelineUseCase, QueryRate, RateUnit,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,

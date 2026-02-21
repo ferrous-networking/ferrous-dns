@@ -145,7 +145,6 @@ impl ChainVerifier {
         _parent_domain: &str,
         child_domain: &str,
     ) -> Result<(), DomainError> {
-        // 1. Query DS records for child zone
         let ds_records = self.query_ds(child_domain).await?;
 
         if ds_records.is_empty() {
@@ -153,7 +152,6 @@ impl ChainVerifier {
             return Err(DomainError::InsecureDelegation);
         }
 
-        // 2. Query DNSKEY records (also extracts RRSIGs from same response)
         let dnskey_result = self.query_dnskey(child_domain).await?;
 
         if dnskey_result.keys.is_empty() {
@@ -163,7 +161,6 @@ impl ChainVerifier {
             ));
         }
 
-        // 3. Verify DS → DNSKEY hash: find keys authenticated by parent's DS
         let mut validated_keys = Vec::new();
 
         for ds in &ds_records {
@@ -203,8 +200,6 @@ impl ChainVerifier {
             ));
         }
 
-        // 4. Verify RRSIG over DNSKEY set using the DS-authenticated keys
-        // The DNSKEY RRSet is signed by the zone's own KSK (which we just validated via DS)
         let mut rrsig_ok = false;
 
         if !dnskey_result.rrsigs.is_empty() && !dnskey_result.raw_records.is_empty() {
@@ -251,14 +246,6 @@ impl ChainVerifier {
             );
         }
 
-        // Always store all DNSKEY records (KSK + ZSK) for this zone.
-        //
-        // On a cache hit rrsig_ok is false because there is no RRSIG to re-verify,
-        // but the cached keys were authenticated (DS → KSK → RRSIG(DNSKEY) → ZSK)
-        // when they were first fetched.  Storing only the DS-matched KSK would drop
-        // the ZSK, and data-record RRSIGs (A, AAAA, CNAME …) are signed by the ZSK,
-        // not the KSK.  That would make every phase-2 key_tag lookup fail and force
-        // the result to Bogus on every DNSKEY cache hit.
         self.validated_keys
             .insert(child_domain.to_string(), dnskey_result.keys);
 
@@ -277,7 +264,10 @@ impl ChainVerifier {
 
         debug!(domain = %domain, "DS cache miss, querying DNS");
 
-        let result = self.pool_manager.query(domain, &RecordType::DS, 5000).await;
+        let result = self
+            .pool_manager
+            .query(domain, &RecordType::DS, 5000, true)
+            .await;
 
         match result {
             Ok(upstream_result) => {
@@ -319,7 +309,6 @@ impl ChainVerifier {
                 count = keys.len(),
                 "DNSKEY cache hit"
             );
-            // Cache hit: return keys without raw_records/rrsigs (RRSIG check skipped)
             return Ok(DnskeyQueryResult {
                 keys,
                 rrsigs: vec![],
@@ -331,7 +320,7 @@ impl ChainVerifier {
 
         let result = self
             .pool_manager
-            .query(domain, &RecordType::DNSKEY, 5000)
+            .query(domain, &RecordType::DNSKEY, 5000, true)
             .await;
 
         match result {
@@ -354,7 +343,6 @@ impl ChainVerifier {
                         }
                         RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) => {
                             let input = rrsig.input();
-                            // Only collect RRSIGs that cover the DNSKEY type
                             if input.type_covered != hickory_proto::rr::RecordType::DNSKEY {
                                 continue;
                             }
@@ -406,13 +394,12 @@ impl ChainVerifier {
         self.validated_keys.get(zone)
     }
 
-    /// Test-only helper to pre-populate validated zone keys without DNS queries.
-    #[cfg(test)]
+    /// Helper to pre-populate validated zone keys without DNS queries.
     pub fn insert_zone_keys_for_test(&mut self, zone: &str, keys: Vec<DnskeyRecord>) {
         self.validated_keys.insert(zone.to_string(), keys);
     }
 
-    fn split_domain(domain: &str) -> Vec<String> {
+    pub fn split_domain(domain: &str) -> Vec<String> {
         let domain = domain.trim_end_matches('.');
 
         if domain.is_empty() || domain == "." {
@@ -422,7 +409,3 @@ impl ChainVerifier {
         domain.split('.').rev().map(|s| s.to_string()).collect()
     }
 }
-
-#[cfg(test)]
-#[path = "chain_test.rs"]
-mod tests;

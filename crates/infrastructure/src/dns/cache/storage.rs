@@ -16,6 +16,12 @@ use tracing::{debug, info};
 const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
 const STALE_SERVE_TTL: u32 = 2;
+const MIN_CACHE_TTL_SECS: u32 = 1;
+const MAX_CACHE_TTL_SECS: u32 = 86_400;
+
+fn clamp_ttl(ttl: u32) -> u32 {
+    ttl.clamp(MIN_CACHE_TTL_SECS, MAX_CACHE_TTL_SECS)
+}
 
 pub struct DnsCacheConfig {
     pub max_entries: usize,
@@ -181,6 +187,8 @@ impl DnsCache {
         ttl: u32,
         dnssec_status: Option<DnssecStatus>,
     ) {
+        let ttl = clamp_ttl(ttl);
+
         if data.is_negative() {
             self.negative.insert(domain, record_type, ttl);
             return;

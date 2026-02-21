@@ -105,7 +105,6 @@ impl Config {
             .parse::<toml_edit::DocumentMut>()
             .map_err(|e| ConfigError::Parse(format!("Failed to parse config file: {}", e)))?;
 
-        // Updates a scalar value while preserving any inline comment on that line.
         fn set_val(table: &mut toml_edit::Table, key: &str, new_val: toml_edit::Value) {
             match table.get_mut(key) {
                 Some(item @ toml_edit::Item::Value(_)) => {
@@ -130,7 +129,6 @@ impl Config {
             toml_edit::Value::Array(arr)
         }
 
-        // [server]
         if let Some(t) = doc.get_mut("server").and_then(|i| i.as_table_mut()) {
             set_val(
                 t,
@@ -149,7 +147,6 @@ impl Config {
             );
         }
 
-        // [dns] - scalar fields only; pools/conditional_forwarding/local_records left untouched
         if let Some(dns_item) = doc.get_mut("dns") {
             if let Some(t) = dns_item.as_table_mut() {
                 set_val(t, "upstream_servers", str_array(&self.dns.upstream_servers));
@@ -252,7 +249,6 @@ impl Config {
                     set_val(t, "local_domain", toml_edit::Value::from(domain.clone()));
                 }
 
-                // [dns.health_check]
                 if let Some(hc) = t.get_mut("health_check").and_then(|i| i.as_table_mut()) {
                     set_val(
                         hc,
@@ -278,7 +274,6 @@ impl Config {
             }
         }
 
-        // [blocking]
         if let Some(t) = doc.get_mut("blocking").and_then(|i| i.as_table_mut()) {
             set_val(t, "enabled", toml_edit::Value::from(self.blocking.enabled));
             set_val(
@@ -289,7 +284,6 @@ impl Config {
             set_val(t, "whitelist", str_array(&self.blocking.whitelist));
         }
 
-        // [logging]
         if let Some(t) = doc.get_mut("logging").and_then(|i| i.as_table_mut()) {
             set_val(
                 t,
@@ -298,7 +292,6 @@ impl Config {
             );
         }
 
-        // [database]
         if let Some(t) = doc.get_mut("database").and_then(|i| i.as_table_mut()) {
             set_val(
                 t,

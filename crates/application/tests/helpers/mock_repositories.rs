@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlocklistRepository, BlocklistSourceRepository, ClientRepository,
     DnsResolution, DnsResolver, FilterDecision, GroupRepository, ManagedDomainRepository,
-    QueryLogRepository, WhitelistRepository, WhitelistSourceRepository,
+    QueryLogRepository, TimeGranularity, WhitelistRepository, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
     blocklist::BlockedDomain, BlockSource, BlocklistSource, Client, ClientStats, DnsQuery,
@@ -279,7 +279,7 @@ impl QueryLogRepository for MockQueryLogRepository {
     async fn get_timeline(
         &self,
         _period_hours: u32,
-        _granularity: &str,
+        _granularity: TimeGranularity,
     ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
         Ok(Vec::new())
     }

@@ -9,16 +9,26 @@ use tracing::{debug, info};
 pub struct CoreResolver {
     pool_manager: Arc<PoolManager>,
     query_timeout_ms: u64,
+    dnssec_enabled: bool,
     conditional_forwarder: Option<Arc<ConditionalForwarder>>,
 }
 
 impl CoreResolver {
-    pub fn new(pool_manager: Arc<PoolManager>, query_timeout_ms: u64) -> Self {
-        info!(timeout_ms = query_timeout_ms, "Core DNS resolver created");
+    pub fn new(
+        pool_manager: Arc<PoolManager>,
+        query_timeout_ms: u64,
+        dnssec_enabled: bool,
+    ) -> Self {
+        info!(
+            timeout_ms = query_timeout_ms,
+            dnssec = dnssec_enabled,
+            "Core DNS resolver created"
+        );
 
         Self {
             pool_manager,
             query_timeout_ms,
+            dnssec_enabled,
             conditional_forwarder: None,
         }
     }
@@ -84,7 +94,12 @@ impl DnsResolver for CoreResolver {
 
         let result = self
             .pool_manager
-            .query(&query.domain, &query.record_type, self.query_timeout_ms)
+            .query(
+                &query.domain,
+                &query.record_type,
+                self.query_timeout_ms,
+                self.dnssec_enabled,
+            )
             .await?;
 
         let addresses = Arc::new(result.response.addresses);

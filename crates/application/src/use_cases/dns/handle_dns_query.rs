@@ -13,10 +13,6 @@ use std::time::{Duration, Instant};
 const LAST_SEEN_CAPACITY: usize = 8_192;
 
 thread_local! {
-    // Stores coarse nanosecond timestamps (CLOCK_MONOTONIC_COARSE) rather than
-    // `Instant` values.  Resolution ~1-4 ms is more than enough for a 60-second
-    // client-tracking interval, and it avoids storing a platform-specific opaque
-    // type in the LRU.
     static LAST_SEEN_TRACKER: RefCell<LruCache<IpAddr, u64>> =
         RefCell::new(LruCache::new(NonZeroUsize::new(LAST_SEEN_CAPACITY).unwrap()));
 }
@@ -33,7 +29,6 @@ fn coarse_now_ns() -> u64 {
         tv_sec: 0,
         tv_nsec: 0,
     };
-    // SAFETY: ts is valid; CLOCK_MONOTONIC_COARSE is available on Linux >= 2.6.32.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_COARSE, &mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
@@ -122,9 +117,6 @@ impl HandleDnsQueryUseCase {
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
-        // `Instant::now()` (CLOCK_MONOTONIC) for sub-microsecond response-time
-        // accuracy.  `coarse_now_ns()` (CLOCK_MONOTONIC_COARSE) only for the
-        // 60-second client-tracking interval where 1-4 ms resolution is fine.
         let start = Instant::now();
 
         if let Some(client_repo) = &self.client_repo {
@@ -155,9 +147,6 @@ impl HandleDnsQueryUseCase {
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
         let group_id = self.block_filter.resolve_group(request.client_ip);
 
-        // DNS cache check before block filter: if the domain is already cached it
-        // was previously allowed, so we can return immediately and skip the block
-        // pipeline entirely.
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if !cached.addresses.is_empty() {
                 let query_log = QueryLog {
