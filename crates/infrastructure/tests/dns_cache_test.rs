@@ -19,6 +19,8 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
         shard_amount: 4,
         access_window_secs,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     })
 }
 
@@ -51,6 +53,8 @@ fn create_cache(
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     })
 }
 
@@ -144,6 +148,7 @@ fn test_cache_metrics_after_eviction() {
             None,
         );
     }
+    cache.evict_entries();
 
     let metrics = cache.metrics();
     assert!(
@@ -513,6 +518,8 @@ fn test_lru_eviction_protects_recently_accessed_entry() {
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     });
 
     // Inserir 3 entradas no tick T: last_access = T para todas
@@ -526,9 +533,9 @@ fn test_lru_eviction_protects_recently_accessed_entry() {
     coarse_clock::tick();
     cache.get(&Arc::from("a.com"), &RecordType::CNAME);
 
-    // Inserir 2 entradas acima do limite — eviction de 1 por vez, b.com/c.com (last_access=T) são candidatos
     cache.insert("d.com", RecordType::CNAME, make_cname_data("d"), 3600, None);
     cache.insert("e.com", RecordType::CNAME, make_cname_data("e"), 3600, None);
+    cache.evict_entries();
 
     assert!(
         cache.len() <= 4,
@@ -557,6 +564,8 @@ fn test_hit_rate_eviction_protects_high_hit_entries() {
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     });
 
     cache.insert(
@@ -634,6 +643,8 @@ fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     });
 
     // Entradas com poucos hits (abaixo do min_frequency=5) têm score negativo
@@ -718,6 +729,8 @@ fn test_access_window_preserved_in_refactored_cache() {
             shard_amount: 4,
             access_window_secs: 1800,
             eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
         });
 
         assert_eq!(
@@ -750,6 +763,8 @@ fn test_single_scan_evicts_exact_count() {
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     });
 
     // Inserir max_entries entradas
@@ -764,7 +779,6 @@ fn test_single_scan_evicts_exact_count() {
     }
     assert_eq!(cache.len(), 5);
 
-    // Inserir mais 3 entradas → cada inserção a partir da 6ª dispara 1 eviction
     for i in 5..8 {
         cache.insert(
             &format!("domain{i}.com"),
@@ -774,9 +788,10 @@ fn test_single_scan_evicts_exact_count() {
             None,
         );
     }
+    for _ in 0..3 {
+        cache.evict_entries();
+    }
 
-    // O cache nunca deve exceder max_entries + 1 (inserção ocorre antes da eviction)
-    // mas deve se auto-corrigir — normalmente fica em max_entries.
     assert!(
         cache.len() <= 5,
         "Cache não deve exceder max_entries após evictions; len={}",

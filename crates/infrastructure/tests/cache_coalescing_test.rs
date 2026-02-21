@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
-use ferrous_dns_infrastructure::dns::{DnsCache, DnsCacheConfig, EvictionStrategy};
+use ferrous_dns_infrastructure::dns::{
+    DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, NegativeQueryTracker,
+};
 use futures::future::join_all;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -50,13 +52,12 @@ impl DnsResolver for DelayedMockResolver {
     }
 }
 
-fn make_cache() -> Arc<DnsCache> {
+fn make_cache() -> Arc<dyn DnsCacheAccess> {
     Arc::new(DnsCache::new(DnsCacheConfig {
         max_entries: 1000,
         eviction_strategy: EvictionStrategy::LRU,
         min_threshold: 2.0,
         refresh_threshold: 0.75,
-
         batch_eviction_percentage: 0.2,
         adaptive_thresholds: false,
         min_frequency: 0,
@@ -64,6 +65,8 @@ fn make_cache() -> Arc<DnsCache> {
         shard_amount: 4,
         access_window_secs: 7200,
         eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
     }))
 }
 
@@ -81,6 +84,7 @@ async fn test_coalescing_deduplicates_concurrent_queries() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -110,6 +114,7 @@ async fn test_coalescing_cache_hit_flag_for_waiters() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -149,6 +154,7 @@ async fn test_coalescing_error_propagation_to_waiters() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -185,6 +191,7 @@ async fn test_no_coalescing_for_different_record_types() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let r1 = Arc::clone(&resolver);
@@ -210,6 +217,7 @@ async fn test_no_coalescing_for_different_domains() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let r1 = Arc::clone(&resolver);
@@ -238,6 +246,7 @@ async fn test_result_cached_after_coalescing() {
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
         make_cache(),
         300,
+        Arc::new(NegativeQueryTracker::new()),
     ));
 
     let tasks: Vec<_> = (0..4)

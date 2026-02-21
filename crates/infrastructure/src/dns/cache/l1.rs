@@ -30,7 +30,7 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<(Arc<Vec<IpAddr>
         if let Some(entry) = cache.get(&key) {
             let now = coarse_now_secs();
             if now < entry.expires_secs {
-                let remaining = (entry.expires_secs - now) as u32;
+                let remaining = (entry.expires_secs - now).min(u32::MAX as u64) as u32;
                 return Some((Arc::clone(&entry.addresses), remaining));
             }
             cache.pop(&key);
@@ -45,14 +45,14 @@ pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
     addresses: Arc<Vec<IpAddr>>,
-    ttl_secs: u32,
+    expires_secs: u64,
 ) {
     L1_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let key = (CompactString::from(domain), *record_type);
         let entry = L1Entry {
             addresses,
-            expires_secs: coarse_now_secs() + ttl_secs as u64,
+            expires_secs,
         };
         cache.put(key, entry);
     });

@@ -1,56 +1,73 @@
 use super::coarse_clock::coarse_now_secs;
 use super::data::{CachedData, DnssecStatus};
 use ferrous_dns_domain::RecordType;
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
-use std::sync::RwLock;
-use std::time::Instant;
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering as AtomicOrdering};
+
+const FLAG_DELETED: u8 = 0b001;
+const FLAG_REFRESHING: u8 = 0b010;
+const FLAG_PERMANENT: u8 = 0b100;
+const STALE_GRACE_PERIOD_MULTIPLIER: u64 = 2;
+
+#[repr(C, align(64))]
+pub struct HotCounters {
+    pub hit_count: AtomicU64,
+    pub last_access: AtomicU64,
+    _pad: [u8; 48],
+}
+
+impl HotCounters {
+    fn new(now_secs: u64) -> Self {
+        Self {
+            hit_count: AtomicU64::new(0),
+            last_access: AtomicU64::new(now_secs),
+            _pad: [0u8; 48],
+        }
+    }
+}
+
+impl std::fmt::Debug for HotCounters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HotCounters")
+            .field("hit_count", &self.hit_count.load(AtomicOrdering::Relaxed))
+            .field(
+                "last_access",
+                &self.last_access.load(AtomicOrdering::Relaxed),
+            )
+            .finish()
+    }
+}
 
 #[derive(Debug)]
 pub struct CachedRecord {
     pub data: CachedData,
     pub dnssec_status: DnssecStatus,
-    /// Expiry as a coarse Unix timestamp (seconds).  Avoids `Instant::now()`
-    /// in the read hot path — coarse_now_secs() is an AtomicU64 load (~3 ns)
-    /// vs a VDSO/syscall call (~20 ns – 2 µs depending on kernel config).
+    /// Expiry as a coarse Unix timestamp (seconds).
     pub expires_at_secs: u64,
     /// Insertion time as a coarse Unix timestamp (seconds).
     pub inserted_at_secs: u64,
-    pub hit_count: AtomicU64,
-    pub last_access: AtomicU64,
+    pub counters: HotCounters,
     pub ttl: u32,
     pub record_type: RecordType,
-    /// Per-access timestamps used only by the LFUK eviction scorer.
-    /// Uses `Instant` for sub-second precision in the scoring window.
-    pub access_history: Option<Box<RwLock<VecDeque<Instant>>>>,
-    pub marked_for_deletion: AtomicBool,
-    pub refreshing: AtomicBool,
-    pub permanent: bool,
+    pub flags: AtomicU8,
 }
 
 impl Clone for CachedRecord {
     fn clone(&self) -> Self {
-        let access_history = if self.access_history.is_some() {
-            Some(Box::new(RwLock::new(VecDeque::with_capacity(10))))
-        } else {
-            None
-        };
-
         Self {
             data: self.data.clone(),
             dnssec_status: self.dnssec_status,
             expires_at_secs: self.expires_at_secs,
             inserted_at_secs: self.inserted_at_secs,
-            hit_count: AtomicU64::new(self.hit_count.load(AtomicOrdering::Relaxed)),
-            last_access: AtomicU64::new(self.last_access.load(AtomicOrdering::Relaxed)),
+            counters: HotCounters {
+                hit_count: AtomicU64::new(self.counters.hit_count.load(AtomicOrdering::Relaxed)),
+                last_access: AtomicU64::new(
+                    self.counters.last_access.load(AtomicOrdering::Relaxed),
+                ),
+                _pad: [0u8; 48],
+            },
             ttl: self.ttl,
             record_type: self.record_type,
-            access_history,
-            marked_for_deletion: AtomicBool::new(
-                self.marked_for_deletion.load(AtomicOrdering::Relaxed),
-            ),
-            refreshing: AtomicBool::new(self.refreshing.load(AtomicOrdering::Relaxed)),
-            permanent: self.permanent,
+            flags: AtomicU8::new(self.flags.load(AtomicOrdering::Relaxed)),
         }
     }
 }
@@ -60,30 +77,19 @@ impl CachedRecord {
         data: CachedData,
         ttl: u32,
         record_type: RecordType,
-        use_lfuk: bool,
         dnssec_status: Option<DnssecStatus>,
     ) -> Self {
         let now_secs = coarse_now_secs();
-
-        let access_history = if use_lfuk {
-            Some(Box::new(RwLock::new(VecDeque::with_capacity(10))))
-        } else {
-            None
-        };
 
         Self {
             data,
             dnssec_status: dnssec_status.unwrap_or(DnssecStatus::Unknown),
             expires_at_secs: now_secs + ttl as u64,
             inserted_at_secs: now_secs,
-            hit_count: AtomicU64::new(0),
-            last_access: AtomicU64::new(now_secs),
+            counters: HotCounters::new(now_secs),
             ttl,
             record_type,
-            access_history,
-            marked_for_deletion: AtomicBool::new(false),
-            refreshing: AtomicBool::new(false),
-            permanent: false,
+            flags: AtomicU8::new(0),
         }
     }
 
@@ -95,20 +101,21 @@ impl CachedRecord {
             dnssec_status: DnssecStatus::Unknown,
             expires_at_secs: u64::MAX,
             inserted_at_secs: now_secs,
-            hit_count: AtomicU64::new(0),
-            last_access: AtomicU64::new(now_secs),
+            counters: HotCounters::new(now_secs),
             ttl,
             record_type,
-            access_history: None,
-            marked_for_deletion: AtomicBool::new(false),
-            refreshing: AtomicBool::new(false),
-            permanent: true,
+            flags: AtomicU8::new(FLAG_PERMANENT),
         }
     }
 
     #[inline(always)]
+    pub fn is_permanent(&self) -> bool {
+        self.flags.load(AtomicOrdering::Relaxed) & FLAG_PERMANENT != 0
+    }
+
+    #[inline(always)]
     pub fn is_expired(&self) -> bool {
-        if self.permanent {
+        if self.is_permanent() {
             return false;
         }
         coarse_now_secs() >= self.expires_at_secs
@@ -118,7 +125,7 @@ impl CachedRecord {
     /// redundant `coarse_now_secs()` call when the caller already has one.
     #[inline(always)]
     pub fn is_expired_at_secs(&self, now_secs: u64) -> bool {
-        if self.permanent {
+        if self.is_permanent() {
             return false;
         }
         now_secs >= self.expires_at_secs
@@ -128,7 +135,7 @@ impl CachedRecord {
     pub fn is_stale_usable(&self) -> bool {
         let now_secs = coarse_now_secs();
         let age = now_secs.saturating_sub(self.inserted_at_secs);
-        let max_stale_age = (self.ttl as u64) * 2;
+        let max_stale_age = (self.ttl as u64) * STALE_GRACE_PERIOD_MULTIPLIER;
 
         now_secs >= self.expires_at_secs && age < max_stale_age
     }
@@ -138,19 +145,43 @@ impl CachedRecord {
     #[inline(always)]
     pub fn is_stale_usable_at_secs(&self, now_secs: u64) -> bool {
         let age = now_secs.saturating_sub(self.inserted_at_secs);
-        let max_stale_age = (self.ttl as u64) * 2;
+        let max_stale_age = (self.ttl as u64) * STALE_GRACE_PERIOD_MULTIPLIER;
 
         now_secs >= self.expires_at_secs && age < max_stale_age
     }
 
     pub fn mark_for_deletion(&self) {
-        self.marked_for_deletion
-            .store(true, AtomicOrdering::Relaxed);
+        self.flags.fetch_or(FLAG_DELETED, AtomicOrdering::Relaxed);
     }
 
     #[inline(always)]
     pub fn is_marked_for_deletion(&self) -> bool {
-        self.marked_for_deletion.load(AtomicOrdering::Relaxed)
+        self.flags.load(AtomicOrdering::Relaxed) & FLAG_DELETED != 0
+    }
+
+    #[inline(always)]
+    pub fn try_set_refreshing(&self) -> bool {
+        let mut current = self.flags.load(AtomicOrdering::Relaxed);
+        loop {
+            if current & FLAG_REFRESHING != 0 {
+                return false;
+            }
+            match self.flags.compare_exchange_weak(
+                current,
+                current | FLAG_REFRESHING,
+                AtomicOrdering::Acquire,
+                AtomicOrdering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn clear_refreshing(&self) {
+        self.flags
+            .fetch_and(!FLAG_REFRESHING, AtomicOrdering::Release);
     }
 
     #[inline(always)]
@@ -162,45 +193,23 @@ impl CachedRecord {
 
     #[inline(always)]
     pub fn record_hit(&self) {
-        self.hit_count.fetch_add(1, AtomicOrdering::Relaxed);
-        self.last_access.store(
+        self.counters
+            .hit_count
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        self.counters.last_access.store(
             super::coarse_clock::coarse_now_secs(),
             AtomicOrdering::Relaxed,
         );
     }
 
     pub fn hit_rate(&self) -> f64 {
-        let hits = self.hit_count.load(AtomicOrdering::Relaxed) as f64;
+        let hits = self.counters.hit_count.load(AtomicOrdering::Relaxed) as f64;
         let age_secs = coarse_now_secs().saturating_sub(self.inserted_at_secs) as f64;
 
         if age_secs > 0.0 {
             hits / age_secs
         } else {
             hits
-        }
-    }
-
-    pub fn lfuk_score(&self) -> f64 {
-        if let Some(ref history) = self.access_history {
-            if let Ok(hist) = history.try_read() {
-                if hist.len() < 2 {
-                    return 0.0;
-                }
-
-                let oldest = hist.front().unwrap();
-                let newest = hist.back().unwrap();
-                let timespan = newest.duration_since(*oldest).as_secs_f64();
-
-                if timespan > 0.0 {
-                    hist.len() as f64 / timespan
-                } else {
-                    hist.len() as f64
-                }
-            } else {
-                self.hit_rate()
-            }
-        } else {
-            0.0
         }
     }
 }

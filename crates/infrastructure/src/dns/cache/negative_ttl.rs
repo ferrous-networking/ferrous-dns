@@ -3,59 +3,70 @@ use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+/// Tracks negative DNS query frequency to assign adaptive TTLs.
+///
+/// Frequently-queried negative domains receive a shorter TTL (`frequent_ttl`)
+/// so they re-validate quickly. Rarely-queried domains receive a longer TTL
+/// (`rare_ttl`) to reduce upstream load.
+///
+/// `stats()` is O(1) via running atomic counters (`entry_count`,
+/// `frequent_count`) maintained incrementally as domains are inserted,
+/// promoted, and cleaned up.
 pub struct NegativeQueryTracker {
     query_counts: Arc<DashMap<Arc<str>, QueryCounter>>,
-
+    window_secs: u64,
     frequent_ttl: u32,
-
     rare_ttl: u32,
-
     frequency_threshold: u32,
+    entry_count: Arc<AtomicU64>,
+    frequent_count: Arc<AtomicU64>,
 }
 
 struct QueryCounter {
     count: AtomicU64,
-    /// Coarse Unix timestamp (seconds) of the last counter reset.
-    /// Using `coarse_now_secs()` instead of `Instant` avoids a VDSO/syscall
-    /// on every negative-response path (~50 ns → ~3 ns).
     last_reset: u64,
 }
 
 impl NegativeQueryTracker {
     pub fn new() -> Self {
-        Self {
-            query_counts: Arc::new(DashMap::new()),
-            frequent_ttl: 60,
-            rare_ttl: 300,
-            frequency_threshold: 5,
-        }
+        Self::with_config(60, 300, 5, 300)
     }
 
-    pub fn with_config(frequent_ttl: u32, rare_ttl: u32, frequency_threshold: u32) -> Self {
+    pub fn with_config(
+        frequent_ttl: u32,
+        rare_ttl: u32,
+        frequency_threshold: u32,
+        window_secs: u64,
+    ) -> Self {
         Self {
             query_counts: Arc::new(DashMap::new()),
+            window_secs,
             frequent_ttl,
             rare_ttl,
             frequency_threshold,
+            entry_count: Arc::new(AtomicU64::new(0)),
+            frequent_count: Arc::new(AtomicU64::new(0)),
         }
     }
 
     pub fn record_and_get_ttl(&self, domain: &Arc<str>) -> u32 {
         let domain_arc = Arc::clone(domain);
-
         let now = coarse_now_secs();
+        let entry_count = Arc::clone(&self.entry_count);
 
-        let mut entry = self
-            .query_counts
-            .entry(domain_arc)
-            .or_insert_with(|| QueryCounter {
+        let mut entry = self.query_counts.entry(domain_arc).or_insert_with(|| {
+            entry_count.fetch_add(1, Ordering::Relaxed);
+            QueryCounter {
                 count: AtomicU64::new(0),
                 last_reset: now,
-            });
+            }
+        });
 
-        let counter = entry.value();
-
-        if now.saturating_sub(counter.last_reset) >= 300 {
+        if now.saturating_sub(entry.value().last_reset) >= self.window_secs {
+            let old_count = entry.value().count.load(Ordering::Relaxed);
+            if old_count > self.frequency_threshold as u64 {
+                self.frequent_count.fetch_sub(1, Ordering::Relaxed);
+            }
             *entry.value_mut() = QueryCounter {
                 count: AtomicU64::new(1),
                 last_reset: now,
@@ -63,7 +74,11 @@ impl NegativeQueryTracker {
             return self.rare_ttl;
         }
 
-        let count = counter.count.fetch_add(1, Ordering::Relaxed) + 1;
+        let count = entry.value().count.fetch_add(1, Ordering::Relaxed) + 1;
+
+        if count == self.frequency_threshold as u64 + 1 {
+            self.frequent_count.fetch_add(1, Ordering::Relaxed);
+        }
 
         if count > self.frequency_threshold as u64 {
             self.frequent_ttl
@@ -73,22 +88,12 @@ impl NegativeQueryTracker {
     }
 
     pub fn stats(&self) -> TrackerStats {
-        let mut frequent_domains = 0;
-        let mut rare_domains = 0;
-
-        for entry in self.query_counts.iter() {
-            let count = entry.value().count.load(Ordering::Relaxed);
-            if count > self.frequency_threshold as u64 {
-                frequent_domains += 1;
-            } else {
-                rare_domains += 1;
-            }
-        }
-
+        let total_domains = self.entry_count.load(Ordering::Relaxed) as usize;
+        let frequent_domains = self.frequent_count.load(Ordering::Relaxed) as usize;
         TrackerStats {
-            total_domains: self.query_counts.len(),
+            total_domains,
             frequent_domains,
-            rare_domains,
+            rare_domains: total_domains.saturating_sub(frequent_domains),
             frequent_ttl: self.frequent_ttl,
             rare_ttl: self.rare_ttl,
         }
@@ -99,7 +104,12 @@ impl NegativeQueryTracker {
         let now = coarse_now_secs();
 
         self.query_counts.retain(|_domain, counter| {
-            if now.saturating_sub(counter.last_reset) >= 300 {
+            if now.saturating_sub(counter.last_reset) >= self.window_secs {
+                let count = counter.count.load(Ordering::Relaxed);
+                if count > self.frequency_threshold as u64 {
+                    self.frequent_count.fetch_sub(1, Ordering::Relaxed);
+                }
+                self.entry_count.fetch_sub(1, Ordering::Relaxed);
                 removed += 1;
                 false
             } else {

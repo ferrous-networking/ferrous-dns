@@ -1,5 +1,7 @@
 use super::cache::{coarse_clock, DnsCache};
 use crate::dns::HickoryDnsResolver;
+
+const REFRESH_ENTRY_DELAY_MS: u64 = 10;
 use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, QueryLog, QuerySource};
 use std::net::IpAddr;
@@ -83,6 +85,15 @@ impl CacheUpdater {
         coarse_clock::tick();
         debug!("Starting cache update cycle");
 
+        if cache
+            .eviction_pending
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            cache.evict_entries();
+        }
+
+        cache.rotate_bloom();
+
         let candidates = cache.get_refresh_candidates();
 
         if candidates.is_empty() {
@@ -124,7 +135,7 @@ impl CacheUpdater {
                 }
             }
 
-            sleep(Duration::from_millis(10)).await;
+            sleep(Duration::from_millis(REFRESH_ENTRY_DELAY_MS)).await;
         }
 
         info!(

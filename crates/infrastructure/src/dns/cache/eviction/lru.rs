@@ -10,7 +10,7 @@ pub struct LruPolicy;
 
 impl EvictionPolicy for LruPolicy {
     fn compute_score(&self, record: &CachedRecord, _now_secs: u64) -> f64 {
-        record.last_access.load(Ordering::Relaxed) as f64
+        record.counters.last_access.load(Ordering::Relaxed) as f64
     }
 }
 
@@ -40,6 +40,8 @@ mod tests {
             shard_amount: 4,
             access_window_secs: 7200,
             eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
         });
 
         use ferrous_dns_domain::RecordType;
@@ -49,11 +51,9 @@ mod tests {
         let _ = cache.get(&Arc::from("a.com"), &RecordType::A);
 
         let policy = LruPolicy;
-        // Verificar via cache: LRU score é baseado em last_access
-        // Score aumenta com o tempo de acesso (mais recente = score maior = sobrevive)
         let result = cache.get(&Arc::from("a.com"), &RecordType::A);
         assert!(result.is_some(), "Entrada deve existir");
-        let _ = policy; // usado indiretamente via cache
+        let _ = policy;
     }
 
     #[test]
@@ -70,6 +70,8 @@ mod tests {
             shard_amount: 4,
             access_window_secs: 7200,
             eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
         });
 
         use ferrous_dns_domain::RecordType;
@@ -77,9 +79,9 @@ mod tests {
         coarse_clock::tick();
         cache.insert("a.com", RecordType::A, make_ip_data("1.1.1.1"), 300, None);
         cache.insert("b.com", RecordType::A, make_ip_data("2.2.2.2"), 300, None);
-        // Inserir acima do limite — eviction deve ocorrer
         cache.insert("c.com", RecordType::A, make_ip_data("3.3.3.3"), 300, None);
         cache.insert("d.com", RecordType::A, make_ip_data("4.4.4.4"), 300, None);
+        cache.evict_entries();
 
         assert!(cache.len() <= 3, "Cache deve respeitar max_entries");
         let metrics = cache.metrics();

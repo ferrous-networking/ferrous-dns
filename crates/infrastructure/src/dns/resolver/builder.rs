@@ -1,4 +1,4 @@
-use super::super::cache::DnsCache;
+use super::super::cache::{DnsCache, NegativeQueryTracker};
 use super::super::conditional_forwarder::ConditionalForwarder;
 use super::super::load_balancer::PoolManager;
 use super::super::prefetch::PrefetchPredictor;
@@ -99,7 +99,8 @@ impl ResolverBuilder {
         }
 
         if let Some(cache) = self.cache {
-            let mut cached = CachedResolver::new(resolver, cache, self.config.cache_ttl);
+            let tracker = Arc::new(NegativeQueryTracker::new());
+            let mut cached = CachedResolver::new(resolver, cache, self.config.cache_ttl, tracker);
 
             if let Some(predictor) = self.prefetch_predictor {
                 cached = cached.with_prefetch(predictor);

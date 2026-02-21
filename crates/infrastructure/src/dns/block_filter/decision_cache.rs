@@ -7,12 +7,12 @@ use rustc_hash::FxBuildHasher;
 use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::OnceLock;
 
 const TTL_SECS: u64 = 60;
 const L0_CAPACITY: usize = 256;
 const L1_CAPACITY: usize = 100_000;
+const EVICTION_BATCH_SIZE: usize = 64;
 
 const CACHE_ALLOW: u8 = 0;
 
@@ -91,14 +91,12 @@ pub fn decision_l0_clear() {
 
 pub struct BlockDecisionCache {
     inner: DashMap<u64, (u8, u64), FxBuildHasher>,
-    len: AtomicUsize,
 }
 
 impl BlockDecisionCache {
     pub fn new() -> Self {
         Self {
             inner: DashMap::with_capacity_and_hasher(L1_CAPACITY, FxBuildHasher),
-            len: AtomicUsize::new(0),
         }
     }
 
@@ -112,7 +110,6 @@ impl BlockDecisionCache {
                     Some(decode_source(encoded))
                 } else {
                     e.remove();
-                    self.len.fetch_sub(1, AtomicOrdering::Relaxed);
                     None
                 }
             }
@@ -121,24 +118,30 @@ impl BlockDecisionCache {
 
     #[inline]
     pub fn set_by_key(&self, key: u64, source: Option<BlockSource>) {
-        if self.len.load(AtomicOrdering::Relaxed) >= L1_CAPACITY {
-            return;
-        }
-        let value = (encode_source(source), coarse_now_secs());
-        match self.inner.entry(key) {
-            dashmap::Entry::Vacant(e) => {
-                e.insert(value);
-                self.len.fetch_add(1, AtomicOrdering::Relaxed);
+        if self.inner.len() >= L1_CAPACITY {
+            let now = coarse_now_secs();
+            let expired: Vec<u64> = self
+                .inner
+                .iter()
+                .filter(|e| now.saturating_sub(e.value().1) >= TTL_SECS)
+                .map(|e| *e.key())
+                .take(EVICTION_BATCH_SIZE)
+                .collect();
+            for k in &expired {
+                self.inner.remove(k);
             }
-            dashmap::Entry::Occupied(mut e) => {
-                e.insert(value);
+            if self.inner.len() >= L1_CAPACITY {
+                if let Some(k) = self.inner.iter().map(|e| *e.key()).next() {
+                    self.inner.remove(&k);
+                }
             }
         }
+        self.inner
+            .insert(key, (encode_source(source), coarse_now_secs()));
     }
 
     pub fn clear(&self) {
         self.inner.clear();
-        self.len.store(0, AtomicOrdering::Relaxed);
     }
 }
 

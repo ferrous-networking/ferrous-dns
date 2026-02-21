@@ -1,9 +1,21 @@
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 
+/// Two-generation atomic bloom filter.
+///
+/// A single-generation bloom filter accumulates bits for evicted entries
+/// indefinitely, causing the false-positive rate to drift well above the
+/// theoretical target as the server runs. The two-generation design adds
+/// a second bit array (inactive slot). `set()` writes only to the active
+/// slot; `check()` consults both. `rotate()` is called periodically by
+/// `CacheUpdater`: the inactive slot is zeroed and made active while the
+/// old active slot becomes the new inactive. This guarantees that no bit
+/// survives longer than two rotation periods (~TTL of the longest-lived
+/// entry), keeping the FP rate near the theoretical 1% target.
 pub struct AtomicBloom {
-    bits: Vec<AtomicU64>,
+    slots: [Vec<AtomicU64>; 2],
+    active: AtomicUsize,
     mask: u64,
     num_hashes: usize,
 }
@@ -13,9 +25,14 @@ impl AtomicBloom {
         let num_bits = Self::optimal_num_bits(capacity, fp_rate);
         let num_hashes = Self::optimal_num_hashes(capacity, num_bits);
         let num_words = num_bits.div_ceil(64);
-        let bits = (0..num_words).map(|_| AtomicU64::new(0)).collect();
+        let make_slot = || {
+            (0..num_words)
+                .map(|_| AtomicU64::new(0))
+                .collect::<Vec<_>>()
+        };
         Self {
-            bits,
+            slots: [make_slot(), make_slot()],
+            active: AtomicUsize::new(0),
             mask: (num_bits as u64) - 1,
             num_hashes,
         }
@@ -23,39 +40,30 @@ impl AtomicBloom {
 
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
+        let a = self.active.load(AtomicOrdering::Relaxed);
+        let b = 1 - a;
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
         let mask = self.mask;
 
         if num_hashes == 5 {
-            let idx0 = Self::nth_hash(h1, h2, 0, mask);
-            if self.bits[idx0 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx0 % 64)) == 0 {
-                return false;
-            }
+            let check_both = |i: u64| -> bool {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                let bit = 1u64 << (idx % 64);
+                let word = idx / 64;
+                (self.slots[a][word].load(AtomicOrdering::Relaxed) & bit != 0)
+                    || (self.slots[b][word].load(AtomicOrdering::Relaxed) & bit != 0)
+            };
 
-            let idx1 = Self::nth_hash(h1, h2, 1, mask);
-            if self.bits[idx1 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx1 % 64)) == 0 {
-                return false;
-            }
-
-            let idx2 = Self::nth_hash(h1, h2, 2, mask);
-            if self.bits[idx2 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx2 % 64)) == 0 {
-                return false;
-            }
-
-            let idx3 = Self::nth_hash(h1, h2, 3, mask);
-            if self.bits[idx3 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx3 % 64)) == 0 {
-                return false;
-            }
-
-            let idx4 = Self::nth_hash(h1, h2, 4, mask);
-            self.bits[idx4 / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx4 % 64)) != 0
+            check_both(0) && check_both(1) && check_both(2) && check_both(3) && check_both(4)
         } else {
-            for i in 0..num_hashes {
-                let bit_idx = Self::nth_hash(h1, h2, i as u64, mask);
-                let word_idx = bit_idx / 64;
-                let bit_pos = bit_idx % 64;
-                if (self.bits[word_idx].load(AtomicOrdering::Relaxed) & (1u64 << bit_pos)) == 0 {
+            for i in 0..num_hashes as u64 {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                let bit = 1u64 << (idx % 64);
+                let word = idx / 64;
+                let in_active = self.slots[a][word].load(AtomicOrdering::Relaxed) & bit != 0;
+                let in_inactive = self.slots[b][word].load(AtomicOrdering::Relaxed) & bit != 0;
+                if !in_active && !in_inactive {
                     return false;
                 }
             }
@@ -65,38 +73,47 @@ impl AtomicBloom {
 
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
+        let a = self.active.load(AtomicOrdering::Relaxed);
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
         let mask = self.mask;
 
         if num_hashes == 5 {
             let idx0 = Self::nth_hash(h1, h2, 0, mask);
-            self.bits[idx0 / 64].fetch_or(1u64 << (idx0 % 64), AtomicOrdering::Relaxed);
-
+            self.slots[a][idx0 / 64].fetch_or(1u64 << (idx0 % 64), AtomicOrdering::Relaxed);
             let idx1 = Self::nth_hash(h1, h2, 1, mask);
-            self.bits[idx1 / 64].fetch_or(1u64 << (idx1 % 64), AtomicOrdering::Relaxed);
-
+            self.slots[a][idx1 / 64].fetch_or(1u64 << (idx1 % 64), AtomicOrdering::Relaxed);
             let idx2 = Self::nth_hash(h1, h2, 2, mask);
-            self.bits[idx2 / 64].fetch_or(1u64 << (idx2 % 64), AtomicOrdering::Relaxed);
-
+            self.slots[a][idx2 / 64].fetch_or(1u64 << (idx2 % 64), AtomicOrdering::Relaxed);
             let idx3 = Self::nth_hash(h1, h2, 3, mask);
-            self.bits[idx3 / 64].fetch_or(1u64 << (idx3 % 64), AtomicOrdering::Relaxed);
-
+            self.slots[a][idx3 / 64].fetch_or(1u64 << (idx3 % 64), AtomicOrdering::Relaxed);
             let idx4 = Self::nth_hash(h1, h2, 4, mask);
-            self.bits[idx4 / 64].fetch_or(1u64 << (idx4 % 64), AtomicOrdering::Relaxed);
+            self.slots[a][idx4 / 64].fetch_or(1u64 << (idx4 % 64), AtomicOrdering::Relaxed);
         } else {
-            for i in 0..num_hashes {
-                let bit_idx = Self::nth_hash(h1, h2, i as u64, mask);
-                let word_idx = bit_idx / 64;
-                let bit_pos = bit_idx % 64;
-                self.bits[word_idx].fetch_or(1u64 << bit_pos, AtomicOrdering::Relaxed);
+            for i in 0..num_hashes as u64 {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                self.slots[a][idx / 64].fetch_or(1u64 << (idx % 64), AtomicOrdering::Relaxed);
             }
         }
     }
 
-    pub fn clear(&self) {
-        for word in &self.bits {
+    /// Rotate generations: the current inactive slot is zeroed and becomes
+    /// active; the old active slot becomes inactive. Call periodically (e.g.
+    /// once per `CacheUpdater` tick) to bound the false-positive growth.
+    pub fn rotate(&self) {
+        let old_active = self.active.load(AtomicOrdering::Relaxed);
+        let new_active = 1 - old_active;
+        for word in &self.slots[new_active] {
             word.store(0, AtomicOrdering::Relaxed);
+        }
+        self.active.store(new_active, AtomicOrdering::Relaxed);
+    }
+
+    pub fn clear(&self) {
+        for slot in &self.slots {
+            for word in slot {
+                word.store(0, AtomicOrdering::Relaxed);
+            }
         }
     }
 

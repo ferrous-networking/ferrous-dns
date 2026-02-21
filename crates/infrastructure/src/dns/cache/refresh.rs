@@ -22,18 +22,22 @@ impl DnsCache {
     /// Entradas **fora da janela** não recebem refresh proativo. O próximo acesso
     /// atualiza `last_access` via `record_hit()`, re-inserindo-as na janela.
     pub fn get_refresh_candidates(&self) -> Vec<(CompactString, RecordType)> {
-        let mut candidates = Vec::new();
+        let mut candidates = Vec::with_capacity(16);
         let now = coarse_now_secs();
+        let sample_period = self.refresh_sample_period;
+        let mut idx: u64 = 0;
 
         for entry in self.cache.iter() {
+            idx += 1;
+            if sample_period > 1 && !idx.is_multiple_of(sample_period) {
+                continue;
+            }
             let record = entry.value();
 
-            // Lazy-deleted entries never get refreshed
             if record.is_marked_for_deletion() {
                 continue;
             }
 
-            // Negative responses and HTTPS records are never proactively refreshed
             if record.data.is_negative() {
                 continue;
             }
@@ -43,8 +47,8 @@ impl DnsCache {
                 continue;
             }
 
-            let hit_count = record.hit_count.load(AtomicOrdering::Relaxed);
-            let last_access = record.last_access.load(AtomicOrdering::Relaxed);
+            let hit_count = record.counters.hit_count.load(AtomicOrdering::Relaxed);
+            let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
             let age_since_access = now.saturating_sub(last_access);
             let within_window = hit_count > 0 && age_since_access <= self.access_window_secs;
 
@@ -53,17 +57,7 @@ impl DnsCache {
             }
 
             if record.is_expired_at_secs(now) {
-                if record.is_stale_usable_at_secs(now)
-                    && record
-                        .refreshing
-                        .compare_exchange(
-                            false,
-                            true,
-                            AtomicOrdering::Acquire,
-                            AtomicOrdering::Relaxed,
-                        )
-                        .is_ok()
-                {
+                if record.is_stale_usable_at_secs(now) && record.try_set_refreshing() {
                     candidates.push((key.domain.clone(), key.record_type));
                 }
                 continue;
@@ -73,16 +67,7 @@ impl DnsCache {
                 continue;
             }
 
-            if record
-                .refreshing
-                .compare_exchange(
-                    false,
-                    true,
-                    AtomicOrdering::Acquire,
-                    AtomicOrdering::Relaxed,
-                )
-                .is_ok()
-            {
+            if record.try_set_refreshing() {
                 candidates.push((key.domain.clone(), key.record_type));
             }
         }
@@ -95,7 +80,7 @@ impl DnsCache {
 
         let key = CacheKey::new(domain, *record_type);
         if let Some(entry) = self.cache.get(&key) {
-            entry.refreshing.store(false, AtomicOrdering::Release);
+            entry.clear_refreshing();
         }
     }
 }
@@ -111,7 +96,7 @@ mod tests {
             max_entries: 100,
             eviction_strategy: EvictionStrategy::HitRate,
             min_threshold: 0.0,
-            refresh_threshold: 0.0, // toda entrada qualifica pelo tempo imediatamente
+            refresh_threshold: 0.0,
             batch_eviction_percentage: 0.2,
             adaptive_thresholds: false,
             min_frequency: 0,
@@ -119,6 +104,8 @@ mod tests {
             shard_amount: 4,
             access_window_secs,
             eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
         })
     }
 
@@ -126,13 +113,13 @@ mod tests {
         CachedData::CanonicalName(Arc::from(name))
     }
 
-    /// Fix 2: Entrada expirada DENTRO da janela → candidato urgente.
+    /// Entrada expirada dentro da janela de acesso é candidato urgente de refresh
+    /// enquanto ainda estiver no grace period (`inserted_at + 2×TTL`).
     #[test]
     fn test_refresh_includes_expired_entry_within_window() {
         let cache = make_cache_with_window(7200);
         coarse_clock::tick();
 
-        // TTL=2s → grace period = 2×TTL = 4s. Sleep 3s: expirada mas ainda stale-usable (age=3 < 4).
         cache.insert(
             "expired-window.test",
             RecordType::CNAME,
@@ -140,10 +127,8 @@ mod tests {
             2,
             None,
         );
-        // Registrar hit para entrar na janela
         let _ = cache.get(&Arc::from("expired-window.test"), &RecordType::CNAME);
 
-        // Aguardar expiração do TTL=2s (grace period estende até inserted_at + 4s)
         std::thread::sleep(std::time::Duration::from_secs(3));
         coarse_clock::tick();
 
@@ -158,7 +143,7 @@ mod tests {
     /// Entrada expirada FORA da janela (window=0) → NÃO é candidato.
     #[test]
     fn test_refresh_excludes_expired_entry_outside_window() {
-        let cache = make_cache_with_window(0); // janela = 0s
+        let cache = make_cache_with_window(0);
         coarse_clock::tick();
 
         cache.insert(
@@ -196,7 +181,6 @@ mod tests {
             3600,
             None,
         );
-        // Sem chamada a get() → hit_count = 0
 
         let candidates = cache.get_refresh_candidates();
         assert!(
@@ -219,7 +203,6 @@ mod tests {
             3600,
             None,
         );
-        // refresh_threshold=0.0, então qualquer entrada com hit é candidata
         let _ = cache.get(&Arc::from("valid-hit.test"), &RecordType::CNAME);
 
         let candidates = cache.get_refresh_candidates();
@@ -233,8 +216,6 @@ mod tests {
     /// Entradas com refreshing=true não são retornadas como candidatos (compare_exchange).
     #[test]
     fn test_refresh_skips_already_refreshing_entries() {
-        use std::sync::atomic::Ordering;
-
         let cache = make_cache_with_window(7200);
         coarse_clock::tick();
 
@@ -247,10 +228,9 @@ mod tests {
         );
         let _ = cache.get(&Arc::from("refreshing.test"), &RecordType::CNAME);
 
-        // Simular que já está sendo refreshado
         let key = crate::dns::cache::key::CacheKey::new("refreshing.test", RecordType::CNAME);
         if let Some(entry) = cache.cache.get(&key) {
-            entry.refreshing.store(true, Ordering::Relaxed);
+            entry.try_set_refreshing();
         }
 
         let candidates = cache.get_refresh_candidates();
@@ -279,7 +259,6 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(2));
         coarse_clock::tick();
 
-        // get() após expiração marca para deleção
         let _ = cache.get(&Arc::from("marked.test"), &RecordType::CNAME);
 
         let candidates = cache.get_refresh_candidates();

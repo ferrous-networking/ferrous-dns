@@ -9,9 +9,12 @@ use std::sync::atomic::Ordering;
 pub struct HitRatePolicy;
 
 impl EvictionPolicy for HitRatePolicy {
-    fn compute_score(&self, record: &CachedRecord, _now_secs: u64) -> f64 {
-        let hits = record.hit_count.load(Ordering::Relaxed);
-        (hits as f64) / (hits + 1) as f64
+    fn compute_score(&self, record: &CachedRecord, now_secs: u64) -> f64 {
+        let hits = record.counters.hit_count.load(Ordering::Relaxed);
+        let last_access = record.counters.last_access.load(Ordering::Relaxed);
+        let age_secs = now_secs.saturating_sub(last_access) as f64;
+        let recency = 1.0 / (age_secs + 1.0);
+        ((hits as f64) / (hits + 1) as f64) * recency
     }
 }
 
@@ -28,7 +31,6 @@ mod tests {
             CachedData::IpAddresses(Arc::new(vec!["1.1.1.1".parse::<IpAddr>().unwrap()])),
             300,
             RecordType::A,
-            false,
             Some(DnssecStatus::Unknown),
         );
         for _ in 0..hits {
@@ -75,7 +77,6 @@ mod tests {
         let policy = HitRatePolicy;
         let record = make_record(0);
         let score = policy.compute_score(&record, 0);
-        // 0 / (0 + 1) = 0.0
         assert_eq!(score, 0.0);
     }
 }
