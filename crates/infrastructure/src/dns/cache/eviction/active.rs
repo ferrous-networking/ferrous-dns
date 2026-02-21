@@ -6,13 +6,6 @@ use super::policy::EvictionPolicy;
 use super::strategy::EvictionStrategy;
 use crate::dns::cache::record::CachedRecord;
 
-/// Política de eviction ativa com dispatch via enum (zero-cost, sem vtable).
-///
-/// Cada variante carrega os parâmetros específicos da estratégia.
-/// O método `compute_score` usa `#[inline(always)]` para que o compilador
-/// possa inlinar cada arm do match e eliminar chamadas indiretas.
-///
-/// Criado uma vez em `DnsCache::new()` a partir do `DnsCacheConfig`.
 pub enum ActiveEvictionPolicy {
     Lru(LruPolicy),
     HitRate(HitRatePolicy),
@@ -21,7 +14,6 @@ pub enum ActiveEvictionPolicy {
 }
 
 impl ActiveEvictionPolicy {
-    /// Constrói a política ativa a partir do enum de configuração e parâmetros.
     pub fn from_config(
         strategy: EvictionStrategy,
         min_frequency: u64,
@@ -39,10 +31,6 @@ impl ActiveEvictionPolicy {
         }
     }
 
-    /// Calcula o score de eviction delegando à estratégia ativa.
-    ///
-    /// Score alto = entrada valiosa. Score negativo = abaixo do mínimo
-    /// configurado (candidato prioritário para remoção).
     #[inline(always)]
     pub fn compute_score(&self, record: &CachedRecord, now_secs: u64) -> f64 {
         match self {
@@ -53,7 +41,6 @@ impl ActiveEvictionPolicy {
         }
     }
 
-    /// Retorna o enum `EvictionStrategy` correspondente à política ativa.
     pub fn strategy(&self) -> EvictionStrategy {
         match self {
             Self::Lru(_) => EvictionStrategy::LRU,

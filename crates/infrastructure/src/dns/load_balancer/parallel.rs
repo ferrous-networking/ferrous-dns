@@ -24,9 +24,7 @@ impl ParallelStrategy {
         emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
-            return Err(DomainError::InvalidDomainName(
-                "No upstream servers available".into(),
-            ));
+            return Err(DomainError::TransportNoHealthyServers);
         }
 
         debug!(
@@ -37,6 +35,8 @@ impl ParallelStrategy {
         );
 
         let mut futs = FuturesUnordered::new();
+
+        let per_server_timeout_ms = timeout_ms.saturating_mul(2);
 
         let domain_arc: std::sync::Arc<str> = domain.into();
         for &protocol in servers {
@@ -50,7 +50,14 @@ impl ParallelStrategy {
             // when their sockets are ready. Cancellation of the losing upstreams is
             // implicit: dropping `futs` when we return cancels the pending futures.
             futs.push(async move {
-                query_server(&protocol, &domain, &record_type, timeout_ms, &emitter).await
+                query_server(
+                    &protocol,
+                    &domain,
+                    &record_type,
+                    per_server_timeout_ms,
+                    &emitter,
+                )
+                .await
             });
         }
 
@@ -87,19 +94,15 @@ impl ParallelStrategy {
                 }
             }
 
-            Err(DomainError::InvalidDomainName(format!(
-                "All {} parallel queries failed",
-                total_queries
-            )))
+            Err(DomainError::TransportAllServersUnreachable)
         })
         .await;
 
         match result {
             Ok(r) => r,
-            Err(_) => Err(DomainError::InvalidDomainName(format!(
-                "Parallel query timeout after {}ms ({} queries)",
-                timeout_ms, total_queries
-            ))),
+            Err(_) => Err(DomainError::TransportTimeout {
+                server: format!("parallel({} servers)", total_queries),
+            }),
         }
     }
 }

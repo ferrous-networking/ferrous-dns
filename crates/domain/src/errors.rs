@@ -94,4 +94,19 @@ pub enum DomainError {
 
     #[error("Invalid regex filter: {0}")]
     InvalidRegexFilter(String),
+
+    #[error("Transport timeout connecting to {server}")]
+    TransportTimeout { server: String },
+
+    #[error("Transport connection refused by {server}")]
+    TransportConnectionRefused { server: String },
+
+    #[error("Transport connection reset by {server}")]
+    TransportConnectionReset { server: String },
+
+    #[error("No healthy upstream servers available")]
+    TransportNoHealthyServers,
+
+    #[error("All upstream servers are unreachable")]
+    TransportAllServersUnreachable,
 }

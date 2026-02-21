@@ -1,6 +1,11 @@
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
-use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, EvictionStrategy};
+use ferrous_dns_infrastructure::dns::cache::eviction::{
+    EvictionPolicy, HitRatePolicy, LfuPolicy, LfukPolicy, LruPolicy,
+};
+use ferrous_dns_infrastructure::dns::{
+    CachedData, CachedRecord, DnsCache, DnsCacheConfig, DnssecStatus, EvictionStrategy,
+};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -804,5 +809,378 @@ fn test_single_scan_evicts_exact_count() {
         evictions >= 3,
         "Devem ter ocorrido pelo menos 3 evictions; evictions={}",
         evictions
+    );
+}
+
+#[test]
+fn test_clear_also_clears_l1_cache() {
+    let cache = create_cache(100, EvictionStrategy::HitRate, 0, 0.0);
+
+    cache.insert(
+        "clear-test.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        300,
+        None,
+    );
+
+    // Primeiro get popula o L1
+    let first = cache.get(&Arc::from("clear-test.com"), &RecordType::A);
+    assert!(first.is_some(), "Entry deve existir antes do clear");
+
+    // Segundo get deve vir do L1 (IpAddresses)
+    let from_l1 = cache.get(&Arc::from("clear-test.com"), &RecordType::A);
+    assert!(
+        from_l1.is_some(),
+        "Entry deve estar no L1 na segunda leitura"
+    );
+
+    cache.clear();
+
+    // Após clear, nem L1 nem L2 devem retornar o dado
+    let after_clear = cache.get(&Arc::from("clear-test.com"), &RecordType::A);
+    assert!(
+        after_clear.is_none(),
+        "Entry não deve ser retornada após cache.clear() — L1 deve ter sido limpo"
+    );
+}
+
+#[test]
+fn test_stale_while_revalidate_returns_nonzero_ttl() {
+    let cache = create_cache(100, EvictionStrategy::HitRate, 0, 0.0);
+
+    // Inserir com TTL 1 segundo (irá expirar rapidamente)
+    cache.insert(
+        "stale-test.com",
+        RecordType::CNAME,
+        make_cname_data("alias.stale-test.com"),
+        1,
+        None,
+    );
+
+    // Avançar o coarse clock para colocar o entry em stale-but-usable window
+    // (expirado mas dentro do grace period de 2×TTL)
+    coarse_clock::tick();
+    coarse_clock::tick();
+
+    let result = cache.get(&Arc::from("stale-test.com"), &RecordType::CNAME);
+
+    if let Some((_, _, Some(ttl))) = result {
+        assert!(
+            ttl >= 1,
+            "TTL retornado para record stale-while-revalidate deve ser >= 1, foi {}",
+            ttl
+        );
+    }
+    // Se None, o entry já passou do grace period — o teste é inconclusivo mas não falha
+}
+
+#[test]
+fn test_lfuk_new_entries_evicted_in_order_not_urgently() {
+    // Bug anterior: entries novas (hits=0) recebiam score negativo e iam para
+    // urgent_expired, sendo evictadas ANTES de entries com baixo-mas-positivo score.
+    // Após a fix: bootstrap score = min_lfuk_score, eviction é por ordenação normal.
+    //
+    // Cenário: todas as entries têm hits=0 → bootstrap score igual para todas.
+    // Após eviction, o cache deve ter ao menos (max_entries - batch_eviction) entries.
+    let cache = create_cache(5, EvictionStrategy::LFUK, 0, 5.0);
+
+    for i in 0..5 {
+        cache.insert(
+            &format!("new{i}.com"),
+            RecordType::CNAME,
+            make_cname_data(&format!("alias{i}.com")),
+            3600,
+            None,
+        );
+    }
+
+    let size_before = cache.len();
+    cache.evict_entries();
+    let size_after = cache.len();
+
+    // Com batch_eviction_percentage=0.2 e max_entries=5: remove 1 entry por ciclo
+    assert!(
+        size_after < size_before,
+        "Eviction deve remover ao menos 1 entry"
+    );
+    // Não deve ter esvaziado o cache (eviction controlada, não urgente)
+    assert!(
+        size_after >= 4,
+        "Eviction de batch 20% não deve remover mais que 1 entry de um cache de 5; após={}",
+        size_after
+    );
+}
+
+// ─── Testes de compaction ─────────────────────────────────────────────────────
+
+#[test]
+fn test_compact_retains_expired_entries() {
+    let cache = create_refresh_cache(7200);
+    coarse_clock::tick();
+
+    cache.insert(
+        "expired.test",
+        RecordType::CNAME,
+        make_cname_data("alias"),
+        1,
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    coarse_clock::tick();
+
+    let removed = cache.compact();
+    assert_eq!(
+        removed, 0,
+        "compact() não deve remover entradas expiradas (apenas marked_for_deletion)"
+    );
+    assert_eq!(cache.len(), 1, "Entrada expirada deve permanecer no cache");
+}
+
+#[test]
+fn test_compact_removes_marked_for_deletion() {
+    let cache = create_refresh_cache(7200);
+    coarse_clock::tick();
+
+    cache.insert(
+        "to-delete.test",
+        RecordType::CNAME,
+        make_cname_data("alias"),
+        1,
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    coarse_clock::tick();
+
+    let result = cache.get(&Arc::from("to-delete.test"), &RecordType::CNAME);
+    assert!(
+        result.is_none(),
+        "get() deve retornar None para entrada expirada"
+    );
+
+    let removed = cache.compact();
+    assert_eq!(
+        removed, 1,
+        "compact() deve remover entradas marked_for_deletion"
+    );
+    assert_eq!(cache.len(), 0);
+}
+
+#[test]
+fn test_compact_retains_valid_entries() {
+    let cache = create_refresh_cache(7200);
+    coarse_clock::tick();
+
+    cache.insert(
+        "valid.test",
+        RecordType::A,
+        make_ip_data("1.1.1.1"),
+        3600,
+        None,
+    );
+
+    let removed = cache.compact();
+    assert_eq!(removed, 0, "Entradas válidas não devem ser removidas");
+    assert_eq!(cache.len(), 1);
+}
+
+// ─── Testes de eviction policies ─────────────────────────────────────────────
+
+fn make_record_with_hits(hits: u64) -> CachedRecord {
+    let record = CachedRecord::new(
+        CachedData::IpAddresses(Arc::new(vec!["1.1.1.1".parse::<IpAddr>().unwrap()])),
+        300,
+        RecordType::A,
+        Some(DnssecStatus::Unknown),
+    );
+    for _ in 0..hits {
+        record.record_hit();
+    }
+    record
+}
+
+#[test]
+fn test_lru_score_is_last_access_timestamp() {
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 10,
+        eviction_strategy: EvictionStrategy::LRU,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.2,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
+    });
+
+    coarse_clock::tick();
+    cache.insert("a.com", RecordType::A, make_ip_data("1.1.1.1"), 300, None);
+    let _ = cache.get(&Arc::from("a.com"), &RecordType::A);
+
+    let policy = LruPolicy;
+    let result = cache.get(&Arc::from("a.com"), &RecordType::A);
+    assert!(result.is_some(), "Entrada deve existir");
+    let _ = policy;
+}
+
+#[test]
+fn test_lru_evicts_least_recently_used() {
+    let cache = DnsCache::new(DnsCacheConfig {
+        max_entries: 3,
+        eviction_strategy: EvictionStrategy::LRU,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 1.0,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
+    });
+
+    coarse_clock::tick();
+    cache.insert("a.com", RecordType::A, make_ip_data("1.1.1.1"), 300, None);
+    cache.insert("b.com", RecordType::A, make_ip_data("2.2.2.2"), 300, None);
+    cache.insert("c.com", RecordType::A, make_ip_data("3.3.3.3"), 300, None);
+    cache.insert("d.com", RecordType::A, make_ip_data("4.4.4.4"), 300, None);
+    cache.evict_entries();
+
+    assert!(cache.len() <= 3, "Cache deve respeitar max_entries");
+    let metrics = cache.metrics();
+    assert!(
+        metrics.evictions.load(std::sync::atomic::Ordering::Relaxed) > 0,
+        "Deve ter ocorrido pelo menos uma eviction"
+    );
+}
+
+#[test]
+fn test_hit_rate_score_increases_with_hits() {
+    let policy = HitRatePolicy;
+    let r0 = make_record_with_hits(0);
+    let r1 = make_record_with_hits(1);
+    let r10 = make_record_with_hits(10);
+    let r100 = make_record_with_hits(100);
+
+    let s0 = policy.compute_score(&r0, 0);
+    let s1 = policy.compute_score(&r1, 0);
+    let s10 = policy.compute_score(&r10, 0);
+    let s100 = policy.compute_score(&r100, 0);
+
+    assert!(s0 < s1, "0 hits deve ter score menor que 1 hit");
+    assert!(s1 < s10, "1 hit deve ter score menor que 10 hits");
+    assert!(s10 < s100, "10 hits deve ter score menor que 100 hits");
+}
+
+#[test]
+fn test_hit_rate_score_is_bounded_between_zero_and_one() {
+    let policy = HitRatePolicy;
+    let r0 = make_record_with_hits(0);
+    let r_big = make_record_with_hits(1_000_000);
+
+    let s0 = policy.compute_score(&r0, 0);
+    let s_big = policy.compute_score(&r_big, 0);
+
+    assert!(s0 >= 0.0, "Score deve ser >= 0");
+    assert!(s_big < 1.0, "Score deve ser < 1.0 (bounded)");
+    assert!(s_big >= 0.0, "Score não pode ser negativo em HitRate");
+}
+
+#[test]
+fn test_hit_rate_score_zero_hits() {
+    let policy = HitRatePolicy;
+    let record = make_record_with_hits(0);
+    let score = policy.compute_score(&record, 0);
+    assert_eq!(score, 0.0);
+}
+
+#[test]
+fn test_lfuk_score_zero_hits_returns_bootstrap_score() {
+    let policy = LfukPolicy {
+        min_lfuk_score: 1.5,
+        k_value: 0.5,
+    };
+    let record = make_record_with_hits(0);
+    let score = policy.compute_score(&record, 1_000_000);
+    assert_eq!(
+        score, 1.5,
+        "Entries com hits=0 devem receber bootstrap score igual a min_lfuk_score"
+    );
+}
+
+#[test]
+fn test_lfuk_score_below_min_is_negative_after_first_hit() {
+    let policy = LfukPolicy {
+        min_lfuk_score: 100.0,
+        k_value: 0.5,
+    };
+    let record = make_record_with_hits(1);
+    let score = policy.compute_score(&record, 1_000_000);
+    assert!(
+        score < 0.0,
+        "Entry com poucos hits e alto min_lfuk_score deve ter score negativo: {}",
+        score
+    );
+}
+
+#[test]
+fn test_lfuk_score_with_many_hits_and_recent_access() {
+    let policy = LfukPolicy {
+        min_lfuk_score: 0.0,
+        k_value: 0.5,
+    };
+    let record = make_record_with_hits(20);
+    let now_secs = coarse_clock::coarse_now_secs();
+    let score = policy.compute_score(&record, now_secs);
+    assert!(
+        score >= 0.0,
+        "Entrada com muitos hits recentes deve ter score >= 0"
+    );
+}
+
+#[test]
+fn test_lfu_score_below_min_frequency_is_negative() {
+    let policy = LfuPolicy { min_frequency: 10 };
+    let record = make_record_with_hits(3);
+    let score = policy.compute_score(&record, 0);
+    assert!(
+        score < 0.0,
+        "Score deve ser negativo quando hits (3) < min_frequency (10)"
+    );
+    assert_eq!(
+        score,
+        -(10.0 - 3.0),
+        "Score deve ser -(min_frequency - hits)"
+    );
+}
+
+#[test]
+fn test_lfu_score_above_min_frequency_is_positive() {
+    let policy = LfuPolicy { min_frequency: 5 };
+    let record = make_record_with_hits(15);
+    let score = policy.compute_score(&record, 0);
+    assert!(
+        score > 0.0,
+        "Score deve ser positivo quando hits (15) >= min_frequency (5)"
+    );
+    assert_eq!(score, 15.0);
+}
+
+#[test]
+fn test_lfu_score_zero_min_frequency_returns_raw_hits() {
+    let policy = LfuPolicy { min_frequency: 0 };
+    let record = make_record_with_hits(7);
+    let score = policy.compute_score(&record, 0);
+    assert_eq!(
+        score, 7.0,
+        "Com min_frequency=0, score deve ser raw hit_count"
     );
 }

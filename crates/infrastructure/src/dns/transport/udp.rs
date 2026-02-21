@@ -8,6 +8,34 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tracing::{debug, warn};
 
+fn validate_response_id(
+    query_bytes: &[u8],
+    response_bytes: &[u8],
+    server: SocketAddr,
+) -> Result<(), DomainError> {
+    if query_bytes.len() < 2 || response_bytes.len() < 2 {
+        return Err(DomainError::InvalidDomainName(format!(
+            "DNS response from {} is too short to contain a message ID",
+            server
+        )));
+    }
+    let query_id = u16::from_be_bytes([query_bytes[0], query_bytes[1]]);
+    let response_id = u16::from_be_bytes([response_bytes[0], response_bytes[1]]);
+    if query_id != response_id {
+        warn!(
+            server = %server,
+            query_id,
+            response_id,
+            "DNS message ID mismatch — discarding response to prevent spoofing"
+        );
+        return Err(DomainError::InvalidDomainName(format!(
+            "DNS message ID mismatch from {}: expected {}, got {}",
+            server, query_id, response_id
+        )));
+    }
+    Ok(())
+}
+
 const MAX_UDP_RESPONSE_SIZE: usize = 4096;
 
 pub struct UdpTransport {
@@ -91,6 +119,8 @@ impl UdpTransport {
                 );
             }
 
+            validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
+
             debug!(
                 server = %self.server_addr,
                 bytes_received = bytes_received,
@@ -171,6 +201,8 @@ impl UdpTransport {
             );
         }
 
+        validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
+
         debug!(
             server = %self.server_addr,
             bytes_received = bytes_received,
@@ -184,6 +216,10 @@ impl UdpTransport {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "udp_test.rs"]
+mod tests;
 
 #[async_trait]
 impl DnsTransport for UdpTransport {

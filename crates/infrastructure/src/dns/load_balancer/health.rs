@@ -17,8 +17,8 @@ pub enum ServerStatus {
 #[derive(Debug, Clone)]
 pub struct ServerHealth {
     pub status: ServerStatus,
-    pub consecutive_failures: u8,
-    pub consecutive_successes: u8,
+    pub consecutive_failures: u16,
+    pub consecutive_successes: u16,
     pub last_check_latency_ms: Option<u64>,
     pub last_error: Option<String>,
 }
@@ -144,10 +144,10 @@ impl HealthChecker {
     fn mark_healthy(&self, server: &str, latency_ms: u64) {
         let mut entry = self.health_map.entry(server.to_string()).or_default();
         entry.consecutive_failures = 0;
-        entry.consecutive_successes += 1;
+        entry.consecutive_successes = entry.consecutive_successes.saturating_add(1);
         entry.last_check_latency_ms = Some(latency_ms);
         entry.last_error = None;
-        if entry.consecutive_successes >= self.success_threshold {
+        if entry.consecutive_successes >= self.success_threshold as u16 {
             if entry.status != ServerStatus::Healthy {
                 info!(server = %server, latency_ms, "Server marked HEALTHY");
             }
@@ -158,10 +158,10 @@ impl HealthChecker {
     fn mark_failed(&self, server: &str, latency_ms: Option<u64>, error: Option<String>) {
         let mut entry = self.health_map.entry(server.to_string()).or_default();
         entry.consecutive_successes = 0;
-        entry.consecutive_failures += 1;
+        entry.consecutive_failures = entry.consecutive_failures.saturating_add(1);
         entry.last_check_latency_ms = latency_ms;
         entry.last_error = error;
-        if entry.consecutive_failures >= self.failure_threshold {
+        if entry.consecutive_failures >= self.failure_threshold as u16 {
             if entry.status != ServerStatus::Unhealthy {
                 warn!(server = %server, "Server marked UNHEALTHY");
             }

@@ -1,18 +1,31 @@
 use super::fast_path::FastPathQuery;
 use std::net::IpAddr;
 
+// An EDNS0 OPT record in minimal form:
+//   Name  : 0x00          (root, 1 byte)
+//   Type  : 0x00 0x29     (41,   2 bytes)
+//   Class : 0x10 0x00     (4096 bytes UDP payload, 2 bytes)
+//   TTL   : 0x00 0x00 0x00 0x00  (extended RCODE + version + flags, 4 bytes)
+//   RDLen : 0x00 0x00     (no RDATA, 2 bytes)
+const OPT_RECORD: [u8; 11] = [
+    0x00, 0x00, 0x29, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
+
 /// Builds a DNS A/AAAA response directly in wire format using a stack-allocated
-/// 512-byte buffer — no heap allocation, no Hickory serialization path.
+/// buffer — no heap allocation, no Hickory serialization path.
 ///
 /// Returns `(buffer, length)` on success.
 /// Returns `None` when the response would exceed the client's advertised UDP
 /// payload size (from EDNS0 OPT) or the hard 512-byte fallback cap.
+///
+/// When the client sent an EDNS0 OPT record (`query.has_edns`), an OPT record
+/// is appended to the additional section per RFC 6891 §6.1.1.
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],
     addresses: &[IpAddr],
     ttl: u32,
-) -> Option<([u8; 512], usize)> {
+) -> Option<([u8; 523], usize)> {
     if addresses.is_empty() || query.question_end > query_buf.len() {
         return None;
     }
@@ -28,14 +41,15 @@ pub fn build_cache_hit_response(
         })
         .sum();
 
-    let total_size = 12 + question_len + answers_size;
-    let max_size = (query.client_max_size as usize).min(512);
+    let opt_size = if query.has_edns { OPT_RECORD.len() } else { 0 };
+    let total_size = 12 + question_len + answers_size + opt_size;
+    let max_size = (query.client_max_size as usize).min(512) + opt_size;
 
     if total_size > max_size {
         return None;
     }
 
-    let mut buf = [0u8; 512];
+    let mut buf = [0u8; 523];
 
     // ── Header (12 bytes) ────────────────────────────────────────────────────
     buf[0] = (query.id >> 8) as u8;
@@ -47,7 +61,10 @@ pub fn build_cache_hit_response(
     let ancount = addresses.len() as u16;
     buf[6] = (ancount >> 8) as u8;
     buf[7] = ancount as u8;
-    // NSCOUNT and ARCOUNT remain 0x0000
+    // NSCOUNT = 0x0000
+    // ARCOUNT: 1 when OPT is included, 0 otherwise
+    buf[10] = 0x00;
+    buf[11] = if query.has_edns { 0x01 } else { 0x00 };
 
     // ── Question section — copied verbatim from the client query ─────────────
     buf[12..12 + question_len].copy_from_slice(&query_buf[12..query.question_end]);
@@ -90,6 +107,12 @@ pub fn build_cache_hit_response(
                 pos += 28;
             }
         }
+    }
+
+    // ── Additional section: OPT record (RFC 6891 §6.1.1) ────────────────────
+    if query.has_edns {
+        buf[pos..pos + OPT_RECORD.len()].copy_from_slice(&OPT_RECORD);
+        pos += OPT_RECORD.len();
     }
 
     Some((buf, pos))

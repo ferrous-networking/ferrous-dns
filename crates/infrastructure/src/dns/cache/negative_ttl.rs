@@ -3,15 +3,6 @@ use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Tracks negative DNS query frequency to assign adaptive TTLs.
-///
-/// Frequently-queried negative domains receive a shorter TTL (`frequent_ttl`)
-/// so they re-validate quickly. Rarely-queried domains receive a longer TTL
-/// (`rare_ttl`) to reduce upstream load.
-///
-/// `stats()` is O(1) via running atomic counters (`entry_count`,
-/// `frequent_count`) maintained incrementally as domains are inserted,
-/// promoted, and cleaned up.
 pub struct NegativeQueryTracker {
     query_counts: Arc<DashMap<Arc<str>, QueryCounter>>,
     window_secs: u64,

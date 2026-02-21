@@ -2,7 +2,7 @@ use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;
 use std::sync::LazyLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::debug;
 
 static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
@@ -39,6 +39,8 @@ impl DnsTransport for HttpsTransport {
             "Sending DoH query"
         );
 
+        let start = Instant::now();
+
         let response = tokio::time::timeout(
             timeout,
             SHARED_CLIENT
@@ -66,7 +68,11 @@ impl DnsTransport for HttpsTransport {
             )));
         }
 
-        let response_bytes = tokio::time::timeout(timeout, response.bytes())
+        let remaining = timeout
+            .checked_sub(start.elapsed())
+            .unwrap_or(Duration::ZERO);
+
+        let response_bytes = tokio::time::timeout(remaining, response.bytes())
             .await
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(

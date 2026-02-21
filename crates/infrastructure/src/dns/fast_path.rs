@@ -10,6 +10,9 @@ pub struct FastPathQuery {
     pub question_end: usize,
     /// Maximum UDP payload size advertised by the client via EDNS0 (capped at 512).
     pub client_max_size: u16,
+    /// True when the client sent an EDNS0 OPT record (RFC 6891 §6.1.1: the
+    /// server SHOULD include an OPT record in the response when this is true).
+    pub has_edns: bool,
     domain_buf: [u8; MAX_DOMAIN_LEN + 1],
     domain_len: usize,
 }
@@ -119,6 +122,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
 
     let question_end = pos;
     let mut client_max_size: u16 = 512;
+    let mut has_edns = false;
 
     // ── Scan additional records for EDNS0 OPT ────────────────────────────────
     if arcount > 0 {
@@ -142,7 +146,8 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
             ar_pos += 2;
 
             if rr_type == 41 {
-                // OPT record
+                // OPT record — client supports EDNS0
+                has_edns = true;
                 // CLASS = requestor's UDP payload size
                 let udp_size = u16::from_be_bytes([buf[ar_pos], buf[ar_pos + 1]]);
                 client_max_size = udp_size.max(512);
@@ -184,6 +189,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         record_type,
         question_end,
         client_max_size,
+        has_edns,
         domain_buf,
         domain_len,
     })

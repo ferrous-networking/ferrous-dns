@@ -20,9 +20,7 @@ impl FailoverStrategy {
         emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
-            return Err(DomainError::InvalidDomainName(
-                "No upstream servers available".into(),
-            ));
+            return Err(DomainError::TransportNoHealthyServers);
         }
         debug!(strategy = "failover", servers = servers.len(), domain = %domain, "Trying sequentially");
 
@@ -41,9 +39,7 @@ impl FailoverStrategy {
                 }
             }
         }
-        Err(DomainError::InvalidDomainName(
-            "All servers failed in failover strategy".into(),
-        ))
+        Err(DomainError::TransportAllServersUnreachable)
     }
 }
 

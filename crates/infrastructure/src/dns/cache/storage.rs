@@ -2,7 +2,7 @@ use super::bloom::AtomicBloom;
 use super::coarse_clock::coarse_now_secs;
 use super::eviction::{ActiveEvictionPolicy, EvictionStrategy};
 use super::key::{BorrowedKey, CacheKey};
-use super::l1::{l1_get, l1_insert};
+use super::l1::{l1_clear, l1_get, l1_insert};
 use super::negative_cache::NegativeDnsCache;
 use super::port::DnsCacheAccess;
 use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
@@ -15,6 +15,7 @@ use tracing::{debug, info};
 
 const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
+const STALE_SERVE_TTL: u32 = 2;
 
 pub struct DnsCacheConfig {
     pub max_entries: usize,
@@ -139,7 +140,11 @@ impl DnsCache {
                     record.try_set_refreshing();
                     self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                     record.record_hit();
-                    return Some((record.data.clone(), Some(record.dnssec_status), Some(0)));
+                    return Some((
+                        record.data.clone(),
+                        Some(record.dnssec_status),
+                        Some(STALE_SERVE_TTL),
+                    ));
                 }
 
                 if record.is_expired_at_secs(now_secs) {
@@ -262,6 +267,7 @@ impl DnsCache {
         self.cache.clear();
         self.bloom.clear();
         self.negative.clear();
+        l1_clear();
         self.metrics.hits.store(0, AtomicOrdering::Relaxed);
         self.metrics.misses.store(0, AtomicOrdering::Relaxed);
         self.metrics.evictions.store(0, AtomicOrdering::Relaxed);
@@ -453,7 +459,6 @@ impl DnsCache {
         }
     }
 
-    /// Delega o cálculo de score à política de eviction ativa (zero-cost via enum dispatch).
     #[inline(always)]
     pub(super) fn compute_score(&self, record: &CachedRecord, now_secs: u64) -> f64 {
         self.eviction_policy.compute_score(record, now_secs)

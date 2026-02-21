@@ -57,3 +57,10 @@ pub fn l1_insert(
         cache.put(key, entry);
     });
 }
+
+#[inline]
+pub fn l1_clear() {
+    L1_CACHE.with(|cache| {
+        cache.borrow_mut().clear();
+    });
+}

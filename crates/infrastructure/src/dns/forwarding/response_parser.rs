@@ -103,8 +103,18 @@ impl ResponseParser {
     }
 
     pub fn is_transport_error(error: &DomainError) -> bool {
-        let error_str = error.to_string().to_lowercase();
+        if matches!(
+            error,
+            DomainError::TransportTimeout { .. }
+                | DomainError::TransportConnectionRefused { .. }
+                | DomainError::TransportConnectionReset { .. }
+                | DomainError::TransportNoHealthyServers
+                | DomainError::TransportAllServersUnreachable
+        ) {
+            return true;
+        }
 
+        let error_str = error.to_string().to_lowercase();
         error_str.contains("timeout")
             || error_str.contains("timed out")
             || error_str.contains("connection refused")

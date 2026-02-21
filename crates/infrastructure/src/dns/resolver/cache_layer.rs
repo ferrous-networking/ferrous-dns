@@ -5,7 +5,10 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError};
+use hickory_proto::rr::rdata::SOA;
+use hickory_proto::rr::{Name, RData, Record};
 use rustc_hash::FxBuildHasher;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::debug;
@@ -73,15 +76,21 @@ impl CachedResolver {
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
                     },
-                    CachedData::NegativeResponse => DnsResolution {
-                        addresses: Arc::new(vec![]),
-                        cache_hit: true,
-                        dnssec_status: dnssec_str,
-                        cname: None,
-                        upstream_server: None,
-                        min_ttl: remaining_ttl,
-                        authority_records: vec![],
-                    },
+                    CachedData::NegativeResponse => {
+                        let negative_ttl = remaining_ttl.unwrap_or(60);
+                        DnsResolution {
+                            addresses: Arc::new(vec![]),
+                            cache_hit: true,
+                            dnssec_status: dnssec_str,
+                            cname: None,
+                            upstream_server: None,
+                            min_ttl: remaining_ttl,
+                            authority_records: synthesize_negative_soa(
+                                query.domain.as_ref(),
+                                negative_ttl,
+                            ),
+                        }
+                    }
                 }
             },
         )
@@ -244,4 +253,33 @@ impl DnsResolver for CachedResolver {
 
         self.resolve_as_leader(query, key).await
     }
+}
+
+/// Synthesizes a minimal SOA record for negative DNS responses served from cache.
+///
+/// RFC 2308 §3 requires that NXDOMAIN and NODATA responses include a SOA record
+/// in the authority section so clients can determine the negative caching TTL.
+/// When serving from the negative cache we no longer have the original upstream
+/// SOA, so we generate a synthetic one using the closest zone inferred from the
+/// queried domain.
+fn synthesize_negative_soa(domain: &str, negative_ttl: u32) -> Vec<Record> {
+    let zone = {
+        let labels: Vec<&str> = domain.split('.').collect();
+        if labels.len() >= 2 {
+            format!("{}.", labels[labels.len() - 2..].join("."))
+        } else {
+            format!("{}.", domain)
+        }
+    };
+
+    let zone_name = match Name::from_str(&zone) {
+        Ok(n) => n,
+        Err(_) => return vec![],
+    };
+    let mname = Name::from_str(&format!("ns1.{}", zone)).unwrap_or_else(|_| zone_name.clone());
+    let rname =
+        Name::from_str(&format!("hostmaster.{}", zone)).unwrap_or_else(|_| zone_name.clone());
+
+    let soa = SOA::new(mname, rname, 1, 3600, 900, 604800, negative_ttl);
+    vec![Record::from_rdata(zone_name, negative_ttl, RData::SOA(soa))]
 }

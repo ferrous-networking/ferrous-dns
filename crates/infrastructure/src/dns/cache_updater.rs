@@ -53,7 +53,6 @@ impl CacheUpdater {
             );
 
             loop {
-                coarse_clock::tick();
                 sleep(update_interval).await;
                 Self::update_cycle(&cache, &resolver, &query_log).await;
             }

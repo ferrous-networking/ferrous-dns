@@ -2,17 +2,6 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 
-/// Two-generation atomic bloom filter.
-///
-/// A single-generation bloom filter accumulates bits for evicted entries
-/// indefinitely, causing the false-positive rate to drift well above the
-/// theoretical target as the server runs. The two-generation design adds
-/// a second bit array (inactive slot). `set()` writes only to the active
-/// slot; `check()` consults both. `rotate()` is called periodically by
-/// `CacheUpdater`: the inactive slot is zeroed and made active while the
-/// old active slot becomes the new inactive. This guarantees that no bit
-/// survives longer than two rotation periods (~TTL of the longest-lived
-/// entry), keeping the FP rate near the theoretical 1% target.
 pub struct AtomicBloom {
     slots: [Vec<AtomicU64>; 2],
     active: AtomicUsize,
@@ -97,9 +86,6 @@ impl AtomicBloom {
         }
     }
 
-    /// Rotate generations: the current inactive slot is zeroed and becomes
-    /// active; the old active slot becomes inactive. Call periodically (e.g.
-    /// once per `CacheUpdater` tick) to bound the false-positive growth.
     pub fn rotate(&self) {
         let old_active = self.active.load(AtomicOrdering::Relaxed);
         let new_active = 1 - old_active;

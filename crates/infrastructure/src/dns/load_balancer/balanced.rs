@@ -25,9 +25,7 @@ impl BalancedStrategy {
         emitter: &QueryEventEmitter,
     ) -> Result<UpstreamResult, DomainError> {
         if servers.is_empty() {
-            return Err(DomainError::InvalidDomainName(
-                "No upstream servers available".into(),
-            ));
+            return Err(DomainError::TransportNoHealthyServers);
         }
         let start_index = self.counter.fetch_add(1, Ordering::Relaxed) % servers.len();
         debug!(strategy = "balanced", servers = servers.len(), start_index, domain = %domain, "Round-robin");
@@ -48,9 +46,7 @@ impl BalancedStrategy {
                 }
             }
         }
-        Err(DomainError::InvalidDomainName(
-            "All servers failed in balanced strategy".into(),
-        ))
+        Err(DomainError::TransportAllServersUnreachable)
     }
 }
 

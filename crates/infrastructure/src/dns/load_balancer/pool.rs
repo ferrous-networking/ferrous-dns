@@ -131,7 +131,7 @@ impl PoolManager {
                 }
             }
         }
-        Err(DomainError::InvalidDomainName("All pools exhausted".into()))
+        Err(DomainError::TransportAllServersUnreachable)
     }
 
     pub fn get_all_servers(&self) -> Vec<SocketAddr> {
