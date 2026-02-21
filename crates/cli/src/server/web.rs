@@ -1,7 +1,11 @@
-use axum::{response::Html, routing::get, Router};
+use axum::{
+    http::header,
+    response::{Html, IntoResponse},
+    routing::get,
+    Router,
+};
 use ferrous_dns_api::{create_api_routes, AppState};
 use std::net::SocketAddr;
-use tower_http::services::ServeDir;
 use tracing::info;
 
 pub async fn start_web_server(bind_addr: SocketAddr, state: AppState) -> anyhow::Result<()> {
@@ -25,7 +29,7 @@ pub async fn start_web_server(bind_addr: SocketAddr, state: AppState) -> anyhow:
 fn create_app(state: AppState) -> Router {
     Router::new()
         .nest("/api", create_api_routes(state))
-        .nest_service("/static", ServeDir::new("web/static"))
+        .route("/static/shared.css", get(shared_css_handler))
         .route("/", get(index_handler))
         .route("/dashboard.html", get(dashboard_handler))
         .route("/queries.html", get(queries_handler))
@@ -34,6 +38,13 @@ fn create_app(state: AppState) -> Router {
         .route("/local-dns-settings.html", get(local_dns_settings_handler))
         .route("/settings.html", get(settings_handler))
         .route("/dns-filter.html", get(dns_filter_handler))
+}
+
+async fn shared_css_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("../../../../web/static/shared.css"),
+    )
 }
 
 async fn index_handler() -> Html<&'static str> {
