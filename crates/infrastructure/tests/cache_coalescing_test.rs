@@ -138,12 +138,12 @@ async fn test_coalescing_cache_hit_flag_for_waiters() {
         .count();
 
     assert_eq!(
-        upstream_hits, 6,
-        "all 6 results are upstream-equivalent: followers aguardaram resolução upstream"
+        upstream_hits, 1,
+        "apenas o líder vai ao upstream — followers são deduplicados via coalescing"
     );
     assert_eq!(
-        cache_hits, 0,
-        "followers não são cache hits — esperaram pelo upstream via coalescing"
+        cache_hits, 5,
+        "followers retornam cache_hit: true — não dispararam upstream independentemente"
     );
 }
 

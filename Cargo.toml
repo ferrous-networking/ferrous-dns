@@ -10,7 +10,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 authors = ["Anderson Viudes <anderson@ferrous-dns.dev>"]
 license = "MIT OR Apache-2.0"

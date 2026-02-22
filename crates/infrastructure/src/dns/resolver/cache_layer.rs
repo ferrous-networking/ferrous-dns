@@ -162,7 +162,7 @@ impl CachedResolver {
             if let Some(arc_res) = rx.borrow().clone() {
                 return Ok(DnsResolution {
                     addresses: Arc::clone(&arc_res.addresses),
-                    cache_hit: false,
+                    cache_hit: true,
                     dnssec_status: arc_res.dnssec_status,
                     cname: None,
                     upstream_server: None,
@@ -175,7 +175,7 @@ impl CachedResolver {
         if let Some(arc_res) = rx.borrow().clone() {
             return Ok(DnsResolution {
                 addresses: Arc::clone(&arc_res.addresses),
-                cache_hit: false,
+                cache_hit: true,
                 dnssec_status: arc_res.dnssec_status,
                 cname: None,
                 upstream_server: None,
@@ -206,6 +206,15 @@ impl CachedResolver {
         query: &DnsQuery,
         key: CacheKey,
     ) -> Result<DnsResolution, DomainError> {
+        if let Some(cached) = self.check_cache(query) {
+            self.inflight.remove(&key);
+            return if cached.addresses.is_empty() {
+                Err(DomainError::NxDomain)
+            } else {
+                Ok(cached)
+            };
+        }
+
         debug!(
             domain = %query.domain,
             record_type = %query.record_type,
