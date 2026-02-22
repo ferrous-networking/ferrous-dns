@@ -64,19 +64,33 @@ version: '3.8'
 
 services:
   ferrous-dns:
-    image: ghcr.io/andersonviudes/ferrous-dns:latest
+    image: andersonviudes/ferrous-dns:latest
     container_name: ferrous-dns
-    restart: unless-stopped
-    ports:
-      - "53:53/udp"
-      - "8080:8080"
+    restart: always
+    network_mode: host
+    user: root
     environment:
+      # Config file (opcional - só usa se existir)
+      - FERROUS_CONFIG=/data/config/ferrous-dns.toml
+      # Database
+      - FERROUS_DATABASE=/data/db/ferrous.db
+      # Network
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
       - FERROUS_BIND_ADDRESS=0.0.0.0
+      # Logging
       - FERROUS_LOG_LEVEL=info
+      # Timezone
+      - TZ=America/Sao_Paulo
+    dns:
+      - 10.0.0.1
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
     volumes:
-      - ferrous-data:/var/lib/ferrous-dns
+      - ferrous-data:/data/
 
 volumes:
   ferrous-data:
@@ -105,11 +119,23 @@ docker-compose up -d
 
 ```bash
 docker run -d \
-  -p 5353:5353/udp \
-  -p 5353:5353/tcp \
-  -p 8080:8080 \
-  -e FERROUS_DNS_PORT=5353 \
-  ghcr.io/andersonviudes/ferrous-dns:latest
+  --name ferrous-dns \
+  --restart always \
+  --network host \
+  --user root \
+  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
+  -e FERROUS_DATABASE=/data/db/ferrous.db \
+  -e FERROUS_DNS_PORT=53 \
+  -e FERROUS_WEB_PORT=8080 \
+  -e FERROUS_BIND_ADDRESS=0.0.0.0 \
+  -e FERROUS_LOG_LEVEL=info \
+  -e TZ=America/Sao_Paulo \
+  --dns 10.0.0.1 \
+  --cap-add NET_ADMIN \
+  --cap-add SYS_TIME \
+  --cap-add SYS_NICE \
+  --cap-add NET_BIND_SERVICE \
+  andersonviudes/ferrous-dns:latest
 ```
 
 ---
