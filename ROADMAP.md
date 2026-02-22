@@ -30,27 +30,41 @@
 - [x] Blocklist functionality
 - [x] blocklist url import
 - [x] blocklist regex support
-- [x] button allows and block in the queries.html list 
+- [x] button allows and block in the queries.html list
+- [x] Conditional forwarding
 
 ### 🔮 v0.3.0 - Advanced Features
 
 - [ ] Advanced analytics and graphs
 - [ ] Query filtering rules
-- [ ] Conditional forwarding
+- [ ] DoQ upstream
+- [ ] IPv6 upstreams
+- [ ] dns name upstreams (e.: dns.google.com) 
 - [ ] Client identification
 - [ ] Comprehensive documentation
+- [ ] CNAME cloaking detection
+- [ ] Safe Search
+- [ ] Serviços bloqueáveis (1-click)
 
-### 🎯 v0.4.0 - Performance & Scale
+### 🎯 v0.4.0 - Security
+
+
+- [ ] Autenticação web (login)
+- [ ] HTTPS para Web UI
+- [ ] API Key / token
+- [ ] Rate limiting DNS
+- [ ] DoS protection
+
+### 🎯 v0.5.0 - Performance & Scale
 
 - [ ] Prometheus metrics
+- [ ] Api compatible pi-hole
 - [ ] Performance benchmarks vs competitors
-- [ ] Memory optimizations
+- [ ] OpenAPI / Swagger docs
 
 ### 🌟 v1.0.0 - Production Ready
 
 - [ ] Security audit
-- [ ] Auth login form, and api - key
-- [ ] Api compatible pi-hole
 - [ ] Comprehensive test coverage (>80%)
 - [ ] Production deployment guide
 - [ ] API v1 stable
