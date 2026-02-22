@@ -79,7 +79,18 @@ pub async fn update_config(
             config.dns.block_private_ptr = block_private_ptr;
         }
         if let Some(local_domain) = dns_update.local_domain {
-            config.dns.local_domain = Some(local_domain);
+            config.dns.local_domain = if local_domain.is_empty() {
+                None
+            } else {
+                Some(local_domain)
+            };
+        }
+        if let Some(server) = dns_update.local_dns_server {
+            config.dns.local_dns_server = if server.is_empty() {
+                None
+            } else {
+                Some(server)
+            };
         }
     }
 

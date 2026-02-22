@@ -7,31 +7,22 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use tracing::{debug, error, instrument};
+use tracing::{error, instrument};
+
+const DEFAULT_PERIOD_HOURS: f32 = 24.0;
+const TOP_TYPES_LIMIT: usize = 10;
 
 #[instrument(skip(state), name = "api_get_stats")]
 pub async fn get_stats(
     State(state): State<AppState>,
     Query(params): Query<StatsQuery>,
 ) -> Json<StatsResponse> {
-    debug!(period = %params.period, "Fetching query statistics with Phase 4 analytics");
-
     let period_hours = parse_period(&params.period)
         .map(validate_period)
-        .unwrap_or(24.0);
-
-    debug!(period_hours = period_hours, "Using period for stats query");
+        .unwrap_or(DEFAULT_PERIOD_HOURS);
 
     match state.get_stats.execute(period_hours).await {
         Ok(stats) => {
-            debug!(
-                queries_total = stats.queries_total,
-                queries_blocked = stats.queries_blocked,
-                most_queried_type = ?stats.most_queried_type,
-                type_count = stats.queries_by_type.len(),
-                "Statistics with analytics retrieved successfully"
-            );
-
             let queries_by_type = stats
                 .queries_by_type
                 .iter()
@@ -50,7 +41,7 @@ pub async fn get_stats(
                 .collect();
 
             let top_10_types = stats
-                .top_types(10)
+                .top_types(TOP_TYPES_LIMIT)
                 .into_iter()
                 .map(|(rt, count)| TopType {
                     record_type: rt.as_str().to_string(),
@@ -74,6 +65,7 @@ pub async fn get_stats(
                 source_stats: QuerySourceStats {
                     cache_hits: stats.queries_cache_hits,
                     upstream: stats.queries_upstream,
+                    local_dns: stats.queries_local_dns,
                     blocked_by_blocklist: stats.queries_blocked_by_blocklist,
                     blocked_by_managed_domain: stats.queries_blocked_by_managed_domain,
                     blocked_by_regex_filter: stats.queries_blocked_by_regex_filter,

@@ -188,22 +188,18 @@
 <main style="padding:24px">
     <div style="margin-bottom:24px">
         <h1 style="font-size:28px;font-weight:700;margin-bottom:4px;color:var(--text-primary)">Local DNS</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Manage local DNS records and conditional forwarding rules</p>
+        <p style="font-size:14px;color:var(--text-secondary)">Manage local DNS records for devices on your network</p>
     </div>
 
     <div class="tab-bar">
-        <button class="tab-btn" :class="activeTab === 'records' ? 'active' : ''" @click="switchTab('records')">
+        <button class="tab-btn active">
             DNS Records
             <span x-text="records.length" style="margin-left:8px;padding:2px 8px;border-radius:12px;font-size:12px;background:var(--bg-tertiary);color:var(--text-secondary)">0</span>
         </button>
-        <button class="tab-btn" :class="activeTab === 'forwarding' ? 'active' : ''" @click="switchTab('forwarding')">
-            Conditional Forwarding
-            <span x-text="forwardingRules.length" style="margin-left:8px;padding:2px 8px;border-radius:12px;font-size:12px;background:var(--bg-tertiary);color:var(--text-secondary)">0</span>
-        </button>
     </div>
 
-    <!-- DNS RECORDS TAB -->
-    <div x-show="activeTab === 'records'">
+    <!-- DNS RECORDS -->
+    <div>
 
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
@@ -293,69 +289,7 @@
                 </tbody>
             </table>
         </div>
-    </div><!-- end records tab -->
-
-    <!-- CONDITIONAL FORWARDING TAB -->
-    <div x-show="activeTab === 'forwarding'">
-        <div style="margin-bottom:24px">
-            <div class="card" style="padding:24px">
-                <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;color:var(--text-primary)">Add Forwarding Rule</h2>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-                    <div class="form-group">
-                        <label class="form-label">Domain <span style="color:var(--color-error)">*</span></label>
-                        <input type="text" class="input" x-model="newRule.domain" placeholder="e.g. internal.corp">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Upstream Server <span style="color:var(--color-error)">*</span></label>
-                        <input type="text" class="input" x-model="newRule.server" placeholder="e.g. 192.168.1.1:53">
-                    </div>
-                </div>
-                <div style="display:flex;gap:12px">
-                    <button class="btn btn-primary" @click="addForwardingRule()">Add Rule</button>
-                    <button class="btn btn-secondary" @click="newRule = {domain:'',server:''}">Clear</button>
-                </div>
-                <div x-show="ruleError" x-text="ruleError"
-                     style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
-            </div>
-        </div>
-
-        <div class="card">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>Domain</th>
-                    <th>Upstream Server</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="rule in forwardingRules" :key="rule.id">
-                    <tr>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="rule.domain"></span>
-                        </td>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="rule.server"></span>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:4px">
-                                <button @click="deleteForwardingRule(rule.id)" class="btn-icon" title="Delete" style="color:var(--color-error)">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                </template>
-                <tr x-show="forwardingRules.length === 0">
-                    <td colspan="3" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="git-merge" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No forwarding rules configured. Add one to route specific domains to a dedicated resolver.</p>
-                    </td>
-                </tr>
-                </tbody>
-            </table>
-        </div>
-    </div><!-- end forwarding tab -->
+    </div>
 </main>
 
 <script>
@@ -363,13 +297,9 @@
         return {
             theme: localStorage.getItem('theme') || 'light',
             stats: {queries_total: 0},
-            activeTab: 'records',
             records: [],
-            forwardingRules: [],
             newRecord: {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300},
-            newRule: {domain: '', server: ''},
             addError: '',
-            ruleError: '',
             _ctrl: {},
             _pollId: null,
             async init() {
@@ -463,19 +393,6 @@
                     alert('Network error: ' + e.message);
                 }
             },
-            async addForwardingRule() {
-                this.ruleError = '';
-                if (!this.newRule.domain || !this.newRule.server) {
-                    this.ruleError = 'Domain and upstream server are required.';
-                    return;
-                }
-                // Forwarding rules are not yet backed by an API — placeholder
-                this.ruleError = 'Conditional forwarding API is not yet available.';
-            },
-            async deleteForwardingRule(id) {
-                if (!confirm('Delete this forwarding rule?')) return;
-                // Placeholder
-            }
         }
     }
 </script>

@@ -249,7 +249,8 @@
                     </td>
                     <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
                               x-text="query.type"></span></td>
-                    <td style="font-size:13px" x-text="query.client"></td>
+                    <td style="font-size:13px"
+                        x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></td>
                     <td>
                         <span class="badge"
                               :style="query.cache_hit
@@ -260,7 +261,9 @@
                                     ? 'background:rgba(249,115,22,0.1);color:#f97316'
                                     : query.block_source === 'regex_filter'
                                       ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
-                                      : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
+                                      : query.response_status === 'LOCAL_DNS'
+                                        ? 'background:rgba(34,197,94,0.1);color:#22C55E'
+                                        : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
                               x-text="query.cache_hit
                                 ? 'Cache'
                                 : query.block_source === 'blocklist'
@@ -269,7 +272,9 @@
                                     ? 'Managed Domain'
                                     : query.block_source === 'regex_filter'
                                       ? 'Regex Filter'
-                                      : 'Upstream'"></span>
+                                      : query.response_status === 'LOCAL_DNS'
+                                        ? 'Local DNS'
+                                        : 'Upstream'"></span>
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
                 </tr>

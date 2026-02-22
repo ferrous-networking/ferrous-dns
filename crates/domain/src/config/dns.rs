@@ -6,40 +6,6 @@ use super::upstream::UpstreamPool;
 use super::upstream::UpstreamStrategy;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ConditionalForward {
-    pub domain: String,
-
-    pub server: String,
-
-    #[serde(default)]
-    pub record_types: Option<Vec<String>>,
-}
-
-impl ConditionalForward {
-    pub fn matches_domain(&self, query_domain: &str) -> bool {
-        let query_lower = query_domain.to_lowercase();
-        let rule_lower = self.domain.to_lowercase();
-
-        if query_lower == rule_lower {
-            return true;
-        }
-
-        query_lower.ends_with(&format!(".{}", rule_lower))
-    }
-
-    pub fn matches_record_type(&self, record_type: &str) -> bool {
-        match &self.record_types {
-            None => true,
-            Some(types) => types.iter().any(|t| t.eq_ignore_ascii_case(record_type)),
-        }
-    }
-
-    pub fn matches(&self, query_domain: &str, record_type: &str) -> bool {
-        self.matches_domain(query_domain) && self.matches_record_type(record_type)
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DnsConfig {
     #[serde(default)]
     pub upstream_servers: Vec<String>,
@@ -107,7 +73,7 @@ pub struct DnsConfig {
     pub local_domain: Option<String>,
 
     #[serde(default)]
-    pub conditional_forwarding: Vec<ConditionalForward>,
+    pub local_dns_server: Option<String>,
 
     #[serde(default)]
     pub local_records: Vec<LocalDnsRecord>,
@@ -141,7 +107,7 @@ impl Default for DnsConfig {
             block_private_ptr: true,
             block_non_fqdn: false,
             local_domain: None,
-            conditional_forwarding: vec![],
+            local_dns_server: None,
             local_records: vec![],
         }
     }

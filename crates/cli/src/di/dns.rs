@@ -6,7 +6,7 @@ use ferrous_dns_infrastructure::dns::{
     cache_updater::CacheUpdater,
     events::QueryEventEmitter,
     query_logger::QueryEventLogger,
-    ConditionalForwarder, HealthChecker, HickoryDnsResolver, PoolManager,
+    HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -160,21 +160,11 @@ impl DnsServices {
             config.dns.block_private_ptr,
             config.dns.block_non_fqdn,
             config.dns.local_domain.clone(),
-        );
+        )
+        .with_local_dns_server(config.dns.local_dns_server.clone());
 
         if config.dns.dnssec_enabled {
             resolver = resolver.with_dnssec_pool_manager(pool_manager_for_dnssec);
-        }
-
-        if !config.dns.conditional_forwarding.is_empty() {
-            let forwarder = Arc::new(ConditionalForwarder::new(
-                config.dns.conditional_forwarding.clone(),
-            ));
-            resolver = resolver.with_conditional_forwarder(forwarder);
-            info!(
-                rules_count = config.dns.conditional_forwarding.len(),
-                "Conditional forwarding enabled"
-            );
         }
 
         info!(
@@ -183,7 +173,7 @@ impl DnsServices {
             block_private_ptr = config.dns.block_private_ptr,
             block_non_fqdn = config.dns.block_non_fqdn,
             local_domain = ?config.dns.local_domain,
-            conditional_forwarding_rules = config.dns.conditional_forwarding.len(),
+            local_dns_server = ?config.dns.local_dns_server,
             "DNS resolver created with all features"
         );
 

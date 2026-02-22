@@ -328,31 +328,31 @@
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
                     <div style="flex:1;margin-right:24px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                            <i data-lucide="git-branch" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                            <h4 style="font-size:16px;font-weight:600;margin:0">Use Conditional Forwarding</h4>
+                            <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Block local domain from internet</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">If not configured as your DHCP
-                            server, Ferrous DNS typically won't be able to determine the names of devices on your local
-                            network. As a result, tables such as Top Clients will only show IP addresses.</p>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">One solution is to
-                            configure Ferrous DNS to forward these requests to your DHCP server (most likely your
-                            router), but only for devices on your home network.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">When a local domain (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">lan</code>) is configured, queries for that domain that are not found in local records will return NXDOMAIN instead of leaking to your upstream DNS servers.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">Set your router address as the local DNS server to also resolve hostnames for discovered clients.</p>
                     </div>
-                    <div @click="toggleConditionalForwarding()"
-                         :class="settings.conditional_forwarding_enabled?'active':''" class="toggle-switch">
+                    <div @click="toggleLocalDomain()"
+                         :class="settings.local_domain?'active':''" class="toggle-switch">
                         <div class="toggle-slider"></div>
                     </div>
                 </div>
 
-                <div x-show="settings.conditional_forwarding_enabled" x-cloak
+                <div x-show="settings.local_domain" x-cloak
                      style="border-top:1px solid var(--border-color);padding-top:16px">
-                    <div class="form-group">
-                        <label class="form-label">Local domain name <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
-                        <input type="text" x-model="settings.local_domain" placeholder="fritz.box"
+                    <div class="form-group" style="margin-bottom:16px">
+                        <label class="form-label">Local domain name</label>
+                        <input type="text" x-model="settings.local_domain" placeholder="lan"
                                style="max-width:400px;font-family:monospace">
-                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Like <code
-                                style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">fritz.box</code>
-                            to ensure queries to devices ending in your local domain name won't leave your network</p>
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Queries for <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">*.lan</code> not in local records will return NXDOMAIN</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Local DNS server <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
+                        <input type="text" x-model="settings.local_dns_server" placeholder="192.168.1.1:53"
+                               style="max-width:400px;font-family:monospace">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Your router or DHCP server. Used to resolve hostnames of discovered clients (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">device.lan</code>)</p>
                     </div>
                 </div>
             </div>
@@ -860,8 +860,8 @@
             settings: {
                 never_forward_non_fqdn: false,
                 never_forward_reverse_lookups: false,
-                conditional_forwarding_enabled: false,
-                local_domain: ''
+                local_domain: '',
+                local_dns_server: ''
             },
             cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
             healthStatus: {},
@@ -1039,10 +1039,12 @@
                     this.showAlert('error', 'Error: ' + e.message)
                 }
             },
-            toggleConditionalForwarding() {
-                this.settings.conditional_forwarding_enabled = !this.settings.conditional_forwarding_enabled;
-                if (!this.settings.conditional_forwarding_enabled) {
-                    this.settings.local_domain = ''
+            toggleLocalDomain() {
+                if (this.settings.local_domain) {
+                    this.settings.local_domain = '';
+                    this.settings.local_dns_server = '';
+                } else {
+                    this.settings.local_domain = 'lan';
                 }
             },
             showAlert(type, msg) {

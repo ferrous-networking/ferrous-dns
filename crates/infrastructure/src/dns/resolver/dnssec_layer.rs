@@ -43,7 +43,7 @@ impl DnsResolver for DnssecResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         let mut resolution = self.inner.resolve(query).await?;
 
-        if resolution.cache_hit {
+        if resolution.cache_hit || resolution.local_dns {
             return Ok(resolution);
         }
 

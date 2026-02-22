@@ -1,5 +1,4 @@
 use super::super::cache::{DnsCache, NegativeQueryTracker};
-use super::super::conditional_forwarder::ConditionalForwarder;
 use super::super::load_balancer::PoolManager;
 use super::super::prefetch::PrefetchPredictor;
 use super::cache_layer::CachedResolver;
@@ -17,7 +16,8 @@ pub struct ResolverBuilder {
     dnssec_pool_manager: Option<Arc<PoolManager>>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
-    conditional_forwarder: Option<Arc<ConditionalForwarder>>,
+    local_domain: Option<String>,
+    local_dns_server: Option<String>,
     prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
 }
@@ -29,7 +29,8 @@ impl ResolverBuilder {
             dnssec_pool_manager: None,
             config: ResolverConfig::default(),
             cache: None,
-            conditional_forwarder: None,
+            local_domain: None,
+            local_dns_server: None,
             prefetch_predictor: None,
             filters: None,
         }
@@ -55,8 +56,13 @@ impl ResolverBuilder {
         self
     }
 
-    pub fn with_conditional_forwarder(mut self, forwarder: Arc<ConditionalForwarder>) -> Self {
-        self.conditional_forwarder = Some(forwarder);
+    pub fn with_local_domain(mut self, domain: Option<String>) -> Self {
+        self.local_domain = domain;
+        self
+    }
+
+    pub fn with_local_dns_server(mut self, server: Option<String>) -> Self {
+        self.local_dns_server = server;
         self
     }
 
@@ -78,15 +84,13 @@ impl ResolverBuilder {
             "Building DNS resolver"
         );
 
-        let mut core = CoreResolver::new(
+        let core = CoreResolver::new(
             self.pool_manager.clone(),
             self.config.query_timeout_ms,
             self.config.dnssec_enabled,
-        );
-
-        if let Some(forwarder) = self.conditional_forwarder {
-            core = core.with_conditional_forwarder(forwarder);
-        }
+        )
+        .with_local_domain(self.local_domain)
+        .with_local_dns_server(self.local_dns_server);
 
         let mut resolver: Arc<dyn DnsResolver> = Arc::new(core);
 

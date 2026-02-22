@@ -18,6 +18,11 @@ impl FilteredResolver {
 
 #[async_trait]
 impl DnsResolver for FilteredResolver {
+    fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        let filtered_query = self.filters.apply(query.clone()).ok()?;
+        self.inner.try_cache(&filtered_query)
+    }
+
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         let filtered_query = self.filters.apply(query.clone())?;
 

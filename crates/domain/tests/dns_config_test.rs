@@ -1,4 +1,4 @@
-use ferrous_dns_domain::config::dns::{ConditionalForward, DnsConfig};
+use ferrous_dns_domain::config::dns::DnsConfig;
 
 #[test]
 fn test_config_default_values() {
@@ -23,7 +23,7 @@ fn test_config_default_values() {
     assert!(config.block_private_ptr);
     assert!(!config.block_non_fqdn);
     assert!(config.local_domain.is_none());
-    assert!(config.conditional_forwarding.is_empty());
+    assert!(config.local_dns_server.is_none());
     assert!(config.local_records.is_empty());
 }
 
@@ -41,7 +41,6 @@ fn test_config_cache_min_lfuk_score_default() {
 
 #[test]
 fn test_config_deserialization_ignores_unknown_fields() {
-    // Backward compatibility: old TOML files with removed fields should still deserialize
     let toml_str = r#"
         cache_lazy_expiration = true
         conditional_forward_network = "10.0.0.0/8"
@@ -79,6 +78,7 @@ fn test_config_deserialization_with_all_fields() {
         block_private_ptr = false
         block_non_fqdn = true
         local_domain = "home.lan"
+        local_dns_server = "192.168.1.1:53"
     "#;
 
     let config: DnsConfig = toml::from_str(toml_str).unwrap();
@@ -97,45 +97,20 @@ fn test_config_deserialization_with_all_fields() {
     assert!(!config.block_private_ptr);
     assert!(config.block_non_fqdn);
     assert_eq!(config.local_domain, Some("home.lan".to_string()));
+    assert_eq!(config.local_dns_server, Some("192.168.1.1:53".to_string()));
 }
 
 #[test]
-fn test_conditional_forward_matches() {
-    let rule = ConditionalForward {
-        domain: "home.lan".to_string(),
-        server: "192.168.1.1:53".to_string(),
-        record_types: None,
-    };
+fn test_local_domain_intercept_suffix_logic() {
+    let local_domain = "lan";
+    let suffix = format!(".{}", local_domain);
 
-    // Exact domain match
-    assert!(rule.matches_domain("home.lan"));
+    assert!("device.lan".ends_with(&suffix));
+    assert!("x.com.lan".ends_with(&suffix));
+    assert!("deep.sub.device.lan".ends_with(&suffix));
+    assert!(!"google.com".ends_with(&suffix));
+    assert!(!"notlan".ends_with(&suffix));
+    assert!(!"xlan".ends_with(&suffix));
 
-    // Subdomain match
-    assert!(rule.matches_domain("nas.home.lan"));
-    assert!(rule.matches_domain("deep.sub.home.lan"));
-
-    // Non-matching domains
-    assert!(!rule.matches_domain("otherhome.lan"));
-    assert!(!rule.matches_domain("google.com"));
-    assert!(!rule.matches_domain("lan"));
-
-    // Record type matching (None = match all)
-    assert!(rule.matches_record_type("A"));
-    assert!(rule.matches_record_type("AAAA"));
-    assert!(rule.matches_record_type("PTR"));
-
-    // Combined match
-    assert!(rule.matches("nas.home.lan", "A"));
-    assert!(!rule.matches("google.com", "A"));
-
-    // With specific record types
-    let typed_rule = ConditionalForward {
-        domain: "internal.net".to_string(),
-        server: "10.0.0.1:53".to_string(),
-        record_types: Some(vec!["A".to_string(), "AAAA".to_string()]),
-    };
-
-    assert!(typed_rule.matches("host.internal.net", "A"));
-    assert!(typed_rule.matches("host.internal.net", "AAAA"));
-    assert!(!typed_rule.matches("host.internal.net", "MX"));
+    assert_eq!("lan", local_domain);
 }

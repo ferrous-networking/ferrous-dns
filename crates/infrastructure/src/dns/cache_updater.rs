@@ -203,6 +203,7 @@ impl CacheUpdater {
                         domain: Arc::from(domain),
                         record_type: *record_type,
                         client_ip: IpAddr::from([127, 0, 0, 1]),
+                        client_hostname: None,
                         blocked: false,
                         response_time_us: Some(response_time),
                         cache_hit: false,

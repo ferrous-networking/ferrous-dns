@@ -230,6 +230,7 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
             client_repo.clone(),
             group_repo.clone(),
         )),
+        update_client: Arc::new(ferrous_dns_application::use_cases::UpdateClientUseCase::new(client_repo.clone())),
         delete_client: Arc::new(ferrous_dns_application::use_cases::DeleteClientUseCase::new(client_repo.clone())),
         get_blocklist_sources: Arc::new(ferrous_dns_application::use_cases::GetBlocklistSourcesUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),

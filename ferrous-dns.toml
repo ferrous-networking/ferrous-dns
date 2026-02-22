@@ -1,5 +1,5 @@
 [server]
-dns_port = 5353                           # UDP/TCP port for DNS queries
+dns_port = 53                           # UDP/TCP port for DNS queries
 web_port = 8080                         # HTTP port for the web dashboard and REST API
 bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on all interfaces
 
@@ -33,7 +33,7 @@ cache_shard_amount = 512
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
-
+local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames (e.g. device.lan)
 # dns pools:
 # name = "cloudflare"                   # Pool name (used in logs and conditional forwarding rules)
 # strategy = "Parallel"                 # Query strategy for this pool: "Parallel" or "Sequential"

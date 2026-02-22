@@ -15,6 +15,7 @@ fn default_period() -> String {
 pub struct QuerySourceStats {
     pub cache_hits: u64,
     pub upstream: u64,
+    pub local_dns: u64,
     pub blocked_by_blocklist: u64,
     pub blocked_by_managed_domain: u64,
     pub blocked_by_regex_filter: u64,
@@ -68,6 +69,7 @@ impl Default for StatsResponse {
             source_stats: QuerySourceStats {
                 cache_hits: 0,
                 upstream: 0,
+                local_dns: 0,
                 blocked_by_blocklist: 0,
                 blocked_by_managed_domain: 0,
                 blocked_by_regex_filter: 0,

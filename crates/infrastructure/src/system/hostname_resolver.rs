@@ -6,11 +6,13 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tracing::debug;
 
+use crate::dns::forwarding::DnsForwarder;
 use crate::dns::load_balancer::PoolManager;
 
 pub struct PtrHostnameResolver {
     pool_manager: Arc<PoolManager>,
     timeout_secs: u64,
+    local_dns_server: Option<String>,
 }
 
 impl PtrHostnameResolver {
@@ -18,7 +20,13 @@ impl PtrHostnameResolver {
         Self {
             pool_manager,
             timeout_secs,
+            local_dns_server: None,
         }
+    }
+
+    pub fn with_local_dns_server(mut self, server: Option<String>) -> Self {
+        self.local_dns_server = server;
+        self
     }
 
     pub fn ip_to_reverse_domain(ip: &IpAddr) -> String {
@@ -40,12 +48,22 @@ impl PtrHostnameResolver {
             }
         }
     }
+
+    fn is_private_or_local(ip: &IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => v4.is_private() || v4.is_link_local() || v4.is_loopback(),
+            IpAddr::V6(v6) => {
+                v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local()
+            }
+        }
+    }
 }
 
 #[async_trait]
 impl HostnameResolver for PtrHostnameResolver {
     async fn resolve_hostname(&self, ip: IpAddr) -> Result<Option<String>, DomainError> {
         let reverse_domain = Self::ip_to_reverse_domain(&ip);
+        let timeout_ms = self.timeout_secs * 1000;
 
         debug!(
             ip = %ip,
@@ -53,7 +71,30 @@ impl HostnameResolver for PtrHostnameResolver {
             "Performing PTR lookup"
         );
 
-        let timeout_ms = self.timeout_secs * 1000;
+        if let Some(ref server) = self.local_dns_server {
+            if Self::is_private_or_local(&ip) {
+                let forwarder = DnsForwarder::new();
+                match forwarder
+                    .query(server, &reverse_domain, &RecordType::PTR, timeout_ms)
+                    .await
+                {
+                    Ok(result) => {
+                        for record in &result.raw_answers {
+                            if let RData::PTR(ptr) = record.data() {
+                                let hostname = ptr.to_utf8();
+                                debug!(ip = %ip, hostname = %hostname, server = %server, "PTR lookup via local DNS server successful");
+                                return Ok(Some(hostname));
+                            }
+                        }
+                        debug!(ip = %ip, server = %server, "PTR lookup via local DNS server returned no records");
+                        return Ok(None);
+                    }
+                    Err(e) => {
+                        debug!(ip = %ip, server = %server, error = %e, "PTR lookup via local DNS server failed, falling back to upstream");
+                    }
+                }
+            }
+        }
 
         match self
             .pool_manager
@@ -64,11 +105,7 @@ impl HostnameResolver for PtrHostnameResolver {
                 for record in &result.response.raw_answers {
                     if let RData::PTR(ptr) = record.data() {
                         let hostname = ptr.to_utf8();
-                        debug!(
-                            ip = %ip,
-                            hostname = %hostname,
-                            "PTR lookup successful"
-                        );
+                        debug!(ip = %ip, hostname = %hostname, "PTR lookup successful");
                         return Ok(Some(hostname));
                     }
                 }
@@ -77,12 +114,7 @@ impl HostnameResolver for PtrHostnameResolver {
                 Ok(None)
             }
             Err(e) => {
-                debug!(
-                    ip = %ip,
-                    error = %e,
-                    reverse_domain = %reverse_domain,
-                    "PTR lookup failed"
-                );
+                debug!(ip = %ip, error = %e, reverse_domain = %reverse_domain, "PTR lookup failed");
                 Ok(None)
             }
         }

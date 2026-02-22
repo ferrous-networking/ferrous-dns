@@ -11,6 +11,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
+const DEFAULT_TTL: u32 = 60;
+
 #[derive(Clone)]
 pub struct DnsServerHandler {
     use_case: Arc<HandleDnsQueryUseCase>,
@@ -25,21 +27,16 @@ impl DnsServerHandler {
         domain.trim_end_matches('.')
     }
 
-    /// Fast-path cache probe: no block-filter, no logging, no allocation on miss.
-    /// Returns `Some((addresses, ttl))` when the domain is cached with ≥1 address.
     pub fn try_fast_path(
         &self,
         domain: &str,
         record_type: RecordType,
+        client_ip: IpAddr,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
-        self.use_case.try_cache_direct(domain, record_type)
+        self.use_case
+            .try_cache_direct(domain, record_type, client_ip)
     }
 
-    /// Fallback for the custom UDP loop: parse `raw` with hickory_proto, run the
-    /// full use-case pipeline (block-filter, upstream, logging), and serialize
-    /// the response back to wire bytes.
-    ///
-    /// Returns `None` only when the packet cannot be parsed at all.
     pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
@@ -67,6 +64,14 @@ impl DnsServerHandler {
                     ResponseCode::Refused,
                 ))
             }
+            Err(DomainError::NxDomain) => {
+                return Some(build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::NXDomain,
+                ))
+            }
             Err(_) => {
                 return Some(build_error_wire(
                     query_id,
@@ -77,7 +82,7 @@ impl DnsServerHandler {
             }
         };
 
-        let ttl = resolution.min_ttl.unwrap_or(60);
+        let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
         let addresses = &resolution.addresses;
 
         let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
@@ -149,6 +154,10 @@ impl RequestHandler for DnsServerHandler {
                 return send_error_response(request, &mut response_handle, ResponseCode::Refused)
                     .await;
             }
+            Err(DomainError::NxDomain) => {
+                return send_error_response(request, &mut response_handle, ResponseCode::NXDomain)
+                    .await;
+            }
             Err(e) => {
                 error!(error = %e, "Query resolution failed");
                 return send_error_response(request, &mut response_handle, ResponseCode::ServFail)
@@ -156,7 +165,7 @@ impl RequestHandler for DnsServerHandler {
             }
         };
 
-        let ttl = resolution.min_ttl.unwrap_or(60);
+        let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
         let addresses = resolution.addresses;
 
         if addresses.is_empty() {

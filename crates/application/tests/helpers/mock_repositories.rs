@@ -12,7 +12,7 @@ use ferrous_dns_domain::{
     DomainAction, DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType,
     WhitelistSource, WhitelistedDomain,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -22,6 +22,8 @@ use tokio::sync::RwLock;
 pub struct MockDnsResolver {
     responses: Arc<RwLock<HashMap<String, DnsResolution>>>,
     should_fail: Arc<RwLock<bool>>,
+    cache_responses: Arc<std::sync::RwLock<HashMap<String, DnsResolution>>>,
+    error_responses: Arc<std::sync::RwLock<HashMap<String, DomainError>>>,
 }
 
 impl MockDnsResolver {
@@ -29,7 +31,23 @@ impl MockDnsResolver {
         Self {
             responses: Arc::new(RwLock::new(HashMap::new())),
             should_fail: Arc::new(RwLock::new(false)),
+            cache_responses: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            error_responses: Arc::new(std::sync::RwLock::new(HashMap::new())),
         }
+    }
+
+    pub fn set_cached_response(&self, domain: &str, resolution: DnsResolution) {
+        self.cache_responses
+            .write()
+            .unwrap()
+            .insert(domain.to_string(), resolution);
+    }
+
+    pub async fn set_response_error(&self, domain: &str, error: DomainError) {
+        self.error_responses
+            .write()
+            .unwrap()
+            .insert(domain.to_string(), error);
     }
 
     pub async fn set_response(&self, domain: &str, resolution: DnsResolution) {
@@ -70,6 +88,16 @@ impl DnsResolver for MockDnsResolver {
             ));
         }
 
+        if let Some(err) = self
+            .error_responses
+            .read()
+            .unwrap()
+            .get(query.domain.as_ref())
+            .cloned()
+        {
+            return Err(err);
+        }
+
         let responses = self.responses.read().await;
         responses
             .get(query.domain.as_ref())
@@ -77,6 +105,14 @@ impl DnsResolver for MockDnsResolver {
             .ok_or_else(|| {
                 DomainError::InvalidDomainName(format!("No mock response for {}", query.domain))
             })
+    }
+
+    fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        self.cache_responses
+            .read()
+            .unwrap()
+            .get(query.domain.as_ref())
+            .cloned()
     }
 }
 
@@ -159,13 +195,23 @@ impl BlocklistRepository for MockBlocklistRepository {
 #[derive(Clone)]
 pub struct MockQueryLogRepository {
     logs: Arc<RwLock<Vec<QueryLog>>>,
+    sync_logs: Arc<std::sync::Mutex<Vec<QueryLog>>>,
 }
 
 impl MockQueryLogRepository {
     pub fn new() -> Self {
         Self {
             logs: Arc::new(RwLock::new(Vec::new())),
+            sync_logs: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
+    }
+
+    pub fn sync_log_count(&self) -> usize {
+        self.sync_logs.lock().unwrap().len()
+    }
+
+    pub fn get_sync_logs(&self) -> Vec<QueryLog> {
+        self.sync_logs.lock().unwrap().clone()
     }
 
     pub async fn get_all_logs(&self) -> Vec<QueryLog> {
@@ -211,6 +257,11 @@ impl Default for MockQueryLogRepository {
 impl QueryLogRepository for MockQueryLogRepository {
     async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError> {
         self.logs.write().await.push(query.clone());
+        Ok(())
+    }
+
+    fn log_query_sync(&self, query: &QueryLog) -> Result<(), DomainError> {
+        self.sync_logs.lock().unwrap().push(query.clone());
         Ok(())
     }
 
@@ -277,6 +328,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_blocked_by_blocklist,
             queries_blocked_by_managed_domain,
             queries_blocked_by_regex_filter,
+            queries_local_dns: 0,
             queries_by_type: HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),
@@ -1132,6 +1184,7 @@ impl DnsResolutionBuilder {
         DnsResolution {
             addresses: std::sync::Arc::new(self.addresses),
             cache_hit: self.cache_hit,
+            local_dns: false,
             dnssec_status: self.dnssec_status,
             cname: self.cname,
             upstream_server: self.upstream_server,
@@ -1192,6 +1245,7 @@ mod tests {
             domain: "test.com".into(),
             record_type: RecordType::A,
             client_ip: IpAddr::from_str("192.168.1.1").unwrap(),
+            client_hostname: None,
             blocked: false,
             response_time_us: Some(10),
             cache_hit: true,
@@ -1348,6 +1402,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
 pub struct MockBlockFilterEngine {
     reload_count: Arc<RwLock<u32>>,
     should_fail_reload: Arc<RwLock<bool>>,
+    blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
 }
 
 impl MockBlockFilterEngine {
@@ -1355,6 +1410,7 @@ impl MockBlockFilterEngine {
         Self {
             reload_count: Arc::new(RwLock::new(0)),
             should_fail_reload: Arc::new(RwLock::new(false)),
+            blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
         }
     }
 
@@ -1364,6 +1420,13 @@ impl MockBlockFilterEngine {
 
     pub async fn set_should_fail_reload(&self, fail: bool) {
         *self.should_fail_reload.write().await = fail;
+    }
+
+    pub fn block_domain(&self, domain: &str) {
+        self.blocked_domains
+            .write()
+            .unwrap()
+            .insert(domain.to_string());
     }
 }
 
@@ -1379,7 +1442,10 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
         1
     }
 
-    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
+    fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {
+        if self.blocked_domains.read().unwrap().contains(domain) {
+            return FilterDecision::Block(BlockSource::Blocklist);
+        }
         FilterDecision::Allow
     }
 

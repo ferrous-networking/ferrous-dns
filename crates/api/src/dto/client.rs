@@ -34,3 +34,9 @@ pub struct ClientsQuery {
 fn default_limit() -> u32 {
     100
 }
+
+#[derive(Deserialize, Debug)]
+pub struct UpdateClientRequest {
+    pub hostname: Option<String>,
+    pub group_id: Option<i64>,
+}

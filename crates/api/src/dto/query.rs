@@ -33,6 +33,7 @@ pub struct QueryResponse {
     pub timestamp: String,
     pub domain: String,
     pub client: String,
+    pub client_hostname: Option<String>,
     #[serde(rename = "type")]
     pub record_type: String,
     pub blocked: bool,
@@ -42,6 +43,6 @@ pub struct QueryResponse {
     pub dnssec_status: Option<String>,
     pub upstream_server: Option<String>,
     pub query_source: String,
-    /// Which filter layer blocked this query: "blocklist", "managed_domain", "regex_filter", or null
     pub block_source: Option<String>,
+    pub response_status: Option<String>,
 }

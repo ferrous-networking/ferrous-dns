@@ -25,7 +25,7 @@ pub use client_subnets::{
 };
 pub use clients::{
     CleanupOldClientsUseCase, CreateManualClientUseCase, DeleteClientUseCase, GetClientsUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase,
+    SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateClientUseCase,
 };
 pub use config::{GetConfigUseCase, ReloadConfigUseCase, UpdateConfigUseCase};
 pub use dns::HandleDnsQueryUseCase;

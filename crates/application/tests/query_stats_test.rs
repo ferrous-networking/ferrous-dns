@@ -15,6 +15,7 @@ fn make_log(cache_hit: bool, blocked: bool, block_source: Option<BlockSource>) -
         domain: "example.com".into(),
         record_type: RecordType::A,
         client_ip: IpAddr::from([192, 168, 1, 1]),
+        client_hostname: None,
         blocked,
         response_time_us: Some(100),
         cache_hit,

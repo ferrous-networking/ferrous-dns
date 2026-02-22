@@ -9,7 +9,7 @@ use ferrous_dns_application::use_cases::{
     GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
     GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
     GetWhitelistSourcesUseCase, GetWhitelistUseCase, UpdateBlocklistSourceUseCase,
-    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
     UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
@@ -35,6 +35,7 @@ pub struct AppState {
     pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
+    pub update_client: Arc<UpdateClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
     pub get_blocklist_sources: Arc<GetBlocklistSourcesUseCase>,
     pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,

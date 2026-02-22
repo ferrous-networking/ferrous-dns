@@ -17,11 +17,6 @@ thread_local! {
         RefCell::new(LruCache::new(NonZeroUsize::new(LAST_SEEN_CAPACITY).unwrap()));
 }
 
-/// Coarse monotonic nanoseconds for interval comparisons.
-///
-/// Uses `CLOCK_MONOTONIC_COARSE` on Linux (~5-15 ns, ~1-4 ms resolution).
-/// NOT suitable for sub-millisecond latency measurement — use `Instant` for that.
-/// Falls back to `SystemTime` nanoseconds on non-Linux platforms.
 #[cfg(target_os = "linux")]
 #[inline]
 fn coarse_now_ns() -> u64 {
@@ -76,12 +71,19 @@ impl HandleDnsQueryUseCase {
         self
     }
 
+    fn log(&self, query_log: &QueryLog) {
+        if let Err(e) = self.query_log.log_query_sync(query_log) {
+            tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
+        }
+    }
+
     fn base_query_log(request: &DnsRequest, response_time_us: u64, group_id: i64) -> QueryLog {
         QueryLog {
             id: None,
             domain: Arc::clone(&request.domain),
             record_type: request.record_type,
             client_ip: request.client_ip,
+            client_hostname: None,
             blocked: false,
             response_time_us: Some(response_time_us),
             cache_hit: false,
@@ -96,121 +98,143 @@ impl HandleDnsQueryUseCase {
         }
     }
 
-    /// Fast path: checks only the DNS cache, bypassing block-filter, client
-    /// tracking, and query logging.  Returns `Some((addresses, ttl))` on a
-    /// non-empty cache hit, `None` on a miss or an empty result.
-    ///
-    /// Safe to call because only domains that were previously resolved (and
-    /// therefore allowed) ever reach the cache.
+    fn maybe_track_client(&self, client_ip: IpAddr) {
+        let Some(client_repo) = &self.client_repo else {
+            return;
+        };
+
+        let now_ns = coarse_now_ns();
+        let interval_ns = self.client_tracking_interval.as_nanos() as u64;
+        let needs_update = LAST_SEEN_TRACKER.with(|t| {
+            let mut tracker = t.borrow_mut();
+            match tracker.peek(&client_ip) {
+                Some(&last_ns) if now_ns.saturating_sub(last_ns) < interval_ns => false,
+                _ => {
+                    tracker.put(client_ip, now_ns);
+                    true
+                }
+            }
+        });
+
+        if needs_update {
+            let client_repo = Arc::clone(client_repo);
+            tokio::spawn(async move {
+                if let Err(e) = client_repo.update_last_seen(client_ip).await {
+                    tracing::warn!(error = %e, ip = %client_ip, "Failed to track client");
+                }
+            });
+        }
+    }
+
     pub fn try_cache_direct(
         &self,
         domain: &str,
         record_type: RecordType,
+        client_ip: IpAddr,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
-        let query = DnsQuery::new(Arc::from(domain), record_type);
+        let start = Instant::now();
+        let domain_arc: Arc<str> = Arc::from(domain);
+        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
         if resolution.addresses.is_empty() {
             return None;
         }
-        let ttl = resolution.min_ttl.unwrap_or(60);
-        Some((resolution.addresses, ttl))
+
+        let group_id = self.block_filter.resolve_group(client_ip);
+        self.log(&QueryLog {
+            id: None,
+            domain: domain_arc,
+            record_type,
+            client_ip,
+            client_hostname: None,
+            blocked: false,
+            response_time_us: Some(start.elapsed().as_micros() as u64),
+            cache_hit: true,
+            cache_refresh: false,
+            dnssec_status: resolution.dnssec_status,
+            upstream_server: None,
+            response_status: Some("NOERROR"),
+            timestamp: None,
+            query_source: QuerySource::Client,
+            group_id: Some(group_id),
+            block_source: None,
+        });
+
+        Some((resolution.addresses, resolution.min_ttl.unwrap_or(60)))
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
         let start = Instant::now();
+        let elapsed_us = || start.elapsed().as_micros() as u64;
 
-        if let Some(client_repo) = &self.client_repo {
-            let now_ns = coarse_now_ns();
-            let interval_ns = self.client_tracking_interval.as_nanos() as u64;
-            let needs_update = LAST_SEEN_TRACKER.with(|t| {
-                let mut tracker = t.borrow_mut();
-                match tracker.peek(&request.client_ip) {
-                    Some(&last_ns) if now_ns.saturating_sub(last_ns) < interval_ns => false,
-                    _ => {
-                        tracker.put(request.client_ip, now_ns);
-                        true
-                    }
-                }
-            });
-
-            if needs_update {
-                let client_repo = Arc::clone(client_repo);
-                let client_ip = request.client_ip;
-                tokio::spawn(async move {
-                    if let Err(e) = client_repo.update_last_seen(client_ip).await {
-                        tracing::warn!(error = %e, ip = %client_ip, "Failed to track client");
-                    }
-                });
-            }
-        }
+        self.maybe_track_client(request.client_ip);
 
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
         let group_id = self.block_filter.resolve_group(request.client_ip);
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if !cached.addresses.is_empty() {
-                let query_log = QueryLog {
+                self.log(&QueryLog {
                     cache_hit: true,
                     dnssec_status: cached.dnssec_status,
-                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
-                };
-
-                if let Err(e) = self.query_log.log_query_sync(&query_log) {
-                    tracing::warn!(error = %e, domain = %request.domain, "Failed to log cached query");
-                }
-
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
                 return Ok(cached);
+            } else if cached.cache_hit {
+                self.log(&QueryLog {
+                    cache_hit: true,
+                    response_status: Some("NXDOMAIN"),
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
+                return Err(DomainError::NxDomain);
             }
         }
 
-        let decision = self.block_filter.check(&request.domain, group_id);
-
-        if let FilterDecision::Block(block_source) = decision {
-            let query_log = QueryLog {
+        if let FilterDecision::Block(block_source) =
+            self.block_filter.check(&request.domain, group_id)
+        {
+            self.log(&QueryLog {
                 blocked: true,
                 response_status: Some("BLOCKED"),
                 block_source: Some(block_source),
-                ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
-            };
-
-            if let Err(e) = self.query_log.log_query_sync(&query_log) {
-                tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log blocked query");
-            }
-
+                ..Self::base_query_log(request, elapsed_us(), group_id)
+            });
             return Err(DomainError::Blocked);
         }
 
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
-                let query_log = QueryLog {
+                let response_status = if resolution.local_dns {
+                    Some("LOCAL_DNS")
+                } else {
+                    Some("NOERROR")
+                };
+                self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
                     upstream_server: resolution.upstream_server.clone(),
-                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
-                };
-
-                if let Err(e) = self.query_log.log_query_sync(&query_log) {
-                    tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
-                }
-
+                    response_status,
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
                 Ok(resolution)
             }
+            Err(DomainError::LocalNxDomain) => {
+                self.log(&QueryLog {
+                    response_status: Some("LOCAL_DNS"),
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
+                Err(DomainError::NxDomain)
+            }
             Err(e) => {
-                let response_status: &'static str = match &e {
+                let response_status = match &e {
                     DomainError::NxDomain => "NXDOMAIN",
                     DomainError::QueryTimeout => "TIMEOUT",
                     _ => "SERVFAIL",
                 };
-
-                let query_log = QueryLog {
+                self.log(&QueryLog {
                     response_status: Some(response_status),
-                    ..Self::base_query_log(request, start.elapsed().as_micros() as u64, group_id)
-                };
-
-                if let Err(log_err) = self.query_log.log_query_sync(&query_log) {
-                    tracing::warn!(error = %log_err, "Failed to log error query");
-                }
-
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
                 Err(e)
             }
         }

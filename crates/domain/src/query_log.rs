@@ -67,6 +67,7 @@ pub struct QueryLog {
     pub domain: Arc<str>,
     pub record_type: RecordType,
     pub client_ip: IpAddr,
+    pub client_hostname: Option<Arc<str>>,
     pub blocked: bool,
     pub response_time_us: Option<u64>,
     pub cache_hit: bool,
@@ -98,6 +99,7 @@ pub struct QueryStats {
 
     pub queries_cache_hits: u64,
     pub queries_upstream: u64,
+    pub queries_local_dns: u64,
     pub queries_blocked_by_blocklist: u64,
     pub queries_blocked_by_managed_domain: u64,
     pub queries_blocked_by_regex_filter: u64,
@@ -175,6 +177,7 @@ impl Default for QueryStats {
             avg_upstream_time_ms: 0.0,
             queries_cache_hits: 0,
             queries_upstream: 0,
+            queries_local_dns: 0,
             queries_blocked_by_blocklist: 0,
             queries_blocked_by_managed_domain: 0,
             queries_blocked_by_regex_filter: 0,

@@ -8,7 +8,7 @@ use ferrous_dns_application::{
     ports::{BlockFilterEnginePort, ClientRepository, FilterDecision},
     use_cases::{
         DeleteClientUseCase, GetBlockFilterStatsUseCase, GetBlocklistUseCase, GetClientsUseCase,
-        GetQueryStatsUseCase, GetRecentQueriesUseCase,
+        GetQueryStatsUseCase, GetRecentQueriesUseCase, UpdateClientUseCase,
     },
 };
 
@@ -220,6 +220,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             client_repo.clone(),
             Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
         )),
+        update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
         delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
         get_blocklist_sources: Arc::new(ferrous_dns_application::use_cases::GetBlocklistSourcesUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),

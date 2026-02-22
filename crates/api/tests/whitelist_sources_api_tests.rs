@@ -260,6 +260,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(subnet_repo.clone(), group_repo.clone())),
         delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
         create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
+        update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
         delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
         get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(blocklist_source_repo.clone())),
         create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(

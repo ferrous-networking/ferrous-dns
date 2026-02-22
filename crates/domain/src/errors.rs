@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum DomainError {
     #[error("Invalid domain name: {0}")]
     InvalidDomainName(String),
@@ -28,6 +28,9 @@ pub enum DomainError {
 
     #[error("Domain not found (NXDOMAIN)")]
     NxDomain,
+
+    #[error("Local domain not found (NXDOMAIN from local DNS server)")]
+    LocalNxDomain,
 
     #[error("Query timeout")]
     QueryTimeout,

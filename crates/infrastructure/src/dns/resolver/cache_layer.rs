@@ -61,6 +61,7 @@ impl CachedResolver {
                     CachedData::IpAddresses(addrs) => DnsResolution {
                         addresses: Arc::clone(&addrs),
                         cache_hit: true,
+                        local_dns: false,
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
@@ -70,6 +71,7 @@ impl CachedResolver {
                     CachedData::CanonicalName(_) => DnsResolution {
                         addresses: Arc::new(vec![]),
                         cache_hit: true,
+                        local_dns: false,
                         dnssec_status: dnssec_str,
                         cname: None,
                         upstream_server: None,
@@ -81,6 +83,7 @@ impl CachedResolver {
                         DnsResolution {
                             addresses: Arc::new(vec![]),
                             cache_hit: true,
+                            local_dns: false,
                             dnssec_status: dnssec_str,
                             cname: None,
                             upstream_server: None,
@@ -163,6 +166,7 @@ impl CachedResolver {
                 return Ok(DnsResolution {
                     addresses: Arc::clone(&arc_res.addresses),
                     cache_hit: true,
+                    local_dns: false,
                     dnssec_status: arc_res.dnssec_status,
                     cname: None,
                     upstream_server: None,
@@ -176,6 +180,7 @@ impl CachedResolver {
             return Ok(DnsResolution {
                 addresses: Arc::clone(&arc_res.addresses),
                 cache_hit: true,
+                local_dns: false,
                 dnssec_status: arc_res.dnssec_status,
                 cname: None,
                 upstream_server: None,

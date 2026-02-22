@@ -1,5 +1,4 @@
 use super::super::cache::DnsCache;
-use super::super::conditional_forwarder::ConditionalForwarder;
 use super::super::load_balancer::PoolManager;
 use super::super::prefetch::PrefetchPredictor;
 use super::builder::ResolverBuilder;
@@ -9,6 +8,8 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use std::sync::Arc;
+
+const DEFAULT_CACHE_TTL: u32 = 3600;
 
 pub struct HickoryDnsResolver {
     inner: Arc<dyn DnsResolver>,
@@ -21,7 +22,8 @@ struct BuilderState {
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     cache_ttl: u32,
-    conditional_forwarder: Option<Arc<ConditionalForwarder>>,
+    local_domain: Option<String>,
+    local_dns_server: Option<String>,
     prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
 }
@@ -44,8 +46,9 @@ impl HickoryDnsResolver {
             dnssec_pool_manager: None,
             config: config.clone(),
             cache: None,
-            cache_ttl: 3600,
-            conditional_forwarder: None,
+            cache_ttl: DEFAULT_CACHE_TTL,
+            local_domain: None,
+            local_dns_server: None,
             prefetch_predictor: None,
             filters: None,
         };
@@ -83,14 +86,15 @@ impl HickoryDnsResolver {
         self.builder_state.filters = Some(QueryFilters {
             block_private_ptr,
             block_non_fqdn,
-            local_domain,
+            local_domain: local_domain.clone(),
         });
+        self.builder_state.local_domain = local_domain;
         self.rebuild();
         self
     }
 
-    pub fn with_conditional_forwarder(mut self, forwarder: Arc<ConditionalForwarder>) -> Self {
-        self.builder_state.conditional_forwarder = Some(forwarder);
+    pub fn with_local_dns_server(mut self, server: Option<String>) -> Self {
+        self.builder_state.local_dns_server = server;
         self.rebuild();
         self
     }
@@ -103,7 +107,9 @@ impl HickoryDnsResolver {
 
     fn rebuild(&mut self) {
         let mut builder = ResolverBuilder::new(self.builder_state.pool_manager.clone())
-            .with_config(self.builder_state.config.clone());
+            .with_config(self.builder_state.config.clone())
+            .with_local_domain(self.builder_state.local_domain.clone())
+            .with_local_dns_server(self.builder_state.local_dns_server.clone());
 
         if let Some(dnssec_pm) = &self.builder_state.dnssec_pool_manager {
             builder = builder.with_dnssec_pool_manager(dnssec_pm.clone());
@@ -111,10 +117,6 @@ impl HickoryDnsResolver {
 
         if let Some(cache) = &self.builder_state.cache {
             builder = builder.with_cache(cache.clone());
-        }
-
-        if let Some(forwarder) = &self.builder_state.conditional_forwarder {
-            builder = builder.with_conditional_forwarder(forwarder.clone());
         }
 
         if let Some(predictor) = &self.builder_state.prefetch_predictor {
@@ -131,6 +133,10 @@ impl HickoryDnsResolver {
 
 #[async_trait]
 impl DnsResolver for HickoryDnsResolver {
+    fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        self.inner.try_cache(query)
+    }
+
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         self.inner.resolve(query).await
     }

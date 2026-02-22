@@ -24,8 +24,8 @@ pub use blocklist_source::BlocklistSource;
 pub use client::{Client, ClientStats};
 pub use client_subnet::{ClientSubnet, SubnetMatcher};
 pub use config::{
-    CliOverrides, ConditionalForward, Config, ConfigError, DnsConfig, HealthCheckConfig,
-    LocalDnsRecord, UpstreamPool, UpstreamStrategy,
+    CliOverrides, Config, ConfigError, DnsConfig, HealthCheckConfig, LocalDnsRecord, UpstreamPool,
+    UpstreamStrategy,
 };
 pub use dns_protocol::DnsProtocol;
 pub use dns_query::DnsQuery;

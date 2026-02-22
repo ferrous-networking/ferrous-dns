@@ -25,14 +25,6 @@
             margin-bottom: 24px
         }
 
-        .status-item {
-            margin-bottom: 4px
-        }
-
-        .status-indicator {
-            animation: none
-        }
-
         .btn {
             padding: 10px 16px;
             border-radius: 8px;
@@ -47,18 +39,12 @@
             border: none
         }
 
-        .btn-primary:hover {
-            opacity: 0.9
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed
-        }
+        .btn-primary:hover { opacity: 0.9 }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed }
 
         .btn-icon {
-            padding: 8px;
-            border-radius: 8px;
+            padding: 6px;
+            border-radius: 6px;
             background: none;
             border: none;
             cursor: pointer;
@@ -69,15 +55,12 @@
             justify-content: center;
         }
 
-        .btn-icon:hover {
-            background: var(--bg-tertiary);
-            color: var(--color-error);
-        }
-
-        .btn-icon:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .btn-icon:hover { background: var(--bg-tertiary); }
+        .btn-icon.edit:hover { color: var(--color-primary); }
+        .btn-icon.delete:hover { color: var(--color-error); }
+        .btn-icon.save:hover { color: var(--color-success); }
+        .btn-icon.cancel:hover { color: var(--text-secondary); }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .btn-bulk-delete {
             display: inline-flex;
@@ -100,10 +83,6 @@
             box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
         }
 
-        .btn-bulk-delete:active {
-            transform: translateY(0);
-        }
-
         input[type="checkbox"] {
             width: 16px;
             height: 16px;
@@ -121,6 +100,25 @@
             font-size: 14px
         }
 
+        .input-inline {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--color-primary);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 13px;
+            width: 140px;
+        }
+
+        .select-inline {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--color-primary);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
         .table {
             width: 100%;
             border-collapse: collapse
@@ -136,17 +134,14 @@
         }
 
         .table td {
-            padding: 16px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--border-color)
         }
 
-        .table tbody tr:hover {
-            background: var(--bg-tertiary)
-        }
+        .table tbody tr:hover { background: var(--bg-tertiary) }
+        .table tbody tr.editing { background: rgba(59,130,246,0.05); }
 
-        .monospace {
-            font-family: monospace
-        }
+        .monospace { font-family: monospace }
 
         .badge {
             display: inline-flex;
@@ -159,169 +154,39 @@
             margin-bottom: 16px
         }
 
-        .badge-ip {
-            background: rgba(59, 130, 246, 0.15);
-            color: #3b82f6
-        }
+        .badge-ip { background: rgba(59, 130, 246, 0.15); color: #3b82f6 }
+        .badge-subnet { background: rgba(16, 185, 129, 0.15); color: #10b981 }
+        .badge-mac { background: rgba(249, 115, 22, 0.15); color: #f97316 }
 
-        .badge-subnet {
-            background: rgba(16, 185, 129, 0.15);
-            color: #10b981
-        }
+        .logo-text h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); margin: 0 }
+        .logo-subtitle { font-size: 11px; color: var(--text-tertiary) }
 
-        .badge-mac {
-            background: rgba(249, 115, 22, 0.15);
-            color: #f97316
-        }
-
-        .logo-text h1 {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0
-        }
-
-        .logo-subtitle {
-            font-size: 11px;
-            color: var(--text-tertiary)
-        }
-
-        .status-box {
-            margin: 0 16px 16px;
-            padding: 12px;
-            background: var(--bg-tertiary);
-            border-radius: 8px
-        }
-
+        .status-box { margin: 0 16px 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px }
         .status-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
+            display: flex; align-items: center; gap: 8px;
+            font-size: 11px; font-weight: 600; color: var(--text-secondary);
+            margin-bottom: 8px; text-transform: uppercase
+        }
+        .status-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px }
+        .status-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--color-success) }
+
+        .nav-section { margin-bottom: 24px }
+        .nav-section-title { padding: 8px 16px; font-size: 10px; font-weight: 700; color: var(--text-tertiary); text-transform: uppercase }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: all .2s }
+        .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+        .nav-item.active { background: var(--bg-tertiary); color: var(--color-primary); font-weight: 600; border-left: 3px solid var(--color-primary) }
+        .nav-icon { width: 18px; height: 18px }
+
+        .logo-container { display: flex; align-items: center; gap: 12px; padding: 24px 16px 16px }
+        .logo-icon { width: 40px; height: 40px; padding: 8px; background: var(--color-primary); color: white; border-radius: 8px }
+
+        .section-title {
+            font-size: 16px;
             font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-            text-transform: uppercase
-        }
-
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
-            margin-bottom: 4px
-        }
-
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--color-success)
-        }
-
-        .nav-section {
-            margin-bottom: 24px
-        }
-
-        .nav-section-title {
-            padding: 8px 16px;
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text-tertiary);
-            text-transform: uppercase
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 16px;
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 14px;
-            transition: all .2s
-        }
-
-        .nav-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary)
-        }
-
-        .nav-item.active {
-            background: var(--bg-tertiary);
-            color: var(--color-primary);
-            font-weight: 600;
-            border-left: 3px solid var(--color-primary)
-        }
-
-        .nav-icon {
-            width: 18px;
-            height: 18px
-        }
-
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 16px;
-            border-top: 1px solid var(--border-color)
-        }
-
-        .theme-btn {
-            width: 100%;
-            padding: 8px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            color: var(--text-secondary)
-        }
-
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 24px 16px 16px
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            padding: 8px;
-            background: var(--color-primary);
-            color: white;
-            border-radius: 8px
-        }
-
-        .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-            border-bottom: 2px solid var(--border-color)
-        }
-
-        .tab {
+            margin-bottom: 12px;
             padding: 12px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            background: none;
-            border: none;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.2s
-        }
-
-        .tab:hover {
-            color: var(--text-primary)
-        }
-
-        .tab.active {
-            color: var(--color-primary);
-            border-bottom-color: var(--color-primary)
+            background: var(--bg-tertiary);
+            border-radius: 8px;
         }
     </style>
 </head>
@@ -423,6 +288,7 @@
         </div>
     </div>
 
+    <!-- Add Client / Subnet form -->
     <div class="card">
         <h2 style="font-size:20px;font-weight:700;margin-bottom:16px">Add Client or Subnet</h2>
 
@@ -432,7 +298,6 @@
         </div>
 
         <form @submit.prevent="submitForm()" style="display:flex;flex-direction:column;gap:16px">
-
             <div>
                 <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px">
                     Address / Network *
@@ -452,7 +317,6 @@
                     Group <span x-show="form.type==='subnet'" style="color:var(--color-error)">*</span>
                 </label>
                 <select x-model="form.group_id" class="select">
-                    <option value="">No Group</option>
                     <template x-for="g in groups" :key="g.id">
                         <option :value="g.id" x-text="g.name"></option>
                     </template>
@@ -461,183 +325,163 @@
 
             <div>
                 <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px"
-                       x-text="form.type==='subnet' ? 'Comment' : 'Hostname'">
-                    Hostname
-                </label>
+                       x-text="form.type==='subnet' ? 'Comment' : 'Hostname'">Hostname</label>
                 <input x-model="form.metadata"
                        type="text"
                        :placeholder="form.type==='subnet' ? 'Office network' : 'device-name'"
                        class="input">
             </div>
 
-            <button type="submit"
-                    :disabled="!form.type || form.type==='mac'"
-                    class="btn btn-primary">
+            <button type="submit" :disabled="!form.type || form.type==='mac'" class="btn btn-primary">
                 <span x-text="getButtonText()">Submit</span>
             </button>
         </form>
     </div>
 
+    <!-- Known Clients -->
     <div class="card">
-        <div class="tabs">
-            <button @click="activeTab = 'known-clients'" class="tab" :class="{'active': activeTab === 'known-clients'}">
-                👥 Known Clients (<span x-text="clients.length">0</span>)
-            </button>
-            <button @click="activeTab = 'configured'" class="tab" :class="{'active': activeTab === 'configured'}">
-                ⚙️ Configured (<span x-text="manualClients.length + subnets.length">0</span>)
-            </button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <h2 style="font-size:20px;font-weight:700">
+                Known Clients (<span x-text="clients.length">0</span>)
+            </h2>
         </div>
 
-        <div x-show="activeTab === 'known-clients'">
-            <div x-show="clients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
-                No clients discovered yet
-            </div>
+        <div x-show="clients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
+            No clients discovered yet
+        </div>
 
-            <table x-show="clients.length > 0" class="table">
-                <thead>
-                <tr>
-                    <th>IP Address</th>
-                    <th>Hostname</th>
-                    <th>MAC Address</th>
-                    <th>Group</th>
-                    <th>First Seen</th>
-                    <th>Last Seen</th>
-                    <th>Queries</th>
+        <table x-show="clients.length > 0" class="table">
+            <thead>
+            <tr>
+                <th>IP Address</th>
+                <th>Hostname</th>
+                <th>MAC Address</th>
+                <th>Group</th>
+                <th>First Seen</th>
+                <th>Last Seen</th>
+                <th>Queries</th>
+                <th style="text-align:center;width:90px">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <template x-for="c in clients" :key="c.id">
+                <tr :class="{'editing': editingId === c.id}">
+                    <td class="monospace" x-text="c.ip_address"></td>
+
+                    <!-- Hostname: display or edit -->
+                    <td>
+                        <template x-if="editingId !== c.id">
+                            <span x-text="c.hostname || '-'"></span>
+                        </template>
+                        <template x-if="editingId === c.id">
+                            <input class="input-inline" x-model="editForm.hostname" placeholder="hostname">
+                        </template>
+                    </td>
+
+                    <td class="monospace" x-text="c.mac_address || '-'"></td>
+
+                    <!-- Group: display or edit -->
+                    <td>
+                        <template x-if="editingId !== c.id">
+                            <span x-text="getGroupName(c.group_id)"></span>
+                        </template>
+                        <template x-if="editingId === c.id">
+                            <select class="select-inline" x-model="editForm.group_id">
+                                <template x-for="g in groups" :key="g.id">
+                                    <option :value="g.id" x-text="g.name"></option>
+                                </template>
+                            </select>
+                        </template>
+                    </td>
+
+                    <td x-text="formatDateTime(c.first_seen)"></td>
+                    <td x-text="formatDateTime(c.last_seen)"></td>
+                    <td x-text="c.query_count || 0"></td>
+
+                    <td style="text-align:center;width:90px;white-space:nowrap">
+                        <!-- Normal mode: edit + delete -->
+                        <template x-if="editingId !== c.id">
+                            <span>
+                                <button @click="startEdit(c)" class="btn-icon edit" title="Edit">
+                                    <i data-lucide="pencil" style="width:15px;height:15px"></i>
+                                </button>
+                                <button @click="deleteClient(c.id)" class="btn-icon delete" title="Delete">
+                                    <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                                </button>
+                            </span>
+                        </template>
+                        <!-- Edit mode: save + cancel -->
+                        <template x-if="editingId === c.id">
+                            <span>
+                                <button @click="saveEdit(c.id)" class="btn-icon save" title="Save">
+                                    <i data-lucide="check" style="width:15px;height:15px"></i>
+                                </button>
+                                <button @click="cancelEdit()" class="btn-icon cancel" title="Cancel">
+                                    <i data-lucide="x" style="width:15px;height:15px"></i>
+                                </button>
+                            </span>
+                        </template>
+                    </td>
                 </tr>
-                </thead>
-                <tbody>
-                <template x-for="c in clients" :key="c.id">
-                    <tr>
-                        <td class="monospace" x-text="c.ip_address"></td>
-                        <td x-text="c.hostname || '-'"></td>
-                        <td class="monospace" x-text="c.mac_address || '-'"></td>
-                        <td x-text="getGroupName(c.group_id)"></td>
-                        <td x-text="formatDateTime(c.first_seen)"></td>
-                        <td x-text="formatDateTime(c.last_seen)"></td>
-                        <td x-text="c.query_count || 0"></td>
-                    </tr>
-                </template>
-                </tbody>
-            </table>
-        </div>
+            </template>
+            </tbody>
+        </table>
+    </div>
 
-        <div x-show="activeTab === 'configured'">
-            
-            <div style="margin-bottom:24px">
-                <h3 style="font-size:16px;font-weight:600;margin-bottom:12px;padding:12px 16px;background:var(--bg-tertiary);border-radius:8px">
-                    Individual Clients
-                </h3>
-
-                <div x-show="manualClients.length === 0"
-                     style="padding:32px;text-align:center;color:var(--text-secondary)">
-                    No manual clients yet
-                </div>
-
-                <div x-show="selectedClients.length > 0 && manualClients.length > 0"
-                     style="margin-bottom:12px;display:flex;justify-content:flex-end">
-                    <button @click="bulkDeleteClients()" class="btn-bulk-delete">
-                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                        <span x-text="`Delete ${selectedClients.length} item${selectedClients.length > 1 ? 's' : ''}`"></span>
-                    </button>
-                </div>
-
-                <table x-show="manualClients.length > 0" class="table">
-                    <thead>
-                    <tr>
-                        <th style="width:40px;text-align:center">
-                            <input type="checkbox"
-                                   x-model="selectAllClients"
-                                   @change="toggleSelectAllClients()"
-                                   title="Select All">
-                        </th>
-                        <th>IP Address</th>
-                        <th>Hostname</th>
-                        <th>MAC Address</th>
-                        <th>Group</th>
-                        <th>Added</th>
-                        <th style="text-align:center;width:80px">Actions</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <template x-for="c in manualClients" :key="c.id">
-                        <tr>
-                            <td style="width:40px;text-align:center">
-                                <input type="checkbox"
-                                       :value="c.id"
-                                       x-model="selectedClients"
-                                       @change="updateSelectAllClients()">
-                            </td>
-                            <td class="monospace" x-text="c.ip_address"></td>
-                            <td x-text="c.hostname || '-'"></td>
-                            <td class="monospace" x-text="c.mac_address || '-'"></td>
-                            <td x-text="getGroupName(c.group_id)"></td>
-                            <td x-text="formatDateTime(c.first_seen)"></td>
-                            <td style="text-align:center;width:80px">
-                                <button @click="deleteClient(c.id)" class="btn-icon" title="Delete">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    </template>
-                    </tbody>
-                </table>
-            </div>
-
-            <div>
-                <h3 style="font-size:16px;font-weight:600;margin-bottom:12px;padding:12px 16px;background:var(--bg-tertiary);border-radius:8px">
-                    Subnets
-                </h3>
-
-                <div x-show="subnets.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
-                    No subnets configured yet
-                </div>
-
-                <div x-show="selectedSubnets.length > 0 && subnets.length > 0"
-                     style="margin-bottom:12px;display:flex;justify-content:flex-end">
-                    <button @click="bulkDeleteSubnets()" class="btn-bulk-delete">
-                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                        <span x-text="`Delete ${selectedSubnets.length} item${selectedSubnets.length > 1 ? 's' : ''}`"></span>
-                    </button>
-                </div>
-
-                <table x-show="subnets.length > 0" class="table">
-                    <thead>
-                    <tr>
-                        <th style="width:40px;text-align:center">
-                            <input type="checkbox"
-                                   x-model="selectAllSubnets"
-                                   @change="toggleSelectAllSubnets()"
-                                   title="Select All">
-                        </th>
-                        <th>Subnet CIDR</th>
-                        <th>Group</th>
-                        <th>Comment</th>
-                        <th style="text-align:center;width:80px">Actions</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <template x-for="s in subnets" :key="s.id">
-                        <tr>
-                            <td style="width:40px;text-align:center">
-                                <input type="checkbox"
-                                       :value="s.id"
-                                       x-model="selectedSubnets"
-                                       @change="updateSelectAllSubnets()">
-                            </td>
-                            <td class="monospace" x-text="s.subnet_cidr"></td>
-                            <td x-text="getGroupName(s.group_id)"></td>
-                            <td x-text="s.comment || '-'"></td>
-                            <td style="text-align:center;width:80px">
-                                <button @click="deleteSubnet(s.id)" class="btn-icon" title="Delete">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    </template>
-                    </tbody>
-                </table>
+    <!-- Subnets -->
+    <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <h2 style="font-size:20px;font-weight:700">
+                Subnets (<span x-text="subnets.length">0</span>)
+            </h2>
+            <div x-show="selectedSubnets.length > 0">
+                <button @click="bulkDeleteSubnets()" class="btn-bulk-delete">
+                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                    <span x-text="`Delete ${selectedSubnets.length} item${selectedSubnets.length > 1 ? 's' : ''}`"></span>
+                </button>
             </div>
         </div>
+
+        <div x-show="subnets.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
+            No subnets configured yet
+        </div>
+
+        <table x-show="subnets.length > 0" class="table">
+            <thead>
+            <tr>
+                <th style="width:40px;text-align:center">
+                    <input type="checkbox"
+                           x-model="selectAllSubnets"
+                           @change="toggleSelectAllSubnets()"
+                           title="Select All">
+                </th>
+                <th>Subnet CIDR</th>
+                <th>Group</th>
+                <th>Comment</th>
+                <th style="text-align:center;width:80px">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <template x-for="s in subnets" :key="s.id">
+                <tr>
+                    <td style="width:40px;text-align:center">
+                        <input type="checkbox"
+                               :value="s.id"
+                               x-model="selectedSubnets"
+                               @change="updateSelectAllSubnets()">
+                    </td>
+                    <td class="monospace" x-text="s.subnet_cidr"></td>
+                    <td x-text="getGroupName(s.group_id)"></td>
+                    <td x-text="s.comment || '-'"></td>
+                    <td style="text-align:center;width:80px">
+                        <button @click="deleteSubnet(s.id)" class="btn-icon delete" title="Delete">
+                            <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                        </button>
+                    </td>
+                </tr>
+            </template>
+            </tbody>
+        </table>
     </div>
 
 </main>
@@ -645,17 +489,14 @@
 <script>
     function app() {
         return {
-            theme: 'light',
-            activeTab: 'known-clients',
             clients: [],
-            manualClients: [],
             groups: [],
             subnets: [],
             stats: {},
-            selectedClients: [],
             selectedSubnets: [],
-            selectAllClients: false,
             selectAllSubnets: false,
+            editingId: null,
+            editForm: { hostname: '', group_id: '' },
             form: {
                 address: '',
                 group_id: '',
@@ -671,20 +512,12 @@
                 scheduleLucide(100);
             },
 
-            toggleTheme() {
-                this.theme = this.theme === 'light' ? 'dark' : 'light';
-                localStorage.setItem('theme', this.theme);
-                document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                scheduleLucide();
-            },
-
             async loadAll() {
                 await Promise.all([
                     this.loadClients(),
                     this.loadGroups(),
                     this.loadStats(),
                     this.loadSubnets(),
-                    this.loadManualClients()
                 ]);
             },
 
@@ -697,23 +530,14 @@
                 }
             },
 
-            async loadManualClients() {
-                try {
-                    const res = await fetch('/api/clients?limit=1000');
-                    if (res.ok) {
-                        const all = await res.json();
-                        
-                        this.manualClients = all;
-                    }
-                } catch (e) {
-                    console.error('Failed to load manual clients:', e);
-                }
-            },
-
             async loadGroups() {
                 try {
                     const res = await fetch('/api/groups');
-                    if (res.ok) this.groups = await res.json();
+                    if (res.ok) {
+                        this.groups = await res.json();
+                        const defaultGroup = this.groups.find(g => g.name === 'Protected') || this.groups[0];
+                        if (defaultGroup && !this.form.group_id) this.form.group_id = defaultGroup.id;
+                    }
                 } catch (e) {
                     console.error('Failed to load groups:', e);
                 }
@@ -742,37 +566,65 @@
                 return g ? g.name : '-';
             },
 
+            startEdit(c) {
+                this.editingId = c.id;
+                const defaultGroup = this.groups.find(g => g.name === 'Protected') || this.groups[0];
+                this.editForm = {
+                    hostname: c.hostname || '',
+                    group_id: c.group_id ? String(c.group_id) : (defaultGroup ? String(defaultGroup.id) : ''),
+                };
+                this.$nextTick(() => scheduleLucide(50));
+            },
+
+            cancelEdit() {
+                this.editingId = null;
+                this.editForm = { hostname: '', group_id: '' };
+                scheduleLucide(50);
+            },
+
+            async saveEdit(id) {
+                const payload = {
+                    hostname: this.editForm.hostname.trim() || null,
+                    group_id: this.editForm.group_id ? parseInt(this.editForm.group_id) : null,
+                };
+                try {
+                    const res = await fetch(`/api/clients/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        const idx = this.clients.findIndex(c => c.id === id);
+                        if (idx !== -1) this.clients[idx] = updated;
+                        this.cancelEdit();
+                        await this.loadStats();
+                        scheduleLucide(50);
+                    } else {
+                        alert('Failed: ' + await res.text());
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('Error saving client');
+                }
+            },
+
             detectType() {
                 const v = this.form.address.trim();
                 this.form.error = '';
-
-                if (!v) {
-                    this.form.type = null;
-                    return;
-                }
-
+                if (!v) { this.form.type = null; return; }
                 if (v.includes('/')) {
-                    if (this.isValidCIDR(v)) {
-                        this.form.type = 'subnet';
-                    } else {
-                        this.form.type = null;
-                        this.form.error = 'Invalid CIDR format (e.g., 192.168.1.0/24)';
-                    }
+                    if (this.isValidCIDR(v)) { this.form.type = 'subnet'; }
+                    else { this.form.type = null; this.form.error = 'Invalid CIDR format (e.g., 192.168.1.0/24)'; }
                     return;
                 }
-
                 if (this.isValidMAC(v)) {
                     this.form.type = 'mac';
                     this.form.error = 'MAC detected! Please enter the IP address.';
                     return;
                 }
-
-                if (this.isValidIP(v)) {
-                    this.form.type = 'ip';
-                } else {
-                    this.form.type = null;
-                    this.form.error = 'Invalid IP, CIDR or MAC address';
-                }
+                if (this.isValidIP(v)) { this.form.type = 'ip'; }
+                else { this.form.type = null; this.form.error = 'Invalid IP, CIDR or MAC address'; }
             },
 
             isValidIP(ip) {
@@ -806,12 +658,7 @@
             },
 
             getTypeLabel() {
-                const labels = {
-                    'ip': 'IP Address → Individual Client',
-                    'subnet': 'CIDR Subnet → Multiple Clients',
-                    'mac': 'MAC Address → Requires IP'
-                };
-                return labels[this.form.type] || '';
+                return { ip: 'IP Address → Individual Client', subnet: 'CIDR Subnet → Multiple Clients', mac: 'MAC Address → Requires IP' }[this.form.type] || '';
             },
 
             getButtonText() {
@@ -821,27 +668,13 @@
             },
 
             async submitForm() {
-                if (!this.form.type) {
-                    alert('Invalid address');
+                if (!this.form.type || this.form.type === 'mac' || this.form.error) {
+                    alert(this.form.error || 'Invalid address');
                     return;
                 }
-
-                if (this.form.type === 'mac') {
-                    alert('MAC address detected! Please also enter the IP address.');
-                    return;
-                }
-
-                if (this.form.error) {
-                    alert(this.form.error);
-                    return;
-                }
-
                 try {
-                    if (this.form.type === 'subnet') {
-                        await this.submitSubnet();
-                    } else {
-                        await this.submitClient();
-                    }
+                    if (this.form.type === 'subnet') { await this.submitSubnet(); }
+                    else { await this.submitClient(); }
                 } catch (e) {
                     console.error('Submission error:', e);
                     alert('Error: ' + e.message);
@@ -851,7 +684,7 @@
             async submitClient() {
                 const res = await fetch('/api/clients', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         ip_address: this.form.address,
                         group_id: this.form.group_id ? parseInt(this.form.group_id) : null,
@@ -859,61 +692,34 @@
                         mac_address: null
                     })
                 });
-
-                if (res.ok) {
-                    this.resetForm();
-                    await this.loadAll();
-                    scheduleLucide();
-                    alert('Client added successfully!');
-                } else {
-                    const error = await res.text();
-                    alert('Failed: ' + error);
-                }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Client added successfully!'); }
+                else { alert('Failed: ' + await res.text()); }
             },
 
             async submitSubnet() {
                 const res = await fetch('/api/client-subnets', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         subnet_cidr: this.form.address,
                         group_id: this.form.group_id ? parseInt(this.form.group_id) : null,
                         comment: this.form.metadata || null
                     })
                 });
-
-                if (res.ok) {
-                    this.resetForm();
-                    await this.loadAll();
-                    scheduleLucide();
-                    alert('Subnet added successfully!');
-                } else {
-                    const error = await res.text();
-                    alert('Failed: ' + error);
-                }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Subnet added successfully!'); }
+                else { alert('Failed: ' + await res.text()); }
             },
 
             resetForm() {
-                this.form = {
-                    address: '',
-                    group_id: '',
-                    metadata: '',
-                    type: null,
-                    error: ''
-                };
+                this.form = { address: '', group_id: '', metadata: '', type: null, error: '' };
             },
 
             async deleteClient(id) {
                 if (!confirm('Delete this client?')) return;
                 try {
-                    const res = await fetch(`/api/clients/${id}`, {method: 'DELETE'});
-                    if (res.ok) {
-                        await this.loadAll();
-                        scheduleLucide();
-                        alert('Client deleted!');
-                    } else {
-                        alert('Failed: ' + await res.text());
-                    }
+                    const res = await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+                    if (res.ok) { await this.loadAll(); scheduleLucide(); }
+                    else { alert('Failed: ' + await res.text()); }
                 } catch (e) {
                     console.error(e);
                     alert('Error deleting client');
@@ -923,116 +729,43 @@
             async deleteSubnet(id) {
                 if (!confirm('Delete this subnet?')) return;
                 try {
-                    const res = await fetch(`/api/client-subnets/${id}`, {method: 'DELETE'});
-                    if (res.ok) {
-                        await this.loadAll();
-                        scheduleLucide();
-                        alert('Subnet deleted!');
-                    } else {
-                        alert('Failed: ' + await res.text());
-                    }
+                    const res = await fetch(`/api/client-subnets/${id}`, { method: 'DELETE' });
+                    if (res.ok) { await this.loadAll(); scheduleLucide(); }
+                    else { alert('Failed: ' + await res.text()); }
                 } catch (e) {
                     console.error(e);
                     alert('Error deleting subnet');
                 }
             },
 
-            toggleSelectAllClients() {
-                if (this.selectAllClients) {
-                    this.selectedClients = this.manualClients.map(c => c.id);
-                } else {
-                    this.selectedClients = [];
-                }
-            },
-
             toggleSelectAllSubnets() {
-                if (this.selectAllSubnets) {
-                    this.selectedSubnets = this.subnets.map(s => s.id);
-                } else {
-                    this.selectedSubnets = [];
-                }
-            },
-
-            updateSelectAllClients() {
-                this.selectAllClients = this.selectedClients.length === this.manualClients.length && this.manualClients.length > 0;
+                this.selectedSubnets = this.selectAllSubnets ? this.subnets.map(s => s.id) : [];
             },
 
             updateSelectAllSubnets() {
                 this.selectAllSubnets = this.selectedSubnets.length === this.subnets.length && this.subnets.length > 0;
             },
 
-            async bulkDeleteClients() {
-                const count = this.selectedClients.length;
-                if (count === 0) return;
-
-                if (!confirm(`Delete ${count} selected client${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
-                    return;
-                }
-
-                try {
-                    const batchSize = 10;
-                    let deleted = 0;
-                    let failed = 0;
-
-                    for (let i = 0; i < this.selectedClients.length; i += batchSize) {
-                        const batch = this.selectedClients.slice(i, i + batchSize);
-                        const promises = batch.map(id =>
-                            fetch(`/api/clients/${id}`, {method: 'DELETE'})
-                                .then(res => res.ok ? deleted++ : failed++)
-                                .catch(() => failed++)
-                        );
-                        await Promise.all(promises);
-                    }
-
-                    await this.loadAll();
-                    scheduleLucide(100);
-                    this.selectedClients = [];
-                    this.selectAllClients = false;
-
-                    if (failed === 0) {
-                        alert(`${deleted} client${deleted > 1 ? 's' : ''} deleted successfully!`);
-                    } else {
-                        alert(`Deleted ${deleted} client${deleted > 1 ? 's' : ''}. Failed to delete ${failed}.`);
-                    }
-                } catch (e) {
-                    console.error('Bulk delete error:', e);
-                    alert('Error during bulk delete operation');
-                }
-            },
-
             async bulkDeleteSubnets() {
                 const count = this.selectedSubnets.length;
                 if (count === 0) return;
-
-                if (!confirm(`Delete ${count} selected subnet${count > 1 ? 's' : ''}? This action cannot be undone.`)) {
-                    return;
-                }
-
+                if (!confirm(`Delete ${count} selected subnet${count > 1 ? 's' : ''}? This action cannot be undone.`)) return;
                 try {
-                    const batchSize = 10;
-                    let deleted = 0;
-                    let failed = 0;
-
-                    for (let i = 0; i < this.selectedSubnets.length; i += batchSize) {
-                        const batch = this.selectedSubnets.slice(i, i + batchSize);
-                        const promises = batch.map(id =>
-                            fetch(`/api/client-subnets/${id}`, {method: 'DELETE'})
+                    let deleted = 0, failed = 0;
+                    for (let i = 0; i < this.selectedSubnets.length; i += 10) {
+                        const batch = this.selectedSubnets.slice(i, i + 10);
+                        await Promise.all(batch.map(id =>
+                            fetch(`/api/client-subnets/${id}`, { method: 'DELETE' })
                                 .then(res => res.ok ? deleted++ : failed++)
                                 .catch(() => failed++)
-                        );
-                        await Promise.all(promises);
+                        ));
                     }
-
                     await this.loadAll();
                     scheduleLucide(100);
                     this.selectedSubnets = [];
                     this.selectAllSubnets = false;
-
-                    if (failed === 0) {
-                        alert(`${deleted} subnet${deleted > 1 ? 's' : ''} deleted successfully!`);
-                    } else {
-                        alert(`Deleted ${deleted} subnet${deleted > 1 ? 's' : ''}. Failed to delete ${failed}.`);
-                    }
+                    if (failed === 0) alert(`${deleted} subnet${deleted > 1 ? 's' : ''} deleted successfully!`);
+                    else alert(`Deleted ${deleted}. Failed to delete ${failed}.`);
                 } catch (e) {
                     console.error('Bulk delete error:', e);
                     alert('Error during bulk delete operation');

@@ -215,7 +215,7 @@
             queryRate: {queries: 0, rate: '0 q/s'},
             cacheMetrics: {},
             blockFilterStats: {total_blocked_domains: 0},
-            sourceStats: {cache: 0, upstream: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
+            sourceStats: {cache: 0, upstream: 0, local_dns: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
             queryTypes: {},
             chartsReady: false,
             pollingIntervals: {fast: null, slow: null},
@@ -282,6 +282,7 @@
                             this.sourceStats = {
                                 cache:          ss.cache_hits            || 0,
                                 upstream:       ss.upstream              || 0,
+                                local_dns:      ss.local_dns             || 0,
                                 blocklist:      ss.blocked_by_blocklist  || 0,
                                 managed_domain: ss.blocked_by_managed_domain || 0,
                                 regex_filter:   ss.blocked_by_regex_filter   || 0,
@@ -468,6 +469,7 @@
                 const SOURCE_DEF = [
                     {key: 'cache',          label: '⚡ Cache'},
                     {key: 'upstream',       label: '🌐 Upstream'},
+                    {key: 'local_dns',      label: '🏠 Local DNS'},
                     {key: 'blocklist',      label: '🚫 Blocklist'},
                     {key: 'managed_domain', label: '🔶 Managed Domain'},
                     {key: 'regex_filter',   label: '🔵 Regex Filter'},
@@ -672,6 +674,7 @@
                     const SOURCE_DEF_INIT = [
                         {key: 'cache',          label: '⚡ Cache'},
                         {key: 'upstream',       label: '🌐 Upstream'},
+                        {key: 'local_dns',      label: '🏠 Local DNS'},
                         {key: 'blocklist',      label: '🚫 Blocklist'},
                         {key: 'managed_domain', label: '🔶 Managed Domain'},
                         {key: 'regex_filter',   label: '🔵 Regex Filter'},

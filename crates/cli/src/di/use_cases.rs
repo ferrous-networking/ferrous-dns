@@ -11,8 +11,8 @@ use ferrous_dns_application::use_cases::{
     GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
     GetWhitelistSourcesUseCase, GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
-    UpdateBlocklistSourceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateGroupUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -40,6 +40,7 @@ pub struct UseCases {
     pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
+    pub update_client: Arc<UpdateClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
     pub get_blocklist_sources: Arc<GetBlocklistSourcesUseCase>,
     pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,
@@ -62,9 +63,15 @@ pub struct UseCases {
 }
 
 impl UseCases {
-    pub fn new(repos: &Repositories, pool_manager: Arc<PoolManager>) -> Self {
+    pub fn new(
+        repos: &Repositories,
+        pool_manager: Arc<PoolManager>,
+        local_dns_server: Option<String>,
+    ) -> Self {
         let arp_reader = Arc::new(LinuxArpReader::new());
-        let hostname_resolver = Arc::new(PtrHostnameResolver::new(pool_manager, 5));
+        let hostname_resolver = Arc::new(
+            PtrHostnameResolver::new(pool_manager, 5).with_local_dns_server(local_dns_server),
+        );
 
         let subnet_matcher = Arc::new(SubnetMatcherService::new(repos.client_subnet.clone()));
 
@@ -106,6 +113,7 @@ impl UseCases {
                 repos.client.clone(),
                 repos.group.clone(),
             )),
+            update_client: Arc::new(UpdateClientUseCase::new(repos.client.clone())),
             delete_client: Arc::new(DeleteClientUseCase::new(repos.client.clone())),
             get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(
                 repos.blocklist_source.clone(),

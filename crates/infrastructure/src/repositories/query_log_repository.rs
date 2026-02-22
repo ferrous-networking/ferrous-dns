@@ -88,6 +88,7 @@ fn to_static_response_status(s: &str) -> Option<&'static str> {
         "REFUSED" => Some("REFUSED"),
         "TIMEOUT" => Some("TIMEOUT"),
         "BLOCKED" => Some("BLOCKED"),
+        "LOCAL_DNS" => Some("LOCAL_DNS"),
         _ => None,
     }
 }
@@ -123,6 +124,9 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         domain: Arc::from(domain_str.as_str()),
         record_type: record_type_str.parse().ok()?,
         client_ip: client_ip_str.parse().ok()?,
+        client_hostname: row
+            .get::<Option<String>, _>("hostname")
+            .map(|s| Arc::from(s.as_str())),
         blocked: row.get::<i64, _>("blocked") != 0,
         response_time_us: row
             .get::<Option<i64>, _>("response_time_ms") // column kept as-is (SQLite no ALTER COLUMN)
@@ -339,12 +343,15 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         );
 
         let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
-                    datetime(created_at) as created_at
-             FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')
-               AND query_source = 'client'
-             ORDER BY created_at DESC
+            "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
+                    q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                    q.response_status, q.query_source, q.group_id, q.block_source,
+                    datetime(q.created_at) as created_at, c.hostname
+             FROM query_log q
+             LEFT JOIN clients c ON q.client_ip = c.ip_address
+             WHERE q.created_at >= datetime('now', '-' || ? || ' hours')
+               AND q.query_source = 'client'
+             ORDER BY q.created_at DESC
              LIMIT ?",
         )
         .bind(period_hours)
@@ -383,13 +390,16 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let rows = if let Some(cursor_id) = cursor {
             // Keyset pagination: O(log N) via primary key — no full index scan
             sqlx::query(
-                "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
-                        datetime(created_at) as created_at
-                 FROM query_log
-                 WHERE id < ?
-                   AND query_source = 'client'
-                   AND created_at >= datetime('now', '-' || ? || ' hours')
-                 ORDER BY id DESC
+                "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
+                        q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                        q.response_status, q.query_source, q.group_id, q.block_source,
+                        datetime(q.created_at) as created_at, c.hostname
+                 FROM query_log q
+                 LEFT JOIN clients c ON q.client_ip = c.ip_address
+                 WHERE q.id < ?
+                   AND q.query_source = 'client'
+                   AND q.created_at >= datetime('now', '-' || ? || ' hours')
+                 ORDER BY q.id DESC
                  LIMIT ?",
             )
             .bind(cursor_id)
@@ -400,12 +410,15 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         } else {
             // Offset pagination for the first page (cursor not yet established)
             sqlx::query(
-                "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
-                        datetime(created_at) as created_at
-                 FROM query_log
-                 WHERE created_at >= datetime('now', '-' || ? || ' hours')
-                   AND query_source = 'client'
-                 ORDER BY created_at DESC
+                "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
+                        q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                        q.response_status, q.query_source, q.group_id, q.block_source,
+                        datetime(q.created_at) as created_at, c.hostname
+                 FROM query_log q
+                 LEFT JOIN clients c ON q.client_ip = c.ip_address
+                 WHERE q.created_at >= datetime('now', '-' || ? || ' hours')
+                   AND q.query_source = 'client'
+                 ORDER BY q.created_at DESC
                  LIMIT ? OFFSET ?",
             )
             .bind(period_hours)
@@ -464,8 +477,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 COUNT(DISTINCT client_ip) as unique_clients,
                 AVG(response_time_ms) as avg_time,
                 AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
-                AVG(CASE WHEN cache_hit = 0 AND blocked = 0 THEN response_time_ms END) as avg_upstream_time,
-                SUM(CASE WHEN cache_hit = 0 AND blocked = 0 THEN 1 ELSE 0 END) as upstream_count,
+                AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
+                SUM(CASE WHEN cache_hit = 0 AND blocked = 0 AND (response_status IS NULL OR response_status != 'LOCAL_DNS') THEN 1 ELSE 0 END) as upstream_count,
+                SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count,
                 SUM(CASE WHEN blocked = 1 AND block_source = 'blocklist' THEN 1 ELSE 0 END) as blocklist_count,
                 SUM(CASE WHEN blocked = 1 AND block_source = 'managed_domain' THEN 1 ELSE 0 END) as managed_domain_count,
                 SUM(CASE WHEN blocked = 1 AND block_source = 'regex_filter' THEN 1 ELSE 0 END) as regex_filter_count
@@ -528,6 +542,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 .unwrap_or(0.0),
             queries_cache_hits: cache_hits,
             queries_upstream: row.get::<i64, _>("upstream_count") as u64,
+            queries_local_dns: row.get::<i64, _>("local_dns_count") as u64,
             queries_blocked_by_blocklist: row.get::<i64, _>("blocklist_count") as u64,
             queries_blocked_by_managed_domain: row.get::<i64, _>("managed_domain_count") as u64,
             queries_blocked_by_regex_filter: row.get::<i64, _>("regex_filter_count") as u64,

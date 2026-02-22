@@ -72,6 +72,7 @@ impl QueryLogBuilder {
             domain: self.domain,
             record_type: self.record_type,
             client_ip: self.client_ip,
+            client_hostname: None,
             blocked: self.blocked,
             response_time_us: self.response_time_us,
             cache_hit: self.cache_hit,

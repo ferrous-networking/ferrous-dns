@@ -11,7 +11,7 @@ pub mod upstream;
 
 pub use blocking::BlockingConfig;
 pub use database::DatabaseConfig;
-pub use dns::{ConditionalForward, DnsConfig};
+pub use dns::DnsConfig;
 pub use errors::ConfigError;
 pub use health::HealthCheckConfig;
 pub use local_records::LocalDnsRecord;

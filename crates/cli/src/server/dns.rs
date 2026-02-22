@@ -79,7 +79,7 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
 
         if let Some(fast_query) = fast_path::parse_query(query_buf) {
             if let Some((addresses, ttl)) =
-                handler.try_fast_path(fast_query.domain(), fast_query.record_type)
+                handler.try_fast_path(fast_query.domain(), fast_query.record_type, client_ip)
             {
                 if let Some((wire, wire_len)) =
                     wire_response::build_cache_hit_response(&fast_query, query_buf, &addresses, ttl)

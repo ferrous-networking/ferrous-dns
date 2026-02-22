@@ -2,7 +2,6 @@ pub mod block_filter;
 pub mod cache;
 pub mod cache_updater;
 pub mod cache_warming;
-pub mod conditional_forwarder;
 pub mod dnssec;
 pub mod events;
 pub mod fast_path;
@@ -22,7 +21,6 @@ pub use cache::{
 };
 pub use cache_updater::CacheUpdater;
 pub use cache_warming::{CacheWarmer, WarmingStats};
-pub use conditional_forwarder::ConditionalForwarder;
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,

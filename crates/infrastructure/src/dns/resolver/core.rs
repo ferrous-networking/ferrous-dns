@@ -1,4 +1,4 @@
-use crate::dns::conditional_forwarder::ConditionalForwarder;
+use crate::dns::forwarding::DnsForwarder;
 use crate::dns::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
@@ -10,7 +10,8 @@ pub struct CoreResolver {
     pool_manager: Arc<PoolManager>,
     query_timeout_ms: u64,
     dnssec_enabled: bool,
-    conditional_forwarder: Option<Arc<ConditionalForwarder>>,
+    local_domain_suffix: Option<(Arc<str>, Arc<str>)>,
+    local_dns_server: Option<Arc<str>>,
 }
 
 impl CoreResolver {
@@ -29,13 +30,76 @@ impl CoreResolver {
             pool_manager,
             query_timeout_ms,
             dnssec_enabled,
-            conditional_forwarder: None,
+            local_domain_suffix: None,
+            local_dns_server: None,
         }
     }
 
-    pub fn with_conditional_forwarder(mut self, forwarder: Arc<ConditionalForwarder>) -> Self {
-        self.conditional_forwarder = Some(forwarder);
+    pub fn with_local_domain(mut self, domain: Option<String>) -> Self {
+        self.local_domain_suffix = domain.map(|d| {
+            let lower = d.to_lowercase();
+            let suffix = format!(".{}", lower);
+            (Arc::from(suffix.as_str()), Arc::from(lower.as_str()))
+        });
         self
+    }
+
+    pub fn with_local_dns_server(mut self, server: Option<String>) -> Self {
+        self.local_dns_server = server.map(|s| Arc::from(s.as_str()));
+        self
+    }
+
+    fn is_local_tld(&self, domain: &str) -> bool {
+        let Some((suffix, exact)) = &self.local_domain_suffix else {
+            return false;
+        };
+        let lower = domain.to_lowercase();
+        lower.ends_with(suffix.as_ref()) || lower == exact.as_ref()
+    }
+
+    async fn resolve_local_tld(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        if let Some(ref server) = self.local_dns_server {
+            let forwarder = DnsForwarder::new();
+            match forwarder
+                .query(
+                    server,
+                    &query.domain,
+                    &query.record_type,
+                    self.query_timeout_ms,
+                )
+                .await
+            {
+                Ok(response) if !response.is_nxdomain() && !response.is_server_error() => {
+                    debug!(
+                        domain = %query.domain,
+                        server = %server,
+                        "Local TLD query resolved via local DNS server"
+                    );
+                    return Ok(DnsResolution {
+                        addresses: Arc::new(response.addresses),
+                        cache_hit: false,
+                        local_dns: true,
+                        dnssec_status: None,
+                        cname: None,
+                        upstream_server: Some(server.to_string()),
+                        min_ttl: response.min_ttl,
+                        authority_records: response.authority_records,
+                    });
+                }
+                Ok(_) => {
+                    debug!(
+                        domain = %query.domain,
+                        server = %server,
+                        "Local TLD query returned NXDOMAIN from local DNS server"
+                    );
+                    return Err(DomainError::LocalNxDomain);
+                }
+                Err(_) => {}
+            }
+        }
+
+        debug!(domain = %query.domain, "Local TLD query not in cache — returning NXDOMAIN");
+        Err(DomainError::NxDomain)
     }
 }
 
@@ -48,48 +112,8 @@ impl DnsResolver for CoreResolver {
             "CoreResolver: performing upstream query"
         );
 
-        if let Some(ref forwarder) = self.conditional_forwarder {
-            if let Some((rule, server)) = forwarder.should_forward(query) {
-                debug!(
-                    domain = %query.domain,
-                    record_type = %query.record_type,
-                    rule_domain = %rule.domain,
-                    server = %server,
-                    "Using conditional forwarding"
-                );
-
-                match forwarder
-                    .query_specific_server(query, &server, self.query_timeout_ms)
-                    .await
-                {
-                    Ok(addresses) => {
-                        debug!(
-                            domain = %query.domain,
-                            addresses = addresses.len(),
-                            server = %server,
-                            "Conditional forwarding successful"
-                        );
-
-                        return Ok(DnsResolution {
-                            addresses: Arc::new(addresses),
-                            cache_hit: false,
-                            dnssec_status: None,
-                            cname: None,
-                            upstream_server: Some(format!("conditional:{}", server)),
-                            min_ttl: None,
-                            authority_records: vec![],
-                        });
-                    }
-                    Err(e) => {
-                        debug!(
-                            error = %e,
-                            domain = %query.domain,
-                            server = %server,
-                            "Conditional forwarding failed, falling back to upstream"
-                        );
-                    }
-                }
-            }
+        if self.is_local_tld(&query.domain) {
+            return self.resolve_local_tld(query).await;
         }
 
         let result = self
@@ -116,6 +140,7 @@ impl DnsResolver for CoreResolver {
         Ok(DnsResolution {
             addresses,
             cache_hit: false,
+            local_dns: false,
             dnssec_status: None,
             cname: None,
             upstream_server,

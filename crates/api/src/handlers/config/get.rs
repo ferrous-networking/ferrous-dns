@@ -1,7 +1,7 @@
 use crate::{
     dto::{
         BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse, DnsConfigResponse,
-        LoggingConfigResponse, ServerConfigResponse,
+        HealthCheckResponse, LoggingConfigResponse, ServerConfigResponse, UpstreamPoolResponse,
     },
     state::AppState,
 };
@@ -35,14 +35,14 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 .dns
                 .pools
                 .iter()
-                .map(|p| crate::dto::UpstreamPoolResponse {
+                .map(|p| UpstreamPoolResponse {
                     name: p.name.clone(),
                     strategy: format!("{:?}", p.strategy).to_lowercase(),
                     priority: p.priority,
                     servers: p.servers.clone(),
                 })
                 .collect(),
-            health_check: crate::dto::HealthCheckResponse {
+            health_check: HealthCheckResponse {
                 enabled: true,
                 interval_seconds: config.dns.health_check.interval,
                 timeout_ms: config.dns.health_check.timeout,
@@ -66,15 +66,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             block_non_fqdn: config.dns.block_non_fqdn,
             block_private_ptr: config.dns.block_private_ptr,
             local_domain: config.dns.local_domain.clone(),
-            conditional_forwarding: config
-                .dns
-                .conditional_forwarding
-                .iter()
-                .map(|cf| crate::dto::ConditionalForwardingResponse {
-                    domain: cf.domain.clone(),
-                    server: cf.server.clone(),
-                })
-                .collect(),
+            local_dns_server: config.dns.local_dns_server.clone(),
         },
         blocking: BlockingConfigResponse {
             enabled: config.blocking.enabled,

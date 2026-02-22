@@ -28,6 +28,7 @@ impl DnsResolver for MockNegativeResolver {
         Ok(DnsResolution {
             addresses: Arc::new(vec![]),
             cache_hit: false,
+            local_dns: false,
             dnssec_status: None,
             cname: None,
             upstream_server: None,

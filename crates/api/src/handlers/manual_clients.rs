@@ -7,7 +7,7 @@ use ferrous_dns_domain::DomainError;
 use tracing::error;
 
 use crate::{
-    dto::{ClientResponse, CreateManualClientRequest},
+    dto::{ClientResponse, CreateManualClientRequest, UpdateClientRequest},
     state::AppState,
 };
 
@@ -43,6 +43,34 @@ pub async fn create_manual_client(
         Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
         Err(e) => {
             error!(error = %e, "Failed to create manual client");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn update_manual_client(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(req): Json<UpdateClientRequest>,
+) -> Result<Json<ClientResponse>, (StatusCode, String)> {
+    match state
+        .update_client
+        .execute(id, req.hostname, req.group_id)
+        .await
+    {
+        Ok(client) => Ok(Json(ClientResponse {
+            id: client.id.unwrap_or(0),
+            ip_address: client.ip_address.to_string(),
+            mac_address: client.mac_address.map(|s| s.to_string()),
+            hostname: client.hostname.map(|s| s.to_string()),
+            first_seen: client.first_seen.unwrap_or_default(),
+            last_seen: client.last_seen.unwrap_or_default(),
+            query_count: client.query_count,
+            group_id: client.group_id,
+        })),
+        Err(DomainError::ClientNotFound(msg)) => Err((StatusCode::NOT_FOUND, msg)),
+        Err(e) => {
+            error!(error = %e, "Failed to update client");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }

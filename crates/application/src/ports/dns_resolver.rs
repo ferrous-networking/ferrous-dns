@@ -8,6 +8,7 @@ use std::sync::Arc;
 pub struct DnsResolution {
     pub addresses: Arc<Vec<IpAddr>>,
     pub cache_hit: bool,
+    pub local_dns: bool,
     pub dnssec_status: Option<&'static str>,
     pub cname: Option<String>,
     pub upstream_server: Option<String>,
@@ -21,6 +22,7 @@ impl DnsResolution {
         Self {
             addresses: Arc::new(addresses),
             cache_hit,
+            local_dns: false,
             dnssec_status: None,
             cname: None,
             upstream_server: None,
@@ -37,6 +39,7 @@ impl DnsResolution {
         Self {
             addresses: Arc::new(addresses),
             cache_hit,
+            local_dns: false,
             dnssec_status,
             cname: None,
             upstream_server: None,
@@ -54,6 +57,7 @@ impl DnsResolution {
         Self {
             addresses: Arc::new(addresses),
             cache_hit,
+            local_dns: false,
             dnssec_status,
             cname,
             upstream_server: None,
@@ -67,9 +71,6 @@ impl DnsResolution {
 pub trait DnsResolver: Send + Sync {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError>;
 
-    /// Check only the DNS cache without going to upstream.
-    /// Returns `Some(resolution)` on hit, `None` on miss.
-    /// Default implementation returns None (no cache).
     fn try_cache(&self, _query: &DnsQuery) -> Option<DnsResolution> {
         None
     }

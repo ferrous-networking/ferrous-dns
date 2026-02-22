@@ -74,6 +74,7 @@ impl QueryEventLogger {
                 client_ip: "127.0.0.1"
                     .parse::<IpAddr>()
                     .unwrap_or_else(|_| IpAddr::from([127, 0, 0, 1])),
+                client_hostname: None,
                 blocked: false,
                 response_time_us: Some(event.response_time_us),
                 cache_hit: false,
