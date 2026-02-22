@@ -48,9 +48,22 @@ Quick start with Docker:
 ```bash
 docker run -d \
   --name ferrous-dns \
-  -p 53:53/udp \
-  -p 8080:8080 \
-  ghcr.io/andersonviudes/ferrous-dns:latest
+  --restart always \
+  --network host \
+  --user root \
+  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
+  -e FERROUS_DATABASE=/data/db/ferrous.db \
+  -e FERROUS_DNS_PORT=53 \
+  -e FERROUS_WEB_PORT=8080 \
+  -e FERROUS_BIND_ADDRESS=0.0.0.0 \
+  -e FERROUS_LOG_LEVEL=info \
+  -e TZ=America/Sao_Paulo \
+  --dns 10.0.0.1 \
+  --cap-add NET_ADMIN \
+  --cap-add SYS_TIME \
+  --cap-add SYS_NICE \
+  --cap-add NET_BIND_SERVICE \
+  andersonviudes/ferrous-dns:latest
 ```
 
 Access the dashboard at `http://localhost:8080`
@@ -115,28 +128,6 @@ docker-compose up -d
 | `FERROUS_DATABASE` | `/var/lib/ferrous-dns/ferrous.db` | Database path |
 | `FERROUS_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 
-#### Custom Configuration Example
-
-```bash
-docker run -d \
-  --name ferrous-dns \
-  --restart always \
-  --network host \
-  --user root \
-  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
-  -e FERROUS_DATABASE=/data/db/ferrous.db \
-  -e FERROUS_DNS_PORT=53 \
-  -e FERROUS_WEB_PORT=8080 \
-  -e FERROUS_BIND_ADDRESS=0.0.0.0 \
-  -e FERROUS_LOG_LEVEL=info \
-  -e TZ=America/Sao_Paulo \
-  --dns 10.0.0.1 \
-  --cap-add NET_ADMIN \
-  --cap-add SYS_TIME \
-  --cap-add SYS_NICE \
-  --cap-add NET_BIND_SERVICE \
-  andersonviudes/ferrous-dns:latest
-```
 
 ---
 

@@ -29,9 +29,10 @@ impl GetRecentQueriesUseCase {
         limit: u32,
         offset: u32,
         period_hours: f32,
-    ) -> Result<(Vec<QueryLog>, u64), DomainError> {
+        cursor: Option<i64>,
+    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         self.repository
-            .get_recent_paged(limit.min(MAX_LIMIT), offset, period_hours)
+            .get_recent_paged(limit.min(MAX_LIMIT), offset, period_hours, cursor)
             .await
     }
 }

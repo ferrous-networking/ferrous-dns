@@ -471,12 +471,19 @@ impl QueryLogRepository for MockQueryLogRepository {
         limit: u32,
         offset: u32,
         period_hours: f32,
-    ) -> Result<(Vec<QueryLog>, u64), DomainError> {
+        _cursor: Option<i64>,
+    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         let all = self.get_recent(limit + offset, period_hours).await?;
         let total = all.len() as u64;
         let start = (offset as usize).min(all.len());
         let end = (start + limit as usize).min(all.len());
-        Ok((all[start..end].to_vec(), total))
+        let page = all[start..end].to_vec();
+        let next_cursor = if end < all.len() {
+            page.last().and_then(|q| q.id)
+        } else {
+            None
+        };
+        Ok((page, total, next_cursor))
     }
 
     async fn get_stats(&self, _period_hours: f32) -> Result<QueryStats, DomainError> {

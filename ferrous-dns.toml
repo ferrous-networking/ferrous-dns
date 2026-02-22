@@ -1,5 +1,5 @@
 [server]
-dns_port = 53                           # UDP/TCP port for DNS queries
+dns_port = 5353                           # UDP/TCP port for DNS queries
 web_port = 8080                         # HTTP port for the web dashboard and REST API
 bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on all interfaces
 

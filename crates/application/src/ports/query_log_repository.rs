@@ -54,7 +54,8 @@ pub trait QueryLogRepository: Send + Sync {
         limit: u32,
         offset: u32,
         period_hours: f32,
-    ) -> Result<(Vec<QueryLog>, u64), DomainError>;
+        cursor: Option<i64>,
+    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError>;
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError>;
     async fn get_timeline(
         &self,

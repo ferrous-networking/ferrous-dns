@@ -14,7 +14,13 @@ pub async fn get_queries(
     State(state): State<AppState>,
     Query(params): Query<QueryParams>,
 ) -> Json<PaginatedQueries> {
-    debug!(period = %params.period, limit = params.limit, offset = params.offset, "Fetching recent queries");
+    debug!(
+        period = %params.period,
+        limit = params.limit,
+        offset = params.offset,
+        cursor = params.cursor,
+        "Fetching recent queries"
+    );
 
     let period_hours = parse_period(&params.period)
         .map(validate_period)
@@ -22,10 +28,10 @@ pub async fn get_queries(
 
     match state
         .get_queries
-        .execute_paged(params.limit, params.offset, period_hours)
+        .execute_paged(params.limit, params.offset, period_hours, params.cursor)
         .await
     {
-        Ok((queries, total)) => {
+        Ok((queries, total, next_cursor)) => {
             let data: Vec<QueryResponse> = queries
                 .into_iter()
                 .map(|q| QueryResponse {
@@ -47,6 +53,7 @@ pub async fn get_queries(
             debug!(
                 count = data.len(),
                 total = total,
+                next_cursor = next_cursor,
                 "Queries retrieved successfully"
             );
             Json(PaginatedQueries {
@@ -54,6 +61,7 @@ pub async fn get_queries(
                 total,
                 limit: params.limit,
                 offset: params.offset,
+                next_cursor,
             })
         }
         Err(e) => {
@@ -63,6 +71,7 @@ pub async fn get_queries(
                 total: 0,
                 limit: params.limit,
                 offset: params.offset,
+                next_cursor: None,
             })
         }
     }

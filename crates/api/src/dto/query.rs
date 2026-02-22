@@ -6,6 +6,7 @@ pub struct QueryParams {
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
+    pub cursor: Option<i64>,
     #[serde(default = "default_period")]
     pub period: String,
 }
@@ -20,6 +21,7 @@ pub struct PaginatedQueries {
     pub total: u64,
     pub limit: u32,
     pub offset: u32,
+    pub next_cursor: Option<i64>,
 }
 
 fn default_period() -> String {

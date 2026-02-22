@@ -368,30 +368,52 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         limit: u32,
         offset: u32,
         period_hours: f32,
-    ) -> Result<(Vec<QueryLog>, u64), DomainError> {
+        cursor: Option<i64>,
+    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         debug!(
             limit = limit,
             offset = offset,
             period_hours = period_hours,
+            cursor = cursor,
             "Fetching paginated queries"
         );
 
         let fetch_limit = limit as i64 + 1;
 
-        let rows = sqlx::query(
-            "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
-                    datetime(created_at) as created_at
-             FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')
-               AND query_source = 'client'
-             ORDER BY created_at DESC
-             LIMIT ? OFFSET ?",
-        )
-        .bind(period_hours)
-        .bind(fetch_limit)
-        .bind(offset as i64)
-        .fetch_all(&self.read_pool)
-        .await
+        let rows = if let Some(cursor_id) = cursor {
+            // Keyset pagination: O(log N) via primary key — no full index scan
+            sqlx::query(
+                "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
+                        datetime(created_at) as created_at
+                 FROM query_log
+                 WHERE id < ?
+                   AND query_source = 'client'
+                   AND created_at >= datetime('now', '-' || ? || ' hours')
+                 ORDER BY id DESC
+                 LIMIT ?",
+            )
+            .bind(cursor_id)
+            .bind(period_hours)
+            .bind(fetch_limit)
+            .fetch_all(&self.read_pool)
+            .await
+        } else {
+            // Offset pagination for the first page (cursor not yet established)
+            sqlx::query(
+                "SELECT id, domain, record_type, client_ip, blocked, response_time_ms, cache_hit, cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source,
+                        datetime(created_at) as created_at
+                 FROM query_log
+                 WHERE created_at >= datetime('now', '-' || ? || ' hours')
+                   AND query_source = 'client'
+                 ORDER BY created_at DESC
+                 LIMIT ? OFFSET ?",
+            )
+            .bind(period_hours)
+            .bind(fetch_limit)
+            .bind(offset as i64)
+            .fetch_all(&self.read_pool)
+            .await
+        }
         .map_err(|e| {
             error!(error = %e, "Failed to fetch paginated queries");
             DomainError::InvalidDomainName(format!("Database error: {}", e))
@@ -403,6 +425,13 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             rows.truncate(limit as usize);
         }
 
+        // The smallest id in the page is the cursor for the next page
+        let next_cursor = if has_more {
+            rows.last().map(|r| r.get::<i64, _>("id"))
+        } else {
+            None
+        };
+
         let entries: Vec<QueryLog> = rows.into_iter().filter_map(row_to_query_log).collect();
 
         let estimated_total = if has_more {
@@ -413,9 +442,11 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
         debug!(
             count = entries.len(),
-            estimated_total, "Paginated queries fetched"
+            estimated_total,
+            next_cursor = next_cursor,
+            "Paginated queries fetched"
         );
-        Ok((entries, estimated_total))
+        Ok((entries, estimated_total, next_cursor))
     }
 
     #[instrument(skip(self))]
@@ -561,7 +592,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let row = sqlx::query(
             "SELECT COUNT(*) as count
              FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' seconds')",
+             WHERE query_source = 'client'
+               AND created_at >= datetime('now', '-' || ? || ' seconds')",
         )
         .bind(seconds_ago)
         .fetch_one(&self.read_pool)
