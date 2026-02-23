@@ -9,6 +9,8 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::task::JoinSet;
 use tracing::{error, info};
 
+use super::pktinfo;
+
 pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> anyhow::Result<()> {
     let socket_addr: SocketAddr = bind_addr.parse()?;
     let domain = if socket_addr.is_ipv4() {
@@ -66,7 +68,7 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
     let mut recv_buf = [0u8; 4096];
 
     loop {
-        let (n, from) = match socket.recv_from(&mut recv_buf).await {
+        let (n, from, dst_ip) = match pktinfo::recv_with_pktinfo(&socket, &mut recv_buf).await {
             Ok(x) => x,
             Err(e) => {
                 error!(worker = worker_id, error = %e, "UDP recv error");
@@ -84,7 +86,8 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
                 if let Some((wire, wire_len)) =
                     wire_response::build_cache_hit_response(&fast_query, query_buf, &addresses, ttl)
                 {
-                    let _ = socket.send_to(&wire[..wire_len], from).await;
+                    let _ =
+                        pktinfo::send_with_src_ip(&socket, &wire[..wire_len], from, dst_ip).await;
                     continue;
                 }
             }
@@ -98,7 +101,7 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
                 .handle_raw_udp_fallback(&owned_buf, client_ip)
                 .await
             {
-                let _ = socket_clone.send_to(&response, from).await;
+                let _ = pktinfo::send_with_src_ip(&socket_clone, &response, from, dst_ip).await;
             }
         });
     }
@@ -115,6 +118,7 @@ fn create_udp_socket(domain: Domain, socket_addr: SocketAddr) -> anyhow::Result<
     socket.set_recv_buffer_size(8 * 1024 * 1024)?;
     socket.set_send_buffer_size(4 * 1024 * 1024)?;
     socket.bind(&socket_addr.into())?;
+    pktinfo::enable_pktinfo(&socket);
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();
     Ok(UdpSocket::from_std(std_socket)?)

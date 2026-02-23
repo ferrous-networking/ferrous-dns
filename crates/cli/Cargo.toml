@@ -28,3 +28,4 @@ hickory-server.workspace = true
 socket2.workspace = true
 mimalloc.workspace = true
 core_affinity.workspace = true
+libc.workspace = true
