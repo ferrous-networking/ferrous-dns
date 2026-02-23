@@ -35,6 +35,7 @@
 
 ### 🔮 v0.3.0 - Advanced Features
 
+- [ ] dash board web socket performace slow queries 
 - [ ] Advanced analytics and graphs
 - [ ] Query filtering rules
 - [ ] DoQ upstream

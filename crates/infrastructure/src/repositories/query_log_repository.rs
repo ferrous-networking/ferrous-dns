@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::Utc;
 use compact_str::CompactString;
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::{
@@ -11,6 +12,25 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, warn};
+
+fn hours_ago_cutoff(hours: f32) -> String {
+    let ms = (hours * 3_600_000.0) as i64;
+    (Utc::now() - chrono::Duration::milliseconds(ms))
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
+fn seconds_ago_cutoff(seconds: i64) -> String {
+    (Utc::now() - chrono::Duration::seconds(seconds))
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
+fn days_ago_cutoff(days: u32) -> String {
+    (Utc::now() - chrono::Duration::days(days as i64))
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
 
 const COLS_PER_ROW: usize = 13;
 const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
@@ -227,7 +247,7 @@ impl SqliteQueryLogRepository {
              SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked, \
              SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END) as unblocked \
              FROM query_log \
-             WHERE created_at >= datetime('now', '-' || ? || ' hours') \
+             WHERE created_at >= ? \
                AND query_source = 'client' \
              GROUP BY time_bucket \
              ORDER BY time_bucket ASC"
@@ -342,6 +362,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "Fetching recent queries with time filter"
         );
 
+        let cutoff = hours_ago_cutoff(period_hours);
         let rows = sqlx::query(
             "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                     q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
@@ -349,12 +370,12 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     datetime(q.created_at) as created_at, c.hostname
              FROM query_log q
              LEFT JOIN clients c ON q.client_ip = c.ip_address
-             WHERE q.created_at >= datetime('now', '-' || ? || ' hours')
+             WHERE q.created_at >= ?
                AND q.query_source = 'client'
              ORDER BY q.created_at DESC
              LIMIT ?",
         )
-        .bind(period_hours)
+        .bind(cutoff)
         .bind(limit as i64)
         .fetch_all(&self.read_pool)
         .await
@@ -386,6 +407,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         );
 
         let fetch_limit = limit as i64 + 1;
+        let cutoff = hours_ago_cutoff(period_hours);
 
         let rows = if let Some(cursor_id) = cursor {
             // Keyset pagination: O(log N) via primary key — no full index scan
@@ -398,12 +420,12 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
                  WHERE q.id < ?
                    AND q.query_source = 'client'
-                   AND q.created_at >= datetime('now', '-' || ? || ' hours')
+                   AND q.created_at >= ?
                  ORDER BY q.id DESC
                  LIMIT ?",
             )
             .bind(cursor_id)
-            .bind(period_hours)
+            .bind(&cutoff)
             .bind(fetch_limit)
             .fetch_all(&self.read_pool)
             .await
@@ -416,12 +438,12 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                         datetime(q.created_at) as created_at, c.hostname
                  FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
-                 WHERE q.created_at >= datetime('now', '-' || ? || ' hours')
+                 WHERE q.created_at >= ?
                    AND q.query_source = 'client'
                  ORDER BY q.created_at DESC
                  LIMIT ? OFFSET ?",
             )
-            .bind(period_hours)
+            .bind(&cutoff)
             .bind(fetch_limit)
             .bind(offset as i64)
             .fetch_all(&self.read_pool)
@@ -469,6 +491,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "Fetching query statistics with Phase 4 analytics (optimized single-pass)"
         );
 
+        let cutoff = hours_ago_cutoff(period_hours);
         let row = sqlx::query(
             "SELECT
                 COUNT(*) as total,
@@ -485,10 +508,10 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 SUM(CASE WHEN blocked = 1 AND block_source = 'regex_filter' THEN 1 ELSE 0 END) as regex_filter_count
              FROM query_log
              WHERE response_time_ms IS NOT NULL
-               AND created_at >= datetime('now', '-' || ? || ' hours')
+               AND created_at >= ?
                AND query_source = 'client'",
         )
-        .bind(period_hours)
+        .bind(&cutoff)
         .fetch_one(&self.read_pool)
         .await
         .map_err(|e| {
@@ -507,11 +530,11 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let type_rows = sqlx::query(
             "SELECT record_type, COUNT(*) as count
              FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')
+             WHERE created_at >= ?
                AND query_source = 'client'
              GROUP BY record_type",
         )
-        .bind(period_hours)
+        .bind(&cutoff)
         .fetch_all(&self.read_pool)
         .await
         .map_err(|e| {
@@ -573,9 +596,10 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         debug!(period_hours = period_hours, "Fetching query timeline");
 
         let sql = Self::build_timeline_sql(granularity.as_sql_expr());
+        let cutoff = hours_ago_cutoff(period_hours as f32);
 
         let rows = sqlx::query(&sql)
-            .bind(period_hours as i64)
+            .bind(cutoff)
             .fetch_all(&self.read_pool)
             .await
             .map_err(|e| {
@@ -604,13 +628,14 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             "Counting queries since N seconds ago"
         );
 
+        let cutoff = seconds_ago_cutoff(seconds_ago);
         let row = sqlx::query(
             "SELECT COUNT(*) as count
              FROM query_log
              WHERE query_source = 'client'
-               AND created_at >= datetime('now', '-' || ? || ' seconds')",
+               AND created_at >= ?",
         )
-        .bind(seconds_ago)
+        .bind(cutoff)
         .fetch_one(&self.read_pool)
         .await
         .map_err(|e| {
@@ -630,6 +655,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
     ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
         debug!(period_hours = period_hours, "Fetching cache statistics");
 
+        let cutoff = hours_ago_cutoff(period_hours);
         let row = sqlx::query(
             "SELECT
                 SUM(CASE WHEN query_source = 'client' THEN 1 ELSE 0 END) as total_queries,
@@ -637,9 +663,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 SUM(CASE WHEN cache_refresh = 1 THEN 1 ELSE 0 END) as refreshes,
                 SUM(CASE WHEN cache_hit = 0 AND cache_refresh = 0 AND blocked = 0 AND query_source = 'client' THEN 1 ELSE 0 END) as misses
              FROM query_log
-             WHERE created_at >= datetime('now', '-' || ? || ' hours')",
+             WHERE created_at >= ?",
         )
-        .bind(period_hours)
+        .bind(cutoff)
         .fetch_one(&self.read_pool)
         .await
         .map_err(|e| {
@@ -682,16 +708,15 @@ impl QueryLogRepository for SqliteQueryLogRepository {
     }
 
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
-        let result = sqlx::query(
-            "DELETE FROM query_log WHERE created_at < datetime('now', '-' || ? || ' days')",
-        )
-        .bind(days as i64)
-        .execute(&self.write_pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to delete old query logs");
-            DomainError::DatabaseError(format!("Failed to delete old query logs: {}", e))
-        })?;
+        let cutoff = days_ago_cutoff(days);
+        let result = sqlx::query("DELETE FROM query_log WHERE created_at < ?")
+            .bind(cutoff)
+            .execute(&self.write_pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to delete old query logs");
+                DomainError::DatabaseError(format!("Failed to delete old query logs: {}", e))
+            })?;
 
         let deleted = result.rows_affected();
         info!(deleted, days, "Old query logs deleted");
