@@ -4,7 +4,8 @@ use ferrous_dns_infrastructure::dns::cache::eviction::{
     EvictionPolicy, HitRatePolicy, LfuPolicy, LfukPolicy, LruPolicy,
 };
 use ferrous_dns_infrastructure::dns::{
-    CachedData, CachedRecord, DnsCache, DnsCacheConfig, DnssecStatus, EvictionStrategy,
+    CachedAddresses, CachedData, CachedRecord, DnsCache, DnsCacheConfig, DnssecStatus,
+    EvictionStrategy,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -33,7 +34,10 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(Arc::new(vec![addr]))
+    CachedData::IpAddresses(CachedAddresses {
+        addresses: Arc::new(vec![addr]),
+        cname_chain: vec![],
+    })
 }
 
 /// Cria dados CNAME que NÃO vão para o cache L1 (apenas IpAddresses usam L1).
@@ -1024,7 +1028,10 @@ fn test_compact_retains_valid_entries() {
 
 fn make_record_with_hits(hits: u64) -> CachedRecord {
     let record = CachedRecord::new(
-        CachedData::IpAddresses(Arc::new(vec!["1.1.1.1".parse::<IpAddr>().unwrap()])),
+        CachedData::IpAddresses(CachedAddresses {
+            addresses: Arc::new(vec!["1.1.1.1".parse::<IpAddr>().unwrap()]),
+            cname_chain: vec![],
+        }),
         300,
         RecordType::A,
         Some(DnssecStatus::Unknown),

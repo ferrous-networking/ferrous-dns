@@ -103,6 +103,7 @@ pub struct QueryStats {
     pub queries_blocked_by_blocklist: u64,
     pub queries_blocked_by_managed_domain: u64,
     pub queries_blocked_by_regex_filter: u64,
+    pub queries_blocked_by_cname_cloaking: u64,
 
     pub queries_by_type: HashMap<RecordType, u64>,
     pub most_queried_type: Option<RecordType>,
@@ -181,6 +182,7 @@ impl Default for QueryStats {
             queries_blocked_by_blocklist: 0,
             queries_blocked_by_managed_domain: 0,
             queries_blocked_by_regex_filter: 0,
+            queries_blocked_by_cname_cloaking: 0,
             queries_by_type: HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),

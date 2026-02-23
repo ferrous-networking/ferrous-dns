@@ -14,7 +14,7 @@ pub mod refresh;
 pub mod storage;
 
 pub use bloom::AtomicBloom;
-pub use data::{CachedData, DnssecStatus};
+pub use data::{CachedAddresses, CachedData, DnssecStatus};
 pub use eviction::EvictionStrategy;
 pub use key::{BorrowedKey, CacheKey};
 pub use metrics::CacheMetrics;

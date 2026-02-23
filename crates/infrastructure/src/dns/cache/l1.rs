@@ -8,8 +8,11 @@ use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+type L1Hit = (Arc<Vec<IpAddr>>, Vec<Arc<str>>, u32);
+
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
+    cname_chain: Vec<Arc<str>>,
     expires_secs: u64,
 }
 
@@ -22,7 +25,7 @@ thread_local! {
 }
 
 #[inline]
-pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<(Arc<Vec<IpAddr>>, u32)> {
+pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
     L1_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         let key = (CompactString::from(domain), *record_type);
@@ -31,7 +34,11 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<(Arc<Vec<IpAddr>
             let now = coarse_now_secs();
             if now < entry.expires_secs {
                 let remaining = (entry.expires_secs - now).min(u32::MAX as u64) as u32;
-                return Some((Arc::clone(&entry.addresses), remaining));
+                return Some((
+                    Arc::clone(&entry.addresses),
+                    entry.cname_chain.clone(),
+                    remaining,
+                ));
             }
             cache.pop(&key);
         }
@@ -45,6 +52,7 @@ pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
     addresses: Arc<Vec<IpAddr>>,
+    cname_chain: Vec<Arc<str>>,
     expires_secs: u64,
 ) {
     L1_CACHE.with(|cache| {
@@ -52,6 +60,7 @@ pub fn l1_insert(
         let key = (CompactString::from(domain), *record_type);
         let entry = L1Entry {
             addresses,
+            cname_chain,
             expires_secs,
         };
         cache.put(key, entry);

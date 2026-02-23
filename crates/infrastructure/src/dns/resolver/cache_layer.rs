@@ -1,5 +1,7 @@
 use super::super::cache::key::CacheKey;
-use super::super::cache::{CachedData, DnsCacheAccess, DnssecStatus, NegativeQueryTracker};
+use super::super::cache::{
+    CachedAddresses, CachedData, DnsCacheAccess, DnssecStatus, NegativeQueryTracker,
+};
 use super::super::prefetch::PrefetchPredictor;
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -71,12 +73,12 @@ impl CachedResolver {
                 let dnssec_str = dnssec_status.map(|s| s.as_str());
 
                 match data {
-                    CachedData::IpAddresses(addrs) => DnsResolution {
-                        addresses: Arc::clone(&addrs),
+                    CachedData::IpAddresses(entry) => DnsResolution {
+                        addresses: Arc::clone(&entry.addresses),
                         cache_hit: true,
                         local_dns: false,
                         dnssec_status: dnssec_str,
-                        cname: None,
+                        cname_chain: entry.cname_chain.clone(),
                         upstream_server: None,
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
@@ -86,7 +88,7 @@ impl CachedResolver {
                         cache_hit: true,
                         local_dns: false,
                         dnssec_status: dnssec_str,
-                        cname: None,
+                        cname_chain: vec![],
                         upstream_server: None,
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
@@ -98,7 +100,7 @@ impl CachedResolver {
                             cache_hit: true,
                             local_dns: false,
                             dnssec_status: dnssec_str,
-                            cname: None,
+                            cname_chain: vec![],
                             upstream_server: None,
                             min_ttl: remaining_ttl,
                             authority_records: synthesize_negative_soa(
@@ -140,7 +142,10 @@ impl CachedResolver {
             self.cache.insert(
                 query.domain.as_ref(),
                 query.record_type,
-                CachedData::IpAddresses(addresses),
+                CachedData::IpAddresses(CachedAddresses {
+                    addresses,
+                    cname_chain: resolution.cname_chain.clone(),
+                }),
                 ttl,
                 Some(dnssec_status),
             );
@@ -181,7 +186,7 @@ impl CachedResolver {
                     cache_hit: true,
                     local_dns: false,
                     dnssec_status: arc_res.dnssec_status,
-                    cname: None,
+                    cname_chain: arc_res.cname_chain.clone(),
                     upstream_server: None,
                     min_ttl: arc_res.min_ttl,
                     authority_records: vec![],
@@ -195,7 +200,7 @@ impl CachedResolver {
                 cache_hit: true,
                 local_dns: false,
                 dnssec_status: arc_res.dnssec_status,
-                cname: None,
+                cname_chain: arc_res.cname_chain.clone(),
                 upstream_server: None,
                 min_ttl: arc_res.min_ttl,
                 authority_records: vec![],

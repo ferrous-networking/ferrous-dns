@@ -16,8 +16,8 @@ pub mod wire_response;
 
 pub use block_filter::BlockFilterEngine;
 pub use cache::{
-    CacheKey, CacheMetrics, CachedData, CachedRecord, DnsCache, DnsCacheAccess, DnsCacheConfig,
-    DnssecStatus, EvictionStrategy, NegativeQueryTracker,
+    CacheKey, CacheMetrics, CachedAddresses, CachedData, CachedRecord, DnsCache, DnsCacheAccess,
+    DnsCacheConfig, DnssecStatus, EvictionStrategy, NegativeQueryTracker,
 };
 pub use cache_updater::CacheUpdater;
 pub use cache_warming::{CacheWarmer, WarmingStats};

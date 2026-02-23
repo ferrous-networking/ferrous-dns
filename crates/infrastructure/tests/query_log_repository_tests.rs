@@ -77,6 +77,7 @@ async fn test_get_stats_empty() {
     assert_eq!(stats.queries_blocked_by_blocklist, 0);
     assert_eq!(stats.queries_blocked_by_managed_domain, 0);
     assert_eq!(stats.queries_blocked_by_regex_filter, 0);
+    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
 }
 
 #[tokio::test]
@@ -124,6 +125,24 @@ async fn test_get_stats_blocklist_breakdown() {
     assert_eq!(stats.queries_blocked_by_blocklist, 2);
     assert_eq!(stats.queries_blocked_by_managed_domain, 1);
     assert_eq!(stats.queries_blocked_by_regex_filter, 3);
+    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
+}
+
+#[tokio::test]
+async fn test_get_stats_cname_cloaking_breakdown() {
+    let pool = create_test_db().await;
+
+    insert_log(&pool, false, true, Some("cname_cloaking"), "client", None).await;
+    insert_log(&pool, false, true, Some("cname_cloaking"), "client", None).await;
+    insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
+
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let stats = repo.get_stats(24.0).await.unwrap();
+
+    assert_eq!(stats.queries_blocked, 3);
+    assert_eq!(stats.queries_blocked_by_cname_cloaking, 2);
+    assert_eq!(stats.queries_blocked_by_blocklist, 1);
 }
 
 #[tokio::test]

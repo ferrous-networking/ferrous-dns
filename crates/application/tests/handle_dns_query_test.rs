@@ -1,9 +1,10 @@
 mod helpers;
 
 use ferrous_dns_application::{ports::DnsResolution, use_cases::HandleDnsQueryUseCase};
-use ferrous_dns_domain::{DnsRequest, DomainError, RecordType};
+use ferrous_dns_domain::{BlockSource, DnsRequest, DomainError, RecordType};
 use helpers::{
-    MockBlockFilterEngine, MockClientRepository, MockDnsResolver, MockQueryLogRepository,
+    DnsResolutionBuilder, MockBlockFilterEngine, MockClientRepository, MockDnsResolver,
+    MockQueryLogRepository,
 };
 use std::{net::IpAddr, sync::Arc};
 
@@ -336,6 +337,141 @@ async fn test_execute_without_client_tracking_does_not_create_clients() {
     use_case.execute(&request).await.unwrap();
 
     assert_eq!(client_repo.count().await, 0);
+}
+
+// ── CNAME cloaking detection ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_cname_cloaking_blocked_upstream_path() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    filter.block_domain("x.tracker.com");
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .with_cname_chain(vec!["x.tracker.com"])
+        .build();
+    resolver
+        .set_response("analytics.seusite.com", resolution)
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].blocked);
+    assert_eq!(logs[0].response_status, Some("BLOCKED"));
+    assert_eq!(logs[0].block_source, Some(BlockSource::CnameCloaking));
+}
+
+#[tokio::test]
+async fn test_cname_cloaking_blocked_cache_hit_path() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    filter.block_domain("x.tracker.com");
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .cache_hit()
+        .with_cname_chain(vec!["x.tracker.com"])
+        .build();
+    resolver.set_cached_response("analytics.seusite.com", resolution);
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].blocked);
+    assert_eq!(logs[0].response_status, Some("BLOCKED"));
+    assert_eq!(logs[0].block_source, Some(BlockSource::CnameCloaking));
+}
+
+#[tokio::test]
+async fn test_cname_chain_middle_hop_blocked() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    filter.block_domain("x.tracker.com");
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .with_cname_chain(vec!["intermediate.cdn.com", "x.tracker.com"])
+        .build();
+    resolver
+        .set_response("analytics.seusite.com", resolution)
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].blocked);
+    assert_eq!(logs[0].block_source, Some(BlockSource::CnameCloaking));
+}
+
+#[tokio::test]
+async fn test_cname_chain_not_blocked_when_clean() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .with_cname_chain(vec!["safe.cdn.com"])
+        .build();
+    resolver
+        .set_response("analytics.seusite.com", resolution)
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(result.is_ok());
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert!(!logs[0].blocked);
+}
+
+#[tokio::test]
+async fn test_try_cache_direct_returns_none_on_cname_blocked() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    filter.block_domain("x.tracker.com");
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .cache_hit()
+        .with_cname_chain(vec!["x.tracker.com"])
+        .build();
+    resolver.set_cached_response("analytics.seusite.com", resolution);
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+
+    let result = use_case.try_cache_direct("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    assert!(result.is_none());
+    assert_eq!(log.sync_log_count(), 0);
 }
 
 // ── log metadata ───────────────────────────────────────────────────────────

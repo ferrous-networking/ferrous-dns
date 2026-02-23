@@ -1,4 +1,4 @@
-use crate::dns::cache::{CachedData, DnsCache, DnssecStatus};
+use crate::dns::cache::{CachedAddresses, CachedData, DnsCache, DnssecStatus};
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::RecordType;
 use std::sync::Arc;
@@ -129,7 +129,10 @@ impl CacheWarmer {
                         cache.insert(
                             domain,
                             RecordType::A,
-                            CachedData::IpAddresses(Arc::new(addresses)),
+                            CachedData::IpAddresses(CachedAddresses {
+                                addresses: Arc::new(addresses),
+                                cname_chain: vec![],
+                            }),
                             ttl,
                             Some(DnssecStatus::Unknown),
                         );
@@ -162,7 +165,10 @@ impl CacheWarmer {
                     cache.insert(
                         domain,
                         RecordType::AAAA,
-                        CachedData::IpAddresses(Arc::new(addresses)),
+                        CachedData::IpAddresses(CachedAddresses {
+                            addresses: Arc::new(addresses),
+                            cname_chain: vec![],
+                        }),
                         ttl,
                         Some(DnssecStatus::Unknown),
                     );

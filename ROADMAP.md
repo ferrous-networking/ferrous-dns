@@ -1,6 +1,6 @@
 ## 🗺️ Roadmap
 
-### ✅ v0.1.0 - Foundation (Current)
+### ✅ v0.1.0 - Foundation 
 
 - [x] Project structure with Clean Architecture
 - [x] Rust workspace with 5 crates + tests
@@ -33,7 +33,7 @@
 - [x] button allows and block in the queries.html list
 - [x] Conditional forwarding
 
-### 🔮 v0.3.0 - Advanced Features
+### 🔮 v0.3.0 - Advanced Features (Current)
 
 - [ ] dash board web socket performace slow queries 
 - [ ] Advanced analytics and graphs

@@ -2,7 +2,9 @@ use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
     QueryLogRepository,
 };
-use ferrous_dns_domain::{DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{
+    BlockSource, DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType,
+};
 use lru::LruCache;
 use std::cell::RefCell;
 use std::net::IpAddr;
@@ -126,6 +128,18 @@ impl HandleDnsQueryUseCase {
         }
     }
 
+    fn blocked_cname(&self, cname_chain: &[Arc<str>], group_id: i64) -> Option<BlockSource> {
+        cname_chain
+            .iter()
+            .find(|domain| {
+                matches!(
+                    self.block_filter.check(domain, group_id),
+                    FilterDecision::Block(_)
+                )
+            })
+            .map(|_| BlockSource::CnameCloaking)
+    }
+
     pub fn try_cache_direct(
         &self,
         domain: &str,
@@ -141,6 +155,14 @@ impl HandleDnsQueryUseCase {
         }
 
         let group_id = self.block_filter.resolve_group(client_ip);
+
+        if self
+            .blocked_cname(&resolution.cname_chain, group_id)
+            .is_some()
+        {
+            return None;
+        }
+
         self.log(&QueryLog {
             id: None,
             domain: domain_arc,
@@ -174,6 +196,15 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if !cached.addresses.is_empty() {
+                if let Some(block_source) = self.blocked_cname(&cached.cname_chain, group_id) {
+                    self.log(&QueryLog {
+                        blocked: true,
+                        response_status: Some("BLOCKED"),
+                        block_source: Some(block_source),
+                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                    });
+                    return Err(DomainError::Blocked);
+                }
                 self.log(&QueryLog {
                     cache_hit: true,
                     dnssec_status: cached.dnssec_status,
@@ -204,6 +235,15 @@ impl HandleDnsQueryUseCase {
 
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
+                if let Some(block_source) = self.blocked_cname(&resolution.cname_chain, group_id) {
+                    self.log(&QueryLog {
+                        blocked: true,
+                        response_status: Some("BLOCKED"),
+                        block_source: Some(block_source),
+                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                    });
+                    return Err(DomainError::Blocked);
+                }
                 let response_status = if resolution.local_dns {
                     Some("LOCAL_DNS")
                 } else {

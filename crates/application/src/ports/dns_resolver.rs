@@ -10,7 +10,7 @@ pub struct DnsResolution {
     pub cache_hit: bool,
     pub local_dns: bool,
     pub dnssec_status: Option<&'static str>,
-    pub cname: Option<String>,
+    pub cname_chain: Vec<Arc<str>>,
     pub upstream_server: Option<String>,
     pub min_ttl: Option<u32>,
     /// Records from the AUTHORITY section of the upstream response (e.g. SOA for NODATA).
@@ -24,7 +24,7 @@ impl DnsResolution {
             cache_hit,
             local_dns: false,
             dnssec_status: None,
-            cname: None,
+            cname_chain: vec![],
             upstream_server: None,
             min_ttl: None,
             authority_records: vec![],
@@ -41,25 +41,7 @@ impl DnsResolution {
             cache_hit,
             local_dns: false,
             dnssec_status,
-            cname: None,
-            upstream_server: None,
-            min_ttl: None,
-            authority_records: vec![],
-        }
-    }
-
-    pub fn with_cname(
-        addresses: Vec<IpAddr>,
-        cache_hit: bool,
-        dnssec_status: Option<&'static str>,
-        cname: Option<String>,
-    ) -> Self {
-        Self {
-            addresses: Arc::new(addresses),
-            cache_hit,
-            local_dns: false,
-            dnssec_status,
-            cname,
+            cname_chain: vec![],
             upstream_server: None,
             min_ttl: None,
             authority_records: vec![],

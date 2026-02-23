@@ -1,4 +1,4 @@
-use super::cache::{coarse_clock, DnsCache};
+use super::cache::{coarse_clock, CachedAddresses, DnsCache};
 use crate::dns::HickoryDnsResolver;
 
 const REFRESH_ENTRY_DELAY_MS: u64 = 10;
@@ -189,7 +189,10 @@ impl CacheUpdater {
                     domain,
                     record_type,
                     None,
-                    super::cache::CachedData::IpAddresses(Arc::clone(&resolution.addresses)),
+                    super::cache::CachedData::IpAddresses(CachedAddresses {
+                        addresses: Arc::clone(&resolution.addresses),
+                        cname_chain: resolution.cname_chain.clone(),
+                    }),
                     dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );
 

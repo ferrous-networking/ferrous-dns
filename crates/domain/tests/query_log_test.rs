@@ -19,6 +19,7 @@ fn test_query_stats_source_fields_not_altered_by_analytics() {
         queries_blocked_by_blocklist: 5,
         queries_blocked_by_managed_domain: 3,
         queries_blocked_by_regex_filter: 2,
+        queries_blocked_by_cname_cloaking: 0,
         ..Default::default()
     };
 

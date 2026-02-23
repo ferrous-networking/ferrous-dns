@@ -43,7 +43,7 @@ pub async fn query_server(
         record_type: *record_type,
         upstream_server: server_str,
         response_time_us,
-        success: !dns_response.addresses.is_empty() || dns_response.cname.is_some(),
+        success: !dns_response.addresses.is_empty() || !dns_response.cname_chain.is_empty(),
     });
 
     if dns_response.truncated {
@@ -73,7 +73,8 @@ pub async fn query_server(
                     .map(|addr| addr.to_string())
                     .unwrap_or_else(|| "unknown".to_string()),
                 response_time_us: tcp_response_time_us,
-                success: !tcp_dns_response.addresses.is_empty() || tcp_dns_response.cname.is_some(),
+                success: !tcp_dns_response.addresses.is_empty()
+                    || !tcp_dns_response.cname_chain.is_empty(),
             });
 
             let latency_ms = start.elapsed().as_millis() as u64;

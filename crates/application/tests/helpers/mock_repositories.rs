@@ -313,6 +313,10 @@ impl QueryLogRepository for MockQueryLogRepository {
             .iter()
             .filter(|l| l.block_source == Some(BlockSource::RegexFilter))
             .count() as u64;
+        let queries_blocked_by_cname_cloaking = logs
+            .iter()
+            .filter(|l| l.block_source == Some(BlockSource::CnameCloaking))
+            .count() as u64;
 
         Ok(QueryStats {
             queries_total,
@@ -328,6 +332,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_blocked_by_blocklist,
             queries_blocked_by_managed_domain,
             queries_blocked_by_regex_filter,
+            queries_blocked_by_cname_cloaking,
             queries_local_dns: 0,
             queries_by_type: HashMap::new(),
             most_queried_type: None,
@@ -1140,7 +1145,7 @@ pub struct DnsResolutionBuilder {
     addresses: Vec<IpAddr>,
     cache_hit: bool,
     dnssec_status: Option<&'static str>,
-    cname: Option<String>,
+    cname_chain: Vec<Arc<str>>,
     upstream_server: Option<String>,
 }
 
@@ -1150,7 +1155,7 @@ impl DnsResolutionBuilder {
             addresses: vec![IpAddr::from_str("93.184.216.34").unwrap()],
             cache_hit: false,
             dnssec_status: None,
-            cname: None,
+            cname_chain: vec![],
             upstream_server: None,
         }
     }
@@ -1180,13 +1185,18 @@ impl DnsResolutionBuilder {
         self
     }
 
+    pub fn with_cname_chain(mut self, chain: Vec<&str>) -> Self {
+        self.cname_chain = chain.into_iter().map(Arc::from).collect();
+        self
+    }
+
     pub fn build(self) -> DnsResolution {
         DnsResolution {
             addresses: std::sync::Arc::new(self.addresses),
             cache_hit: self.cache_hit,
             local_dns: false,
             dnssec_status: self.dnssec_status,
-            cname: self.cname,
+            cname_chain: self.cname_chain,
             upstream_server: self.upstream_server,
             min_ttl: None,
             authority_records: vec![],

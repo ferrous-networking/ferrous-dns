@@ -1,5 +1,7 @@
 use ferrous_dns_domain::RecordType;
-use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, EvictionStrategy};
+use ferrous_dns_infrastructure::dns::{
+    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy,
+};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -25,7 +27,10 @@ fn make_cache() -> DnsCache {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(Arc::new(vec![addr]))
+    CachedData::IpAddresses(CachedAddresses {
+        addresses: Arc::new(vec![addr]),
+        cname_chain: vec![],
+    })
 }
 
 #[test]

@@ -8,7 +8,7 @@ use tracing::debug;
 pub struct DnsResponse {
     pub addresses: Vec<IpAddr>,
 
-    pub cname: Option<String>,
+    pub cname_chain: Vec<String>,
 
     pub rcode: ResponseCode,
 
@@ -25,7 +25,9 @@ pub struct DnsResponse {
 
 impl DnsResponse {
     pub fn is_nodata(&self) -> bool {
-        self.rcode == ResponseCode::NoError && self.addresses.is_empty() && self.cname.is_none()
+        self.rcode == ResponseCode::NoError
+            && self.addresses.is_empty()
+            && self.cname_chain.is_empty()
     }
 
     pub fn is_nxdomain(&self) -> bool {
@@ -52,7 +54,7 @@ impl ResponseParser {
         let truncated = message.truncated();
 
         let mut addresses = Vec::new();
-        let mut cname: Option<String> = None;
+        let mut cname_chain: Vec<String> = Vec::new();
         let mut min_ttl: Option<u32> = None;
         let mut raw_answers = Vec::new();
 
@@ -68,10 +70,9 @@ impl ResponseParser {
                     addresses.push(IpAddr::V6(aaaa.0));
                 }
                 RData::CNAME(canonical) => {
-                    if cname.is_none() {
-                        cname = Some(canonical.to_utf8());
-                        debug!(cname = %canonical.to_utf8(), "CNAME record found");
-                    }
+                    let name = canonical.to_utf8();
+                    debug!(cname = %name, "CNAME record found");
+                    cname_chain.push(name);
                 }
                 _ => {
                     raw_answers.push(record.clone());
@@ -84,7 +85,7 @@ impl ResponseParser {
         debug!(
             rcode = ?rcode,
             addresses = addresses.len(),
-            cname = ?cname,
+            cname_hops = cname_chain.len(),
             truncated = truncated,
             authority = authority_records.len(),
             "DNS response parsed"
@@ -92,7 +93,7 @@ impl ResponseParser {
 
         Ok(DnsResponse {
             addresses,
-            cname,
+            cname_chain,
             rcode,
             truncated,
             min_ttl,

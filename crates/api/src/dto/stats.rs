@@ -19,6 +19,7 @@ pub struct QuerySourceStats {
     pub blocked_by_blocklist: u64,
     pub blocked_by_managed_domain: u64,
     pub blocked_by_regex_filter: u64,
+    pub blocked_by_cname_cloaking: u64,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -73,6 +74,7 @@ impl Default for StatsResponse {
                 blocked_by_blocklist: 0,
                 blocked_by_managed_domain: 0,
                 blocked_by_regex_filter: 0,
+                blocked_by_cname_cloaking: 0,
             },
         }
     }

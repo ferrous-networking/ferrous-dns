@@ -105,4 +105,29 @@ async fn test_get_stats_blocked_sources() {
     assert_eq!(stats.queries_blocked_by_blocklist, 1);
     assert_eq!(stats.queries_blocked_by_managed_domain, 2);
     assert_eq!(stats.queries_blocked_by_regex_filter, 1);
+    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
+}
+
+#[tokio::test]
+async fn test_get_stats_cname_cloaking_source() {
+    let repo = Arc::new(MockQueryLogRepository::new());
+
+    repo.log_query(&make_log(false, true, Some(BlockSource::CnameCloaking)))
+        .await
+        .unwrap();
+    repo.log_query(&make_log(false, true, Some(BlockSource::CnameCloaking)))
+        .await
+        .unwrap();
+    repo.log_query(&make_log(false, true, Some(BlockSource::Blocklist)))
+        .await
+        .unwrap();
+
+    let use_case = GetQueryStatsUseCase::new(
+        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
+    );
+    let stats = use_case.execute(24.0).await.unwrap();
+
+    assert_eq!(stats.queries_blocked, 3);
+    assert_eq!(stats.queries_blocked_by_cname_cloaking, 2);
+    assert_eq!(stats.queries_blocked_by_blocklist, 1);
 }

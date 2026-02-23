@@ -239,10 +239,13 @@ async fn reload_cache_with_record(
         }
     };
 
-    use ferrous_dns_infrastructure::dns::CachedData;
+    use ferrous_dns_infrastructure::dns::{CachedAddresses, CachedData};
     use std::sync::Arc as StdArc;
 
-    let data = CachedData::IpAddresses(StdArc::new(vec![ip]));
+    let data = CachedData::IpAddresses(CachedAddresses {
+        addresses: StdArc::new(vec![ip]),
+        cname_chain: vec![],
+    });
     state.cache.insert_permanent(&fqdn, record_type, data, None);
 
     info!(

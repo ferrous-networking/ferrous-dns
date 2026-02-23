@@ -136,6 +136,7 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
                 "blocklist" => Some(BlockSource::Blocklist),
                 "managed_domain" => Some(BlockSource::ManagedDomain),
                 "regex_filter" => Some(BlockSource::RegexFilter),
+                "cname_cloaking" => Some(BlockSource::CnameCloaking),
                 _ => None,
             });
 
@@ -505,7 +506,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count,
                 SUM(CASE WHEN blocked = 1 AND block_source = 'blocklist' THEN 1 ELSE 0 END) as blocklist_count,
                 SUM(CASE WHEN blocked = 1 AND block_source = 'managed_domain' THEN 1 ELSE 0 END) as managed_domain_count,
-                SUM(CASE WHEN blocked = 1 AND block_source = 'regex_filter' THEN 1 ELSE 0 END) as regex_filter_count
+                SUM(CASE WHEN blocked = 1 AND block_source = 'regex_filter' THEN 1 ELSE 0 END) as regex_filter_count,
+                SUM(CASE WHEN blocked = 1 AND block_source = 'cname_cloaking' THEN 1 ELSE 0 END) as cname_cloaking_count
              FROM query_log
              WHERE response_time_ms IS NOT NULL
                AND created_at >= ?
@@ -569,6 +571,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             queries_blocked_by_blocklist: row.get::<i64, _>("blocklist_count") as u64,
             queries_blocked_by_managed_domain: row.get::<i64, _>("managed_domain_count") as u64,
             queries_blocked_by_regex_filter: row.get::<i64, _>("regex_filter_count") as u64,
+            queries_blocked_by_cname_cloaking: row.get::<i64, _>("cname_cloaking_count") as u64,
             queries_by_type: std::collections::HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),

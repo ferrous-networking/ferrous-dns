@@ -47,8 +47,14 @@ impl DnssecStatus {
 }
 
 #[derive(Clone, Debug)]
+pub struct CachedAddresses {
+    pub addresses: Arc<Vec<IpAddr>>,
+    pub cname_chain: Vec<Arc<str>>,
+}
+
+#[derive(Clone, Debug)]
 pub enum CachedData {
-    IpAddresses(Arc<Vec<IpAddr>>),
+    IpAddresses(CachedAddresses),
 
     CanonicalName(Arc<str>),
 
@@ -58,7 +64,7 @@ pub enum CachedData {
 impl CachedData {
     pub fn is_empty(&self) -> bool {
         match self {
-            CachedData::IpAddresses(addrs) => addrs.is_empty(),
+            CachedData::IpAddresses(entry) => entry.addresses.is_empty(),
             CachedData::CanonicalName(name) => name.is_empty(),
             CachedData::NegativeResponse => false,
         }
@@ -70,7 +76,7 @@ impl CachedData {
 
     pub fn as_ip_addresses(&self) -> Option<&Arc<Vec<IpAddr>>> {
         match self {
-            CachedData::IpAddresses(addrs) => Some(addrs),
+            CachedData::IpAddresses(entry) => Some(&entry.addresses),
             _ => None,
         }
     }

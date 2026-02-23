@@ -69,6 +69,7 @@ pub async fn get_stats(
                     blocked_by_blocklist: stats.queries_blocked_by_blocklist,
                     blocked_by_managed_domain: stats.queries_blocked_by_managed_domain,
                     blocked_by_regex_filter: stats.queries_blocked_by_regex_filter,
+                    blocked_by_cname_cloaking: stats.queries_blocked_by_cname_cloaking,
                 },
             })
         }
