@@ -38,12 +38,12 @@
 - [ ] dash board web socket performace slow queries 
 - [ ] Advanced analytics and graphs
 - [ ] Query filtering rules
-- [ ] DoQ upstream
+- [x] DoQ upstream
 - [ ] IPv6 upstreams
 - [ ] dns name upstreams (e.: dns.google.com) 
 - [ ] Client identification
 - [ ] Comprehensive documentation
-- [ ] CNAME cloaking detection
+- [x] CNAME cloaking detection
 - [ ] Safe Search
 - [ ] Serviços bloqueáveis (1-click)
 

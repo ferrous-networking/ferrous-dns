@@ -1,4 +1,6 @@
 pub mod https;
+#[cfg(feature = "dns-over-quic")]
+pub mod quic;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
@@ -35,6 +37,8 @@ pub enum Transport {
     Tls(tls::TlsTransport),
     #[cfg(feature = "dns-over-https")]
     Https(https::HttpsTransport),
+    #[cfg(feature = "dns-over-quic")]
+    Quic(quic::QuicTransport),
 }
 
 impl Transport {
@@ -50,6 +54,8 @@ impl Transport {
             Self::Tls(t) => DnsTransport::send(t, message_bytes, timeout).await,
             #[cfg(feature = "dns-over-https")]
             Self::Https(t) => DnsTransport::send(t, message_bytes, timeout).await,
+            #[cfg(feature = "dns-over-quic")]
+            Self::Quic(t) => DnsTransport::send(t, message_bytes, timeout).await,
         }
     }
 
@@ -61,6 +67,8 @@ impl Transport {
             Self::Tls(_) => "TLS",
             #[cfg(feature = "dns-over-https")]
             Self::Https(_) => "HTTPS",
+            #[cfg(feature = "dns-over-quic")]
+            Self::Quic(_) => "QUIC",
         }
     }
 }
@@ -91,6 +99,18 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
         DnsProtocol::Https { url, .. } => Err(DomainError::InvalidDomainName(format!(
             "HTTPS feature not enabled. Enable 'dns-over-https' feature to use: {}",
             url
+        ))),
+
+        #[cfg(feature = "dns-over-quic")]
+        DnsProtocol::Quic { addr, hostname } => Ok(Transport::Quic(quic::QuicTransport::new(
+            *addr,
+            hostname.clone(),
+        ))),
+
+        #[cfg(not(feature = "dns-over-quic"))]
+        DnsProtocol::Quic { addr, .. } => Err(DomainError::InvalidDomainName(format!(
+            "QUIC feature not enabled. Enable 'dns-over-quic' feature to use: {}",
+            addr
         ))),
     }
 }

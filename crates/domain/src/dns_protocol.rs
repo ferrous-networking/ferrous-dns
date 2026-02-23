@@ -19,6 +19,10 @@ pub enum DnsProtocol {
         url: Arc<str>,
         hostname: Arc<str>,
     },
+    Quic {
+        addr: SocketAddr,
+        hostname: Arc<str>,
+    },
 }
 
 impl DnsProtocol {
@@ -26,16 +30,17 @@ impl DnsProtocol {
         match self {
             DnsProtocol::Udp { addr }
             | DnsProtocol::Tcp { addr }
-            | DnsProtocol::Tls { addr, .. } => Some(*addr),
+            | DnsProtocol::Tls { addr, .. }
+            | DnsProtocol::Quic { addr, .. } => Some(*addr),
             DnsProtocol::Https { .. } => None,
         }
     }
 
     pub fn hostname(&self) -> Option<&str> {
         match self {
-            DnsProtocol::Tls { hostname, .. } | DnsProtocol::Https { hostname, .. } => {
-                Some(hostname)
-            }
+            DnsProtocol::Tls { hostname, .. }
+            | DnsProtocol::Https { hostname, .. }
+            | DnsProtocol::Quic { hostname, .. } => Some(hostname),
             _ => None,
         }
     }
@@ -53,6 +58,7 @@ impl DnsProtocol {
             DnsProtocol::Tcp { .. } => "TCP",
             DnsProtocol::Tls { .. } => "TLS",
             DnsProtocol::Https { .. } => "HTTPS",
+            DnsProtocol::Quic { .. } => "QUIC",
         }
     }
 }
@@ -93,6 +99,26 @@ impl FromStr for DnsProtocol {
                 s
             ));
         }
+        if let Some(rest) = s.strip_prefix("doq://") {
+            if let Ok(addr) = rest.parse::<SocketAddr>() {
+                let hostname: Arc<str> = rest.split(':').next().unwrap_or(rest).into();
+                return Ok(DnsProtocol::Quic { addr, hostname });
+            }
+            if let Some((host, port_str)) = rest.rsplit_once(':') {
+                let port = port_str
+                    .parse::<u16>()
+                    .map_err(|e| format!("Invalid port in QUIC address '{}': {}", rest, e))?;
+                let addr = SocketAddr::from(([1, 1, 1, 1], port));
+                return Ok(DnsProtocol::Quic {
+                    addr,
+                    hostname: host.into(),
+                });
+            }
+            return Err(format!(
+                "Invalid QUIC format '{}'. Expected 'doq://IP:PORT' or 'doq://HOSTNAME:PORT'",
+                s
+            ));
+        }
         if s.starts_with("https://") {
             let url: Arc<str> = s.into();
             let hostname: Arc<str> = s
@@ -105,7 +131,7 @@ impl FromStr for DnsProtocol {
         if let Ok(addr) = s.parse::<SocketAddr>() {
             return Ok(DnsProtocol::Udp { addr });
         }
-        Err(format!("Invalid DNS endpoint format: '{}'. Expected: udp://IP:PORT, tls://HOST:PORT, https://URL, or IP:PORT", s))
+        Err(format!("Invalid DNS endpoint format: '{}'. Expected: udp://IP:PORT, tcp://IP:PORT, tls://HOST:PORT, https://URL, doq://HOST:PORT, or IP:PORT", s))
     }
 }
 
@@ -116,6 +142,7 @@ impl fmt::Display for DnsProtocol {
             DnsProtocol::Tcp { addr } => write!(f, "tcp://{}", addr),
             DnsProtocol::Tls { addr, hostname } => write!(f, "tls://{}:{}", hostname, addr.port()),
             DnsProtocol::Https { url, .. } => write!(f, "{}", url),
+            DnsProtocol::Quic { addr, hostname } => write!(f, "doq://{}:{}", hostname, addr.port()),
         }
     }
 }

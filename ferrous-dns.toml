@@ -49,8 +49,8 @@ name = "cloudflare"
 strategy = "Parallel"     
 priority = 1              
 servers = [
-    "https://1.1.1.1/dns-query",
-    "https://1.0.0.1/dns-query",
+    "doq://94.140.14.14:853",
+    "doq://94.140.15.15:853",
 ]
 
 [dns.health_check]

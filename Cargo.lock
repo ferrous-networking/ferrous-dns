@@ -733,6 +733,7 @@ dependencies = [
  "hostname",
  "libc",
  "lru",
+ "quinn",
  "reqwest",
  "ring",
  "rustc-hash",
@@ -1830,6 +1831,7 @@ version = "0.11.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
 dependencies = [
+ "aws-lc-rs",
  "bytes",
  "getrandom 0.3.4",
  "lru-slab",

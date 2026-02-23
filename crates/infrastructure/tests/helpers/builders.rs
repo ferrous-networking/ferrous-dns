@@ -40,6 +40,17 @@ impl DnsServerBuilder {
         "https://dns.google/dns-query".to_string()
     }
 
+    pub fn cloudflare_doq() -> (SocketAddr, String) {
+        (
+            "1.1.1.1:853".parse().unwrap(),
+            "cloudflare-dns.com".to_string(),
+        )
+    }
+
+    pub fn google_doq() -> (SocketAddr, String) {
+        ("8.8.8.8:853".parse().unwrap(), "dns.google".to_string())
+    }
+
     pub fn local_test() -> SocketAddr {
         "127.0.0.1:15353".parse().unwrap()
     }

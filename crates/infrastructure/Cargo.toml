@@ -6,9 +6,10 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = ["dns-over-rustls", "dns-over-https"]
+default = ["dns-over-rustls", "dns-over-https", "dns-over-quic"]
 dns-over-rustls = []
 dns-over-https = []
+dns-over-quic = ["dep:quinn"]
 
 [dependencies]
 ferrous-dns-domain.workspace = true
@@ -44,6 +45,7 @@ tokio-rustls.workspace = true
 webpki-roots.workspace = true
 reqwest.workspace = true
 bytes.workspace = true
+quinn = { workspace = true, optional = true }
 chrono = "0.4.43"
 arc-swap.workspace = true
 aho-corasick.workspace = true

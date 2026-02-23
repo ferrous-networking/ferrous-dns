@@ -1,6 +1,8 @@
 use ferrous_dns_domain::DomainError;
 use ferrous_dns_infrastructure::dns::fast_path;
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
+#[cfg(feature = "dns-over-quic")]
+use ferrous_dns_infrastructure::dns::transport::quic::QuicTransport;
 use ferrous_dns_infrastructure::dns::transport::DnsTransport;
 use ferrous_dns_infrastructure::dns::transport::{
     https::HttpsTransport, tcp::TcpTransport, tls::TlsTransport, udp::UdpTransport,
@@ -162,6 +164,33 @@ fn test_https_transport_various_providers() {
     }
 }
 
+#[cfg(feature = "dns-over-quic")]
+#[test]
+fn test_quic_transport_protocol_name() {
+    let (addr, hostname) = DnsServerBuilder::cloudflare_doq();
+    let transport = QuicTransport::new(addr, hostname.into());
+
+    assert_eq!(transport.protocol_name(), "QUIC");
+}
+
+#[cfg(feature = "dns-over-quic")]
+#[test]
+fn test_quic_transport_google() {
+    let (addr, hostname) = DnsServerBuilder::google_doq();
+    let transport = QuicTransport::new(addr, hostname.into());
+
+    assert_eq!(transport.protocol_name(), "QUIC");
+}
+
+#[cfg(feature = "dns-over-quic")]
+#[test]
+fn test_quic_transport_creation() {
+    let (addr, hostname) = DnsServerBuilder::cloudflare_doq();
+    let transport = QuicTransport::new(addr, hostname.into());
+
+    assert_eq!(transport.protocol_name(), "QUIC");
+}
+
 #[test]
 fn test_all_protocols_have_unique_names() {
     let udp = UdpTransport::new(DnsServerBuilder::google_dns());
@@ -170,17 +199,37 @@ fn test_all_protocols_have_unique_names() {
     let tls = TlsTransport::new(tls_addr, tls_host);
     let https = HttpsTransport::new(DnsServerBuilder::cloudflare_https());
 
-    let names = vec![
-        udp.protocol_name(),
-        tcp.protocol_name(),
-        tls.protocol_name(),
-        https.protocol_name(),
-    ];
+    #[cfg(feature = "dns-over-quic")]
+    {
+        let (quic_addr, quic_host) = DnsServerBuilder::cloudflare_doq();
+        let quic = QuicTransport::new(quic_addr, quic_host.into());
+        let names = vec![
+            udp.protocol_name(),
+            tcp.protocol_name(),
+            tls.protocol_name(),
+            https.protocol_name(),
+            quic.protocol_name(),
+        ];
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len(), "Protocol names should be unique");
+        return;
+    }
 
-    let mut unique = names.clone();
-    unique.sort();
-    unique.dedup();
-    assert_eq!(unique.len(), names.len(), "Protocol names should be unique");
+    #[allow(unreachable_code)]
+    {
+        let names = vec![
+            udp.protocol_name(),
+            tcp.protocol_name(),
+            tls.protocol_name(),
+            https.protocol_name(),
+        ];
+        let mut unique = names.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len(), "Protocol names should be unique");
+    }
 }
 
 #[test]

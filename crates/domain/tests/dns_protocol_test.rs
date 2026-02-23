@@ -53,6 +53,37 @@ fn test_parse_https_with_hostname() {
 }
 
 #[test]
+fn test_parse_doq_with_ip() {
+    let protocol: DnsProtocol = "doq://1.1.1.1:853".parse().unwrap();
+    if let DnsProtocol::Quic { addr, hostname } = protocol {
+        assert_eq!(addr.port(), 853);
+        assert_eq!(&*hostname, "1.1.1.1");
+    } else {
+        panic!("Expected Quic variant");
+    }
+}
+
+#[test]
+fn test_parse_doq_with_hostname() {
+    let protocol: DnsProtocol = "doq://dns.cloudflare.com:853".parse().unwrap();
+    if let DnsProtocol::Quic { addr, hostname } = protocol {
+        assert_eq!(addr.port(), 853);
+        assert_eq!(&*hostname, "dns.cloudflare.com");
+    } else {
+        panic!("Expected Quic variant");
+    }
+}
+
+#[test]
+fn test_display_doq() {
+    let protocol: DnsProtocol = "doq://dns.cloudflare.com:853".parse().unwrap();
+    let displayed = format!("{}", protocol);
+    assert!(displayed.starts_with("doq://"));
+    assert!(displayed.contains("dns.cloudflare.com"));
+    assert!(displayed.contains("853"));
+}
+
+#[test]
 fn test_protocol_name() {
     let udp: DnsProtocol = "udp://8.8.8.8:53".parse().unwrap();
     assert_eq!(udp.protocol_name(), "UDP");
@@ -65,6 +96,9 @@ fn test_protocol_name() {
 
     let https: DnsProtocol = "https://1.1.1.1/dns-query".parse().unwrap();
     assert_eq!(https.protocol_name(), "HTTPS");
+
+    let quic: DnsProtocol = "doq://1.1.1.1:853".parse().unwrap();
+    assert_eq!(quic.protocol_name(), "QUIC");
 }
 
 #[test]
@@ -77,6 +111,9 @@ fn test_socket_addr_extraction() {
 
     let https: DnsProtocol = "https://1.1.1.1/dns-query".parse().unwrap();
     assert!(https.socket_addr().is_none());
+
+    let quic: DnsProtocol = "doq://1.1.1.1:853".parse().unwrap();
+    assert!(quic.socket_addr().is_some());
 }
 
 #[test]
@@ -89,6 +126,9 @@ fn test_hostname_extraction() {
 
     let udp: DnsProtocol = "udp://8.8.8.8:53".parse().unwrap();
     assert_eq!(udp.hostname(), None);
+
+    let quic: DnsProtocol = "doq://dns.cloudflare.com:853".parse().unwrap();
+    assert_eq!(quic.hostname(), Some("dns.cloudflare.com"));
 }
 
 #[test]
