@@ -16,12 +16,6 @@ use tracing::{debug, info};
 const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
 const STALE_SERVE_TTL: u32 = 2;
-const MIN_CACHE_TTL_SECS: u32 = 1;
-const MAX_CACHE_TTL_SECS: u32 = 86_400;
-
-fn clamp_ttl(ttl: u32) -> u32 {
-    ttl.clamp(MIN_CACHE_TTL_SECS, MAX_CACHE_TTL_SECS)
-}
 
 pub struct DnsCacheConfig {
     pub max_entries: usize,
@@ -37,6 +31,8 @@ pub struct DnsCacheConfig {
     pub eviction_sample_size: usize,
     pub lfuk_k_value: f64,
     pub refresh_sample_rate: f64,
+    pub min_ttl: u32,
+    pub max_ttl: u32,
 }
 
 pub struct DnsCache {
@@ -57,6 +53,8 @@ pub struct DnsCache {
     pub(super) negative: NegativeDnsCache,
     pub(crate) eviction_pending: AtomicBool,
     permanent_keys: Arc<DashSet<CacheKey, FxBuildHasher>>,
+    min_ttl: u32,
+    max_ttl: u32,
 }
 
 impl DnsCache {
@@ -105,7 +103,15 @@ impl DnsCache {
             negative: NegativeDnsCache::new(config.max_entries),
             eviction_pending: AtomicBool::new(false),
             permanent_keys: Arc::new(DashSet::with_hasher(FxBuildHasher)),
+            min_ttl: config.min_ttl,
+            max_ttl: config.max_ttl,
         }
+    }
+
+    #[inline(always)]
+    fn clamp_ttl(&self, ttl: u32) -> u32 {
+        let floor = self.min_ttl.max(1);
+        ttl.clamp(floor, self.max_ttl)
     }
 
     pub(super) fn get_threshold(&self) -> f64 {
@@ -192,7 +198,7 @@ impl DnsCache {
         ttl: u32,
         dnssec_status: Option<DnssecStatus>,
     ) {
-        let ttl = clamp_ttl(ttl);
+        let ttl = self.clamp_ttl(ttl);
 
         if data.is_negative() {
             self.negative.insert(domain, record_type, ttl);
@@ -343,7 +349,7 @@ impl DnsCache {
             if record.is_permanent() || record.is_marked_for_deletion() {
                 return false;
             }
-            let ttl = new_ttl.unwrap_or(record.ttl);
+            let ttl = self.clamp_ttl(new_ttl.unwrap_or(record.ttl));
             record.expires_at_secs = now + ttl as u64;
             record.inserted_at_secs = now;
             record.ttl = ttl;

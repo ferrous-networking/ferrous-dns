@@ -167,6 +167,16 @@ impl Config {
                 );
                 set_val(
                     t,
+                    "cache_min_ttl",
+                    toml_edit::Value::from(self.dns.cache_min_ttl as i64),
+                );
+                set_val(
+                    t,
+                    "cache_max_ttl",
+                    toml_edit::Value::from(self.dns.cache_max_ttl as i64),
+                );
+                set_val(
+                    t,
                     "dnssec_enabled",
                     toml_edit::Value::from(self.dns.dnssec_enabled),
                 );

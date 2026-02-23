@@ -26,6 +26,8 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     })
 }
 
@@ -60,6 +62,28 @@ fn create_cache(
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
+    })
+}
+
+fn create_cache_with_ttl_limits(min_ttl: u32, max_ttl: u32) -> DnsCache {
+    DnsCache::new(DnsCacheConfig {
+        max_entries: 100,
+        eviction_strategy: EvictionStrategy::HitRate,
+        min_threshold: 0.0,
+        refresh_threshold: 0.75,
+        batch_eviction_percentage: 0.2,
+        adaptive_thresholds: false,
+        min_frequency: 0,
+        min_lfuk_score: 0.0,
+        shard_amount: 4,
+        access_window_secs: 7200,
+        eviction_sample_size: 8,
+        lfuk_k_value: 0.5,
+        refresh_sample_rate: 1.0,
+        min_ttl,
+        max_ttl,
     })
 }
 
@@ -525,6 +549,8 @@ fn test_lru_eviction_protects_recently_accessed_entry() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     // Inserir 3 entradas no tick T: last_access = T para todas
@@ -571,6 +597,8 @@ fn test_hit_rate_eviction_protects_high_hit_entries() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     cache.insert(
@@ -650,6 +678,8 @@ fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     // Entradas com poucos hits (abaixo do min_frequency=5) têm score negativo
@@ -736,6 +766,8 @@ fn test_access_window_preserved_in_refactored_cache() {
             eviction_sample_size: 8,
             lfuk_k_value: 0.5,
             refresh_sample_rate: 1.0,
+            min_ttl: 0,
+            max_ttl: 86_400,
         });
 
         assert_eq!(
@@ -770,6 +802,8 @@ fn test_single_scan_evicts_exact_count() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     // Inserir max_entries entradas
@@ -1017,6 +1051,8 @@ fn test_lru_score_is_last_access_timestamp() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     coarse_clock::tick();
@@ -1045,6 +1081,8 @@ fn test_lru_evicts_least_recently_used() {
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
         refresh_sample_rate: 1.0,
+        min_ttl: 0,
+        max_ttl: 86_400,
     });
 
     coarse_clock::tick();
@@ -1182,5 +1220,68 @@ fn test_lfu_score_zero_min_frequency_returns_raw_hits() {
     assert_eq!(
         score, 7.0,
         "Com min_frequency=0, score deve ser raw hit_count"
+    );
+}
+
+#[test]
+fn test_cache_min_ttl_elevates_short_upstream_ttl() {
+    let cache = create_cache_with_ttl_limits(300, 86_400);
+
+    cache.insert(
+        "example.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        60,
+        None,
+    );
+
+    let remaining = cache
+        .get_remaining_ttl("example.com", &RecordType::A)
+        .unwrap();
+    assert!(
+        remaining >= 299,
+        "TTL 60 deve ser elevado para >= 300 pelo cache_min_ttl; got {remaining}"
+    );
+}
+
+#[test]
+fn test_cache_max_ttl_caps_long_upstream_ttl() {
+    let cache = create_cache_with_ttl_limits(0, 3_600);
+
+    cache.insert(
+        "example.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        86_400,
+        None,
+    );
+
+    let remaining = cache
+        .get_remaining_ttl("example.com", &RecordType::A)
+        .unwrap();
+    assert!(
+        remaining <= 3_600,
+        "TTL 86400 deve ser cortado para <= 3600 pelo cache_max_ttl; got {remaining}"
+    );
+}
+
+#[test]
+fn test_cache_min_ttl_zero_preserves_upstream_ttl() {
+    let cache = create_cache_with_ttl_limits(0, 86_400);
+
+    cache.insert(
+        "example.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        120,
+        None,
+    );
+
+    let remaining = cache
+        .get_remaining_ttl("example.com", &RecordType::A)
+        .unwrap();
+    assert!(
+        (119..=120).contains(&remaining),
+        "Com cache_min_ttl=0, TTL 120 deve ser preservado; got {remaining}"
     );
 }

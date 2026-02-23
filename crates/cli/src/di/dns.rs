@@ -206,6 +206,8 @@ impl DnsServices {
                 eviction_sample_size: config.dns.cache_eviction_sample_size,
                 lfuk_k_value: 0.5,
                 refresh_sample_rate: 1.0,
+                min_ttl: config.dns.cache_min_ttl,
+                max_ttl: config.dns.cache_max_ttl,
             }))
         } else {
             Arc::new(DnsCache::new(DnsCacheConfig {
@@ -222,6 +224,8 @@ impl DnsServices {
                 eviction_sample_size: 8,
                 lfuk_k_value: 0.5,
                 refresh_sample_rate: 1.0,
+                min_ttl: config.dns.cache_min_ttl,
+                max_ttl: config.dns.cache_max_ttl,
             }))
         }
     }

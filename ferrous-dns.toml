@@ -5,9 +5,11 @@ bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on
 
 [dns]
 upstream_servers = []                   # Fallback upstream DNS servers (used when no pool matches)
-query_timeout = 5                       # Seconds to wait for an upstream response before timing out
+query_timeout = 3                       # Seconds to wait for an upstream response before timing out
 cache_enabled = true                    # Enable in-memory DNS response cache
 cache_ttl = 7200                        # Default TTL (seconds) for cached entries when the record has none
+cache_min_ttl = 300                     # Minimum TTL (seconds) applied to every cached entry; 0 = no override. Recommended >= 240 so the 60 s refresh job can act before expiry
+cache_max_ttl = 86400                   # Maximum TTL (seconds) applied to every cached entry; caps values returned by upstream
 dnssec_enabled = true                   # Validate DNSSEC signatures on upstream responses
 default_strategy = "Parallel"           # Resolution strategy: "Parallel" (fastest wins) or "Sequential"
 cache_max_entries = 200000              # Maximum number of entries the cache can hold

@@ -63,6 +63,12 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_eviction_sample_size")]
     pub cache_eviction_sample_size: usize,
 
+    #[serde(default = "default_cache_min_ttl")]
+    pub cache_min_ttl: u32,
+
+    #[serde(default = "default_cache_max_ttl")]
+    pub cache_max_ttl: u32,
+
     #[serde(default = "default_true")]
     pub block_private_ptr: bool,
 
@@ -104,6 +110,8 @@ impl Default for DnsConfig {
             cache_shard_amount: default_cache_shard_amount(),
             cache_access_window_secs: default_cache_access_window_secs(),
             cache_eviction_sample_size: default_cache_eviction_sample_size(),
+            cache_min_ttl: default_cache_min_ttl(),
+            cache_max_ttl: default_cache_max_ttl(),
             block_private_ptr: true,
             block_non_fqdn: false,
             local_domain: None,
@@ -179,6 +187,14 @@ fn default_cache_access_window_secs() -> u64 {
 
 fn default_cache_eviction_sample_size() -> usize {
     8
+}
+
+fn default_cache_min_ttl() -> u32 {
+    0
+}
+
+fn default_cache_max_ttl() -> u32 {
+    86_400
 }
 
 fn default_cache_shard_amount() -> usize {

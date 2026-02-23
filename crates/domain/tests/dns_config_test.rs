@@ -20,6 +20,8 @@ fn test_config_default_values() {
     assert_eq!(config.cache_compaction_interval, 300);
     assert!(!config.cache_adaptive_thresholds);
     assert_eq!(config.cache_access_window_secs, 7200);
+    assert_eq!(config.cache_min_ttl, 0);
+    assert_eq!(config.cache_max_ttl, 86_400);
     assert!(config.block_private_ptr);
     assert!(!config.block_non_fqdn);
     assert!(config.local_domain.is_none());

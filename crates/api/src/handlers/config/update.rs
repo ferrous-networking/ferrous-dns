@@ -72,6 +72,12 @@ pub async fn update_config(
         if let Some(window) = dns_update.cache_access_window_secs {
             config.dns.cache_access_window_secs = window;
         }
+        if let Some(min_ttl) = dns_update.cache_min_ttl {
+            config.dns.cache_min_ttl = min_ttl;
+        }
+        if let Some(max_ttl) = dns_update.cache_max_ttl {
+            config.dns.cache_max_ttl = max_ttl;
+        }
         if let Some(block_non_fqdn) = dns_update.block_non_fqdn {
             config.dns.block_non_fqdn = block_non_fqdn;
         }
