@@ -647,6 +647,34 @@
                 <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
                     <div style="flex:1;margin-right:32px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="chevrons-down" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Cache TTL</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Floor applied to every cached entry. Upstream values below this threshold are raised to this minimum. Recommended ≥ 240 seconds to prevent excessive upstream queries.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_min_ttl" min="0" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="chevrons-up" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Maximum Cache TTL</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Ceiling applied to every cached entry. Upstream values above this limit are capped to this maximum. Prevents stale entries from persisting indefinitely in the cache.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.cache_max_ttl" min="1" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">seconds</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:32px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                             <i data-lucide="layers" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Maximum Cache Size</h4>
                         </div>
@@ -847,6 +875,8 @@
                     dnssec_enabled: false,
                     cache_enabled: true,
                     cache_ttl: 3600,
+                    cache_min_ttl: 0,
+                    cache_max_ttl: 86400,
                     cache_max_entries: 10000,
                     cache_eviction_strategy: 'lfu',
                     cache_min_hit_rate: 0.3,
@@ -925,6 +955,8 @@
                                     failure_threshold: data.dns?.health_check?.failure_threshold ?? 3
                                 },
                                 cache_ttl: data.dns?.cache_ttl ?? 3600,
+                                cache_min_ttl: data.dns?.cache_min_ttl ?? 0,
+                                cache_max_ttl: data.dns?.cache_max_ttl ?? 86400,
                                 cache_max_entries: data.dns?.cache_max_entries ?? 10000,
                                 cache_eviction_strategy: data.dns?.cache_eviction_strategy ?? 'lfu',
                                 cache_min_hit_rate: data.dns?.cache_min_hit_rate ?? 0.3,
