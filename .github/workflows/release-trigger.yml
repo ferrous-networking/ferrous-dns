@@ -39,8 +39,14 @@ jobs:
           echo "version=${V}" >> $GITHUB_OUTPUT
           echo "Current version: ${V}"
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Bump version (non-interactive)
         run: bash scripts/bump-version.sh ${{ inputs.bump_type }}
+
+      - name: Update Cargo.lock
+        run: cargo update --workspace
 
       - name: Verify version was updated
         id: version
