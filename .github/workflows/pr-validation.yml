@@ -1,6 +1,3 @@
-# ============================================================================
-# Pull Request Validation - Conventional Commits + Quality Checks
-# ============================================================================
 name: PR Validation
 
 on:
@@ -17,9 +14,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ============================================================================
-  # Validate PR Title (Conventional Commits)
-  # ============================================================================
   validate-title:
     name: Validate PR Title
     runs-on: ubuntu-latest
@@ -44,9 +38,6 @@ jobs:
           headerPattern: '^(\w+)(\s-\s)(.+)$'
           headerPatternCorrespondence: 'type, separator, subject'
 
-  # ============================================================================
-  # Check for Breaking Changes
-  # ============================================================================
   breaking-changes:
     name: Check for Breaking Changes
     runs-on: ubuntu-latest
@@ -79,9 +70,6 @@ jobs:
             - [ ] Documentation is updated
             - [ ] Version bump will be MAJOR
 
-  # ============================================================================
-  # Size Label
-  # ============================================================================
   size-label:
     name: Size Label
     runs-on: ubuntu-latest
@@ -101,9 +89,6 @@ jobs:
           xl_label: 'size/xl'
           fail_if_xl: false
 
-  # ============================================================================
-  # Check for TODO/FIXME
-  # ============================================================================
   check-todos:
     name: Check for TODO/FIXME
     runs-on: ubuntu-latest
@@ -121,9 +106,6 @@ jobs:
           fi
         continue-on-error: true
 
-  # ============================================================================
-  # Suggest Reviewers
-  # ============================================================================
   suggest-reviewers:
     name: Suggest Reviewers
     runs-on: ubuntu-latest
@@ -134,13 +116,10 @@ jobs:
           configuration-path: '.github/auto-assign.yml'
         continue-on-error: true
 
-  # ============================================================================
-  # Check Documentation
-  # ============================================================================
   check-docs:
     name: Check Documentation
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'  # Only run on push to main, not on PRs
+    if: github.event_name != 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -165,9 +144,6 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
 
-  # ============================================================================
-  # PR Summary
-  # ============================================================================
   pr-summary:
     name: PR Summary
     runs-on: ubuntu-latest

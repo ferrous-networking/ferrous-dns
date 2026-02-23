@@ -1,0 +1,63 @@
+# ============================================================================
+# Ferrous DNS - Release Dockerfile (uses pre-built binaries)
+# ============================================================================
+# Used by CI/CD to package pre-built MUSL binaries from GitHub Release.
+# Does NOT compile Rust — binaries are downloaded by the CI workflow.
+#
+# Expected build context:
+#   dist/ferrous-dns-linux-amd64   (static MUSL binary)
+#   dist/ferrous-dns-linux-arm64   (static MUSL binary)
+#
+# For local development with source compilation, use Dockerfile instead.
+# ============================================================================
+FROM alpine:3.19
+
+ARG TARGETARCH
+
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata && \
+    addgroup -g 1000 ferrous && \
+    adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
+    mkdir -p /data/config /data/db /data/logs && \
+    chown -R ferrous:ferrous /data
+
+# Copy pre-built binary for the target architecture
+COPY dist/ferrous-dns-linux-${TARGETARCH} /usr/local/bin/ferrous-dns
+
+# Copy default config and migrations to a stable path outside the volume.
+# The entrypoint will bootstrap these into /data/ on first run.
+COPY --chown=ferrous:ferrous ferrous-dns.toml /usr/local/share/ferrous-dns/ferrous-dns.toml
+COPY --chown=ferrous:ferrous migrations/ /usr/local/share/ferrous-dns/migrations/
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh && \
+    chown root:root /usr/local/bin/ferrous-dns && \
+    chmod 755 /usr/local/bin/ferrous-dns
+
+# Set working directory
+WORKDIR /data
+
+# Switch to non-root user
+USER ferrous
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD /usr/local/bin/ferrous-dns --version || exit 1
+
+# Environment Variables
+ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
+    FERROUS_DNS_PORT="53" \
+    FERROUS_WEB_PORT="8080" \
+    FERROUS_BIND_ADDRESS="0.0.0.0" \
+    FERROUS_DATABASE="/data/db/ferrous.db" \
+    FERROUS_LOG_LEVEL="info" \
+    RUST_LOG="info"
+
+# Volumes
+VOLUME ["/data"]
+
+# Entrypoint
+ENTRYPOINT ["/entrypoint.sh"]

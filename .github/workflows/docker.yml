@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., v0.2.8). Required when triggering manually.'
+        required: false
+        type: string
   repository_dispatch:
     types: [release-created]
 
@@ -12,9 +17,6 @@ env:
   REGISTRY_IMAGE_DOCKERHUB: andersonviudes/ferrous-dns
 
 jobs:
-  # ============================================================================
-  # Build and Push Multi-arch Docker Images
-  # ============================================================================
   docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
@@ -23,20 +25,20 @@ jobs:
       packages: write
       id-token: write
       security-events: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ========================================================================
-      # Extract version from event (for repository_dispatch) or git tag
-      # ========================================================================
       - name: Extract version from event
         id: version
         run: |
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             VERSION="${{ github.event.client_payload.version }}"
             echo "Extracted version from repository_dispatch: $VERSION"
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            echo "Extracted version from workflow_dispatch input: $VERSION"
           elif [ "${{ github.ref_type }}" == "tag" ]; then
             VERSION=${GITHUB_REF#refs/tags/}
             echo "Extracted version from git tag: $VERSION"
@@ -46,15 +48,39 @@ jobs:
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Download pre-built release binaries
+        if: steps.version.outputs.version != ''
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+
+          echo "Downloading amd64 binary for ${VERSION}..."
+          gh release download "${VERSION}" \
+            --pattern "ferrous-dns-linux-amd64.tar.gz" \
+            --repo ${{ github.repository }}
+          tar xzf ferrous-dns-linux-amd64.tar.gz
+          mv ferrous-dns dist/ferrous-dns-linux-amd64
+          rm ferrous-dns-linux-amd64.tar.gz
+
+          echo "Downloading arm64 binary for ${VERSION}..."
+          gh release download "${VERSION}" \
+            --pattern "ferrous-dns-linux-arm64.tar.gz" \
+            --repo ${{ github.repository }}
+          tar xzf ferrous-dns-linux-arm64.tar.gz
+          mv ferrous-dns dist/ferrous-dns-linux-arm64
+          rm ferrous-dns-linux-arm64.tar.gz
+
+          echo "Binaries ready:"
+          ls -lh dist/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ========================================================================
-      # Docker Hub Login
-      # ========================================================================
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -62,9 +88,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ========================================================================
-      # Extract Metadata (tags, labels)
-      # ========================================================================
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -80,14 +103,12 @@ jobs:
             org.opencontainers.image.vendor=Ferrous DNS Project
             org.opencontainers.image.authors=Anderson Viudes
 
-      # ========================================================================
-      # Build and Push
-      # ========================================================================
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile.release
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -99,9 +120,6 @@ jobs:
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
             VCS_REF=${{ github.sha }}
 
-      # ========================================================================
-      # Docker Hub Description
-      # ========================================================================
       - name: Update Docker Hub Description
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v4
@@ -113,9 +131,6 @@ jobs:
           readme-filepath: ./README.md
         continue-on-error: true
 
-      # ========================================================================
-      # Generate SBOM (Software Bill of Materials)
-      # ========================================================================
       - name: Generate SBOM
         if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@v0
@@ -125,9 +140,6 @@ jobs:
           output-file: sbom.spdx.json
         continue-on-error: true
 
-      # ========================================================================
-      # Security Scan with Trivy
-      # ========================================================================
       - name: Run Trivy vulnerability scanner
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
@@ -144,9 +156,6 @@ jobs:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
 
-      # ========================================================================
-      # Docker Scout (Advanced Security Analysis)
-      # ========================================================================
       - name: Docker Scout Analysis
         if: github.event_name != 'pull_request'
         uses: docker/scout-action@v1
@@ -158,9 +167,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-  # ============================================================================
-  # Test Docker Image
-  # ============================================================================
   test-docker:
     name: Test Docker Image
     needs: docker
@@ -182,38 +188,26 @@ jobs:
 
       - name: Test Docker image
         run: |
-          # Start container
           docker run -d --name ferrous-dns-test \
             -p 5353:53/udp \
             -p 8080:8080 \
             --cap-add NET_BIND_SERVICE \
             ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
 
-          # Wait for startup
           sleep 10
 
-          # Check if container is running
           docker ps | grep ferrous-dns-test
-
-          # Check health
           docker inspect --format='{{.State.Health.Status}}' ferrous-dns-test || echo "No health check defined"
-
-          # Check logs
           docker logs ferrous-dns-test
-
-          # Cleanup
           docker stop ferrous-dns-test
           docker rm ferrous-dns-test
 
-  # ============================================================================
-  # Notify on Success
-  # ============================================================================
   notify:
     name: Notify on Success
     needs: [docker, test-docker]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
       - name: Create Success Comment
         uses: peter-evans/create-or-update-comment@v3

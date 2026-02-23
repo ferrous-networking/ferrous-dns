@@ -13,9 +13,6 @@ env:
   AUDIT_VERSION: '0.18.0'
 
 jobs:
-  # ============================================================================
-  # Verificação Rápida - Falha rápido se código não está formatado
-  # ============================================================================
   quick-check:
     name: Quick Check (Format + Clippy)
     runs-on: ubuntu-latest
@@ -45,9 +42,6 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets --all-features --workspace -- -D warnings
 
-  # ============================================================================
-  # Testes Linux
-  # ============================================================================
   test:
     name: Test (Linux, Rust stable)
     needs: quick-check
@@ -84,9 +78,6 @@ jobs:
       - name: Run doc tests
         run: cargo test --doc --all-features --workspace --verbose
 
-  # ============================================================================
-  # Code Coverage
-  # ============================================================================
   coverage:
     name: Code Coverage
     needs: quick-check
@@ -131,9 +122,6 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # ============================================================================
-  # Build - Linux x86_64 e ARM64
-  # ============================================================================
   build:
     name: Build (${{ matrix.name }})
     needs: test
@@ -142,13 +130,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x86_64
           - name: Linux x86_64
             target: x86_64-unknown-linux-gnu
             artifact: ferrous-dns-linux-x86_64
             cross: false
-
-          # Linux ARM64
           - name: Linux ARM64
             target: aarch64-unknown-linux-gnu
             artifact: ferrous-dns-linux-arm64
@@ -206,14 +191,11 @@ jobs:
           path: ${{ matrix.artifact }}.tar.gz
           retention-days: 7
 
-  # ============================================================================
-  # Performance Benchmarks PRs
-  # ============================================================================
   benchmark:
     name: Performance Benchmarks
     needs: quick-check
     runs-on: ubuntu-latest
-    if: false  # Temporarily disabled
+    if: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -253,9 +235,6 @@ jobs:
           alert-threshold: '150%'
           fail-on-alert: false
 
-  # ============================================================================
-  # Dependency Review PRS
-  # ============================================================================
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
@@ -273,9 +252,6 @@ jobs:
           fail-on-severity: critical
         continue-on-error: true
 
-  # ============================================================================
-  # Final Status Check
-  # ============================================================================
   ci-success:
     name: CI Success
     needs:

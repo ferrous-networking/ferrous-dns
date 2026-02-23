@@ -175,15 +175,7 @@ main() {
     esac
     
     log_info "New version: $new_version"
-    
-    # Confirm before updating
-    read -p "Update version to $new_version? (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        log_error "Version update cancelled"
-        exit 1
-    fi
-    
+
     # Update all files
     update_all_versions "$current_version" "$new_version"
     

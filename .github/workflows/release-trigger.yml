@@ -1,0 +1,70 @@
+name: Release Trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-tag:
+    name: Bump version and create tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: old_version
+        run: |
+          V=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=${V}" >> $GITHUB_OUTPUT
+          echo "Current version: ${V}"
+
+      - name: Bump version (non-interactive)
+        run: bash scripts/bump-version.sh ${{ inputs.bump_type }}
+
+      - name: Verify version was updated
+        id: version
+        run: |
+          NEW=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          OLD="${{ steps.old_version.outputs.version }}"
+          if [ "$NEW" = "$OLD" ]; then
+            echo "ERROR: version was not changed! Still at ${OLD}"
+            exit 1
+          fi
+          echo "Version changed: ${OLD} → ${NEW}"
+          echo "version=v${NEW}" >> $GITHUB_OUTPUT
+
+      - name: Commit, tag and push
+        run: |
+          git add Cargo.toml Cargo.lock
+          for f in crates/*/Cargo.toml; do [ -f "$f" ] && git add "$f"; done
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
+          git push origin main
+          git push origin "${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "✅ Version bumped: ${{ steps.old_version.outputs.version }} → ${{ steps.version.outputs.version }}"
+          echo "✅ Tag created and pushed: ${{ steps.version.outputs.version }}"
+          echo "🚀 release.yml will now build binaries and publish the GitHub Release"
