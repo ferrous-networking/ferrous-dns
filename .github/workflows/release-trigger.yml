@@ -58,7 +58,7 @@ jobs:
         run: |
           git add Cargo.toml Cargo.lock
           for f in crates/*/Cargo.toml; do [ -f "$f" ] && git add "$f"; done
-          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git commit -m "chore - bump version to ${{ steps.version.outputs.version }} [skip ci]"
           git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
           git push origin main
           git push origin "${{ steps.version.outputs.version }}"
