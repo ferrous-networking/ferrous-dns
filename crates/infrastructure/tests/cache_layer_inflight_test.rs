@@ -6,6 +6,7 @@ use ferrous_dns_infrastructure::dns::{
     DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, NegativeQueryTracker,
 };
 use futures::future::join_all;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -108,4 +109,60 @@ async fn test_follower_receives_error_on_leader_failure_without_hanging() {
 
     assert!(res1.unwrap().is_err());
     assert!(res2.unwrap().is_err());
+}
+
+#[tokio::test]
+async fn test_leader_cancellation_cleans_inflight_and_unblocks_next_query() {
+    struct PendingThenFastResolver {
+        call_count: Arc<AtomicUsize>,
+        first_pending: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl DnsResolver for PendingThenFastResolver {
+        async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            if self.first_pending.swap(false, Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+                unreachable!()
+            }
+            Err(DomainError::NxDomain)
+        }
+    }
+
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let first_pending = Arc::new(AtomicBool::new(true));
+
+    let resolver = Arc::new(CachedResolver::new(
+        Arc::new(PendingThenFastResolver {
+            call_count: Arc::clone(&call_count),
+            first_pending: Arc::clone(&first_pending),
+        }) as Arc<dyn DnsResolver>,
+        make_cache(),
+        300,
+        Arc::new(NegativeQueryTracker::new()),
+    ));
+
+    let r = Arc::clone(&resolver);
+    let _ = tokio::time::timeout(
+        Duration::from_millis(50),
+        r.resolve(&make_query("cancel-guard.example")),
+    )
+    .await;
+
+    let r = Arc::clone(&resolver);
+    let result = tokio::time::timeout(
+        Duration::from_millis(200),
+        r.resolve(&make_query("cancel-guard.example")),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "Query after leader cancellation must not hang (inflight guard must clean up)"
+    );
+    assert!(
+        call_count.load(Ordering::SeqCst) >= 2,
+        "Inner resolver must be called at least twice: once for the cancelled leader, once for the new leader"
+    );
 }

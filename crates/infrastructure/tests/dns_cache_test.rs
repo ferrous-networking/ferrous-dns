@@ -1285,3 +1285,30 @@ fn test_cache_min_ttl_zero_preserves_upstream_ttl() {
         "Com cache_min_ttl=0, TTL 120 deve ser preservado; got {remaining}"
     );
 }
+
+#[test]
+fn test_stale_record_is_refresh_candidate_after_client_access() {
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "stale-refresh.com",
+        RecordType::CNAME,
+        make_cname_data("alias.stale-refresh.com"),
+        1,
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    coarse_clock::tick();
+
+    let result = cache.get(&Arc::from("stale-refresh.com"), &RecordType::CNAME);
+    if result.is_none() {
+        return;
+    }
+
+    let candidates = cache.get_refresh_candidates();
+    assert!(
+        candidates.iter().any(|(d, _)| d == "stale-refresh.com"),
+        "Stale record must appear in refresh candidates after get(); candidates={candidates:?}"
+    );
+}

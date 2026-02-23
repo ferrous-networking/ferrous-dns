@@ -152,7 +152,6 @@ impl DnsCache {
             let now_secs = coarse_now_secs();
 
             if record.is_stale_usable_at_secs(now_secs) {
-                record.try_set_refreshing();
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 return Some((

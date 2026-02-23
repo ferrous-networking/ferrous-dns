@@ -15,6 +15,19 @@ use tracing::debug;
 
 type InflightSender = Arc<watch::Sender<Option<Arc<DnsResolution>>>>;
 
+struct InflightLeaderGuard {
+    inflight: Arc<DashMap<CacheKey, InflightSender, FxBuildHasher>>,
+    key: CacheKey,
+}
+
+impl Drop for InflightLeaderGuard {
+    fn drop(&mut self) {
+        if let Some((_, tx)) = self.inflight.remove(&self.key) {
+            let _ = tx.send(None);
+        }
+    }
+}
+
 pub struct CachedResolver {
     inner: Arc<dyn DnsResolver>,
     cache: Arc<dyn DnsCacheAccess>,
@@ -197,13 +210,7 @@ impl CachedResolver {
             };
         }
 
-        match self.inner.resolve(query).await {
-            Ok(r) => {
-                self.store_in_cache(query, &r);
-                Ok(r)
-            }
-            Err(e) => Err(e),
-        }
+        self.resolve(query).await
     }
 
     async fn resolve_as_leader(
@@ -226,6 +233,11 @@ impl CachedResolver {
             "Cache MISS"
         );
 
+        let guard = InflightLeaderGuard {
+            inflight: Arc::clone(&self.inflight),
+            key: key.clone(),
+        };
+
         let result = self.inner.resolve(query).await;
 
         match &result {
@@ -243,6 +255,7 @@ impl CachedResolver {
             }
         }
 
+        drop(guard);
         result
     }
 }
@@ -289,13 +302,6 @@ fn clamp_negative_ttl(ttl: u32) -> u32 {
     ttl.clamp(MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL)
 }
 
-/// Synthesizes a minimal SOA record for negative DNS responses served from cache.
-///
-/// RFC 2308 §3 requires that NXDOMAIN and NODATA responses include a SOA record
-/// in the authority section so clients can determine the negative caching TTL.
-/// When serving from the negative cache we no longer have the original upstream
-/// SOA, so we generate a synthetic one using the closest zone inferred from the
-/// queried domain.
 fn synthesize_negative_soa(domain: &str, negative_ttl: u32) -> Vec<Record> {
     let zone = {
         let labels: Vec<&str> = domain.split('.').collect();
