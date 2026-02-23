@@ -203,37 +203,37 @@
 
         <div style="margin-bottom:24px">
             <div class="card" style="padding:24px">
-                <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;color:var(--text-primary)">Add DNS Record</h2>
+                <h2 style="font-size:18px;font-weight:700;margin:0 0 16px;color:var(--text-primary)" x-text="editingRecord ? 'Edit DNS Record' : 'Add DNS Record'"></h2>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div class="form-group">
                         <label class="form-label">Hostname <span style="color:var(--color-error)">*</span></label>
-                        <input type="text" class="input" x-model="newRecord.hostname" placeholder="e.g. server">
+                        <input type="text" class="input" x-model="form.hostname" placeholder="e.g. server">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Domain <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
-                        <input type="text" class="input" x-model="newRecord.domain" placeholder="e.g. local">
+                        <input type="text" class="input" x-model="form.domain" placeholder="e.g. local">
                     </div>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
                     <div class="form-group">
                         <label class="form-label">IP Address <span style="color:var(--color-error)">*</span></label>
-                        <input type="text" class="input" x-model="newRecord.ip" placeholder="e.g. 10.0.1.1">
+                        <input type="text" class="input" x-model="form.ip" placeholder="e.g. 10.0.1.1">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Type</label>
-                        <select class="input" x-model="newRecord.record_type">
+                        <select class="input" x-model="form.record_type">
                             <option value="A">A (IPv4)</option>
                             <option value="AAAA">AAAA (IPv6)</option>
                         </select>
                     </div>
                     <div class="form-group">
                         <label class="form-label">TTL (seconds)</label>
-                        <input type="number" class="input" x-model="newRecord.ttl" placeholder="300">
+                        <input type="number" class="input" x-model="form.ttl" placeholder="300">
                     </div>
                 </div>
                 <div style="display:flex;gap:12px">
-                    <button class="btn btn-primary" @click="addRecord()">Add Record</button>
-                    <button class="btn btn-secondary" @click="newRecord = {hostname:'',domain:'',ip:'',record_type:'A',ttl:300}">Clear</button>
+                    <button class="btn btn-primary" @click="editingRecord ? updateRecord() : addRecord()" x-text="editingRecord ? 'Update Record' : 'Add Record'"></button>
+                    <button class="btn btn-secondary" @click="cancelEdit()" x-text="editingRecord ? 'Cancel' : 'Clear'"></button>
                 </div>
                 <div x-show="addError" x-text="addError"
                      style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
@@ -273,6 +273,9 @@
                         </td>
                         <td>
                             <div style="display:flex;gap:4px">
+                                <button @click="editRecord(record)" class="btn-icon" title="Edit" style="color:var(--text-secondary)">
+                                    <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                </button>
                                 <button @click="deleteRecord(record.id)" class="btn-icon" title="Delete" style="color:var(--color-error)">
                                     <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                                 </button>
@@ -299,6 +302,7 @@
             stats: {queries_total: 0},
             records: [],
             newRecord: {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300},
+            editingRecord: null,
             addError: '',
             _ctrl: {},
             _pollId: null,
@@ -340,12 +344,61 @@
                     if (e.name !== 'AbortError') console.error(e);
                 }
             },
+            get form() {
+                return this.editingRecord ?? this.newRecord;
+            },
             async loadRecords() {
                 try {
                     const r = await fetch('/api/local-records');
                     if (r.ok) this.records = await r.json();
                 } catch (e) {
                     console.error(e);
+                }
+            },
+            editRecord(record) {
+                this.editingRecord = {
+                    id: record.id,
+                    hostname: record.hostname,
+                    domain: record.domain ?? '',
+                    ip: record.ip,
+                    record_type: record.record_type,
+                    ttl: record.ttl,
+                };
+                this.addError = '';
+            },
+            cancelEdit() {
+                this.editingRecord = null;
+                this.newRecord = {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300};
+                this.addError = '';
+            },
+            async updateRecord() {
+                this.addError = '';
+                if (!this.editingRecord.hostname || !this.editingRecord.ip) {
+                    this.addError = 'Hostname and IP address are required.';
+                    return;
+                }
+                try {
+                    const r = await fetch(`/api/local-records/${this.editingRecord.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            hostname: this.editingRecord.hostname,
+                            domain: (this.editingRecord.domain || '').trim() || null,
+                            ip: this.editingRecord.ip,
+                            record_type: this.editingRecord.record_type,
+                            ttl: parseInt(this.editingRecord.ttl) || 300
+                        })
+                    });
+                    if (r.ok) {
+                        this.editingRecord = null;
+                        await this.loadRecords();
+                        this.$nextTick(() => scheduleLucide());
+                    } else {
+                        this.addError = await r.text() || 'Failed to update record';
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.addError = 'Network error: ' + e.message;
                 }
             },
             async addRecord() {

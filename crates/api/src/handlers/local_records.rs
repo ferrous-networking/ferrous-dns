@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post},
+    routing::{get, post, put},
     Router,
 };
 use ferrous_dns_domain::LocalDnsRecord;
@@ -14,7 +14,10 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/local-records", get(get_all_records))
         .route("/local-records", post(create_record))
-        .route("/local-records/{id}", delete(delete_record))
+        .route(
+            "/local-records/{id}",
+            put(update_record).delete(delete_record),
+        )
 }
 
 async fn get_all_records(
@@ -85,6 +88,71 @@ async fn create_record(
     );
 
     let dto = LocalRecordDto::from_config(&new_record, new_index as i64, &local_domain);
+
+    Ok(Json(dto))
+}
+
+async fn update_record(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(req): Json<UpdateLocalRecordRequest>,
+) -> Result<Json<LocalRecordDto>, (StatusCode, String)> {
+    req.ip
+        .parse::<std::net::IpAddr>()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid IP address".to_string()))?;
+
+    let record_type_upper = req.record_type.to_uppercase();
+    if record_type_upper != "A" && record_type_upper != "AAAA" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid record type (must be A or AAAA)".to_string(),
+        ));
+    }
+
+    let updated_record = LocalDnsRecord {
+        hostname: req.hostname.clone(),
+        domain: req.domain.clone(),
+        ip: req.ip.clone(),
+        record_type: record_type_upper,
+        ttl: req.ttl,
+    };
+
+    let mut config = state.config.write().await;
+
+    let idx = id as usize;
+    if idx >= config.dns.local_records.len() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Record with id {} not found", id),
+        ));
+    }
+
+    let old_record = config.dns.local_records[idx].clone();
+    let local_domain = config.dns.local_domain.clone();
+    config.dns.local_records[idx] = updated_record.clone();
+
+    if let Err(e) = save_config_to_file(&config).await {
+        config.dns.local_records[idx] = old_record;
+        error!(error = %e, "Failed to save config file");
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save configuration: {}", e),
+        ));
+    }
+
+    drop(config);
+
+    clear_cache_record(&state, &old_record, &local_domain).await;
+    reload_cache_with_record(&state, &updated_record, &local_domain).await;
+
+    info!(
+        hostname = %updated_record.hostname,
+        ip = %updated_record.ip,
+        record_type = %updated_record.record_type,
+        "Updated local DNS record in config and cache"
+    );
+
+    let dto = LocalRecordDto::from_config(&updated_record, id, &local_domain);
 
     Ok(Json(dto))
 }

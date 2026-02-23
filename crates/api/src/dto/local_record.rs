@@ -1,6 +1,4 @@
-use ferrous_dns_domain::RecordType;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalRecordDto {
@@ -42,12 +40,6 @@ pub struct CreateLocalRecordRequest {
     pub ip: String,
     pub record_type: String,
     pub ttl: Option<u32>,
-}
-
-impl CreateLocalRecordRequest {
-    pub fn record_type(&self) -> Option<RecordType> {
-        RecordType::from_str(&self.record_type).ok()
-    }
 }
 
 #[derive(Debug, Deserialize)]
