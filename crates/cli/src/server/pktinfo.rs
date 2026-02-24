@@ -57,7 +57,8 @@ fn try_recv_with_pktinfo(
     }
 
     let from = sockaddr_in_to_socket_addr(&src_addr);
-    let dst = extract_pktinfo_dst(&cmsg_buf, msg.msg_controllen as usize);
+    let controllen: usize = msg.msg_controllen as _;
+    let dst = extract_pktinfo_dst(&cmsg_buf, controllen);
 
     Ok((n as usize, from, dst))
 }
