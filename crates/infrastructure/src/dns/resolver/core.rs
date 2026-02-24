@@ -80,7 +80,7 @@ impl CoreResolver {
                         cache_hit: false,
                         local_dns: true,
                         dnssec_status: None,
-                        cname_chain: vec![],
+                        cname_chain: Arc::from(vec![]),
                         upstream_server: Some(server.to_string()),
                         min_ttl: response.min_ttl,
                         authority_records: response.authority_records,
@@ -147,7 +147,7 @@ impl DnsResolver for CoreResolver {
                 .cname_chain
                 .into_iter()
                 .map(|s| Arc::from(s.as_str()))
-                .collect(),
+                .collect::<Arc<[_]>>(),
             upstream_server,
             min_ttl: result.response.min_ttl,
             authority_records: result.response.authority_records,

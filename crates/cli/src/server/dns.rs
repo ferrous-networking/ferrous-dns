@@ -95,7 +95,7 @@ async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, 
 
         let handler_clone = handler.clone();
         let socket_clone = socket.clone();
-        let owned_buf = query_buf.to_vec();
+        let owned_buf: Arc<[u8]> = Arc::from(query_buf);
         tokio::spawn(async move {
             if let Some(response) = handler_clone
                 .handle_raw_udp_fallback(&owned_buf, client_ip)

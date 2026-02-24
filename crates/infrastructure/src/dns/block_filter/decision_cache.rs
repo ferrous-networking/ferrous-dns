@@ -9,7 +9,7 @@ use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
 
-const TTL_SECS: u64 = 60;
+pub const TTL_SECS: u64 = 60;
 const L0_CAPACITY: usize = 256;
 const L1_CAPACITY: usize = 100_000;
 const EVICTION_BATCH_SIZE: usize = 64;
@@ -105,8 +105,8 @@ impl BlockDecisionCache {
         match self.inner.entry(key) {
             dashmap::Entry::Vacant(_) => None,
             dashmap::Entry::Occupied(e) => {
-                let (encoded, inserted_at) = *e.get();
-                if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
+                let (encoded, expires_at) = *e.get();
+                if coarse_now_secs() < expires_at {
                     Some(decode_source(encoded))
                 } else {
                     e.remove();
@@ -116,33 +116,45 @@ impl BlockDecisionCache {
         }
     }
 
-    #[inline]
-    pub fn set_by_key(&self, key: u64, source: Option<BlockSource>) {
+    fn evict_if_full(&self) {
+        if self.inner.len() < L1_CAPACITY {
+            return;
+        }
+        let now = coarse_now_secs();
+        let expired: Vec<u64> = self
+            .inner
+            .iter()
+            .filter(|e| now >= e.value().1)
+            .map(|e| *e.key())
+            .take(EVICTION_BATCH_SIZE)
+            .collect();
+        for k in &expired {
+            self.inner.remove(k);
+        }
         if self.inner.len() >= L1_CAPACITY {
-            let now = coarse_now_secs();
-            let expired: Vec<u64> = self
+            let oldest = self
                 .inner
                 .iter()
-                .filter(|e| now.saturating_sub(e.value().1) >= TTL_SECS)
-                .map(|e| *e.key())
-                .take(EVICTION_BATCH_SIZE)
-                .collect();
-            for k in &expired {
-                self.inner.remove(k);
-            }
-            if self.inner.len() >= L1_CAPACITY {
-                let oldest = self
-                    .inner
-                    .iter()
-                    .min_by_key(|e| e.value().1)
-                    .map(|e| *e.key());
-                if let Some(k) = oldest {
-                    self.inner.remove(&k);
-                }
+                .min_by_key(|e| e.value().1)
+                .map(|e| *e.key());
+            if let Some(k) = oldest {
+                self.inner.remove(&k);
             }
         }
+    }
+
+    #[inline]
+    pub fn set_by_key(&self, key: u64, source: Option<BlockSource>) {
+        self.evict_if_full();
         self.inner
-            .insert(key, (encode_source(source), coarse_now_secs()));
+            .insert(key, (encode_source(source), coarse_now_secs() + TTL_SECS));
+    }
+
+    #[inline]
+    pub fn set_by_key_with_ttl(&self, key: u64, source: Option<BlockSource>, ttl_secs: u64) {
+        self.evict_if_full();
+        self.inner
+            .insert(key, (encode_source(source), coarse_now_secs() + ttl_secs));
     }
 
     pub fn clear(&self) {

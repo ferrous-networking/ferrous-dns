@@ -45,6 +45,7 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
     fn compiled_domain_count(&self) -> usize {
         0
     }
+    fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
 }
 
 async fn create_test_db() -> sqlx::SqlitePool {

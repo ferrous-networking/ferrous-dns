@@ -214,6 +214,10 @@ impl MockQueryLogRepository {
         self.sync_logs.lock().unwrap().clone()
     }
 
+    pub fn clear_sync_logs(&self) {
+        self.sync_logs.lock().unwrap().clear();
+    }
+
     pub async fn get_all_logs(&self) -> Vec<QueryLog> {
         self.logs.read().await.clone()
     }
@@ -1147,7 +1151,7 @@ pub struct DnsResolutionBuilder {
     addresses: Vec<IpAddr>,
     cache_hit: bool,
     dnssec_status: Option<&'static str>,
-    cname_chain: Vec<Arc<str>>,
+    cname_chain: Arc<[Arc<str>]>,
     upstream_server: Option<String>,
 }
 
@@ -1157,7 +1161,7 @@ impl DnsResolutionBuilder {
             addresses: vec![IpAddr::from_str("93.184.216.34").unwrap()],
             cache_hit: false,
             dnssec_status: None,
-            cname_chain: vec![],
+            cname_chain: Arc::from(vec![]),
             upstream_server: None,
         }
     }
@@ -1188,7 +1192,7 @@ impl DnsResolutionBuilder {
     }
 
     pub fn with_cname_chain(mut self, chain: Vec<&str>) -> Self {
-        self.cname_chain = chain.into_iter().map(Arc::from).collect();
+        self.cname_chain = chain.into_iter().map(Arc::from).collect::<Arc<[_]>>();
         self
     }
 
@@ -1415,6 +1419,7 @@ pub struct MockBlockFilterEngine {
     reload_count: Arc<RwLock<u32>>,
     should_fail_reload: Arc<RwLock<bool>>,
     blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
+    cname_blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
 }
 
 impl MockBlockFilterEngine {
@@ -1423,6 +1428,7 @@ impl MockBlockFilterEngine {
             reload_count: Arc::new(RwLock::new(0)),
             should_fail_reload: Arc::new(RwLock::new(false)),
             blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
+            cname_blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
         }
     }
 
@@ -1440,6 +1446,10 @@ impl MockBlockFilterEngine {
             .unwrap()
             .insert(domain.to_string());
     }
+
+    pub fn is_cname_blocked(&self, domain: &str) -> bool {
+        self.cname_blocked_domains.read().unwrap().contains(domain)
+    }
 }
 
 impl Default for MockBlockFilterEngine {
@@ -1455,10 +1465,20 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     }
 
     fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {
+        if self.cname_blocked_domains.read().unwrap().contains(domain) {
+            return FilterDecision::Block(BlockSource::CnameCloaking);
+        }
         if self.blocked_domains.read().unwrap().contains(domain) {
             return FilterDecision::Block(BlockSource::Blocklist);
         }
         FilterDecision::Allow
+    }
+
+    fn store_cname_decision(&self, domain: &str, _group_id: i64, _ttl_secs: u64) {
+        self.cname_blocked_domains
+            .write()
+            .unwrap()
+            .insert(domain.to_string());
     }
 
     async fn reload(&self) -> Result<(), DomainError> {

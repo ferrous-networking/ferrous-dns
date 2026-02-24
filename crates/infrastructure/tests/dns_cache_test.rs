@@ -36,7 +36,7 @@ fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
     CachedData::IpAddresses(CachedAddresses {
         addresses: Arc::new(vec![addr]),
-        cname_chain: vec![],
+        cname_chain: Arc::from(vec![]),
     })
 }
 
@@ -1030,7 +1030,7 @@ fn make_record_with_hits(hits: u64) -> CachedRecord {
     let record = CachedRecord::new(
         CachedData::IpAddresses(CachedAddresses {
             addresses: Arc::new(vec!["1.1.1.1".parse::<IpAddr>().unwrap()]),
-            cname_chain: vec![],
+            cname_chain: Arc::from(vec![]),
         }),
         300,
         RecordType::A,

@@ -218,7 +218,7 @@ impl DnsCache {
         }
 
         let maybe_l1 = if let CachedData::IpAddresses(ref entry) = data {
-            Some((Arc::clone(&entry.addresses), entry.cname_chain.clone()))
+            Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
         } else {
             None
         };
@@ -264,7 +264,7 @@ impl DnsCache {
         }
 
         let maybe_l1 = if let CachedData::IpAddresses(ref entry) = data {
-            Some((Arc::clone(&entry.addresses), entry.cname_chain.clone()))
+            Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
         } else {
             None
         };
@@ -365,7 +365,7 @@ impl DnsCache {
             record.clear_refreshing();
 
             let maybe_l1 = if let CachedData::IpAddresses(ref entry) = new_data {
-                Some((Arc::clone(&entry.addresses), entry.cname_chain.clone()))
+                Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
             } else {
                 None
             };
@@ -401,7 +401,7 @@ impl DnsCache {
                 domain,
                 record_type,
                 Arc::clone(&entry.addresses),
-                entry.cname_chain.clone(),
+                Arc::clone(&entry.cname_chain),
                 record.expires_at_secs,
             );
         }

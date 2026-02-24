@@ -371,26 +371,38 @@ async fn test_cname_cloaking_blocked_upstream_path() {
 }
 
 #[tokio::test]
-async fn test_cname_cloaking_blocked_cache_hit_path() {
+async fn test_cname_cloaking_blocked_then_cached_via_decision_cache() {
     let resolver = Arc::new(MockDnsResolver::new());
     let filter = Arc::new(MockBlockFilterEngine::new());
     let log = Arc::new(MockQueryLogRepository::new());
 
     filter.block_domain("x.tracker.com");
 
-    let resolution = DnsResolutionBuilder::new()
+    let upstream = DnsResolutionBuilder::new()
         .with_address("1.2.3.4")
-        .cache_hit()
         .with_cname_chain(vec!["x.tracker.com"])
         .build();
-    resolver.set_cached_response("analytics.seusite.com", resolution);
+    resolver
+        .set_response("analytics.seusite.com", upstream)
+        .await;
 
-    let use_case = make_use_case(resolver, filter, log.clone());
+    let use_case = make_use_case(Arc::clone(&resolver), Arc::clone(&filter), log.clone());
     let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
 
-    let result = use_case.execute(&request).await;
+    let first = use_case.execute(&request).await;
+    assert!(matches!(first, Err(DomainError::Blocked)));
+    assert!(filter.is_cname_blocked("analytics.seusite.com"));
 
-    assert!(matches!(result, Err(DomainError::Blocked)));
+    let cached = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .cache_hit()
+        .build();
+    resolver.set_cached_response("analytics.seusite.com", cached);
+
+    log.clear_sync_logs();
+
+    let second = use_case.execute(&request).await;
+    assert!(matches!(second, Err(DomainError::Blocked)));
     let logs = log.get_sync_logs();
     assert_eq!(logs.len(), 1);
     assert!(logs[0].blocked);
@@ -452,17 +464,16 @@ async fn test_cname_chain_not_blocked_when_clean() {
 }
 
 #[tokio::test]
-async fn test_try_cache_direct_returns_none_on_cname_blocked() {
+async fn test_try_cache_direct_returns_none_when_domain_blocked() {
     let resolver = Arc::new(MockDnsResolver::new());
     let filter = Arc::new(MockBlockFilterEngine::new());
     let log = Arc::new(MockQueryLogRepository::new());
 
-    filter.block_domain("x.tracker.com");
+    filter.block_domain("analytics.seusite.com");
 
     let resolution = DnsResolutionBuilder::new()
         .with_address("1.2.3.4")
         .cache_hit()
-        .with_cname_chain(vec!["x.tracker.com"])
         .build();
     resolver.set_cached_response("analytics.seusite.com", resolution);
 

@@ -244,7 +244,7 @@ async fn reload_cache_with_record(
 
     let data = CachedData::IpAddresses(CachedAddresses {
         addresses: StdArc::new(vec![ip]),
-        cname_chain: vec![],
+        cname_chain: StdArc::from(vec![]),
     });
     state.cache.insert_permanent(&fqdn, record_type, data, None);
 

@@ -29,7 +29,7 @@ fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
     CachedData::IpAddresses(CachedAddresses {
         addresses: Arc::new(vec![addr]),
-        cname_chain: vec![],
+        cname_chain: Arc::from(vec![]),
     })
 }
 

@@ -49,7 +49,7 @@ impl DnssecStatus {
 #[derive(Clone, Debug)]
 pub struct CachedAddresses {
     pub addresses: Arc<Vec<IpAddr>>,
-    pub cname_chain: Vec<Arc<str>>,
+    pub cname_chain: Arc<[Arc<str>]>,
 }
 
 #[derive(Clone, Debug)]

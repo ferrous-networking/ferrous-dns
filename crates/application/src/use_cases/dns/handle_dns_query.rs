@@ -148,18 +148,15 @@ impl HandleDnsQueryUseCase {
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
         let start = Instant::now();
         let domain_arc: Arc<str> = Arc::from(domain);
-        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
-        let resolution = self.resolver.try_cache(&query)?;
-        if resolution.addresses.is_empty() {
+        let group_id = self.block_filter.resolve_group(client_ip);
+
+        if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
             return None;
         }
 
-        let group_id = self.block_filter.resolve_group(client_ip);
-
-        if self
-            .blocked_cname(&resolution.cname_chain, group_id)
-            .is_some()
-        {
+        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
+        let resolution = self.resolver.try_cache(&query)?;
+        if resolution.addresses.is_empty() {
             return None;
         }
 
@@ -194,17 +191,20 @@ impl HandleDnsQueryUseCase {
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
         let group_id = self.block_filter.resolve_group(request.client_ip);
 
+        if let FilterDecision::Block(block_source) =
+            self.block_filter.check(&request.domain, group_id)
+        {
+            self.log(&QueryLog {
+                blocked: true,
+                response_status: Some("BLOCKED"),
+                block_source: Some(block_source),
+                ..Self::base_query_log(request, elapsed_us(), group_id)
+            });
+            return Err(DomainError::Blocked);
+        }
+
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if !cached.addresses.is_empty() {
-                if let Some(block_source) = self.blocked_cname(&cached.cname_chain, group_id) {
-                    self.log(&QueryLog {
-                        blocked: true,
-                        response_status: Some("BLOCKED"),
-                        block_source: Some(block_source),
-                        ..Self::base_query_log(request, elapsed_us(), group_id)
-                    });
-                    return Err(DomainError::Blocked);
-                }
                 self.log(&QueryLog {
                     cache_hit: true,
                     dnssec_status: cached.dnssec_status,
@@ -221,21 +221,12 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        if let FilterDecision::Block(block_source) =
-            self.block_filter.check(&request.domain, group_id)
-        {
-            self.log(&QueryLog {
-                blocked: true,
-                response_status: Some("BLOCKED"),
-                block_source: Some(block_source),
-                ..Self::base_query_log(request, elapsed_us(), group_id)
-            });
-            return Err(DomainError::Blocked);
-        }
-
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
                 if let Some(block_source) = self.blocked_cname(&resolution.cname_chain, group_id) {
+                    let ttl = resolution.min_ttl.map(|t| t as u64).unwrap_or(60).max(5);
+                    self.block_filter
+                        .store_cname_decision(&request.domain, group_id, ttl);
                     self.log(&QueryLog {
                         blocked: true,
                         response_status: Some("BLOCKED"),

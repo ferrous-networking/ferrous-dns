@@ -8,11 +8,11 @@ use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-type L1Hit = (Arc<Vec<IpAddr>>, Vec<Arc<str>>, u32);
+type L1Hit = (Arc<Vec<IpAddr>>, Arc<[Arc<str>]>, u32);
 
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
-    cname_chain: Vec<Arc<str>>,
+    cname_chain: Arc<[Arc<str>]>,
     expires_secs: u64,
 }
 
@@ -36,7 +36,7 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
                 let remaining = (entry.expires_secs - now).min(u32::MAX as u64) as u32;
                 return Some((
                     Arc::clone(&entry.addresses),
-                    entry.cname_chain.clone(),
+                    Arc::clone(&entry.cname_chain),
                     remaining,
                 ));
             }
@@ -52,7 +52,7 @@ pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
     addresses: Arc<Vec<IpAddr>>,
-    cname_chain: Vec<Arc<str>>,
+    cname_chain: Arc<[Arc<str>]>,
     expires_secs: u64,
 ) {
     L1_CACHE.with(|cache| {

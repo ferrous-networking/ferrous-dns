@@ -188,6 +188,15 @@ impl BlockFilterEnginePort for BlockFilterEngine {
         }
     }
 
+    #[inline]
+    fn store_cname_decision(&self, domain: &str, group_id: i64, ttl_secs: u64) {
+        let key = decision_key(domain, group_id);
+        let source = Some(ferrous_dns_domain::BlockSource::CnameCloaking);
+        self.decision_cache
+            .set_by_key_with_ttl(key, source, ttl_secs);
+        decision_l0_set_by_key(key, source);
+    }
+
     async fn reload(&self) -> Result<(), DomainError> {
         info!("Block filter reload started");
 
