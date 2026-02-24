@@ -99,6 +99,9 @@ fn test_protocol_name() {
 
     let quic: DnsProtocol = "doq://1.1.1.1:853".parse().unwrap();
     assert_eq!(quic.protocol_name(), "QUIC");
+
+    let h3: DnsProtocol = "h3://1.1.1.1/dns-query".parse().unwrap();
+    assert_eq!(h3.protocol_name(), "H3");
 }
 
 #[test]
@@ -114,6 +117,9 @@ fn test_socket_addr_extraction() {
 
     let quic: DnsProtocol = "doq://1.1.1.1:853".parse().unwrap();
     assert!(quic.socket_addr().is_some());
+
+    let h3: DnsProtocol = "h3://1.1.1.1/dns-query".parse().unwrap();
+    assert!(h3.socket_addr().is_none());
 }
 
 #[test]
@@ -129,12 +135,18 @@ fn test_hostname_extraction() {
 
     let quic: DnsProtocol = "doq://dns.cloudflare.com:853".parse().unwrap();
     assert_eq!(quic.hostname(), Some("dns.cloudflare.com"));
+
+    let h3: DnsProtocol = "h3://dns.google/dns-query".parse().unwrap();
+    assert_eq!(h3.hostname(), Some("dns.google"));
 }
 
 #[test]
 fn test_url_extraction() {
     let https: DnsProtocol = "https://1.1.1.1/dns-query".parse().unwrap();
     assert_eq!(https.url(), Some("https://1.1.1.1/dns-query"));
+
+    let h3: DnsProtocol = "h3://1.1.1.1/dns-query".parse().unwrap();
+    assert_eq!(h3.url(), Some("h3://1.1.1.1/dns-query"));
 
     let udp: DnsProtocol = "udp://8.8.8.8:53".parse().unwrap();
     assert_eq!(udp.url(), None);
@@ -151,6 +163,29 @@ fn test_display_formatting() {
 
     let https: DnsProtocol = "https://dns.google/dns-query".parse().unwrap();
     assert_eq!(format!("{}", https), "https://dns.google/dns-query");
+}
+
+#[test]
+fn test_parse_h3() {
+    let protocol: DnsProtocol = "h3://1.1.1.1/dns-query".parse().unwrap();
+    assert!(matches!(protocol, DnsProtocol::H3 { .. }));
+}
+
+#[test]
+fn test_parse_h3_with_hostname() {
+    let protocol: DnsProtocol = "h3://dns.google/dns-query".parse().unwrap();
+    if let DnsProtocol::H3 { url, hostname } = protocol {
+        assert_eq!(&*url, "h3://dns.google/dns-query");
+        assert_eq!(&*hostname, "dns.google");
+    } else {
+        panic!("Expected H3 variant");
+    }
+}
+
+#[test]
+fn test_display_h3() {
+    let protocol: DnsProtocol = "h3://dns.google/dns-query".parse().unwrap();
+    assert_eq!(format!("{}", protocol), "h3://dns.google/dns-query");
 }
 
 #[test]

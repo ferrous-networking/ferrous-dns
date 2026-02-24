@@ -45,12 +45,12 @@ local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lo
 #     "https://1.0.0.1/dns-query",
 # ]
 [[dns.pools]]
-name = "cloudflare"       
-strategy = "Parallel"     
-priority = 1              
+name = "adguard"
+strategy = "Parallel"
+priority = 1
 servers = [
-    "doq://94.140.14.14:853",
-    "doq://94.140.15.15:853",
+    "h3://94.140.14.14/dns-query",
+    "h3://94.140.15.15/dns-query",
 ]
 
 [dns.health_check]

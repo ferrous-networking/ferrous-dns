@@ -23,6 +23,10 @@ pub enum DnsProtocol {
         addr: SocketAddr,
         hostname: Arc<str>,
     },
+    H3 {
+        url: Arc<str>,
+        hostname: Arc<str>,
+    },
 }
 
 impl DnsProtocol {
@@ -32,7 +36,7 @@ impl DnsProtocol {
             | DnsProtocol::Tcp { addr }
             | DnsProtocol::Tls { addr, .. }
             | DnsProtocol::Quic { addr, .. } => Some(*addr),
-            DnsProtocol::Https { .. } => None,
+            DnsProtocol::Https { .. } | DnsProtocol::H3 { .. } => None,
         }
     }
 
@@ -40,14 +44,15 @@ impl DnsProtocol {
         match self {
             DnsProtocol::Tls { hostname, .. }
             | DnsProtocol::Https { hostname, .. }
-            | DnsProtocol::Quic { hostname, .. } => Some(hostname),
+            | DnsProtocol::Quic { hostname, .. }
+            | DnsProtocol::H3 { hostname, .. } => Some(hostname),
             _ => None,
         }
     }
 
     pub fn url(&self) -> Option<&str> {
         match self {
-            DnsProtocol::Https { url, .. } => Some(url),
+            DnsProtocol::Https { url, .. } | DnsProtocol::H3 { url, .. } => Some(url),
             _ => None,
         }
     }
@@ -59,6 +64,7 @@ impl DnsProtocol {
             DnsProtocol::Tls { .. } => "TLS",
             DnsProtocol::Https { .. } => "HTTPS",
             DnsProtocol::Quic { .. } => "QUIC",
+            DnsProtocol::H3 { .. } => "H3",
         }
     }
 }
@@ -119,6 +125,15 @@ impl FromStr for DnsProtocol {
                 s
             ));
         }
+        if s.starts_with("h3://") {
+            let url: Arc<str> = s.into();
+            let hostname: Arc<str> = s
+                .strip_prefix("h3://")
+                .and_then(|rest| rest.split('/').next())
+                .ok_or_else(|| format!("Invalid H3 URL: {}", s))?
+                .into();
+            return Ok(DnsProtocol::H3 { url, hostname });
+        }
         if s.starts_with("https://") {
             let url: Arc<str> = s.into();
             let hostname: Arc<str> = s
@@ -131,7 +146,7 @@ impl FromStr for DnsProtocol {
         if let Ok(addr) = s.parse::<SocketAddr>() {
             return Ok(DnsProtocol::Udp { addr });
         }
-        Err(format!("Invalid DNS endpoint format: '{}'. Expected: udp://IP:PORT, tcp://IP:PORT, tls://HOST:PORT, https://URL, doq://HOST:PORT, or IP:PORT", s))
+        Err(format!("Invalid DNS endpoint format: '{}'. Expected: udp://IP:PORT, tcp://IP:PORT, tls://HOST:PORT, https://URL, h3://URL, doq://HOST:PORT, or IP:PORT", s))
     }
 }
 
@@ -142,6 +157,7 @@ impl fmt::Display for DnsProtocol {
             DnsProtocol::Tcp { addr } => write!(f, "tcp://{}", addr),
             DnsProtocol::Tls { addr, hostname } => write!(f, "tls://{}:{}", hostname, addr.port()),
             DnsProtocol::Https { url, .. } => write!(f, "{}", url),
+            DnsProtocol::H3 { url, .. } => write!(f, "{}", url),
             DnsProtocol::Quic { addr, hostname } => write!(f, "doq://{}:{}", hostname, addr.port()),
         }
     }
