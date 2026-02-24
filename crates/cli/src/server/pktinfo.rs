@@ -43,15 +43,13 @@ fn try_recv_with_pktinfo(
     };
     let mut src_addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
     let mut cmsg_buf = [0u8; 128];
-    let mut msg = libc::msghdr {
-        msg_name: &mut src_addr as *mut libc::sockaddr_in as *mut libc::c_void,
-        msg_namelen: std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        msg_iov: &mut iov,
-        msg_iovlen: 1,
-        msg_control: cmsg_buf.as_mut_ptr() as *mut libc::c_void,
-        msg_controllen: cmsg_buf.len(),
-        msg_flags: 0,
-    };
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_name = &mut src_addr as *mut libc::sockaddr_in as *mut libc::c_void;
+    msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    msg.msg_iov = &mut iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
+    msg.msg_controllen = cmsg_buf.len() as _;
 
     let n = unsafe { libc::recvmsg(fd, &mut msg, libc::MSG_DONTWAIT) };
     if n < 0 {
@@ -59,7 +57,7 @@ fn try_recv_with_pktinfo(
     }
 
     let from = sockaddr_in_to_socket_addr(&src_addr);
-    let dst = extract_pktinfo_dst(&cmsg_buf, msg.msg_controllen);
+    let dst = extract_pktinfo_dst(&cmsg_buf, msg.msg_controllen as usize);
 
     Ok((n as usize, from, dst))
 }
@@ -132,15 +130,13 @@ fn try_send_with_src_ip(
         iov_base: buf.as_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
     };
-    let msg = libc::msghdr {
-        msg_name: &dst_addr as *const libc::sockaddr_in as *mut libc::c_void,
-        msg_namelen: std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        msg_iov: &iov as *const libc::iovec as *mut libc::iovec,
-        msg_iovlen: 1,
-        msg_control: cmsg_buf.as_mut_ptr() as *mut libc::c_void,
-        msg_controllen: cmsg_space,
-        msg_flags: 0,
-    };
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_name = &dst_addr as *const libc::sockaddr_in as *mut libc::c_void;
+    msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    msg.msg_iov = &iov as *const libc::iovec as *mut libc::iovec;
+    msg.msg_iovlen = 1;
+    msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
+    msg.msg_controllen = cmsg_space as _;
 
     unsafe {
         let cmsg = libc::CMSG_FIRSTHDR(&msg);
@@ -149,7 +145,7 @@ fn try_send_with_src_ip(
         }
         (*cmsg).cmsg_level = libc::IPPROTO_IP;
         (*cmsg).cmsg_type = libc::IP_PKTINFO;
-        (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<libc::in_pktinfo>() as u32) as usize;
+        (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<libc::in_pktinfo>() as u32) as _;
         let data = libc::CMSG_DATA(cmsg) as *mut libc::in_pktinfo;
         data.write(pktinfo);
     }
@@ -169,15 +165,11 @@ fn socket_send_fallback(socket: &UdpSocket, buf: &[u8], to: SocketAddr) -> io::R
         iov_base: buf.as_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
     };
-    let msg = libc::msghdr {
-        msg_name: &dst_addr as *const libc::sockaddr_in as *mut libc::c_void,
-        msg_namelen: std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-        msg_iov: &iov as *const libc::iovec as *mut libc::iovec,
-        msg_iovlen: 1,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
+    let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
+    msg.msg_name = &dst_addr as *const libc::sockaddr_in as *mut libc::c_void;
+    msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    msg.msg_iov = &iov as *const libc::iovec as *mut libc::iovec;
+    msg.msg_iovlen = 1;
     let n = unsafe { libc::sendmsg(fd, &msg, libc::MSG_DONTWAIT) };
     if n < 0 {
         return Err(io::Error::last_os_error());
