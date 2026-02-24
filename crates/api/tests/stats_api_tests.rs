@@ -379,11 +379,8 @@ async fn test_get_stats_has_source_stats_field() {
 
     let ss = &json["source_stats"];
     assert!(ss.is_object(), "source_stats must be an object");
-    assert!(ss["cache_hits"].is_number());
+    assert!(ss["cache"].is_number());
     assert!(ss["upstream"].is_number());
-    assert!(ss["blocked_by_blocklist"].is_number());
-    assert!(ss["blocked_by_managed_domain"].is_number());
-    assert!(ss["blocked_by_regex_filter"].is_number());
 }
 
 #[tokio::test]
@@ -418,11 +415,11 @@ async fn test_get_stats_with_data() {
     assert_eq!(json["queries_blocked"], 1);
 
     let ss = &json["source_stats"];
-    assert_eq!(ss["cache_hits"], 2);
+    assert_eq!(ss["cache"], 2);
     assert_eq!(ss["upstream"], 3);
-    assert_eq!(ss["blocked_by_blocklist"], 1);
-    assert_eq!(ss["blocked_by_managed_domain"], 0);
-    assert_eq!(ss["blocked_by_regex_filter"], 0);
+    assert_eq!(ss["blocklist"], 1);
+    assert_eq!(ss["managed_domain"], serde_json::Value::Null);
+    assert_eq!(ss["regex_filter"], serde_json::Value::Null);
 }
 
 #[tokio::test]
