@@ -187,25 +187,23 @@
         cacheSource: null
     };
 
-    // Gera (e persiste) uma cor distinta para cada label de gráfico.
-    // Usa hash djb2 + ângulo dourado no espaço HSL para máxima separação de matizes.
-    // A cor fica salva no localStorage, então o mesmo label sempre recebe a mesma cor
-    // mesmo que novos tipos apareçam ou a ordem mude no futuro.
-    function labelToColor(label) {
-        const storageKey = 'dns-chart-color:' + label;
-        const cached = localStorage.getItem(storageKey);
-        if (cached) return cached;
+    function generateChartColors(count) {
+        return Array.from({ length: count }, (_, i) => {
+            const hue = Math.round((i / count) * 360 + 200) % 360;
+            const lightness = [55, 45, 65][i % 3];
+            const saturation = [75, 85, 65][i % 3];
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        });
+    }
 
-        // djb2 hash
-        let hash = 5381;
-        for (let i = 0; i < label.length; i++) {
-            hash = (((hash << 5) + hash) ^ label.charCodeAt(i)) >>> 0;
-        }
-        // Ângulo dourado (~137.508°) distribui matizes de forma maximamente uniforme
-        const hue = Math.round((hash * 137.508) % 360);
-        const color = `hsl(${hue},70%,52%)`;
-        localStorage.setItem(storageKey, color);
-        return color;
+    function formatSourceKey(key) {
+        return key
+            .replace(/^blocked_by_/, '')
+            .replace(/_hits$/, '')
+            .replace(/_/g, ' ')
+            .split(' ')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
     }
 
     function app() {
@@ -278,15 +276,7 @@
                             this.queryTypes = {...this.stats.queries_by_type};
                         }
                         if (this.stats.source_stats) {
-                            const ss = this.stats.source_stats;
-                            this.sourceStats = {
-                                cache:          ss.cache_hits            || 0,
-                                upstream:       ss.upstream              || 0,
-                                local_dns:      ss.local_dns             || 0,
-                                blocklist:      ss.blocked_by_blocklist  || 0,
-                                managed_domain: ss.blocked_by_managed_domain || 0,
-                                regex_filter:   ss.blocked_by_regex_filter   || 0,
-                            };
+                            this.sourceStats = { ...this.stats.source_stats };
                         }
                     }
                 } catch (e) {
@@ -431,7 +421,7 @@
                                     labels: Object.keys(validTypes),
                                     datasets: [{
                                         data: Object.values(validTypes),
-                                        backgroundColor: Object.keys(validTypes).map(labelToColor)
+                                        backgroundColor: generateChartColors(Object.keys(validTypes).length)
                                     }]
                                 },
                                 options: {
@@ -455,7 +445,7 @@
                         if (labelsChanged || dataChanged) {
                             appCharts.queryTypes.data.labels = newLabels;
                             appCharts.queryTypes.data.datasets[0].data = newData;
-                            appCharts.queryTypes.data.datasets[0].backgroundColor = newLabels.map(labelToColor);
+                            appCharts.queryTypes.data.datasets[0].backgroundColor = generateChartColors(newLabels.length);
                             appCharts.queryTypes.update('none');
                         }
                     }
@@ -466,14 +456,6 @@
             updateCacheSourceChart() {
                 if (!this.chartsReady) return;
 
-                const SOURCE_DEF = [
-                    {key: 'cache',          label: '⚡ Cache'},
-                    {key: 'upstream',       label: '🌐 Upstream'},
-                    {key: 'local_dns',      label: '🏠 Local DNS'},
-                    {key: 'blocklist',      label: '🚫 Blocklist'},
-                    {key: 'managed_domain', label: '🔶 Managed Domain'},
-                    {key: 'regex_filter',   label: '🔵 Regex Filter'},
-                ];
                 const pctTooltip = {
                     callbacks: {
                         label: function(context) {
@@ -486,11 +468,15 @@
                 };
 
                 try {
-                    const active = SOURCE_DEF.filter(e => (this.sourceStats[e.key] || 0) > 0);
+                    const active = Object.entries(this.sourceStats)
+                        .filter(([, v]) => v > 0)
+                        .map(([key, value]) => ({ label: formatSourceKey(key), value }));
+
                     if (active.length === 0) return;
+
                     const labels = active.map(e => e.label);
-                    const data   = active.map(e => this.sourceStats[e.key]);
-                    const colors = active.map(e => labelToColor(e.label));
+                    const data   = active.map(e => e.value);
+                    const colors = generateChartColors(active.length);
 
                     if (!appCharts.cacheSource) {
                         const ctx3 = document.getElementById('cacheSourceChart');
@@ -642,63 +628,6 @@
                         });
                     }
 
-                    const doughnutPctTooltip = {
-                        callbacks: {
-                            label: function(context) {
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const val = context.parsed;
-                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-                                return ` ${context.label}: ${val.toLocaleString()} (${pct}%)`;
-                            }
-                        }
-                    };
-                    const ctx2 = document.getElementById('queryTypesChart');
-                    if (ctx2 && Object.keys(this.queryTypes).length > 0) {
-                        appCharts.queryTypes = new Chart(ctx2.getContext('2d'), {
-                            type: 'doughnut',
-                            data: {
-                                labels: Object.keys(this.queryTypes),
-                                datasets: [{
-                                    data: Object.values(this.queryTypes),
-                                    backgroundColor: Object.keys(this.queryTypes).map(labelToColor)
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                aspectRatio: 1.5,
-                                plugins: {legend: {position: 'right'}, tooltip: doughnutPctTooltip}
-                            }
-                        })
-                    }
-                    const SOURCE_DEF_INIT = [
-                        {key: 'cache',          label: '⚡ Cache'},
-                        {key: 'upstream',       label: '🌐 Upstream'},
-                        {key: 'local_dns',      label: '🏠 Local DNS'},
-                        {key: 'blocklist',      label: '🚫 Blocklist'},
-                        {key: 'managed_domain', label: '🔶 Managed Domain'},
-                        {key: 'regex_filter',   label: '🔵 Regex Filter'},
-                    ];
-                    const ctx3 = document.getElementById('cacheSourceChart');
-                    const activeInit = SOURCE_DEF_INIT.filter(e => (this.sourceStats[e.key] || 0) > 0);
-                    if (ctx3 && activeInit.length > 0) {
-                        appCharts.cacheSource = new Chart(ctx3.getContext('2d'), {
-                            type: 'doughnut',
-                            data: {
-                                labels: activeInit.map(e => e.label),
-                                datasets: [{
-                                    data: activeInit.map(e => this.sourceStats[e.key]),
-                                    backgroundColor: activeInit.map(e => labelToColor(e.label))
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                aspectRatio: 1.5,
-                                plugins: {legend: {position: 'right'}, tooltip: doughnutPctTooltip}
-                            }
-                        })
-                    }
                 } catch (e) {
                     console.error('Chart error:', e)
                 }
@@ -711,7 +640,7 @@
                     this.loadCacheMetrics();
                 }, 5000);
                 this.pollingIntervals.slow = setInterval(() => {
-                    this.loadChartsData();
+                    this.loadTimelineData();
                 }, 60000);
             },
             stopPolling() {

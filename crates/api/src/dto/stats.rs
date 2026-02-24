@@ -11,16 +11,7 @@ fn default_period() -> String {
     "24h".to_string()
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct QuerySourceStats {
-    pub cache_hits: u64,
-    pub upstream: u64,
-    pub local_dns: u64,
-    pub blocked_by_blocklist: u64,
-    pub blocked_by_managed_domain: u64,
-    pub blocked_by_regex_filter: u64,
-    pub blocked_by_cname_cloaking: u64,
-}
+pub type QuerySourceStats = HashMap<String, u64>;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct StatsResponse {
@@ -67,15 +58,7 @@ impl Default for StatsResponse {
             most_queried_type: None,
             record_type_distribution: Vec::new(),
             top_10_types: Vec::new(),
-            source_stats: QuerySourceStats {
-                cache_hits: 0,
-                upstream: 0,
-                local_dns: 0,
-                blocked_by_blocklist: 0,
-                blocked_by_managed_domain: 0,
-                blocked_by_regex_filter: 0,
-                blocked_by_cname_cloaking: 0,
-            },
+            source_stats: HashMap::new(),
         }
     }
 }

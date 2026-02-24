@@ -299,24 +299,32 @@ impl QueryLogRepository for MockQueryLogRepository {
         let logs = self.logs.read().await;
         let queries_total = logs.len() as u64;
         let queries_blocked = logs.iter().filter(|l| l.blocked).count() as u64;
-        let queries_cache_hits = logs.iter().filter(|l| l.cache_hit).count() as u64;
-        let queries_upstream = logs.iter().filter(|l| !l.cache_hit && !l.blocked).count() as u64;
-        let queries_blocked_by_blocklist = logs
-            .iter()
-            .filter(|l| l.block_source == Some(BlockSource::Blocklist))
-            .count() as u64;
-        let queries_blocked_by_managed_domain = logs
-            .iter()
-            .filter(|l| l.block_source == Some(BlockSource::ManagedDomain))
-            .count() as u64;
-        let queries_blocked_by_regex_filter = logs
-            .iter()
-            .filter(|l| l.block_source == Some(BlockSource::RegexFilter))
-            .count() as u64;
-        let queries_blocked_by_cname_cloaking = logs
-            .iter()
-            .filter(|l| l.block_source == Some(BlockSource::CnameCloaking))
-            .count() as u64;
+
+        let mut source_stats = HashMap::new();
+        source_stats.insert(
+            "cache".to_string(),
+            logs.iter().filter(|l| l.cache_hit).count() as u64,
+        );
+        source_stats.insert(
+            "upstream".to_string(),
+            logs.iter().filter(|l| !l.cache_hit && !l.blocked).count() as u64,
+        );
+        source_stats.insert("local_dns".to_string(), 0u64);
+
+        for (key, block_source) in [
+            ("blocklist", BlockSource::Blocklist),
+            ("managed_domain", BlockSource::ManagedDomain),
+            ("regex_filter", BlockSource::RegexFilter),
+            ("cname_cloaking", BlockSource::CnameCloaking),
+        ] {
+            let count = logs
+                .iter()
+                .filter(|l| l.block_source == Some(block_source))
+                .count() as u64;
+            if count > 0 {
+                source_stats.insert(key.to_string(), count);
+            }
+        }
 
         Ok(QueryStats {
             queries_total,
@@ -327,13 +335,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             avg_query_time_ms: 0.0,
             avg_cache_time_ms: 0.0,
             avg_upstream_time_ms: 0.0,
-            queries_cache_hits,
-            queries_upstream,
-            queries_blocked_by_blocklist,
-            queries_blocked_by_managed_domain,
-            queries_blocked_by_regex_filter,
-            queries_blocked_by_cname_cloaking,
-            queries_local_dns: 0,
+            source_stats,
             queries_by_type: HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),

@@ -4,22 +4,20 @@ use std::collections::HashMap;
 #[test]
 fn test_query_stats_default_source_fields() {
     let stats = QueryStats::default();
-    assert_eq!(stats.queries_cache_hits, 0);
-    assert_eq!(stats.queries_upstream, 0);
-    assert_eq!(stats.queries_blocked_by_blocklist, 0);
-    assert_eq!(stats.queries_blocked_by_managed_domain, 0);
-    assert_eq!(stats.queries_blocked_by_regex_filter, 0);
+    assert!(stats.source_stats.is_empty());
 }
 
 #[test]
 fn test_query_stats_source_fields_not_altered_by_analytics() {
+    let mut source_stats = HashMap::new();
+    source_stats.insert("cache".to_string(), 10u64);
+    source_stats.insert("upstream".to_string(), 20u64);
+    source_stats.insert("blocklist".to_string(), 5u64);
+    source_stats.insert("managed_domain".to_string(), 3u64);
+    source_stats.insert("regex_filter".to_string(), 2u64);
+
     let stats = QueryStats {
-        queries_cache_hits: 10,
-        queries_upstream: 20,
-        queries_blocked_by_blocklist: 5,
-        queries_blocked_by_managed_domain: 3,
-        queries_blocked_by_regex_filter: 2,
-        queries_blocked_by_cname_cloaking: 0,
+        source_stats,
         ..Default::default()
     };
 
@@ -27,12 +25,11 @@ fn test_query_stats_source_fields_not_altered_by_analytics() {
     by_type.insert(RecordType::A, 100u64);
     let stats = stats.with_analytics(by_type);
 
-    // with_analytics must not touch source fields
-    assert_eq!(stats.queries_cache_hits, 10);
-    assert_eq!(stats.queries_upstream, 20);
-    assert_eq!(stats.queries_blocked_by_blocklist, 5);
-    assert_eq!(stats.queries_blocked_by_managed_domain, 3);
-    assert_eq!(stats.queries_blocked_by_regex_filter, 2);
+    assert_eq!(stats.source_stats.get("cache"), Some(&10));
+    assert_eq!(stats.source_stats.get("upstream"), Some(&20));
+    assert_eq!(stats.source_stats.get("blocklist"), Some(&5));
+    assert_eq!(stats.source_stats.get("managed_domain"), Some(&3));
+    assert_eq!(stats.source_stats.get("regex_filter"), Some(&2));
 }
 
 #[test]

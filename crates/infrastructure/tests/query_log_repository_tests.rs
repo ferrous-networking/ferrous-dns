@@ -72,23 +72,22 @@ async fn test_get_stats_empty() {
 
     assert_eq!(stats.queries_total, 0);
     assert_eq!(stats.queries_blocked, 0);
-    assert_eq!(stats.queries_cache_hits, 0);
-    assert_eq!(stats.queries_upstream, 0);
-    assert_eq!(stats.queries_blocked_by_blocklist, 0);
-    assert_eq!(stats.queries_blocked_by_managed_domain, 0);
-    assert_eq!(stats.queries_blocked_by_regex_filter, 0);
-    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
+    assert_eq!(stats.source_stats.get("cache"), Some(&0));
+    assert_eq!(stats.source_stats.get("upstream"), Some(&0));
+    assert_eq!(stats.source_stats.get("local_dns"), Some(&0));
+    assert_eq!(stats.source_stats.get("blocklist"), None);
+    assert_eq!(stats.source_stats.get("managed_domain"), None);
+    assert_eq!(stats.source_stats.get("regex_filter"), None);
+    assert_eq!(stats.source_stats.get("cname_cloaking"), None);
 }
 
 #[tokio::test]
 async fn test_get_stats_cache_hits_count() {
     let pool = create_test_db().await;
 
-    // 3 cache hits
     for _ in 0..3 {
         insert_log(&pool, true, false, None, "client", None).await;
     }
-    // 2 upstream queries
     for _ in 0..2 {
         insert_log(&pool, false, false, None, "client", None).await;
     }
@@ -98,8 +97,8 @@ async fn test_get_stats_cache_hits_count() {
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 5);
-    assert_eq!(stats.queries_cache_hits, 3);
-    assert_eq!(stats.queries_upstream, 2);
+    assert_eq!(stats.source_stats.get("cache"), Some(&3));
+    assert_eq!(stats.source_stats.get("upstream"), Some(&2));
     assert_eq!(stats.queries_blocked, 0);
 }
 
@@ -107,12 +106,9 @@ async fn test_get_stats_cache_hits_count() {
 async fn test_get_stats_blocklist_breakdown() {
     let pool = create_test_db().await;
 
-    // 2 blocklist blocks
     insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
     insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
-    // 1 managed domain block
     insert_log(&pool, false, true, Some("managed_domain"), "client", None).await;
-    // 3 regex filter blocks
     for _ in 0..3 {
         insert_log(&pool, false, true, Some("regex_filter"), "client", None).await;
     }
@@ -122,10 +118,10 @@ async fn test_get_stats_blocklist_breakdown() {
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 6);
-    assert_eq!(stats.queries_blocked_by_blocklist, 2);
-    assert_eq!(stats.queries_blocked_by_managed_domain, 1);
-    assert_eq!(stats.queries_blocked_by_regex_filter, 3);
-    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
+    assert_eq!(stats.source_stats.get("blocklist"), Some(&2));
+    assert_eq!(stats.source_stats.get("managed_domain"), Some(&1));
+    assert_eq!(stats.source_stats.get("regex_filter"), Some(&3));
+    assert_eq!(stats.source_stats.get("cname_cloaking"), None);
 }
 
 #[tokio::test]
@@ -141,17 +137,15 @@ async fn test_get_stats_cname_cloaking_breakdown() {
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 3);
-    assert_eq!(stats.queries_blocked_by_cname_cloaking, 2);
-    assert_eq!(stats.queries_blocked_by_blocklist, 1);
+    assert_eq!(stats.source_stats.get("cname_cloaking"), Some(&2));
+    assert_eq!(stats.source_stats.get("blocklist"), Some(&1));
 }
 
 #[tokio::test]
 async fn test_get_stats_excludes_internal_query_source() {
     let pool = create_test_db().await;
 
-    // 1 client query (should be counted)
     insert_log(&pool, false, false, None, "client", None).await;
-    // 2 internal queries (should be excluded)
     insert_log(&pool, false, false, None, "internal", None).await;
     insert_log(&pool, true, false, None, "dnssec_validation", None).await;
 
@@ -160,17 +154,15 @@ async fn test_get_stats_excludes_internal_query_source() {
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 1);
-    assert_eq!(stats.queries_upstream, 1);
-    assert_eq!(stats.queries_cache_hits, 0);
+    assert_eq!(stats.source_stats.get("upstream"), Some(&1));
+    assert_eq!(stats.source_stats.get("cache"), Some(&0));
 }
 
 #[tokio::test]
 async fn test_get_stats_period_filter() {
     let pool = create_test_db().await;
 
-    // 1 recent query (inside 1h window)
     insert_log(&pool, false, false, None, "client", None).await;
-    // 1 old query (outside 1h window — 2 hours ago)
     insert_log(
         &pool,
         false,
@@ -183,9 +175,8 @@ async fn test_get_stats_period_filter() {
 
     let repo =
         SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
-    // period = 1 hour: old query should be excluded
     let stats = repo.get_stats(1.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 1);
-    assert_eq!(stats.queries_upstream, 1);
+    assert_eq!(stats.source_stats.get("upstream"), Some(&1));
 }

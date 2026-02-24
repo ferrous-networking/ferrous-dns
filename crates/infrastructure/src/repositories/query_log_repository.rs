@@ -503,11 +503,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
                 AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
                 SUM(CASE WHEN cache_hit = 0 AND blocked = 0 AND (response_status IS NULL OR response_status != 'LOCAL_DNS') THEN 1 ELSE 0 END) as upstream_count,
-                SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count,
-                SUM(CASE WHEN blocked = 1 AND block_source = 'blocklist' THEN 1 ELSE 0 END) as blocklist_count,
-                SUM(CASE WHEN blocked = 1 AND block_source = 'managed_domain' THEN 1 ELSE 0 END) as managed_domain_count,
-                SUM(CASE WHEN blocked = 1 AND block_source = 'regex_filter' THEN 1 ELSE 0 END) as regex_filter_count,
-                SUM(CASE WHEN blocked = 1 AND block_source = 'cname_cloaking' THEN 1 ELSE 0 END) as cname_cloaking_count
+                SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
              FROM query_log
              WHERE response_time_ms IS NOT NULL
                AND created_at >= ?
@@ -554,6 +550,42 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             }
         }
 
+        let block_source_rows = sqlx::query(
+            "SELECT block_source, COUNT(*) as count
+             FROM query_log
+             WHERE blocked = 1
+               AND block_source IS NOT NULL
+               AND response_time_ms IS NOT NULL
+               AND created_at >= ?
+               AND query_source = 'client'
+             GROUP BY block_source",
+        )
+        .bind(&cutoff)
+        .fetch_all(&self.read_pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to fetch block source statistics");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+
+        let mut source_stats = std::collections::HashMap::new();
+        source_stats.insert("cache".to_string(), cache_hits);
+        source_stats.insert(
+            "upstream".to_string(),
+            row.get::<i64, _>("upstream_count") as u64,
+        );
+        source_stats.insert(
+            "local_dns".to_string(),
+            row.get::<i64, _>("local_dns_count") as u64,
+        );
+        for block_row in block_source_rows {
+            let key: String = block_row.get("block_source");
+            let count = block_row.get::<i64, _>("count") as u64;
+            if count > 0 {
+                source_stats.insert(key, count);
+            }
+        }
+
         let stats = QueryStats {
             queries_total: total,
             queries_blocked: row.get::<i64, _>("blocked") as u64,
@@ -565,13 +597,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             avg_upstream_time_ms: row
                 .get::<Option<f64>, _>("avg_upstream_time")
                 .unwrap_or(0.0),
-            queries_cache_hits: cache_hits,
-            queries_upstream: row.get::<i64, _>("upstream_count") as u64,
-            queries_local_dns: row.get::<i64, _>("local_dns_count") as u64,
-            queries_blocked_by_blocklist: row.get::<i64, _>("blocklist_count") as u64,
-            queries_blocked_by_managed_domain: row.get::<i64, _>("managed_domain_count") as u64,
-            queries_blocked_by_regex_filter: row.get::<i64, _>("regex_filter_count") as u64,
-            queries_blocked_by_cname_cloaking: row.get::<i64, _>("cname_cloaking_count") as u64,
+            source_stats,
             queries_by_type: std::collections::HashMap::new(),
             most_queried_type: None,
             record_type_distribution: Vec::new(),

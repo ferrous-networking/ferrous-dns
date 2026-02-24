@@ -74,8 +74,8 @@ async fn test_get_stats_with_cache_and_upstream() {
     let stats = use_case.execute(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 5);
-    assert_eq!(stats.queries_cache_hits, 3);
-    assert_eq!(stats.queries_upstream, 2);
+    assert_eq!(stats.source_stats.get("cache"), Some(&3));
+    assert_eq!(stats.source_stats.get("upstream"), Some(&2));
     assert_eq!(stats.queries_blocked, 0);
 }
 
@@ -102,10 +102,10 @@ async fn test_get_stats_blocked_sources() {
     let stats = use_case.execute(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 4);
-    assert_eq!(stats.queries_blocked_by_blocklist, 1);
-    assert_eq!(stats.queries_blocked_by_managed_domain, 2);
-    assert_eq!(stats.queries_blocked_by_regex_filter, 1);
-    assert_eq!(stats.queries_blocked_by_cname_cloaking, 0);
+    assert_eq!(stats.source_stats.get("blocklist"), Some(&1));
+    assert_eq!(stats.source_stats.get("managed_domain"), Some(&2));
+    assert_eq!(stats.source_stats.get("regex_filter"), Some(&1));
+    assert_eq!(stats.source_stats.get("cname_cloaking"), None);
 }
 
 #[tokio::test]
@@ -128,6 +128,6 @@ async fn test_get_stats_cname_cloaking_source() {
     let stats = use_case.execute(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 3);
-    assert_eq!(stats.queries_blocked_by_cname_cloaking, 2);
-    assert_eq!(stats.queries_blocked_by_blocklist, 1);
+    assert_eq!(stats.source_stats.get("cname_cloaking"), Some(&2));
+    assert_eq!(stats.source_stats.get("blocklist"), Some(&1));
 }
