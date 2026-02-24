@@ -39,6 +39,7 @@
 - [ ] Advanced analytics and graphs
 - [ ] Query filtering rules
 - [x] DoQ upstream
+- [x] https3, h3 upstream
 - [ ] IPv6 upstreams
 - [ ] dns name upstreams (e.: dns.google.com) 
 - [ ] Client identification
