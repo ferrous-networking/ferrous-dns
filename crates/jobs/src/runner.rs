@@ -1,5 +1,6 @@
 use crate::{BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 pub struct JobRunner {
@@ -7,6 +8,7 @@ pub struct JobRunner {
     retention: Option<RetentionJob>,
     query_log_retention: Option<QueryLogRetentionJob>,
     blocklist_sync: Option<BlocklistSyncJob>,
+    shutdown: Option<CancellationToken>,
 }
 
 impl JobRunner {
@@ -16,6 +18,7 @@ impl JobRunner {
             retention: None,
             query_log_retention: None,
             blocklist_sync: None,
+            shutdown: None,
         }
     }
 
@@ -39,22 +42,43 @@ impl JobRunner {
         self
     }
 
+    pub fn with_shutdown_token(mut self, token: CancellationToken) -> Self {
+        self.shutdown = Some(token);
+        self
+    }
+
     pub async fn start(self) {
         info!("Starting background job runner");
 
         if let Some(job) = self.client_sync {
+            let job = match &self.shutdown {
+                Some(token) => job.with_cancellation(token.clone()),
+                None => job,
+            };
             Arc::new(job).start().await;
         }
 
         if let Some(job) = self.retention {
+            let job = match &self.shutdown {
+                Some(token) => job.with_cancellation(token.clone()),
+                None => job,
+            };
             Arc::new(job).start().await;
         }
 
         if let Some(job) = self.query_log_retention {
+            let job = match &self.shutdown {
+                Some(token) => job.with_cancellation(token.clone()),
+                None => job,
+            };
             Arc::new(job).start().await;
         }
 
         if let Some(job) = self.blocklist_sync {
+            let job = match &self.shutdown {
+                Some(token) => job.with_cancellation(token.clone()),
+                None => job,
+            };
             Arc::new(job).start().await;
         }
 

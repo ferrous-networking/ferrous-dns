@@ -42,28 +42,44 @@ pub struct BlockFilterEngine {
 }
 
 impl BlockFilterEngine {
-    pub async fn new(pool: SqlitePool, default_group_id: i64) -> Result<Self, DomainError> {
+    pub async fn new(pool: SqlitePool, default_group_id: i64) -> Result<Arc<Self>, DomainError> {
         let http_client = reqwest::Client::builder()
             .user_agent("Ferrous-DNS/1.0 (blocklist-sync)")
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;
 
-        info!("Block filter compilation started");
-        let index = compile_block_index(&pool, &http_client).await?;
-        info!("BlockFilterEngine initialized");
-
-        let engine = Self {
-            index: ArcSwap::from_pointee(index),
+        let engine = Arc::new(Self {
+            index: ArcSwap::from_pointee(BlockIndex::empty(default_group_id)),
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             subnet_matcher: ArcSwap::from_pointee(None),
             default_group_id,
             pool,
             http_client,
-        };
+        });
 
         engine.load_client_groups_inner().await?;
+
+        info!("BlockFilterEngine initialized; blocklist compilation starting in background");
+        let background_engine = Arc::clone(&engine);
+        tokio::spawn(async move {
+            match compile_block_index(&background_engine.pool, &background_engine.http_client).await
+            {
+                Ok(new_index) => {
+                    background_engine.index.store(Arc::new(new_index));
+                    background_engine.decision_cache.clear();
+                    decision_l0_clear();
+                    info!("Block filter compilation completed");
+                }
+                Err(e) => {
+                    error!(
+                        error = %e,
+                        "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
+                    );
+                }
+            }
+        });
 
         Ok(engine)
     }

@@ -523,7 +523,7 @@ impl ClientRepository for MockClientRepository {
 
         if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             client.mac_address = Some(Arc::from(mac));
-            client.last_mac_update = Some(chrono::Utc::now().to_rfc3339());
+            client.last_mac_update = Some(chrono::Utc::now().timestamp());
             Ok(())
         } else {
             Err(DomainError::ClientNotFound(format!(
@@ -555,7 +555,7 @@ impl ClientRepository for MockClientRepository {
 
         if let Some(client) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             client.hostname = Some(Arc::from(hostname));
-            client.last_hostname_update = Some(chrono::Utc::now().to_rfc3339());
+            client.last_hostname_update = Some(chrono::Utc::now().timestamp());
             Ok(())
         } else {
             Err(DomainError::ClientNotFound(format!(

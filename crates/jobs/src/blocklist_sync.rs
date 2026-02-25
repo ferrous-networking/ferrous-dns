@@ -1,18 +1,13 @@
 use ferrous_dns_application::ports::BlockFilterEnginePort;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
-/// Background job that periodically reloads blocklist sources.
-///
-/// Follows the same pattern as `RetentionJob`:
-///   - `Arc<Self>` spawn so the job owns its state across ticks
-///   - First tick consumed immediately so reload does not happen at startup
-///     (the engine already compiles during `Repositories::new()`)
-///   - Default interval: 24 h (86 400 s)
 pub struct BlocklistSyncJob {
     engine: Arc<dyn BlockFilterEnginePort>,
     interval_secs: u64,
+    shutdown: CancellationToken,
 }
 
 impl BlocklistSyncJob {
@@ -20,11 +15,17 @@ impl BlocklistSyncJob {
         Self {
             engine,
             interval_secs: 86400,
+            shutdown: CancellationToken::new(),
         }
     }
 
     pub fn with_interval(mut self, interval_secs: u64) -> Self {
         self.interval_secs = interval_secs;
+        self
+    }
+
+    pub fn with_cancellation(mut self, token: CancellationToken) -> Self {
+        self.shutdown = token;
         self
     }
 
@@ -39,11 +40,18 @@ impl BlocklistSyncJob {
             interval.tick().await;
 
             loop {
-                interval.tick().await;
-                info!("BlocklistSyncJob: reloading blocklist sources");
-                match self.engine.reload().await {
-                    Ok(()) => info!("BlocklistSyncJob: reload completed successfully"),
-                    Err(e) => error!(error = %e, "BlocklistSyncJob: reload failed"),
+                tokio::select! {
+                    _ = self.shutdown.cancelled() => {
+                        info!("BlocklistSyncJob: shutting down");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        info!("BlocklistSyncJob: reloading blocklist sources");
+                        match self.engine.reload().await {
+                            Ok(()) => info!("BlocklistSyncJob: reload completed successfully"),
+                            Err(e) => error!(error = %e, "BlocklistSyncJob: reload failed"),
+                        }
+                    }
                 }
             }
         });

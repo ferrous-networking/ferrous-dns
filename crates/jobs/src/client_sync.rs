@@ -1,6 +1,7 @@
 use ferrous_dns_application::use_cases::{SyncArpCacheUseCase, SyncHostnamesUseCase};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 pub struct ClientSyncJob {
@@ -8,6 +9,7 @@ pub struct ClientSyncJob {
     sync_hostnames: Arc<SyncHostnamesUseCase>,
     arp_interval_secs: u64,
     hostname_interval_secs: u64,
+    shutdown: CancellationToken,
 }
 
 impl ClientSyncJob {
@@ -20,6 +22,7 @@ impl ClientSyncJob {
             sync_hostnames,
             arp_interval_secs: 60,
             hostname_interval_secs: 300,
+            shutdown: CancellationToken::new(),
         }
     }
 
@@ -29,29 +32,50 @@ impl ClientSyncJob {
         self
     }
 
+    pub fn with_cancellation(mut self, token: CancellationToken) -> Self {
+        self.shutdown = token;
+        self
+    }
+
     pub async fn start(self: Arc<Self>) {
         info!("Starting client sync background jobs");
 
         let arp_job = Arc::clone(&self);
+        let arp_shutdown = self.shutdown.clone();
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(Duration::from_secs(arp_job.arp_interval_secs));
             loop {
-                interval.tick().await;
-                if let Err(e) = arp_job.sync_arp.execute().await {
-                    error!(error = %e, "ARP sync failed");
+                tokio::select! {
+                    _ = arp_shutdown.cancelled() => {
+                        info!("ClientSyncJob (arp): shutting down");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        if let Err(e) = arp_job.sync_arp.execute().await {
+                            error!(error = %e, "ARP sync failed");
+                        }
+                    }
                 }
             }
         });
 
         let hostname_job = Arc::clone(&self);
+        let hostname_shutdown = self.shutdown.clone();
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(Duration::from_secs(hostname_job.hostname_interval_secs));
             loop {
-                interval.tick().await;
-                if let Err(e) = hostname_job.sync_hostnames.execute(50).await {
-                    error!(error = %e, "Hostname sync failed");
+                tokio::select! {
+                    _ = hostname_shutdown.cancelled() => {
+                        info!("ClientSyncJob (hostnames): shutting down");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        if let Err(e) = hostname_job.sync_hostnames.execute(50).await {
+                            error!(error = %e, "Hostname sync failed");
+                        }
+                    }
                 }
             }
         });

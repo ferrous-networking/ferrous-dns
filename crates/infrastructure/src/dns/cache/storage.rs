@@ -9,9 +9,35 @@ use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
 use dashmap::{DashMap, DashSet};
 use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
+use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use tracing::{debug, info};
+
+struct EvictionCandidate {
+    score: f64,
+    key: CacheKey,
+}
+
+impl PartialEq for EvictionCandidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.score.total_cmp(&other.score) == std::cmp::Ordering::Equal
+    }
+}
+
+impl Eq for EvictionCandidate {}
+
+impl PartialOrd for EvictionCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for EvictionCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score.total_cmp(&other.score)
+    }
+}
 
 const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
@@ -337,8 +363,6 @@ impl DnsCache {
         self.access_window_secs
     }
 
-    /// Atualiza TTL de uma entrada existente in-place, preservando `hit_count` e `last_access`.
-    /// Retorna `true` se a entrada foi encontrada e atualizada, `false` caso contrário.
     pub fn refresh_record(
         &self,
         domain: &str,
@@ -436,9 +460,8 @@ impl DnsCache {
 
         let now_secs = coarse_now_secs();
         let total_to_sample = count * self.eviction_sample_size;
-
-        let mut urgent_expired: Vec<CacheKey> = Vec::with_capacity(count);
-        let mut scored: Vec<(CacheKey, f64)> = Vec::with_capacity(total_to_sample);
+        let mut heap: BinaryHeap<EvictionCandidate> = BinaryHeap::with_capacity(count + 1);
+        let mut urgent_marked = 0usize;
         let mut sampled = 0usize;
 
         for entry in self.cache.iter() {
@@ -459,7 +482,8 @@ impl DnsCache {
                 if !within_window {
                     let score = self.compute_score(record, now_secs);
                     if score < 0.0 {
-                        urgent_expired.push(entry.key().clone());
+                        record.mark_for_deletion();
+                        urgent_marked += 1;
                         sampled += 1;
                         continue;
                     }
@@ -467,29 +491,47 @@ impl DnsCache {
             }
 
             let score = self.compute_score(record, now_secs);
-            scored.push((entry.key().clone(), score));
+            let candidate = EvictionCandidate {
+                score,
+                key: entry.key().clone(),
+            };
+            if heap.len() < count {
+                heap.push(candidate);
+            } else if let Some(top) = heap.peek() {
+                if score < top.score {
+                    heap.pop();
+                    heap.push(candidate);
+                }
+            }
             sampled += 1;
         }
 
-        scored.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let evict_count = count.saturating_sub(urgent_marked);
+        let mut candidates: Vec<EvictionCandidate> = heap.into_vec();
+        candidates.sort_unstable_by(|a, b| a.score.total_cmp(&b.score));
 
-        let mut total_evicted = 0usize;
+        let mut scored_evicted = 0usize;
         let mut last_worst_score = f64::MAX;
 
-        for key in urgent_expired.into_iter().take(count) {
-            self.cache.remove(&key);
-            total_evicted += 1;
+        for candidate in candidates.into_iter().take(evict_count) {
+            last_worst_score = candidate.score;
+            self.cache.remove(&candidate.key);
+            scored_evicted += 1;
         }
 
-        for (key, score) in scored.into_iter().take(count.saturating_sub(total_evicted)) {
-            self.cache.remove(&key);
-            total_evicted += 1;
-            last_worst_score = score;
-        }
+        let retain_removed = if urgent_marked > 0 {
+            let before = self.cache.len();
+            self.cache
+                .retain(|_, record| !record.is_marked_for_deletion());
+            before.saturating_sub(self.cache.len())
+        } else {
+            0
+        };
 
-        self.metrics
-            .evictions
-            .fetch_add(total_evicted as u64, AtomicOrdering::Relaxed);
+        self.metrics.evictions.fetch_add(
+            (scored_evicted + retain_removed) as u64,
+            AtomicOrdering::Relaxed,
+        );
 
         if self.adaptive_thresholds && last_worst_score < f64::MAX {
             let current = self.get_threshold();

@@ -23,6 +23,7 @@ ferrous-dns-jobs = { path = "crates/jobs" }
 ferrous-dns-api = { path = "crates/api" }
 
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 fastrand = "2.0"
 lru = "0.16.3"
 ahash = "0.8"

@@ -35,7 +35,7 @@ fn test_should_not_update_mac_when_recent() {
     let ip: IpAddr = "192.168.1.100".parse().unwrap();
     let mut client = Client::new(ip);
     client.mac_address = Some(Arc::from("aa:bb:cc:dd:ee:ff"));
-    client.last_mac_update = Some(chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string());
+    client.last_mac_update = Some(chrono::Utc::now().timestamp());
 
     assert!(!client.should_update_mac());
 }

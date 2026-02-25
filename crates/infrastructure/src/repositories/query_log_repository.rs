@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use compact_str::CompactString;
+use compact_str::{CompactString, ToCompactString};
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::{
     config::DatabaseConfig, BlockSource, DomainError, QueryLog, QuerySource, QueryStats,
@@ -74,7 +74,7 @@ impl QueryLogEntry {
         Self {
             domain: CompactString::from(q.domain.as_ref()),
             record_type: CompactString::from(q.record_type.as_str()),
-            client_ip: CompactString::from(q.client_ip.to_string()),
+            client_ip: q.client_ip.to_compact_string(),
             blocked: q.blocked,
             response_time_ms: q.response_time_us.map(|t| t as i64),
             cache_hit: q.cache_hit,

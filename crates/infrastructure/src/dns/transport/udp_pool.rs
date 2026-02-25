@@ -74,7 +74,7 @@ impl UdpSocketPool {
 
         socket.set_reuse_address(true)?;
 
-        socket.set_recv_buffer_size(256 * 1024)?;
+        socket.set_recv_buffer_size(64 * 1024)?;
         socket.set_send_buffer_size(128 * 1024)?;
 
         let bind_addr: SocketAddr = if server.is_ipv4() {

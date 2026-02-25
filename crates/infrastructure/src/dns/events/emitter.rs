@@ -1,9 +1,12 @@
 use super::QueryEvent;
 use tokio::sync::mpsc;
+use tracing::warn;
+
+const QUERY_EVENT_CHANNEL_CAPACITY: usize = 4096;
 
 #[derive(Clone)]
 pub struct QueryEventEmitter {
-    sender: Option<mpsc::UnboundedSender<QueryEvent>>,
+    sender: Option<mpsc::Sender<QueryEvent>>,
 }
 
 impl QueryEventEmitter {
@@ -11,15 +14,17 @@ impl QueryEventEmitter {
         Self { sender: None }
     }
 
-    pub fn new_enabled() -> (Self, mpsc::UnboundedReceiver<QueryEvent>) {
-        let (tx, rx) = mpsc::unbounded_channel();
+    pub fn new_enabled() -> (Self, mpsc::Receiver<QueryEvent>) {
+        let (tx, rx) = mpsc::channel(QUERY_EVENT_CHANNEL_CAPACITY);
         let emitter = Self { sender: Some(tx) };
         (emitter, rx)
     }
 
     pub fn emit(&self, event: QueryEvent) {
         if let Some(ref tx) = self.sender {
-            let _ = tx.send(event);
+            if tx.try_send(event).is_err() {
+                warn!("query log channel full, dropping event");
+            }
         }
     }
 

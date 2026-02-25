@@ -91,7 +91,7 @@ impl PoolManager {
         );
 
         for pool in &self.pools {
-            let healthy_refs: SmallVec<[&DnsProtocol; 8]> =
+            let healthy_refs: SmallVec<[&DnsProtocol; 16]> =
                 if let Some(ref checker) = self.health_checker {
                     pool.server_protocols
                         .iter()

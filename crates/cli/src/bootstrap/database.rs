@@ -24,5 +24,20 @@ pub async fn init_database(
         cfg.write_pool_max_connections, cfg.read_pool_max_connections,
     );
 
+    let warmup_pool = read_pool.clone();
+    tokio::spawn(async move {
+        warm_page_cache(&warmup_pool).await;
+    });
+
     Ok((write_pool, read_pool))
+}
+
+async fn warm_page_cache(pool: &SqlitePool) {
+    let result = sqlx::query("SELECT id FROM query_log ORDER BY id DESC LIMIT 5000")
+        .execute(pool)
+        .await;
+    match result {
+        Ok(r) => info!(rows = r.rows_affected(), "SQLite page cache warmed"),
+        Err(e) => error!(error = %e, "SQLite warmup query failed (non-critical)"),
+    }
 }

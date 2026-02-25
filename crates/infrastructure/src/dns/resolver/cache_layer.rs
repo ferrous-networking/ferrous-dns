@@ -10,12 +10,20 @@ use ferrous_dns_domain::{DnsQuery, DomainError};
 use hickory_proto::rr::rdata::SOA;
 use hickory_proto::rr::{Name, RData, Record};
 use rustc_hash::FxBuildHasher;
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::debug;
 
-type InflightSender = Arc<watch::Sender<Option<Arc<DnsResolution>>>>;
+struct InflightResult {
+    addresses: Arc<Vec<IpAddr>>,
+    cname_chain: Arc<[Arc<str>]>,
+    dnssec_status: Option<&'static str>,
+    min_ttl: Option<u32>,
+}
+
+type InflightSender = Arc<watch::Sender<Option<Arc<InflightResult>>>>;
 
 struct InflightLeaderGuard {
     inflight: Arc<DashMap<CacheKey, InflightSender, FxBuildHasher>>,
@@ -159,7 +167,7 @@ impl CachedResolver {
     fn register_or_join_inflight(
         &self,
         key: &CacheKey,
-    ) -> (bool, watch::Receiver<Option<Arc<DnsResolution>>>) {
+    ) -> (bool, watch::Receiver<Option<Arc<InflightResult>>>) {
         match self.inflight.entry(key.clone()) {
             dashmap::Entry::Occupied(e) => {
                 let rx = e.get().subscribe();
@@ -167,7 +175,7 @@ impl CachedResolver {
                 (false, rx)
             }
             dashmap::Entry::Vacant(e) => {
-                let (tx, rx) = watch::channel(None::<Arc<DnsResolution>>);
+                let (tx, rx) = watch::channel(None::<Arc<InflightResult>>);
                 e.insert(Arc::new(tx));
                 (true, rx)
             }
@@ -177,32 +185,32 @@ impl CachedResolver {
     async fn resolve_as_follower(
         &self,
         query: &DnsQuery,
-        mut rx: watch::Receiver<Option<Arc<DnsResolution>>>,
+        mut rx: watch::Receiver<Option<Arc<InflightResult>>>,
     ) -> Result<DnsResolution, DomainError> {
         if let Ok(()) = rx.changed().await {
-            if let Some(arc_res) = rx.borrow().clone() {
+            if let Some(result) = rx.borrow().clone() {
                 return Ok(DnsResolution {
-                    addresses: Arc::clone(&arc_res.addresses),
+                    addresses: Arc::clone(&result.addresses),
                     cache_hit: true,
                     local_dns: false,
-                    dnssec_status: arc_res.dnssec_status,
-                    cname_chain: Arc::clone(&arc_res.cname_chain),
+                    dnssec_status: result.dnssec_status,
+                    cname_chain: Arc::clone(&result.cname_chain),
                     upstream_server: None,
-                    min_ttl: arc_res.min_ttl,
+                    min_ttl: result.min_ttl,
                     authority_records: vec![],
                 });
             }
         }
 
-        if let Some(arc_res) = rx.borrow().clone() {
+        if let Some(result) = rx.borrow().clone() {
             return Ok(DnsResolution {
-                addresses: Arc::clone(&arc_res.addresses),
+                addresses: Arc::clone(&result.addresses),
                 cache_hit: true,
                 local_dns: false,
-                dnssec_status: arc_res.dnssec_status,
-                cname_chain: arc_res.cname_chain.clone(),
+                dnssec_status: result.dnssec_status,
+                cname_chain: Arc::clone(&result.cname_chain),
                 upstream_server: None,
-                min_ttl: arc_res.min_ttl,
+                min_ttl: result.min_ttl,
                 authority_records: vec![],
             });
         }
@@ -249,7 +257,13 @@ impl CachedResolver {
             Ok(resolution) => {
                 self.store_in_cache(query, resolution);
                 if let Some((_, tx)) = self.inflight.remove(&key) {
-                    let _ = tx.send(Some(Arc::new(resolution.clone())));
+                    let inflight = Arc::new(InflightResult {
+                        addresses: Arc::clone(&resolution.addresses),
+                        cname_chain: Arc::clone(&resolution.cname_chain),
+                        dnssec_status: resolution.dnssec_status,
+                        min_ttl: resolution.min_ttl,
+                    });
+                    let _ = tx.send(Some(inflight));
                 }
             }
             Err(_) => {

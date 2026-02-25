@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Deserialize, Debug)]
 pub struct QueryParams {
@@ -31,9 +32,9 @@ fn default_period() -> String {
 #[derive(Serialize, Debug, Clone)]
 pub struct QueryResponse {
     pub timestamp: String,
-    pub domain: String,
+    pub domain: Arc<str>,
     pub client: String,
-    pub client_hostname: Option<String>,
+    pub client_hostname: Option<Arc<str>>,
     #[serde(rename = "type")]
     pub record_type: String,
     pub blocked: bool,

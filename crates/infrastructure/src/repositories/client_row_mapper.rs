@@ -9,8 +9,8 @@ pub(crate) type ClientRow = (
     String,
     String,
     i64,
-    Option<String>,
-    Option<String>,
+    Option<i64>,
+    Option<i64>,
     Option<i64>,
 );
 
@@ -18,8 +18,8 @@ pub(crate) const CLIENT_SELECT: &str = "SELECT id, ip_address, mac_address, host
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients";
 
@@ -27,8 +27,8 @@ pub(crate) const CLIENT_SELECT_BY_IP: &str = "SELECT id, ip_address, mac_address
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients WHERE ip_address = ?";
 
@@ -36,8 +36,8 @@ pub(crate) const CLIENT_SELECT_BY_ID: &str = "SELECT id, ip_address, mac_address
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients WHERE id = ?";
 
@@ -45,8 +45,8 @@ pub(crate) const CLIENT_SELECT_ALL: &str = "SELECT id, ip_address, mac_address, 
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients ORDER BY last_seen DESC LIMIT ? OFFSET ?";
 
@@ -54,8 +54,8 @@ pub(crate) const CLIENT_SELECT_ACTIVE: &str = "SELECT id, ip_address, mac_addres
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients WHERE last_seen > datetime('now', ?) ORDER BY last_seen DESC LIMIT ?";
 
@@ -64,8 +64,8 @@ pub(crate) const CLIENT_SELECT_NEEDS_MAC_UPDATE: &str =
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients WHERE (last_mac_update IS NULL
                          OR last_mac_update < datetime('now', '-5 minutes'))
@@ -77,8 +77,8 @@ pub(crate) const CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE: &str =
             datetime(first_seen) as first_seen,
             datetime(last_seen) as last_seen,
             query_count,
-            datetime(last_mac_update) as last_mac_update,
-            datetime(last_hostname_update) as last_hostname_update,
+            CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
+            CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
             group_id
      FROM clients WHERE (last_hostname_update IS NULL
                          OR last_hostname_update < datetime('now', '-1 hour'))

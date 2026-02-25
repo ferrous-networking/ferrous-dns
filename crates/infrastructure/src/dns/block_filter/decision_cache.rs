@@ -102,18 +102,15 @@ impl BlockDecisionCache {
 
     #[inline]
     pub fn get_by_key(&self, key: u64) -> Option<Option<BlockSource>> {
-        match self.inner.entry(key) {
-            dashmap::Entry::Vacant(_) => None,
-            dashmap::Entry::Occupied(e) => {
-                let (encoded, expires_at) = *e.get();
-                if coarse_now_secs() < expires_at {
-                    Some(decode_source(encoded))
-                } else {
-                    e.remove();
-                    None
-                }
+        if let Some(entry) = self.inner.get(&key) {
+            let (encoded, expires_at) = *entry;
+            if coarse_now_secs() < expires_at {
+                return Some(decode_source(encoded));
             }
+            drop(entry);
+            self.inner.remove(&key);
         }
+        None
     }
 
     fn evict_if_full(&self) {

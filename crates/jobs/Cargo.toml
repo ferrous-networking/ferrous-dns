@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 ferrous-dns-application.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

@@ -59,13 +59,13 @@ impl PrefetchPredictor {
         }
     }
 
-    pub fn predict(&self, domain: &str) -> Vec<(String, f64)> {
+    pub fn predict(&self, domain: &str) -> Vec<(CompactString, f64)> {
         let key = CompactString::from(domain);
         if let Some(entry) = self.patterns.get(&key) {
-            let predictions: Vec<(String, f64)> = entry
+            let predictions: Vec<(CompactString, f64)> = entry
                 .iter()
                 .filter(|p| p.probability >= self.min_probability)
-                .map(|p| (p.next_domain.to_string(), p.probability))
+                .map(|p| (p.next_domain.clone(), p.probability))
                 .collect();
             if !predictions.is_empty() {
                 debug!(domain = %domain, predictions = predictions.len(), "Prefetch predictions available");
@@ -97,12 +97,13 @@ thread_local! {
 }
 
 impl PrefetchPredictor {
-    pub fn on_query(&self, domain: &str) -> Vec<String> {
-        let prev_domain = LAST_DOMAIN.with(|last| last.borrow().as_ref().map(|s| s.to_string()));
-        self.record_pattern(prev_domain.as_deref(), domain);
+    pub fn on_query(&self, domain: &str) {
         LAST_DOMAIN.with(|last| {
+            {
+                let borrowed = last.borrow();
+                self.record_pattern(borrowed.as_deref(), domain);
+            }
             *last.borrow_mut() = Some(CompactString::from(domain));
         });
-        self.predict(domain).into_iter().map(|(d, _)| d).collect()
     }
 }

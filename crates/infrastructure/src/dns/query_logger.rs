@@ -17,12 +17,12 @@ impl QueryEventLogger {
 
     pub fn start_parallel_batch(
         self,
-        mut rx: mpsc::UnboundedReceiver<QueryEvent>,
+        mut rx: mpsc::Receiver<QueryEvent>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             debug!("QueryEventLogger: Starting parallel batch consumer");
 
-            let mut batch = Vec::with_capacity(100);
+            let mut batch: Vec<QueryEvent> = Vec::with_capacity(100);
             let mut total_events = 0u64;
             let mut total_batches = 0u64;
 
@@ -38,8 +38,7 @@ impl QueryEventLogger {
                 }
 
                 if !batch.is_empty() {
-                    let events = std::mem::take(&mut batch);
-                    let batch_size = events.len();
+                    let batch_size = batch.len();
                     let repo = self.log_repo.clone();
 
                     total_events += batch_size as u64;
@@ -50,7 +49,7 @@ impl QueryEventLogger {
                         total_events, total_batches, "QueryEventLogger: Processing batch"
                     );
 
-                    Self::process_batch(repo, events).await;
+                    Self::process_batch(&repo, &mut batch).await;
                 }
             }
 
@@ -61,15 +60,15 @@ impl QueryEventLogger {
         })
     }
 
-    async fn process_batch(repo: Arc<dyn QueryLogRepository>, events: Vec<QueryEvent>) {
-        let batch_size = events.len();
+    async fn process_batch(repo: &Arc<dyn QueryLogRepository>, batch: &mut Vec<QueryEvent>) {
+        let batch_size = batch.len();
         let mut success_count = 0;
         let mut error_count = 0;
 
-        for event in events {
+        for event in batch.iter() {
             let query_log = QueryLog {
                 id: None,
-                domain: event.domain,
+                domain: event.domain.clone(),
                 record_type: event.record_type,
                 client_ip: "127.0.0.1"
                     .parse::<IpAddr>()
@@ -80,7 +79,7 @@ impl QueryEventLogger {
                 cache_hit: false,
                 cache_refresh: false,
                 dnssec_status: None,
-                upstream_server: Some(event.upstream_server),
+                upstream_server: Some(event.upstream_server.clone()),
                 response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),
                 timestamp: None,
                 query_source: QuerySource::Internal,
@@ -101,6 +100,8 @@ impl QueryEventLogger {
                 }
             }
         }
+
+        batch.clear();
 
         debug!(
             batch_size,

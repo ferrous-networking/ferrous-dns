@@ -29,7 +29,7 @@ impl AtomicBloom {
 
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
-        let a = self.active.load(AtomicOrdering::Acquire);
+        let a = self.active.load(AtomicOrdering::Relaxed);
         let b = 1 - a;
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
@@ -62,7 +62,7 @@ impl AtomicBloom {
 
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
-        let a = self.active.load(AtomicOrdering::Acquire);
+        let a = self.active.load(AtomicOrdering::Relaxed);
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
         let mask = self.mask;

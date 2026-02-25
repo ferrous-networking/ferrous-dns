@@ -3,6 +3,7 @@ use super::key::CacheKey;
 use dashmap::DashMap;
 use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
+use smallvec::SmallVec;
 
 const MAX_ENTRIES_CAP: usize = 65_536;
 const EVICTION_BATCH_SIZE: usize = 64;
@@ -47,7 +48,7 @@ impl NegativeDnsCache {
     pub fn insert(&self, domain: &str, record_type: RecordType, ttl: u32) {
         if self.cache.len() >= self.max_entries {
             let now = coarse_now_secs();
-            let expired: Vec<CacheKey> = self
+            let expired: SmallVec<[CacheKey; EVICTION_BATCH_SIZE]> = self
                 .cache
                 .iter()
                 .filter(|e| now >= e.value().expires_at_secs)
@@ -58,8 +59,10 @@ impl NegativeDnsCache {
                 self.cache.remove(k);
             }
             if self.cache.len() >= self.max_entries {
-                if let Some(k) = self.cache.iter().map(|e| e.key().clone()).next() {
-                    self.cache.remove(&k);
+                if let Some(entry) = self.cache.iter().next() {
+                    let key = entry.key().clone();
+                    drop(entry);
+                    self.cache.remove(&key);
                 }
             }
         }

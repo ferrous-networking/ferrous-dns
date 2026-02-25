@@ -55,15 +55,6 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
     Ok(())
 }
 
-/// Per-worker UDP loop with two code paths:
-///
-/// **Fast path** (cache hit, A/AAAA, no DNSSEC):
-///   `recv_from` → `parse_query` → `try_fast_path` → `build_cache_hit_response` → `send_to`
-///   Zero heap allocation. Bypasses Hickory's Name/Record/BinEncoder chain entirely.
-///
-/// **Fallback** (cache miss, non-A/AAAA, DNSSEC DO bit, blocked, parse error):
-///   Spawns a task → `handle_raw_udp_fallback` (full use-case + Hickory serialization).
-///   Spawning keeps the recv loop non-blocking.
 async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, worker_id: usize) {
     let mut recv_buf = [0u8; 4096];
 
@@ -115,8 +106,8 @@ fn create_udp_socket(domain: Domain, socket_addr: SocketAddr) -> anyhow::Result<
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
-    socket.set_recv_buffer_size(8 * 1024 * 1024)?;
-    socket.set_send_buffer_size(4 * 1024 * 1024)?;
+    socket.set_recv_buffer_size(512 * 1024)?;
+    socket.set_send_buffer_size(512 * 1024)?;
     socket.bind(&socket_addr.into())?;
     pktinfo::enable_pktinfo(&socket);
     socket.set_nonblocking(true)?;

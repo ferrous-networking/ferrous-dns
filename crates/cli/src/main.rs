@@ -64,6 +64,7 @@ fn main() -> anyhow::Result<()> {
             }
         })
         .enable_all()
+        .max_blocking_threads(16)
         .build()
         .expect("Failed to build tokio runtime");
 

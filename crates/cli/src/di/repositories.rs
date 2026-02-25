@@ -48,7 +48,7 @@ impl Repositories {
                 .unwrap_or(1);
 
         let block_filter_engine: Arc<dyn BlockFilterEnginePort> =
-            Arc::new(BlockFilterEngine::new(write_pool.clone(), default_group_id).await?);
+            BlockFilterEngine::new(write_pool.clone(), default_group_id).await?;
 
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(

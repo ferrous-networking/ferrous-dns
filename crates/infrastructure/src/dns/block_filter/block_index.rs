@@ -6,7 +6,7 @@ use dashmap::{DashMap, DashSet};
 use fancy_regex::Regex;
 use ferrous_dns_domain::BlockSource;
 use rustc_hash::FxBuildHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub type SourceBitSet = u64;
 
@@ -74,18 +74,30 @@ pub struct BlockIndex {
     pub allowlists: AllowlistIndex,
     pub managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>>,
     pub managed_deny_wildcards: HashMap<i64, SuffixTrie>,
-    /// User-defined regex allow rules (action=allow): group_id → compiled patterns
     pub allow_regex_patterns: HashMap<i64, Vec<Regex>>,
-    /// User-defined regex block rules (action=deny): group_id → compiled patterns
     pub block_regex_patterns: HashMap<i64, Vec<Regex>>,
-    /// `true` when any managed-deny or regex rule is configured for any group.
-    /// When `false`, `is_blocked` skips the four per-group HashMap lookups for
-    /// those rule classes, saving ~60–80 ns per query on typical home-server
-    /// deployments where no custom managed/regex rules are active.
-    pub has_advanced_rules: bool,
+    pub groups_with_advanced_rules: HashSet<i64>,
 }
 
 impl BlockIndex {
+    pub fn empty(default_group_id: i64) -> Self {
+        Self {
+            group_masks: HashMap::new(),
+            default_group_id,
+            total_blocked_domains: 0,
+            exact: DashMap::with_hasher(FxBuildHasher),
+            bloom: AtomicBloom::new(1000, 0.001),
+            wildcard: SuffixTrie::new(),
+            patterns: Vec::new(),
+            allowlists: AllowlistIndex::new(),
+            managed_denies: HashMap::new(),
+            managed_deny_wildcards: HashMap::new(),
+            allow_regex_patterns: HashMap::new(),
+            block_regex_patterns: HashMap::new(),
+            groups_with_advanced_rules: HashSet::new(),
+        }
+    }
+
     #[inline]
     pub fn group_mask(&self, group_id: i64) -> SourceBitSet {
         self.group_masks.get(&group_id).copied().unwrap_or_else(|| {
@@ -96,15 +108,13 @@ impl BlockIndex {
         })
     }
 
-    /// Returns `None` if the domain is not blocked, or `Some(source)` identifying
-    /// which filter layer caused the block.
     #[inline]
     pub fn is_blocked(&self, domain: &str, group_id: i64) -> Option<BlockSource> {
         if self.allowlists.is_allowed(domain, group_id) {
             return None;
         }
 
-        if self.has_advanced_rules {
+        if self.groups_with_advanced_rules.contains(&group_id) {
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
                 for r in regexes {
                     if r.is_match(domain).unwrap_or(false) {

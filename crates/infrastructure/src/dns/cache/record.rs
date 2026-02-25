@@ -8,11 +8,10 @@ const FLAG_REFRESHING: u8 = 0b010;
 const FLAG_PERMANENT: u8 = 0b100;
 const STALE_GRACE_PERIOD_MULTIPLIER: u64 = 2;
 
-#[repr(C, align(64))]
+#[repr(align(64))]
 pub struct HotCounters {
     pub hit_count: AtomicU64,
     pub last_access: AtomicU64,
-    _pad: [u8; 48],
 }
 
 impl HotCounters {
@@ -20,7 +19,6 @@ impl HotCounters {
         Self {
             hit_count: AtomicU64::new(0),
             last_access: AtomicU64::new(now_secs),
-            _pad: [0u8; 48],
         }
     }
 }
@@ -41,9 +39,7 @@ impl std::fmt::Debug for HotCounters {
 pub struct CachedRecord {
     pub data: CachedData,
     pub dnssec_status: DnssecStatus,
-    /// Expiry as a coarse Unix timestamp (seconds).
     pub expires_at_secs: u64,
-    /// Insertion time as a coarse Unix timestamp (seconds).
     pub inserted_at_secs: u64,
     pub counters: HotCounters,
     pub ttl: u32,
@@ -63,7 +59,6 @@ impl Clone for CachedRecord {
                 last_access: AtomicU64::new(
                     self.counters.last_access.load(AtomicOrdering::Relaxed),
                 ),
-                _pad: [0u8; 48],
             },
             ttl: self.ttl,
             record_type: self.record_type,
@@ -121,8 +116,6 @@ impl CachedRecord {
         coarse_now_secs() >= self.expires_at_secs
     }
 
-    /// Like `is_expired` but reuses a pre-computed `now_secs` to avoid a
-    /// redundant `coarse_now_secs()` call when the caller already has one.
     #[inline(always)]
     pub fn is_expired_at_secs(&self, now_secs: u64) -> bool {
         if self.is_permanent() {
@@ -140,8 +133,6 @@ impl CachedRecord {
         now_secs >= self.expires_at_secs && age < max_stale_age
     }
 
-    /// Like `is_stale_usable` but reuses a pre-computed `now_secs` to avoid a
-    /// redundant `coarse_now_secs()` call when the caller already has one.
     #[inline(always)]
     pub fn is_stale_usable_at_secs(&self, now_secs: u64) -> bool {
         let age = now_secs.saturating_sub(self.inserted_at_secs);

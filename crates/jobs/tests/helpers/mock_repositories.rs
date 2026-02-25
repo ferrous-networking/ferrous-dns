@@ -258,7 +258,7 @@ impl ClientRepository for MockClientRepository {
         let mut clients = self.clients.write().await;
         if let Some(c) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             c.mac_address = Some(Arc::from(mac));
-            c.last_mac_update = Some(now_rfc3339());
+            c.last_mac_update = Some(chrono::Utc::now().timestamp());
             self.mac_updates.fetch_add(1, Ordering::Relaxed);
             Ok(())
         } else {
@@ -290,7 +290,7 @@ impl ClientRepository for MockClientRepository {
         let mut clients = self.clients.write().await;
         if let Some(c) = clients.values_mut().find(|c| c.ip_address == ip_address) {
             c.hostname = Some(Arc::from(hostname));
-            c.last_hostname_update = Some(now_rfc3339());
+            c.last_hostname_update = Some(chrono::Utc::now().timestamp());
             self.hostname_updates.fetch_add(1, Ordering::Relaxed);
             Ok(())
         } else {

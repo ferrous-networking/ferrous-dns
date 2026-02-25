@@ -2,17 +2,6 @@ use super::policy::EvictionPolicy;
 use crate::dns::cache::record::CachedRecord;
 use std::sync::atomic::Ordering;
 
-/// Estratégia LFUK (Least Frequently Used with K-distance).
-///
-/// Combina frequência de acesso com recência: entradas acessadas frequentemente
-/// e recentemente têm score alto. Fórmula:
-///
-/// ```text
-/// score = (hits / elapsed_secs^k) * (1 / (now - last_access + 1))
-/// ```
-///
-/// Se `min_lfuk_score > 0.0` e `score < min_lfuk_score`, aplica penalidade
-/// (score negativo), tornando a entrada candidata prioritária para eviction.
 pub struct LfukPolicy {
     pub min_lfuk_score: f64,
     pub k_value: f64,

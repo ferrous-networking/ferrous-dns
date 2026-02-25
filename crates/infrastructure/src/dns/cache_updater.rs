@@ -1,7 +1,6 @@
 use super::cache::{coarse_clock, CachedAddresses, DnsCache};
 use crate::dns::HickoryDnsResolver;
 
-const REFRESH_ENTRY_DELAY_MS: u64 = 10;
 use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, QueryLog, QuerySource};
 use std::net::IpAddr;
@@ -108,6 +107,7 @@ impl CacheUpdater {
 
         let mut refreshed = 0;
         let mut failed = 0;
+        let candidate_count = candidates.len();
 
         for (domain, record_type) in candidates {
             match Self::refresh_entry(cache, resolver, query_log, &domain, &record_type).await {
@@ -133,9 +133,9 @@ impl CacheUpdater {
                     failed += 1;
                 }
             }
-
-            sleep(Duration::from_millis(REFRESH_ENTRY_DELAY_MS)).await;
         }
+
+        sleep(Duration::from_millis(candidate_count as u64 * 2)).await;
 
         info!(
             refreshed = refreshed,

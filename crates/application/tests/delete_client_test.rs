@@ -37,8 +37,8 @@ fn create_test_client_with_data(
         first_seen: Some(now.clone()),
         last_seen: Some(now.clone()),
         query_count,
-        last_mac_update: mac.map(|_| now.clone()),
-        last_hostname_update: hostname.map(|_| now.clone()),
+        last_mac_update: mac.map(|_| chrono::Utc::now().timestamp()),
+        last_hostname_update: hostname.map(|_| chrono::Utc::now().timestamp()),
         group_id: Some(1),
     }
 }

@@ -428,7 +428,13 @@ pub async fn compile_block_index(
         exact,
         wildcard,
         patterns,
-    } = build_exact_and_wildcard(&manual_domains, &source_entries);
+    } = tokio::task::spawn_blocking(move || {
+        build_exact_and_wildcard(&manual_domains, &source_entries)
+    })
+    .await
+    .map_err(|e| {
+        DomainError::BlockFilterCompileError(format!("block index build task panicked: {e}"))
+    })?;
 
     let mut managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>> = HashMap::new();
     let mut managed_deny_wildcards: HashMap<i64, SuffixTrie> = HashMap::new();
@@ -458,10 +464,19 @@ pub async fn compile_block_index(
     let allowlists =
         build_allowlist_index(pool, client, default_group_id, &managed_domain_entries).await?;
 
-    let has_advanced_rules = !managed_denies.is_empty()
-        || !managed_deny_wildcards.is_empty()
-        || !regex_filter_maps.allow_patterns.is_empty()
-        || !regex_filter_maps.block_patterns.is_empty();
+    let mut groups_with_advanced_rules = std::collections::HashSet::new();
+    for gid in managed_denies.keys() {
+        groups_with_advanced_rules.insert(*gid);
+    }
+    for gid in managed_deny_wildcards.keys() {
+        groups_with_advanced_rules.insert(*gid);
+    }
+    for gid in regex_filter_maps.allow_patterns.keys() {
+        groups_with_advanced_rules.insert(*gid);
+    }
+    for gid in regex_filter_maps.block_patterns.keys() {
+        groups_with_advanced_rules.insert(*gid);
+    }
 
     Ok(BlockIndex {
         group_masks,
@@ -476,7 +491,7 @@ pub async fn compile_block_index(
         managed_deny_wildcards,
         allow_regex_patterns: regex_filter_maps.allow_patterns,
         block_regex_patterns: regex_filter_maps.block_patterns,
-        has_advanced_rules,
+        groups_with_advanced_rules,
     })
 }
 
