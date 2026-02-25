@@ -365,6 +365,16 @@ impl Config {
             );
             set_val(
                 t,
+                "read_busy_timeout_secs",
+                toml_edit::Value::from(self.database.read_busy_timeout_secs as i64),
+            );
+            set_val(
+                t,
+                "read_acquire_timeout_secs",
+                toml_edit::Value::from(self.database.read_acquire_timeout_secs as i64),
+            );
+            set_val(
+                t,
                 "wal_autocheckpoint",
                 toml_edit::Value::from(self.database.wal_autocheckpoint as i64),
             );

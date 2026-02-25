@@ -1,7 +1,8 @@
 use ferrous_dns_domain::config::DatabaseConfig;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+    SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
+    SqliteSynchronous,
 };
 use std::path::Path;
 use std::str::FromStr;
@@ -16,15 +17,15 @@ fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error>
     })
 }
 
-async fn apply_pragmas(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+async fn apply_per_connection_pragmas(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
     sqlx::query("PRAGMA cache_size = -65536")
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     sqlx::query("PRAGMA mmap_size = 268435456")
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     sqlx::query("PRAGMA temp_store = MEMORY")
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(())
 }
@@ -40,10 +41,9 @@ pub async fn create_write_pool(
         .max_connections(cfg.write_pool_max_connections)
         .min_connections(1)
         .acquire_timeout(Duration::from_secs(cfg.write_busy_timeout_secs))
+        .after_connect(|conn, _| Box::pin(async move { apply_per_connection_pragmas(conn).await }))
         .connect_with(options)
         .await?;
-
-    apply_pragmas(&pool).await?;
 
     sqlx::query(&format!(
         "PRAGMA wal_autocheckpoint = {}",
@@ -64,16 +64,16 @@ pub async fn create_read_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
 ) -> Result<SqlitePool, sqlx::Error> {
-    let options = base_options(database_url)?.busy_timeout(Duration::from_secs(5));
+    let options =
+        base_options(database_url)?.busy_timeout(Duration::from_secs(cfg.read_busy_timeout_secs));
 
     let pool = SqlitePoolOptions::new()
         .max_connections(cfg.read_pool_max_connections)
         .min_connections(2)
-        .acquire_timeout(Duration::from_secs(5))
+        .acquire_timeout(Duration::from_secs(cfg.read_acquire_timeout_secs))
+        .after_connect(|conn, _| Box::pin(async move { apply_per_connection_pragmas(conn).await }))
         .connect_with(options)
         .await?;
-
-    apply_pragmas(&pool).await?;
 
     Ok(pool)
 }

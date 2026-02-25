@@ -7,12 +7,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::debug;
 
-/// A pool of `DnssecValidator` instances that share a single `DnssecCache`.
-///
-/// The single-Mutex design forced all DNSSEC validation to run serially.  This
-/// pool creates one validator slot per CPU core and distributes incoming
-/// requests across them with a round-robin + try_lock strategy, eliminating
-/// the serialisation bottleneck under concurrent load.
 pub struct DnssecValidatorPool {
     validators: Vec<Mutex<DnssecValidator>>,
     next: AtomicUsize,
@@ -39,11 +33,6 @@ impl DnssecValidatorPool {
         }
     }
 
-    /// Validate a DNS query using the next available validator.
-    ///
-    /// Iterates the pool starting from the round-robin slot and takes the
-    /// first free validator via `try_lock()`.  If all slots are busy, falls
-    /// back to `lock().await` on the starting slot (bounded wait).
     pub async fn validate_query(
         &self,
         domain: &str,

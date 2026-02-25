@@ -187,10 +187,12 @@ impl CachedRecord {
         self.counters
             .hit_count
             .fetch_add(1, AtomicOrdering::Relaxed);
-        self.counters.last_access.store(
-            super::coarse_clock::coarse_now_secs(),
-            AtomicOrdering::Relaxed,
-        );
+        let now = super::coarse_clock::coarse_now_secs();
+        if self.counters.last_access.load(AtomicOrdering::Relaxed) < now {
+            self.counters
+                .last_access
+                .store(now, AtomicOrdering::Relaxed);
+        }
     }
 
     pub fn hit_rate(&self) -> f64 {

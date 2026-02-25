@@ -10,7 +10,7 @@ use hickory_proto::dnssec::PublicKey;
 use hickory_proto::rr::{RData, Record};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationResult {
@@ -70,7 +70,7 @@ impl ChainVerifier {
         domain: &str,
         record_type: RecordType,
     ) -> Result<ValidationResult, DomainError> {
-        info!(
+        debug!(
             domain = %domain,
             record_type = ?record_type,
             "Starting DNSSEC chain verification"
@@ -132,7 +132,7 @@ impl ChainVerifier {
             current_domain = child_domain;
         }
 
-        info!(
+        debug!(
             domain = %domain,
             "Chain of trust validated successfully"
         );

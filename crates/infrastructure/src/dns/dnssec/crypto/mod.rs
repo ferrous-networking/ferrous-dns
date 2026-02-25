@@ -223,10 +223,6 @@ impl SignatureVerifier {
         }
     }
 
-    /// ECDSA P-384/SHA-384 — algorithm 14 (RFC 6605).
-    ///
-    /// DNSSEC key:       bare X||Y (96 bytes)  → prepend 0x04 for ring (97 bytes)
-    /// DNSSEC signature: fixed-size R||S (96 bytes) → use FIXED, not ASN1
     fn verify_ecdsa_p384(
         &self,
         data: &[u8],
@@ -258,7 +254,6 @@ impl SignatureVerifier {
         }
     }
 
-    /// Ed25519 — algorithm 15 (RFC 8080).
     fn verify_ed25519(
         &self,
         data: &[u8],

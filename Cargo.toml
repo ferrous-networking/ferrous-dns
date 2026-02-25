@@ -24,6 +24,7 @@ ferrous-dns-api = { path = "crates/api" }
 
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+rayon = "1"
 fastrand = "2.0"
 lru = "0.16.3"
 ahash = "0.8"
@@ -99,6 +100,11 @@ codegen-units = 16
 inherits = "release"
 debug = true
 lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
 
 [profile.dev-opt]
 inherits = "dev"

@@ -7,10 +7,23 @@ use dashmap::{DashMap, DashSet};
 use fancy_regex::Regex;
 use ferrous_dns_domain::DomainError;
 use futures::future::join_all;
+use rayon::prelude::*;
 use rustc_hash::FxBuildHasher;
 use sqlx::{Row, SqlitePool};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tracing::{info, warn};
+
+static BLOCKLIST_BUILD_POOL: LazyLock<rayon::ThreadPool> = LazyLock::new(|| {
+    let parallelism = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2);
+    let num_threads = (parallelism / 2).clamp(1, 4);
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .expect("blocklist rayon pool")
+});
 
 #[derive(Debug)]
 pub enum ParsedEntry {
@@ -292,7 +305,7 @@ fn build_exact_and_wildcard(
             .count();
 
     let bloom_capacity = (exact_count + 100).max(1000);
-    let bloom = AtomicBloom::new(bloom_capacity, 0.001);
+    let bloom = AtomicBloom::new(bloom_capacity, 0.05);
     let exact: DashMap<CompactString, SourceBitSet, FxBuildHasher> =
         DashMap::with_capacity_and_hasher(exact_count, FxBuildHasher);
     let mut wildcard = SuffixTrie::new();
@@ -306,17 +319,26 @@ fn build_exact_and_wildcard(
             .or_insert(MANUAL_SOURCE_BIT);
     }
 
-    for (bit, entries) in source_entries {
-        let source_bit: SourceBitSet = 1u64 << bit;
-        for entry in entries {
-            match entry {
-                ParsedEntry::Exact(domain) => {
+    BLOCKLIST_BUILD_POOL.install(|| {
+        source_entries.par_iter().for_each(|(bit, entries)| {
+            let source_bit: SourceBitSet = 1u64 << *bit;
+            for entry in entries {
+                if let ParsedEntry::Exact(domain) = entry {
                     bloom.set(domain);
                     exact
                         .entry(CompactString::new(domain))
                         .and_modify(|bits| *bits |= source_bit)
                         .or_insert(source_bit);
                 }
+            }
+        });
+    });
+
+    for (bit, entries) in source_entries {
+        let source_bit: SourceBitSet = 1u64 << *bit;
+        for entry in entries {
+            match entry {
+                ParsedEntry::Exact(_) => {}
                 ParsedEntry::Wildcard(pattern) => {
                     wildcard.insert_wildcard(pattern, source_bit);
                 }

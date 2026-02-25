@@ -3,7 +3,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::unix::io::AsRawFd;
 
 use socket2::Socket;
-use tokio::net::UdpSocket;
 
 pub fn enable_pktinfo(socket: &Socket) {
     let fd = socket.as_raw_fd();
@@ -19,21 +18,8 @@ pub fn enable_pktinfo(socket: &Socket) {
     }
 }
 
-pub async fn recv_with_pktinfo(
-    socket: &UdpSocket,
-    buf: &mut [u8],
-) -> io::Result<(usize, SocketAddr, IpAddr)> {
-    loop {
-        socket.readable().await?;
-        match try_recv_with_pktinfo(socket, buf) {
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-            result => return result,
-        }
-    }
-}
-
-fn try_recv_with_pktinfo(
-    socket: &UdpSocket,
+pub(crate) fn try_recv_with_pktinfo(
+    socket: &std::net::UdpSocket,
     buf: &mut [u8],
 ) -> io::Result<(usize, SocketAddr, IpAddr)> {
     let fd = socket.as_raw_fd();
@@ -87,23 +73,8 @@ fn extract_pktinfo_dst(cmsg_buf: &[u8], controllen: usize) -> IpAddr {
     IpAddr::V4(Ipv4Addr::UNSPECIFIED)
 }
 
-pub async fn send_with_src_ip(
-    socket: &UdpSocket,
-    buf: &[u8],
-    to: SocketAddr,
-    src: IpAddr,
-) -> io::Result<()> {
-    loop {
-        socket.writable().await?;
-        match try_send_with_src_ip(socket, buf, to, src) {
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-            result => return result,
-        }
-    }
-}
-
-fn try_send_with_src_ip(
-    socket: &UdpSocket,
+pub(crate) fn try_send_with_src_ip(
+    socket: &std::net::UdpSocket,
     buf: &[u8],
     to: SocketAddr,
     src: IpAddr,
@@ -159,7 +130,11 @@ fn try_send_with_src_ip(
     Ok(())
 }
 
-fn socket_send_fallback(socket: &UdpSocket, buf: &[u8], to: SocketAddr) -> io::Result<()> {
+fn socket_send_fallback(
+    socket: &std::net::UdpSocket,
+    buf: &[u8],
+    to: SocketAddr,
+) -> io::Result<()> {
     let fd = socket.as_raw_fd();
     let dst_addr = socket_addr_to_sockaddr_in(to);
     let iov = libc::iovec {

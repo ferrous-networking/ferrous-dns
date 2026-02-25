@@ -42,6 +42,12 @@ pub struct DatabaseConfig {
     #[serde(default = "default_write_busy_timeout_secs")]
     pub write_busy_timeout_secs: u64,
 
+    #[serde(default = "default_read_busy_timeout_secs")]
+    pub read_busy_timeout_secs: u64,
+
+    #[serde(default = "default_read_acquire_timeout_secs")]
+    pub read_acquire_timeout_secs: u64,
+
     #[serde(default = "default_wal_autocheckpoint")]
     pub wal_autocheckpoint: u32,
 }
@@ -61,6 +67,8 @@ impl Default for DatabaseConfig {
             write_pool_max_connections: default_write_pool_max_connections(),
             read_pool_max_connections: default_read_pool_max_connections(),
             write_busy_timeout_secs: default_write_busy_timeout_secs(),
+            read_busy_timeout_secs: default_read_busy_timeout_secs(),
+            read_acquire_timeout_secs: default_read_acquire_timeout_secs(),
             wal_autocheckpoint: default_wal_autocheckpoint(),
         }
     }
@@ -103,15 +111,23 @@ fn default_client_channel_capacity() -> usize {
 }
 
 fn default_write_pool_max_connections() -> u32 {
-    3
+    2
 }
 
 fn default_read_pool_max_connections() -> u32 {
-    8
+    10
 }
 
 fn default_write_busy_timeout_secs() -> u64 {
     30
+}
+
+fn default_read_busy_timeout_secs() -> u64 {
+    15
+}
+
+fn default_read_acquire_timeout_secs() -> u64 {
+    15
 }
 
 fn default_wal_autocheckpoint() -> u32 {

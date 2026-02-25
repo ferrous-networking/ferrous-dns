@@ -117,8 +117,13 @@ impl H3Transport {
             return Ok(sr.clone());
         }
         let send_request = self.connect_new(timeout).await?;
-        H3_POOL.insert(self.pool_key.clone(), send_request.clone());
-        Ok(send_request)
+        match H3_POOL.entry(self.pool_key.clone()) {
+            dashmap::mapref::entry::Entry::Occupied(e) => Ok(e.get().clone()),
+            dashmap::mapref::entry::Entry::Vacant(e) => {
+                e.insert(send_request.clone());
+                Ok(send_request)
+            }
+        }
     }
 
     async fn execute_request(

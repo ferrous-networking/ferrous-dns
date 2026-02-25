@@ -3,9 +3,12 @@ use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
 use hickory_server::ServerFuture;
 use socket2::{Domain, Protocol, Socket, Type};
+use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::net::{TcpListener, UdpSocket};
+use tokio::io::unix::AsyncFd;
+use tokio::io::Interest;
+use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 use tracing::{error, info};
 
@@ -21,7 +24,8 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
 
     let num_workers = std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(1);
+        .unwrap_or(1)
+        .min(4);
 
     info!(bind_address = %socket_addr, num_workers, "Starting DNS server with SO_REUSEPORT");
 
@@ -55,50 +59,84 @@ pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> a
     Ok(())
 }
 
-async fn run_udp_worker(socket: Arc<UdpSocket>, handler: Arc<DnsServerHandler>, worker_id: usize) {
+async fn run_udp_worker(
+    socket: Arc<AsyncFd<std::net::UdpSocket>>,
+    handler: Arc<DnsServerHandler>,
+    worker_id: usize,
+) {
     let mut recv_buf = [0u8; 4096];
 
     loop {
-        let (n, from, dst_ip) = match pktinfo::recv_with_pktinfo(&socket, &mut recv_buf).await {
-            Ok(x) => x,
-            Err(e) => {
-                error!(worker = worker_id, error = %e, "UDP recv error");
-                continue;
-            }
+        let mut guard = match socket.readable().await {
+            Ok(g) => g,
+            Err(_) => break,
         };
 
-        let query_buf = &recv_buf[..n];
-        let client_ip = from.ip();
+        loop {
+            match pktinfo::try_recv_with_pktinfo(socket.get_ref(), &mut recv_buf) {
+                Ok((n, from, dst_ip)) => {
+                    let query_buf = &recv_buf[..n];
+                    let client_ip = from.ip();
 
-        if let Some(fast_query) = fast_path::parse_query(query_buf) {
-            if let Some((addresses, ttl)) =
-                handler.try_fast_path(fast_query.domain(), fast_query.record_type, client_ip)
-            {
-                if let Some((wire, wire_len)) =
-                    wire_response::build_cache_hit_response(&fast_query, query_buf, &addresses, ttl)
-                {
-                    let _ =
-                        pktinfo::send_with_src_ip(&socket, &wire[..wire_len], from, dst_ip).await;
-                    continue;
+                    if let Some(fast_query) = fast_path::parse_query(query_buf) {
+                        if let Some((addresses, ttl)) = handler.try_fast_path(
+                            fast_query.domain(),
+                            fast_query.record_type,
+                            client_ip,
+                        ) {
+                            if let Some((wire, wire_len)) = wire_response::build_cache_hit_response(
+                                &fast_query,
+                                query_buf,
+                                &addresses,
+                                ttl,
+                            ) {
+                                let _ = pktinfo::try_send_with_src_ip(
+                                    socket.get_ref(),
+                                    &wire[..wire_len],
+                                    from,
+                                    dst_ip,
+                                );
+                                continue;
+                            }
+                        }
+                    }
+
+                    let handler_clone = handler.clone();
+                    let socket_clone = socket.clone();
+                    let owned_buf: Arc<[u8]> = Arc::from(query_buf);
+                    tokio::spawn(async move {
+                        if let Some(response) = handler_clone
+                            .handle_raw_udp_fallback(&owned_buf, client_ip)
+                            .await
+                        {
+                            let _ = pktinfo::try_send_with_src_ip(
+                                socket_clone.get_ref(),
+                                &response,
+                                from,
+                                dst_ip,
+                            );
+                        }
+                    });
+                }
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    guard.clear_ready();
+                    break;
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    error!(worker = worker_id, error = %e, "UDP recv error");
+                    guard.clear_ready();
+                    break;
                 }
             }
         }
-
-        let handler_clone = handler.clone();
-        let socket_clone = socket.clone();
-        let owned_buf: Arc<[u8]> = Arc::from(query_buf);
-        tokio::spawn(async move {
-            if let Some(response) = handler_clone
-                .handle_raw_udp_fallback(&owned_buf, client_ip)
-                .await
-            {
-                let _ = pktinfo::send_with_src_ip(&socket_clone, &response, from, dst_ip).await;
-            }
-        });
     }
 }
 
-fn create_udp_socket(domain: Domain, socket_addr: SocketAddr) -> anyhow::Result<UdpSocket> {
+fn create_udp_socket(
+    domain: Domain,
+    socket_addr: SocketAddr,
+) -> anyhow::Result<AsyncFd<std::net::UdpSocket>> {
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
     if socket_addr.is_ipv6() {
         socket.set_only_v6(false)?;
@@ -112,7 +150,10 @@ fn create_udp_socket(domain: Domain, socket_addr: SocketAddr) -> anyhow::Result<
     pktinfo::enable_pktinfo(&socket);
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();
-    Ok(UdpSocket::from_std(std_socket)?)
+    Ok(AsyncFd::with_interest(
+        std_socket,
+        Interest::READABLE | Interest::WRITABLE,
+    )?)
 }
 
 fn create_tcp_listener(domain: Domain, socket_addr: SocketAddr) -> anyhow::Result<TcpListener> {

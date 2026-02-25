@@ -70,7 +70,13 @@ impl CacheUpdater {
 
             loop {
                 sleep(compaction_interval).await;
-                Self::compaction_cycle(&cache);
+                let cache_for_compact = Arc::clone(&cache);
+                if let Err(e) =
+                    tokio::task::spawn_blocking(move || Self::compaction_cycle(&cache_for_compact))
+                        .await
+                {
+                    debug!(error = %e, "Compaction task panicked");
+                }
             }
         });
     }
@@ -87,12 +93,21 @@ impl CacheUpdater {
             .eviction_pending
             .swap(false, std::sync::atomic::Ordering::Relaxed)
         {
-            cache.evict_entries();
+            let cache_for_evict = Arc::clone(cache);
+            if let Err(e) =
+                tokio::task::spawn_blocking(move || cache_for_evict.evict_entries()).await
+            {
+                debug!(error = %e, "Eviction task panicked");
+            }
         }
 
         cache.rotate_bloom();
 
-        let candidates = cache.get_refresh_candidates();
+        let cache_for_scan = Arc::clone(cache);
+        let candidates =
+            tokio::task::spawn_blocking(move || cache_for_scan.get_refresh_candidates())
+                .await
+                .unwrap_or_default();
 
         if candidates.is_empty() {
             debug!("No refresh candidates found");

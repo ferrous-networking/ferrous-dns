@@ -9,7 +9,7 @@ use ferrous_dns_domain::{DomainError, RecordType};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::rr::{RData, Record};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 #[derive(Debug, Clone)]
 pub struct ValidatedResponse {
@@ -123,7 +123,7 @@ impl DnssecValidator {
         domain: &str,
         record_type: RecordType,
     ) -> Result<ValidatedResponse, DomainError> {
-        info!(
+        debug!(
             domain = %domain,
             record_type = ?record_type,
             "Starting DNSSEC validation"
@@ -158,7 +158,7 @@ impl DnssecValidator {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        info!(
+        debug!(
             domain = %domain,
             status = %validation_status.as_str(),
             elapsed_ms = elapsed,
@@ -211,7 +211,6 @@ impl DnssecValidator {
         }
     }
 
-    /// Helper to pre-populate validated zone keys without DNS queries.
     pub fn insert_zone_keys_for_test(
         &mut self,
         zone: &str,
@@ -227,8 +226,6 @@ impl DnssecValidator {
         }
     }
 
-    /// Extract the signer zone name from the first non-DNSKEY RRSIG in an answer section.
-    /// Returns `None` when no RRSIG is present (unsigned domain).
     fn extract_signer_zone(answers: &[Record]) -> Option<String> {
         for record in answers {
             if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
