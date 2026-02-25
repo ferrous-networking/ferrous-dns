@@ -14,18 +14,17 @@ use tracing::{error, info};
 
 use super::pktinfo;
 
-pub async fn start_dns_server(bind_addr: String, handler: DnsServerHandler) -> anyhow::Result<()> {
+pub async fn start_dns_server(
+    bind_addr: String,
+    handler: DnsServerHandler,
+    num_workers: usize,
+) -> anyhow::Result<()> {
     let socket_addr: SocketAddr = bind_addr.parse()?;
     let domain = if socket_addr.is_ipv4() {
         Domain::IPV4
     } else {
         Domain::IPV6
     };
-
-    let num_workers = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1)
-        .min(4);
 
     info!(bind_address = %socket_addr, num_workers, "Starting DNS server with SO_REUSEPORT");
 

@@ -30,7 +30,7 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
     let dom_len = domain.len();
     let total = type_len + 1 + dom_len;
 
-    let mut buf = [0u8; 128];
+    let mut buf = [0u8; 260];
     if total <= buf.len() {
         buf[..type_len].copy_from_slice(type_str.as_bytes());
         buf[type_len] = b':';

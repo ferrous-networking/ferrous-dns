@@ -167,9 +167,13 @@ async fn async_main() -> anyhow::Result<()> {
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
     let dns_handler = DnsServerHandler::new(dns_services.handler_use_case);
+    let num_dns_workers = core_affinity::get_core_ids()
+        .map(|ids| ids.len())
+        .unwrap_or(1)
+        .max(1);
 
     tokio::spawn(async move {
-        if let Err(e) = server::start_dns_server(dns_addr, dns_handler).await {
+        if let Err(e) = server::start_dns_server(dns_addr, dns_handler, num_dns_workers).await {
             error!(error = %e, "DNS server error");
         }
     });

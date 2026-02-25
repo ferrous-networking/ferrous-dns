@@ -134,26 +134,27 @@ impl BlockIndex {
                     return Some(BlockSource::ManagedDomain);
                 }
             }
-
-            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                for r in regexes {
-                    if r.is_match(domain).unwrap_or(false) {
-                        return Some(BlockSource::RegexFilter);
-                    }
-                }
-            }
         }
 
         let mask = self.group_mask(group_id);
 
-        let bloom_hit = self.bloom.check(&domain);
-        if !bloom_hit {
+        if !self.bloom.check(&domain) {
             return None;
         }
 
         if let Some(entry) = self.exact.get(domain) {
             if entry.value() & mask != 0 {
                 return Some(BlockSource::Blocklist);
+            }
+        }
+
+        if self.groups_with_advanced_rules.contains(&group_id) {
+            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+                for r in regexes {
+                    if r.is_match(domain).unwrap_or(false) {
+                        return Some(BlockSource::RegexFilter);
+                    }
+                }
             }
         }
 

@@ -146,20 +146,21 @@ impl HandleDnsQueryUseCase {
         record_type: RecordType,
         client_ip: IpAddr,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
-        let start = Instant::now();
-        let domain_arc: Arc<str> = Arc::from(domain);
         let group_id = self.block_filter.resolve_group(client_ip);
 
         if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
             return None;
         }
 
+        let start_ns = coarse_now_ns();
+        let domain_arc: Arc<str> = Arc::from(domain);
         let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
         if resolution.addresses.is_empty() {
             return None;
         }
 
+        let elapsed_us = coarse_now_ns().saturating_sub(start_ns) / 1_000;
         self.log(&QueryLog {
             id: None,
             domain: domain_arc,
@@ -167,7 +168,7 @@ impl HandleDnsQueryUseCase {
             client_ip,
             client_hostname: None,
             blocked: false,
-            response_time_us: Some(start.elapsed().as_micros() as u64),
+            response_time_us: Some(elapsed_us),
             cache_hit: true,
             cache_refresh: false,
             dnssec_status: resolution.dnssec_status,

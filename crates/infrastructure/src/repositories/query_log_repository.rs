@@ -493,27 +493,59 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         );
 
         let cutoff = hours_ago_cutoff(period_hours);
-        let row = sqlx::query(
-            "SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
-                SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
-                COUNT(DISTINCT client_ip) as unique_clients,
-                AVG(response_time_ms) as avg_time,
-                AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
-                AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
-                SUM(CASE WHEN cache_hit = 0 AND blocked = 0 AND (response_status IS NULL OR response_status != 'LOCAL_DNS') THEN 1 ELSE 0 END) as upstream_count,
-                SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
-             FROM query_log
-             WHERE response_time_ms IS NOT NULL
-               AND created_at >= ?
-               AND query_source = 'client'",
-        )
-        .bind(&cutoff)
-        .fetch_one(&self.read_pool)
-        .await
-        .map_err(|e| {
+
+        let (row_result, type_rows_result, block_source_rows_result) = tokio::join!(
+            sqlx::query(
+                "SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
+                    SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
+                    COUNT(DISTINCT client_ip) as unique_clients,
+                    AVG(response_time_ms) as avg_time,
+                    AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
+                    AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
+                    SUM(CASE WHEN cache_hit = 0 AND blocked = 0 AND (response_status IS NULL OR response_status != 'LOCAL_DNS') THEN 1 ELSE 0 END) as upstream_count,
+                    SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
+                 FROM query_log
+                 WHERE response_time_ms IS NOT NULL
+                   AND created_at >= ?
+                   AND query_source = 'client'",
+            )
+            .bind(&cutoff)
+            .fetch_one(&self.read_pool),
+            sqlx::query(
+                "SELECT record_type, COUNT(*) as count
+                 FROM query_log
+                 WHERE created_at >= ?
+                   AND query_source = 'client'
+                 GROUP BY record_type",
+            )
+            .bind(&cutoff)
+            .fetch_all(&self.read_pool),
+            sqlx::query(
+                "SELECT block_source, COUNT(*) as count
+                 FROM query_log
+                 WHERE blocked = 1
+                   AND block_source IS NOT NULL
+                   AND response_time_ms IS NOT NULL
+                   AND created_at >= ?
+                   AND query_source = 'client'
+                 GROUP BY block_source",
+            )
+            .bind(&cutoff)
+            .fetch_all(&self.read_pool),
+        );
+
+        let row = row_result.map_err(|e| {
             error!(error = %e, "Failed to fetch statistics");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+        let type_rows = type_rows_result.map_err(|e| {
+            error!(error = %e, "Failed to fetch type distribution");
+            DomainError::InvalidDomainName(format!("Database error: {}", e))
+        })?;
+        let block_source_rows = block_source_rows_result.map_err(|e| {
+            error!(error = %e, "Failed to fetch block source statistics");
             DomainError::InvalidDomainName(format!("Database error: {}", e))
         })?;
 
@@ -525,21 +557,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             0.0
         };
 
-        let type_rows = sqlx::query(
-            "SELECT record_type, COUNT(*) as count
-             FROM query_log
-             WHERE created_at >= ?
-               AND query_source = 'client'
-             GROUP BY record_type",
-        )
-        .bind(&cutoff)
-        .fetch_all(&self.read_pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch type distribution");
-            DomainError::InvalidDomainName(format!("Database error: {}", e))
-        })?;
-
         let mut queries_by_type = std::collections::HashMap::new();
         for type_row in type_rows {
             let type_str: String = type_row.get("record_type");
@@ -549,24 +566,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 queries_by_type.insert(record_type, count as u64);
             }
         }
-
-        let block_source_rows = sqlx::query(
-            "SELECT block_source, COUNT(*) as count
-             FROM query_log
-             WHERE blocked = 1
-               AND block_source IS NOT NULL
-               AND response_time_ms IS NOT NULL
-               AND created_at >= ?
-               AND query_source = 'client'
-             GROUP BY block_source",
-        )
-        .bind(&cutoff)
-        .fetch_all(&self.read_pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch block source statistics");
-            DomainError::InvalidDomainName(format!("Database error: {}", e))
-        })?;
 
         let mut source_stats = std::collections::HashMap::new();
         source_stats.insert("cache".to_string(), cache_hits);

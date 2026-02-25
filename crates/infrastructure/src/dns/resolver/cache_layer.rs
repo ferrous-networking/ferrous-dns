@@ -10,11 +10,9 @@ use std::sync::LazyLock;
 
 static EMPTY_ADDRESSES: LazyLock<Arc<Vec<IpAddr>>> = LazyLock::new(|| Arc::new(vec![]));
 use ferrous_dns_domain::{DnsQuery, DomainError};
-use hickory_proto::rr::rdata::SOA;
-use hickory_proto::rr::{Name, RData, Record};
+use hickory_proto::rr::{RData, Record};
 use rustc_hash::FxBuildHasher;
 use std::net::IpAddr;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::watch;
 use tracing::debug;
@@ -104,22 +102,16 @@ impl CachedResolver {
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
                     },
-                    CachedData::NegativeResponse => {
-                        let negative_ttl = remaining_ttl.unwrap_or(60);
-                        DnsResolution {
-                            addresses: Arc::clone(&EMPTY_ADDRESSES),
-                            cache_hit: true,
-                            local_dns: false,
-                            dnssec_status: dnssec_str,
-                            cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
-                            upstream_server: None,
-                            min_ttl: remaining_ttl,
-                            authority_records: synthesize_negative_soa(
-                                query.domain.as_ref(),
-                                negative_ttl,
-                            ),
-                        }
-                    }
+                    CachedData::NegativeResponse => DnsResolution {
+                        addresses: Arc::clone(&EMPTY_ADDRESSES),
+                        cache_hit: true,
+                        local_dns: false,
+                        dnssec_status: dnssec_str,
+                        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
+                        upstream_server: None,
+                        min_ttl: remaining_ttl,
+                        authority_records: vec![],
+                    },
                 }
             },
         )
@@ -231,15 +223,6 @@ impl CachedResolver {
         query: &DnsQuery,
         key: CacheKey,
     ) -> Result<DnsResolution, DomainError> {
-        if let Some(cached) = self.check_cache(query) {
-            self.inflight.remove(&key);
-            return if cached.addresses.is_empty() {
-                Err(DomainError::NxDomain)
-            } else {
-                Ok(cached)
-            };
-        }
-
         debug!(
             domain = %query.domain,
             record_type = %query.record_type,
@@ -319,26 +302,4 @@ fn clamp_negative_ttl(ttl: u32) -> u32 {
     const MIN_NEGATIVE_TTL: u32 = 30;
     const MAX_NEGATIVE_TTL: u32 = 3_600;
     ttl.clamp(MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL)
-}
-
-fn synthesize_negative_soa(domain: &str, negative_ttl: u32) -> Vec<Record> {
-    let zone = {
-        let labels: Vec<&str> = domain.split('.').collect();
-        if labels.len() >= 2 {
-            format!("{}.", labels[labels.len() - 2..].join("."))
-        } else {
-            format!("{}.", domain)
-        }
-    };
-
-    let zone_name = match Name::from_str(&zone) {
-        Ok(n) => n,
-        Err(_) => return vec![],
-    };
-    let mname = Name::from_str(&format!("ns1.{}", zone)).unwrap_or_else(|_| zone_name.clone());
-    let rname =
-        Name::from_str(&format!("hostmaster.{}", zone)).unwrap_or_else(|_| zone_name.clone());
-
-    let soa = SOA::new(mname, rname, 1, 3600, 900, 604800, negative_ttl);
-    vec![Record::from_rdata(zone_name, negative_ttl, RData::SOA(soa))]
 }
