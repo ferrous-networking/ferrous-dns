@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use compact_str::{CompactString, ToCompactString};
-use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
+use dashmap::DashMap;
+use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity, TimelineBucket};
 use ferrous_dns_domain::{
     config::DatabaseConfig, BlockSource, DomainError, QueryLog, QuerySource, QueryStats,
 };
@@ -9,7 +10,7 @@ use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -170,6 +171,7 @@ pub struct SqliteQueryLogRepository {
     sender: mpsc::Sender<QueryLogEntry>,
     sample_rate: u32,
     sample_counter: AtomicU64,
+    timeline_cache: DashMap<(u32, &'static str), (Vec<TimelineBucket>, Instant)>,
 }
 
 impl SqliteQueryLogRepository {
@@ -199,6 +201,7 @@ impl SqliteQueryLogRepository {
             sender,
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
+            timeline_cache: DashMap::new(),
         }
     }
 
@@ -618,10 +621,23 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         &self,
         period_hours: u32,
         granularity: TimeGranularity,
-    ) -> Result<Vec<ferrous_dns_application::ports::TimelineBucket>, DomainError> {
-        debug!(period_hours = period_hours, "Fetching query timeline");
+    ) -> Result<Vec<TimelineBucket>, DomainError> {
+        const TIMELINE_CACHE_TTL: Duration = Duration::from_secs(30);
 
-        let sql = Self::build_timeline_sql(granularity.as_sql_expr());
+        let bucket_expr = granularity.as_sql_expr();
+        let cache_key = (period_hours, bucket_expr);
+
+        if let Some(entry) = self.timeline_cache.get(&cache_key) {
+            let (ref cached_buckets, cached_at) = *entry;
+            if cached_at.elapsed() < TIMELINE_CACHE_TTL {
+                debug!(period_hours, "Timeline served from cache");
+                return Ok(cached_buckets.clone());
+            }
+        }
+
+        debug!(period_hours, "Fetching query timeline");
+
+        let sql = Self::build_timeline_sql(bucket_expr);
         let cutoff = hours_ago_cutoff(period_hours as f32);
 
         let rows = sqlx::query(&sql)
@@ -633,9 +649,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 DomainError::InvalidDomainName(format!("Database error: {}", e))
             })?;
 
-        let timeline: Vec<ferrous_dns_application::ports::TimelineBucket> = rows
+        let timeline: Vec<TimelineBucket> = rows
             .into_iter()
-            .map(|row| ferrous_dns_application::ports::TimelineBucket {
+            .map(|row| TimelineBucket {
                 timestamp: row.get("time_bucket"),
                 total: row.get::<i64, _>("total") as u64,
                 blocked: row.get::<i64, _>("blocked") as u64,
@@ -644,6 +660,8 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             .collect();
 
         debug!(buckets = timeline.len(), "Timeline fetched successfully");
+        self.timeline_cache
+            .insert(cache_key, (timeline.clone(), Instant::now()));
         Ok(timeline)
     }
 

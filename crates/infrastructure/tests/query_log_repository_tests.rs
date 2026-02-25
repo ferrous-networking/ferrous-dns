@@ -1,4 +1,4 @@
-use ferrous_dns_application::ports::QueryLogRepository;
+use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -179,4 +179,54 @@ async fn test_get_stats_period_filter() {
 
     assert_eq!(stats.queries_total, 1);
     assert_eq!(stats.source_stats.get("upstream"), Some(&1));
+}
+
+#[tokio::test]
+async fn test_get_timeline_empty() {
+    let pool = create_test_db().await;
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+
+    let buckets = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
+
+    assert!(buckets.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_timeline_returns_buckets() {
+    let pool = create_test_db().await;
+
+    insert_log(&pool, false, false, None, "client", None).await;
+    insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
+    insert_log(&pool, true, false, None, "internal", None).await;
+
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let buckets = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
+
+    assert_eq!(buckets.len(), 1);
+    assert_eq!(buckets[0].total, 2);
+    assert_eq!(buckets[0].blocked, 1);
+    assert_eq!(buckets[0].unblocked, 1);
+}
+
+#[tokio::test]
+async fn test_get_timeline_cache_hit_returns_stale_data() {
+    let pool = create_test_db().await;
+
+    insert_log(&pool, false, false, None, "client", None).await;
+
+    let repo =
+        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+
+    let first_result = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
+    assert_eq!(first_result.len(), 1);
+    assert_eq!(first_result[0].total, 1);
+
+    insert_log(&pool, false, false, None, "client", None).await;
+
+    let cached_result = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
+
+    assert_eq!(cached_result.len(), first_result.len());
+    assert_eq!(cached_result[0].total, first_result[0].total);
 }
