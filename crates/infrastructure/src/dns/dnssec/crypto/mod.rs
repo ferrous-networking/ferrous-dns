@@ -121,8 +121,6 @@ impl SignatureVerifier {
         Ok(computed_digest == ds.digest)
     }
 
-    /// RSA/SHA-1 — algorithms 5 (RSASHA1) and 7 (RSASHA1-NSEC3-SHA1).
-    /// Kept for reading legacy signed zones; new zones MUST NOT use these.
     fn verify_rsa_sha1(
         &self,
         data: &[u8],
@@ -144,7 +142,6 @@ impl SignatureVerifier {
         }
     }
 
-    /// RSA/SHA-256 — algorithm 8 (RFC 5702).
     fn verify_rsa_sha256(
         &self,
         data: &[u8],
@@ -170,7 +167,6 @@ impl SignatureVerifier {
         }
     }
 
-    /// RSA/SHA-512 — algorithm 10 (RFC 5702).
     fn verify_rsa_sha512(
         &self,
         data: &[u8],
@@ -188,10 +184,6 @@ impl SignatureVerifier {
         }
     }
 
-    /// ECDSA P-256/SHA-256 — algorithm 13 (RFC 6605).
-    ///
-    /// DNSSEC key:       bare X||Y (64 bytes)  → prepend 0x04 for ring (65 bytes)
-    /// DNSSEC signature: fixed-size R||S (64 bytes) → use FIXED, not ASN1
     fn verify_ecdsa_p256(
         &self,
         data: &[u8],

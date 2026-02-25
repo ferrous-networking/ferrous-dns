@@ -5,7 +5,10 @@ use super::super::cache::{
 use super::super::prefetch::PrefetchPredictor;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
+use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
+use std::sync::LazyLock;
+
+static EMPTY_ADDRESSES: LazyLock<Arc<Vec<IpAddr>>> = LazyLock::new(|| Arc::new(vec![]));
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use hickory_proto::rr::rdata::SOA;
 use hickory_proto::rr::{Name, RData, Record};
@@ -86,17 +89,17 @@ impl CachedResolver {
                         cache_hit: true,
                         local_dns: false,
                         dnssec_status: dnssec_str,
-                        cname_chain: Arc::clone(&entry.cname_chain),
+                        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
                         upstream_server: None,
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
                     },
                     CachedData::CanonicalName(_) => DnsResolution {
-                        addresses: Arc::new(vec![]),
+                        addresses: Arc::clone(&EMPTY_ADDRESSES),
                         cache_hit: true,
                         local_dns: false,
                         dnssec_status: dnssec_str,
-                        cname_chain: Arc::from(vec![]),
+                        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
                         upstream_server: None,
                         min_ttl: remaining_ttl,
                         authority_records: vec![],
@@ -104,11 +107,11 @@ impl CachedResolver {
                     CachedData::NegativeResponse => {
                         let negative_ttl = remaining_ttl.unwrap_or(60);
                         DnsResolution {
-                            addresses: Arc::new(vec![]),
+                            addresses: Arc::clone(&EMPTY_ADDRESSES),
                             cache_hit: true,
                             local_dns: false,
                             dnssec_status: dnssec_str,
-                            cname_chain: Arc::from(vec![]),
+                            cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
                             upstream_server: None,
                             min_ttl: remaining_ttl,
                             authority_records: synthesize_negative_soa(
@@ -150,10 +153,7 @@ impl CachedResolver {
             self.cache.insert(
                 query.domain.as_ref(),
                 query.record_type,
-                CachedData::IpAddresses(CachedAddresses {
-                    addresses,
-                    cname_chain: Arc::clone(&resolution.cname_chain),
-                }),
+                CachedData::IpAddresses(CachedAddresses { addresses }),
                 ttl,
                 Some(dnssec_status),
             );

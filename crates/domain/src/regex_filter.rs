@@ -48,9 +48,6 @@ impl RegexFilter {
         Ok(())
     }
 
-    /// Validates basic constraints on the pattern (length, non-empty).
-    /// Full regex syntax validation is performed at the infrastructure layer
-    /// where the `regex` crate is available.
     pub fn validate_pattern(pattern: &str) -> Result<(), String> {
         if pattern.is_empty() {
             return Err("Pattern cannot be empty".to_string());

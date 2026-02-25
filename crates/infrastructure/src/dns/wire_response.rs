@@ -5,15 +5,6 @@ const OPT_RECORD: [u8; 11] = [
     0x00, 0x00, 0x29, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
-/// Builds a DNS A/AAAA response directly in wire format using a stack-allocated
-/// buffer — no heap allocation, no Hickory serialization path.
-///
-/// Returns `(buffer, length)` on success.
-/// Returns `None` when the response would exceed the client's advertised UDP
-/// payload size (from EDNS0 OPT) or the hard 512-byte fallback cap.
-///
-/// When the client sent an EDNS0 OPT record (`query.has_edns`), an OPT record
-/// is appended to the additional section per RFC 6891 §6.1.1.
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],

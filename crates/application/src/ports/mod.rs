@@ -21,7 +21,7 @@ pub use blocklist_source_repository::BlocklistSourceRepository;
 pub use client_repository::ClientRepository;
 pub use client_subnet_repository::ClientSubnetRepository;
 pub use config_repository::ConfigRepository;
-pub use dns_resolver::{DnsResolution, DnsResolver};
+pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;

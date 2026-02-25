@@ -206,7 +206,6 @@ impl CacheUpdater {
                     None,
                     super::cache::CachedData::IpAddresses(CachedAddresses {
                         addresses: Arc::clone(&resolution.addresses),
-                        cname_chain: Arc::clone(&resolution.cname_chain),
                     }),
                     dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
                 );

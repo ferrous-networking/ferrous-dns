@@ -131,7 +131,6 @@ impl CacheWarmer {
                             RecordType::A,
                             CachedData::IpAddresses(CachedAddresses {
                                 addresses: Arc::new(addresses),
-                                cname_chain: Arc::from(vec![]),
                             }),
                             ttl,
                             Some(DnssecStatus::Unknown),
@@ -167,7 +166,6 @@ impl CacheWarmer {
                         RecordType::AAAA,
                         CachedData::IpAddresses(CachedAddresses {
                             addresses: Arc::new(addresses),
-                            cname_chain: Arc::from(vec![]),
                         }),
                         ttl,
                         Some(DnssecStatus::Unknown),

@@ -11,10 +11,6 @@ pub struct DatabaseConfig {
     #[serde(default = "default_queries_log_stored")]
     pub queries_log_stored: u32,
 
-    /// Minimum seconds between consecutive `update_last_seen` DB writes for
-    /// the same client IP. Lower values increase write pressure on SQLite;
-    /// higher values reduce it at the cost of less-frequent last-seen updates.
-    /// Default: 60 seconds.
     #[serde(default = "default_client_tracking_interval")]
     pub client_tracking_interval: u64,
 

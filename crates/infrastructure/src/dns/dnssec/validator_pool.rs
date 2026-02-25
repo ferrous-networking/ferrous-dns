@@ -13,7 +13,6 @@ pub struct DnssecValidatorPool {
 }
 
 impl DnssecValidatorPool {
-    /// Create a new pool with `size` validator slots, all sharing `cache`.
     pub fn new(pool_manager: Arc<PoolManager>, timeout_ms: u64, size: usize) -> Self {
         let cache = Arc::new(DnssecCache::new());
         let validators = (0..size)

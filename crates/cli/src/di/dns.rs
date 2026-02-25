@@ -319,7 +319,6 @@ impl DnsServices {
             use ferrous_dns_infrastructure::dns::{CachedAddresses, CachedData};
             let data = CachedData::IpAddresses(CachedAddresses {
                 addresses: StdArc::new(vec![ip]),
-                cname_chain: StdArc::from(vec![]),
             });
 
             let ttl = record.ttl.unwrap_or(300);

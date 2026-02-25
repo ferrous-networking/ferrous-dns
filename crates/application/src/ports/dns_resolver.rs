@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use hickory_proto::rr::Record;
 use std::net::IpAddr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
+
+pub static EMPTY_CNAME_CHAIN: LazyLock<Arc<[Arc<str>]>> = LazyLock::new(|| Arc::from([]));
 
 #[derive(Debug, Clone)]
 pub struct DnsResolution {
@@ -13,7 +15,6 @@ pub struct DnsResolution {
     pub cname_chain: Arc<[Arc<str>]>,
     pub upstream_server: Option<String>,
     pub min_ttl: Option<u32>,
-    /// Records from the AUTHORITY section of the upstream response (e.g. SOA for NODATA).
     pub authority_records: Vec<Record>,
 }
 
@@ -24,7 +25,7 @@ impl DnsResolution {
             cache_hit,
             local_dns: false,
             dnssec_status: None,
-            cname_chain: Arc::from(vec![]),
+            cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,
             min_ttl: None,
             authority_records: vec![],
@@ -41,7 +42,7 @@ impl DnsResolution {
             cache_hit,
             local_dns: false,
             dnssec_status,
-            cname_chain: Arc::from(vec![]),
+            cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,
             min_ttl: None,
             authority_records: vec![],

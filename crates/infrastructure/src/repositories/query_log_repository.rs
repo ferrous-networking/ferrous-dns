@@ -411,7 +411,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let cutoff = hours_ago_cutoff(period_hours);
 
         let rows = if let Some(cursor_id) = cursor {
-            // Keyset pagination: O(log N) via primary key — no full index scan
             sqlx::query(
                 "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                         q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
@@ -431,7 +430,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             .fetch_all(&self.read_pool)
             .await
         } else {
-            // Offset pagination for the first page (cursor not yet established)
             sqlx::query(
                 "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                         q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
@@ -461,7 +459,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             rows.truncate(limit as usize);
         }
 
-        // The smallest id in the page is the cursor for the next page
         let next_cursor = if has_more {
             rows.last().map(|r| r.get::<i64, _>("id"))
         } else {

@@ -4,7 +4,6 @@ use std::net::IpAddr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterDecision {
-    /// Query is blocked; the inner value identifies which layer matched.
     Block(BlockSource),
     Allow,
 }

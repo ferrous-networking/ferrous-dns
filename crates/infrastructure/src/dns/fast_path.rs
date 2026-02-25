@@ -2,41 +2,22 @@ use ferrous_dns_domain::RecordType;
 
 const MAX_DOMAIN_LEN: usize = 253;
 
-/// Result of a successful fast-path parse of a raw DNS query buffer.
 pub struct FastPathQuery {
     pub id: u16,
     pub record_type: RecordType,
-    /// Byte offset in the original buffer where the question section ends.
     pub question_end: usize,
-    /// Maximum UDP payload size advertised by the client via EDNS0 (capped at 512).
     pub client_max_size: u16,
-    /// True when the client sent an EDNS0 OPT record (RFC 6891 §6.1.1: the
-    /// server SHOULD include an OPT record in the response when this is true).
     pub has_edns: bool,
     domain_buf: [u8; MAX_DOMAIN_LEN + 1],
     domain_len: usize,
 }
 
 impl FastPathQuery {
-    /// Returns the decoded domain name (e.g. `"google.com"`, no trailing dot).
     pub fn domain(&self) -> &str {
         core::str::from_utf8(&self.domain_buf[..self.domain_len]).unwrap_or_default()
     }
 }
 
-/// Attempts a minimal parse of a raw DNS query buffer.
-///
-/// Returns `None` — and therefore falls back to the full Hickory pipeline — for
-/// any packet that is not a plain A/AAAA query in the IN class:
-///
-/// * Buffer shorter than 17 bytes
-/// * QR bit set (response, not query)
-/// * Non-zero OPCODE (not a standard QUERY)
-/// * QDCOUNT ≠ 1, ANCOUNT ≠ 0, or NSCOUNT ≠ 0
-/// * Compression pointer or extended label type in the QNAME
-/// * QTYPE other than A (1) or AAAA (28)
-/// * QCLASS other than IN (1)
-/// * DNSSEC OK bit set in an EDNS0 OPT record
 pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     if buf.len() < 17 {
         return None;

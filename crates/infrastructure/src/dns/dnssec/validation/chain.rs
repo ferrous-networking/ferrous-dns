@@ -394,7 +394,6 @@ impl ChainVerifier {
         self.validated_keys.get(zone)
     }
 
-    /// Helper to pre-populate validated zone keys without DNS queries.
     pub fn insert_zone_keys_for_test(&mut self, zone: &str, keys: Vec<DnskeyRecord>) {
         self.validated_keys.insert(zone.to_string(), keys);
     }

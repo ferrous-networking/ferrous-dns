@@ -163,12 +163,11 @@ impl DnsCache {
         domain: &Arc<str>,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
-        if let Some((arc_data, cname_chain, remaining_ttl)) = l1_get(domain.as_ref(), record_type) {
+        if let Some((arc_data, remaining_ttl)) = l1_get(domain.as_ref(), record_type) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some((
                 CachedData::IpAddresses(super::data::CachedAddresses {
                     addresses: arc_data,
-                    cname_chain,
                 }),
                 None,
                 Some(remaining_ttl),
@@ -243,8 +242,8 @@ impl DnsCache {
             self.eviction_pending.store(true, AtomicOrdering::Relaxed);
         }
 
-        let maybe_l1 = if let CachedData::IpAddresses(ref entry) = data {
-            Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
+        let maybe_l1_addresses = if let CachedData::IpAddresses(ref entry) = data {
+            Some(Arc::clone(&entry.addresses))
         } else {
             None
         };
@@ -262,8 +261,8 @@ impl DnsCache {
             }
         }
 
-        if let Some((addresses, cname_chain)) = maybe_l1 {
-            l1_insert(domain, &record_type, addresses, cname_chain, expires_secs);
+        if let Some(addresses) = maybe_l1_addresses {
+            l1_insert(domain, &record_type, addresses, expires_secs);
         }
 
         debug!(
@@ -289,8 +288,8 @@ impl DnsCache {
             self.evict_entries();
         }
 
-        let maybe_l1 = if let CachedData::IpAddresses(ref entry) = data {
-            Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
+        let maybe_l1_addresses = if let CachedData::IpAddresses(ref entry) = data {
+            Some(Arc::clone(&entry.addresses))
         } else {
             None
         };
@@ -298,8 +297,8 @@ impl DnsCache {
         let record = CachedRecord::permanent(data, PERMANENT_TTL_SECS, record_type);
         self.cache.insert(key, record);
 
-        if let Some((addresses, cname_chain)) = maybe_l1 {
-            l1_insert(domain, &record_type, addresses, cname_chain, u64::MAX);
+        if let Some(addresses) = maybe_l1_addresses {
+            l1_insert(domain, &record_type, addresses, u64::MAX);
         }
     }
 
@@ -388,21 +387,15 @@ impl DnsCache {
             }
             record.clear_refreshing();
 
-            let maybe_l1 = if let CachedData::IpAddresses(ref entry) = new_data {
-                Some((Arc::clone(&entry.addresses), Arc::clone(&entry.cname_chain)))
+            let maybe_l1_addresses = if let CachedData::IpAddresses(ref entry) = new_data {
+                Some(Arc::clone(&entry.addresses))
             } else {
                 None
             };
             record.data = new_data;
 
-            if let Some((addresses, cname_chain)) = maybe_l1 {
-                l1_insert(
-                    domain,
-                    record_type,
-                    addresses,
-                    cname_chain,
-                    record.expires_at_secs,
-                );
+            if let Some(addresses) = maybe_l1_addresses {
+                l1_insert(domain, record_type, addresses, record.expires_at_secs);
             }
             true
         } else {
@@ -425,7 +418,6 @@ impl DnsCache {
                 domain,
                 record_type,
                 Arc::clone(&entry.addresses),
-                Arc::clone(&entry.cname_chain),
                 record.expires_at_secs,
             );
         }
