@@ -184,7 +184,6 @@
     </div>
 </main>
 <script>
-    
     const appCharts = {
         timeline: null,
         queryTypes: null,
@@ -234,7 +233,7 @@
                     this.chartsReady = true;
                     scheduleLucide(0);
 
-                    this.loadChartsData();
+                    this.loadDashboard(true);
 
                     setTimeout(() => this.startPolling(), 100);
                 }, 500);
@@ -251,144 +250,89 @@
                 scheduleLucide()
             },
             async loadAllData() {
-                // loadQueryTypes is NOT included here to avoid a race condition with loadStats():
-                // if loadQueryTypes finishes first, it falls back to the 500-query sample
-                // before loadStats has populated stats.queries_by_type, causing size instability.
-                // loadStats already updates both queryTypes and sourceStats charts directly.
-                await Promise.all([this.loadStats(), this.loadQueryRate(), this.loadCacheMetrics(), this.loadBlockFilterStats()])
+                await Promise.all([this.loadDashboard(true), this.loadBlockFilterStats()])
             },
-            async loadQuickStats() {
-                
-                await Promise.all([this.loadStats(), this.loadCacheMetrics()])
-            },
-            async loadChartsData() {
-                if (!this.chartsReady) return;
-                await Promise.all([this.loadQueryTypes(), this.loadTimelineData()]);
-                this.updateQueryTypesChart();
-                this.updateCacheSourceChart();
-            },
-            async loadStats() {
-                this._ctrl.stats?.abort();
-                this._ctrl.stats = new AbortController();
+            async loadDashboard(includeTimeline) {
+                this._ctrl.dashboard?.abort();
+                this._ctrl.dashboard = new AbortController();
                 try {
-                    const res = await fetch('/api/stats?period=24h', {signal: this._ctrl.stats.signal});
+                    const url = `/api/dashboard?period=24h&include_timeline=${!!includeTimeline}`;
+                    const res = await fetch(url, {signal: this._ctrl.dashboard.signal});
                     if (res.ok) {
-                        this.stats = await res.json();
-                        // Usar queries_by_type do servidor (sem limite de 500 queries)
-                        // para o gráfico Query Types ser sempre preciso
+                        const data = await res.json();
+                        this.stats = data.stats;
+                        this.queryRate = data.rate;
+                        this.cacheMetrics = {
+                            total_hits: data.cache_stats.total_hits,
+                            total_misses: data.cache_stats.total_misses,
+                            total_refreshes: data.cache_stats.total_refreshes,
+                            total_entries: data.cache_stats.total_entries,
+                            hit_rate: data.cache_stats.hit_rate
+                        };
                         if (this.stats.queries_by_type) {
                             this.queryTypes = {...this.stats.queries_by_type};
                         }
                         if (this.stats.source_stats) {
-                            this.sourceStats = { ...this.stats.source_stats };
+                            this.sourceStats = {...this.stats.source_stats};
+                        }
+                        if (data.timeline && this.chartsReady) {
+                            this.updateTimelineFromData(data.timeline);
+                        }
+                        if (this.chartsReady) {
+                            this.updateQueryTypesChart();
+                            this.updateCacheSourceChart();
                         }
                     }
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
                 }
             },
-            async loadQueryRate() {
-                this._ctrl.rate?.abort();
-                this._ctrl.rate = new AbortController();
-                try {
-                    const res = await fetch('/api/stats/rate?unit=second', {signal: this._ctrl.rate.signal});
-                    if (res.ok) {
-                        this.queryRate = await res.json();
-                    }
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error('Error loading query rate:', e);
-                }
-            },
             getRateColor() {
                 const queries = this.queryRate.queries || 0;
-                if (queries >= 10000) return '#EF4444'; 
-                if (queries >= 1000) return '#F59E0B';  
-                return '#10B981';                        
+                if (queries >= 10000) return '#EF4444';
+                if (queries >= 1000) return '#F59E0B';
+                return '#10B981';
             },
-            async loadQueryTypes() {
-                try {
-                    const res = await fetch('/api/queries?period=24h&limit=500');
-                    if (res.ok) {
-                        const result = await res.json();
-                        const queries = result.data || result;
+            updateTimelineFromData(timeline) {
+                if (!this.chartsReady || !appCharts.timeline) return;
 
-                        // Query Types: usa dados do servidor via loadStats() (sem limite).
-                        // Fallback para contagem local só se stats ainda não carregou.
-                        if (!this.stats.queries_by_type || Object.keys(this.stats.queries_by_type).length === 0) {
-                            this.queryTypes = {};
-                            queries.forEach(q => {
-                                this.queryTypes[q.type] = (this.queryTypes[q.type] || 0) + 1;
-                            });
-                            this.updateQueryTypesChart();
-                        }
-                    }
-                } catch (e) {
-                    console.error(e)
+                const now = new Date();
+                const timeLabels = [];
+                const blockedCounts = [];
+                const unblockedCounts = [];
+
+                const dataMap = new Map();
+                timeline.buckets.forEach(b => {
+                    const utcTime = new Date(b.timestamp.replace(' ', 'T') + 'Z');
+                    utcTime.setUTCMinutes(Math.floor(utcTime.getUTCMinutes() / 15) * 15, 0, 0);
+                    const timeKey = utcTime.getTime();
+                    dataMap.set(timeKey, {
+                        total: b.total,
+                        blocked: b.blocked,
+                        unblocked: b.unblocked
+                    });
+                });
+
+                for (let i = 95; i >= 0; i--) {
+                    const bucketTime = new Date(now.getTime() - (i * 15 * 60 * 1000));
+                    bucketTime.setMinutes(Math.floor(bucketTime.getMinutes() / 15) * 15, 0, 0);
+                    const timeKey = bucketTime.getTime();
+
+                    const hour = bucketTime.getHours();
+                    const minute = bucketTime.getMinutes();
+                    timeLabels.push(minute === 0 ? `${hour}:00` : '');
+
+                    const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0};
+                    blockedCounts.push(data.blocked);
+                    unblockedCounts.push(data.unblocked);
                 }
-            },
-            async loadTimelineData() {
-                if (!this.chartsReady || !appCharts.timeline) {
-                    return;
-                }
 
-                try {
-                    
-                    const res = await fetch('/api/queries/timeline?period=24h&granularity=15min');
-                    if (res.ok) {
-                        const timeline = await res.json();
-
-                        const now = new Date();
-                        const timeLabels = [];
-                        const totalCounts = [];
-                        const blockedCounts = [];
-                        const unblockedCounts = [];
-
-                        const dataMap = new Map();
-                        timeline.buckets.forEach(b => {
-                            
-                            const utcTime = new Date(b.timestamp.replace(' ', 'T') + 'Z');
-
-                            utcTime.setUTCMinutes(Math.floor(utcTime.getUTCMinutes() / 15) * 15, 0, 0);
-
-                            const timeKey = utcTime.getTime();
-                            dataMap.set(timeKey, {
-                                total: b.total,
-                                blocked: b.blocked,
-                                unblocked: b.unblocked
-                            });
-                        });
-
-                        for (let i = 95; i >= 0; i--) {
-                            const bucketTime = new Date(now.getTime() - (i * 15 * 60 * 1000));
-
-                            bucketTime.setMinutes(Math.floor(bucketTime.getMinutes() / 15) * 15, 0, 0);
-
-                            const timeKey = bucketTime.getTime();
-
-                            const hour = bucketTime.getHours();
-                            const minute = bucketTime.getMinutes();
-                            if (minute === 0) {
-                                timeLabels.push(`${hour}:00`);
-                            } else {
-                                timeLabels.push(''); 
-                            }
-
-                            const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0};
-                            totalCounts.push(data.total);
-                            blockedCounts.push(data.blocked);
-                            unblockedCounts.push(data.unblocked);
-                        }
-
-                        if (appCharts.timeline && appCharts.timeline.data &&
-                            appCharts.timeline.data.datasets[0] && appCharts.timeline.data.datasets[1]) {
-                            appCharts.timeline.data.labels = timeLabels;
-                            appCharts.timeline.data.datasets[0].data = blockedCounts;    
-                            appCharts.timeline.data.datasets[1].data = unblockedCounts;  
-                            appCharts.timeline.update('none');
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error loading timeline data:', e);
+                if (appCharts.timeline && appCharts.timeline.data &&
+                    appCharts.timeline.data.datasets[0] && appCharts.timeline.data.datasets[1]) {
+                    appCharts.timeline.data.labels = timeLabels;
+                    appCharts.timeline.data.datasets[0].data = blockedCounts;
+                    appCharts.timeline.data.datasets[1].data = unblockedCounts;
+                    appCharts.timeline.update('none');
                 }
             },
             updateQueryTypesChart() {
@@ -397,7 +341,6 @@
                 }
 
                 try {
-                    
                     const validTypes = {};
                     Object.entries(this.queryTypes).forEach(([key, value]) => {
                         if (key !== 'undefined' && key !== 'null' && value > 0) {
@@ -525,28 +468,8 @@
                     console.error(e)
                 }
             },
-            async loadCacheMetrics() {
-                this._ctrl.cache?.abort();
-                this._ctrl.cache = new AbortController();
-                try {
-                    const res = await fetch('/api/cache/stats?period=24h', {signal: this._ctrl.cache.signal});
-                    if (res.ok) {
-                        const m = await res.json();
-                        this.cacheMetrics = {
-                            total_hits: m.total_hits,
-                            total_misses: m.total_misses,
-                            total_refreshes: m.total_refreshes,
-                            total_entries: m.total_entries,
-                            hit_rate: m.hit_rate
-                        }
-                    }
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error(e)
-                }
-            },
             initCharts() {
                 try {
-                    
                     if (appCharts.timeline) {
                         appCharts.timeline.destroy();
                         appCharts.timeline = null;
@@ -565,10 +488,8 @@
                         appCharts.timeline = new Chart(ctx1.getContext('2d'), {
                             type: 'line',
                             data: {
-                                
                                 labels: Array.from({length: 96}, (_, i) => {
                                     const mins = (i * 15) % 60;
-                                    
                                     return mins === 0 ? `${Math.floor(i / 4)}:00` : '';
                                 }),
                                 datasets: [{
@@ -600,7 +521,6 @@
                                     tooltip: {
                                         callbacks: {
                                             title: function (context) {
-                                                
                                                 const index = context[0].dataIndex;
                                                 const minsAgo = (95 - index) * 15;
                                                 const date = new Date(Date.now() - minsAgo * 60 * 1000);
@@ -639,12 +559,10 @@
             startPolling() {
                 this.stopPolling();
                 this.pollingIntervals.fast = setInterval(() => {
-                    this.loadStats();
-                    this.loadQueryRate();
-                    this.loadCacheMetrics();
-                }, 5000);
+                    this.loadDashboard(false);
+                }, 10000);
                 this.pollingIntervals.slow = setInterval(() => {
-                    this.loadTimelineData();
+                    this.loadDashboard(true);
                 }, 60000);
             },
             stopPolling() {

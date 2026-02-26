@@ -7,6 +7,7 @@ pub mod client;
 pub mod client_subnet;
 pub mod config;
 pub mod custom_service;
+pub mod dashboard;
 pub mod group;
 pub mod hostname;
 pub mod local_record;
@@ -39,6 +40,7 @@ pub use client_subnet::{
     ClientSubnetResponse, CreateClientSubnetRequest, CreateManualClientRequest,
 };
 pub use config::*;
+pub use dashboard::{DashboardQuery, DashboardResponse};
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};

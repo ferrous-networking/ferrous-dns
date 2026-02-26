@@ -752,8 +752,13 @@ impl QueryLogRepository for SqliteQueryLogRepository {
 
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
         let cutoff = days_ago_cutoff(days);
-        let result = sqlx::query("DELETE FROM query_log WHERE created_at < ?")
-            .bind(cutoff)
+        let mut total_deleted: u64 = 0;
+
+        loop {
+            let result = sqlx::query(
+                "DELETE FROM query_log WHERE rowid IN (SELECT rowid FROM query_log WHERE created_at < ? LIMIT 5000)",
+            )
+            .bind(&cutoff)
             .execute(&self.write_pool)
             .await
             .map_err(|e| {
@@ -761,9 +766,19 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                 DomainError::DatabaseError(format!("Failed to delete old query logs: {}", e))
             })?;
 
-        let deleted = result.rows_affected();
-        info!(deleted, days, "Old query logs deleted");
-        Ok(deleted)
+            let deleted = result.rows_affected();
+            if deleted == 0 {
+                break;
+            }
+            total_deleted += deleted;
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        info!(
+            deleted = total_deleted,
+            days, "Old query logs deleted (batched)"
+        );
+        Ok(total_deleted)
     }
 }
 

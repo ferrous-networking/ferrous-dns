@@ -6,6 +6,7 @@ use axum::{
 };
 use ferrous_dns_api::{create_api_routes, AppState};
 use std::net::SocketAddr;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -62,6 +63,7 @@ fn create_app(state: AppState, cors_allowed_origins: &[String]) -> Router {
         .route("/settings.html", get(settings_handler))
         .route("/dns-filter.html", get(dns_filter_handler))
         .route("/block-services.html", get(block_services_handler))
+        .layer(CompressionLayer::new().gzip(true))
         .layer(build_cors_layer(cors_allowed_origins))
 }
 

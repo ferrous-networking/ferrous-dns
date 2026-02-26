@@ -9,6 +9,7 @@ use ferrous_dns_domain::CliOverrides;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_jobs::{
     BlocklistSyncJob, ClientSyncJob, JobRunner, QueryLogRetentionJob, RetentionJob,
+    WalCheckpointJob,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -92,6 +93,7 @@ async fn async_main() -> anyhow::Result<()> {
     let (write_pool, read_pool) = bootstrap::init_database(&database_url, &config.database).await?;
 
     let config_arc = Arc::new(RwLock::new(config.clone()));
+    let wal_pool = write_pool.clone();
 
     let repos = di::Repositories::new(write_pool, read_pool, &config.database).await?;
     let dns_services = di::DnsServices::new(&config, &repos).await?;
@@ -112,6 +114,7 @@ async fn async_main() -> anyhow::Result<()> {
             config.database.queries_log_stored,
         ))
         .with_blocklist_sync(BlocklistSyncJob::new(repos.block_filter_engine.clone()))
+        .with_wal_checkpoint(WalCheckpointJob::new(wal_pool))
         .start()
         .await;
 

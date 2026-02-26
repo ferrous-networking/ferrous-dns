@@ -1,4 +1,6 @@
-use crate::{BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob};
+use crate::{
+    BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob, WalCheckpointJob,
+};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -8,6 +10,7 @@ pub struct JobRunner {
     retention: Option<RetentionJob>,
     query_log_retention: Option<QueryLogRetentionJob>,
     blocklist_sync: Option<BlocklistSyncJob>,
+    wal_checkpoint: Option<WalCheckpointJob>,
     shutdown: Option<CancellationToken>,
 }
 
@@ -18,6 +21,7 @@ impl JobRunner {
             retention: None,
             query_log_retention: None,
             blocklist_sync: None,
+            wal_checkpoint: None,
             shutdown: None,
         }
     }
@@ -39,6 +43,11 @@ impl JobRunner {
 
     pub fn with_blocklist_sync(mut self, job: BlocklistSyncJob) -> Self {
         self.blocklist_sync = Some(job);
+        self
+    }
+
+    pub fn with_wal_checkpoint(mut self, job: WalCheckpointJob) -> Self {
+        self.wal_checkpoint = Some(job);
         self
     }
 
@@ -75,6 +84,14 @@ impl JobRunner {
         }
 
         if let Some(job) = self.blocklist_sync {
+            let job = match &self.shutdown {
+                Some(token) => job.with_cancellation(token.clone()),
+                None => job,
+            };
+            Arc::new(job).start().await;
+        }
+
+        if let Some(job) = self.wal_checkpoint {
             let job = match &self.shutdown {
                 Some(token) => job.with_cancellation(token.clone()),
                 None => job,

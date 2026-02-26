@@ -127,5 +127,5 @@ fn default_read_acquire_timeout_secs() -> u64 {
 }
 
 fn default_wal_autocheckpoint() -> u32 {
-    10_000
+    0
 }

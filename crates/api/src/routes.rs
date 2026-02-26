@@ -10,6 +10,7 @@ use axum::{
 pub fn create_api_routes(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health_check))
+        .route("/dashboard", get(handlers::get_dashboard))
         .route("/stats", get(handlers::get_stats))
         .route("/stats/rate", get(handlers::get_query_rate))
         .route("/queries/timeline", get(handlers::get_timeline))
