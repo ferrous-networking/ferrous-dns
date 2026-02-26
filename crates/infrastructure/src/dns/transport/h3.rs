@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use bytes::{Buf, Bytes, BytesMut};
 use dashmap::DashMap;
 use ferrous_dns_domain::DomainError;
+use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tracing::debug;
@@ -23,12 +24,27 @@ static H3_QUIC_CLIENT_CONFIG: LazyLock<quinn::ClientConfig> = LazyLock::new(|| {
     quinn::ClientConfig::new(Arc::new(quic_config))
 });
 
-static H3_QUIC_ENDPOINT: LazyLock<quinn::Endpoint> = LazyLock::new(|| {
-    let mut endpoint =
-        quinn::Endpoint::client("0.0.0.0:0".parse().unwrap()).expect("H3 QUIC client endpoint");
+static H3_QUIC_ENDPOINT_V4: LazyLock<quinn::Endpoint> = LazyLock::new(|| {
+    let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap())
+        .expect("H3 QUIC IPv4 client endpoint");
     endpoint.set_default_client_config(H3_QUIC_CLIENT_CONFIG.clone());
     endpoint
 });
+
+static H3_QUIC_ENDPOINT_V6: LazyLock<quinn::Endpoint> = LazyLock::new(|| {
+    let mut endpoint =
+        quinn::Endpoint::client("[::]:0".parse().unwrap()).expect("H3 QUIC IPv6 client endpoint");
+    endpoint.set_default_client_config(H3_QUIC_CLIENT_CONFIG.clone());
+    endpoint
+});
+
+fn h3_endpoint_for(addr: &SocketAddr) -> &'static quinn::Endpoint {
+    if addr.is_ipv4() {
+        &H3_QUIC_ENDPOINT_V4
+    } else {
+        &H3_QUIC_ENDPOINT_V6
+    }
+}
 
 static H3_POOL: LazyLock<DashMap<PoolKey, H3SendRequest>> = LazyLock::new(DashMap::new);
 
@@ -37,10 +53,11 @@ pub struct H3Transport {
     hostname: String,
     port: u16,
     pool_key: String,
+    resolved_addrs: Vec<SocketAddr>,
 }
 
 impl H3Transport {
-    pub fn new(h3_url: String) -> Self {
+    pub fn new(h3_url: String, resolved_addrs: Vec<SocketAddr>) -> Self {
         let without_scheme = h3_url.strip_prefix("h3://").unwrap_or(&h3_url);
         let host_part = without_scheme.split('/').next().unwrap_or(without_scheme);
         let (hostname, port) = if let Some((h, p)) = host_part.rsplit_once(':') {
@@ -55,10 +72,14 @@ impl H3Transport {
             hostname,
             port,
             pool_key,
+            resolved_addrs,
         }
     }
 
-    async fn resolve_addr(&self, timeout: Duration) -> Result<std::net::SocketAddr, DomainError> {
+    async fn resolve_addr(&self, timeout: Duration) -> Result<SocketAddr, DomainError> {
+        if let Some(addr) = self.resolved_addrs.first() {
+            return Ok(*addr);
+        }
         let target = format!("{}:{}", self.hostname, self.port);
         let mut addrs = tokio::time::timeout(timeout, tokio::net::lookup_host(target.clone()))
             .await
@@ -78,15 +99,14 @@ impl H3Transport {
 
     async fn connect_new(&self, timeout: Duration) -> Result<H3SendRequest, DomainError> {
         let addr = self.resolve_addr(timeout).await?;
+        let endpoint = h3_endpoint_for(&addr);
 
-        let connecting = H3_QUIC_ENDPOINT
-            .connect(addr, &self.hostname)
-            .map_err(|e| {
-                DomainError::InvalidDomainName(format!(
-                    "Failed to initiate H3 connection to {}: {}",
-                    addr, e
-                ))
-            })?;
+        let connecting = endpoint.connect(addr, &self.hostname).map_err(|e| {
+            DomainError::InvalidDomainName(format!(
+                "Failed to initiate H3 connection to {}: {}",
+                addr, e
+            ))
+        })?;
 
         let quinn_conn = tokio::time::timeout(timeout, connecting)
             .await

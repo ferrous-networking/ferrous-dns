@@ -5,13 +5,14 @@ use super::parallel::ParallelStrategy;
 use super::strategy::{Strategy, UpstreamResult};
 use crate::dns::events::QueryEventEmitter;
 use crate::dns::forwarding::ResponseParser;
+use crate::dns::transport::resolver;
 use ferrous_dns_domain::{
     Config, DnsProtocol, DomainError, RecordType, UpstreamPool, UpstreamStrategy,
 };
 use smallvec::SmallVec;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::{debug, warn};
+use std::time::Duration;
+use tracing::{debug, info, warn};
 
 pub struct PoolManager {
     pools: Vec<PoolWithStrategy>,
@@ -26,7 +27,7 @@ struct PoolWithStrategy {
 }
 
 impl PoolManager {
-    pub fn new(
+    pub async fn new(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
         emitter: QueryEventEmitter,
@@ -55,10 +56,13 @@ impl PoolManager {
                 })
                 .collect();
 
+            let parsed = server_protocols?;
+            let expanded = Self::expand_hostnames(parsed).await;
+
             pools_with_strategy.push(PoolWithStrategy {
                 config: pool,
                 strategy,
-                server_protocols: server_protocols?,
+                server_protocols: expanded,
             });
         }
         pools_with_strategy.sort_by_key(|p| p.config.priority);
@@ -70,12 +74,86 @@ impl PoolManager {
         })
     }
 
-    pub fn from_config(config: &Config) -> Result<Self, DomainError> {
+    async fn expand_hostnames(protocols: Vec<DnsProtocol>) -> Vec<DnsProtocol> {
+        let mut expanded = Vec::new();
+        for protocol in protocols {
+            if protocol.needs_resolution() {
+                match &protocol {
+                    DnsProtocol::Udp { addr }
+                    | DnsProtocol::Tcp { addr }
+                    | DnsProtocol::Tls { addr, .. }
+                    | DnsProtocol::Quic { addr, .. } => {
+                        let (hostname, port) = match addr.unresolved_parts() {
+                            Some((h, p)) => (h.to_string(), p),
+                            None => {
+                                expanded.push(protocol);
+                                continue;
+                            }
+                        };
+                        match resolver::resolve_all(&hostname, port, Duration::from_secs(5)).await {
+                            Ok(addrs) => {
+                                info!("{} resolved to {} upstream servers", hostname, addrs.len());
+                                for addr in &addrs {
+                                    let resolved = protocol.with_resolved_addr(*addr);
+                                    info!("  → {}", resolved);
+                                    expanded.push(resolved);
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    hostname = %hostname,
+                                    error = %e,
+                                    "Failed to resolve upstream hostname, keeping unresolved"
+                                );
+                                expanded.push(protocol);
+                            }
+                        }
+                    }
+                    DnsProtocol::Https { hostname, .. } | DnsProtocol::H3 { hostname, .. } => {
+                        let host = hostname.to_string();
+                        let port = Self::extract_port_from_hostname(&host, 443);
+                        let clean_host = host.rsplit_once(':').map_or(host.as_str(), |(h, _)| h);
+                        match resolver::resolve_all(clean_host, port, Duration::from_secs(5)).await
+                        {
+                            Ok(addrs) => {
+                                info!("{} pre-resolved to {} addresses", clean_host, addrs.len());
+                                for addr in &addrs {
+                                    info!("  → {}", addr);
+                                }
+                                expanded.push(protocol.with_resolved_addrs(addrs));
+                            }
+                            Err(e) => {
+                                warn!(
+                                    hostname = %clean_host,
+                                    error = %e,
+                                    "Failed to pre-resolve, transport will resolve at runtime"
+                                );
+                                expanded.push(protocol);
+                            }
+                        }
+                    }
+                }
+            } else {
+                expanded.push(protocol);
+            }
+        }
+        expanded
+    }
+
+    fn extract_port_from_hostname(hostname: &str, default: u16) -> u16 {
+        hostname
+            .rsplit_once(':')
+            .and_then(|(_, p)| p.parse::<u16>().ok())
+            .unwrap_or(default)
+    }
+
+    pub async fn from_config(config: &Config) -> Result<Self, DomainError> {
         Self::new(
             config.dns.pools.clone(),
             None,
             QueryEventEmitter::new_disabled(),
         )
+        .await
     }
 
     pub async fn query(
@@ -136,7 +214,7 @@ impl PoolManager {
         Err(DomainError::TransportAllServersUnreachable)
     }
 
-    pub fn get_all_servers(&self) -> Vec<SocketAddr> {
+    pub fn get_all_servers(&self) -> Vec<std::net::SocketAddr> {
         self.pools
             .iter()
             .flat_map(|p| p.server_protocols.iter().filter_map(|p| p.socket_addr()))

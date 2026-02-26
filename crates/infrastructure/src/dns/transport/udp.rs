@@ -1,7 +1,7 @@
 use super::udp_pool::UdpSocketPool;
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, UpstreamAddr};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,23 +55,32 @@ fn validate_response_source(from: SocketAddr, expected: SocketAddr) -> Result<()
 const MAX_UDP_RESPONSE_SIZE: usize = 4096;
 
 pub struct UdpTransport {
-    server_addr: SocketAddr,
+    upstream_addr: UpstreamAddr,
     pool: Option<Arc<UdpSocketPool>>,
 }
 
 impl UdpTransport {
-    pub fn new(server_addr: SocketAddr) -> Self {
+    pub fn new(upstream_addr: UpstreamAddr) -> Self {
         Self {
-            server_addr,
+            upstream_addr,
             pool: None,
         }
     }
 
-    pub fn with_pool(server_addr: SocketAddr, pool: Arc<UdpSocketPool>) -> Self {
+    pub fn with_pool(upstream_addr: UpstreamAddr, pool: Arc<UdpSocketPool>) -> Self {
         Self {
-            server_addr,
+            upstream_addr,
             pool: Some(pool),
         }
+    }
+
+    fn resolved_addr(&self) -> Result<SocketAddr, DomainError> {
+        self.upstream_addr.socket_addr().ok_or_else(|| {
+            DomainError::InvalidDomainName(format!(
+                "UDP transport requires resolved address, got: {}",
+                self.upstream_addr
+            ))
+        })
     }
 
     async fn send_with_pool(
@@ -79,31 +88,33 @@ impl UdpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
+        let server_addr = self.resolved_addr()?;
+
         if let Some(ref pool) = self.pool {
-            let pooled = pool.acquire(self.server_addr).await.map_err(|e| {
+            let pooled = pool.acquire(server_addr).await.map_err(|e| {
                 DomainError::InvalidDomainName(format!("Failed to acquire UDP socket: {}", e))
             })?;
 
             let socket = pooled.socket();
 
             let bytes_sent =
-                tokio::time::timeout(timeout, socket.send_to(message_bytes, self.server_addr))
+                tokio::time::timeout(timeout, socket.send_to(message_bytes, server_addr))
                     .await
                     .map_err(|_| {
                         DomainError::InvalidDomainName(format!(
                             "Timeout sending UDP query to {}",
-                            self.server_addr
+                            server_addr
                         ))
                     })?
                     .map_err(|e| {
                         DomainError::InvalidDomainName(format!(
                             "Failed to send UDP query to {}: {}",
-                            self.server_addr, e
+                            server_addr, e
                         ))
                     })?;
 
             debug!(
-                server = %self.server_addr,
+                server = %server_addr,
                 bytes_sent = bytes_sent,
                 pooled = true,
                 "UDP query sent"
@@ -117,21 +128,21 @@ impl UdpTransport {
                     .map_err(|_| {
                         DomainError::InvalidDomainName(format!(
                             "Timeout waiting for UDP response from {}",
-                            self.server_addr
+                            server_addr
                         ))
                     })?
                     .map_err(|e| {
                         DomainError::InvalidDomainName(format!(
                             "Failed to receive UDP response from {}: {}",
-                            self.server_addr, e
+                            server_addr, e
                         ))
                     })?;
 
-            validate_response_source(from_addr, self.server_addr)?;
-            validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
+            validate_response_source(from_addr, server_addr)?;
+            validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)?;
 
             debug!(
-                server = %self.server_addr,
+                server = %server_addr,
                 bytes_received = bytes_received,
                 pooled = true,
                 "UDP response received"
@@ -151,7 +162,9 @@ impl UdpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
-        let bind_addr: SocketAddr = if self.server_addr.is_ipv4() {
+        let server_addr = self.resolved_addr()?;
+
+        let bind_addr: SocketAddr = if server_addr.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
         } else {
             "[::]:0".parse().unwrap()
@@ -161,24 +174,23 @@ impl UdpTransport {
             DomainError::InvalidDomainName(format!("Failed to bind UDP socket: {}", e))
         })?;
 
-        let bytes_sent =
-            tokio::time::timeout(timeout, socket.send_to(message_bytes, self.server_addr))
-                .await
-                .map_err(|_| {
-                    DomainError::InvalidDomainName(format!(
-                        "Timeout sending UDP query to {}",
-                        self.server_addr
-                    ))
-                })?
-                .map_err(|e| {
-                    DomainError::InvalidDomainName(format!(
-                        "Failed to send UDP query to {}: {}",
-                        self.server_addr, e
-                    ))
-                })?;
+        let bytes_sent = tokio::time::timeout(timeout, socket.send_to(message_bytes, server_addr))
+            .await
+            .map_err(|_| {
+                DomainError::InvalidDomainName(format!(
+                    "Timeout sending UDP query to {}",
+                    server_addr
+                ))
+            })?
+            .map_err(|e| {
+                DomainError::InvalidDomainName(format!(
+                    "Failed to send UDP query to {}: {}",
+                    server_addr, e
+                ))
+            })?;
 
         debug!(
-            server = %self.server_addr,
+            server = %server_addr,
             bytes_sent = bytes_sent,
             pooled = false,
             "UDP query sent"
@@ -192,21 +204,21 @@ impl UdpTransport {
                 .map_err(|_| {
                     DomainError::InvalidDomainName(format!(
                         "Timeout waiting for UDP response from {}",
-                        self.server_addr
+                        server_addr
                     ))
                 })?
                 .map_err(|e| {
                     DomainError::InvalidDomainName(format!(
                         "Failed to receive UDP response from {}: {}",
-                        self.server_addr, e
+                        server_addr, e
                     ))
                 })?;
 
-        validate_response_source(from_addr, self.server_addr)?;
-        validate_response_id(message_bytes, &recv_buf[..bytes_received], self.server_addr)?;
+        validate_response_source(from_addr, server_addr)?;
+        validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)?;
 
         debug!(
-            server = %self.server_addr,
+            server = %server_addr,
             bytes_received = bytes_received,
             pooled = false,
             "UDP response received"

@@ -34,10 +34,7 @@ pub async fn query_server(
 
     let response_time_us = start.elapsed().as_micros() as u64;
     let domain_arc: Arc<str> = Arc::from(domain);
-    let server_str = protocol
-        .socket_addr()
-        .map(|addr| addr.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+    let server_str = protocol.to_string();
     emitter.emit(QueryEvent {
         domain: Arc::clone(&domain_arc),
         record_type: *record_type,
@@ -53,7 +50,7 @@ pub async fn query_server(
                 "Response truncated (TC bit), retrying via TCP"
             );
 
-            let tcp_protocol = DnsProtocol::Tcp { addr: *addr };
+            let tcp_protocol = DnsProtocol::Tcp { addr: addr.clone() };
             let tcp_transport = transport::create_transport(&tcp_protocol)?;
 
             let remaining = timeout_duration
@@ -68,10 +65,7 @@ pub async fn query_server(
             emitter.emit(QueryEvent {
                 domain: domain_arc,
                 record_type: *record_type,
-                upstream_server: tcp_protocol
-                    .socket_addr()
-                    .map(|addr| addr.to_string())
-                    .unwrap_or_else(|| "unknown".to_string()),
+                upstream_server: tcp_protocol.to_string(),
                 response_time_us: tcp_response_time_us,
                 success: !tcp_dns_response.addresses.is_empty()
                     || !tcp_dns_response.cname_chain.is_empty(),

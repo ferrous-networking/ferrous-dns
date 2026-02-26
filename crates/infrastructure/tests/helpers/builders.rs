@@ -1,35 +1,39 @@
 #![allow(dead_code)]
+use ferrous_dns_domain::UpstreamAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 pub struct DnsServerBuilder;
 
 impl DnsServerBuilder {
-    pub fn google_dns() -> SocketAddr {
-        "8.8.8.8:53".parse().unwrap()
+    pub fn google_dns() -> UpstreamAddr {
+        UpstreamAddr::Resolved("8.8.8.8:53".parse().unwrap())
     }
 
-    pub fn google_dns_ipv6() -> SocketAddr {
-        "[2001:4860:4860::8888]:53".parse().unwrap()
+    pub fn google_dns_ipv6() -> UpstreamAddr {
+        UpstreamAddr::Resolved("[2001:4860:4860::8888]:53".parse().unwrap())
     }
 
-    pub fn cloudflare_dns() -> SocketAddr {
-        "1.1.1.1:53".parse().unwrap()
+    pub fn cloudflare_dns() -> UpstreamAddr {
+        UpstreamAddr::Resolved("1.1.1.1:53".parse().unwrap())
     }
 
-    pub fn cloudflare_dns_ipv6() -> SocketAddr {
-        "[2606:4700:4700::1111]:53".parse().unwrap()
+    pub fn cloudflare_dns_ipv6() -> UpstreamAddr {
+        UpstreamAddr::Resolved("[2606:4700:4700::1111]:53".parse().unwrap())
     }
 
-    pub fn cloudflare_tls() -> (SocketAddr, String) {
+    pub fn cloudflare_tls() -> (UpstreamAddr, String) {
         (
-            "1.1.1.1:853".parse().unwrap(),
+            UpstreamAddr::Resolved("1.1.1.1:853".parse().unwrap()),
             "cloudflare-dns.com".to_string(),
         )
     }
 
-    pub fn google_tls() -> (SocketAddr, String) {
-        ("8.8.8.8:853".parse().unwrap(), "dns.google".to_string())
+    pub fn google_tls() -> (UpstreamAddr, String) {
+        (
+            UpstreamAddr::Resolved("8.8.8.8:853".parse().unwrap()),
+            "dns.google".to_string(),
+        )
     }
 
     pub fn cloudflare_https() -> String {
@@ -40,15 +44,18 @@ impl DnsServerBuilder {
         "https://dns.google/dns-query".to_string()
     }
 
-    pub fn cloudflare_doq() -> (SocketAddr, String) {
+    pub fn cloudflare_doq() -> (UpstreamAddr, String) {
         (
-            "1.1.1.1:853".parse().unwrap(),
+            UpstreamAddr::Resolved("1.1.1.1:853".parse().unwrap()),
             "cloudflare-dns.com".to_string(),
         )
     }
 
-    pub fn google_doq() -> (SocketAddr, String) {
-        ("8.8.8.8:853".parse().unwrap(), "dns.google".to_string())
+    pub fn google_doq() -> (UpstreamAddr, String) {
+        (
+            UpstreamAddr::Resolved("8.8.8.8:853".parse().unwrap()),
+            "dns.google".to_string(),
+        )
     }
 
     pub fn cloudflare_h3() -> String {
@@ -59,12 +66,20 @@ impl DnsServerBuilder {
         "h3://dns.google/dns-query".to_string()
     }
 
-    pub fn local_test() -> SocketAddr {
-        "127.0.0.1:15353".parse().unwrap()
+    pub fn local_test() -> UpstreamAddr {
+        UpstreamAddr::Resolved("127.0.0.1:15353".parse().unwrap())
     }
 
-    pub fn custom(addr: &str) -> SocketAddr {
-        addr.parse().expect("Invalid socket address")
+    pub fn custom(addr: &str) -> UpstreamAddr {
+        UpstreamAddr::Resolved(addr.parse::<SocketAddr>().expect("Invalid socket address"))
+    }
+
+    pub fn google_dns_socket_addr() -> SocketAddr {
+        "8.8.8.8:53".parse().unwrap()
+    }
+
+    pub fn cloudflare_tls_socket_addr() -> SocketAddr {
+        "1.1.1.1:853".parse().unwrap()
     }
 }
 

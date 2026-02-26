@@ -1,7 +1,7 @@
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, UpstreamAddr};
 use std::net::SocketAddr;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -12,50 +12,66 @@ use tracing::debug;
 const MAX_TCP_MESSAGE_SIZE: usize = 65535;
 const MAX_IDLE_TCP_PER_HOST: usize = 2;
 
-type TcpConnectionPool = DashMap<SocketAddr, Vec<TcpStream>>;
+type TcpConnectionPool = DashMap<String, Vec<TcpStream>>;
 
 static TCP_POOL: LazyLock<TcpConnectionPool> = LazyLock::new(TcpConnectionPool::new);
 
 pub struct TcpTransport {
-    server_addr: SocketAddr,
+    upstream_addr: UpstreamAddr,
 }
 
 impl TcpTransport {
-    pub fn new(server_addr: SocketAddr) -> Self {
-        Self { server_addr }
+    pub fn new(upstream_addr: UpstreamAddr) -> Self {
+        Self { upstream_addr }
+    }
+
+    fn pool_key(&self) -> String {
+        self.upstream_addr.to_string()
+    }
+
+    fn resolved_addr(&self) -> Result<SocketAddr, DomainError> {
+        self.upstream_addr.socket_addr().ok_or_else(|| {
+            DomainError::InvalidDomainName(format!(
+                "TCP transport requires resolved address, got: {}",
+                self.upstream_addr
+            ))
+        })
     }
 
     fn take_pooled(&self) -> Option<TcpStream> {
-        TCP_POOL.get_mut(&self.server_addr)?.pop()
+        TCP_POOL.get_mut(&self.pool_key())?.pop()
     }
 
     fn return_to_pool(&self, stream: TcpStream) {
-        let mut entry = TCP_POOL.entry(self.server_addr).or_default();
+        let key = self.pool_key();
+        let mut entry = TCP_POOL.entry(key).or_default();
         if entry.len() < MAX_IDLE_TCP_PER_HOST {
             entry.push(stream);
         }
     }
 
     async fn connect_new(&self, timeout: Duration) -> Result<TcpStream, DomainError> {
-        let stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
+        let server_addr = self.resolved_addr()?;
+
+        let stream = tokio::time::timeout(timeout, TcpStream::connect(server_addr))
             .await
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
                     "Timeout connecting to TCP server {}",
-                    self.server_addr
+                    server_addr
                 ))
             })?
             .map_err(|e| {
                 DomainError::InvalidDomainName(format!(
                     "Connection refused by TCP server {}: {}",
-                    self.server_addr, e
+                    server_addr, e
                 ))
             })?;
 
         stream.set_nodelay(true).map_err(|e| {
             DomainError::InvalidDomainName(format!(
                 "Failed to set TCP_NODELAY on {}: {}",
-                self.server_addr, e
+                server_addr, e
             ))
         })?;
 
@@ -70,6 +86,8 @@ impl DnsTransport for TcpTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
+        let server_addr = self.resolved_addr()?;
+
         let mut stream = match self.take_pooled() {
             Some(s) => s,
             None => self.connect_new(timeout).await?,
@@ -89,13 +107,13 @@ impl DnsTransport for TcpTransport {
                     .map_err(|_| {
                         DomainError::InvalidDomainName(format!(
                             "Timeout sending TCP query to {}",
-                            self.server_addr
+                            server_addr
                         ))
                     })?
                     .map_err(|e| {
                         DomainError::InvalidDomainName(format!(
                             "Failed to send TCP query to {}: {}",
-                            self.server_addr, e
+                            server_addr, e
                         ))
                     })?;
                 fresh
@@ -103,7 +121,7 @@ impl DnsTransport for TcpTransport {
         };
 
         debug!(
-            server = %self.server_addr,
+            server = %server_addr,
             message_len = message_bytes.len(),
             "TCP query sent"
         );
@@ -115,12 +133,12 @@ impl DnsTransport for TcpTransport {
         .map_err(|_| {
             DomainError::InvalidDomainName(format!(
                 "Timeout waiting for TCP response from {}",
-                self.server_addr
+                server_addr
             ))
         })??;
 
         debug!(
-            server = %self.server_addr,
+            server = %server_addr,
             response_len = response_bytes.len(),
             "TCP response received"
         );

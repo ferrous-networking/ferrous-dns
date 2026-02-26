@@ -27,7 +27,7 @@ pub use config::{
     CliOverrides, Config, ConfigError, DnsConfig, HealthCheckConfig, LocalDnsRecord, UpstreamPool,
     UpstreamStrategy,
 };
-pub use dns_protocol::DnsProtocol;
+pub use dns_protocol::{DnsProtocol, UpstreamAddr};
 pub use dns_query::DnsQuery;
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use dns_request::DnsRequest;

@@ -2,7 +2,7 @@ use super::tcp::{read_with_length_prefix, send_with_length_prefix};
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, UpstreamAddr};
 use rustls::pki_types::ServerName;
 use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock};
@@ -29,32 +29,45 @@ static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(||
 });
 
 type TlsConnection = TlsStream<TcpStream>;
-type PoolKey = (SocketAddr, String);
+type PoolKey = (String, u16);
 type TlsConnectionPool = DashMap<PoolKey, Vec<TlsConnection>>;
 
 static TLS_POOL: LazyLock<TlsConnectionPool> = LazyLock::new(TlsConnectionPool::new);
 
 pub struct TlsTransport {
-    server_addr: SocketAddr,
+    upstream_addr: UpstreamAddr,
     hostname: String,
 }
 
 impl TlsTransport {
-    pub fn new(server_addr: SocketAddr, hostname: String) -> Self {
+    pub fn new(upstream_addr: UpstreamAddr, hostname: String) -> Self {
         Self {
-            server_addr,
+            upstream_addr,
             hostname,
         }
     }
 
+    fn pool_key(&self) -> PoolKey {
+        (self.hostname.clone(), self.upstream_addr.port())
+    }
+
+    fn resolved_addr(&self) -> Result<SocketAddr, DomainError> {
+        self.upstream_addr.socket_addr().ok_or_else(|| {
+            DomainError::InvalidDomainName(format!(
+                "TLS transport requires resolved address, got: {}",
+                self.upstream_addr
+            ))
+        })
+    }
+
     fn take_pooled(&self) -> Option<TlsStream<TcpStream>> {
-        let key = (self.server_addr, self.hostname.clone());
+        let key = self.pool_key();
         let mut entry = TLS_POOL.get_mut(&key)?;
         entry.pop()
     }
 
     fn return_to_pool(&self, stream: TlsStream<TcpStream>) {
-        let key = (self.server_addr, self.hostname.clone());
+        let key = self.pool_key();
         let mut entry = TLS_POOL.entry(key).or_default();
         if entry.len() < MAX_IDLE_PER_HOST {
             entry.push(stream);
@@ -62,6 +75,7 @@ impl TlsTransport {
     }
 
     async fn connect_new(&self, timeout: Duration) -> Result<TlsStream<TcpStream>, DomainError> {
+        let server_addr = self.resolved_addr()?;
         let connector = tokio_rustls::TlsConnector::from(SHARED_TLS_CONFIG.clone());
 
         let server_name = ServerName::try_from(self.hostname.clone()).map_err(|e| {
@@ -71,18 +85,18 @@ impl TlsTransport {
             ))
         })?;
 
-        let tcp_stream = tokio::time::timeout(timeout, TcpStream::connect(self.server_addr))
+        let tcp_stream = tokio::time::timeout(timeout, TcpStream::connect(server_addr))
             .await
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
                     "Timeout connecting to TLS server {}",
-                    self.server_addr
+                    server_addr
                 ))
             })?
             .map_err(|e| {
                 DomainError::InvalidDomainName(format!(
                     "Connection refused by TLS server {}: {}",
-                    self.server_addr, e
+                    server_addr, e
                 ))
             })?;
 
@@ -91,17 +105,17 @@ impl TlsTransport {
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
                     "Timeout during TLS handshake with {}",
-                    self.server_addr
+                    server_addr
                 ))
             })?
             .map_err(|e| {
                 DomainError::InvalidDomainName(format!(
                     "TLS handshake failed with {}: {}",
-                    self.server_addr, e
+                    server_addr, e
                 ))
             })?;
 
-        debug!(server = %self.server_addr, hostname = %self.hostname, "TLS connection established");
+        debug!(server = %server_addr, hostname = %self.hostname, "TLS connection established");
         Ok(tls_stream)
     }
 
@@ -111,12 +125,14 @@ impl TlsTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<Vec<u8>, DomainError> {
+        let server_addr = self.resolved_addr()?;
+
         tokio::time::timeout(timeout, send_with_length_prefix(stream, message_bytes))
             .await
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
                     "Timeout sending TLS query to {}",
-                    self.server_addr
+                    server_addr
                 ))
             })??;
 
@@ -125,7 +141,7 @@ impl TlsTransport {
             .map_err(|_| {
                 DomainError::InvalidDomainName(format!(
                     "Timeout waiting for TLS response from {}",
-                    self.server_addr
+                    server_addr
                 ))
             })??;
 
@@ -140,13 +156,15 @@ impl DnsTransport for TlsTransport {
         message_bytes: &[u8],
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
+        let server_addr = self.resolved_addr()?;
+
         if let Some(mut stream) = self.take_pooled() {
             match self
                 .send_on_stream(&mut stream, message_bytes, timeout)
                 .await
             {
                 Ok(response_bytes) => {
-                    debug!(server = %self.server_addr, "TLS query via pooled connection");
+                    debug!(server = %server_addr, "TLS query via pooled connection");
                     self.return_to_pool(stream);
                     return Ok(TransportResponse {
                         bytes: bytes::Bytes::from(response_bytes),
@@ -154,7 +172,7 @@ impl DnsTransport for TlsTransport {
                     });
                 }
                 Err(_) => {
-                    debug!(server = %self.server_addr, "Pooled TLS connection stale, reconnecting");
+                    debug!(server = %server_addr, "Pooled TLS connection stale, reconnecting");
                 }
             }
         }
@@ -166,7 +184,7 @@ impl DnsTransport for TlsTransport {
             .await?;
 
         debug!(
-            server = %self.server_addr,
+            server = %server_addr,
             response_len = response_bytes.len(),
             "TLS response received"
         );

@@ -175,6 +175,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
 
     let pool_manager = Arc::new(
         PoolManager::new(vec![test_pool], None, event_emitter)
+            .await
             .expect("Failed to create PoolManager"),
     );
 

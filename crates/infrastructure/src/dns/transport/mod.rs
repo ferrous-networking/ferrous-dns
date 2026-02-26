@@ -3,6 +3,7 @@ pub mod h3;
 pub mod https;
 #[cfg(feature = "dns-over-quic")]
 pub mod quic;
+pub mod resolver;
 pub mod tcp;
 pub mod tls;
 pub mod udp;
@@ -83,24 +84,30 @@ impl Transport {
 
 pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {
     match protocol {
-        DnsProtocol::Udp { addr } => Ok(Transport::Udp(udp::UdpTransport::new(*addr))),
-        DnsProtocol::Tcp { addr } => Ok(Transport::Tcp(tcp::TcpTransport::new(*addr))),
+        DnsProtocol::Udp { addr } => Ok(Transport::Udp(udp::UdpTransport::new(addr.clone()))),
+        DnsProtocol::Tcp { addr } => Ok(Transport::Tcp(tcp::TcpTransport::new(addr.clone()))),
 
         #[cfg(feature = "dns-over-rustls")]
         DnsProtocol::Tls { addr, hostname } => Ok(Transport::Tls(tls::TlsTransport::new(
-            *addr,
+            addr.clone(),
             hostname.to_string(),
         ))),
 
         #[cfg(not(feature = "dns-over-rustls"))]
         DnsProtocol::Tls { addr, .. } => {
             tracing::warn!("TLS feature not enabled, falling back to TCP for {}", addr);
-            Ok(Transport::Tcp(tcp::TcpTransport::new(*addr)))
+            Ok(Transport::Tcp(tcp::TcpTransport::new(addr.clone())))
         }
 
         #[cfg(feature = "dns-over-https")]
-        DnsProtocol::Https { url, .. } => Ok(Transport::Https(https::HttpsTransport::new(
+        DnsProtocol::Https {
+            url,
+            hostname,
+            resolved_addrs,
+        } => Ok(Transport::Https(https::HttpsTransport::new(
             url.to_string(),
+            hostname.to_string(),
+            resolved_addrs.clone(),
         ))),
 
         #[cfg(not(feature = "dns-over-https"))]
@@ -111,7 +118,7 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
 
         #[cfg(feature = "dns-over-quic")]
         DnsProtocol::Quic { addr, hostname } => Ok(Transport::Quic(quic::QuicTransport::new(
-            *addr,
+            addr.clone(),
             hostname.clone(),
         ))),
 
@@ -122,7 +129,14 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
         ))),
 
         #[cfg(feature = "dns-over-h3")]
-        DnsProtocol::H3 { url, .. } => Ok(Transport::H3(h3::H3Transport::new(url.to_string()))),
+        DnsProtocol::H3 {
+            url,
+            resolved_addrs,
+            ..
+        } => Ok(Transport::H3(h3::H3Transport::new(
+            url.to_string(),
+            resolved_addrs.clone(),
+        ))),
 
         #[cfg(not(feature = "dns-over-h3"))]
         DnsProtocol::H3 { url, .. } => Err(DomainError::InvalidDomainName(format!(

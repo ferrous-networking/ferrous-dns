@@ -25,18 +25,21 @@ impl DnsServices {
         let emitter = Self::setup_event_logger(repos);
         let health_checker = Self::setup_health_checker(config);
         let pool_manager =
-            Self::setup_pool_manager(config, health_checker.clone(), emitter.clone())?;
+            Self::setup_pool_manager(config, health_checker.clone(), emitter.clone()).await?;
 
         Self::start_health_checker_task(health_checker.clone(), &pool_manager, config);
 
         let timeout_ms = config.dns.query_timeout * 1000;
         let pool_manager_clone = Arc::clone(&pool_manager);
 
-        let pool_manager_for_dnssec = Arc::new(PoolManager::new(
-            config.dns.pools.clone(),
-            health_checker,
-            QueryEventEmitter::new_disabled(),
-        )?);
+        let pool_manager_for_dnssec = Arc::new(
+            PoolManager::new(
+                config.dns.pools.clone(),
+                health_checker,
+                QueryEventEmitter::new_disabled(),
+            )
+            .await?,
+        );
 
         let mut resolver = Self::build_resolver(
             pool_manager,
@@ -114,16 +117,14 @@ impl DnsServices {
         Some(checker)
     }
 
-    fn setup_pool_manager(
+    async fn setup_pool_manager(
         config: &Config,
         health_checker: Option<Arc<HealthChecker>>,
         emitter: QueryEventEmitter,
     ) -> anyhow::Result<Arc<PoolManager>> {
-        Ok(Arc::new(PoolManager::new(
-            config.dns.pools.clone(),
-            health_checker,
-            emitter,
-        )?))
+        Ok(Arc::new(
+            PoolManager::new(config.dns.pools.clone(), health_checker, emitter).await?,
+        ))
     }
 
     fn start_health_checker_task(

@@ -468,8 +468,15 @@ fn make_chain_verifier_for_test() -> ChainVerifier {
         servers: vec!["udp://127.0.0.1:5353".into()],
         weight: None,
     };
-    let pm =
-        Arc::new(PoolManager::new(vec![pool], None, QueryEventEmitter::new_disabled()).unwrap());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let pm = Arc::new(
+        rt.block_on(PoolManager::new(
+            vec![pool],
+            None,
+            QueryEventEmitter::new_disabled(),
+        ))
+        .unwrap(),
+    );
     ChainVerifier::new(pm, TrustAnchorStore::empty(), Arc::new(DnssecCache::new()))
 }
 

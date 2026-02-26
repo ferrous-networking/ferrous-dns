@@ -147,13 +147,15 @@ pub struct DnsProtocolBuilder;
 impl DnsProtocolBuilder {
     pub fn udp(addr: &str) -> DnsProtocol {
         let socket_addr = addr.parse::<SocketAddr>().expect("Invalid socket address");
-        DnsProtocol::Udp { addr: socket_addr }
+        DnsProtocol::Udp {
+            addr: ferrous_dns_domain::UpstreamAddr::Resolved(socket_addr),
+        }
     }
 
     pub fn tls(addr: &str, hostname: &str) -> DnsProtocol {
         let socket_addr = addr.parse::<SocketAddr>().expect("Invalid socket address");
         DnsProtocol::Tls {
-            addr: socket_addr,
+            addr: ferrous_dns_domain::UpstreamAddr::Resolved(socket_addr),
             hostname: hostname.into(),
         }
     }

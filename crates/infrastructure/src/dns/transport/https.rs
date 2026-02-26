@@ -1,6 +1,7 @@
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;
+use std::net::SocketAddr;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tracing::debug;
@@ -18,11 +19,27 @@ const DNS_MESSAGE_CONTENT_TYPE: &str = "application/dns-message";
 
 pub struct HttpsTransport {
     url: String,
+    client: reqwest::Client,
 }
 
 impl HttpsTransport {
-    pub fn new(url: String) -> Self {
-        Self { url }
+    pub fn new(url: String, hostname: String, resolved_addrs: Vec<SocketAddr>) -> Self {
+        let client = if resolved_addrs.is_empty() {
+            SHARED_CLIENT.clone()
+        } else {
+            Self::build_client_with_resolved(&hostname, &resolved_addrs)
+        };
+        Self { url, client }
+    }
+
+    fn build_client_with_resolved(hostname: &str, addrs: &[SocketAddr]) -> reqwest::Client {
+        reqwest::Client::builder()
+            .use_rustls_tls()
+            .pool_max_idle_per_host(4)
+            .http2_prior_knowledge()
+            .resolve_to_addrs(hostname, addrs)
+            .build()
+            .unwrap_or_else(|_| SHARED_CLIENT.clone())
     }
 }
 
@@ -43,7 +60,7 @@ impl DnsTransport for HttpsTransport {
 
         let response = tokio::time::timeout(
             timeout,
-            SHARED_CLIENT
+            self.client
                 .post(&self.url)
                 .header("Content-Type", DNS_MESSAGE_CONTENT_TYPE)
                 .header("Accept", DNS_MESSAGE_CONTENT_TYPE)
