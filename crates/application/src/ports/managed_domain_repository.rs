@@ -30,4 +30,15 @@ pub trait ManagedDomainRepository: Send + Sync {
     ) -> Result<ManagedDomain, DomainError>;
 
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
+
+    async fn bulk_create_for_service(
+        &self,
+        service_id: &str,
+        group_id: i64,
+        domains: Vec<(String, String)>,
+    ) -> Result<usize, DomainError>;
+
+    async fn delete_by_service(&self, service_id: &str, group_id: i64) -> Result<u64, DomainError>;
+
+    async fn delete_all_by_service(&self, service_id: &str) -> Result<u64, DomainError>;
 }

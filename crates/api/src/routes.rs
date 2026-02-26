@@ -34,6 +34,8 @@ pub fn create_api_routes(state: AppState) -> Router {
         .merge(handlers::whitelist_sources::routes())
         .merge(handlers::managed_domains::routes())
         .merge(handlers::regex_filters::routes())
+        .merge(handlers::blocked_services::routes())
+        .merge(handlers::custom_services::routes())
         .route("/settings", get(handlers::get_settings))
         .route("/settings", post(handlers::update_settings))
         .merge(handlers::local_records::routes())

@@ -61,6 +61,7 @@ fn create_app(state: AppState, cors_allowed_origins: &[String]) -> Router {
         .route("/local-dns-settings.html", get(local_dns_settings_handler))
         .route("/settings.html", get(settings_handler))
         .route("/dns-filter.html", get(dns_filter_handler))
+        .route("/block-services.html", get(block_services_handler))
         .layer(build_cors_layer(cors_allowed_origins))
 }
 
@@ -103,4 +104,8 @@ async fn settings_handler() -> Html<&'static str> {
 
 async fn dns_filter_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/dns-filter.html"))
+}
+
+async fn block_services_handler() -> Html<&'static str> {
+    Html(include_str!("../../../../web/static/block-services.html"))
 }

@@ -162,6 +162,14 @@ async fn async_main() -> anyhow::Result<()> {
         create_regex_filter: use_cases.create_regex_filter,
         update_regex_filter: use_cases.update_regex_filter,
         delete_regex_filter: use_cases.delete_regex_filter,
+        get_service_catalog: use_cases.get_service_catalog,
+        get_blocked_services: use_cases.get_blocked_services,
+        block_service: use_cases.block_service,
+        unblock_service: use_cases.unblock_service,
+        create_custom_service: use_cases.create_custom_service,
+        get_custom_services: use_cases.get_custom_services,
+        update_custom_service: use_cases.update_custom_service,
+        delete_custom_service: use_cases.delete_custom_service,
         api_key: config.server.api_key.as_deref().map(Arc::from),
     };
 

@@ -1345,6 +1345,7 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
             group_id,
             comment: comment.as_deref().map(Arc::from),
             enabled,
+            service_id: None,
             created_at: Some("2026-01-01 00:00:00".to_string()),
             updated_at: Some("2026-01-01 00:00:00".to_string()),
         };
@@ -1409,6 +1410,50 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
             return Err(DomainError::ManagedDomainNotFound(id));
         }
         Ok(())
+    }
+
+    async fn bulk_create_for_service(
+        &self,
+        service_id: &str,
+        group_id: i64,
+        domains: Vec<(String, String)>,
+    ) -> Result<usize, DomainError> {
+        let mut store = self.domains.write().await;
+        let mut count = 0;
+        let mut next_id = self.next_id.write().await;
+        for (name, domain) in domains {
+            let id = *next_id;
+            *next_id += 1;
+            store.push(ManagedDomain {
+                id: Some(id),
+                name: Arc::from(name.as_str()),
+                domain: Arc::from(domain.as_str()),
+                action: DomainAction::Deny,
+                group_id,
+                comment: None,
+                enabled: true,
+                service_id: Some(Arc::from(service_id)),
+                created_at: Some("2026-01-01 00:00:00".to_string()),
+                updated_at: Some("2026-01-01 00:00:00".to_string()),
+            });
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    async fn delete_by_service(&self, service_id: &str, group_id: i64) -> Result<u64, DomainError> {
+        let mut domains = self.domains.write().await;
+        let len_before = domains.len();
+        domains
+            .retain(|d| !(d.service_id.as_deref() == Some(service_id) && d.group_id == group_id));
+        Ok((len_before - domains.len()) as u64)
+    }
+
+    async fn delete_all_by_service(&self, service_id: &str) -> Result<u64, DomainError> {
+        let mut domains = self.domains.write().await;
+        let len_before = domains.len();
+        domains.retain(|d| d.service_id.as_deref() != Some(service_id));
+        Ok((len_before - domains.len()) as u64)
     }
 }
 

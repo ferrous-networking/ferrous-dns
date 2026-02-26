@@ -1,18 +1,21 @@
 use super::Repositories;
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, CleanupOldClientsUseCase, CleanupOldQueryLogsUseCase,
-    CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateGroupUseCase,
-    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
-    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
-    DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
-    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlocklistSourcesUseCase,
-    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
+    AssignClientGroupUseCase, BlockServiceUseCase, CleanupOldClientsUseCase,
+    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
+    CreateCustomServiceUseCase, CreateGroupUseCase, CreateManagedDomainUseCase,
+    CreateManualClientUseCase, CreateRegexFilterUseCase, CreateWhitelistSourceUseCase,
+    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
+    DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
+    DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
     GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
+    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
     GetWhitelistSourcesUseCase, GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -59,6 +62,14 @@ pub struct UseCases {
     pub create_regex_filter: Arc<CreateRegexFilterUseCase>,
     pub update_regex_filter: Arc<UpdateRegexFilterUseCase>,
     pub delete_regex_filter: Arc<DeleteRegexFilterUseCase>,
+    pub get_service_catalog: Arc<GetServiceCatalogUseCase>,
+    pub get_blocked_services: Arc<GetBlockedServicesUseCase>,
+    pub block_service: Arc<BlockServiceUseCase>,
+    pub unblock_service: Arc<UnblockServiceUseCase>,
+    pub create_custom_service: Arc<CreateCustomServiceUseCase>,
+    pub get_custom_services: Arc<GetCustomServicesUseCase>,
+    pub update_custom_service: Arc<UpdateCustomServiceUseCase>,
+    pub delete_custom_service: Arc<DeleteCustomServiceUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
 }
 
@@ -174,6 +185,45 @@ impl UseCases {
             )),
             delete_regex_filter: Arc::new(DeleteRegexFilterUseCase::new(
                 repos.regex_filter.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(
+                repos.service_catalog.clone(),
+            )),
+            get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(
+                repos.blocked_service.clone(),
+            )),
+            block_service: Arc::new(BlockServiceUseCase::new(
+                repos.blocked_service.clone(),
+                repos.managed_domain.clone(),
+                repos.group.clone(),
+                repos.block_filter_engine.clone(),
+                repos.service_catalog.clone(),
+            )),
+            unblock_service: Arc::new(UnblockServiceUseCase::new(
+                repos.blocked_service.clone(),
+                repos.managed_domain.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            create_custom_service: Arc::new(CreateCustomServiceUseCase::new(
+                repos.custom_service.clone(),
+                repos.service_catalog.clone(),
+            )),
+            get_custom_services: Arc::new(GetCustomServicesUseCase::new(
+                repos.custom_service.clone(),
+            )),
+            update_custom_service: Arc::new(UpdateCustomServiceUseCase::new(
+                repos.custom_service.clone(),
+                repos.service_catalog.clone(),
+                repos.managed_domain.clone(),
+                repos.blocked_service.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            delete_custom_service: Arc::new(DeleteCustomServiceUseCase::new(
+                repos.custom_service.clone(),
+                repos.service_catalog.clone(),
+                repos.blocked_service.clone(),
+                repos.managed_domain.clone(),
                 repos.block_filter_engine.clone(),
             )),
             subnet_matcher,

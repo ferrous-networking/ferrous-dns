@@ -223,6 +223,10 @@
                 <i data-lucide="shield" class="nav-icon"></i>
                 <span>DNS Filter</span>
             </a>
+            <a href="/block-services.html" class="nav-item">
+                <i data-lucide="shield-ban" class="nav-icon"></i>
+                <span>Block Services</span>
+            </a>
         </div>
         <div class="nav-section">
             <div class="nav-section-title">DNS CONTROL</div>
@@ -584,6 +588,7 @@
                     <th>Action</th>
                     <th>Status</th>
                     <th>Comment</th>
+                    <th>Service</th>
                     <th>Group</th>
                     <th>Actions</th>
                 </tr>
@@ -615,6 +620,12 @@
                             <span style="color:var(--text-secondary);font-size:14px" x-text="domain.comment || '-'"></span>
                         </td>
                         <td>
+                            <span x-show="domain.service_id"
+                                  style="font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.1);color:#6366F1"
+                                  x-text="domain.service_id"></span>
+                            <span x-show="!domain.service_id" style="color:var(--text-secondary)">-</span>
+                        </td>
+                        <td>
                             <select class="group-select"
                                     :value="domain.group_id"
                                     @change="mChangeGroup(domain, parseInt($event.target.value))">
@@ -639,13 +650,13 @@
                     </tr>
                 </template>
                 <tr x-show="mSources.length === 0 && !mLoading">
-                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                    <td colspan="8" style="text-align:center;padding:48px;color:var(--text-secondary)">
                         <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
                         <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
                     </td>
                 </tr>
                 <tr x-show="mLoading">
-                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                    <td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary)">
                         Loading...
                     </td>
                 </tr>

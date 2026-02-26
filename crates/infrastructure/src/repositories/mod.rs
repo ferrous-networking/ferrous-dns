@@ -1,9 +1,11 @@
+pub mod blocked_service_repository;
 pub mod blocklist_repository;
 pub mod blocklist_source_repository;
 pub mod client_repository;
 pub(crate) mod client_row_mapper;
 pub mod client_subnet_repository;
 pub mod config_repository;
+pub mod custom_service_repository;
 pub mod group_repository;
 pub mod managed_domain_repository;
 pub mod query_log_repository;
@@ -11,10 +13,12 @@ pub mod regex_filter_repository;
 pub mod whitelist_repository;
 pub mod whitelist_source_repository;
 
+pub use blocked_service_repository::SqliteBlockedServiceRepository;
 pub use blocklist_source_repository::SqliteBlocklistSourceRepository;
 pub use client_repository::SqliteClientRepository;
 pub use client_subnet_repository::SqliteClientSubnetRepository;
 pub use config_repository::SqliteConfigRepository;
+pub use custom_service_repository::SqliteCustomServiceRepository;
 pub use group_repository::SqliteGroupRepository;
 pub use managed_domain_repository::SqliteManagedDomainRepository;
 pub use regex_filter_repository::SqliteRegexFilterRepository;

@@ -38,6 +38,7 @@ pub struct ManagedDomain {
     pub group_id: i64,
     pub comment: Option<Arc<str>>,
     pub enabled: bool,
+    pub service_id: Option<Arc<str>>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -60,6 +61,7 @@ impl ManagedDomain {
             group_id,
             comment,
             enabled,
+            service_id: None,
             created_at: None,
             updated_at: None,
         }

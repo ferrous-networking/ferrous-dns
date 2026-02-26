@@ -95,6 +95,18 @@ pub enum DomainError {
     #[error("Regex filter not found: {0}")]
     RegexFilterNotFound(i64),
 
+    #[error("Service not found in catalog: {0}")]
+    ServiceNotFoundInCatalog(String),
+
+    #[error("Service already blocked: {0}")]
+    BlockedServiceAlreadyExists(String),
+
+    #[error("Custom service not found: {0}")]
+    CustomServiceNotFound(String),
+
+    #[error("Custom service already exists: {0}")]
+    CustomServiceAlreadyExists(String),
+
     #[error("Invalid regex filter: {0}")]
     InvalidRegexFilter(String),
 

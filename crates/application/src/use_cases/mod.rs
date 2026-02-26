@@ -1,10 +1,12 @@
 pub mod block_filter;
+pub mod blocked_services;
 pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
 pub mod client_subnets;
 pub mod clients;
 pub mod config;
+pub mod custom_services;
 pub mod dns;
 pub mod groups;
 pub mod managed_domains;
@@ -14,6 +16,9 @@ pub mod whitelist;
 pub mod whitelist_sources;
 
 pub use block_filter::GetBlockFilterStatsUseCase;
+pub use blocked_services::{
+    BlockServiceUseCase, GetBlockedServicesUseCase, GetServiceCatalogUseCase, UnblockServiceUseCase,
+};
 pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
     CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,
@@ -28,6 +33,10 @@ pub use clients::{
     SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateClientUseCase,
 };
 pub use config::{GetConfigUseCase, ReloadConfigUseCase, UpdateConfigUseCase};
+pub use custom_services::{
+    CreateCustomServiceUseCase, DeleteCustomServiceUseCase, GetCustomServicesUseCase,
+    UpdateCustomServiceUseCase,
+};
 pub use dns::HandleDnsQueryUseCase;
 pub use groups::{
     AssignClientGroupUseCase, CreateGroupUseCase, DeleteGroupUseCase, GetGroupsUseCase,

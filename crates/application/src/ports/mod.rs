@@ -1,32 +1,38 @@
 mod arp_reader;
 mod block_filter_engine;
+mod blocked_service_repository;
 mod blocklist_repository;
 mod blocklist_source_repository;
 mod client_repository;
 mod client_subnet_repository;
 mod config_repository;
+mod custom_service_repository;
 mod dns_resolver;
 mod group_repository;
 mod hostname_resolver;
 mod managed_domain_repository;
 mod query_log_repository;
 mod regex_filter_repository;
+mod service_catalog_port;
 mod whitelist_repository;
 mod whitelist_source_repository;
 
 pub use arp_reader::{ArpReader, ArpTable};
 pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
+pub use blocked_service_repository::BlockedServiceRepository;
 pub use blocklist_repository::BlocklistRepository;
 pub use blocklist_source_repository::BlocklistSourceRepository;
 pub use client_repository::ClientRepository;
 pub use client_subnet_repository::ClientSubnetRepository;
 pub use config_repository::ConfigRepository;
+pub use custom_service_repository::CustomServiceRepository;
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;
 pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket};
 pub use regex_filter_repository::RegexFilterRepository;
+pub use service_catalog_port::ServiceCatalogPort;
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

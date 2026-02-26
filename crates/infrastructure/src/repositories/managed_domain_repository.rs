@@ -13,6 +13,7 @@ type ManagedDomainRow = (
     i64,
     Option<String>,
     i64,
+    Option<String>,
     String,
     String,
 );
@@ -27,7 +28,18 @@ impl SqliteManagedDomainRepository {
     }
 
     fn row_to_domain(row: ManagedDomainRow) -> ManagedDomain {
-        let (id, name, domain, action, group_id, comment, enabled, created_at, updated_at) = row;
+        let (
+            id,
+            name,
+            domain,
+            action,
+            group_id,
+            comment,
+            enabled,
+            service_id,
+            created_at,
+            updated_at,
+        ) = row;
         ManagedDomain {
             id: Some(id),
             name: Arc::from(name.as_str()),
@@ -36,6 +48,7 @@ impl SqliteManagedDomainRepository {
             group_id,
             comment: comment.map(|s| Arc::from(s.as_str())),
             enabled: enabled != 0,
+            service_id: service_id.map(|s| Arc::from(s.as_str())),
             created_at: Some(created_at),
             updated_at: Some(updated_at),
         }
@@ -92,7 +105,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<ManagedDomain>, DomainError> {
         let row = sqlx::query_as::<_, ManagedDomainRow>(
-            "SELECT id, name, domain, action, group_id, comment, enabled, created_at, updated_at
+            "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
              FROM managed_domains WHERE id = ?",
         )
         .bind(id)
@@ -109,7 +122,7 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError> {
         let rows = sqlx::query_as::<_, ManagedDomainRow>(
-            "SELECT id, name, domain, action, group_id, comment, enabled, created_at, updated_at
+            "SELECT id, name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at
              FROM managed_domains ORDER BY name ASC",
         )
         .fetch_all(&self.pool)
@@ -200,5 +213,72 @@ impl ManagedDomainRepository for SqliteManagedDomainRepository {
         }
 
         Ok(())
+    }
+
+    #[instrument(skip(self, domains))]
+    async fn bulk_create_for_service(
+        &self,
+        service_id: &str,
+        group_id: i64,
+        domains: Vec<(String, String)>,
+    ) -> Result<usize, DomainError> {
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let mut count = 0usize;
+
+        for (name, domain) in &domains {
+            let result = sqlx::query(
+                "INSERT OR IGNORE INTO managed_domains
+                 (name, domain, action, group_id, comment, enabled, service_id, created_at, updated_at)
+                 VALUES (?, ?, 'deny', ?, NULL, 1, ?, ?, ?)",
+            )
+            .bind(name)
+            .bind(domain)
+            .bind(group_id)
+            .bind(service_id)
+            .bind(&now)
+            .bind(&now)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to bulk create managed domain");
+                DomainError::DatabaseError(e.to_string())
+            })?;
+
+            if result.rows_affected() > 0 {
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_by_service(&self, service_id: &str, group_id: i64) -> Result<u64, DomainError> {
+        let result =
+            sqlx::query("DELETE FROM managed_domains WHERE service_id = ? AND group_id = ?")
+                .bind(service_id)
+                .bind(group_id)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| {
+                    error!(error = %e, "Failed to delete managed domains by service");
+                    DomainError::DatabaseError(e.to_string())
+                })?;
+
+        Ok(result.rows_affected())
+    }
+
+    #[instrument(skip(self))]
+    async fn delete_all_by_service(&self, service_id: &str) -> Result<u64, DomainError> {
+        let result = sqlx::query("DELETE FROM managed_domains WHERE service_id = ?")
+            .bind(service_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to delete all managed domains by service");
+                DomainError::DatabaseError(e.to_string())
+            })?;
+
+        Ok(result.rows_affected())
     }
 }

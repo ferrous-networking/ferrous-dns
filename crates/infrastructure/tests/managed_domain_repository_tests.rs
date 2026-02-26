@@ -38,6 +38,7 @@ async fn create_test_db() -> SqlitePool {
             group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id),
             comment TEXT,
             enabled INTEGER NOT NULL DEFAULT 1,
+            service_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )",

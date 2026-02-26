@@ -51,6 +51,8 @@ h3 = { workspace = true, optional = true }
 h3-quinn = { workspace = true, optional = true }
 http = { workspace = true, optional = true }
 chrono = "0.4.43"
+serde.workspace = true
+serde_json.workspace = true
 arc-swap.workspace = true
 aho-corasick.workspace = true
 fancy-regex.workspace = true

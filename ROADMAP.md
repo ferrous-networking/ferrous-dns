@@ -35,23 +35,19 @@
 
 ### 🔮 v0.3.0 - Advanced Features (Current)
 
-- [ ] dash board web socket performace slow queries 
-- [ ] Advanced analytics and graphs
-- [ ] Query filtering rules
+
+- [ ] Advanced analytics and graphs, upstrens ms, top sites blocked sites
 - [x] DoQ upstream
 - [x] https3, h3 upstream
-- [ ] IPv6 upstreams
-- [ ] dns name upstreams (e.: dns.google.com) 
-- [ ] Client identification
-- [ ] Comprehensive documentation
+- [x] IPv6 upstreams
+- [x] dns name upstreams (e.: dns.google.com)
 - [x] CNAME cloaking detection
 - [ ] Safe Search
-- [ ] Serviços bloqueáveis (1-click)
+- [x] Blockable services (1-click)
 
 ### 🎯 v0.4.0 - Security
 
-
-- [ ] Autenticação web (login)
+- [ ] Login / Auth
 - [ ] HTTPS para Web UI
 - [ ] API Key / token
 - [ ] Rate limiting DNS
@@ -59,6 +55,7 @@
 
 ### 🎯 v0.5.0 - Performance & Scale
 
+- [ ] dash board web socket performance slow queries
 - [ ] Prometheus metrics
 - [ ] Api compatible pi-hole
 - [ ] Performance benchmarks vs competitors

@@ -1,4 +1,5 @@
 pub mod block_filter;
+pub mod blocked_services;
 pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
@@ -6,6 +7,7 @@ pub mod client_groups;
 pub mod client_subnets;
 pub mod clients;
 pub mod config;
+pub mod custom_services;
 pub mod groups;
 pub mod health;
 pub mod hostname;

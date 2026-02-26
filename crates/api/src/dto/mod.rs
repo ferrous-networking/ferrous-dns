@@ -1,10 +1,12 @@
 pub mod block_filter;
+pub mod blocked_service;
 pub mod blocklist;
 pub mod blocklist_source;
 pub mod cache;
 pub mod client;
 pub mod client_subnet;
 pub mod config;
+pub mod custom_service;
 pub mod group;
 pub mod hostname;
 pub mod local_record;
@@ -17,6 +19,10 @@ pub mod timeline;
 pub mod whitelist;
 pub mod whitelist_source;
 
+pub use blocked_service::{BlockServiceRequest, BlockedServiceResponse, ServiceDefinitionResponse};
+pub use custom_service::{
+    CreateCustomServiceRequest, CustomServiceResponse, UpdateCustomServiceRequest,
+};
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 pub use managed_domain::{
     CreateManagedDomainRequest, ManagedDomainResponse, UpdateManagedDomainRequest,

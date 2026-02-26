@@ -10,6 +10,7 @@ pub struct ManagedDomainResponse {
     pub group_id: i64,
     pub comment: Option<String>,
     pub enabled: bool,
+    pub service_id: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -24,6 +25,7 @@ impl ManagedDomainResponse {
             group_id: d.group_id,
             comment: d.comment.as_ref().map(|s| s.to_string()),
             enabled: d.enabled,
+            service_id: d.service_id.as_ref().map(|s| s.to_string()),
             created_at: d.created_at,
             updated_at: d.updated_at,
         }

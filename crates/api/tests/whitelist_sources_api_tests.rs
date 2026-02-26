@@ -5,7 +5,7 @@ use axum::{
 };
 use ferrous_dns_api::{create_api_routes, AppState};
 use ferrous_dns_application::{
-    ports::{BlockFilterEnginePort, FilterDecision},
+    ports::{BlockFilterEnginePort, BlockedServiceRepository, FilterDecision, ServiceCatalogPort},
     services::SubnetMatcherService,
     use_cases::{GetBlockFilterStatsUseCase, *},
 };
@@ -31,6 +31,97 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
     }
     fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
 }
+
+struct NullBlockedServiceRepository;
+
+#[async_trait::async_trait]
+impl BlockedServiceRepository for NullBlockedServiceRepository {
+    async fn block_service(
+        &self,
+        _service_id: &str,
+        _group_id: i64,
+    ) -> Result<ferrous_dns_domain::BlockedService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn unblock_service(
+        &self,
+        _service_id: &str,
+        _group_id: i64,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn get_blocked_for_group(
+        &self,
+        _group_id: i64,
+    ) -> Result<Vec<ferrous_dns_domain::BlockedService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn get_all_blocked(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::BlockedService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn delete_all_for_service(
+        &self,
+        _service_id: &str,
+    ) -> Result<u64, ferrous_dns_domain::DomainError> {
+        Ok(0)
+    }
+}
+
+struct NullCustomServiceRepository;
+
+#[async_trait::async_trait]
+impl ferrous_dns_application::ports::CustomServiceRepository for NullCustomServiceRepository {
+    async fn create(
+        &self,
+        _service_id: &str,
+        _name: &str,
+        _category_name: &str,
+        _domains: &[String],
+    ) -> Result<ferrous_dns_domain::CustomService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn get_by_service_id(
+        &self,
+        _service_id: &str,
+    ) -> Result<Option<ferrous_dns_domain::CustomService>, ferrous_dns_domain::DomainError> {
+        Ok(None)
+    }
+    async fn get_all(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::CustomService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn update(
+        &self,
+        _service_id: &str,
+        _name: Option<String>,
+        _category_name: Option<String>,
+        _domains: Option<Vec<String>>,
+    ) -> Result<ferrous_dns_domain::CustomService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn delete(&self, _service_id: &str) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+struct NullServiceCatalog;
+
+impl ServiceCatalogPort for NullServiceCatalog {
+    fn get_by_id(&self, _id: &str) -> Option<ferrous_dns_domain::ServiceDefinition> {
+        None
+    }
+    fn all(&self) -> Vec<ferrous_dns_domain::ServiceDefinition> {
+        vec![]
+    }
+    fn normalized_rules_for(&self, _service_id: &str) -> Vec<String> {
+        vec![]
+    }
+    fn reload_custom(&self, _custom: Vec<ferrous_dns_domain::ServiceDefinition>) {}
+}
+
 use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
     dns::{cache::DnsCache, HickoryDnsResolver},
@@ -336,6 +427,24 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
         get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+        get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
+        get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
+        block_service: Arc::new(BlockServiceUseCase::new(
+            Arc::new(NullBlockedServiceRepository),
+            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            group_repo.clone(),
+            Arc::new(NullBlockFilterEngine),
+            Arc::new(NullServiceCatalog),
+        )),
+        unblock_service: Arc::new(UnblockServiceUseCase::new(
+            Arc::new(NullBlockedServiceRepository),
+            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+            Arc::new(NullBlockFilterEngine),
+        )),
+        create_custom_service: Arc::new(ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog))),
+        get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
+        update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockedServiceRepository), Arc::new(NullBlockFilterEngine))),
+        delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockFilterEngine))),
         config,
         cache,
         dns_resolver: Arc::new(HickoryDnsResolver::new_with_pools(pool_manager, 5000, false, None).unwrap()),
