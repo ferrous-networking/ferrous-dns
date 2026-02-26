@@ -33,9 +33,11 @@ RUN mkdir -p crates/cli/src crates/domain/src crates/application/src \
     cargo build --release && \
     rm -rf crates/*/src
 
-# Copy actual source code and web assets (required for include_str! at compile time)
+# Copy actual source code, web assets, and migrations
+# (required for include_str! and sqlx::migrate! at compile time)
 COPY crates/ ./crates/
 COPY web/ ./web/
+COPY migrations/ ./migrations/
 
 # Build the application (static binary)
 # Touch all source files to ensure cargo detects changes vs stub artifacts (timestamp fix)

@@ -1,10 +1,8 @@
 use ferrous_dns_domain::config::DatabaseConfig;
-use sqlx::migrate::Migrator;
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
     SqliteSynchronous,
 };
-use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -52,8 +50,7 @@ pub async fn create_write_pool(
     .execute(&pool)
     .await?;
 
-    let migrator = Migrator::new(Path::new("./migrations")).await?;
-    migrator.run(&pool).await?;
+    sqlx::migrate!("../../migrations").run(&pool).await?;
 
     sqlx::query("PRAGMA optimize").execute(&pool).await?;
 

@@ -172,6 +172,7 @@ pub struct SqliteQueryLogRepository {
     sample_rate: u32,
     sample_counter: AtomicU64,
     timeline_cache: DashMap<(u32, &'static str), (Vec<TimelineBucket>, Instant)>,
+    timeline_refresh_lock: tokio::sync::Mutex<()>,
 }
 
 impl SqliteQueryLogRepository {
@@ -202,6 +203,7 @@ impl SqliteQueryLogRepository {
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
             timeline_cache: DashMap::new(),
+            timeline_refresh_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -630,6 +632,15 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             let (ref cached_buckets, cached_at) = *entry;
             if cached_at.elapsed() < TIMELINE_CACHE_TTL {
                 debug!(period_hours, "Timeline served from cache");
+                return Ok(cached_buckets.clone());
+            }
+        }
+
+        let _lock = self.timeline_refresh_lock.lock().await;
+
+        if let Some(entry) = self.timeline_cache.get(&cache_key) {
+            let (ref cached_buckets, cached_at) = *entry;
+            if cached_at.elapsed() < TIMELINE_CACHE_TTL {
                 return Ok(cached_buckets.clone());
             }
         }

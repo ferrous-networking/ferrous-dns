@@ -2,6 +2,7 @@ use crate::ports::QueryLogRepository;
 use ferrous_dns_domain::DomainError;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 const RATE_CACHE_TTL: Duration = Duration::from_secs(3);
 
@@ -52,6 +53,7 @@ struct CachedRate {
 pub struct GetQueryRateUseCase {
     repository: Arc<dyn QueryLogRepository>,
     cache: [RwLock<Option<CachedRate>>; 3],
+    refresh_locks: [Mutex<()>; 3],
 }
 
 impl GetQueryRateUseCase {
@@ -59,11 +61,26 @@ impl GetQueryRateUseCase {
         Self {
             repository,
             cache: [RwLock::new(None), RwLock::new(None), RwLock::new(None)],
+            refresh_locks: [Mutex::new(()), Mutex::new(()), Mutex::new(())],
         }
     }
 
     pub async fn execute(&self, unit: RateUnit) -> Result<QueryRate, DomainError> {
         let slot = &self.cache[unit.index()];
+
+        {
+            let guard = slot.read().unwrap();
+            if let Some(ref cached) = *guard {
+                if cached.computed_at.elapsed() < RATE_CACHE_TTL {
+                    return Ok(QueryRate {
+                        queries: cached.queries,
+                        rate: cached.rate.clone(),
+                    });
+                }
+            }
+        }
+
+        let _lock = self.refresh_locks[unit.index()].lock().await;
 
         {
             let guard = slot.read().unwrap();
