@@ -11,6 +11,7 @@ pub struct QueryAttemptResult {
     pub response: DnsResponse,
     pub server_addr: SocketAddr,
     pub latency_ms: u64,
+    pub server_display: Arc<str>,
 }
 
 pub async fn query_server(
@@ -20,6 +21,7 @@ pub async fn query_server(
     timeout_ms: u64,
     dnssec_ok: bool,
     emitter: &QueryEventEmitter,
+    pool_name: &Arc<str>,
 ) -> Result<QueryAttemptResult, DomainError> {
     let start = Instant::now();
     let timeout_duration = Duration::from_millis(timeout_ms);
@@ -34,13 +36,14 @@ pub async fn query_server(
 
     let response_time_us = start.elapsed().as_micros() as u64;
     let domain_arc: Arc<str> = Arc::from(domain);
-    let server_str = protocol.to_string();
+    let server_arc: Arc<str> = Arc::from(protocol.to_string());
     emitter.emit(QueryEvent {
         domain: Arc::clone(&domain_arc),
         record_type: *record_type,
-        upstream_server: server_str,
+        upstream_server: Arc::clone(&server_arc),
         response_time_us,
         success: !dns_response.addresses.is_empty() || !dns_response.cname_chain.is_empty(),
+        pool_name: Some(Arc::clone(pool_name)),
     });
 
     if dns_response.truncated {
@@ -62,13 +65,15 @@ pub async fn query_server(
             let tcp_dns_response = ResponseParser::parse(&tcp_response.bytes)?;
 
             let tcp_response_time_us = tcp_start.elapsed().as_micros() as u64;
+            let tcp_server_arc: Arc<str> = Arc::from(tcp_protocol.to_string());
             emitter.emit(QueryEvent {
                 domain: domain_arc,
                 record_type: *record_type,
-                upstream_server: tcp_protocol.to_string(),
+                upstream_server: Arc::clone(&tcp_server_arc),
                 response_time_us: tcp_response_time_us,
                 success: !tcp_dns_response.addresses.is_empty()
                     || !tcp_dns_response.cname_chain.is_empty(),
+                pool_name: Some(Arc::clone(pool_name)),
             });
 
             let latency_ms = start.elapsed().as_millis() as u64;
@@ -80,6 +85,7 @@ pub async fn query_server(
                 response: tcp_dns_response,
                 server_addr,
                 latency_ms,
+                server_display: tcp_server_arc,
             });
         }
     }
@@ -93,5 +99,6 @@ pub async fn query_server(
         response: dns_response,
         server_addr,
         latency_ms,
+        server_display: server_arc,
     })
 }

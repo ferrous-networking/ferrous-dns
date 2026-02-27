@@ -33,16 +33,16 @@ fn days_ago_cutoff(days: u32) -> String {
         .to_string()
 }
 
-const COLS_PER_ROW: usize = 13;
+const COLS_PER_ROW: usize = 14;
 const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
 
 fn build_multi_insert_sql(n: usize) -> String {
     debug_assert!(n > 0 && n <= ROWS_PER_CHUNK);
     const HEADER: &str = "INSERT INTO query_log \
         (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-         cache_refresh, dnssec_status, upstream_server, response_status, query_source, group_id, block_source) \
+         cache_refresh, dnssec_status, upstream_server, upstream_pool, response_status, query_source, group_id, block_source) \
         VALUES ";
-    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     let mut sql = String::with_capacity(HEADER.len() + n * (PLACEHOLDER.len() + 1));
     sql.push_str(HEADER);
     for i in 0..n {
@@ -64,6 +64,7 @@ struct QueryLogEntry {
     cache_refresh: bool,
     dnssec_status: Option<&'static str>,
     upstream_server: Option<Arc<str>>,
+    upstream_pool: Option<Arc<str>>,
     response_status: Option<&'static str>,
     query_source: CompactString,
     group_id: Option<i64>,
@@ -81,7 +82,8 @@ impl QueryLogEntry {
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
-            upstream_server: q.upstream_server.as_ref().map(|s| Arc::from(s.as_str())),
+            upstream_server: q.upstream_server.clone(),
+            upstream_pool: q.upstream_pool.clone(),
             response_status: q.response_status,
             query_source: CompactString::from(q.query_source.as_str()),
             group_id: q.group_id,
@@ -156,7 +158,14 @@ fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         cache_hit: row.get::<i64, _>("cache_hit") != 0,
         cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
         dnssec_status,
-        upstream_server: row.get::<Option<String>, _>("upstream_server"),
+        upstream_server: row
+            .get::<Option<String>, _>("upstream_server")
+            .map(|s| Arc::from(s.as_str())),
+        upstream_pool: row
+            .try_get::<Option<String>, _>("upstream_pool")
+            .ok()
+            .flatten()
+            .map(|s| Arc::from(s.as_str())),
         response_status,
         timestamp: Some(row.get("created_at")),
         query_source,
@@ -294,6 +303,7 @@ impl SqliteQueryLogRepository {
                     .bind(if entry.cache_refresh { 1i64 } else { 0i64 })
                     .bind(entry.dnssec_status)
                     .bind(entry.upstream_server.as_deref())
+                    .bind(entry.upstream_pool.as_deref())
                     .bind(entry.response_status)
                     .bind(entry.query_source.as_str())
                     .bind(entry.group_id)
@@ -372,7 +382,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let rows = sqlx::query(
             "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                     q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
-                    q.response_status, q.query_source, q.group_id, q.block_source,
+                    q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                     datetime(q.created_at) as created_at, c.hostname
              FROM query_log q
              LEFT JOIN clients c ON q.client_ip = c.ip_address
@@ -419,7 +429,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             sqlx::query(
                 "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                         q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
-                        q.response_status, q.query_source, q.group_id, q.block_source,
+                        q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                         datetime(q.created_at) as created_at, c.hostname
                  FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
@@ -438,7 +448,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
             sqlx::query(
                 "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                         q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
-                        q.response_status, q.query_source, q.group_id, q.block_source,
+                        q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                         datetime(q.created_at) as created_at, c.hostname
                  FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address

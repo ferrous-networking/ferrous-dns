@@ -1171,7 +1171,7 @@ pub struct DnsResolutionBuilder {
     cache_hit: bool,
     dnssec_status: Option<&'static str>,
     cname_chain: Arc<[Arc<str>]>,
-    upstream_server: Option<String>,
+    upstream_server: Option<Arc<str>>,
 }
 
 impl DnsResolutionBuilder {
@@ -1206,7 +1206,7 @@ impl DnsResolutionBuilder {
     }
 
     pub fn with_upstream(mut self, server: &str) -> Self {
-        self.upstream_server = Some(server.to_string());
+        self.upstream_server = Some(Arc::from(server));
         self
     }
 
@@ -1223,6 +1223,7 @@ impl DnsResolutionBuilder {
             dnssec_status: self.dnssec_status,
             cname_chain: self.cname_chain,
             upstream_server: self.upstream_server,
+            upstream_pool: None,
             min_ttl: None,
             authority_records: vec![],
         }
@@ -1287,6 +1288,7 @@ mod tests {
             cache_refresh: false,
             dnssec_status: None,
             upstream_server: None,
+            upstream_pool: None,
             response_status: None,
             timestamp: None,
             query_source: Default::default(),

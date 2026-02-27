@@ -92,6 +92,7 @@ impl HandleDnsQueryUseCase {
             cache_refresh: false,
             dnssec_status: None,
             upstream_server: None,
+            upstream_pool: None,
             response_status: Some("NOERROR"),
             timestamp: None,
             query_source: QuerySource::Client,
@@ -173,6 +174,7 @@ impl HandleDnsQueryUseCase {
             cache_refresh: false,
             dnssec_status: resolution.dnssec_status,
             upstream_server: None,
+            upstream_pool: None,
             response_status: Some("NOERROR"),
             timestamp: None,
             query_source: QuerySource::Client,
@@ -245,6 +247,7 @@ impl HandleDnsQueryUseCase {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
                     upstream_server: resolution.upstream_server.clone(),
+                    upstream_pool: resolution.upstream_pool.clone(),
                     response_status,
                     ..Self::base_query_log(request, elapsed_us(), group_id)
                 });

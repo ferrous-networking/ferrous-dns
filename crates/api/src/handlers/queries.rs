@@ -39,16 +39,17 @@ pub async fn get_queries(
                     domain: q.domain,
                     client: q.client_ip.to_string(),
                     client_hostname: q.client_hostname,
-                    record_type: q.record_type.as_str().to_string(),
+                    record_type: q.record_type.as_str(),
                     blocked: q.blocked,
                     response_time_us: q.response_time_us,
                     cache_hit: q.cache_hit,
                     cache_refresh: q.cache_refresh,
-                    dnssec_status: q.dnssec_status.map(|s| s.to_string()),
+                    dnssec_status: q.dnssec_status,
                     upstream_server: q.upstream_server,
-                    query_source: q.query_source.as_str().to_string(),
-                    block_source: q.block_source.map(|s| s.to_str().to_string()),
-                    response_status: q.response_status.map(|s| s.to_string()),
+                    upstream_pool: q.upstream_pool,
+                    query_source: q.query_source.as_str(),
+                    block_source: q.block_source.map(|s| s.to_str()),
+                    response_status: q.response_status,
                 })
                 .collect();
 

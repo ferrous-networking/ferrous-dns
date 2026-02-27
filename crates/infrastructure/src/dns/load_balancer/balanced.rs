@@ -1,8 +1,8 @@
 use super::query::query_server;
-use super::strategy::UpstreamResult;
-use crate::dns::events::QueryEventEmitter;
-use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
+use super::strategy::{QueryContext, UpstreamResult};
+use ferrous_dns_domain::DomainError;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tracing::{debug, warn};
 
 pub struct BalancedStrategy {
@@ -16,30 +16,23 @@ impl BalancedStrategy {
         }
     }
 
-    pub async fn query_refs(
-        &self,
-        servers: &[&DnsProtocol],
-        domain: &str,
-        record_type: &RecordType,
-        timeout_ms: u64,
-        dnssec_ok: bool,
-        emitter: &QueryEventEmitter,
-    ) -> Result<UpstreamResult, DomainError> {
-        if servers.is_empty() {
+    pub async fn query_refs(&self, ctx: &QueryContext<'_>) -> Result<UpstreamResult, DomainError> {
+        if ctx.servers.is_empty() {
             return Err(DomainError::TransportNoHealthyServers);
         }
-        let start_index = self.counter.fetch_add(1, Ordering::Relaxed) % servers.len();
-        debug!(strategy = "balanced", servers = servers.len(), start_index, domain = %domain, "Round-robin");
+        let start_index = self.counter.fetch_add(1, Ordering::Relaxed) % ctx.servers.len();
+        debug!(strategy = "balanced", servers = ctx.servers.len(), start_index, domain = %ctx.domain, "Round-robin");
 
-        for i in 0..servers.len() {
-            let index = (start_index + i) % servers.len();
+        for i in 0..ctx.servers.len() {
+            let index = (start_index + i) % ctx.servers.len();
             match query_server(
-                servers[index],
-                domain,
-                record_type,
-                timeout_ms,
-                dnssec_ok,
-                emitter,
+                ctx.servers[index],
+                ctx.domain,
+                ctx.record_type,
+                ctx.timeout_ms,
+                ctx.dnssec_ok,
+                ctx.emitter,
+                ctx.pool_name,
             )
             .await
             {
@@ -49,10 +42,12 @@ impl BalancedStrategy {
                         response: r.response,
                         server: r.server_addr,
                         latency_ms: r.latency_ms,
+                        pool_name: Arc::clone(ctx.pool_name),
+                        server_display: r.server_display,
                     });
                 }
                 Err(e) => {
-                    warn!(protocol = %servers[index], error = %e, "Server failed, trying next");
+                    warn!(protocol = %ctx.servers[index], error = %e, "Server failed, trying next");
                 }
             }
         }

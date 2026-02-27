@@ -2,7 +2,7 @@ use super::balanced::BalancedStrategy;
 use super::failover::FailoverStrategy;
 use super::health::HealthChecker;
 use super::parallel::ParallelStrategy;
-use super::strategy::{Strategy, UpstreamResult};
+use super::strategy::{QueryContext, Strategy, UpstreamResult};
 use crate::dns::events::QueryEventEmitter;
 use crate::dns::forwarding::ResponseParser;
 use crate::dns::transport::resolver;
@@ -24,6 +24,7 @@ struct PoolWithStrategy {
     config: UpstreamPool,
     strategy: Strategy,
     server_protocols: Vec<DnsProtocol>,
+    name_arc: Arc<str>,
 }
 
 impl PoolManager {
@@ -59,10 +60,12 @@ impl PoolManager {
             let parsed = server_protocols?;
             let expanded = Self::expand_hostnames(parsed).await;
 
+            let name_arc: Arc<str> = Arc::from(pool.name.as_str());
             pools_with_strategy.push(PoolWithStrategy {
                 config: pool,
                 strategy,
                 server_protocols: expanded,
+                name_arc,
             });
         }
         pools_with_strategy.sort_by_key(|p| p.config.priority);
@@ -184,18 +187,17 @@ impl PoolManager {
                 continue;
             }
 
-            match pool
-                .strategy
-                .query_refs(
-                    &healthy_refs,
-                    domain,
-                    record_type,
-                    timeout_ms,
-                    dnssec_ok,
-                    &self.emitter,
-                )
-                .await
-            {
+            let ctx = QueryContext {
+                servers: &healthy_refs,
+                domain,
+                record_type,
+                timeout_ms,
+                dnssec_ok,
+                emitter: &self.emitter,
+                pool_name: &pool.name_arc,
+            };
+
+            match pool.strategy.query_refs(&ctx).await {
                 Ok(result) => {
                     debug!(pool = %pool.config.name, server = %result.server, "Pool query successful");
                     return Ok(result);

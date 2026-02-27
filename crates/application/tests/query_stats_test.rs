@@ -22,6 +22,7 @@ fn make_log(cache_hit: bool, blocked: bool, block_source: Option<BlockSource>) -
         cache_refresh: false,
         dnssec_status: None,
         upstream_server: None,
+        upstream_pool: None,
         response_status: Some("NOERROR"),
         timestamp: None,
         query_source: QuerySource::Client,

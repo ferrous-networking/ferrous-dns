@@ -1,51 +1,70 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Ferrous DNS — Configuration                                               ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+
+# ── Server ────────────────────────────────────────────────────────────────────
+
 [server]
 dns_port = 53                           # UDP/TCP port for DNS queries
 web_port = 8080                         # HTTP port for the web dashboard and REST API
 bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on all interfaces
+# cors_allowed_origins = ["*"]          # Allowed CORS origins for the REST API
+# api_key = "your-secret-key"           # API key for authenticated endpoints (omit to disable)
+
+
+# ── DNS Resolution ────────────────────────────────────────────────────────────
 
 [dns]
 upstream_servers = []                   # Fallback upstream DNS servers (used when no pool matches)
-read_busy_timeout_secs = 15
-read_acquire_timeout_secs = 15
 query_timeout = 3                       # Seconds to wait for an upstream response before timing out
-cache_enabled = true                    # Enable in-memory DNS response cache
-cache_ttl = 7200                        # Default TTL (seconds) for cached entries when the record has none
-cache_min_ttl = 300                     # Minimum TTL (seconds) applied to every cached entry; 0 = no override. Recommended >= 240 so the 60 s refresh job can act before expiry
-cache_max_ttl = 86400                   # Maximum TTL (seconds) applied to every cached entry; caps values returned by upstream
-dnssec_enabled = true                   # Validate DNSSEC signatures on upstream responses
 default_strategy = "Parallel"           # Resolution strategy: "Parallel" (fastest wins) or "Sequential"
-cache_max_entries = 200000              # Maximum number of entries the cache can hold
-cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", or "lru"
-cache_optimistic_refresh = true         # Refresh entries in the background before they expire
-cache_min_hit_rate = 2.0                # Minimum hit rate (hits/min) to keep an entry alive via optimistic refresh
-cache_min_frequency = 10                # Minimum total hits required before an entry is eligible for optimistic refresh
-cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for eviction candidates
-cache_refresh_threshold = 0.75          # Fraction of TTL remaining at which a background refresh is triggered (0.75 = 75%)
-cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for LFU-K scoring
-cache_batch_eviction_percentage = 0.1   # Fraction of cache to evict in one pass when the cache is full (0.1 = 10%)
-cache_compaction_interval = 600         # Seconds between full cache compaction runs (removes expired entries)
-cache_adaptive_thresholds = false       # Automatically tune eviction thresholds based on observed hit rates
-# Time window (seconds) since last access within which an entry is eligible for optimistic refresh.
-# Entries accessed at least once within this window will be renewed before expiry.
-# e.g. 7200 = 2h, 43200 = 12h, 86400 = 24h
-cache_access_window_secs = 43200
-# Number of internal cache shards (DashMap).
-# When omitted, auto-detected as 4× CPU cores rounded up to the next power of 2
-# (e.g. RPi 4 → 16, 8-core server → 32, 16-core → 64).
-# Uncomment only if you need to force a specific value:
-# cache_shard_amount = 512
+dnssec_enabled = true                   # Validate DNSSEC signatures on upstream responses
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
-local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames (e.g. device.lan)
-# dns pools:
-# name = "cloudflare"                   # Pool name (used in logs and conditional forwarding rules)
-# strategy = "Parallel"                 # Query strategy for this pool: "Parallel" or "Sequential"
-# priority = 1                          # Lower value = higher priority when multiple pools are available
-# servers = [
-#     "https://1.1.1.1/dns-query",
-#     "https://1.0.0.1/dns-query",
-# ]
+local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
+
+
+# ── DNS Cache ─────────────────────────────────────────────────────────────────
+
+cache_enabled = true                    # Enable in-memory DNS response cache
+cache_ttl = 7200                        # Default TTL (seconds) for cached entries when the record has none
+cache_min_ttl = 300                     # Minimum TTL; recommended >= 240 so the refresh job can act before expiry
+cache_max_ttl = 86400                   # Maximum TTL; caps values returned by upstream
+cache_max_entries = 200000              # Maximum number of entries the cache can hold
+cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", or "lru"
+cache_compaction_interval = 600         # Seconds between full cache compaction runs (removes expired entries)
+cache_batch_eviction_percentage = 0.1   # Fraction of cache to evict in one pass when full (0.1 = 10%)
+cache_adaptive_thresholds = false       # Automatically tune eviction thresholds based on observed hit rates
+# Number of internal cache shards (DashMap).
+# When omitted, auto-detected as 4x CPU cores rounded up to the next power of 2
+# (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
+# cache_shard_amount = 512
+
+
+# ── Cache: Optimistic Refresh ─────────────────────────────────────────────────
+# Background refresh renews popular entries before they expire, keeping cache hit rate high.
+
+cache_optimistic_refresh = true         # Refresh entries in the background before they expire
+cache_refresh_threshold = 0.75          # Fraction of TTL remaining at which a background refresh is triggered
+cache_min_hit_rate = 2.0                # Minimum hit rate (hits/min) to keep an entry alive via refresh
+cache_min_frequency = 10                # Minimum total hits before an entry is eligible for refresh
+# Time window (seconds) since last access within which an entry is eligible for refresh.
+# e.g. 7200 = 2h, 43200 = 12h, 86400 = 24h
+cache_access_window_secs = 43200
+
+
+# ── Cache: LFU-K Eviction ────────────────────────────────────────────────────
+
+cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for eviction candidates
+cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for scoring
+
+
+# ── Upstream Pools ────────────────────────────────────────────────────────────
+# Each pool groups one or more upstream servers with a resolution strategy.
+# Lower priority value = higher priority when multiple pools are available.
+
 [[dns.pools]]
 name = "adguard"
 strategy = "Parallel"
@@ -53,7 +72,6 @@ priority = 1
 servers = [
     "h3://dns.adguard-dns.com/dns-query",
 ]
-
 
 [[dns.pools]]
 name = "cloudflare"
@@ -63,15 +81,18 @@ servers = [
     "https://cloudflare-dns.com/dns-query",
 ]
 
+
+# ── Upstream Health Checks ────────────────────────────────────────────────────
+
 [dns.health_check]
 interval = 30                           # Seconds between health check probes for each upstream server
 timeout = 2000                          # Milliseconds to wait for a health check response
 failure_threshold = 3                   # Consecutive failures before marking a server as unhealthy
-success_threshold = 2                   # Consecutive successes required to mark a server as healthy again
+success_threshold = 2                   # Consecutive successes to mark a server as healthy again
 
-[[dns.conditional_forwarding]]
-domain = "lan"                          # Queries for this domain are forwarded to the specified server
-server = "10.0.0.1:53"                  # DNS server to forward matching queries to
+
+# ── Local DNS Records ────────────────────────────────────────────────────────
+# Static A/AAAA records served directly from cache, bypassing upstream resolution.
 
 [[dns.local_records]]
 hostname = "viudes"
@@ -87,63 +108,96 @@ ip = "10.0.1.1"
 record_type = "A"
 ttl = 300
 
+
+# ── Blocking ──────────────────────────────────────────────────────────────────
+
 [blocking]
-enabled = true                      # Enable DNS-based ad/malware blocking
-custom_blocked = []                 # Additional domains to block (beyond downloaded blocklists)
-whitelist = []                      # Domains to always allow, even if present in a blocklist
+enabled = true                          # Enable DNS-based ad/malware blocking
+custom_blocked = []                     # Additional domains to block (beyond downloaded blocklists)
+whitelist = []                          # Domains to always allow, even if present in a blocklist
+
+
+# ── Logging ───────────────────────────────────────────────────────────────────
 
 [logging]
-level = "info"                      # Log verbosity: "error", "warn", "info", "debug", or "trace"
+level = "info"                          # Log verbosity: "error", "warn", "info", "debug", or "trace"
+
+
+# ── Database ──────────────────────────────────────────────────────────────────
 
 [database]
-path = "ferrous-dns.db"             # Path to the SQLite database file
-log_queries = true                  # Store every DNS query in the database for analytics
-queries_log_stored = 30             # Days to retain query log entries before automatic cleanup
+path = "ferrous-dns.db"                 # Path to the SQLite database file
+log_queries = true                      # Store every DNS query in the database for analytics
+queries_log_stored = 30                 # Days to retain query log entries before automatic cleanup
+
 # Minimum seconds between consecutive last-seen DB writes for the same client IP.
 # Reduce to track clients more frequently; increase to lower SQLite write pressure.
 client_tracking_interval = 60
 
-# ── Query-log write pipeline ────────────────────────────────────────────────
-# Async channel capacity for buffering query log entries before they are
-# flushed to disk. At 100k q/s with sample_rate=10 you need ~200_000 for a
-# comfortable 2-second buffer. Default: 10_000.
+
+# ── Database: Query-Log Write Pipeline ────────────────────────────────────────
+
+# Async channel capacity for buffering query log entries before they are flushed to disk.
+# At 100k q/s with sample_rate=10 you need ~200_000 for a comfortable 2-second buffer.
 query_log_channel_capacity = 10000
 
 # Maximum entries written in a single INSERT transaction.
-# Larger batches mean fewer transactions and higher throughput.
-# Default: 500.
+# Larger batches = fewer transactions and higher throughput.
 query_log_max_batch_size = 2000
 
 # Milliseconds between flush cycles. Lower = more frequent small writes;
-# higher = fewer but larger batches. Default: 200.
+# higher = fewer but larger batches.
 query_log_flush_interval_ms = 200
 
 # Uniform sampling: record 1 out of every N queries (1 = log all).
 # At 100k q/s, setting 10 yields ~10k entries/s (~864M rows/day).
-# Default: 1 (no sampling).
 query_log_sample_rate = 1
 
-# ── Client-tracking write pipeline ──────────────────────────────────────────
+
+# ── Database: Client-Tracking Write Pipeline ──────────────────────────────────
+
 # Async channel capacity for client last-seen updates.
-# Default: 4096.
 client_channel_capacity = 4096
 
-# ── Connection pools ─────────────────────────────────────────────────────────
-# Write pool: used by the query-log flush task, client tracking, and admin
-# mutations. SQLite WAL serialises writers at the file level so more than ~3
-# connections add no throughput — they only compete for the write lock.
-# Default: 3.
+
+# ── Database: Connection Pools ────────────────────────────────────────────────
+
+# Write pool: used by the query-log flush task, client tracking, and admin mutations.
+# SQLite WAL serialises writers at the file level so more than ~3 connections
+# add no throughput — they only compete for the write lock.
 write_pool_max_connections = 3
 
-# Read pool: used exclusively by dashboard and API read endpoints so they
-# never compete with write transactions. Default: 8.
+# Read pool: used exclusively by dashboard and API read endpoints
+# so they never compete with write transactions.
 read_pool_max_connections = 8
 
 # Seconds to wait for the write lock before returning SQLITE_BUSY.
-# Default: 30.
 write_busy_timeout_secs = 30
 
-# WAL checkpoint interval (pages). Lower = more frequent checkpoints and
-# smaller WAL file; higher = less checkpoint overhead under heavy write load.
-# Default: 10000.
-wal_autocheckpoint = 10000
+# Seconds to wait for a read connection before returning SQLITE_BUSY.
+read_busy_timeout_secs = 15
+
+# Seconds to wait to acquire a read connection from the pool before timeout.
+read_acquire_timeout_secs = 15
+
+
+# ── Database: SQLite Tuning ───────────────────────────────────────────────────
+
+# WAL auto-checkpoint interval (pages). 0 = disabled (manual checkpoint via job).
+# Lower = more frequent checkpoints and smaller WAL file;
+# higher = less checkpoint overhead under heavy write load.
+wal_autocheckpoint = 0
+
+# Seconds between WAL PASSIVE checkpoints (background job).
+# Lower = smaller WAL file and faster reads; higher = less checkpoint overhead.
+# Recommended: 120 for RPi/SD card, 300 for SSD.
+wal_checkpoint_interval_secs = 120
+
+# SQLite page cache size in KB. Higher = more data kept in memory, fewer disk reads.
+# Recommended: 8192 for RPi (1GB RAM), 16384 for 2GB+, 32768 for 4GB+.
+sqlite_cache_size_kb = 16384
+
+# Memory-mapped I/O size in MB. Allows SQLite to read the DB file directly from
+# the OS page cache, bypassing SQLite's own page cache for large sequential scans.
+# Recommended: 32 for RPi, 64 for servers, 0 to disable.
+sqlite_mmap_size_mb = 64

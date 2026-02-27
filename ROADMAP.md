@@ -9,14 +9,14 @@
 - [x] REST API endpoints structure
 - [x] SQLite persistence
 - [x] Basic DNS server implementation
-- [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR, etc.. RFC)
+- [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR, RFC...)
 - [x] Upstream DNS forwarding udp 
 - [x] Upstream DNS-over-HTTPS (DoH)
 - [x] Upstream DNS-over-TLS (DoT)
-- [x] Load balancing across upstreams
+- [x] Load balancing across upstream
 - [x] Query caching with TTL
 - [x] Local Dns records domain.local
-- [x] Cache L1/L2 hierárquico
+- [x] Cache L1/L2 
 - [x] Cache LFUK eviction (sliding window)
 - [x] Bloom filter
 - [x] Core tests coverage
@@ -55,10 +55,10 @@
 
 ### 🎯 v0.5.0 - Performance & Scale
 
-- [ ] dash board web socket performance slow queries
+- [ ] dashboard web socket performance slow queries
 - [ ] Prometheus metrics
 - [ ] Api compatible pi-hole
-- [ ] Performance benchmarks vs competitors
+- [ ] Performance benchmarks vs. competitors
 - [ ] OpenAPI / Swagger docs
 
 ### 🌟 v1.0.0 - Production Ready

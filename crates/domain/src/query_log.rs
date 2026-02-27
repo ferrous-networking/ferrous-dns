@@ -73,7 +73,8 @@ pub struct QueryLog {
     pub cache_hit: bool,
     pub cache_refresh: bool,
     pub dnssec_status: Option<&'static str>,
-    pub upstream_server: Option<String>,
+    pub upstream_server: Option<Arc<str>>,
+    pub upstream_pool: Option<Arc<str>>,
     pub response_status: Option<&'static str>,
     pub timestamp: Option<String>,
 
@@ -103,17 +104,19 @@ pub struct QueryStats {
 
 impl QueryStats {
     pub fn with_analytics(mut self, queries_by_type: HashMap<RecordType, u64>) -> Self {
-        self.queries_by_type = queries_by_type.clone();
+        self.queries_by_type = queries_by_type;
 
-        self.most_queried_type = queries_by_type
+        self.most_queried_type = self
+            .queries_by_type
             .iter()
             .max_by_key(|(_, count)| *count)
             .map(|(record_type, _)| *record_type);
 
-        let total: u64 = queries_by_type.values().sum();
+        let total: u64 = self.queries_by_type.values().sum();
 
         if total > 0 {
-            let mut distribution: Vec<(RecordType, f64)> = queries_by_type
+            let mut distribution: Vec<(RecordType, f64)> = self
+                .queries_by_type
                 .iter()
                 .map(|(record_type, count)| {
                     let percentage = (*count as f64 / total as f64) * 100.0;

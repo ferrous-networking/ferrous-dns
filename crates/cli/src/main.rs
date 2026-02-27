@@ -114,7 +114,10 @@ async fn async_main() -> anyhow::Result<()> {
             config.database.queries_log_stored,
         ))
         .with_blocklist_sync(BlocklistSyncJob::new(repos.block_filter_engine.clone()))
-        .with_wal_checkpoint(WalCheckpointJob::new(wal_pool))
+        .with_wal_checkpoint(WalCheckpointJob::new(
+            wal_pool,
+            config.database.wal_checkpoint_interval_secs,
+        ))
         .start()
         .await;
 

@@ -18,7 +18,7 @@ pub struct QueryMetrics {
 
     record_type_counts: Arc<DashMap<RecordType, u64>>,
 
-    upstream_counts: Arc<DashMap<String, u64>>,
+    upstream_counts: Arc<DashMap<Arc<str>, u64>>,
 
     total_response_time_us: Arc<AtomicU64>,
 }

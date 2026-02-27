@@ -13,7 +13,8 @@ pub struct DnsResolution {
     pub local_dns: bool,
     pub dnssec_status: Option<&'static str>,
     pub cname_chain: Arc<[Arc<str>]>,
-    pub upstream_server: Option<String>,
+    pub upstream_server: Option<Arc<str>>,
+    pub upstream_pool: Option<Arc<str>>,
     pub min_ttl: Option<u32>,
     pub authority_records: Vec<Record>,
 }
@@ -27,6 +28,7 @@ impl DnsResolution {
             dnssec_status: None,
             cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,
+            upstream_pool: None,
             min_ttl: None,
             authority_records: vec![],
         }
@@ -44,6 +46,7 @@ impl DnsResolution {
             dnssec_status,
             cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,
+            upstream_pool: None,
             min_ttl: None,
             authority_records: vec![],
         }

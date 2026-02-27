@@ -1,9 +1,9 @@
 use super::query::query_server;
-use super::strategy::UpstreamResult;
-use crate::dns::events::QueryEventEmitter;
-use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
+use super::strategy::{QueryContext, UpstreamResult};
+use ferrous_dns_domain::DomainError;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::debug;
@@ -15,36 +15,29 @@ impl ParallelStrategy {
         Self
     }
 
-    pub async fn query_refs(
-        &self,
-        servers: &[&DnsProtocol],
-        domain: &str,
-        record_type: &RecordType,
-        timeout_ms: u64,
-        dnssec_ok: bool,
-        emitter: &QueryEventEmitter,
-    ) -> Result<UpstreamResult, DomainError> {
-        if servers.is_empty() {
+    pub async fn query_refs(&self, ctx: &QueryContext<'_>) -> Result<UpstreamResult, DomainError> {
+        if ctx.servers.is_empty() {
             return Err(DomainError::TransportNoHealthyServers);
         }
 
         debug!(
             strategy = "parallel",
-            servers = servers.len(),
-            domain = %domain,
+            servers = ctx.servers.len(),
+            domain = %ctx.domain,
             "Racing all upstreams with immediate cancellation"
         );
 
         let mut futs = FuturesUnordered::new();
 
-        let per_server_timeout_ms = timeout_ms.saturating_mul(2);
+        let per_server_timeout_ms = ctx.timeout_ms.saturating_mul(2);
 
-        let domain_arc: std::sync::Arc<str> = domain.into();
-        for &protocol in servers {
+        let domain_arc: Arc<str> = ctx.domain.into();
+        for &protocol in ctx.servers {
             let protocol = protocol.clone();
-            let domain = std::sync::Arc::clone(&domain_arc);
-            let record_type = *record_type;
-            let emitter = emitter.clone();
+            let domain = Arc::clone(&domain_arc);
+            let record_type = *ctx.record_type;
+            let emitter = ctx.emitter.clone();
+            let pool_name = Arc::clone(ctx.pool_name);
 
             futs.push(async move {
                 query_server(
@@ -52,16 +45,17 @@ impl ParallelStrategy {
                     &domain,
                     &record_type,
                     per_server_timeout_ms,
-                    dnssec_ok,
+                    ctx.dnssec_ok,
                     &emitter,
+                    &pool_name,
                 )
                 .await
             });
         }
 
-        let total_queries = servers.len();
+        let total_queries = ctx.servers.len();
 
-        let result = timeout(Duration::from_millis(timeout_ms), async {
+        let result = timeout(Duration::from_millis(ctx.timeout_ms), async {
             let mut failed_count = 0;
 
             while let Some(result) = futs.next().await {
@@ -77,6 +71,8 @@ impl ParallelStrategy {
                             response: r.response,
                             server: r.server_addr,
                             latency_ms: r.latency_ms,
+                            pool_name: Arc::clone(ctx.pool_name),
+                            server_display: r.server_display,
                         });
                     }
                     Err(e) => {

@@ -227,6 +227,7 @@ impl CacheUpdater {
                         cache_refresh: true,
                         dnssec_status: resolution.dnssec_status,
                         upstream_server: resolution.upstream_server.clone(),
+                        upstream_pool: resolution.upstream_pool.clone(),
                         response_status: Some("NOERROR"),
                         timestamp: None,
                         query_source: QuerySource::Internal,

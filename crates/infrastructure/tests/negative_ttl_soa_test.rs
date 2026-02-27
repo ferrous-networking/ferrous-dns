@@ -32,6 +32,7 @@ impl DnsResolver for MockNegativeResolver {
             dnssec_status: None,
             cname_chain: Arc::from(vec![]),
             upstream_server: None,
+            upstream_pool: None,
             min_ttl: None,
             authority_records: self.authority_records.clone(),
         })

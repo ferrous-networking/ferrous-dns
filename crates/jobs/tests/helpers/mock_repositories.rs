@@ -433,6 +433,7 @@ impl MockQueryLogRepository {
             cache_refresh: false,
             dnssec_status: None,
             upstream_server: None,
+            upstream_pool: None,
             response_status: None,
             timestamp: Some(timestamp.to_string()),
             query_source: Default::default(),

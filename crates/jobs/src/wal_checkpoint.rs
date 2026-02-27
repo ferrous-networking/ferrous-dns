@@ -11,10 +11,10 @@ pub struct WalCheckpointJob {
 }
 
 impl WalCheckpointJob {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: SqlitePool, interval_secs: u64) -> Self {
         Self {
             pool,
-            interval_secs: 300,
+            interval_secs,
             shutdown: CancellationToken::new(),
         }
     }

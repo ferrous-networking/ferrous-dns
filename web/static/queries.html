@@ -46,7 +46,7 @@
         }
 
         th {
-            padding: 12px;
+            padding: 8px 10px;
             text-align: left;
             font-weight: 600;
             font-size: 12px;
@@ -56,7 +56,7 @@
         }
 
         td {
-            padding: 12px;
+            padding: 8px 10px;
             border-bottom: 1px solid var(--border-color);
             font-size: 14px
         }
@@ -219,12 +219,12 @@
         <table>
             <thead>
             <tr>
-                <th style="width:130px">TIME</th>
+                <th style="width:120px">TIME</th>
                 <th>DOMAIN</th>
-                <th class="col-type" style="width:75px">TYPE</th>
-                <th style="width:140px">CLIENT</th>
-                <th style="width:135px">SOURCE</th>
-                <th class="col-rt" style="width:120px">RESPONSE TIME</th>
+                <th class="col-type" style="width:70px">TYPE</th>
+                <th style="width:130px">CLIENT</th>
+                <th style="width:240px">SOURCE</th>
+                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
             </tr>
             </thead>
             <tbody>
@@ -255,8 +255,8 @@
                               x-text="query.type"></span></td>
                     <td style="font-size:13px"
                         x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></td>
-                    <td>
-                        <span class="badge"
+                    <td style="max-width:0;overflow:hidden">
+                        <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                               :style="query.cache_hit
                                 ? 'background:rgba(168,85,247,0.1);color:#A855F7'
                                 : query.block_source === 'blocklist'
@@ -268,17 +268,10 @@
                                       : query.response_status === 'LOCAL_DNS'
                                         ? 'background:rgba(34,197,94,0.1);color:#22C55E'
                                         : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
-                              x-text="query.cache_hit
-                                ? 'Cache'
-                                : query.block_source === 'blocklist'
-                                  ? 'Blocklist'
-                                  : query.block_source === 'managed_domain'
-                                    ? 'Managed Domain'
-                                    : query.block_source === 'regex_filter'
-                                      ? 'Regex Filter'
-                                      : query.response_status === 'LOCAL_DNS'
-                                        ? 'Local DNS'
-                                        : 'Upstream'"></span>
+                              x-html="formatSource(query)"
+                              :title="query.upstream_pool && query.upstream_server
+                                ? query.upstream_pool + ':' + query.upstream_server
+                                : ''"></span>
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
                 </tr>
@@ -429,6 +422,31 @@
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error('Failed to load stats:', e);
                 }
+            },
+
+            escapeHtml(str) {
+                const d = document.createElement('div');
+                d.textContent = str;
+                return d.innerHTML;
+            },
+
+            formatSource(query) {
+                if (query.cache_hit) return 'Cache';
+                if (query.block_source === 'blocklist') return 'Blocklist';
+                if (query.block_source === 'managed_domain') return 'Managed Domain';
+                if (query.block_source === 'regex_filter') return 'Regex Filter';
+                if (query.response_status === 'LOCAL_DNS') return 'Local DNS';
+                if (query.upstream_pool && query.upstream_server) {
+                    const host = query.upstream_server
+                        .replace(/^[a-z0-9]+:\/\//, '')
+                        .replace(/\/.*$/, '')
+                        .replace(/:\d+$/, '');
+                    const pool = this.escapeHtml(query.upstream_pool);
+                    const safeHost = this.escapeHtml(host);
+                    return '<span style="color:#F97316">' + pool
+                        + '</span><span style="color:var(--text-secondary)">:</span>' + safeHost;
+                }
+                return 'Upstream';
             },
 
             formatTime(timestamp) {

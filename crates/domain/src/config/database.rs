@@ -52,6 +52,9 @@ pub struct DatabaseConfig {
 
     #[serde(default = "default_sqlite_mmap_size_mb")]
     pub sqlite_mmap_size_mb: u32,
+
+    #[serde(default = "default_wal_checkpoint_interval_secs")]
+    pub wal_checkpoint_interval_secs: u64,
 }
 
 impl Default for DatabaseConfig {
@@ -74,6 +77,7 @@ impl Default for DatabaseConfig {
             wal_autocheckpoint: default_wal_autocheckpoint(),
             sqlite_cache_size_kb: default_sqlite_cache_size_kb(),
             sqlite_mmap_size_mb: default_sqlite_mmap_size_mb(),
+            wal_checkpoint_interval_secs: default_wal_checkpoint_interval_secs(),
         }
     }
 }
@@ -144,4 +148,8 @@ fn default_sqlite_cache_size_kb() -> u32 {
 
 fn default_sqlite_mmap_size_mb() -> u32 {
     64
+}
+
+fn default_wal_checkpoint_interval_secs() -> u64 {
+    120
 }

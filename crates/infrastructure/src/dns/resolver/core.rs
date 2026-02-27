@@ -1,7 +1,7 @@
 use crate::dns::forwarding::DnsForwarder;
 use crate::dns::load_balancer::PoolManager;
 use async_trait::async_trait;
-use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
+use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 use ferrous_dns_domain::{DnsQuery, DomainError};
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -81,8 +81,9 @@ impl CoreResolver {
                         cache_hit: false,
                         local_dns: true,
                         dnssec_status: None,
-                        cname_chain: Arc::from(vec![]),
-                        upstream_server: Some(server.to_string()),
+                        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
+                        upstream_server: Some(Arc::clone(server)),
+                        upstream_pool: None,
                         min_ttl: response.min_ttl,
                         authority_records: response.authority_records,
                     });
@@ -128,7 +129,7 @@ impl DnsResolver for CoreResolver {
             .await?;
 
         let addresses = Arc::new(result.response.addresses);
-        let upstream_server = Some(result.server.to_string());
+        let upstream_server = Some(result.server_display);
 
         debug!(
             domain = %query.domain,
@@ -150,6 +151,7 @@ impl DnsResolver for CoreResolver {
                 .map(|s| Arc::from(s.as_str()))
                 .collect::<Arc<[_]>>(),
             upstream_server,
+            upstream_pool: Some(result.pool_name),
             min_ttl: result.response.min_ttl,
             authority_records: result.response.authority_records,
         })
