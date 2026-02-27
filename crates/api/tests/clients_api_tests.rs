@@ -278,7 +278,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
                 pool.clone(), pool.clone(), &DatabaseConfig::default(),
             ),
-        ))),
+        ), client_repo.clone())),
         get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
                 pool.clone(), pool.clone(), &DatabaseConfig::default(),

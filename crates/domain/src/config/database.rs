@@ -46,6 +46,12 @@ pub struct DatabaseConfig {
 
     #[serde(default = "default_wal_autocheckpoint")]
     pub wal_autocheckpoint: u32,
+
+    #[serde(default = "default_sqlite_cache_size_kb")]
+    pub sqlite_cache_size_kb: u32,
+
+    #[serde(default = "default_sqlite_mmap_size_mb")]
+    pub sqlite_mmap_size_mb: u32,
 }
 
 impl Default for DatabaseConfig {
@@ -66,6 +72,8 @@ impl Default for DatabaseConfig {
             read_busy_timeout_secs: default_read_busy_timeout_secs(),
             read_acquire_timeout_secs: default_read_acquire_timeout_secs(),
             wal_autocheckpoint: default_wal_autocheckpoint(),
+            sqlite_cache_size_kb: default_sqlite_cache_size_kb(),
+            sqlite_mmap_size_mb: default_sqlite_mmap_size_mb(),
         }
     }
 }
@@ -111,7 +119,7 @@ fn default_write_pool_max_connections() -> u32 {
 }
 
 fn default_read_pool_max_connections() -> u32 {
-    10
+    4
 }
 
 fn default_write_busy_timeout_secs() -> u64 {
@@ -128,4 +136,12 @@ fn default_read_acquire_timeout_secs() -> u64 {
 
 fn default_wal_autocheckpoint() -> u32 {
     0
+}
+
+fn default_sqlite_cache_size_kb() -> u32 {
+    16_384
+}
+
+fn default_sqlite_mmap_size_mb() -> u32 {
+    64
 }

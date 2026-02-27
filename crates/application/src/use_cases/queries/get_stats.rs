@@ -1,4 +1,4 @@
-use crate::ports::QueryLogRepository;
+use crate::ports::{ClientRepository, QueryLogRepository};
 use ferrous_dns_domain::{query_log::QueryStats, DomainError};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -14,14 +14,19 @@ struct CachedStats {
 
 pub struct GetQueryStatsUseCase {
     repository: Arc<dyn QueryLogRepository>,
+    client_repository: Arc<dyn ClientRepository>,
     cache: RwLock<Option<CachedStats>>,
     refresh_lock: Mutex<()>,
 }
 
 impl GetQueryStatsUseCase {
-    pub fn new(repository: Arc<dyn QueryLogRepository>) -> Self {
+    pub fn new(
+        repository: Arc<dyn QueryLogRepository>,
+        client_repository: Arc<dyn ClientRepository>,
+    ) -> Self {
         Self {
             repository,
+            client_repository,
             cache: RwLock::new(None),
             refresh_lock: Mutex::new(()),
         }
@@ -48,7 +53,12 @@ impl GetQueryStatsUseCase {
             }
         }
 
-        let stats = self.repository.get_stats(period_hours).await?;
+        let (stats_result, unique_clients) = tokio::join!(
+            self.repository.get_stats(period_hours),
+            self.client_repository.count_active_since(period_hours)
+        );
+        let mut stats = stats_result?;
+        stats.unique_clients = unique_clients?;
 
         {
             let mut guard = self.cache.write().unwrap();

@@ -296,7 +296,7 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
     );
 
     let state = AppState {
-        get_stats: Arc::new(GetQueryStatsUseCase::new(query_log_repo.clone())),
+        get_stats: Arc::new(GetQueryStatsUseCase::new(query_log_repo.clone(), client_repo.clone())),
         get_queries: Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone())),
         get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),

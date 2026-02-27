@@ -7,7 +7,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 
 mod helpers;
-use helpers::MockQueryLogRepository;
+use helpers::{MockClientRepository, MockQueryLogRepository};
 
 fn make_log(cache_hit: bool, blocked: bool, block_source: Option<BlockSource>) -> QueryLog {
     QueryLog {
@@ -46,9 +46,11 @@ async fn test_get_recent_queries_empty() {
 #[tokio::test]
 async fn test_get_stats_empty() {
     let repository_mock = Arc::new(MockQueryLogRepository::new());
+    let client_mock = Arc::new(MockClientRepository::new());
 
     let use_case = GetQueryStatsUseCase::new(
-        repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
+        repository_mock.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>,
+        client_mock.clone() as Arc<dyn ferrous_dns_application::ports::ClientRepository>,
     );
 
     let result = use_case.execute(24.0).await;
@@ -60,6 +62,7 @@ async fn test_get_stats_empty() {
 #[tokio::test]
 async fn test_get_stats_with_cache_and_upstream() {
     let repo = Arc::new(MockQueryLogRepository::new());
+    let client_mock = Arc::new(MockClientRepository::new());
 
     for _ in 0..3 {
         repo.log_query(&make_log(true, false, None)).await.unwrap();
@@ -69,7 +72,8 @@ async fn test_get_stats_with_cache_and_upstream() {
     }
 
     let use_case = GetQueryStatsUseCase::new(
-        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
+        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>,
+        client_mock.clone() as Arc<dyn ferrous_dns_application::ports::ClientRepository>,
     );
     let stats = use_case.execute(24.0).await.unwrap();
 
@@ -82,6 +86,7 @@ async fn test_get_stats_with_cache_and_upstream() {
 #[tokio::test]
 async fn test_get_stats_blocked_sources() {
     let repo = Arc::new(MockQueryLogRepository::new());
+    let client_mock = Arc::new(MockClientRepository::new());
 
     repo.log_query(&make_log(false, true, Some(BlockSource::Blocklist)))
         .await
@@ -97,7 +102,8 @@ async fn test_get_stats_blocked_sources() {
         .unwrap();
 
     let use_case = GetQueryStatsUseCase::new(
-        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
+        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>,
+        client_mock.clone() as Arc<dyn ferrous_dns_application::ports::ClientRepository>,
     );
     let stats = use_case.execute(24.0).await.unwrap();
 
@@ -111,6 +117,7 @@ async fn test_get_stats_blocked_sources() {
 #[tokio::test]
 async fn test_get_stats_cname_cloaking_source() {
     let repo = Arc::new(MockQueryLogRepository::new());
+    let client_mock = Arc::new(MockClientRepository::new());
 
     repo.log_query(&make_log(false, true, Some(BlockSource::CnameCloaking)))
         .await
@@ -123,7 +130,8 @@ async fn test_get_stats_cname_cloaking_source() {
         .unwrap();
 
     let use_case = GetQueryStatsUseCase::new(
-        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>
+        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>,
+        client_mock.clone() as Arc<dyn ferrous_dns_application::ports::ClientRepository>,
     );
     let stats = use_case.execute(24.0).await.unwrap();
 

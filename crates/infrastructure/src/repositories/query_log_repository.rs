@@ -502,7 +502,6 @@ impl QueryLogRepository for SqliteQueryLogRepository {
                     COUNT(*) as total,
                     SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
                     SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
-                    COUNT(DISTINCT client_ip) as unique_clients,
                     AVG(response_time_ms) as avg_time,
                     AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
                     AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
@@ -590,7 +589,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         let stats = QueryStats {
             queries_total: total,
             queries_blocked: row.get::<i64, _>("blocked") as u64,
-            unique_clients: row.get::<i64, _>("unique_clients") as u64,
+            unique_clients: 0,
             uptime_seconds: get_uptime(),
             cache_hit_rate,
             avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0),

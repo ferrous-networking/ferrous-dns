@@ -634,6 +634,25 @@ impl ClientRepository for MockClientRepository {
         })
     }
 
+    async fn count_active_since(&self, hours: f32) -> Result<u64, DomainError> {
+        let clients = self.clients.read().await;
+        let cutoff = (chrono::Utc::now()
+            - chrono::Duration::milliseconds((hours * 3_600_000.0) as i64))
+        .to_rfc3339();
+
+        let count = clients
+            .values()
+            .filter(|c| {
+                c.last_seen
+                    .as_ref()
+                    .map(|ls| ls.as_str() >= cutoff.as_str())
+                    .unwrap_or(false)
+            })
+            .count() as u64;
+
+        Ok(count)
+    }
+
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
         let mut clients = self.clients.write().await;
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();

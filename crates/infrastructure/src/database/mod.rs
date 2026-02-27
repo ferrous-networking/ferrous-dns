@@ -15,13 +15,15 @@ fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error>
     })
 }
 
-async fn apply_per_connection_pragmas(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
-    sqlx::query("PRAGMA cache_size = -65536")
-        .execute(&mut *conn)
-        .await?;
-    sqlx::query("PRAGMA mmap_size = 268435456")
-        .execute(&mut *conn)
-        .await?;
+async fn apply_per_connection_pragmas(
+    conn: &mut SqliteConnection,
+    cache_size_kb: u32,
+    mmap_size_mb: u32,
+) -> Result<(), sqlx::Error> {
+    let cache_pragma = format!("PRAGMA cache_size = -{}", cache_size_kb);
+    let mmap_pragma = format!("PRAGMA mmap_size = {}", mmap_size_mb as u64 * 1024 * 1024);
+    sqlx::query(&cache_pragma).execute(&mut *conn).await?;
+    sqlx::query(&mmap_pragma).execute(&mut *conn).await?;
     sqlx::query("PRAGMA temp_store = MEMORY")
         .execute(&mut *conn)
         .await?;
@@ -35,11 +37,15 @@ pub async fn create_write_pool(
     let options =
         base_options(database_url)?.busy_timeout(Duration::from_secs(cfg.write_busy_timeout_secs));
 
+    let cache_kb = cfg.sqlite_cache_size_kb;
+    let mmap_mb = cfg.sqlite_mmap_size_mb;
     let pool = SqlitePoolOptions::new()
         .max_connections(cfg.write_pool_max_connections)
         .min_connections(1)
         .acquire_timeout(Duration::from_secs(cfg.write_busy_timeout_secs))
-        .after_connect(|conn, _| Box::pin(async move { apply_per_connection_pragmas(conn).await }))
+        .after_connect(move |conn, _| {
+            Box::pin(async move { apply_per_connection_pragmas(conn, cache_kb, mmap_mb).await })
+        })
         .connect_with(options)
         .await?;
 
@@ -64,11 +70,15 @@ pub async fn create_read_pool(
     let options =
         base_options(database_url)?.busy_timeout(Duration::from_secs(cfg.read_busy_timeout_secs));
 
+    let cache_kb = cfg.sqlite_cache_size_kb;
+    let mmap_mb = cfg.sqlite_mmap_size_mb;
     let pool = SqlitePoolOptions::new()
         .max_connections(cfg.read_pool_max_connections)
         .min_connections(2)
         .acquire_timeout(Duration::from_secs(cfg.read_acquire_timeout_secs))
-        .after_connect(|conn, _| Box::pin(async move { apply_per_connection_pragmas(conn).await }))
+        .after_connect(move |conn, _| {
+            Box::pin(async move { apply_per_connection_pragmas(conn, cache_kb, mmap_mb).await })
+        })
         .connect_with(options)
         .await?;
 

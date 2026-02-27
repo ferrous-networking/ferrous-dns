@@ -87,7 +87,10 @@ impl UseCases {
         let subnet_matcher = Arc::new(SubnetMatcherService::new(repos.client_subnet.clone()));
 
         Self {
-            get_stats: Arc::new(GetQueryStatsUseCase::new(repos.query_log.clone())),
+            get_stats: Arc::new(GetQueryStatsUseCase::new(
+                repos.query_log.clone(),
+                repos.client.clone(),
+            )),
             get_queries: Arc::new(GetRecentQueriesUseCase::new(repos.query_log.clone())),
             get_timeline: Arc::new(GetTimelineUseCase::new(repos.query_log.clone())),
             get_query_rate: Arc::new(GetQueryRateUseCase::new(repos.query_log.clone())),

@@ -279,6 +279,25 @@ impl ClientRepository for SqliteClientRepository {
     }
 
     #[instrument(skip(self))]
+    async fn count_active_since(&self, hours: f32) -> Result<u64, DomainError> {
+        let ms = (hours * 3_600_000.0) as i64;
+        let cutoff = (chrono::Utc::now() - chrono::Duration::milliseconds(ms))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+
+        let row = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM clients WHERE last_seen >= ?")
+            .bind(&cutoff)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to count active clients");
+                DomainError::DatabaseError(e.to_string())
+            })?;
+
+        Ok(row.0 as u64)
+    }
+
+    #[instrument(skip(self))]
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
         let result = sqlx::query("DELETE FROM clients WHERE last_seen < datetime('now', ?)")
             .bind(format!("-{} days", days))

@@ -27,6 +27,8 @@ pub trait ClientRepository: Send + Sync {
 
     async fn get_stats(&self) -> Result<ClientStats, DomainError>;
 
+    async fn count_active_since(&self, hours: f32) -> Result<u64, DomainError>;
+
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError>;
 
     async fn get_needs_mac_update(&self, limit: u32) -> Result<Vec<Client>, DomainError>;

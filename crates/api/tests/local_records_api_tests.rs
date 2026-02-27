@@ -305,7 +305,7 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
     let state = AppState {
         get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ))),
+        ), client_repo.clone())),
         get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
             ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
         ))),
