@@ -2,8 +2,9 @@
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    ArpReader, ArpTable, CacheStats, ClientRepository, HostnameResolver, QueryLogRepository,
-    TimeGranularity, TimelineBucket,
+    ArpReader, ArpTable, CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome,
+    CacheStats, ClientRepository, HostnameResolver, QueryLogRepository, TimeGranularity,
+    TimelineBucket,
 };
 use ferrous_dns_domain::{Client, ClientStats, DomainError, QueryLog, QueryStats, RecordType};
 use std::collections::HashMap;
@@ -540,5 +541,72 @@ impl QueryLogRepository for MockQueryLogRepository {
         let deleted = (before - logs.len()) as u64;
         self.delete_count.fetch_add(deleted, Ordering::Relaxed);
         Ok(deleted)
+    }
+}
+
+pub struct MockCacheMaintenancePort {
+    refresh_call_count: Arc<AtomicU64>,
+    compaction_call_count: Arc<AtomicU64>,
+    should_fail_refresh: Arc<RwLock<bool>>,
+    should_fail_compaction: Arc<RwLock<bool>>,
+    refresh_outcome: Arc<RwLock<CacheRefreshOutcome>>,
+    compaction_outcome: Arc<RwLock<CacheCompactionOutcome>>,
+}
+
+impl MockCacheMaintenancePort {
+    pub fn new() -> Self {
+        Self {
+            refresh_call_count: Arc::new(AtomicU64::new(0)),
+            compaction_call_count: Arc::new(AtomicU64::new(0)),
+            should_fail_refresh: Arc::new(RwLock::new(false)),
+            should_fail_compaction: Arc::new(RwLock::new(false)),
+            refresh_outcome: Arc::new(RwLock::new(CacheRefreshOutcome::default())),
+            compaction_outcome: Arc::new(RwLock::new(CacheCompactionOutcome::default())),
+        }
+    }
+
+    pub fn with_refresh_outcome(mut self, outcome: CacheRefreshOutcome) -> Self {
+        self.refresh_outcome = Arc::new(RwLock::new(outcome));
+        self
+    }
+
+    pub fn with_compaction_outcome(mut self, outcome: CacheCompactionOutcome) -> Self {
+        self.compaction_outcome = Arc::new(RwLock::new(outcome));
+        self
+    }
+
+    pub fn refresh_call_count(&self) -> u64 {
+        self.refresh_call_count.load(Ordering::Relaxed)
+    }
+
+    pub fn compaction_call_count(&self) -> u64 {
+        self.compaction_call_count.load(Ordering::Relaxed)
+    }
+
+    pub async fn set_should_fail_refresh(&self, fail: bool) {
+        *self.should_fail_refresh.write().await = fail;
+    }
+
+    pub async fn set_should_fail_compaction(&self, fail: bool) {
+        *self.should_fail_compaction.write().await = fail;
+    }
+}
+
+#[async_trait]
+impl CacheMaintenancePort for MockCacheMaintenancePort {
+    async fn run_refresh_cycle(&self) -> Result<CacheRefreshOutcome, DomainError> {
+        self.refresh_call_count.fetch_add(1, Ordering::Relaxed);
+        if *self.should_fail_refresh.read().await {
+            return Err(DomainError::IoError("mock refresh failure".into()));
+        }
+        Ok(self.refresh_outcome.read().await.clone())
+    }
+
+    async fn run_compaction_cycle(&self) -> Result<CacheCompactionOutcome, DomainError> {
+        self.compaction_call_count.fetch_add(1, Ordering::Relaxed);
+        if *self.should_fail_compaction.read().await {
+            return Err(DomainError::IoError("mock compaction failure".into()));
+        }
+        Ok(self.compaction_outcome.read().await.clone())
     }
 }

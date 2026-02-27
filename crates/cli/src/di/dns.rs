@@ -1,9 +1,10 @@
 use super::Repositories;
+use ferrous_dns_application::ports::CacheMaintenancePort;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::{DnsCache, DnsCacheConfig, EvictionStrategy},
-    cache_updater::CacheUpdater,
+    cache_maintenance::DnsCacheMaintenance,
     events::QueryEventEmitter,
     query_logger::QueryEventLogger,
     HealthChecker, HickoryDnsResolver, PoolManager,
@@ -16,6 +17,7 @@ pub struct DnsServices {
     pub cache: Arc<DnsCache>,
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
     pub pool_manager: Arc<PoolManager>,
+    pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
 }
 
 impl DnsServices {
@@ -54,7 +56,23 @@ impl DnsServices {
             resolver = resolver.with_cache(cache.clone(), config.dns.cache_ttl);
         }
 
-        Self::start_cache_updater(&cache, &pool_manager_clone, config, repos, timeout_ms)?;
+        let cache_maintenance = if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
+            let resolver_for_maintenance = HickoryDnsResolver::new_with_pools(
+                pool_manager_clone.clone(),
+                timeout_ms,
+                false,
+                None,
+            )?
+            .with_cache(cache.clone(), config.dns.cache_ttl);
+
+            Some(Arc::new(DnsCacheMaintenance::new(
+                cache.clone(),
+                Arc::new(resolver_for_maintenance),
+                Some(repos.query_log.clone()),
+            )) as Arc<dyn CacheMaintenancePort>)
+        } else {
+            None
+        };
 
         let resolver = Arc::new(resolver);
 
@@ -90,6 +108,7 @@ impl DnsServices {
             cache,
             handler_use_case,
             pool_manager: pool_manager_clone,
+            cache_maintenance,
         })
     }
 
@@ -229,34 +248,6 @@ impl DnsServices {
                 max_ttl: config.dns.cache_max_ttl,
             }))
         }
-    }
-
-    fn start_cache_updater(
-        cache: &Arc<DnsCache>,
-        pool_manager: &Arc<PoolManager>,
-        config: &Config,
-        repos: &Repositories,
-        timeout_ms: u64,
-    ) -> anyhow::Result<()> {
-        if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
-            info!("Starting cache background tasks");
-
-            let resolver_for_updater =
-                HickoryDnsResolver::new_with_pools(pool_manager.clone(), timeout_ms, false, None)?
-                    .with_cache(cache.clone(), config.dns.cache_ttl);
-
-            let updater = CacheUpdater::new(
-                cache.clone(),
-                Arc::new(resolver_for_updater),
-                Some(repos.query_log.clone()),
-                60,
-                config.dns.cache_compaction_interval,
-            );
-
-            updater.start();
-            info!("Cache background tasks started");
-        }
-        Ok(())
     }
 
     fn preload_local_records_into_cache(

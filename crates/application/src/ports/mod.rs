@@ -3,6 +3,7 @@ mod block_filter_engine;
 mod blocked_service_repository;
 mod blocklist_repository;
 mod blocklist_source_repository;
+mod cache_maintenance_port;
 mod client_repository;
 mod client_subnet_repository;
 mod config_repository;
@@ -22,6 +23,9 @@ pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
 pub use blocked_service_repository::BlockedServiceRepository;
 pub use blocklist_repository::BlocklistRepository;
 pub use blocklist_source_repository::BlocklistSourceRepository;
+pub use cache_maintenance_port::{
+    CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome,
+};
 pub use client_repository::ClientRepository;
 pub use client_subnet_repository::ClientSubnetRepository;
 pub use config_repository::ConfigRepository;

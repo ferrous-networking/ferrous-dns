@@ -1,6 +1,6 @@
 pub mod block_filter;
 pub mod cache;
-pub mod cache_updater;
+pub mod cache_maintenance;
 pub mod cache_warming;
 pub mod dnssec;
 pub mod events;
@@ -19,7 +19,7 @@ pub use cache::{
     CacheKey, CacheMetrics, CachedAddresses, CachedData, CachedRecord, DnsCache, DnsCacheAccess,
     DnsCacheConfig, DnssecStatus, EvictionStrategy, NegativeQueryTracker,
 };
-pub use cache_updater::CacheUpdater;
+pub use cache_maintenance::DnsCacheMaintenance;
 pub use cache_warming::{CacheWarmer, WarmingStats};
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{

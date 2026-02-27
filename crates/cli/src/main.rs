@@ -8,8 +8,8 @@ use ferrous_dns_api::AppState;
 use ferrous_dns_domain::CliOverrides;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_jobs::{
-    BlocklistSyncJob, ClientSyncJob, JobRunner, QueryLogRetentionJob, RetentionJob,
-    WalCheckpointJob,
+    BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, QueryLogRetentionJob,
+    RetentionJob, WalCheckpointJob,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -103,7 +103,7 @@ async fn async_main() -> anyhow::Result<()> {
         config.dns.local_dns_server.clone(),
     );
 
-    JobRunner::new()
+    let mut runner = JobRunner::new()
         .with_client_sync(ClientSyncJob::new(
             use_cases.sync_arp.clone(),
             use_cases.sync_hostnames.clone(),
@@ -117,9 +117,16 @@ async fn async_main() -> anyhow::Result<()> {
         .with_wal_checkpoint(WalCheckpointJob::new(
             wal_pool,
             config.database.wal_checkpoint_interval_secs,
-        ))
-        .start()
-        .await;
+        ));
+
+    if let Some(maintenance) = dns_services.cache_maintenance {
+        runner = runner.with_cache_maintenance(
+            CacheMaintenanceJob::new(maintenance)
+                .with_intervals(60, config.dns.cache_compaction_interval),
+        );
+    }
+
+    runner.start().await;
 
     info!("Loading subnet matcher cache");
     if let Err(e) = use_cases.subnet_matcher.refresh().await {

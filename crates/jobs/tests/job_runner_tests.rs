@@ -1,13 +1,14 @@
 use ferrous_dns_application::use_cases::{
     CleanupOldClientsUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
 };
-use ferrous_dns_jobs::{ClientSyncJob, JobRunner, RetentionJob};
+use ferrous_dns_jobs::{CacheMaintenanceJob, ClientSyncJob, JobRunner, RetentionJob};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 mod helpers;
 use helpers::{
-    make_client, make_old_client, MockArpReader, MockClientRepository, MockHostnameResolver,
+    make_client, make_old_client, MockArpReader, MockCacheMaintenancePort, MockClientRepository,
+    MockHostnameResolver,
 };
 
 fn make_client_sync_job(
@@ -169,4 +170,29 @@ async fn test_job_runner_builder_is_chainable() {
         .with_retention(make_retention_job(repo, 7));
 
     runner.start().await;
+}
+
+fn make_cache_maintenance_job(mock: Arc<MockCacheMaintenancePort>) -> CacheMaintenanceJob {
+    CacheMaintenanceJob::new(mock)
+}
+
+#[tokio::test]
+async fn test_job_runner_with_cache_maintenance() {
+    let mock = Arc::new(MockCacheMaintenancePort::new());
+    let job = make_cache_maintenance_job(mock);
+
+    JobRunner::new().with_cache_maintenance(job).start().await;
+    sleep(Duration::from_millis(10)).await;
+}
+
+#[tokio::test]
+async fn test_job_runner_cache_maintenance_fires() {
+    let mock = Arc::new(MockCacheMaintenancePort::new());
+    let job = CacheMaintenanceJob::new(mock.clone()).with_intervals(1, 1);
+
+    JobRunner::new().with_cache_maintenance(job).start().await;
+    sleep(Duration::from_millis(1100)).await;
+
+    assert!(mock.refresh_call_count() >= 1);
+    assert!(mock.compaction_call_count() >= 1);
 }
