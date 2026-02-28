@@ -325,10 +325,12 @@ impl QueryLogRepository for MockQueryLogRepository {
             "cache".to_string(),
             logs.iter().filter(|l| l.cache_hit).count() as u64,
         );
-        source_stats.insert(
-            "upstream".to_string(),
-            logs.iter().filter(|l| !l.cache_hit && !l.blocked).count() as u64,
-        );
+        for log in logs.iter().filter(|l| !l.cache_hit && !l.blocked) {
+            let pool = log.upstream_pool.as_deref().unwrap_or("unknown");
+            let server = log.upstream_server.as_deref().unwrap_or("unknown");
+            let key = format!("{pool}:{server}");
+            *source_stats.entry(key).or_insert(0) += 1;
+        }
         source_stats.insert("local_dns".to_string(), 0u64);
 
         for (key, block_source) in [

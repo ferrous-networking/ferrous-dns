@@ -172,14 +172,14 @@
     <div class="card" style="padding:24px;margin-bottom:24px">
         <canvas id="timelineChart" style="max-height:300px"></canvas>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(450px,1fr));gap:24px">
         <div class="card" style="padding:24px"><h3
                 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Types</h3>
-            <canvas id="queryTypesChart" style="max-height:250px"></canvas>
+            <canvas id="queryTypesChart" style="max-height:300px"></canvas>
         </div>
         <div class="card" style="padding:24px"><h3
                 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Source</h3>
-            <canvas id="cacheSourceChart" style="max-height:250px"></canvas>
+            <canvas id="cacheSourceChart" style="max-height:300px"></canvas>
         </div>
     </div>
 </main>
@@ -200,6 +200,12 @@
     }
 
     function formatSourceKey(key) {
+        if (key.includes(':')) {
+            const parts = key.split(':');
+            const pool = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+            const server = parts.slice(1).join(':');
+            return pool + ': ' + server;
+        }
         return key
             .replace(/^blocked_by_/, '')
             .replace(/_hits$/, '')
@@ -216,7 +222,7 @@
             queryRate: {queries: 0, rate: '0 q/s'},
             cacheMetrics: {},
             blockFilterStats: {total_blocked_domains: 0},
-            sourceStats: {cache: 0, upstream: 0, local_dns: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
+            sourceStats: {cache: 0, local_dns: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
             queryTypes: {},
             chartsReady: false,
             pollingIntervals: {fast: null, slow: null},
@@ -374,7 +380,7 @@
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
-                                    aspectRatio: 1.5,
+                                    aspectRatio: 2,
                                     plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
                                 }
                             });
@@ -437,7 +443,7 @@
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
-                                    aspectRatio: 1.5,
+                                    aspectRatio: 2,
                                     plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
                                 }
                             });

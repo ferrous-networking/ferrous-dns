@@ -10,6 +10,16 @@ mod helpers;
 use helpers::{MockClientRepository, MockQueryLogRepository};
 
 fn make_log(cache_hit: bool, blocked: bool, block_source: Option<BlockSource>) -> QueryLog {
+    make_log_with_upstream(cache_hit, blocked, block_source, None, None)
+}
+
+fn make_log_with_upstream(
+    cache_hit: bool,
+    blocked: bool,
+    block_source: Option<BlockSource>,
+    upstream_pool: Option<&str>,
+    upstream_server: Option<&str>,
+) -> QueryLog {
     QueryLog {
         id: None,
         domain: "example.com".into(),
@@ -21,8 +31,8 @@ fn make_log(cache_hit: bool, blocked: bool, block_source: Option<BlockSource>) -
         cache_hit,
         cache_refresh: false,
         dnssec_status: None,
-        upstream_server: None,
-        upstream_pool: None,
+        upstream_server: upstream_server.map(Arc::from),
+        upstream_pool: upstream_pool.map(Arc::from),
         response_status: Some("NOERROR"),
         timestamp: None,
         query_source: QuerySource::Client,
@@ -80,7 +90,7 @@ async fn test_get_stats_with_cache_and_upstream() {
 
     assert_eq!(stats.queries_total, 5);
     assert_eq!(stats.source_stats.get("cache"), Some(&3));
-    assert_eq!(stats.source_stats.get("upstream"), Some(&2));
+    assert_eq!(stats.source_stats.get("unknown:unknown"), Some(&2));
     assert_eq!(stats.queries_blocked, 0);
 }
 
@@ -139,4 +149,46 @@ async fn test_get_stats_cname_cloaking_source() {
     assert_eq!(stats.queries_blocked, 3);
     assert_eq!(stats.source_stats.get("cname_cloaking"), Some(&2));
     assert_eq!(stats.source_stats.get("blocklist"), Some(&1));
+}
+
+#[tokio::test]
+async fn test_get_stats_multiple_upstream_servers() {
+    let repo = Arc::new(MockQueryLogRepository::new());
+    let client_mock = Arc::new(MockClientRepository::new());
+
+    for _ in 0..3 {
+        repo.log_query(&make_log_with_upstream(
+            false,
+            false,
+            None,
+            Some("default"),
+            Some("8.8.8.8:53"),
+        ))
+        .await
+        .unwrap();
+    }
+    repo.log_query(&make_log_with_upstream(
+        false,
+        false,
+        None,
+        Some("cloudflare"),
+        Some("1.1.1.1:53"),
+    ))
+    .await
+    .unwrap();
+    repo.log_query(&make_log_with_upstream(false, false, None, None, None))
+        .await
+        .unwrap();
+
+    let use_case = GetQueryStatsUseCase::new(
+        repo.clone() as Arc<dyn ferrous_dns_application::ports::QueryLogRepository>,
+        client_mock.clone() as Arc<dyn ferrous_dns_application::ports::ClientRepository>,
+    );
+    let stats = use_case.execute(24.0).await.unwrap();
+
+    assert_eq!(stats.queries_total, 5);
+    assert_eq!(stats.source_stats.get("default:8.8.8.8:53"), Some(&3));
+    assert_eq!(stats.source_stats.get("cloudflare:1.1.1.1:53"), Some(&1));
+    assert_eq!(stats.source_stats.get("unknown:unknown"), Some(&1));
+    assert_eq!(stats.source_stats.get("upstream"), None);
 }

@@ -139,46 +139,61 @@ pub(super) async fn get_stats(
 
     let cutoff = hours_ago_cutoff(period_hours);
 
-    let (row_result, type_rows_result, block_source_rows_result) = tokio::join!(
-        sqlx::query(
-            "SELECT
-                COUNT(*) as total,
-                SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
-                SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
-                AVG(response_time_ms) as avg_time,
-                AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
-                AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
-                SUM(CASE WHEN cache_hit = 0 AND blocked = 0 AND (response_status IS NULL OR response_status != 'LOCAL_DNS') THEN 1 ELSE 0 END) as upstream_count,
-                SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
-             FROM query_log
-             WHERE response_time_ms IS NOT NULL
-               AND created_at >= ?
-               AND query_source = 'client'",
-        )
-        .bind(&cutoff)
-        .fetch_one(pool),
-        sqlx::query(
-            "SELECT record_type, COUNT(*) as count
-             FROM query_log
-             WHERE created_at >= ?
-               AND query_source = 'client'
-             GROUP BY record_type",
-        )
-        .bind(&cutoff)
-        .fetch_all(pool),
-        sqlx::query(
-            "SELECT block_source, COUNT(*) as count
-             FROM query_log
-             WHERE blocked = 1
-               AND block_source IS NOT NULL
-               AND response_time_ms IS NOT NULL
-               AND created_at >= ?
-               AND query_source = 'client'
-             GROUP BY block_source",
-        )
-        .bind(&cutoff)
-        .fetch_all(pool),
-    );
+    let (row_result, type_rows_result, block_source_rows_result, upstream_rows_result) =
+        tokio::join!(
+            sqlx::query(
+                "SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
+                    SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
+                    AVG(response_time_ms) as avg_time,
+                    AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
+                    AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
+                    SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
+                 FROM query_log
+                 WHERE response_time_ms IS NOT NULL
+                   AND created_at >= ?
+                   AND query_source = 'client'",
+            )
+            .bind(&cutoff)
+            .fetch_one(pool),
+            sqlx::query(
+                "SELECT record_type, COUNT(*) as count
+                 FROM query_log
+                 WHERE created_at >= ?
+                   AND query_source = 'client'
+                 GROUP BY record_type",
+            )
+            .bind(&cutoff)
+            .fetch_all(pool),
+            sqlx::query(
+                "SELECT block_source, COUNT(*) as count
+                 FROM query_log
+                 WHERE blocked = 1
+                   AND block_source IS NOT NULL
+                   AND response_time_ms IS NOT NULL
+                   AND created_at >= ?
+                   AND query_source = 'client'
+                 GROUP BY block_source",
+            )
+            .bind(&cutoff)
+            .fetch_all(pool),
+            sqlx::query(
+                "SELECT
+                    COALESCE(upstream_pool, 'unknown') as pool,
+                    COALESCE(upstream_server, 'unknown') as server,
+                    COUNT(*) as count
+                 FROM query_log
+                 WHERE cache_hit = 0 AND blocked = 0
+                   AND (response_status IS NULL OR response_status != 'LOCAL_DNS')
+                   AND response_time_ms IS NOT NULL
+                   AND created_at >= ?
+                   AND query_source = 'client'
+                 GROUP BY upstream_pool, upstream_server",
+            )
+            .bind(&cutoff)
+            .fetch_all(pool),
+        );
 
     let row = row_result.map_err(|e| {
         error!(error = %e, "Failed to fetch statistics");
@@ -190,6 +205,10 @@ pub(super) async fn get_stats(
     })?;
     let block_source_rows = block_source_rows_result.map_err(|e| {
         error!(error = %e, "Failed to fetch block source statistics");
+        DomainError::DatabaseError(e.to_string())
+    })?;
+    let upstream_rows = upstream_rows_result.map_err(|e| {
+        error!(error = %e, "Failed to fetch upstream statistics");
         DomainError::DatabaseError(e.to_string())
     })?;
 
@@ -213,13 +232,17 @@ pub(super) async fn get_stats(
     let mut source_stats = std::collections::HashMap::new();
     source_stats.insert("cache".to_string(), cache_hits);
     source_stats.insert(
-        "upstream".to_string(),
-        row.get::<i64, _>("upstream_count") as u64,
-    );
-    source_stats.insert(
         "local_dns".to_string(),
         row.get::<i64, _>("local_dns_count") as u64,
     );
+    for upstream_row in upstream_rows {
+        let pool: String = upstream_row.get("pool");
+        let server: String = upstream_row.get("server");
+        let count = upstream_row.get::<i64, _>("count") as u64;
+        if count > 0 {
+            source_stats.insert(format!("{pool}:{server}"), count);
+        }
+    }
     for block_row in block_source_rows {
         let key: String = block_row.get("block_source");
         let count = block_row.get::<i64, _>("count") as u64;
