@@ -35,7 +35,7 @@ impl ValidationResult {
 }
 
 struct DnskeyQueryResult {
-    keys: Vec<DnskeyRecord>,
+    keys: Arc<[DnskeyRecord]>,
     rrsigs: Vec<RrsigRecord>,
     raw_records: Vec<Record>,
 }
@@ -45,7 +45,7 @@ pub struct ChainVerifier {
     trust_store: TrustAnchorStore,
     crypto_verifier: SignatureVerifier,
 
-    validated_keys: HashMap<String, Vec<DnskeyRecord>>,
+    validated_keys: HashMap<String, Arc<[DnskeyRecord]>>,
 
     dnssec_cache: Arc<DnssecCache>,
 }
@@ -84,9 +84,15 @@ impl ChainVerifier {
         let labels = Self::split_domain(domain);
         debug!(labels = ?labels, "Domain labels");
 
-        let root_anchor = self.trust_store.get_anchor(".").unwrap();
+        let root_anchor = match self.trust_store.get_anchor(".") {
+            Some(anchor) => anchor,
+            None => {
+                warn!("Root trust anchor disappeared during validation");
+                return Ok(ValidationResult::Indeterminate);
+            }
+        };
         self.validated_keys
-            .insert(".".to_string(), vec![root_anchor.dnskey.clone()]);
+            .insert(".".to_string(), Arc::from(vec![root_anchor.dnskey.clone()]));
 
         let mut current_domain = String::from(".");
 
@@ -145,14 +151,19 @@ impl ChainVerifier {
         _parent_domain: &str,
         child_domain: &str,
     ) -> Result<(), DomainError> {
-        let ds_records = self.query_ds(child_domain).await?;
+        let (ds_result, dnskey_result) = tokio::join!(
+            Self::fetch_ds(&self.dnssec_cache, &self.pool_manager, child_domain),
+            Self::fetch_dnskey(&self.dnssec_cache, &self.pool_manager, child_domain),
+        );
+
+        let ds_records = ds_result?;
 
         if ds_records.is_empty() {
             debug!(domain = %child_domain, "No DS records found (insecure delegation)");
             return Err(DomainError::InsecureDelegation);
         }
 
-        let dnskey_result = self.query_dnskey(child_domain).await?;
+        let dnskey_result = dnskey_result?;
 
         if dnskey_result.keys.is_empty() {
             warn!(domain = %child_domain, "No DNSKEY records found");
@@ -163,8 +174,8 @@ impl ChainVerifier {
 
         let mut validated_keys = Vec::new();
 
-        for ds in &ds_records {
-            for dnskey in &dnskey_result.keys {
+        for ds in ds_records.iter() {
+            for dnskey in dnskey_result.keys.iter() {
                 match self.crypto_verifier.verify_ds(ds, dnskey, child_domain) {
                     Ok(true) => {
                         debug!(
@@ -203,6 +214,11 @@ impl ChainVerifier {
         let mut rrsig_ok = false;
 
         if !dnskey_result.rrsigs.is_empty() && !dnskey_result.raw_records.is_empty() {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as u32)
+                .unwrap_or(0);
+
             'outer: for rrsig in &dnskey_result.rrsigs {
                 for key in &validated_keys {
                     match self.crypto_verifier.verify_rrsig(
@@ -210,6 +226,7 @@ impl ChainVerifier {
                         key,
                         child_domain,
                         &dnskey_result.raw_records,
+                        now_secs,
                     ) {
                         Ok(true) => {
                             debug!(
@@ -252,8 +269,12 @@ impl ChainVerifier {
         Ok(())
     }
 
-    async fn query_ds(&self, domain: &str) -> Result<Vec<DsRecord>, DomainError> {
-        if let Some(records) = self.dnssec_cache.get_ds(domain) {
+    async fn fetch_ds(
+        cache: &DnssecCache,
+        pool: &PoolManager,
+        domain: &str,
+    ) -> Result<Arc<[DsRecord]>, DomainError> {
+        if let Some(records) = cache.get_ds(domain) {
             debug!(
                 domain = %domain,
                 count = records.len(),
@@ -264,10 +285,8 @@ impl ChainVerifier {
 
         debug!(domain = %domain, "DS cache miss, querying DNS");
 
-        let result = self
-            .pool_manager
-            .query(domain, &RecordType::DS, 5000, true)
-            .await;
+        let domain_arc: Arc<str> = Arc::from(domain);
+        let result = pool.query(&domain_arc, &RecordType::DS, 5000, true).await;
 
         match result {
             Ok(upstream_result) => {
@@ -291,9 +310,9 @@ impl ChainVerifier {
                 );
 
                 let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-                self.dnssec_cache.cache_ds(domain, records.clone(), ttl);
+                cache.cache_ds(domain, records.clone(), ttl);
 
-                Ok(records)
+                Ok(Arc::from(records))
             }
             Err(e) => {
                 warn!(domain = %domain, error = %e, "DS query failed");
@@ -302,8 +321,12 @@ impl ChainVerifier {
         }
     }
 
-    async fn query_dnskey(&self, domain: &str) -> Result<DnskeyQueryResult, DomainError> {
-        if let Some(keys) = self.dnssec_cache.get_dnskey(domain) {
+    async fn fetch_dnskey(
+        cache: &DnssecCache,
+        pool: &PoolManager,
+        domain: &str,
+    ) -> Result<DnskeyQueryResult, DomainError> {
+        if let Some(keys) = cache.get_dnskey(domain) {
             debug!(
                 domain = %domain,
                 count = keys.len(),
@@ -318,9 +341,9 @@ impl ChainVerifier {
 
         debug!(domain = %domain, "DNSKEY cache miss, querying DNS");
 
-        let result = self
-            .pool_manager
-            .query(domain, &RecordType::DNSKEY, 5000, true)
+        let domain_arc: Arc<str> = Arc::from(domain);
+        let result = pool
+            .query(&domain_arc, &RecordType::DNSKEY, 5000, true)
             .await;
 
         match result {
@@ -375,10 +398,11 @@ impl ChainVerifier {
                 );
 
                 let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-                self.dnssec_cache.cache_dnskey(domain, keys.clone(), ttl);
+                cache.cache_dnskey(domain, keys.clone(), ttl);
 
+                let keys_arc: Arc<[DnskeyRecord]> = Arc::from(keys);
                 Ok(DnskeyQueryResult {
-                    keys,
+                    keys: keys_arc,
                     rrsigs,
                     raw_records,
                 })
@@ -390,21 +414,22 @@ impl ChainVerifier {
         }
     }
 
-    pub fn get_zone_keys(&self, zone: &str) -> Option<&Vec<DnskeyRecord>> {
+    pub fn get_zone_keys(&self, zone: &str) -> Option<&Arc<[DnskeyRecord]>> {
         self.validated_keys.get(zone)
     }
 
     pub fn insert_zone_keys_for_test(&mut self, zone: &str, keys: Vec<DnskeyRecord>) {
-        self.validated_keys.insert(zone.to_string(), keys);
+        self.validated_keys
+            .insert(zone.to_string(), Arc::from(keys));
     }
 
-    pub fn split_domain(domain: &str) -> Vec<String> {
+    pub fn split_domain(domain: &str) -> Vec<&str> {
         let domain = domain.trim_end_matches('.');
 
         if domain.is_empty() || domain == "." {
             return Vec::new();
         }
 
-        domain.split('.').rev().map(|s| s.to_string()).collect()
+        domain.split('.').rev().collect()
     }
 }

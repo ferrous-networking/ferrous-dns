@@ -9,7 +9,7 @@ pub fn routes() -> Router<AppState> {
 pub async fn get_block_filter_stats(
     State(state): State<AppState>,
 ) -> Json<BlockFilterStatsResponse> {
-    let total = state.get_block_filter_stats.execute();
+    let total = state.blocking.get_block_filter_stats.execute();
     Json(BlockFilterStatsResponse {
         total_blocked_domains: total,
     })

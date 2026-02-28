@@ -53,9 +53,10 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
     ) -> Result<WhitelistSource, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, WhitelistSourceRow>(
             "INSERT INTO whitelist_sources (name, url, group_id, comment, enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             RETURNING id, name, url, group_id, comment, enabled, created_at, updated_at",
         )
         .bind(&name)
         .bind(&url)
@@ -64,7 +65,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
         .bind(if enabled { 1i64 } else { 0i64 })
         .bind(&now)
         .bind(&now)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -78,11 +79,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
             }
         })?;
 
-        let id = result.last_insert_rowid();
-
-        self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::DatabaseError("Failed to fetch created whitelist source".to_string())
-        })
+        Ok(Self::row_to_source(row))
     }
 
     #[instrument(skip(self))]
@@ -145,10 +142,11 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
             comment.or_else(|| current.comment.as_ref().map(|s| s.to_string()));
         let final_enabled = enabled.unwrap_or(current.enabled);
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, WhitelistSourceRow>(
             "UPDATE whitelist_sources
              SET name = ?, url = ?, group_id = ?, comment = ?, enabled = ?, updated_at = ?
-             WHERE id = ?",
+             WHERE id = ?
+             RETURNING id, name, url, group_id, comment, enabled, created_at, updated_at",
         )
         .bind(&final_name)
         .bind(&final_url)
@@ -157,7 +155,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
         .bind(if final_enabled { 1i64 } else { 0i64 })
         .bind(&now)
         .bind(id)
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -171,13 +169,8 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
             }
         })?;
 
-        if result.rows_affected() == 0 {
-            return Err(DomainError::WhitelistSourceNotFound(id));
-        }
-
-        self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::DatabaseError("Failed to fetch updated whitelist source".to_string())
-        })
+        row.map(Self::row_to_source)
+            .ok_or(DomainError::WhitelistSourceNotFound(id))
     }
 
     #[instrument(skip(self))]

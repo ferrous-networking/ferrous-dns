@@ -5,12 +5,13 @@ use ferrous_dns_application::ports::{
     CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome, DnsResolver,
     QueryLogRepository,
 };
-use ferrous_dns_domain::{DnsQuery, DomainError, QueryLog, QuerySource};
+use ferrous_dns_domain::{DnsQuery, DomainError, QueryLog, QuerySource, RecordType};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::debug;
+use tracing::{debug, info};
 
 const BACKPRESSURE_MS_PER_CANDIDATE: u64 = 2;
 
@@ -112,6 +113,69 @@ impl DnsCacheMaintenance {
             Ok(_) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    /// Spawns a background task that listens for stale cache keys and refreshes
+    /// them immediately upstream. The task ends when the channel sender is dropped.
+    pub fn start_stale_listener(
+        cache: Arc<DnsCache>,
+        resolver: Arc<dyn DnsResolver>,
+        query_log: Option<Arc<dyn QueryLogRepository>>,
+        mut rx: mpsc::Receiver<(Arc<str>, RecordType)>,
+    ) {
+        const MAX_CONCURRENT_REFRESHES: usize = 16;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_REFRESHES));
+
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Some((domain, record_type)) => {
+                        let permit = match semaphore.clone().acquire_owned().await {
+                            Ok(p) => p,
+                            Err(_) => break,
+                        };
+                        let cache = Arc::clone(&cache);
+                        let resolver = Arc::clone(&resolver);
+                        let query_log = query_log.clone();
+                        tokio::spawn(async move {
+                            match Self::refresh_entry(
+                                &cache,
+                                &resolver,
+                                &query_log,
+                                &domain,
+                                &record_type,
+                            )
+                            .await
+                            {
+                                Ok(true) => {
+                                    debug!(
+                                        domain = %domain,
+                                        record_type = %record_type,
+                                        "Stale entry refreshed immediately"
+                                    );
+                                }
+                                Ok(false) => {
+                                    cache.reset_refreshing(&domain, &record_type);
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        domain = %domain,
+                                        error = %e,
+                                        "Stale refresh failed"
+                                    );
+                                    cache.reset_refreshing(&domain, &record_type);
+                                }
+                            }
+                            drop(permit);
+                        });
+                    }
+                    None => {
+                        info!("Stale refresh listener: channel closed, shutting down");
+                        break;
+                    }
+                }
+            }
+        });
     }
 }
 

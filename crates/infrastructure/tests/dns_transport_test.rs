@@ -102,7 +102,7 @@ fn test_tcp_length_prefix_various_sizes() {
 #[test]
 fn test_tls_transport_creation() {
     let (addr, hostname) = DnsServerBuilder::cloudflare_tls();
-    let transport = TlsTransport::new(addr, hostname.clone());
+    let transport = TlsTransport::new(addr, hostname.into());
 
     assert_eq!(transport.protocol_name(), "TLS");
 }
@@ -110,7 +110,7 @@ fn test_tls_transport_creation() {
 #[test]
 fn test_tls_transport_google() {
     let (addr, hostname) = DnsServerBuilder::google_tls();
-    let transport = TlsTransport::new(addr, hostname.clone());
+    let transport = TlsTransport::new(addr, hostname.into());
 
     assert_eq!(transport.protocol_name(), "TLS");
 }
@@ -119,12 +119,12 @@ fn test_tls_transport_google() {
 fn test_tls_transport_different_hostnames() {
     let _cloudflare = TlsTransport::new(
         UpstreamAddr::Resolved("1.1.1.1:853".parse().unwrap()),
-        "cloudflare-dns.com".to_string(),
+        "cloudflare-dns.com".into(),
     );
 
     let _google = TlsTransport::new(
         UpstreamAddr::Resolved("8.8.8.8:853".parse().unwrap()),
-        "dns.google".to_string(),
+        "dns.google".into(),
     );
 }
 
@@ -220,7 +220,7 @@ fn test_all_protocols_have_unique_names() {
     let udp = UdpTransport::new(DnsServerBuilder::google_dns());
     let tcp = TcpTransport::new(DnsServerBuilder::google_dns());
     let (tls_addr, tls_host) = DnsServerBuilder::cloudflare_tls();
-    let tls = TlsTransport::new(tls_addr, tls_host);
+    let tls = TlsTransport::new(tls_addr, tls_host.into());
     let https = HttpsTransport::new(
         DnsServerBuilder::cloudflare_https(),
         "1.1.1.1".to_string(),

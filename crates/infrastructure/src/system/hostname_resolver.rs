@@ -96,9 +96,10 @@ impl HostnameResolver for PtrHostnameResolver {
             }
         }
 
+        let domain_arc: Arc<str> = Arc::from(reverse_domain.as_str());
         match self
             .pool_manager
-            .query(&reverse_domain, &RecordType::PTR, timeout_ms, false)
+            .query(&domain_arc, &RecordType::PTR, timeout_ms, false)
             .await
         {
             Ok(result) => {

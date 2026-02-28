@@ -6,6 +6,42 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
+pub trait SpawnableJob: Send + 'static {
+    fn with_cancellation(self, token: CancellationToken) -> Self;
+    fn start_job(self: Arc<Self>) -> tokio::task::JoinHandle<()>;
+}
+
+macro_rules! impl_spawnable_job {
+    ($t:ty) => {
+        impl SpawnableJob for $t {
+            fn with_cancellation(self, token: CancellationToken) -> Self {
+                self.with_cancellation(token)
+            }
+
+            fn start_job(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
+                tokio::spawn(async move { self.start().await })
+            }
+        }
+    };
+}
+
+impl_spawnable_job!(ClientSyncJob);
+impl_spawnable_job!(RetentionJob);
+impl_spawnable_job!(QueryLogRetentionJob);
+impl_spawnable_job!(BlocklistSyncJob);
+impl_spawnable_job!(WalCheckpointJob);
+impl_spawnable_job!(CacheMaintenanceJob);
+
+fn spawn_job<J: SpawnableJob>(job: Option<J>, shutdown: &Option<CancellationToken>) {
+    if let Some(job) = job {
+        let job = match shutdown {
+            Some(token) => job.with_cancellation(token.clone()),
+            None => job,
+        };
+        Arc::new(job).start_job();
+    }
+}
+
 pub struct JobRunner {
     client_sync: Option<ClientSyncJob>,
     retention: Option<RetentionJob>,
@@ -67,53 +103,12 @@ impl JobRunner {
     pub async fn start(self) {
         info!("Starting background job runner");
 
-        if let Some(job) = self.client_sync {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
-
-        if let Some(job) = self.retention {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
-
-        if let Some(job) = self.query_log_retention {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
-
-        if let Some(job) = self.blocklist_sync {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
-
-        if let Some(job) = self.wal_checkpoint {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
-
-        if let Some(job) = self.cache_maintenance {
-            let job = match &self.shutdown {
-                Some(token) => job.with_cancellation(token.clone()),
-                None => job,
-            };
-            Arc::new(job).start().await;
-        }
+        spawn_job(self.client_sync, &self.shutdown);
+        spawn_job(self.retention, &self.shutdown);
+        spawn_job(self.query_log_retention, &self.shutdown);
+        spawn_job(self.blocklist_sync, &self.shutdown);
+        spawn_job(self.wal_checkpoint, &self.shutdown);
+        spawn_job(self.cache_maintenance, &self.shutdown);
 
         info!("All background jobs started");
     }

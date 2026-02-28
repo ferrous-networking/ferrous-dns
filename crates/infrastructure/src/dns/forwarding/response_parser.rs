@@ -1,14 +1,16 @@
+use bytes::Bytes;
 use ferrous_dns_domain::DomainError;
 use hickory_proto::op::{Message, ResponseCode};
 use hickory_proto::rr::{RData, Record};
 use std::net::IpAddr;
+use std::sync::Arc;
 use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct DnsResponse {
     pub addresses: Vec<IpAddr>,
 
-    pub cname_chain: Vec<String>,
+    pub cname_chain: Vec<Arc<str>>,
 
     pub rcode: ResponseCode,
 
@@ -18,9 +20,12 @@ pub struct DnsResponse {
 
     pub raw_answers: Vec<Record>,
 
-    pub authority_records: Vec<Record>,
+    pub negative_soa_ttl: Option<u32>,
 
     pub message: Message,
+
+    /// Raw wire bytes of the upstream DNS response.
+    pub raw_bytes: Bytes,
 }
 
 impl DnsResponse {
@@ -45,16 +50,17 @@ impl DnsResponse {
 pub struct ResponseParser;
 
 impl ResponseParser {
-    pub fn parse(response_bytes: &[u8]) -> Result<DnsResponse, DomainError> {
-        let message = Message::from_vec(response_bytes).map_err(|e| {
+    /// Parses DNS response from owned bytes (zero-copy for raw_bytes).
+    pub fn parse_bytes(response_bytes: Bytes) -> Result<DnsResponse, DomainError> {
+        let message = Message::from_vec(&response_bytes).map_err(|e| {
             DomainError::InvalidDomainName(format!("Failed to parse DNS response: {}", e))
         })?;
 
         let rcode = message.response_code();
         let truncated = message.truncated();
 
-        let mut addresses = Vec::new();
-        let mut cname_chain: Vec<String> = Vec::new();
+        let mut addresses = Vec::with_capacity(message.answers().len().min(8));
+        let mut cname_chain: Vec<Arc<str>> = Vec::new();
         let mut min_ttl: Option<u32> = None;
         let mut raw_answers = Vec::new();
 
@@ -72,7 +78,7 @@ impl ResponseParser {
                 RData::CNAME(canonical) => {
                     let name = canonical.to_utf8();
                     debug!(cname = %name, "CNAME record found");
-                    cname_chain.push(name);
+                    cname_chain.push(Arc::from(name.as_str()));
                 }
                 _ => {
                     raw_answers.push(record.clone());
@@ -80,14 +86,19 @@ impl ResponseParser {
             }
         }
 
-        let authority_records: Vec<Record> = message.name_servers().to_vec();
+        let negative_soa_ttl = message.name_servers().iter().find_map(|r| {
+            if let RData::SOA(soa) = r.data() {
+                Some(soa.minimum().min(r.ttl()))
+            } else {
+                None
+            }
+        });
 
         debug!(
             rcode = ?rcode,
             addresses = addresses.len(),
             cname_hops = cname_chain.len(),
             truncated = truncated,
-            authority = authority_records.len(),
             "DNS response parsed"
         );
 
@@ -98,34 +109,26 @@ impl ResponseParser {
             truncated,
             min_ttl,
             raw_answers,
-            authority_records,
+            negative_soa_ttl,
             message,
+            raw_bytes: response_bytes,
         })
     }
 
+    pub fn parse(response_bytes: &[u8]) -> Result<DnsResponse, DomainError> {
+        Self::parse_bytes(Bytes::copy_from_slice(response_bytes))
+    }
+
     pub fn is_transport_error(error: &DomainError) -> bool {
-        if matches!(
+        matches!(
             error,
             DomainError::TransportTimeout { .. }
                 | DomainError::TransportConnectionRefused { .. }
                 | DomainError::TransportConnectionReset { .. }
                 | DomainError::TransportNoHealthyServers
                 | DomainError::TransportAllServersUnreachable
-        ) {
-            return true;
-        }
-
-        let error_str = error.to_string().to_lowercase();
-        error_str.contains("timeout")
-            || error_str.contains("timed out")
-            || error_str.contains("connection refused")
-            || error_str.contains("connection reset")
-            || error_str.contains("connection error")
-            || error_str.contains("network unreachable")
-            || error_str.contains("host unreachable")
-            || error_str.contains("all parallel queries failed")
-            || error_str.contains("all servers failed")
-            || error_str.contains("no healthy servers")
+                | DomainError::IoError(_)
+        )
     }
 
     pub fn rcode_to_status(rcode: ResponseCode) -> &'static str {

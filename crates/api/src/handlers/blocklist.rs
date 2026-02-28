@@ -1,28 +1,48 @@
-use crate::{dto::BlocklistResponse, state::AppState};
-use axum::{extract::State, Json};
-use tracing::{debug, error, instrument};
+use crate::{
+    dto::{BlocklistQuery, BlocklistResponse, PaginatedBlocklist},
+    errors::ApiError,
+    state::AppState,
+};
+use axum::{
+    extract::{Query, State},
+    Json,
+};
+use tracing::{debug, instrument};
 
 #[instrument(skip(state), name = "api_get_blocklist")]
-pub async fn get_blocklist(State(state): State<AppState>) -> Json<Vec<BlocklistResponse>> {
-    debug!("Fetching blocklist");
+pub async fn get_blocklist(
+    State(state): State<AppState>,
+    Query(params): Query<BlocklistQuery>,
+) -> Result<Json<PaginatedBlocklist>, ApiError> {
+    debug!(
+        limit = params.limit,
+        offset = params.offset,
+        "Fetching blocklist"
+    );
 
-    match state.get_blocklist.execute().await {
-        Ok(domains) => {
-            debug!(count = domains.len(), "Blocklist retrieved successfully");
+    let (domains, total) = state
+        .blocking
+        .get_blocklist
+        .execute_paged(params.limit, params.offset)
+        .await?;
 
-            let response = domains
-                .into_iter()
-                .map(|d| BlocklistResponse {
-                    domain: d.domain,
-                    added_at: d.added_at.unwrap_or_default(),
-                })
-                .collect();
+    debug!(
+        count = domains.len(),
+        total, "Blocklist retrieved successfully"
+    );
 
-            Json(response)
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to retrieve blocklist");
-            Json(vec![])
-        }
-    }
+    let data = domains
+        .into_iter()
+        .map(|d| BlocklistResponse {
+            domain: d.domain,
+            added_at: d.added_at.unwrap_or_default(),
+        })
+        .collect();
+
+    Ok(Json(PaginatedBlocklist {
+        data,
+        total,
+        limit: params.limit,
+        offset: params.offset,
+    }))
 }

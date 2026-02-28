@@ -66,19 +66,23 @@ cache_lfuk_history_size = 10            # Number of recent access timestamps tra
 # Lower priority value = higher priority when multiple pools are available.
 
 [[dns.pools]]
-name = "adguard"
+name = "pool1"
 strategy = "Parallel"
 priority = 1
 servers = [
-    "h3://dns.adguard-dns.com/dns-query",
+    "doq://dns.adguard-dns.com:853",
+    "https://dns.quad9.net/dns-query",
+    "https://cloudflare-dns.com/dns-query",
+    "https://dns.google/dns-query"
 ]
 
 [[dns.pools]]
-name = "cloudflare"
+name = "pool2"
 strategy = "Failover"
 priority = 2
 servers = [
-    "https://cloudflare-dns.com/dns-query",
+    "doq://dns.alidns.com:853",
+    "https://dns.nextdns.io",
 ]
 
 

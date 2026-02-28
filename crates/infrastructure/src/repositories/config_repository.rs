@@ -77,4 +77,10 @@ impl ConfigRepository for SqliteConfigRepository {
 
         Ok(())
     }
+
+    async fn save_local_records(&self, config: &Config) -> Result<(), DomainError> {
+        let path = Config::get_config_path().unwrap_or_else(|| "ferrous-dns.toml".to_string());
+        super::config_persistence::save_local_records_to_file(config, &path)
+            .map_err(|e| DomainError::ConfigError(e.to_string()))
+    }
 }

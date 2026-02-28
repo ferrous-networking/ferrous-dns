@@ -20,12 +20,13 @@ impl FailoverStrategy {
         for (index, protocol) in ctx.servers.iter().enumerate() {
             match query_server(
                 protocol,
+                &ctx.query_bytes,
                 ctx.domain,
                 ctx.record_type,
                 ctx.timeout_ms,
-                ctx.dnssec_ok,
                 ctx.emitter,
                 ctx.pool_name,
+                ctx.server_displays,
             )
             .await
             {

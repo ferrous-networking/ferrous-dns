@@ -8,7 +8,6 @@ license.workspace = true
 [dependencies]
 ferrous-dns-domain.workspace = true
 ferrous-dns-application.workspace = true
-ferrous-dns-infrastructure.workspace = true
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -18,6 +17,7 @@ chrono = "0.4"
 hostname = "0.4"
 
 [dev-dependencies]
+ferrous-dns-infrastructure.workspace = true
 async-trait.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 tower = { version = "0.5", features = ["util"] }

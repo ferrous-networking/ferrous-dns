@@ -10,7 +10,9 @@ pub mod udp;
 pub mod udp_pool;
 
 use async_trait::async_trait;
+use dashmap::DashMap;
 use ferrous_dns_domain::{DnsProtocol, DomainError};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 pub use udp_pool::{PoolStats, UdpSocketPool};
@@ -82,7 +84,21 @@ impl Transport {
     }
 }
 
-pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {
+static TRANSPORT_CACHE: LazyLock<DashMap<DnsProtocol, Arc<Transport>>> =
+    LazyLock::new(DashMap::new);
+
+pub fn get_or_create_transport(protocol: &DnsProtocol) -> Result<Arc<Transport>, DomainError> {
+    if let Some(t) = TRANSPORT_CACHE.get(protocol) {
+        return Ok(Arc::clone(t.value()));
+    }
+    let t = Arc::new(create_transport(protocol)?);
+    TRANSPORT_CACHE
+        .entry(protocol.clone())
+        .or_insert(Arc::clone(&t));
+    Ok(t)
+}
+
+fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {
     match protocol {
         DnsProtocol::Udp { addr } => Ok(Transport::Udp(udp::UdpTransport::new(addr.clone()))),
         DnsProtocol::Tcp { addr } => Ok(Transport::Tcp(tcp::TcpTransport::new(addr.clone()))),
@@ -90,7 +106,7 @@ pub fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError
         #[cfg(feature = "dns-over-rustls")]
         DnsProtocol::Tls { addr, hostname } => Ok(Transport::Tls(tls::TlsTransport::new(
             addr.clone(),
-            hostname.to_string(),
+            Arc::clone(hostname),
         ))),
 
         #[cfg(not(feature = "dns-over-rustls"))]

@@ -1,7 +1,8 @@
 use crate::dns::events::{QueryEvent, QueryEventEmitter};
-use crate::dns::forwarding::{DnsResponse, MessageBuilder, ResponseParser};
+use crate::dns::forwarding::{DnsResponse, ResponseParser};
 use crate::dns::transport;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -14,37 +15,45 @@ pub struct QueryAttemptResult {
     pub server_display: Arc<str>,
 }
 
+fn get_display(protocol: &DnsProtocol, cache: &HashMap<Arc<DnsProtocol>, Arc<str>>) -> Arc<str> {
+    cache
+        .get(protocol)
+        .map(Arc::clone)
+        .unwrap_or_else(|| Arc::from(protocol.to_string()))
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn query_server(
     protocol: &DnsProtocol,
-    domain: &str,
+    query_bytes: &[u8],
+    domain: &Arc<str>,
     record_type: &RecordType,
     timeout_ms: u64,
-    dnssec_ok: bool,
     emitter: &QueryEventEmitter,
     pool_name: &Arc<str>,
+    server_displays: &Arc<HashMap<Arc<DnsProtocol>, Arc<str>>>,
 ) -> Result<QueryAttemptResult, DomainError> {
     let start = Instant::now();
     let timeout_duration = Duration::from_millis(timeout_ms);
 
-    let query_bytes = MessageBuilder::build_query(domain, record_type, dnssec_ok)?;
+    let dns_transport = transport::get_or_create_transport(protocol)?;
 
-    let dns_transport = transport::create_transport(protocol)?;
+    let transport_response = dns_transport.send(query_bytes, timeout_duration).await?;
 
-    let transport_response = dns_transport.send(&query_bytes, timeout_duration).await?;
-
-    let dns_response = ResponseParser::parse(&transport_response.bytes)?;
+    let dns_response = ResponseParser::parse_bytes(transport_response.bytes)?;
 
     let response_time_us = start.elapsed().as_micros() as u64;
-    let domain_arc: Arc<str> = Arc::from(domain);
-    let server_arc: Arc<str> = Arc::from(protocol.to_string());
-    emitter.emit(QueryEvent {
-        domain: Arc::clone(&domain_arc),
-        record_type: *record_type,
-        upstream_server: Arc::clone(&server_arc),
-        response_time_us,
-        success: !dns_response.addresses.is_empty() || !dns_response.cname_chain.is_empty(),
-        pool_name: Some(Arc::clone(pool_name)),
-    });
+    let server_arc = get_display(protocol, server_displays);
+    if emitter.is_enabled() {
+        emitter.emit(QueryEvent {
+            domain: Arc::clone(domain),
+            record_type: *record_type,
+            upstream_server: Arc::clone(&server_arc),
+            response_time_us,
+            success: !dns_response.addresses.is_empty() || !dns_response.cname_chain.is_empty(),
+            pool_name: Some(Arc::clone(pool_name)),
+        });
+    }
 
     if dns_response.truncated {
         if let DnsProtocol::Udp { addr } = protocol {
@@ -54,27 +63,29 @@ pub async fn query_server(
             );
 
             let tcp_protocol = DnsProtocol::Tcp { addr: addr.clone() };
-            let tcp_transport = transport::create_transport(&tcp_protocol)?;
+            let tcp_transport = transport::get_or_create_transport(&tcp_protocol)?;
 
             let remaining = timeout_duration
                 .checked_sub(start.elapsed())
                 .unwrap_or(Duration::from_millis(500));
 
             let tcp_start = Instant::now();
-            let tcp_response = tcp_transport.send(&query_bytes, remaining).await?;
-            let tcp_dns_response = ResponseParser::parse(&tcp_response.bytes)?;
+            let tcp_response = tcp_transport.send(query_bytes, remaining).await?;
+            let tcp_dns_response = ResponseParser::parse_bytes(tcp_response.bytes)?;
 
             let tcp_response_time_us = tcp_start.elapsed().as_micros() as u64;
-            let tcp_server_arc: Arc<str> = Arc::from(tcp_protocol.to_string());
-            emitter.emit(QueryEvent {
-                domain: domain_arc,
-                record_type: *record_type,
-                upstream_server: Arc::clone(&tcp_server_arc),
-                response_time_us: tcp_response_time_us,
-                success: !tcp_dns_response.addresses.is_empty()
-                    || !tcp_dns_response.cname_chain.is_empty(),
-                pool_name: Some(Arc::clone(pool_name)),
-            });
+            let tcp_server_arc = get_display(&tcp_protocol, server_displays);
+            if emitter.is_enabled() {
+                emitter.emit(QueryEvent {
+                    domain: Arc::clone(domain),
+                    record_type: *record_type,
+                    upstream_server: Arc::clone(&tcp_server_arc),
+                    response_time_us: tcp_response_time_us,
+                    success: !tcp_dns_response.addresses.is_empty()
+                        || !tcp_dns_response.cname_chain.is_empty(),
+                    pool_name: Some(Arc::clone(pool_name)),
+                });
+            }
 
             let latency_ms = start.elapsed().as_millis() as u64;
             let server_addr = protocol

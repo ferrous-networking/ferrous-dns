@@ -12,21 +12,6 @@ pub enum TimeGranularity {
     Day,
 }
 
-impl TimeGranularity {
-    pub fn as_sql_expr(self) -> &'static str {
-        match self {
-            Self::Minute => "strftime('%Y-%m-%d %H:%M:00', created_at)",
-            Self::QuarterHour => {
-                "strftime('%Y-%m-%d %H:', created_at) || \
-                printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
-                ':00'"
-            }
-            Self::Hour => "strftime('%Y-%m-%d %H:00:00', created_at)",
-            Self::Day => "strftime('%Y-%m-%d 00:00:00', created_at)",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TimelineBucket {
     pub timestamp: String,

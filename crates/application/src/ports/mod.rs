@@ -6,8 +6,10 @@ mod blocklist_source_repository;
 mod cache_maintenance_port;
 mod client_repository;
 mod client_subnet_repository;
+mod config_file_port;
 mod config_repository;
 mod custom_service_repository;
+mod dns_cache_port;
 mod dns_resolver;
 mod group_repository;
 mod hostname_resolver;
@@ -15,6 +17,7 @@ mod managed_domain_repository;
 mod query_log_repository;
 mod regex_filter_repository;
 mod service_catalog_port;
+mod upstream_health_port;
 mod whitelist_repository;
 mod whitelist_source_repository;
 
@@ -28,8 +31,10 @@ pub use cache_maintenance_port::{
 };
 pub use client_repository::ClientRepository;
 pub use client_subnet_repository::ClientSubnetRepository;
+pub use config_file_port::ConfigFilePersistence;
 pub use config_repository::ConfigRepository;
 pub use custom_service_repository::CustomServiceRepository;
+pub use dns_cache_port::{CacheMetricsSnapshot, DnsCachePort};
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
@@ -37,6 +42,7 @@ pub use managed_domain_repository::ManagedDomainRepository;
 pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket};
 pub use regex_filter_repository::RegexFilterRepository;
 pub use service_catalog_port::ServiceCatalogPort;
+pub use upstream_health_port::{UpstreamHealthPort, UpstreamStatus};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

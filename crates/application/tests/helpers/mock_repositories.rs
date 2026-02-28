@@ -175,6 +175,22 @@ impl BlocklistRepository for MockBlocklistRepository {
         Ok(self.blocked_domains.read().await.clone())
     }
 
+    async fn get_all_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<BlockedDomain>, u64), DomainError> {
+        let domains = self.blocked_domains.read().await;
+        let total = domains.len() as u64;
+        let paged = domains
+            .iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok((paged, total))
+    }
+
     async fn add_domain(&self, domain: &BlockedDomain) -> Result<(), DomainError> {
         self.blocked_domains.write().await.push(domain.clone());
         Ok(())
@@ -921,6 +937,11 @@ impl GroupRepository for MockGroupRepository {
         Ok(self.groups.read().await.clone())
     }
 
+    async fn get_all_with_client_counts(&self) -> Result<Vec<(Group, u64)>, DomainError> {
+        let groups = self.groups.read().await;
+        Ok(groups.iter().map(|g| (g.clone(), 0u64)).collect())
+    }
+
     async fn update(
         &self,
         id: i64,
@@ -1225,7 +1246,8 @@ impl DnsResolutionBuilder {
             upstream_server: self.upstream_server,
             upstream_pool: None,
             min_ttl: None,
-            authority_records: vec![],
+            negative_soa_ttl: None,
+            upstream_wire_data: None,
         }
     }
 }
@@ -1382,6 +1404,22 @@ impl ManagedDomainRepository for MockManagedDomainRepository {
 
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError> {
         Ok(self.domains.read().await.clone())
+    }
+
+    async fn get_all_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<ManagedDomain>, u64), DomainError> {
+        let domains = self.domains.read().await;
+        let total = domains.len() as u64;
+        let paged = domains
+            .iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .cloned()
+            .collect();
+        Ok((paged, total))
     }
 
     async fn update(

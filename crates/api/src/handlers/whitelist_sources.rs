@@ -6,10 +6,11 @@ use axum::{
     Router,
 };
 use ferrous_dns_domain::DomainError;
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     dto::{CreateWhitelistSourceRequest, UpdateWhitelistSourceRequest, WhitelistSourceResponse},
+    errors::ApiError,
     state::AppState,
 };
 
@@ -24,75 +25,64 @@ pub fn routes() -> Router<AppState> {
 
 async fn get_all_whitelist_sources(
     State(state): State<AppState>,
-) -> Json<Vec<WhitelistSourceResponse>> {
-    match state.get_whitelist_sources.get_all().await {
-        Ok(sources) => {
-            debug!(
-                count = sources.len(),
-                "Whitelist sources retrieved successfully"
-            );
-            Json(
-                sources
-                    .into_iter()
-                    .map(WhitelistSourceResponse::from_source)
-                    .collect(),
-            )
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to retrieve whitelist sources");
-            Json(vec![])
-        }
-    }
+) -> Result<Json<Vec<WhitelistSourceResponse>>, ApiError> {
+    let sources = state.blocking.get_whitelist_sources.get_all().await?;
+    debug!(
+        count = sources.len(),
+        "Whitelist sources retrieved successfully"
+    );
+    Ok(Json(
+        sources
+            .into_iter()
+            .map(WhitelistSourceResponse::from_source)
+            .collect(),
+    ))
 }
 
 async fn get_whitelist_source_by_id(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<Json<WhitelistSourceResponse>, (StatusCode, String)> {
-    match state.get_whitelist_sources.get_by_id(id).await {
-        Ok(Some(source)) => Ok(Json(WhitelistSourceResponse::from_source(source))),
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            format!("Whitelist source {} not found", id),
-        )),
-        Err(e) => {
-            error!(error = %e, "Failed to retrieve whitelist source");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
+) -> Result<Json<WhitelistSourceResponse>, ApiError> {
+    let source = state
+        .blocking
+        .get_whitelist_sources
+        .get_by_id(id)
+        .await?
+        .ok_or_else(|| {
+            ApiError(DomainError::NotFound(format!(
+                "Whitelist source {} not found",
+                id
+            )))
+        })?;
+    Ok(Json(WhitelistSourceResponse::from_source(source)))
 }
 
 async fn create_whitelist_source(
     State(state): State<AppState>,
     Json(req): Json<CreateWhitelistSourceRequest>,
-) -> Result<(StatusCode, Json<WhitelistSourceResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<WhitelistSourceResponse>), ApiError> {
     let group_id = req.group_id.unwrap_or(1);
     let enabled = req.enabled.unwrap_or(true);
 
-    match state
+    let source = state
+        .blocking
         .create_whitelist_source
         .execute(req.name, req.url, group_id, req.comment, enabled)
-        .await
-    {
-        Ok(source) => Ok((
-            StatusCode::CREATED,
-            Json(WhitelistSourceResponse::from_source(source)),
-        )),
-        Err(DomainError::InvalidWhitelistSource(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
-        Err(e) => {
-            error!(error = %e, "Failed to create whitelist source");
-            Err((StatusCode::BAD_REQUEST, e.to_string()))
-        }
-    }
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(WhitelistSourceResponse::from_source(source)),
+    ))
 }
 
 async fn update_whitelist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(req): Json<UpdateWhitelistSourceRequest>,
-) -> Result<Json<WhitelistSourceResponse>, (StatusCode, String)> {
-    match state
+) -> Result<Json<WhitelistSourceResponse>, ApiError> {
+    let source = state
+        .blocking
         .update_whitelist_source
         .execute(
             id,
@@ -102,33 +92,14 @@ async fn update_whitelist_source(
             req.comment,
             req.enabled,
         )
-        .await
-    {
-        Ok(source) => Ok(Json(WhitelistSourceResponse::from_source(source))),
-        Err(e @ DomainError::WhitelistSourceNotFound(_)) => {
-            Err((StatusCode::NOT_FOUND, e.to_string()))
-        }
-        Err(DomainError::InvalidWhitelistSource(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
-        Err(e) => {
-            error!(error = %e, "Failed to update whitelist source");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
+        .await?;
+    Ok(Json(WhitelistSourceResponse::from_source(source)))
 }
 
 async fn delete_whitelist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    match state.delete_whitelist_source.execute(id).await {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(e @ DomainError::WhitelistSourceNotFound(_)) => {
-            Err((StatusCode::NOT_FOUND, e.to_string()))
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to delete whitelist source");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
+) -> Result<StatusCode, ApiError> {
+    state.blocking.delete_whitelist_source.execute(id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

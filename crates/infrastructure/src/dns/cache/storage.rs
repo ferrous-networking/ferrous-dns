@@ -11,7 +11,8 @@ use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
 use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 struct EvictionCandidate {
@@ -81,6 +82,7 @@ pub struct DnsCache {
     permanent_keys: Arc<DashSet<CacheKey, FxBuildHasher>>,
     min_ttl: u32,
     max_ttl: u32,
+    stale_refresh_tx: OnceLock<mpsc::Sender<(Arc<str>, RecordType)>>,
 }
 
 impl DnsCache {
@@ -131,6 +133,7 @@ impl DnsCache {
             permanent_keys: Arc::new(DashSet::with_hasher(FxBuildHasher)),
             min_ttl: config.min_ttl,
             max_ttl: config.max_ttl,
+            stale_refresh_tx: OnceLock::new(),
         }
     }
 
@@ -176,6 +179,16 @@ impl DnsCache {
 
         let borrowed = BorrowedKey::new(domain.as_ref(), *record_type);
         let in_bloom = self.bloom.check(&borrowed);
+
+        if !in_bloom {
+            if let Some(remaining_ttl) = self.negative.get(domain.as_ref(), record_type) {
+                self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
+                return Some((CachedData::NegativeResponse, None, Some(remaining_ttl)));
+            }
+            self.metrics.misses.fetch_add(1, AtomicOrdering::Relaxed);
+            return None;
+        }
+
         let key = CacheKey::new(domain.as_ref(), *record_type);
 
         if let Some(entry) = self.cache.get(&key) {
@@ -185,7 +198,17 @@ impl DnsCache {
 
             if record.is_stale_usable_at_secs(now_secs) {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
+                self.metrics
+                    .stale_hits
+                    .fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
+                if let Some(tx) = self.stale_refresh_tx.get() {
+                    if record.try_set_refreshing()
+                        && tx.try_send((Arc::clone(domain), key.record_type)).is_err()
+                    {
+                        record.clear_refreshing();
+                    }
+                }
                 return Some((
                     record.data.clone(),
                     Some(record.dnssec_status),
@@ -200,9 +223,6 @@ impl DnsCache {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 let remaining_ttl = record.expires_at_secs.saturating_sub(now_secs) as u32;
-                if !in_bloom {
-                    self.bloom.set(&key);
-                }
                 self.promote_to_l1(domain.as_ref(), record_type, record, now_secs);
                 return Some((
                     record.data.clone(),
@@ -362,6 +382,12 @@ impl DnsCache {
         self.access_window_secs
     }
 
+    pub fn set_stale_refresh_sender(&self, tx: mpsc::Sender<(Arc<str>, RecordType)>) {
+        if self.stale_refresh_tx.set(tx).is_err() {
+            tracing::warn!("Stale refresh sender already configured — second sender dropped");
+        }
+    }
+
     pub fn refresh_record(
         &self,
         domain: &str,
@@ -452,8 +478,17 @@ impl DnsCache {
 
         let now_secs = coarse_now_secs();
         let total_to_sample = count * self.eviction_sample_size;
-        let mut heap: BinaryHeap<EvictionCandidate> = BinaryHeap::with_capacity(count + 1);
-        let mut urgent_marked = 0usize;
+
+        struct RecordSnapshot {
+            key: CacheKey,
+            hit_count: u64,
+            last_access: u64,
+            inserted_at: u64,
+            expires_at: u64,
+            is_expired: bool,
+        }
+
+        let mut snapshots = Vec::with_capacity(total_to_sample);
         let mut sampled = 0usize;
 
         for entry in self.cache.iter() {
@@ -464,28 +499,50 @@ impl DnsCache {
             if record.is_marked_for_deletion() {
                 continue;
             }
+            snapshots.push(RecordSnapshot {
+                key: entry.key().clone(),
+                hit_count: record.counters.hit_count.load(AtomicOrdering::Relaxed),
+                last_access: record.counters.last_access.load(AtomicOrdering::Relaxed),
+                inserted_at: record.inserted_at_secs,
+                expires_at: record.expires_at_secs,
+                is_expired: record.is_expired_at_secs(now_secs),
+            });
+            sampled += 1;
+        }
 
-            if record.is_expired_at_secs(now_secs) {
-                let hit_count = record.counters.hit_count.load(AtomicOrdering::Relaxed);
-                let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
-                let within_window = hit_count > 0
-                    && now_secs.saturating_sub(last_access) <= self.access_window_secs;
+        let mut heap: BinaryHeap<EvictionCandidate> = BinaryHeap::with_capacity(count + 1);
+        let mut urgent_keys: Vec<CacheKey> = Vec::new();
+
+        for snap in &snapshots {
+            if snap.is_expired {
+                let within_window = snap.hit_count > 0
+                    && now_secs.saturating_sub(snap.last_access) <= self.access_window_secs;
 
                 if !within_window {
-                    let score = self.compute_score(record, now_secs);
+                    let score = self.eviction_policy.compute_score_from_snapshot(
+                        snap.hit_count,
+                        snap.last_access,
+                        snap.inserted_at,
+                        snap.expires_at,
+                        now_secs,
+                    );
                     if score < 0.0 {
-                        record.mark_for_deletion();
-                        urgent_marked += 1;
-                        sampled += 1;
+                        urgent_keys.push(snap.key.clone());
                         continue;
                     }
                 }
             }
 
-            let score = self.compute_score(record, now_secs);
+            let score = self.eviction_policy.compute_score_from_snapshot(
+                snap.hit_count,
+                snap.last_access,
+                snap.inserted_at,
+                snap.expires_at,
+                now_secs,
+            );
             let candidate = EvictionCandidate {
                 score,
-                key: entry.key().clone(),
+                key: snap.key.clone(),
             };
             if heap.len() < count {
                 heap.push(candidate);
@@ -495,10 +552,15 @@ impl DnsCache {
                     heap.push(candidate);
                 }
             }
-            sampled += 1;
         }
 
-        let evict_count = count.saturating_sub(urgent_marked);
+        for key in &urgent_keys {
+            if let Some(entry) = self.cache.get(key) {
+                entry.value().mark_for_deletion();
+            }
+        }
+
+        let evict_count = count.saturating_sub(urgent_keys.len());
         let mut candidates: Vec<EvictionCandidate> = heap.into_vec();
         candidates.sort_unstable_by(|a, b| a.score.total_cmp(&b.score));
 
@@ -511,7 +573,7 @@ impl DnsCache {
             scored_evicted += 1;
         }
 
-        let retain_removed = if urgent_marked > 0 {
+        let retain_removed = if !urgent_keys.is_empty() {
             let before = self.cache.len();
             self.cache
                 .retain(|_, record| !record.is_marked_for_deletion());
@@ -530,10 +592,46 @@ impl DnsCache {
             self.set_threshold((current * 0.9) + (last_worst_score * 0.1));
         }
     }
+}
 
-    #[inline(always)]
-    pub(super) fn compute_score(&self, record: &CachedRecord, now_secs: u64) -> f64 {
-        self.eviction_policy.compute_score(record, now_secs)
+impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
+    fn cache_size(&self) -> usize {
+        self.size()
+    }
+
+    fn cache_metrics_snapshot(&self) -> ferrous_dns_application::ports::CacheMetricsSnapshot {
+        let metrics = &self.metrics;
+        let hits = metrics.hits.load(AtomicOrdering::Relaxed);
+        let misses = metrics.misses.load(AtomicOrdering::Relaxed);
+        ferrous_dns_application::ports::CacheMetricsSnapshot {
+            total_entries: self.size(),
+            hits,
+            misses,
+            insertions: metrics.insertions.load(AtomicOrdering::Relaxed),
+            evictions: metrics.evictions.load(AtomicOrdering::Relaxed),
+            optimistic_refreshes: metrics.optimistic_refreshes.load(AtomicOrdering::Relaxed),
+            stale_hits: metrics.stale_hits.load(AtomicOrdering::Relaxed),
+            lazy_deletions: metrics.lazy_deletions.load(AtomicOrdering::Relaxed),
+            compactions: metrics.compactions.load(AtomicOrdering::Relaxed),
+            batch_evictions: metrics.batch_evictions.load(AtomicOrdering::Relaxed),
+            hit_rate: metrics.hit_rate(),
+        }
+    }
+
+    fn insert_permanent_record(
+        &self,
+        domain: &str,
+        record_type: ferrous_dns_domain::RecordType,
+        addresses: Vec<std::net::IpAddr>,
+    ) {
+        let data = CachedData::IpAddresses(super::data::CachedAddresses {
+            addresses: Arc::new(addresses),
+        });
+        self.insert_permanent(domain, record_type, data, None);
+    }
+
+    fn remove_record(&self, domain: &str, record_type: &ferrous_dns_domain::RecordType) -> bool {
+        self.remove(domain, record_type)
     }
 }
 

@@ -94,7 +94,7 @@ impl DnssecCache {
         );
     }
 
-    pub fn get_dnskey(&self, domain: &str) -> Option<Vec<DnskeyRecord>> {
+    pub fn get_dnskey(&self, domain: &str) -> Option<Arc<[DnskeyRecord]>> {
         if let Some(entry) = self.dnskeys.get(domain) {
             if !entry.is_expired() {
                 self.stats.record_dnskey_hit(domain);
@@ -104,7 +104,7 @@ impl DnssecCache {
                     "DNSKEY cache hit"
                 );
 
-                return Some(entry.keys().to_vec());
+                return Some(Arc::clone(entry.keys()));
             } else {
                 drop(entry);
                 self.dnskeys.remove(domain);
@@ -133,7 +133,7 @@ impl DnssecCache {
         );
     }
 
-    pub fn get_ds(&self, domain: &str) -> Option<Vec<DsRecord>> {
+    pub fn get_ds(&self, domain: &str) -> Option<Arc<[DsRecord]>> {
         if let Some(entry) = self.ds_records.get(domain) {
             if !entry.is_expired() {
                 self.stats.record_ds_hit(domain);
@@ -143,7 +143,7 @@ impl DnssecCache {
                     "DS cache hit"
                 );
 
-                return Some(entry.records().to_vec());
+                return Some(Arc::clone(entry.records()));
             } else {
                 drop(entry);
                 self.ds_records.remove(domain);

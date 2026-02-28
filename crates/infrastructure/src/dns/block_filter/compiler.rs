@@ -305,7 +305,7 @@ fn build_exact_and_wildcard(
             .count();
 
     let bloom_capacity = (exact_count + 100).max(1000);
-    let bloom = AtomicBloom::new(bloom_capacity, 0.05);
+    let bloom = AtomicBloom::new(bloom_capacity, 0.001);
     let exact: DashMap<CompactString, SourceBitSet, FxBuildHasher> =
         DashMap::with_capacity_and_hasher(exact_count, FxBuildHasher);
     let mut wildcard = SuffixTrie::new();

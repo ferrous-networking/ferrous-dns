@@ -38,15 +38,16 @@ impl GroupRepository for SqliteGroupRepository {
     async fn create(&self, name: String, comment: Option<String>) -> Result<Group, DomainError> {
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, GroupRow>(
             "INSERT INTO groups (name, enabled, comment, is_default, created_at, updated_at)
-             VALUES (?, 1, ?, 0, ?, ?)",
+             VALUES (?, 1, ?, 0, ?, ?)
+             RETURNING id, name, enabled, comment, is_default, created_at, updated_at",
         )
         .bind(&name)
         .bind(&comment)
         .bind(&now)
         .bind(&now)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -57,11 +58,7 @@ impl GroupRepository for SqliteGroupRepository {
             }
         })?;
 
-        let id = result.last_insert_rowid();
-
-        self.get_by_id(id)
-            .await?
-            .ok_or_else(|| DomainError::DatabaseError("Failed to fetch created group".to_string()))
+        Ok(Self::row_to_group(row))
     }
 
     #[instrument(skip(self))]
@@ -115,6 +112,42 @@ impl GroupRepository for SqliteGroupRepository {
     }
 
     #[instrument(skip(self))]
+    async fn get_all_with_client_counts(&self) -> Result<Vec<(Group, u64)>, DomainError> {
+        let rows = sqlx::query_as::<_, (i64, String, i64, Option<String>, i64, String, String, i64)>(
+            "SELECT g.id, g.name, g.enabled, g.comment, g.is_default, g.created_at, g.updated_at,
+                    COUNT(c.id) as client_count
+             FROM groups g
+             LEFT JOIN clients c ON c.group_id = g.id
+             GROUP BY g.id
+             ORDER BY g.is_default DESC, g.name ASC",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to query groups with client counts");
+            DomainError::DatabaseError(e.to_string())
+        })?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, name, enabled, comment, is_default, created_at, updated_at, count)| {
+                    let group = Group {
+                        id: Some(id),
+                        name: Arc::from(name.as_str()),
+                        enabled: enabled != 0,
+                        comment: comment.map(|s| Arc::from(s.as_str())),
+                        is_default: is_default != 0,
+                        created_at: Some(created_at),
+                        updated_at: Some(updated_at),
+                    };
+                    (group, count as u64)
+                },
+            )
+            .collect())
+    }
+
+    #[instrument(skip(self))]
     async fn update(
         &self,
         id: i64,
@@ -133,16 +166,17 @@ impl GroupRepository for SqliteGroupRepository {
         let final_enabled = enabled.unwrap_or(current.enabled);
         let final_comment = comment.or_else(|| current.comment.as_ref().map(|s| s.to_string()));
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, GroupRow>(
             "UPDATE groups SET name = ?, enabled = ?, comment = ?, updated_at = ?
-             WHERE id = ?",
+             WHERE id = ?
+             RETURNING id, name, enabled, comment, is_default, created_at, updated_at",
         )
         .bind(&final_name)
         .bind(if final_enabled { 1 } else { 0 })
         .bind(&final_comment)
         .bind(&now)
         .bind(id)
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -153,13 +187,8 @@ impl GroupRepository for SqliteGroupRepository {
             }
         })?;
 
-        if result.rows_affected() == 0 {
-            return Err(DomainError::GroupNotFound(id));
-        }
-
-        self.get_by_id(id)
-            .await?
-            .ok_or_else(|| DomainError::DatabaseError("Failed to fetch updated group".to_string()))
+        row.map(Self::row_to_group)
+            .ok_or(DomainError::GroupNotFound(id))
     }
 
     #[instrument(skip(self))]

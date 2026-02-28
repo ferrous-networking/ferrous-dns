@@ -4,7 +4,7 @@ use ferrous_dns_domain::config::dns::DnsConfig;
 fn test_config_default_values() {
     let config = DnsConfig::default();
 
-    assert_eq!(config.query_timeout, 2000);
+    assert_eq!(config.query_timeout, 3);
     assert!(config.cache_enabled);
     assert_eq!(config.cache_ttl, 3600);
     assert!(!config.dnssec_enabled);
@@ -61,7 +61,7 @@ fn test_config_deserialization_ignores_unknown_fields() {
 fn test_config_deserialization_with_all_fields() {
     let toml_str = r#"
         upstream_servers = ["8.8.8.8:53"]
-        query_timeout = 5000
+        query_timeout = 5
         cache_enabled = true
         cache_ttl = 7200
         dnssec_enabled = false
@@ -86,7 +86,7 @@ fn test_config_deserialization_with_all_fields() {
     let config: DnsConfig = toml::from_str(toml_str).unwrap();
 
     assert_eq!(config.upstream_servers, vec!["8.8.8.8:53"]);
-    assert_eq!(config.query_timeout, 5000);
+    assert_eq!(config.query_timeout, 5);
     assert_eq!(config.cache_ttl, 7200);
     assert_eq!(config.cache_max_entries, 100000);
     assert_eq!(config.cache_eviction_strategy, "lfu");

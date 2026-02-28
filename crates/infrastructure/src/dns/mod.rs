@@ -24,7 +24,7 @@ pub use cache_warming::{CacheWarmer, WarmingStats};
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,
-    ServerStatus,
+    ServerStatus, UpstreamHealthAdapter,
 };
 pub use prefetch::PrefetchPredictor;
 pub use query_logger::QueryEventLogger;

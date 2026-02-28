@@ -3,9 +3,15 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use ferrous_dns_api::{create_api_routes, AppState};
+use ferrous_dns_api::{
+    create_api_routes, AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
+    QueryUseCases, ServiceUseCases,
+};
 use ferrous_dns_application::{
-    ports::{BlockFilterEnginePort, BlockedServiceRepository, FilterDecision, ServiceCatalogPort},
+    ports::{
+        BlockFilterEnginePort, BlockedServiceRepository, ConfigRepository, FilterDecision,
+        ServiceCatalogPort,
+    },
     services::SubnetMatcherService,
     use_cases::{GetBlockFilterStatsUseCase, *},
 };
@@ -121,10 +127,26 @@ impl ServiceCatalogPort for NullServiceCatalog {
     }
     fn reload_custom(&self, _custom: Vec<ferrous_dns_domain::ServiceDefinition>) {}
 }
+struct NullConfigRepository;
+#[async_trait::async_trait]
+impl ConfigRepository for NullConfigRepository {
+    async fn get_config(&self) -> Result<Config, ferrous_dns_domain::DomainError> {
+        Ok(Config::default())
+    }
+    async fn save_config(&self, _config: &Config) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn save_local_records(
+        &self,
+        _config: &Config,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
 
 use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
-    dns::{cache::DnsCache, HickoryDnsResolver},
+    dns::cache::DnsCache,
     repositories::{
         blocklist_source_repository::SqliteBlocklistSourceRepository,
         client_repository::SqliteClientRepository,
@@ -336,118 +358,137 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
     );
 
     let state = AppState {
-        get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ), client_repo.clone())),
-        get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ))),
-        get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
-        ))),
-        get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
-        get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
-        create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
-        update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
-        delete_group: Arc::new(DeleteGroupUseCase::new(group_repo.clone())),
-        assign_client_group: Arc::new(AssignClientGroupUseCase::new(client_repo.clone(), group_repo.clone())),
-        get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
-        create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(subnet_repo.clone(), group_repo.clone())),
-        delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
-        create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
-        update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
-        delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
-        get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(blocklist_source_repo.clone())),
-        create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
-            group_repo.clone(),
-        )),
-        update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
-            group_repo.clone(),
-        )),
-        delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(
-            blocklist_source_repo.clone(),
-        )),
-        get_whitelist: Arc::new(GetWhitelistUseCase::new(whitelist_repo.clone())),
-        get_whitelist_sources: Arc::new(GetWhitelistSourcesUseCase::new(whitelist_source_repo.clone())),
-        create_whitelist_source: Arc::new(CreateWhitelistSourceUseCase::new(
-            whitelist_source_repo.clone(),
-            group_repo.clone(),
-        )),
-        update_whitelist_source: Arc::new(UpdateWhitelistSourceUseCase::new(
-            whitelist_source_repo.clone(),
-            group_repo.clone(),
-        )),
-        delete_whitelist_source: Arc::new(DeleteWhitelistSourceUseCase::new(
-            whitelist_source_repo.clone(),
-        )),
-        get_managed_domains: Arc::new(ferrous_dns_application::use_cases::GetManagedDomainsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone()),
-        ))),
-        create_managed_domain: Arc::new(ferrous_dns_application::use_cases::CreateManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        update_managed_domain: Arc::new(ferrous_dns_application::use_cases::UpdateManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        get_regex_filters: Arc::new(ferrous_dns_application::use_cases::GetRegexFiltersUseCase::new(
-            regex_filter_repo.clone(),
-        )),
-        create_regex_filter: Arc::new(ferrous_dns_application::use_cases::CreateRegexFilterUseCase::new(
-            regex_filter_repo.clone(),
-            group_repo.clone(),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        update_regex_filter: Arc::new(ferrous_dns_application::use_cases::UpdateRegexFilterUseCase::new(
-            regex_filter_repo.clone(),
-            group_repo.clone(),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        delete_regex_filter: Arc::new(ferrous_dns_application::use_cases::DeleteRegexFilterUseCase::new(
-            regex_filter_repo.clone(),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
-        get_timeline: Arc::new(GetTimelineUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ))),
-        get_query_rate: Arc::new(GetQueryRateUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ))),
-        get_cache_stats: Arc::new(GetCacheStatsUseCase::new(Arc::new(
-            ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
-        ))),
-        get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
-        get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
-        get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
-        block_service: Arc::new(BlockServiceUseCase::new(
-            Arc::new(NullBlockedServiceRepository),
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            group_repo.clone(),
-            Arc::new(NullBlockFilterEngine),
-            Arc::new(NullServiceCatalog),
-        )),
-        unblock_service: Arc::new(UnblockServiceUseCase::new(
-            Arc::new(NullBlockedServiceRepository),
-            Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
-            Arc::new(NullBlockFilterEngine),
-        )),
-        create_custom_service: Arc::new(ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog))),
-        get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
-        update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockedServiceRepository), Arc::new(NullBlockFilterEngine))),
-        delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockFilterEngine))),
-        config,
-        cache,
-        dns_resolver: Arc::new(HickoryDnsResolver::new_with_pools(pool_manager, 5000, false, None).unwrap()),
+        query: QueryUseCases {
+            get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ), client_repo.clone())),
+            get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
+            get_timeline: Arc::new(GetTimelineUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
+            get_query_rate: Arc::new(GetQueryRateUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
+            get_cache_stats: Arc::new(GetCacheStatsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
+        },
+        dns: DnsUseCases {
+            cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
+            create_local_record: Arc::new(CreateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            update_local_record: Arc::new(UpdateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(
+                pool_manager,
+                None,
+            )),
+        },
+        groups: GroupUseCases {
+            get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
+            update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
+            delete_group: Arc::new(DeleteGroupUseCase::new(group_repo.clone())),
+            assign_client_group: Arc::new(AssignClientGroupUseCase::new(client_repo.clone(), group_repo.clone())),
+        },
+        clients: ClientUseCases {
+            get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
+            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
+            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(subnet_repo.clone(), group_repo.clone())),
+            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
+            create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
+            update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
+            delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
+            subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
+        },
+        blocking: BlockingUseCases {
+            get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
+            ))),
+            get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(blocklist_source_repo.clone())),
+            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
+                blocklist_source_repo.clone(),
+                group_repo.clone(),
+            )),
+            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
+                blocklist_source_repo.clone(),
+                group_repo.clone(),
+            )),
+            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(
+                blocklist_source_repo.clone(),
+            )),
+            get_whitelist: Arc::new(GetWhitelistUseCase::new(whitelist_repo.clone())),
+            get_whitelist_sources: Arc::new(GetWhitelistSourcesUseCase::new(whitelist_source_repo.clone())),
+            create_whitelist_source: Arc::new(CreateWhitelistSourceUseCase::new(
+                whitelist_source_repo.clone(),
+                group_repo.clone(),
+            )),
+            update_whitelist_source: Arc::new(UpdateWhitelistSourceUseCase::new(
+                whitelist_source_repo.clone(),
+                group_repo.clone(),
+            )),
+            delete_whitelist_source: Arc::new(DeleteWhitelistSourceUseCase::new(
+                whitelist_source_repo.clone(),
+            )),
+            get_managed_domains: Arc::new(ferrous_dns_application::use_cases::GetManagedDomainsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone()),
+            ))),
+            create_managed_domain: Arc::new(ferrous_dns_application::use_cases::CreateManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            update_managed_domain: Arc::new(ferrous_dns_application::use_cases::UpdateManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            get_regex_filters: Arc::new(ferrous_dns_application::use_cases::GetRegexFiltersUseCase::new(
+                regex_filter_repo.clone(),
+            )),
+            create_regex_filter: Arc::new(ferrous_dns_application::use_cases::CreateRegexFilterUseCase::new(
+                regex_filter_repo.clone(),
+                group_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            update_regex_filter: Arc::new(ferrous_dns_application::use_cases::UpdateRegexFilterUseCase::new(
+                regex_filter_repo.clone(),
+                group_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            delete_regex_filter: Arc::new(ferrous_dns_application::use_cases::DeleteRegexFilterUseCase::new(
+                regex_filter_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+        },
+        services: ServiceUseCases {
+            get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
+            get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
+            block_service: Arc::new(BlockServiceUseCase::new(
+                Arc::new(NullBlockedServiceRepository),
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                group_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+                Arc::new(NullServiceCatalog),
+            )),
+            unblock_service: Arc::new(UnblockServiceUseCase::new(
+                Arc::new(NullBlockedServiceRepository),
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            create_custom_service: Arc::new(ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog))),
+            get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
+            update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockedServiceRepository), Arc::new(NullBlockFilterEngine))),
+            delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockFilterEngine))),
+        },
+        config: config.clone(),
+        config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         api_key: None,
     };
 

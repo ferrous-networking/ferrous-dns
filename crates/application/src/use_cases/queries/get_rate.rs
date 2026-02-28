@@ -69,7 +69,7 @@ impl GetQueryRateUseCase {
         let slot = &self.cache[unit.index()];
 
         {
-            let guard = slot.read().unwrap();
+            let guard = slot.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.computed_at.elapsed() < RATE_CACHE_TTL {
                     return Ok(QueryRate {
@@ -83,7 +83,7 @@ impl GetQueryRateUseCase {
         let _lock = self.refresh_locks[unit.index()].lock().await;
 
         {
-            let guard = slot.read().unwrap();
+            let guard = slot.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.computed_at.elapsed() < RATE_CACHE_TTL {
                     return Ok(QueryRate {
@@ -99,7 +99,7 @@ impl GetQueryRateUseCase {
         let formatted_rate = format_rate(count, unit.suffix());
 
         {
-            let mut guard = slot.write().unwrap();
+            let mut guard = slot.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(CachedRate {
                 computed_at: Instant::now(),
                 queries: count,

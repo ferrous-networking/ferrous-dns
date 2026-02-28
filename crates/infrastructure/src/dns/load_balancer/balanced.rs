@@ -27,12 +27,13 @@ impl BalancedStrategy {
             let index = (start_index + i) % ctx.servers.len();
             match query_server(
                 ctx.servers[index],
+                &ctx.query_bytes,
                 ctx.domain,
                 ctx.record_type,
                 ctx.timeout_ms,
-                ctx.dnssec_ok,
                 ctx.emitter,
                 ctx.pool_name,
+                ctx.server_displays,
             )
             .await
             {

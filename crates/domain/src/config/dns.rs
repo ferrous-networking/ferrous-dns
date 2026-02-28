@@ -122,7 +122,7 @@ impl Default for DnsConfig {
 }
 
 fn default_query_timeout() -> u64 {
-    2000
+    3
 }
 
 fn default_cache_ttl() -> u32 {

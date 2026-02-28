@@ -1,93 +1,67 @@
-use compact_str::CompactString;
-use dashmap::DashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug, Default)]
 pub struct CacheStats {
-    pub(super) validation_hits: DashMap<CompactString, u64>,
-    pub(super) validation_misses: DashMap<CompactString, u64>,
-    pub(super) dnskey_hits: DashMap<CompactString, u64>,
-    pub(super) dnskey_misses: DashMap<CompactString, u64>,
-    pub(super) ds_hits: DashMap<CompactString, u64>,
-    pub(super) ds_misses: DashMap<CompactString, u64>,
+    pub(super) validation_hits: AtomicU64,
+    pub(super) validation_misses: AtomicU64,
+    pub(super) dnskey_hits: AtomicU64,
+    pub(super) dnskey_misses: AtomicU64,
+    pub(super) ds_hits: AtomicU64,
+    pub(super) ds_misses: AtomicU64,
 }
 
 impl CacheStats {
-    pub fn record_validation_hit(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.validation_hits
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_validation_hit(&self, _domain: &str) {
+        self.validation_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_validation_miss(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.validation_misses
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_validation_miss(&self, _domain: &str) {
+        self.validation_misses.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_dnskey_hit(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.dnskey_hits
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_dnskey_hit(&self, _domain: &str) {
+        self.dnskey_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_dnskey_miss(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.dnskey_misses
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_dnskey_miss(&self, _domain: &str) {
+        self.dnskey_misses.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_ds_hit(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.ds_hits
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_ds_hit(&self, _domain: &str) {
+        self.ds_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn record_ds_miss(&self, domain: &str) {
-        let key = CompactString::new(domain);
-        self.ds_misses
-            .entry(key)
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
+    pub fn record_ds_miss(&self, _domain: &str) {
+        self.ds_misses.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn total_validation_hits(&self) -> u64 {
-        self.validation_hits.iter().map(|e| *e.value()).sum()
+        self.validation_hits.load(Ordering::Relaxed)
     }
 
     pub fn total_validation_misses(&self) -> u64 {
-        self.validation_misses.iter().map(|e| *e.value()).sum()
+        self.validation_misses.load(Ordering::Relaxed)
     }
 
     pub fn total_dnskey_hits(&self) -> u64 {
-        self.dnskey_hits.iter().map(|e| *e.value()).sum()
+        self.dnskey_hits.load(Ordering::Relaxed)
     }
 
     pub fn total_dnskey_misses(&self) -> u64 {
-        self.dnskey_misses.iter().map(|e| *e.value()).sum()
+        self.dnskey_misses.load(Ordering::Relaxed)
     }
 
     pub fn total_ds_hits(&self) -> u64 {
-        self.ds_hits.iter().map(|e| *e.value()).sum()
+        self.ds_hits.load(Ordering::Relaxed)
     }
 
     pub fn total_ds_misses(&self) -> u64 {
-        self.ds_misses.iter().map(|e| *e.value()).sum()
+        self.ds_misses.load(Ordering::Relaxed)
     }
 
     pub fn validation_hit_rate(&self) -> f64 {
         let hits = self.total_validation_hits();
-        let misses = self.total_validation_misses();
-        let total = hits + misses;
+        let total = hits + self.total_validation_misses();
 
         if total == 0 {
             0.0

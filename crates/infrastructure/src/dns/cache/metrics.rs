@@ -10,6 +10,7 @@ pub struct CacheMetrics {
     pub insertions: AtomicU64,
     pub evictions: AtomicU64,
     pub optimistic_refreshes: AtomicU64,
+    pub stale_hits: AtomicU64,
     pub lazy_deletions: AtomicU64,
     pub compactions: AtomicU64,
     pub batch_evictions: AtomicU64,

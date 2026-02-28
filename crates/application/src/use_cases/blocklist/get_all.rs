@@ -14,4 +14,12 @@ impl GetBlocklistUseCase {
     pub async fn execute(&self) -> Result<Vec<BlockedDomain>, DomainError> {
         self.repository.get_all().await
     }
+
+    pub async fn execute_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<BlockedDomain>, u64), DomainError> {
+        self.repository.get_all_paged(limit, offset).await
+    }
 }

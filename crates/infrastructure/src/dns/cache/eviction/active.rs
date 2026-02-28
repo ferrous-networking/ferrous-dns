@@ -41,6 +41,51 @@ impl ActiveEvictionPolicy {
         }
     }
 
+    #[inline(always)]
+    pub fn compute_score_from_snapshot(
+        &self,
+        hit_count: u64,
+        last_access: u64,
+        inserted_at: u64,
+        _expires_at: u64,
+        now_secs: u64,
+    ) -> f64 {
+        match self {
+            Self::Lru(_) => last_access as f64,
+            Self::HitRate(_) => {
+                let age_secs = now_secs.saturating_sub(last_access) as f64;
+                let recency = 1.0 / (age_secs + 1.0);
+                ((hit_count as f64) / (hit_count + 1) as f64) * recency
+            }
+            Self::Lfu(p) => {
+                if p.min_frequency > 0 && hit_count < p.min_frequency {
+                    -(p.min_frequency as f64 - hit_count as f64)
+                } else {
+                    hit_count as f64
+                }
+            }
+            Self::Lfuk(p) => {
+                let hits = hit_count as f64;
+                if hits == 0.0 {
+                    return p.min_lfuk_score;
+                }
+                let age_secs = now_secs.saturating_sub(inserted_at).max(1) as f64;
+                let idle_secs = now_secs.saturating_sub(last_access) as f64;
+                let age_decay = if (p.k_value - 0.5).abs() < f64::EPSILON {
+                    age_secs.sqrt().max(1.0)
+                } else {
+                    age_secs.powf(p.k_value).max(1.0)
+                };
+                let score = hits / age_decay * (1.0 / (idle_secs + 1.0));
+                if p.min_lfuk_score > 0.0 && score < p.min_lfuk_score {
+                    score - p.min_lfuk_score
+                } else {
+                    score
+                }
+            }
+        }
+    }
+
     pub fn strategy(&self) -> EvictionStrategy {
         match self {
             Self::Lru(_) => EvictionStrategy::LRU,

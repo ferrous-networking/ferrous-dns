@@ -53,6 +53,36 @@ impl BlocklistRepository for SqliteBlocklistRepository {
             .collect())
     }
 
+    async fn get_all_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<BlockedDomain>, u64), DomainError> {
+        let count_row = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM blocklist")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+        let total = count_row.0 as u64;
+
+        let rows = sqlx::query("SELECT id, domain, datetime(added_at) as added_at FROM blocklist ORDER BY added_at DESC LIMIT ? OFFSET ?")
+            .bind(limit as i64)
+            .bind(offset as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+        let domains = rows
+            .into_iter()
+            .map(|row| BlockedDomain {
+                id: Some(row.get("id")),
+                domain: row.get("domain"),
+                added_at: Some(row.get("added_at")),
+            })
+            .collect();
+
+        Ok((domains, total))
+    }
+
     async fn add_domain(&self, domain: &BlockedDomain) -> Result<(), DomainError> {
         sqlx::query("INSERT INTO blocklist (domain) VALUES (?)")
             .bind(&domain.domain)

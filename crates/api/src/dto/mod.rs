@@ -26,11 +26,12 @@ pub use custom_service::{
 };
 pub use local_record::{CreateLocalRecordRequest, LocalRecordDto};
 pub use managed_domain::{
-    CreateManagedDomainRequest, ManagedDomainResponse, UpdateManagedDomainRequest,
+    CreateManagedDomainRequest, ManagedDomainQuery, ManagedDomainResponse, PaginatedManagedDomains,
+    UpdateManagedDomainRequest,
 };
 pub use regex_filter::{CreateRegexFilterRequest, RegexFilterResponse, UpdateRegexFilterRequest};
 
-pub use blocklist::BlocklistResponse;
+pub use blocklist::{BlocklistQuery, BlocklistResponse, PaginatedBlocklist};
 pub use blocklist_source::{
     BlocklistSourceResponse, CreateBlocklistSourceRequest, UpdateBlocklistSourceRequest,
 };

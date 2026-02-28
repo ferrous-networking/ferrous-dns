@@ -53,4 +53,27 @@ impl DnssecValidatorPool {
             .validate_query(domain, record_type)
             .await
     }
+
+    pub async fn validate_with_message(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        message: &hickory_proto::op::Message,
+    ) -> Result<ValidatedResponse, DomainError> {
+        let n = self.validators.len();
+        let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
+
+        for i in 0..n {
+            let idx = (start + i) % n;
+            if let Ok(mut v) = self.validators[idx].try_lock() {
+                return v.validate_with_message(domain, record_type, message).await;
+            }
+        }
+
+        self.validators[start]
+            .lock()
+            .await
+            .validate_with_message(domain, record_type, message)
+            .await
+    }
 }

@@ -1,6 +1,26 @@
 use ferrous_dns_domain::ManagedDomain;
 use serde::{Deserialize, Serialize};
 
+#[derive(Deserialize, Debug)]
+pub struct ManagedDomainQuery {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+fn default_limit() -> u32 {
+    100
+}
+
+#[derive(Serialize, Debug)]
+pub struct PaginatedManagedDomains {
+    pub data: Vec<ManagedDomainResponse>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManagedDomainResponse {
     pub id: i64,

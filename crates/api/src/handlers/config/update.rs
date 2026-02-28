@@ -112,7 +112,10 @@ pub async fn update_config(
         }
     }
 
-    match config.save(&config_path) {
+    match state
+        .config_file_persistence
+        .save_config_to_file(&config, &config_path)
+    {
         Ok(_) => {
             info!("Configuration updated successfully");
             Json(serde_json::json!({

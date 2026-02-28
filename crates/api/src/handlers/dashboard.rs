@@ -29,15 +29,28 @@ pub async fn get_dashboard(
     let rate_state = state.clone();
     let cache_state = state.clone();
 
-    let stats_fut = async move { stats_state.get_stats.execute(period_hours).await };
-    let rate_fut = async move { rate_state.get_query_rate.execute(RateUnit::Second).await };
-    let cache_fut = async move { cache_state.get_cache_stats.execute(period_hours).await };
+    let stats_fut = async move { stats_state.query.get_stats.execute(period_hours).await };
+    let rate_fut = async move {
+        rate_state
+            .query
+            .get_query_rate
+            .execute(RateUnit::Second)
+            .await
+    };
+    let cache_fut = async move {
+        cache_state
+            .query
+            .get_cache_stats
+            .execute(period_hours)
+            .await
+    };
 
     let (stats_result, rate_result, cache_result, timeline) = if params.include_timeline {
         let timeline_state = state.clone();
         let period_u32 = period_hours as u32;
         let timeline_fut = async move {
             timeline_state
+                .query
                 .get_timeline
                 .execute(period_u32, TimeGranularity::QuarterHour)
                 .await
@@ -139,7 +152,7 @@ pub async fn get_dashboard(
 
     let cache_resp = match cache_result {
         Ok(stats) => {
-            let total_entries = state.cache.size();
+            let total_entries = state.dns.cache.cache_size();
             CacheStatsResponse {
                 total_entries,
                 total_hits: stats.total_hits,

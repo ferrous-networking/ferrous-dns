@@ -9,6 +9,5 @@ license.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 toml.workspace = true
-toml_edit.workspace = true
 chrono = "0.4"
 ipnetwork = "0.20"

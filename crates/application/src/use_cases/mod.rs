@@ -9,6 +9,7 @@ pub mod config;
 pub mod custom_services;
 pub mod dns;
 pub mod groups;
+pub mod local_records;
 pub mod managed_domains;
 pub mod queries;
 pub mod regex_filters;
@@ -41,6 +42,9 @@ pub use dns::HandleDnsQueryUseCase;
 pub use groups::{
     AssignClientGroupUseCase, CreateGroupUseCase, DeleteGroupUseCase, GetGroupsUseCase,
     UpdateGroupUseCase,
+};
+pub use local_records::{
+    CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
 };
 pub use managed_domains::{
     CreateManagedDomainUseCase, DeleteManagedDomainUseCase, GetManagedDomainsUseCase,

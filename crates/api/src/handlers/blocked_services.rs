@@ -7,10 +7,11 @@ use axum::{
 };
 use ferrous_dns_domain::DomainError;
 use serde::Deserialize;
-use tracing::{debug, error};
+use tracing::debug;
 
 use crate::{
     dto::{BlockServiceRequest, BlockedServiceResponse, ServiceDefinitionResponse},
+    errors::ApiError,
     state::AppState,
 };
 
@@ -27,7 +28,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn get_catalog(State(state): State<AppState>) -> Json<Vec<ServiceDefinitionResponse>> {
-    let services = state.get_service_catalog.get_all();
+    let services = state.services.get_service_catalog.get_all();
     Json(
         services
             .iter()
@@ -39,17 +40,18 @@ async fn get_catalog(State(state): State<AppState>) -> Json<Vec<ServiceDefinitio
 async fn get_catalog_entry(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<ServiceDefinitionResponse>, (StatusCode, String)> {
-    state
+) -> Result<Json<ServiceDefinitionResponse>, ApiError> {
+    let def = state
+        .services
         .get_service_catalog
         .get_by_id(&id)
-        .map(|d| Json(ServiceDefinitionResponse::from_definition(&d)))
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Service '{}' not found in catalog", id),
-            )
-        })
+            ApiError(DomainError::ServiceNotFoundInCatalog(format!(
+                "Service '{}' not found in catalog",
+                id
+            )))
+        })?;
+    Ok(Json(ServiceDefinitionResponse::from_definition(&def)))
 }
 
 #[derive(Deserialize)]
@@ -60,62 +62,50 @@ struct BlockedServicesQuery {
 async fn get_blocked_services(
     State(state): State<AppState>,
     Query(params): Query<BlockedServicesQuery>,
-) -> Json<Vec<BlockedServiceResponse>> {
-    let result = match params.group_id {
-        Some(gid) => state.get_blocked_services.get_for_group(gid).await,
-        None => state.get_blocked_services.get_all().await,
+) -> Result<Json<Vec<BlockedServiceResponse>>, ApiError> {
+    let services = match params.group_id {
+        Some(gid) => {
+            state
+                .services
+                .get_blocked_services
+                .get_for_group(gid)
+                .await?
+        }
+        None => state.services.get_blocked_services.get_all().await?,
     };
-
-    match result {
-        Ok(services) => {
-            debug!(count = services.len(), "Blocked services retrieved");
-            Json(
-                services
-                    .into_iter()
-                    .map(BlockedServiceResponse::from_entity)
-                    .collect(),
-            )
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to retrieve blocked services");
-            Json(vec![])
-        }
-    }
+    debug!(count = services.len(), "Blocked services retrieved");
+    Ok(Json(
+        services
+            .into_iter()
+            .map(BlockedServiceResponse::from_entity)
+            .collect(),
+    ))
 }
 
 async fn block_service(
     State(state): State<AppState>,
     Json(req): Json<BlockServiceRequest>,
-) -> Result<(StatusCode, Json<BlockedServiceResponse>), (StatusCode, String)> {
-    match state
+) -> Result<(StatusCode, Json<BlockedServiceResponse>), ApiError> {
+    let blocked = state
+        .services
         .block_service
         .execute(&req.service_id, req.group_id)
-        .await
-    {
-        Ok(blocked) => Ok((
-            StatusCode::CREATED,
-            Json(BlockedServiceResponse::from_entity(blocked)),
-        )),
-        Err(DomainError::ServiceNotFoundInCatalog(msg)) => Err((StatusCode::NOT_FOUND, msg)),
-        Err(DomainError::BlockedServiceAlreadyExists(msg)) => Err((StatusCode::CONFLICT, msg)),
-        Err(e @ DomainError::GroupNotFound(_)) => Err((StatusCode::BAD_REQUEST, e.to_string())),
-        Err(e) => {
-            error!(error = %e, "Failed to block service");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
+        .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(BlockedServiceResponse::from_entity(blocked)),
+    ))
 }
 
 async fn unblock_service(
     State(state): State<AppState>,
     Path((service_id, group_id)): Path<(String, i64)>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    match state.unblock_service.execute(&service_id, group_id).await {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
-        Err(e @ DomainError::NotFound(_)) => Err((StatusCode::NOT_FOUND, e.to_string())),
-        Err(e) => {
-            error!(error = %e, "Failed to unblock service");
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
+) -> Result<StatusCode, ApiError> {
+    state
+        .services
+        .unblock_service
+        .execute(&service_id, group_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }

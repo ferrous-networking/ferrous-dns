@@ -119,6 +119,9 @@ pub enum DomainError {
     #[error("Transport connection reset by {server}")]
     TransportConnectionReset { server: String },
 
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+
     #[error("No healthy upstream servers available")]
     TransportNoHealthyServers,
 

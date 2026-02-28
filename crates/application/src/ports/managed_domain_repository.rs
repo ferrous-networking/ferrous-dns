@@ -17,6 +17,12 @@ pub trait ManagedDomainRepository: Send + Sync {
 
     async fn get_all(&self) -> Result<Vec<ManagedDomain>, DomainError>;
 
+    async fn get_all_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<ManagedDomain>, u64), DomainError>;
+
     #[allow(clippy::too_many_arguments)]
     async fn update(
         &self,

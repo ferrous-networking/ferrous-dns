@@ -70,18 +70,34 @@ pub fn l1_insert(
     addresses: Arc<Vec<IpAddr>>,
     expires_secs: u64,
 ) {
-    L1_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let type_str = record_type.as_str();
-        let mut key = CompactString::with_capacity(type_str.len() + 1 + domain.len());
+    let type_str = record_type.as_str();
+    let type_len = type_str.len();
+    let dom_len = domain.len();
+    let total = type_len + 1 + dom_len;
+
+    let mut buf = [0u8; 260];
+    let key = if total <= buf.len() {
+        buf[..type_len].copy_from_slice(type_str.as_bytes());
+        buf[type_len] = b':';
+        buf[type_len + 1..total].copy_from_slice(domain.as_bytes());
+        // SAFETY: composed from valid UTF-8 slices (type_str, ':', domain)
+        CompactString::from(unsafe { std::str::from_utf8_unchecked(&buf[..total]) })
+    } else {
+        let mut key = CompactString::with_capacity(total);
         key.push_str(type_str);
         key.push(':');
         key.push_str(domain);
-        let entry = L1Entry {
-            addresses,
-            expires_secs,
-        };
-        cache.put(key, entry);
+        key
+    };
+
+    L1_CACHE.with(|cache| {
+        cache.borrow_mut().put(
+            key,
+            L1Entry {
+                addresses,
+                expires_secs,
+            },
+        );
     });
 }
 

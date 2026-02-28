@@ -3,6 +3,7 @@ use super::super::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError};
+use hickory_proto::op::Message;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -57,11 +58,26 @@ impl DnsResolver for DnssecResolver {
             "Performing DNSSEC validation"
         );
 
-        match self
-            .validator
-            .validate_query(&query.domain, query.record_type)
-            .await
-        {
+        let pre_fetched_message = resolution
+            .upstream_wire_data
+            .as_ref()
+            .and_then(|bytes| Message::from_vec(bytes).ok());
+
+        let dnssec_result = if let Some(ref message) = pre_fetched_message {
+            debug!(
+                domain = %query.domain,
+                "Using pre-fetched upstream response for DNSSEC (skipping duplicate query)"
+            );
+            self.validator
+                .validate_with_message(&query.domain, query.record_type, message)
+                .await
+        } else {
+            self.validator
+                .validate_query(&query.domain, query.record_type)
+                .await
+        };
+
+        match dnssec_result {
             Ok(response) => {
                 debug!(
                     domain = %query.domain,

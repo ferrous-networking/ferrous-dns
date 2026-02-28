@@ -114,6 +114,8 @@ impl BlockIndex {
             return None;
         }
 
+        let mask = self.group_mask(group_id);
+
         if self.groups_with_advanced_rules.contains(&group_id) {
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
                 for r in regexes {
@@ -134,9 +136,15 @@ impl BlockIndex {
                     return Some(BlockSource::ManagedDomain);
                 }
             }
-        }
 
-        let mask = self.group_mask(group_id);
+            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+                for r in regexes {
+                    if r.is_match(domain).unwrap_or(false) {
+                        return Some(BlockSource::RegexFilter);
+                    }
+                }
+            }
+        }
 
         if !self.bloom.check(&domain) {
             return None;
@@ -145,16 +153,6 @@ impl BlockIndex {
         if let Some(entry) = self.exact.get(domain) {
             if entry.value() & mask != 0 {
                 return Some(BlockSource::Blocklist);
-            }
-        }
-
-        if self.groups_with_advanced_rules.contains(&group_id) {
-            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                for r in regexes {
-                    if r.is_match(domain).unwrap_or(false) {
-                        return Some(BlockSource::RegexFilter);
-                    }
-                }
             }
         }
 

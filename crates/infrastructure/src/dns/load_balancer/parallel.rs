@@ -29,25 +29,28 @@ impl ParallelStrategy {
 
         let mut futs = FuturesUnordered::new();
 
-        let per_server_timeout_ms = ctx.timeout_ms.saturating_mul(2);
+        let per_server_timeout_ms = ctx.timeout_ms;
 
-        let domain_arc: Arc<str> = ctx.domain.into();
+        let domain_arc = Arc::clone(ctx.domain);
         for &protocol in ctx.servers {
-            let protocol = protocol.clone();
+            let protocol = Arc::clone(protocol);
             let domain = Arc::clone(&domain_arc);
             let record_type = *ctx.record_type;
             let emitter = ctx.emitter.clone();
             let pool_name = Arc::clone(ctx.pool_name);
+            let server_displays = Arc::clone(ctx.server_displays);
+            let query_bytes = Arc::clone(&ctx.query_bytes);
 
             futs.push(async move {
                 query_server(
                     &protocol,
+                    &query_bytes,
                     &domain,
                     &record_type,
                     per_server_timeout_ms,
-                    ctx.dnssec_ok,
                     &emitter,
                     &pool_name,
+                    &server_displays,
                 )
                 .await
             });

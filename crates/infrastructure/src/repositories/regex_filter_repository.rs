@@ -65,9 +65,10 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
 
         let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, RegexFilterRow>(
             "INSERT INTO regex_filters (name, pattern, action, group_id, comment, enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             RETURNING id, name, pattern, action, group_id, comment, enabled, created_at, updated_at",
         )
         .bind(&name)
         .bind(&pattern)
@@ -77,7 +78,7 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
         .bind(if enabled { 1i64 } else { 0i64 })
         .bind(&now)
         .bind(&now)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -91,11 +92,7 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
             }
         })?;
 
-        let id = result.last_insert_rowid();
-
-        self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::DatabaseError("Failed to fetch created regex filter".to_string())
-        })
+        Ok(Self::row_to_filter(row))
     }
 
     #[instrument(skip(self))]
@@ -159,10 +156,11 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
 
         Self::validate_regex_syntax(&final_pattern)?;
 
-        let result = sqlx::query(
+        let row = sqlx::query_as::<_, RegexFilterRow>(
             "UPDATE regex_filters
              SET name = ?, pattern = ?, action = ?, group_id = ?, comment = ?, enabled = ?, updated_at = ?
-             WHERE id = ?",
+             WHERE id = ?
+             RETURNING id, name, pattern, action, group_id, comment, enabled, created_at, updated_at",
         )
         .bind(&final_name)
         .bind(&final_pattern)
@@ -172,7 +170,7 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
         .bind(if final_enabled { 1i64 } else { 0i64 })
         .bind(&now)
         .bind(id)
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             if e.to_string().contains("UNIQUE constraint failed") {
@@ -186,13 +184,8 @@ impl RegexFilterRepository for SqliteRegexFilterRepository {
             }
         })?;
 
-        if result.rows_affected() == 0 {
-            return Err(DomainError::RegexFilterNotFound(id));
-        }
-
-        self.get_by_id(id).await?.ok_or_else(|| {
-            DomainError::DatabaseError("Failed to fetch updated regex filter".to_string())
-        })
+        row.map(Self::row_to_filter)
+            .ok_or(DomainError::RegexFilterNotFound(id))
     }
 
     #[instrument(skip(self))]

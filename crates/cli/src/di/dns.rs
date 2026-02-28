@@ -13,10 +13,10 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 pub struct DnsServices {
-    pub resolver: Arc<HickoryDnsResolver>,
     pub cache: Arc<DnsCache>,
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
     pub pool_manager: Arc<PoolManager>,
+    pub health_checker: Option<Arc<HealthChecker>>,
     pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
 }
 
@@ -30,6 +30,7 @@ impl DnsServices {
             Self::setup_pool_manager(config, health_checker.clone(), emitter.clone()).await?;
 
         Self::start_health_checker_task(health_checker.clone(), &pool_manager, config);
+        let stored_health_checker = health_checker.clone();
 
         let timeout_ms = config.dns.query_timeout * 1000;
         let pool_manager_clone = Arc::clone(&pool_manager);
@@ -57,17 +58,30 @@ impl DnsServices {
         }
 
         let cache_maintenance = if config.dns.cache_enabled && config.dns.cache_optimistic_refresh {
-            let resolver_for_maintenance = HickoryDnsResolver::new_with_pools(
-                pool_manager_clone.clone(),
-                timeout_ms,
-                false,
-                None,
-            )?
-            .with_cache(cache.clone(), config.dns.cache_ttl);
+            let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(256);
+            cache.set_stale_refresh_sender(stale_tx);
+
+            let resolver_for_maintenance: Arc<dyn ferrous_dns_application::ports::DnsResolver> =
+                Arc::new(
+                    HickoryDnsResolver::new_with_pools(
+                        pool_manager_clone.clone(),
+                        timeout_ms,
+                        false,
+                        None,
+                    )?
+                    .with_cache(cache.clone(), config.dns.cache_ttl),
+                );
+
+            DnsCacheMaintenance::start_stale_listener(
+                cache.clone(),
+                Arc::clone(&resolver_for_maintenance),
+                Some(repos.query_log.clone()),
+                stale_rx,
+            );
 
             Some(Arc::new(DnsCacheMaintenance::new(
                 cache.clone(),
-                Arc::new(resolver_for_maintenance),
+                resolver_for_maintenance,
                 Some(repos.query_log.clone()),
             )) as Arc<dyn CacheMaintenancePort>)
         } else {
@@ -104,10 +118,10 @@ impl DnsServices {
         info!("DNS services initialized successfully with load balancing");
 
         Ok(Self {
-            resolver,
             cache,
             handler_use_case,
             pool_manager: pool_manager_clone,
+            health_checker: stored_health_checker,
             cache_maintenance,
         })
     }
@@ -117,7 +131,9 @@ impl DnsServices {
         let (emitter, event_rx) = QueryEventEmitter::new_enabled();
         let logger = QueryEventLogger::new(repos.query_log.clone());
         tokio::spawn(async move {
-            logger.start_parallel_batch(event_rx).await.unwrap();
+            if let Err(e) = logger.start_parallel_batch(event_rx).await {
+                tracing::error!(error = %e, "Query event logger failed");
+            }
         });
         info!("Query event logger started - logging client DNS queries");
         emitter
@@ -152,7 +168,7 @@ impl DnsServices {
         config: &Config,
     ) {
         if let Some(checker) = health_checker {
-            let all_protocols = pool_manager.get_all_protocols();
+            let all_protocols = pool_manager.get_all_arc_protocols();
             let checker_clone = checker.clone();
             let interval = config.dns.health_check.interval;
             let timeout = config.dns.health_check.timeout;

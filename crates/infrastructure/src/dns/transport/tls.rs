@@ -11,7 +11,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tracing::debug;
 
-const MAX_IDLE_PER_HOST: usize = 2;
+const MAX_IDLE_PER_HOST: usize = 12;
 
 static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(|| {
     let mut root_store = rustls::RootCertStore::empty();
@@ -29,18 +29,18 @@ static SHARED_TLS_CONFIG: LazyLock<Arc<rustls::ClientConfig>> = LazyLock::new(||
 });
 
 type TlsConnection = TlsStream<TcpStream>;
-type PoolKey = (String, u16);
+type PoolKey = (Arc<str>, u16);
 type TlsConnectionPool = DashMap<PoolKey, Vec<TlsConnection>>;
 
 static TLS_POOL: LazyLock<TlsConnectionPool> = LazyLock::new(TlsConnectionPool::new);
 
 pub struct TlsTransport {
     upstream_addr: UpstreamAddr,
-    hostname: String,
+    hostname: Arc<str>,
 }
 
 impl TlsTransport {
-    pub fn new(upstream_addr: UpstreamAddr, hostname: String) -> Self {
+    pub fn new(upstream_addr: UpstreamAddr, hostname: Arc<str>) -> Self {
         Self {
             upstream_addr,
             hostname,
@@ -48,12 +48,12 @@ impl TlsTransport {
     }
 
     fn pool_key(&self) -> PoolKey {
-        (self.hostname.clone(), self.upstream_addr.port())
+        (Arc::clone(&self.hostname), self.upstream_addr.port())
     }
 
     fn resolved_addr(&self) -> Result<SocketAddr, DomainError> {
         self.upstream_addr.socket_addr().ok_or_else(|| {
-            DomainError::InvalidDomainName(format!(
+            DomainError::IoError(format!(
                 "TLS transport requires resolved address, got: {}",
                 self.upstream_addr
             ))
@@ -78,7 +78,7 @@ impl TlsTransport {
         let server_addr = self.resolved_addr()?;
         let connector = tokio_rustls::TlsConnector::from(SHARED_TLS_CONFIG.clone());
 
-        let server_name = ServerName::try_from(self.hostname.clone()).map_err(|e| {
+        let server_name = ServerName::try_from(self.hostname.to_string()).map_err(|e| {
             DomainError::InvalidDomainName(format!(
                 "Invalid TLS hostname '{}': {}",
                 self.hostname, e
@@ -88,31 +88,30 @@ impl TlsTransport {
         let tcp_stream = tokio::time::timeout(timeout, TcpStream::connect(server_addr))
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
-                    "Timeout connecting to TLS server {}",
-                    server_addr
-                ))
+                DomainError::IoError(format!("Timeout connecting to TLS server {}", server_addr))
             })?
             .map_err(|e| {
-                DomainError::InvalidDomainName(format!(
+                DomainError::IoError(format!(
                     "Connection refused by TLS server {}: {}",
                     server_addr, e
                 ))
             })?;
 
+        let sock_ref = socket2::SockRef::from(&tcp_stream);
+        let keepalive = socket2::TcpKeepalive::new()
+            .with_time(std::time::Duration::from_secs(15))
+            .with_interval(std::time::Duration::from_secs(5));
+        if let Err(e) = sock_ref.set_tcp_keepalive(&keepalive) {
+            debug!(server = %server_addr, error = %e, "Failed to set TCP keepalive");
+        }
+
         let tls_stream = tokio::time::timeout(timeout, connector.connect(server_name, tcp_stream))
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
-                    "Timeout during TLS handshake with {}",
-                    server_addr
-                ))
+                DomainError::IoError(format!("Timeout during TLS handshake with {}", server_addr))
             })?
             .map_err(|e| {
-                DomainError::InvalidDomainName(format!(
-                    "TLS handshake failed with {}: {}",
-                    server_addr, e
-                ))
+                DomainError::IoError(format!("TLS handshake failed with {}: {}", server_addr, e))
             })?;
 
         debug!(server = %server_addr, hostname = %self.hostname, "TLS connection established");
@@ -130,16 +129,13 @@ impl TlsTransport {
         tokio::time::timeout(timeout, send_with_length_prefix(stream, message_bytes))
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
-                    "Timeout sending TLS query to {}",
-                    server_addr
-                ))
+                DomainError::IoError(format!("Timeout sending TLS query to {}", server_addr))
             })??;
 
         let response_bytes = tokio::time::timeout(timeout, read_with_length_prefix(stream))
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
+                DomainError::IoError(format!(
                     "Timeout waiting for TLS response from {}",
                     server_addr
                 ))

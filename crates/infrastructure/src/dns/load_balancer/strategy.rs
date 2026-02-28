@@ -17,13 +17,14 @@ pub struct UpstreamResult {
 }
 
 pub struct QueryContext<'a> {
-    pub servers: &'a [&'a DnsProtocol],
-    pub domain: &'a str,
+    pub servers: &'a [&'a Arc<DnsProtocol>],
+    pub domain: &'a Arc<str>,
     pub record_type: &'a RecordType,
     pub timeout_ms: u64,
-    pub dnssec_ok: bool,
+    pub query_bytes: Arc<[u8]>,
     pub emitter: &'a QueryEventEmitter,
     pub pool_name: &'a Arc<str>,
+    pub server_displays: &'a Arc<std::collections::HashMap<Arc<DnsProtocol>, Arc<str>>>,
 }
 
 pub enum Strategy {

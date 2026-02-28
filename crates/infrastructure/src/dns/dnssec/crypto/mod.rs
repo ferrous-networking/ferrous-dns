@@ -9,7 +9,6 @@ use ring::signature;
 use sha1::Digest as Sha1Digest;
 use sha2::{Sha256, Sha384};
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct SignatureVerifier;
 
@@ -20,8 +19,9 @@ impl SignatureVerifier {
         dnskey: &DnskeyRecord,
         domain: &str,
         records: &[Record],
+        now_secs: u32,
     ) -> Result<bool, DomainError> {
-        if !self.is_time_valid(rrsig) {
+        if !rrsig.is_valid_at(now_secs) {
             return Ok(false);
         }
 
@@ -129,8 +129,8 @@ impl SignatureVerifier {
     ) -> Result<bool, DomainError> {
         let (exponent, modulus) = self.parse_rsa_key(&dnskey.public_key)?;
         let public_key = signature::RsaPublicKeyComponents {
-            n: &modulus,
-            e: &exponent,
+            n: modulus,
+            e: exponent,
         };
         match public_key.verify(
             &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
@@ -157,8 +157,8 @@ impl SignatureVerifier {
         let (exponent, modulus) = self.parse_rsa_key(&dnskey.public_key)?;
 
         let public_key = signature::RsaPublicKeyComponents {
-            n: &modulus,
-            e: &exponent,
+            n: modulus,
+            e: exponent,
         };
 
         match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, sig) {
@@ -175,8 +175,8 @@ impl SignatureVerifier {
     ) -> Result<bool, DomainError> {
         let (exponent, modulus) = self.parse_rsa_key(&dnskey.public_key)?;
         let public_key = signature::RsaPublicKeyComponents {
-            n: &modulus,
-            e: &exponent,
+            n: modulus,
+            e: exponent,
         };
         match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA512, data, sig) {
             Ok(_) => Ok(true),
@@ -202,9 +202,9 @@ impl SignatureVerifier {
             ));
         }
 
-        let mut pk = Vec::with_capacity(65);
-        pk.push(0x04);
-        pk.extend_from_slice(&dnskey.public_key);
+        let mut pk = [0u8; 65];
+        pk[0] = 0x04;
+        pk[1..].copy_from_slice(&dnskey.public_key);
 
         let public_key =
             signature::UnparsedPublicKey::new(&signature::ECDSA_P256_SHA256_FIXED, &pk);
@@ -233,9 +233,9 @@ impl SignatureVerifier {
             ));
         }
 
-        let mut pk = Vec::with_capacity(97);
-        pk.push(0x04);
-        pk.extend_from_slice(&dnskey.public_key);
+        let mut pk = [0u8; 97];
+        pk[0] = 0x04;
+        pk[1..].copy_from_slice(&dnskey.public_key);
 
         let public_key =
             signature::UnparsedPublicKey::new(&signature::ECDSA_P384_SHA384_FIXED, &pk);
@@ -272,7 +272,7 @@ impl SignatureVerifier {
         }
     }
 
-    fn parse_rsa_key(&self, key_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>), DomainError> {
+    fn parse_rsa_key<'a>(&self, key_data: &'a [u8]) -> Result<(&'a [u8], &'a [u8]), DomainError> {
         if key_data.is_empty() {
             return Err(DomainError::InvalidDnsResponse(
                 "Empty RSA public key".into(),
@@ -300,8 +300,8 @@ impl SignatureVerifier {
             ));
         }
 
-        let exponent = key_data[exp_start..exp_end].to_vec();
-        let modulus = key_data[exp_end..].to_vec();
+        let exponent = &key_data[exp_start..exp_end];
+        let modulus = &key_data[exp_end..];
 
         if modulus.is_empty() {
             return Err(DomainError::InvalidDnsResponse(
@@ -351,20 +351,13 @@ impl SignatureVerifier {
 
             wire.push(label.len() as u8);
 
-            wire.extend_from_slice(label.to_lowercase().as_bytes());
+            for &b in label.as_bytes() {
+                wire.push(b.to_ascii_lowercase());
+            }
         }
 
         wire.push(0);
 
         Ok(wire)
-    }
-
-    fn is_time_valid(&self, rrsig: &RrsigRecord) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
-            .unwrap_or(0);
-
-        now >= rrsig.signature_inception && now <= rrsig.signature_expiration
     }
 }

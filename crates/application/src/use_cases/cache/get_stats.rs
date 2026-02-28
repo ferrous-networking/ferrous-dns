@@ -29,7 +29,7 @@ impl GetCacheStatsUseCase {
 
     pub async fn execute(&self, period_hours: f32) -> Result<CacheStats, DomainError> {
         {
-            let guard = self.cache.read().unwrap();
+            let guard = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.period_hours == period_hours && cached.computed_at.elapsed() < CACHE_TTL {
                     return Ok(cached.data.clone());
@@ -40,7 +40,7 @@ impl GetCacheStatsUseCase {
         let _lock = self.refresh_lock.lock().await;
 
         {
-            let guard = self.cache.read().unwrap();
+            let guard = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.period_hours == period_hours && cached.computed_at.elapsed() < CACHE_TTL {
                     return Ok(cached.data.clone());
@@ -51,7 +51,7 @@ impl GetCacheStatsUseCase {
         let stats = self.repository.get_cache_stats(period_hours).await?;
 
         {
-            let mut guard = self.cache.write().unwrap();
+            let mut guard = self.cache.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(CachedEntry {
                 computed_at: Instant::now(),
                 period_hours,

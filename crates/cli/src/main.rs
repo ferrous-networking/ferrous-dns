@@ -4,9 +4,17 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 use clap::Parser;
-use ferrous_dns_api::AppState;
+use ferrous_dns_api::{
+    AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases, QueryUseCases,
+    ServiceUseCases,
+};
+use ferrous_dns_application::use_cases::{
+    CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
+};
 use ferrous_dns_domain::CliOverrides;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
+use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
+use ferrous_dns_infrastructure::repositories::{SqliteConfigRepository, TomlConfigFilePersistence};
 use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, QueryLogRetentionJob,
     RetentionJob, WalCheckpointJob,
@@ -94,6 +102,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     let config_arc = Arc::new(RwLock::new(config.clone()));
     let wal_pool = write_pool.clone();
+    let config_repo_pool = wal_pool.clone();
 
     let repos = di::Repositories::new(write_pool, read_pool, &config.database).await?;
     let dns_services = di::DnsServices::new(&config, &repos).await?;
@@ -134,55 +143,87 @@ async fn async_main() -> anyhow::Result<()> {
     }
     info!("Subnet matcher cache loaded");
 
+    let config_repo: Arc<dyn ferrous_dns_application::ports::ConfigRepository> =
+        Arc::new(SqliteConfigRepository::new(config_repo_pool));
+
     let app_state = AppState {
-        get_stats: use_cases.get_stats,
-        get_queries: use_cases.get_queries,
-        get_timeline: use_cases.get_timeline,
-        get_query_rate: use_cases.get_query_rate,
-        get_cache_stats: use_cases.get_cache_stats,
-        get_blocklist: use_cases.get_blocklist,
-        get_clients: use_cases.get_clients,
-        get_groups: use_cases.get_groups,
-        create_group: use_cases.create_group,
-        update_group: use_cases.update_group,
-        delete_group: use_cases.delete_group,
-        assign_client_group: use_cases.assign_client_group,
-        get_client_subnets: use_cases.get_client_subnets,
-        create_client_subnet: use_cases.create_client_subnet,
-        delete_client_subnet: use_cases.delete_client_subnet,
-        create_manual_client: use_cases.create_manual_client,
-        update_client: use_cases.update_client,
-        delete_client: use_cases.delete_client,
-        get_blocklist_sources: use_cases.get_blocklist_sources,
-        create_blocklist_source: use_cases.create_blocklist_source,
-        update_blocklist_source: use_cases.update_blocklist_source,
-        delete_blocklist_source: use_cases.delete_blocklist_source,
-        get_whitelist: use_cases.get_whitelist,
-        get_whitelist_sources: use_cases.get_whitelist_sources,
-        create_whitelist_source: use_cases.create_whitelist_source,
-        update_whitelist_source: use_cases.update_whitelist_source,
-        delete_whitelist_source: use_cases.delete_whitelist_source,
-        get_block_filter_stats: use_cases.get_block_filter_stats,
-        subnet_matcher: use_cases.subnet_matcher.clone(),
-        config: config_arc,
-        cache: dns_services.cache.clone(),
-        dns_resolver: dns_services.resolver.clone(),
-        get_managed_domains: use_cases.get_managed_domains,
-        create_managed_domain: use_cases.create_managed_domain,
-        update_managed_domain: use_cases.update_managed_domain,
-        delete_managed_domain: use_cases.delete_managed_domain,
-        get_regex_filters: use_cases.get_regex_filters,
-        create_regex_filter: use_cases.create_regex_filter,
-        update_regex_filter: use_cases.update_regex_filter,
-        delete_regex_filter: use_cases.delete_regex_filter,
-        get_service_catalog: use_cases.get_service_catalog,
-        get_blocked_services: use_cases.get_blocked_services,
-        block_service: use_cases.block_service,
-        unblock_service: use_cases.unblock_service,
-        create_custom_service: use_cases.create_custom_service,
-        get_custom_services: use_cases.get_custom_services,
-        update_custom_service: use_cases.update_custom_service,
-        delete_custom_service: use_cases.delete_custom_service,
+        query: QueryUseCases {
+            get_stats: use_cases.get_stats,
+            get_queries: use_cases.get_queries,
+            get_timeline: use_cases.get_timeline,
+            get_query_rate: use_cases.get_query_rate,
+            get_cache_stats: use_cases.get_cache_stats,
+        },
+        dns: DnsUseCases {
+            cache: dns_services.cache.clone()
+                as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
+            create_local_record: Arc::new(CreateLocalRecordUseCase::new(
+                config_arc.clone(),
+                config_repo.clone(),
+            )),
+            update_local_record: Arc::new(UpdateLocalRecordUseCase::new(
+                config_arc.clone(),
+                config_repo.clone(),
+            )),
+            delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(
+                config_arc.clone(),
+                config_repo,
+            )),
+            upstream_health: Arc::new(UpstreamHealthAdapter::new(
+                dns_services.pool_manager.clone(),
+                dns_services.health_checker.clone(),
+            )),
+        },
+        groups: GroupUseCases {
+            get_groups: use_cases.get_groups,
+            create_group: use_cases.create_group,
+            update_group: use_cases.update_group,
+            delete_group: use_cases.delete_group,
+            assign_client_group: use_cases.assign_client_group,
+        },
+        clients: ClientUseCases {
+            get_clients: use_cases.get_clients,
+            create_manual_client: use_cases.create_manual_client,
+            update_client: use_cases.update_client,
+            delete_client: use_cases.delete_client,
+            get_client_subnets: use_cases.get_client_subnets,
+            create_client_subnet: use_cases.create_client_subnet,
+            delete_client_subnet: use_cases.delete_client_subnet,
+            subnet_matcher: use_cases.subnet_matcher.clone(),
+        },
+        blocking: BlockingUseCases {
+            get_blocklist: use_cases.get_blocklist,
+            get_blocklist_sources: use_cases.get_blocklist_sources,
+            create_blocklist_source: use_cases.create_blocklist_source,
+            update_blocklist_source: use_cases.update_blocklist_source,
+            delete_blocklist_source: use_cases.delete_blocklist_source,
+            get_whitelist: use_cases.get_whitelist,
+            get_whitelist_sources: use_cases.get_whitelist_sources,
+            create_whitelist_source: use_cases.create_whitelist_source,
+            update_whitelist_source: use_cases.update_whitelist_source,
+            delete_whitelist_source: use_cases.delete_whitelist_source,
+            get_managed_domains: use_cases.get_managed_domains,
+            create_managed_domain: use_cases.create_managed_domain,
+            update_managed_domain: use_cases.update_managed_domain,
+            delete_managed_domain: use_cases.delete_managed_domain,
+            get_regex_filters: use_cases.get_regex_filters,
+            create_regex_filter: use_cases.create_regex_filter,
+            update_regex_filter: use_cases.update_regex_filter,
+            delete_regex_filter: use_cases.delete_regex_filter,
+            get_block_filter_stats: use_cases.get_block_filter_stats,
+        },
+        services: ServiceUseCases {
+            get_service_catalog: use_cases.get_service_catalog,
+            get_blocked_services: use_cases.get_blocked_services,
+            block_service: use_cases.block_service,
+            unblock_service: use_cases.unblock_service,
+            create_custom_service: use_cases.create_custom_service,
+            get_custom_services: use_cases.get_custom_services,
+            update_custom_service: use_cases.update_custom_service,
+            delete_custom_service: use_cases.delete_custom_service,
+        },
+        config: config_arc.clone(),
+        config_file_persistence: Arc::new(TomlConfigFilePersistence),
         api_key: config.server.api_key.as_deref().map(Arc::from),
     };
 

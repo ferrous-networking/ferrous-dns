@@ -388,6 +388,7 @@ fn test_verify_ds_unsupported_digest_type() {
 fn test_verify_rrsig_expired_signature() {
     use ferrous_dns_domain::RecordType;
     use ferrous_dns_infrastructure::dns::dnssec::RrsigRecord;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     let verifier = SignatureVerifier;
 
@@ -404,16 +405,20 @@ fn test_verify_rrsig_expired_signature() {
         algorithm: 8,
         labels: 2,
         original_ttl: 300,
-        signature_expiration: 1000, // Way in the past (Unix epoch seconds)
+        signature_expiration: 1000,
         signature_inception: 1,
         key_tag,
         signer_name: "example.com.".to_string(),
         signature: vec![0u8; 64],
     };
 
-    // Expired → must return Ok(false) without crypto
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+
     let result = verifier
-        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[])
+        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[], now_secs)
         .unwrap();
     assert!(!result, "Expired RRSIG should return false");
 }
@@ -451,7 +456,7 @@ fn test_verify_rrsig_key_tag_mismatch() {
     };
 
     let result = verifier
-        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[])
+        .verify_rrsig(&rrsig, &dnskey, "example.com.", &[], now)
         .unwrap();
     assert!(!result, "Key tag mismatch should return false");
 }

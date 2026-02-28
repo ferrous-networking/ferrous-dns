@@ -52,15 +52,14 @@ impl DnskeyRecord {
     }
 
     pub fn calculate_key_tag(&self) -> u16 {
-        let mut wire = Vec::with_capacity(4 + self.public_key.len());
-        wire.extend_from_slice(&self.flags.to_be_bytes());
-        wire.push(self.protocol);
-        wire.push(self.algorithm);
-        wire.extend_from_slice(&self.public_key);
-
         let mut accumulator: u32 = 0;
 
-        for chunk in wire.chunks(2) {
+        let flags_bytes = self.flags.to_be_bytes();
+        accumulator += u32::from(u16::from_be_bytes([flags_bytes[0], flags_bytes[1]]));
+
+        accumulator += u32::from(u16::from_be_bytes([self.protocol, self.algorithm]));
+
+        for chunk in self.public_key.chunks(2) {
             if chunk.len() == 2 {
                 accumulator += u32::from(u16::from_be_bytes([chunk[0], chunk[1]]));
             } else {

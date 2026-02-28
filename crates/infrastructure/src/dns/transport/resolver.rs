@@ -16,13 +16,13 @@ pub async fn resolve_all(
             server: target.clone(),
         })?
         .map_err(|e| {
-            DomainError::InvalidDomainName(format!("DNS resolution failed for {}: {}", target, e))
+            DomainError::IoError(format!("DNS resolution failed for {}: {}", target, e))
         })?;
 
     let addrs: Vec<SocketAddr> = addrs_iter.collect();
 
     if addrs.is_empty() {
-        return Err(DomainError::InvalidDomainName(format!(
+        return Err(DomainError::IoError(format!(
             "No addresses found for {}",
             target
         )));

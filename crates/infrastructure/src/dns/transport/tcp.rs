@@ -10,9 +10,9 @@ use tokio::net::TcpStream;
 use tracing::debug;
 
 const MAX_TCP_MESSAGE_SIZE: usize = 65535;
-const MAX_IDLE_TCP_PER_HOST: usize = 2;
+const MAX_IDLE_TCP_PER_HOST: usize = 12;
 
-type TcpConnectionPool = DashMap<String, Vec<TcpStream>>;
+type TcpConnectionPool = DashMap<UpstreamAddr, Vec<TcpStream>>;
 
 static TCP_POOL: LazyLock<TcpConnectionPool> = LazyLock::new(TcpConnectionPool::new);
 
@@ -25,13 +25,9 @@ impl TcpTransport {
         Self { upstream_addr }
     }
 
-    fn pool_key(&self) -> String {
-        self.upstream_addr.to_string()
-    }
-
     fn resolved_addr(&self) -> Result<SocketAddr, DomainError> {
         self.upstream_addr.socket_addr().ok_or_else(|| {
-            DomainError::InvalidDomainName(format!(
+            DomainError::IoError(format!(
                 "TCP transport requires resolved address, got: {}",
                 self.upstream_addr
             ))
@@ -39,12 +35,11 @@ impl TcpTransport {
     }
 
     fn take_pooled(&self) -> Option<TcpStream> {
-        TCP_POOL.get_mut(&self.pool_key())?.pop()
+        TCP_POOL.get_mut(&self.upstream_addr)?.pop()
     }
 
     fn return_to_pool(&self, stream: TcpStream) {
-        let key = self.pool_key();
-        let mut entry = TCP_POOL.entry(key).or_default();
+        let mut entry = TCP_POOL.entry(self.upstream_addr.clone()).or_default();
         if entry.len() < MAX_IDLE_TCP_PER_HOST {
             entry.push(stream);
         }
@@ -56,24 +51,29 @@ impl TcpTransport {
         let stream = tokio::time::timeout(timeout, TcpStream::connect(server_addr))
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
-                    "Timeout connecting to TCP server {}",
-                    server_addr
-                ))
+                DomainError::IoError(format!("Timeout connecting to TCP server {}", server_addr))
             })?
             .map_err(|e| {
-                DomainError::InvalidDomainName(format!(
+                DomainError::IoError(format!(
                     "Connection refused by TCP server {}: {}",
                     server_addr, e
                 ))
             })?;
 
         stream.set_nodelay(true).map_err(|e| {
-            DomainError::InvalidDomainName(format!(
+            DomainError::IoError(format!(
                 "Failed to set TCP_NODELAY on {}: {}",
                 server_addr, e
             ))
         })?;
+
+        let sock_ref = socket2::SockRef::from(&stream);
+        let keepalive = socket2::TcpKeepalive::new()
+            .with_time(Duration::from_secs(15))
+            .with_interval(Duration::from_secs(5));
+        if let Err(e) = sock_ref.set_tcp_keepalive(&keepalive) {
+            debug!(server = %server_addr, error = %e, "Failed to set TCP keepalive");
+        }
 
         Ok(stream)
     }
@@ -105,13 +105,13 @@ impl DnsTransport for TcpTransport {
                 tokio::time::timeout(timeout, send_with_length_prefix(&mut fresh, message_bytes))
                     .await
                     .map_err(|_| {
-                        DomainError::InvalidDomainName(format!(
+                        DomainError::IoError(format!(
                             "Timeout sending TCP query to {}",
                             server_addr
                         ))
                     })?
                     .map_err(|e| {
-                        DomainError::InvalidDomainName(format!(
+                        DomainError::IoError(format!(
                             "Failed to send TCP query to {}: {}",
                             server_addr, e
                         ))
@@ -131,7 +131,7 @@ impl DnsTransport for TcpTransport {
         })
         .await
         .map_err(|_| {
-            DomainError::InvalidDomainName(format!(
+            DomainError::IoError(format!(
                 "Timeout waiting for TCP response from {}",
                 server_addr
             ))
@@ -166,16 +166,18 @@ where
     let length = message_bytes.len() as u16;
     let length_bytes = length.to_be_bytes();
 
-    stream.write_all(&length_bytes).await.map_err(|e| {
-        DomainError::InvalidDomainName(format!("Failed to write length prefix: {}", e))
-    })?;
-    stream.write_all(message_bytes).await.map_err(|e| {
-        DomainError::InvalidDomainName(format!("Failed to write DNS message: {}", e))
-    })?;
+    stream
+        .write_all(&length_bytes)
+        .await
+        .map_err(|e| DomainError::IoError(format!("Failed to write length prefix: {}", e)))?;
+    stream
+        .write_all(message_bytes)
+        .await
+        .map_err(|e| DomainError::IoError(format!("Failed to write DNS message: {}", e)))?;
     stream
         .flush()
         .await
-        .map_err(|e| DomainError::InvalidDomainName(format!("Failed to flush stream: {}", e)))?;
+        .map_err(|e| DomainError::IoError(format!("Failed to flush stream: {}", e)))?;
 
     Ok(())
 }
@@ -185,23 +187,25 @@ where
     S: AsyncReadExt + Unpin,
 {
     let mut len_buf = [0u8; 2];
-    stream.read_exact(&mut len_buf).await.map_err(|e| {
-        DomainError::InvalidDomainName(format!("Failed to read response length: {}", e))
-    })?;
+    stream
+        .read_exact(&mut len_buf)
+        .await
+        .map_err(|e| DomainError::IoError(format!("Failed to read response length: {}", e)))?;
 
     let response_len = u16::from_be_bytes(len_buf) as usize;
 
     if response_len > MAX_TCP_MESSAGE_SIZE {
-        return Err(DomainError::InvalidDomainName(format!(
+        return Err(DomainError::IoError(format!(
             "Response too large: {} bytes (max {})",
             response_len, MAX_TCP_MESSAGE_SIZE
         )));
     }
 
     let mut response = vec![0u8; response_len];
-    stream.read_exact(&mut response).await.map_err(|e| {
-        DomainError::InvalidDomainName(format!("Failed to read response body: {}", e))
-    })?;
+    stream
+        .read_exact(&mut response)
+        .await
+        .map_err(|e| DomainError::IoError(format!("Failed to read response body: {}", e)))?;
 
     Ok(response)
 }

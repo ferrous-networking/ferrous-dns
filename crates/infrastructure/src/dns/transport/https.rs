@@ -1,5 +1,6 @@
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
+use dashmap::DashMap;
 use ferrous_dns_domain::DomainError;
 use std::net::SocketAddr;
 use std::sync::LazyLock;
@@ -11,35 +12,57 @@ static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .use_rustls_tls()
         .pool_max_idle_per_host(4)
         .http2_prior_knowledge()
+        .tcp_keepalive(Duration::from_secs(15))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 });
+
+const CLIENT_TTL: Duration = Duration::from_secs(300);
+
+static HTTPS_CLIENT_POOL: LazyLock<DashMap<String, (reqwest::Client, Instant)>> =
+    LazyLock::new(DashMap::new);
 
 const DNS_MESSAGE_CONTENT_TYPE: &str = "application/dns-message";
 
 pub struct HttpsTransport {
     url: String,
-    client: reqwest::Client,
+    hostname: String,
+    resolved_addrs: Vec<SocketAddr>,
 }
 
 impl HttpsTransport {
     pub fn new(url: String, hostname: String, resolved_addrs: Vec<SocketAddr>) -> Self {
-        let client = if resolved_addrs.is_empty() {
-            SHARED_CLIENT.clone()
-        } else {
-            Self::build_client_with_resolved(&hostname, &resolved_addrs)
-        };
-        Self { url, client }
+        Self {
+            url,
+            hostname,
+            resolved_addrs,
+        }
     }
 
-    fn build_client_with_resolved(hostname: &str, addrs: &[SocketAddr]) -> reqwest::Client {
-        reqwest::Client::builder()
+    fn get_or_create_client(hostname: &str, addrs: &[SocketAddr]) -> reqwest::Client {
+        if let Some(entry) = HTTPS_CLIENT_POOL.get(hostname) {
+            let (client, created_at) = entry.value();
+            if created_at.elapsed() < CLIENT_TTL {
+                return client.clone();
+            }
+            drop(entry);
+            HTTPS_CLIENT_POOL.remove(hostname);
+        }
+
+        let client = reqwest::Client::builder()
             .use_rustls_tls()
             .pool_max_idle_per_host(4)
             .http2_prior_knowledge()
+            .tcp_keepalive(Duration::from_secs(15))
             .resolve_to_addrs(hostname, addrs)
             .build()
-            .unwrap_or_else(|_| SHARED_CLIENT.clone())
+            .unwrap_or_else(|_| SHARED_CLIENT.clone());
+
+        HTTPS_CLIENT_POOL
+            .entry(hostname.to_string())
+            .or_insert((client, Instant::now()))
+            .clone()
+            .0
     }
 }
 
@@ -58,9 +81,15 @@ impl DnsTransport for HttpsTransport {
 
         let start = Instant::now();
 
+        let client = if self.resolved_addrs.is_empty() {
+            SHARED_CLIENT.clone()
+        } else {
+            Self::get_or_create_client(&self.hostname, &self.resolved_addrs)
+        };
+
         let response = tokio::time::timeout(
             timeout,
-            self.client
+            client
                 .post(&self.url)
                 .header("Content-Type", DNS_MESSAGE_CONTENT_TYPE)
                 .header("Accept", DNS_MESSAGE_CONTENT_TYPE)
@@ -68,16 +97,12 @@ impl DnsTransport for HttpsTransport {
                 .send(),
         )
         .await
-        .map_err(|_| {
-            DomainError::InvalidDomainName(format!("Timeout sending DoH query to {}", self.url))
-        })?
-        .map_err(|e| {
-            DomainError::InvalidDomainName(format!("DoH request to {} failed: {}", self.url, e))
-        })?;
+        .map_err(|_| DomainError::IoError(format!("Timeout sending DoH query to {}", self.url)))?
+        .map_err(|e| DomainError::IoError(format!("DoH request to {} failed: {}", self.url, e)))?;
 
         let status = response.status();
         if !status.is_success() {
-            return Err(DomainError::InvalidDomainName(format!(
+            return Err(DomainError::IoError(format!(
                 "DoH server {} returned HTTP {}: {}",
                 self.url,
                 status.as_u16(),
@@ -92,13 +117,10 @@ impl DnsTransport for HttpsTransport {
         let response_bytes = tokio::time::timeout(remaining, response.bytes())
             .await
             .map_err(|_| {
-                DomainError::InvalidDomainName(format!(
-                    "Timeout reading DoH response from {}",
-                    self.url
-                ))
+                DomainError::IoError(format!("Timeout reading DoH response from {}", self.url))
             })?
             .map_err(|e| {
-                DomainError::InvalidDomainName(format!(
+                DomainError::IoError(format!(
                     "Failed to read DoH response from {}: {}",
                     self.url, e
                 ))

@@ -5,6 +5,7 @@ use hickory_proto::rr::Name;
 use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
 use ring::rand::{SecureRandom, SystemRandom};
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 pub struct MessageBuilder;
 
@@ -45,9 +46,11 @@ impl MessageBuilder {
     }
 
     fn secure_random_id() -> u16 {
-        let rng = SystemRandom::new();
+        static SECURE_RNG: LazyLock<SystemRandom> = LazyLock::new(SystemRandom::new);
+
         let mut bytes = [0u8; 2];
-        rng.fill(&mut bytes)
+        SECURE_RNG
+            .fill(&mut bytes)
             .map(|_| u16::from_be_bytes(bytes))
             .unwrap_or_else(|_| fastrand::u16(..))
     }

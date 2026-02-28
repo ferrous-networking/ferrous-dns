@@ -116,9 +116,10 @@ impl CacheWarmer {
         let mut stats = WarmingStats::default();
 
         for domain in self.popular_domains {
+            let domain_arc: Arc<str> = Arc::from(*domain);
             match self
                 .pool_manager
-                .query(domain, &RecordType::A, timeout_ms, false)
+                .query(&domain_arc, &RecordType::A, timeout_ms, false)
                 .await
             {
                 Ok(result) => {
@@ -156,7 +157,7 @@ impl CacheWarmer {
 
             if let Ok(result) = self
                 .pool_manager
-                .query(domain, &RecordType::AAAA, timeout_ms, false)
+                .query(&domain_arc, &RecordType::AAAA, timeout_ms, false)
                 .await
             {
                 let addresses = result.response.addresses;

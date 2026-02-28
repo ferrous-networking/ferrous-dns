@@ -7,6 +7,7 @@ pub trait GroupRepository: Send + Sync {
     async fn get_by_id(&self, id: i64) -> Result<Option<Group>, DomainError>;
     async fn get_by_name(&self, name: &str) -> Result<Option<Group>, DomainError>;
     async fn get_all(&self) -> Result<Vec<Group>, DomainError>;
+    async fn get_all_with_client_counts(&self) -> Result<Vec<(Group, u64)>, DomainError>;
     async fn update(
         &self,
         id: i64,

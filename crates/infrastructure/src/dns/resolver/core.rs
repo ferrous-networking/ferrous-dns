@@ -85,7 +85,8 @@ impl CoreResolver {
                         upstream_server: Some(Arc::clone(server)),
                         upstream_pool: None,
                         min_ttl: response.min_ttl,
-                        authority_records: response.authority_records,
+                        negative_soa_ttl: response.negative_soa_ttl,
+                        upstream_wire_data: None,
                     });
                 }
                 Ok(_) => {
@@ -130,6 +131,10 @@ impl DnsResolver for CoreResolver {
 
         let addresses = Arc::new(result.response.addresses);
         let upstream_server = Some(result.server_display);
+        let cname_chain = result.response.cname_chain;
+        let min_ttl = result.response.min_ttl;
+        let negative_soa_ttl = result.response.negative_soa_ttl;
+        let raw_bytes = result.response.raw_bytes;
 
         debug!(
             domain = %query.domain,
@@ -144,16 +149,16 @@ impl DnsResolver for CoreResolver {
             cache_hit: false,
             local_dns: false,
             dnssec_status: None,
-            cname_chain: result
-                .response
-                .cname_chain
-                .into_iter()
-                .map(|s| Arc::from(s.as_str()))
-                .collect::<Arc<[_]>>(),
+            cname_chain: if cname_chain.is_empty() {
+                Arc::clone(&EMPTY_CNAME_CHAIN)
+            } else {
+                cname_chain.into_iter().collect::<Arc<[_]>>()
+            },
             upstream_server,
             upstream_pool: Some(result.pool_name),
-            min_ttl: result.response.min_ttl,
-            authority_records: result.response.authority_records,
+            min_ttl,
+            negative_soa_ttl,
+            upstream_wire_data: Some(raw_bytes),
         })
     }
 }

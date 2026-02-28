@@ -76,39 +76,34 @@ impl ClientRepository for SqliteClientRepository {
     #[instrument(skip(self))]
     async fn get_or_create(&self, ip_address: IpAddr) -> Result<Client, DomainError> {
         let ip_str = ip_address.to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let existing: Option<ClientRow> = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_BY_IP)
+        sqlx::query(
+            "INSERT INTO clients (ip_address, first_seen, last_seen, query_count)
+             VALUES (?, ?, ?, 0)
+             ON CONFLICT(ip_address) DO NOTHING",
+        )
+        .bind(&ip_str)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to upsert client");
+            DomainError::DatabaseError(e.to_string())
+        })?;
+
+        let row: ClientRow = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_BY_IP)
             .bind(&ip_str)
-            .fetch_optional(&self.pool)
+            .fetch_one(&self.pool)
             .await
             .map_err(|e| {
-                error!(error = %e, "Failed to query client");
+                error!(error = %e, "Failed to fetch client after upsert");
                 DomainError::DatabaseError(e.to_string())
             })?;
 
-        if let Some(row) = existing {
-            let client = row_to_client(row)
-                .ok_or_else(|| DomainError::DatabaseError("Invalid client data".to_string()))?;
-            Ok(client)
-        } else {
-            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-
-            sqlx::query(
-                "INSERT INTO clients (ip_address, first_seen, last_seen, query_count)
-                 VALUES (?, ?, ?, 0)",
-            )
-            .bind(&ip_str)
-            .bind(&now)
-            .bind(&now)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to create client");
-                DomainError::DatabaseError(e.to_string())
-            })?;
-
-            Ok(Client::new(ip_address))
-        }
+        row_to_client(row)
+            .ok_or_else(|| DomainError::DatabaseError("Invalid client data".to_string()))
     }
 
     async fn update_last_seen(&self, ip_address: IpAddr) -> Result<(), DomainError> {

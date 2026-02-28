@@ -25,24 +25,25 @@ impl DnsForwarder {
         record_type: &RecordType,
         timeout_ms: u64,
     ) -> Result<DnsResponse, DomainError> {
-        let server_addr: SocketAddr = server.parse().map_err(|e| {
-            DomainError::InvalidDomainName(format!("Invalid server address: {}", e))
-        })?;
+        let server_addr: SocketAddr = server
+            .parse()
+            .map_err(|e| DomainError::IoError(format!("Invalid server address: {}", e)))?;
 
         let request_bytes = MessageBuilder::build_query(domain, record_type, false)?;
 
         let socket = UdpSocket::bind("0.0.0.0:0")
             .await
-            .map_err(|e| DomainError::InvalidDomainName(format!("Failed to bind socket: {}", e)))?;
+            .map_err(|e| DomainError::IoError(format!("Failed to bind socket: {}", e)))?;
 
-        socket.connect(server_addr).await.map_err(|e| {
-            DomainError::InvalidDomainName(format!("Failed to connect to server: {}", e))
-        })?;
+        socket
+            .connect(server_addr)
+            .await
+            .map_err(|e| DomainError::IoError(format!("Failed to connect to server: {}", e)))?;
 
         socket
             .send(&request_bytes)
             .await
-            .map_err(|e| DomainError::InvalidDomainName(format!("Failed to send query: {}", e)))?;
+            .map_err(|e| DomainError::IoError(format!("Failed to send query: {}", e)))?;
 
         let mut response_buf = [0u8; 4096];
         let timeout = Duration::from_millis(timeout_ms);
@@ -50,9 +51,7 @@ impl DnsForwarder {
         let len = tokio::time::timeout(timeout, socket.recv(&mut response_buf))
             .await
             .map_err(|_| DomainError::QueryTimeout)?
-            .map_err(|e| {
-                DomainError::InvalidDomainName(format!("Failed to receive response: {}", e))
-            })?;
+            .map_err(|e| DomainError::IoError(format!("Failed to receive response: {}", e)))?;
 
         ResponseParser::parse(&response_buf[..len])
     }

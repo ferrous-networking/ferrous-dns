@@ -34,7 +34,7 @@ impl GetQueryStatsUseCase {
 
     pub async fn execute(&self, period_hours: f32) -> Result<QueryStats, DomainError> {
         {
-            let guard = self.cache.read().unwrap();
+            let guard = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.period_hours == period_hours && cached.computed_at.elapsed() < CACHE_TTL {
                     return Ok(cached.data.clone());
@@ -45,7 +45,7 @@ impl GetQueryStatsUseCase {
         let _lock = self.refresh_lock.lock().await;
 
         {
-            let guard = self.cache.read().unwrap();
+            let guard = self.cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(ref cached) = *guard {
                 if cached.period_hours == period_hours && cached.computed_at.elapsed() < CACHE_TTL {
                     return Ok(cached.data.clone());
@@ -61,7 +61,7 @@ impl GetQueryStatsUseCase {
         stats.unique_clients = unique_clients?;
 
         {
-            let mut guard = self.cache.write().unwrap();
+            let mut guard = self.cache.write().unwrap_or_else(|e| e.into_inner());
             *guard = Some(CachedStats {
                 computed_at: Instant::now(),
                 period_hours,
