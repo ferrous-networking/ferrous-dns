@@ -313,8 +313,7 @@ pub(super) async fn get_cache_stats(
             SUM(CASE WHEN cache_refresh = 1 THEN 1 ELSE 0 END) as refreshes,
             SUM(CASE WHEN cache_hit = 0 AND cache_refresh = 0 AND blocked = 0 AND query_source = 'client' THEN 1 ELSE 0 END) as misses
          FROM query_log
-         WHERE created_at >= ?
-           AND query_source = 'client'",
+         WHERE created_at >= ?",
     )
     .bind(cutoff)
     .fetch_one(pool)
