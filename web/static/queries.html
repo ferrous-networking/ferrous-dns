@@ -123,6 +123,17 @@
         .dnssec-icon[data-tooltip="SECURE"]::after    { color: #22C55E; }
         .dnssec-icon[data-tooltip="INSECURE"]::after  { color: #EAB308; }
         .dnssec-icon[data-tooltip="BOGUS"]::after     { color: #EF4444; }
+
+        .col-action { text-align: center }
+        @media (max-width: 700px) {
+            .col-action { display: none }
+        }
+        .btn-action { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s }
+        .btn-action:disabled { opacity: 0.5; cursor: not-allowed }
+        .btn-action-allow { background: rgba(16, 185, 129, 0.15); color: #10B981 }
+        .btn-action-allow:hover:not(:disabled) { background: rgba(16, 185, 129, 0.3) }
+        .btn-action-block { background: rgba(239, 68, 68, 0.15); color: #EF4444 }
+        .btn-action-block:hover:not(:disabled) { background: rgba(239, 68, 68, 0.3) }
     </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -196,6 +207,12 @@
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Domain:</label>
+                <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
+                       placeholder="Search domain..."
+                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
                 <select x-model="category" @change="currentPage=1"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
@@ -225,6 +242,7 @@
                 <th style="width:130px">CLIENT</th>
                 <th style="width:240px">SOURCE</th>
                 <th class="col-rt" style="width:110px">RESPONSE TIME</th>
+                <th class="col-action" style="width:80px">ACTION</th>
             </tr>
             </thead>
             <tbody>
@@ -274,6 +292,13 @@
                                 : ''"></span>
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                    <td class="col-action">
+                        <button type="button" class="btn-action"
+                            :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
+                            @click="handleDomainAction(query)"
+                            x-text="query.blocked ? 'Allow' : 'Block'">
+                        </button>
+                    </td>
                 </tr>
             </template>
             </tbody>
@@ -289,9 +314,9 @@
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
                         :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
                 </button>
-                <button @click="changePage(1)" :disabled="currentPage>=totalPages"
+                <button @click="changePage(1)" :disabled="!_hasMore"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="currentPage>=totalPages?'opacity:0.5;cursor:not-allowed':''">Next
+                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''">Next
                 </button>
             </div>
         </div>
@@ -306,7 +331,9 @@
             pageSize: 25,
             currentPage: 1,
             category: '',
+            searchDomain: '',
             autoRefresh: false,
+            _hasMore: false,
             stats: {allowed: 0, blocked: 0, cacheHits: 0, upstream: 0, queries_total: 0},
             serverStats: null,
             _ctrl: {},
@@ -340,14 +367,18 @@
                     const pageParam = cursor
                         ? `cursor=${cursor}`
                         : `offset=${(this.currentPage - 1) * this.pageSize}`;
+                    const domainParam = this.searchDomain
+                        ? `&domain=${encodeURIComponent(this.searchDomain)}`
+                        : '';
                     const res = await fetch(
-                        `/api/queries?limit=${this.pageSize}&${pageParam}&period=24h`,
+                        `/api/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}`,
                         {signal: this._ctrl.queries.signal}
                     );
                     if (res.ok) {
                         const result = await res.json();
                         this.queries = result.data || result;
                         this.total = result.total ?? this.queries.length;
+                        this._hasMore = result.next_cursor != null;
                         if (result.next_cursor != null) {
                             this._cursors[this.currentPage + 1] = result.next_cursor;
                         }
@@ -389,7 +420,8 @@
 
             async changePage(delta) {
                 const next = this.currentPage + delta;
-                if (next < 1 || next > this.totalPages) return;
+                if (next < 1) return;
+                if (delta > 0 && !this._hasMore) return;
                 this.currentPage = next;
                 await this.loadQueries();
             },
@@ -401,7 +433,7 @@
                         this.loadQueries();
                         this.loadStats();
                     }
-                }, 5000);
+                }, 1000);
             },
 
             stopPolling() {
@@ -451,7 +483,8 @@
 
             formatTime(timestamp) {
                 if (!timestamp) return '-';
-                return new Date(timestamp).toLocaleTimeString();
+                const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
+                return new Date(utc).toLocaleTimeString();
             },
 
             formatResponseTime(query) {
@@ -460,6 +493,40 @@
                 if (us < 1000) return `${Math.round(us)} µs`;
                 if (us < 1000000) return `${Math.round(us / 1000)} ms`;
                 return `${(us / 1000000).toFixed(2)} s`;
+            },
+
+            async handleDomainAction(query) {
+                const domain = query.domain.replace(/\.$/, '');
+                const isBlocked = query.blocked;
+                const action = isBlocked ? 'allow' : 'deny';
+                const label = isBlocked ? 'Allow' : 'Block';
+
+                if (!isBlocked && !confirm(`Block domain "${domain}"?`)) return;
+
+                try {
+                    const res = await fetch('/api/managed-domains', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            name: `qlog-${action}-${domain}`,
+                            domain: domain,
+                            action: action,
+                            group_id: 1,
+                            comment: `Added from Query Log (${label})`,
+                            enabled: true
+                        })
+                    });
+                    if (res.ok) {
+                        alert(`Domain "${domain}" ${isBlocked ? 'allowed' : 'blocked'} successfully.`);
+                    } else if (res.status === 409) {
+                        alert(`A rule for "${domain}" already exists. Manage it in DNS Filter.`);
+                    } else {
+                        console.error('Failed to create managed domain:', await res.text());
+                        alert(`Failed to create rule for "${domain}".`);
+                    }
+                } catch (e) {
+                    alert(`Network error: ${e.message}`);
+                }
             }
         };
     }

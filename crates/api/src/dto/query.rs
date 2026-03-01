@@ -10,6 +10,7 @@ pub struct QueryParams {
     pub cursor: Option<i64>,
     #[serde(default = "default_period")]
     pub period: String,
+    pub domain: Option<String>,
 }
 
 fn default_limit() -> u32 {

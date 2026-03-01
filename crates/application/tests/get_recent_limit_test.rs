@@ -27,6 +27,7 @@ impl QueryLogRepository for CaptureLimitRepository {
         _: u32,
         _: f32,
         _: Option<i64>,
+        _: Option<&str>,
     ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         *self.last_limit.lock().unwrap() = limit;
         Ok((vec![], 0, None))
@@ -107,7 +108,10 @@ async fn test_paged_limit_above_max_is_capped() {
     });
     let use_case = GetRecentQueriesUseCase::new(repo);
 
-    use_case.execute_paged(5_000, 0, 24.0, None).await.unwrap();
+    use_case
+        .execute_paged(5_000, 0, 24.0, None, None)
+        .await
+        .unwrap();
 
     assert_eq!(*captured.lock().unwrap(), 1_000);
 }

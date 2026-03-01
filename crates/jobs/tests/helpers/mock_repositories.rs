@@ -479,6 +479,7 @@ impl QueryLogRepository for MockQueryLogRepository {
         offset: u32,
         period_hours: f32,
         _cursor: Option<i64>,
+        _domain: Option<&str>,
     ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         let all = self.get_recent(limit + offset, period_hours).await?;
         let total = all.len() as u64;

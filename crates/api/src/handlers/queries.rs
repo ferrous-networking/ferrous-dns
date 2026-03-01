@@ -20,6 +20,7 @@ pub async fn get_queries(
         limit = params.limit,
         offset = params.offset,
         cursor = params.cursor,
+        domain = ?params.domain,
         "Fetching recent queries"
     );
 
@@ -30,7 +31,13 @@ pub async fn get_queries(
     let (queries, total, next_cursor) = state
         .query
         .get_queries
-        .execute_paged(params.limit, params.offset, period_hours, params.cursor)
+        .execute_paged(
+            params.limit,
+            params.offset,
+            period_hours,
+            params.cursor,
+            params.domain.as_deref(),
+        )
         .await?;
 
     let data: Vec<QueryResponse> = queries

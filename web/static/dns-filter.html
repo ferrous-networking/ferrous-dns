@@ -1185,7 +1185,8 @@
                 try {
                     const res = await fetch('/api/managed-domains');
                     if (res.ok) {
-                        this.mSources = await res.json();
+                        const result = await res.json();
+                        this.mSources = result.data;
                         await this.$nextTick();
                         scheduleLucide(0);
                     }

@@ -51,57 +51,89 @@ pub(super) async fn get_recent_paged(
     offset: u32,
     period_hours: f32,
     cursor: Option<i64>,
+    domain: Option<&str>,
 ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
     debug!(
         limit,
-        offset, period_hours, cursor, "Fetching paginated queries"
+        offset,
+        period_hours,
+        cursor,
+        ?domain,
+        "Fetching paginated queries"
     );
 
     let fetch_limit = limit as i64 + 1;
     let cutoff = hours_ago_cutoff(period_hours);
+    let domain_pattern = domain
+        .filter(|d| !d.is_empty())
+        .map(|d| format!("%{d}%"))
+        .unwrap_or_else(|| "%".to_string());
 
-    let rows = if let Some(cursor_id) = cursor {
+    let (rows_result, count_result) = tokio::join!(
+        async {
+            if let Some(cursor_id) = cursor {
+                sqlx::query(
+                    "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                            q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
+                            datetime(q.created_at) as created_at, c.hostname
+                     FROM query_log q
+                     LEFT JOIN clients c ON q.client_ip = c.ip_address
+                     WHERE q.id < ?
+                       AND q.query_source = 'client'
+                       AND q.created_at >= ?
+                       AND q.domain LIKE ?
+                     ORDER BY q.id DESC
+                     LIMIT ?",
+                )
+                .bind(cursor_id)
+                .bind(&cutoff)
+                .bind(&domain_pattern)
+                .bind(fetch_limit)
+                .fetch_all(pool)
+                .await
+            } else {
+                sqlx::query(
+                    "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                            q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
+                            datetime(q.created_at) as created_at, c.hostname
+                     FROM query_log q
+                     LEFT JOIN clients c ON q.client_ip = c.ip_address
+                     WHERE q.created_at >= ?
+                       AND q.query_source = 'client'
+                       AND q.domain LIKE ?
+                     ORDER BY q.created_at DESC
+                     LIMIT ? OFFSET ?",
+                )
+                .bind(&cutoff)
+                .bind(&domain_pattern)
+                .bind(fetch_limit)
+                .bind(offset as i64)
+                .fetch_all(pool)
+                .await
+            }
+        },
         sqlx::query(
-            "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                    q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
-                    q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
-                    datetime(q.created_at) as created_at, c.hostname
-             FROM query_log q
-             LEFT JOIN clients c ON q.client_ip = c.ip_address
-             WHERE q.id < ?
-               AND q.query_source = 'client'
-               AND q.created_at >= ?
-             ORDER BY q.id DESC
-             LIMIT ?",
-        )
-        .bind(cursor_id)
-        .bind(&cutoff)
-        .bind(fetch_limit)
-        .fetch_all(pool)
-        .await
-    } else {
-        sqlx::query(
-            "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                    q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
-                    q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
-                    datetime(q.created_at) as created_at, c.hostname
-             FROM query_log q
-             LEFT JOIN clients c ON q.client_ip = c.ip_address
-             WHERE q.created_at >= ?
-               AND q.query_source = 'client'
-             ORDER BY q.created_at DESC
-             LIMIT ? OFFSET ?",
+            "SELECT COUNT(*) as cnt FROM query_log
+             WHERE query_source = 'client' AND created_at >= ? AND domain LIKE ?",
         )
         .bind(&cutoff)
-        .bind(fetch_limit)
-        .bind(offset as i64)
-        .fetch_all(pool)
-        .await
-    }
-    .map_err(|e| {
+        .bind(&domain_pattern)
+        .fetch_one(pool)
+    );
+
+    let rows = rows_result.map_err(|e| {
         error!(error = %e, "Failed to fetch paginated queries");
         DomainError::DatabaseError(e.to_string())
     })?;
+
+    let total = count_result
+        .map(|r| r.get::<i64, _>("cnt") as u64)
+        .map_err(|e| {
+            error!(error = %e, "Failed to count queries");
+            DomainError::DatabaseError(e.to_string())
+        })?;
 
     let mut rows = rows;
     let has_more = rows.len() as u32 > limit;
@@ -117,17 +149,11 @@ pub(super) async fn get_recent_paged(
 
     let entries: Vec<QueryLog> = rows.into_iter().filter_map(row_to_query_log).collect();
 
-    let estimated_total = if has_more {
-        offset as u64 + limit as u64 + 1
-    } else {
-        offset as u64 + entries.len() as u64
-    };
-
     debug!(
         count = entries.len(),
-        estimated_total, next_cursor, "Paginated queries fetched"
+        total, next_cursor, "Paginated queries fetched"
     );
-    Ok((entries, estimated_total, next_cursor))
+    Ok((entries, total, next_cursor))
 }
 
 #[instrument(skip(pool))]
