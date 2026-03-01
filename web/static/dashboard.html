@@ -625,10 +625,10 @@
                 clearInterval(this.pollingIntervals.fast);
                 clearInterval(this.pollingIntervals.slow);
             },
-            formatTime(us) {
-                if (!us) return '0 µs';
-                if (us < 1000) return `${Math.round(us)} µs`;
-                return `${(us / 1000).toFixed(1)} ms`
+            formatTime(ms) {
+                if (!ms) return '0 ms';
+                if (ms < 1) return `${Math.round(ms * 1000)} µs`;
+                return `${ms.toFixed(1)} ms`
             },
             formatNumber(n) {
                 return (n || 0).toLocaleString();
