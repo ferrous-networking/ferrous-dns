@@ -23,16 +23,20 @@ pub struct SqliteQueryLogRepository {
 }
 
 impl SqliteQueryLogRepository {
-    pub fn new(write_pool: SqlitePool, read_pool: SqlitePool, cfg: &DatabaseConfig) -> Self {
+    pub fn new(
+        write_pool: SqlitePool,
+        query_log_pool: SqlitePool,
+        read_pool: SqlitePool,
+        cfg: &DatabaseConfig,
+    ) -> Self {
         let channel_capacity = cfg.query_log_channel_capacity;
         let max_batch_size = cfg.query_log_max_batch_size;
         let flush_interval_ms = cfg.query_log_flush_interval_ms;
 
         let (sender, receiver) = mpsc::channel(channel_capacity);
 
-        let flush_pool = write_pool.clone();
         tokio::spawn(async move {
-            writer::flush_loop(flush_pool, receiver, max_batch_size, flush_interval_ms).await;
+            writer::flush_loop(query_log_pool, receiver, max_batch_size, flush_interval_ms).await;
         });
 
         info!(

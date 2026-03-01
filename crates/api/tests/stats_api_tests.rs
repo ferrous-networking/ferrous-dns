@@ -248,6 +248,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
             upstream_server TEXT,
+            upstream_pool TEXT,
             response_status TEXT,
             query_source TEXT NOT NULL DEFAULT 'client',
             group_id INTEGER,
@@ -275,6 +276,7 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
     );
     let regex_filter_repo = Arc::new(SqliteRegexFilterRepository::new(pool.clone()));
     let query_log_repo = Arc::new(SqliteQueryLogRepository::new(
+        pool.clone(),
         pool.clone(),
         pool.clone(),
         &DatabaseConfig::default(),
@@ -473,13 +475,20 @@ async fn insert_query_log(
     blocked: bool,
     block_source: Option<&str>,
 ) {
+    let (up_server, up_pool): (Option<&str>, Option<&str>) = if !cache_hit && !blocked {
+        (Some("dns.google"), Some("pool1"))
+    } else {
+        (None, None)
+    };
     sqlx::query(
-        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source)
-         VALUES ('example.com', 'A', '192.168.1.1', ?, 100, ?, 'client', ?)",
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, upstream_server, upstream_pool)
+         VALUES ('example.com', 'A', '192.168.1.1', ?, 100, ?, 'client', ?, ?, ?)",
     )
     .bind(if blocked { 1i64 } else { 0i64 })
     .bind(if cache_hit { 1i64 } else { 0i64 })
     .bind(block_source)
+    .bind(up_server)
+    .bind(up_pool)
     .execute(pool)
     .await
     .unwrap();
@@ -530,7 +539,7 @@ async fn test_get_stats_has_source_stats_field() {
     let ss = &json["source_stats"];
     assert!(ss.is_object(), "source_stats must be an object");
     assert!(ss["cache"].is_number());
-    assert!(ss["upstream"].is_number());
+    assert!(ss["local_dns"].is_number());
 }
 
 #[tokio::test]
@@ -566,7 +575,7 @@ async fn test_get_stats_with_data() {
 
     let ss = &json["source_stats"];
     assert_eq!(ss["cache"], 2);
-    assert_eq!(ss["upstream"], 3);
+    assert_eq!(ss["pool1:dns.google"], 3);
     assert_eq!(ss["blocklist"], 1);
     assert_eq!(ss["managed_domain"], serde_json::Value::Null);
     assert_eq!(ss["regex_filter"], serde_json::Value::Null);

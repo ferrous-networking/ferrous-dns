@@ -74,6 +74,7 @@ servers = [
     "https://dns.quad9.net/dns-query",
     "https://cloudflare-dns.com/dns-query",
     "https://dns.google/dns-query"
+    "doq://dns.alidns.com:853"
 ]
 
 [[dns.pools]]
@@ -81,7 +82,7 @@ name = "pool2"
 strategy = "Failover"
 priority = 2
 servers = [
-    "doq://dns.alidns.com:853",
+    "doq://dns.caliph.dev:853",
     "https://dns.nextdns.io",
 ]
 
@@ -174,6 +175,10 @@ write_pool_max_connections = 3
 # Read pool: used exclusively by dashboard and API read endpoints
 # so they never compete with write transactions.
 read_pool_max_connections = 8
+
+# Read pool: used exclusively by query log and API read endpoints
+# so they never compete with write transactions.
+query_log_pool_max_connections = 2
 
 # Seconds to wait for the write lock before returning SQLITE_BUSY.
 write_busy_timeout_secs = 30

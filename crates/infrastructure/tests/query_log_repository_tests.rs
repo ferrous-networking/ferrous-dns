@@ -22,6 +22,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
             upstream_server TEXT,
+            upstream_pool TEXT,
             response_status TEXT,
             query_source TEXT NOT NULL DEFAULT 'client',
             group_id INTEGER,
@@ -46,13 +47,20 @@ async fn insert_log(
     created_at: Option<&str>,
 ) {
     let ts = created_at.unwrap_or("datetime('now')");
+    let (up_server, up_pool) = if !cache_hit && !blocked {
+        ("'dns.google'", "'pool1'")
+    } else {
+        ("NULL", "NULL")
+    };
     let sql = format!(
-        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, created_at)
-         VALUES ('example.com', 'A', '192.168.1.1', {}, 100, {}, '{}', {}, {})",
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, upstream_server, upstream_pool, created_at)
+         VALUES ('example.com', 'A', '192.168.1.1', {}, 100, {}, '{}', {}, {}, {}, {})",
         if blocked { 1 } else { 0 },
         if cache_hit { 1 } else { 0 },
         query_source,
         block_source.map_or("NULL".to_string(), |s| format!("'{}'", s)),
+        up_server,
+        up_pool,
         if created_at.is_some() {
             format!("'{}'", ts)
         } else {
@@ -65,15 +73,19 @@ async fn insert_log(
 #[tokio::test]
 async fn test_get_stats_empty() {
     let pool = create_test_db().await;
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
 
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 0);
     assert_eq!(stats.queries_blocked, 0);
     assert_eq!(stats.source_stats.get("cache"), Some(&0));
-    assert_eq!(stats.source_stats.get("upstream"), Some(&0));
+    assert_eq!(stats.source_stats.get("pool1:dns.google"), None);
     assert_eq!(stats.source_stats.get("local_dns"), Some(&0));
     assert_eq!(stats.source_stats.get("blocklist"), None);
     assert_eq!(stats.source_stats.get("managed_domain"), None);
@@ -92,13 +104,17 @@ async fn test_get_stats_cache_hits_count() {
         insert_log(&pool, false, false, None, "client", None).await;
     }
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 5);
     assert_eq!(stats.source_stats.get("cache"), Some(&3));
-    assert_eq!(stats.source_stats.get("upstream"), Some(&2));
+    assert_eq!(stats.source_stats.get("pool1:dns.google"), Some(&2));
     assert_eq!(stats.queries_blocked, 0);
 }
 
@@ -113,8 +129,12 @@ async fn test_get_stats_blocklist_breakdown() {
         insert_log(&pool, false, true, Some("regex_filter"), "client", None).await;
     }
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 6);
@@ -132,8 +152,12 @@ async fn test_get_stats_cname_cloaking_breakdown() {
     insert_log(&pool, false, true, Some("cname_cloaking"), "client", None).await;
     insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_blocked, 3);
@@ -149,12 +173,16 @@ async fn test_get_stats_excludes_internal_query_source() {
     insert_log(&pool, false, false, None, "internal", None).await;
     insert_log(&pool, true, false, None, "dnssec_validation", None).await;
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let stats = repo.get_stats(24.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 1);
-    assert_eq!(stats.source_stats.get("upstream"), Some(&1));
+    assert_eq!(stats.source_stats.get("pool1:dns.google"), Some(&1));
     assert_eq!(stats.source_stats.get("cache"), Some(&0));
 }
 
@@ -173,19 +201,27 @@ async fn test_get_stats_period_filter() {
     )
     .await;
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let stats = repo.get_stats(1.0).await.unwrap();
 
     assert_eq!(stats.queries_total, 1);
-    assert_eq!(stats.source_stats.get("upstream"), Some(&1));
+    assert_eq!(stats.source_stats.get("pool1:dns.google"), Some(&1));
 }
 
 #[tokio::test]
 async fn test_get_timeline_empty() {
     let pool = create_test_db().await;
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
 
     let buckets = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
 
@@ -200,8 +236,12 @@ async fn test_get_timeline_returns_buckets() {
     insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
     insert_log(&pool, true, false, None, "internal", None).await;
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
     let buckets = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
 
     assert_eq!(buckets.len(), 1);
@@ -216,8 +256,12 @@ async fn test_get_timeline_cache_hit_returns_stale_data() {
 
     insert_log(&pool, false, false, None, "client", None).await;
 
-    let repo =
-        SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default());
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
 
     let first_result = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
     assert_eq!(first_result.len(), 1);

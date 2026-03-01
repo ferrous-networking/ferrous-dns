@@ -32,6 +32,9 @@ pub struct DatabaseConfig {
     #[serde(default = "default_write_pool_max_connections")]
     pub write_pool_max_connections: u32,
 
+    #[serde(default = "default_query_log_pool_max_connections")]
+    pub query_log_pool_max_connections: u32,
+
     #[serde(default = "default_read_pool_max_connections")]
     pub read_pool_max_connections: u32,
 
@@ -70,6 +73,7 @@ impl Default for DatabaseConfig {
             query_log_sample_rate: default_query_log_sample_rate(),
             client_channel_capacity: default_client_channel_capacity(),
             write_pool_max_connections: default_write_pool_max_connections(),
+            query_log_pool_max_connections: default_query_log_pool_max_connections(),
             read_pool_max_connections: default_read_pool_max_connections(),
             write_busy_timeout_secs: default_write_busy_timeout_secs(),
             read_busy_timeout_secs: default_read_busy_timeout_secs(),
@@ -119,6 +123,10 @@ fn default_client_channel_capacity() -> usize {
 }
 
 fn default_write_pool_max_connections() -> u32 {
+    2
+}
+
+fn default_query_log_pool_max_connections() -> u32 {
     2
 }
 

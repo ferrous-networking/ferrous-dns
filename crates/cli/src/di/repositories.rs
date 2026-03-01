@@ -43,6 +43,7 @@ pub struct Repositories {
 impl Repositories {
     pub async fn new(
         write_pool: SqlitePool,
+        query_log_pool: SqlitePool,
         read_pool: SqlitePool,
         db_config: &DatabaseConfig,
     ) -> Result<Self, ferrous_dns_domain::DomainError> {
@@ -77,6 +78,7 @@ impl Repositories {
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(
                 write_pool.clone(),
+                query_log_pool,
                 read_pool,
                 db_config,
             )),

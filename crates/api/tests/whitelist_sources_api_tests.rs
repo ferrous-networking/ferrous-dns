@@ -360,19 +360,19 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
     let state = AppState {
         query: QueryUseCases {
             get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ), client_repo.clone())),
             get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ))),
             get_timeline: Arc::new(GetTimelineUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ))),
             get_query_rate: Arc::new(GetQueryRateUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ))),
             get_cache_stats: Arc::new(GetCacheStatsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), &DatabaseConfig::default()),
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ))),
         },
         dns: DnsUseCases {

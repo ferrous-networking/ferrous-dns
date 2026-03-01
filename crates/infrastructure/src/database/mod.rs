@@ -63,6 +63,28 @@ pub async fn create_write_pool(
     Ok(pool)
 }
 
+pub async fn create_query_log_pool(
+    database_url: &str,
+    cfg: &DatabaseConfig,
+) -> Result<SqlitePool, sqlx::Error> {
+    let options =
+        base_options(database_url)?.busy_timeout(Duration::from_secs(cfg.write_busy_timeout_secs));
+
+    let cache_kb = cfg.sqlite_cache_size_kb;
+    let mmap_mb = cfg.sqlite_mmap_size_mb;
+    let pool = SqlitePoolOptions::new()
+        .max_connections(cfg.query_log_pool_max_connections)
+        .min_connections(1)
+        .acquire_timeout(Duration::from_secs(cfg.write_busy_timeout_secs))
+        .after_connect(move |conn, _| {
+            Box::pin(async move { apply_per_connection_pragmas(conn, cache_kb, mmap_mb).await })
+        })
+        .connect_with(options)
+        .await?;
+
+    Ok(pool)
+}
+
 pub async fn create_read_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
