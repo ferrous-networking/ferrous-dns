@@ -322,6 +322,12 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
             ))),
+            get_top_blocked_domains: Arc::new(ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
+            get_top_clients: Arc::new(ferrous_dns_application::use_cases::GetTopClientsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
+            ))),
         },
         dns: DnsUseCases {
             cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,

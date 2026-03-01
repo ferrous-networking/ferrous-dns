@@ -35,6 +35,28 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::query(
+        r#"
+        CREATE TABLE clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL UNIQUE,
+            hostname TEXT,
+            mac_address TEXT,
+            first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            query_count INTEGER NOT NULL DEFAULT 0,
+            last_mac_update DATETIME,
+            last_hostname_update DATETIME,
+            group_id INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
 }
 
@@ -273,4 +295,149 @@ async fn test_get_timeline_cache_hit_returns_stale_data() {
 
     assert_eq!(cached_result.len(), first_result.len());
     assert_eq!(cached_result[0].total, first_result[0].total);
+}
+
+async fn insert_log_with_domain(
+    pool: &sqlx::SqlitePool,
+    domain: &str,
+    client_ip: &str,
+    blocked: bool,
+    block_source: Option<&str>,
+    query_source: &str,
+) {
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source)
+         VALUES (?, 'A', ?, ?, 100, 0, ?, ?)",
+    )
+    .bind(domain)
+    .bind(client_ip)
+    .bind(if blocked { 1i64 } else { 0i64 })
+    .bind(query_source)
+    .bind(block_source)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_get_top_blocked_domains_empty() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let result = repo.get_top_blocked_domains(15, 24.0).await.unwrap();
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_top_blocked_domains_returns_sorted() {
+    let pool = create_test_db().await;
+
+    for _ in 0..3 {
+        insert_log_with_domain(
+            &pool,
+            "ads.example.com",
+            "192.168.1.1",
+            true,
+            Some("blocklist"),
+            "client",
+        )
+        .await;
+    }
+    for _ in 0..5 {
+        insert_log_with_domain(
+            &pool,
+            "tracker.example.com",
+            "192.168.1.1",
+            true,
+            Some("blocklist"),
+            "client",
+        )
+        .await;
+    }
+    insert_log_with_domain(
+        &pool,
+        "safe.example.com",
+        "192.168.1.1",
+        false,
+        None,
+        "client",
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let result = repo.get_top_blocked_domains(15, 24.0).await.unwrap();
+
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].0, "tracker.example.com");
+    assert_eq!(result[0].1, 5);
+    assert_eq!(result[1].0, "ads.example.com");
+    assert_eq!(result[1].1, 3);
+}
+
+#[tokio::test]
+async fn test_get_top_clients_empty() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let result = repo.get_top_clients(15, 24.0).await.unwrap();
+    assert!(result.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_top_clients_returns_sorted_with_hostname() {
+    let pool = create_test_db().await;
+
+    sqlx::query("INSERT INTO clients (ip_address, hostname) VALUES ('192.168.1.10', 'desktop-pc')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    for _ in 0..4 {
+        insert_log_with_domain(&pool, "example.com", "192.168.1.10", false, None, "client").await;
+    }
+    for _ in 0..2 {
+        insert_log_with_domain(&pool, "example.com", "192.168.1.20", false, None, "client").await;
+    }
+    insert_log_with_domain(
+        &pool,
+        "example.com",
+        "192.168.1.20",
+        false,
+        None,
+        "internal",
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let result = repo.get_top_clients(15, 24.0).await.unwrap();
+
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].0, "192.168.1.10");
+    assert_eq!(result[0].1, Some("desktop-pc".to_string()));
+    assert_eq!(result[0].2, 4);
+    assert_eq!(result[1].0, "192.168.1.20");
+    assert_eq!(result[1].1, None);
+    assert_eq!(result[1].2, 2);
 }

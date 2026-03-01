@@ -73,7 +73,7 @@ servers = [
     "doq://dns.adguard-dns.com:853",
     "https://dns.quad9.net/dns-query",
     "https://cloudflare-dns.com/dns-query",
-    "https://dns.google/dns-query"
+    "https://dns.google/dns-query",
     "doq://dns.alidns.com:853"
 ]
 

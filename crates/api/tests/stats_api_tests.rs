@@ -327,6 +327,8 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
             get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(query_log_repo.clone())),
             get_query_rate: Arc::new(ferrous_dns_application::use_cases::GetQueryRateUseCase::new(query_log_repo.clone())),
             get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(query_log_repo.clone())),
+            get_top_blocked_domains: Arc::new(ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(query_log_repo.clone())),
+            get_top_clients: Arc::new(ferrous_dns_application::use_cases::GetTopClientsUseCase::new(query_log_repo.clone())),
         },
         dns: DnsUseCases {
             cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
@@ -613,4 +615,34 @@ async fn test_get_stats_period_parameter() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["queries_total"], 1);
+}
+
+#[tokio::test]
+async fn test_dashboard_includes_top_blocked_and_clients() {
+    let pool = create_test_db().await;
+
+    insert_query_log(&pool, false, true, Some("blocklist")).await;
+    insert_query_log(&pool, false, false, None).await;
+
+    let app = create_test_app(pool).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/dashboard?period=24h")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(json["top_blocked_domains"].is_array());
+    assert!(json["top_clients"].is_array());
+    assert_eq!(json["top_blocked_domains"].as_array().unwrap().len(), 1);
+    assert_eq!(json["top_blocked_domains"][0]["domain"], "example.com");
+    assert_eq!(json["top_blocked_domains"][0]["count"], 1);
+    assert!(!json["top_clients"].as_array().unwrap().is_empty());
 }

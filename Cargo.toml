@@ -36,7 +36,7 @@ hostname = "0.4"
 async-trait = "0.1"
 axum = { version = "0.8.8", features = ["macros"] }
 tower = "0.5.3"
-tower-http = { version = "0.5", features = ["cors", "trace", "fs", "compression-gzip"] }
+tower-http = { version = "0.6.8", features = ["cors", "trace", "fs", "compression-gzip"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 tracing = "0.1"

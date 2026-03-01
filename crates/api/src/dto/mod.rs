@@ -41,7 +41,7 @@ pub use client_subnet::{
     ClientSubnetResponse, CreateClientSubnetRequest, CreateManualClientRequest,
 };
 pub use config::*;
-pub use dashboard::{DashboardQuery, DashboardResponse};
+pub use dashboard::{DashboardQuery, DashboardResponse, TopBlockedDomain, TopClient};
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};

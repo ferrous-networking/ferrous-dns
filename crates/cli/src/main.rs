@@ -155,6 +155,8 @@ async fn async_main() -> anyhow::Result<()> {
             get_timeline: use_cases.get_timeline,
             get_query_rate: use_cases.get_query_rate,
             get_cache_stats: use_cases.get_cache_stats,
+            get_top_blocked_domains: use_cases.get_top_blocked_domains,
+            get_top_clients: use_cases.get_top_clients,
         },
         dns: DnsUseCases {
             cache: dns_services.cache.clone()

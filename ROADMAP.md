@@ -36,7 +36,7 @@
 ### 🔮 v0.3.0 - Advanced Features (Current)
 
 
-- [ ] Advanced analytics and graphs, upstrens ms, top sites blocked sites
+- [x] Advanced analytics and graphs, upstrens ms, top sites blocked sites
 - [x] DoQ upstream
 - [x] https3, h3 upstream
 - [x] IPv6 upstreams

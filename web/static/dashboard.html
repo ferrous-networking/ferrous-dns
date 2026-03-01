@@ -182,6 +182,52 @@
             <canvas id="cacheSourceChart" style="max-height:300px"></canvas>
         </div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(450px,1fr));gap:24px;margin-top:24px">
+        <div class="card" style="padding:24px">
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Blocked Domains</h3>
+            <table style="width:100%;border-collapse:collapse">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color)">
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Hits</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(d, i) in (topBlockedDomains || [])" :key="i">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="d.domain"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="d.count.toLocaleString()"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p x-show="!topBlockedDomains || topBlockedDomains.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No blocked domains</p>
+        </div>
+        <div class="card" style="padding:24px">
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Clients</h3>
+            <table style="width:100%;border-collapse:collapse">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color)">
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Client</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Queries</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(c, i) in (topClients || [])" :key="i">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary)" x-text="c.hostname || c.ip"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="c.count.toLocaleString()"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p x-show="!topClients || topClients.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No data</p>
+        </div>
+    </div>
 </main>
 <script>
     const appCharts = {
@@ -224,6 +270,8 @@
             blockFilterStats: {total_blocked_domains: 0},
             sourceStats: {cache: 0, local_dns: 0, blocklist: 0, managed_domain: 0, regex_filter: 0},
             queryTypes: {},
+            topBlockedDomains: [],
+            topClients: [],
             chartsReady: false,
             pollingIntervals: {fast: null, slow: null},
             _ctrl: {},
@@ -281,6 +329,8 @@
                         if (this.stats.source_stats) {
                             this.sourceStats = {...this.stats.source_stats};
                         }
+                        this.topBlockedDomains = data.top_blocked_domains || [];
+                        this.topClients = data.top_clients || [];
                         if (data.timeline && this.chartsReady) {
                             this.updateTimelineFromData(data.timeline);
                         }

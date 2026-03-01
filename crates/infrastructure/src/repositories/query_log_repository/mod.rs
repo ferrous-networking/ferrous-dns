@@ -133,6 +133,22 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         reader::get_cache_stats(&self.read_pool, period_hours).await
     }
 
+    async fn get_top_blocked_domains(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        reader::get_top_blocked_domains(&self.read_pool, limit, period_hours).await
+    }
+
+    async fn get_top_clients(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
+        reader::get_top_clients(&self.read_pool, limit, period_hours).await
+    }
+
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
         reader::delete_older_than(&self.write_pool, days).await
     }

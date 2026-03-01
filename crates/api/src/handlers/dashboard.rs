@@ -1,7 +1,7 @@
 use crate::{
     dto::{
         CacheStatsResponse, DashboardQuery, DashboardResponse, QueryRateResponse, StatsResponse,
-        TimelineBucket, TimelineResponse, TopType, TypeDistribution,
+        TimelineBucket, TimelineResponse, TopBlockedDomain, TopClient, TopType, TypeDistribution,
     },
     state::AppState,
     utils::{parse_period, validate_period},
@@ -28,6 +28,8 @@ pub async fn get_dashboard(
     let stats_state = state.clone();
     let rate_state = state.clone();
     let cache_state = state.clone();
+    let top_blocked_state = state.clone();
+    let top_clients_state = state.clone();
 
     let stats_fut = async move { stats_state.query.get_stats.execute(period_hours).await };
     let rate_fut = async move {
@@ -44,47 +46,75 @@ pub async fn get_dashboard(
             .execute(period_hours)
             .await
     };
-
-    let (stats_result, rate_result, cache_result, timeline) = if params.include_timeline {
-        let timeline_state = state.clone();
-        let period_u32 = period_hours as u32;
-        let timeline_fut = async move {
-            timeline_state
-                .query
-                .get_timeline
-                .execute(period_u32, TimeGranularity::QuarterHour)
-                .await
-        };
-
-        let (s, r, c, t) = tokio::join!(stats_fut, rate_fut, cache_fut, timeline_fut);
-        let timeline_resp = match t {
-            Ok(buckets) => {
-                let buckets_dto: Vec<TimelineBucket> = buckets
-                    .into_iter()
-                    .map(|b| TimelineBucket {
-                        timestamp: b.timestamp,
-                        total: b.total,
-                        blocked: b.blocked,
-                        unblocked: b.unblocked,
-                    })
-                    .collect();
-                Some(TimelineResponse {
-                    total_buckets: buckets_dto.len(),
-                    period: params.period.clone(),
-                    granularity: "15min".to_string(),
-                    buckets: buckets_dto,
-                })
-            }
-            Err(e) => {
-                error!(error = %e, "Failed to retrieve timeline");
-                None
-            }
-        };
-        (s, r, c, timeline_resp)
-    } else {
-        let (s, r, c) = tokio::join!(stats_fut, rate_fut, cache_fut);
-        (s, r, c, None)
+    let top_blocked_fut = async move {
+        top_blocked_state
+            .query
+            .get_top_blocked_domains
+            .execute(15, period_hours)
+            .await
     };
+    let top_clients_fut = async move {
+        top_clients_state
+            .query
+            .get_top_clients
+            .execute(15, period_hours)
+            .await
+    };
+
+    let (stats_result, rate_result, cache_result, top_blocked_result, top_clients_result, timeline) =
+        if params.include_timeline {
+            let timeline_state = state.clone();
+            let period_u32 = period_hours as u32;
+            let timeline_fut = async move {
+                timeline_state
+                    .query
+                    .get_timeline
+                    .execute(period_u32, TimeGranularity::QuarterHour)
+                    .await
+            };
+
+            let (s, r, c, tb, tc, t) = tokio::join!(
+                stats_fut,
+                rate_fut,
+                cache_fut,
+                top_blocked_fut,
+                top_clients_fut,
+                timeline_fut
+            );
+            let timeline_resp = match t {
+                Ok(buckets) => {
+                    let buckets_dto: Vec<TimelineBucket> = buckets
+                        .into_iter()
+                        .map(|b| TimelineBucket {
+                            timestamp: b.timestamp,
+                            total: b.total,
+                            blocked: b.blocked,
+                            unblocked: b.unblocked,
+                        })
+                        .collect();
+                    Some(TimelineResponse {
+                        total_buckets: buckets_dto.len(),
+                        period: params.period.clone(),
+                        granularity: "15min".to_string(),
+                        buckets: buckets_dto,
+                    })
+                }
+                Err(e) => {
+                    error!(error = %e, "Failed to retrieve timeline");
+                    None
+                }
+            };
+            (s, r, c, tb, tc, timeline_resp)
+        } else {
+            let (s, r, c, tb, tc) = tokio::join!(
+                stats_fut,
+                rate_fut,
+                cache_fut,
+                top_blocked_fut,
+                top_clients_fut
+            );
+            (s, r, c, tb, tc, None)
+        };
 
     let stats_resp = match stats_result {
         Ok(stats) => {
@@ -175,10 +205,38 @@ pub async fn get_dashboard(
         }
     };
 
+    let top_blocked_domains = match top_blocked_result {
+        Ok(domains) => domains
+            .into_iter()
+            .map(|(domain, count)| TopBlockedDomain { domain, count })
+            .collect(),
+        Err(e) => {
+            error!(error = %e, "Failed to retrieve top blocked domains");
+            vec![]
+        }
+    };
+
+    let top_clients = match top_clients_result {
+        Ok(clients) => clients
+            .into_iter()
+            .map(|(ip, hostname, count)| TopClient {
+                ip,
+                hostname,
+                count,
+            })
+            .collect(),
+        Err(e) => {
+            error!(error = %e, "Failed to retrieve top clients");
+            vec![]
+        }
+    };
+
     Json(DashboardResponse {
         stats: stats_resp,
         rate: rate_resp,
         cache_stats: cache_resp,
         timeline,
+        top_blocked_domains,
+        top_clients,
     })
 }

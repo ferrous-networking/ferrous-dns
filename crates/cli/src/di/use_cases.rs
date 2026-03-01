@@ -12,10 +12,11 @@ use ferrous_dns_application::use_cases::{
     GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
     GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
-    GetWhitelistSourcesUseCase, GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
+    GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -29,6 +30,8 @@ pub struct UseCases {
     pub get_blocklist: Arc<GetBlocklistUseCase>,
     pub get_block_filter_stats: Arc<GetBlockFilterStatsUseCase>,
     pub get_cache_stats: Arc<GetCacheStatsUseCase>,
+    pub get_top_blocked_domains: Arc<GetTopBlockedDomainsUseCase>,
+    pub get_top_clients: Arc<GetTopClientsUseCase>,
     pub get_clients: Arc<GetClientsUseCase>,
     pub sync_arp: Arc<SyncArpCacheUseCase>,
     pub sync_hostnames: Arc<SyncHostnamesUseCase>,
@@ -99,6 +102,10 @@ impl UseCases {
                 repos.block_filter_engine.clone(),
             )),
             get_cache_stats: Arc::new(GetCacheStatsUseCase::new(repos.query_log.clone())),
+            get_top_blocked_domains: Arc::new(GetTopBlockedDomainsUseCase::new(
+                repos.query_log.clone(),
+            )),
+            get_top_clients: Arc::new(GetTopClientsUseCase::new(repos.query_log.clone())),
             get_clients: Arc::new(GetClientsUseCase::new(repos.client.clone())),
             sync_arp: Arc::new(SyncArpCacheUseCase::new(arp_reader, repos.client.clone())),
             sync_hostnames: Arc::new(SyncHostnamesUseCase::new(

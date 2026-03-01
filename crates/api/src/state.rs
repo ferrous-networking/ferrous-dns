@@ -11,10 +11,11 @@ use ferrous_dns_application::use_cases::{
     GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
     GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
-    GetServiceCatalogUseCase, GetTimelineUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetServiceCatalogUseCase, GetTimelineUseCase, GetTopBlockedDomainsUseCase,
+    GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -27,6 +28,8 @@ pub struct QueryUseCases {
     pub get_timeline: Arc<GetTimelineUseCase>,
     pub get_query_rate: Arc<GetQueryRateUseCase>,
     pub get_cache_stats: Arc<GetCacheStatsUseCase>,
+    pub get_top_blocked_domains: Arc<GetTopBlockedDomainsUseCase>,
+    pub get_top_clients: Arc<GetTopClientsUseCase>,
 }
 
 #[derive(Clone)]

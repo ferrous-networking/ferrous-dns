@@ -15,10 +15,25 @@ pub struct DashboardQuery {
 }
 
 #[derive(Serialize, Debug)]
+pub struct TopBlockedDomain {
+    pub domain: String,
+    pub count: u64,
+}
+
+#[derive(Serialize, Debug)]
+pub struct TopClient {
+    pub ip: String,
+    pub hostname: Option<String>,
+    pub count: u64,
+}
+
+#[derive(Serialize, Debug)]
 pub struct DashboardResponse {
     pub stats: StatsResponse,
     pub rate: QueryRateResponse,
     pub cache_stats: CacheStatsResponse,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeline: Option<TimelineResponse>,
+    pub top_blocked_domains: Vec<TopBlockedDomain>,
+    pub top_clients: Vec<TopClient>,
 }

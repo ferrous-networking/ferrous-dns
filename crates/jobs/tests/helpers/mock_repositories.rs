@@ -533,6 +533,22 @@ impl QueryLogRepository for MockQueryLogRepository {
         })
     }
 
+    async fn get_top_blocked_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        Ok(Vec::new())
+    }
+
+    async fn get_top_clients(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
+        Ok(Vec::new())
+    }
+
     async fn delete_older_than(&self, days: u32) -> Result<u64, DomainError> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
         let mut logs = self.logs.write().await;

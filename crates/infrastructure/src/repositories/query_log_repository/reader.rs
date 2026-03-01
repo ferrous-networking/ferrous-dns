@@ -349,6 +349,79 @@ pub(super) async fn get_cache_stats(
     })
 }
 
+#[instrument(skip(pool))]
+pub(super) async fn get_top_blocked_domains(
+    pool: &SqlitePool,
+    limit: u32,
+    period_hours: f32,
+) -> Result<Vec<(String, u64)>, DomainError> {
+    let cutoff = hours_ago_cutoff(period_hours);
+    let rows = sqlx::query(
+        "SELECT domain, COUNT(*) as count
+         FROM query_log
+         WHERE blocked = 1
+           AND created_at >= ?
+           AND query_source = 'client'
+         GROUP BY domain
+         ORDER BY count DESC
+         LIMIT ?",
+    )
+    .bind(cutoff)
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "Failed to fetch top blocked domains");
+        DomainError::DatabaseError(e.to_string())
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let domain: String = r.get("domain");
+            let count = r.get::<i64, _>("count") as u64;
+            (domain, count)
+        })
+        .collect())
+}
+
+#[instrument(skip(pool))]
+pub(super) async fn get_top_clients(
+    pool: &SqlitePool,
+    limit: u32,
+    period_hours: f32,
+) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
+    let cutoff = hours_ago_cutoff(period_hours);
+    let rows = sqlx::query(
+        "SELECT q.client_ip, c.hostname, COUNT(*) as count
+         FROM query_log q
+         LEFT JOIN clients c ON q.client_ip = c.ip_address
+         WHERE q.created_at >= ?
+           AND q.query_source = 'client'
+         GROUP BY q.client_ip
+         ORDER BY count DESC
+         LIMIT ?",
+    )
+    .bind(cutoff)
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "Failed to fetch top clients");
+        DomainError::DatabaseError(e.to_string())
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let ip: String = r.get("client_ip");
+            let hostname: Option<String> = r.get("hostname");
+            let count = r.get::<i64, _>("count") as u64;
+            (ip, hostname, count)
+        })
+        .collect())
+}
+
 pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u64, DomainError> {
     let cutoff = days_ago_cutoff(days);
     let mut total_deleted: u64 = 0;

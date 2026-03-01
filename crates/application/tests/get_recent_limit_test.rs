@@ -52,6 +52,22 @@ impl QueryLogRepository for CaptureLimitRepository {
         unimplemented!()
     }
 
+    async fn get_top_blocked_domains(
+        &self,
+        _: u32,
+        _: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        unimplemented!()
+    }
+
+    async fn get_top_clients(
+        &self,
+        _: u32,
+        _: f32,
+    ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
+        unimplemented!()
+    }
+
     async fn delete_older_than(&self, _: u32) -> Result<u64, DomainError> {
         unimplemented!()
     }

@@ -52,7 +52,7 @@ pub use managed_domains::{
 };
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, QueryRate, RateUnit,
+    GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, QueryRate, RateUnit,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,
