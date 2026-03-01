@@ -129,12 +129,8 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
                 if !is_valid_edns_version(buf[ar_pos + 1]) {
                     return None;
                 }
-                let do_flags = u16::from_be_bytes([buf[ar_pos + 2], buf[ar_pos + 3]]);
+                let _do_flags = u16::from_be_bytes([buf[ar_pos + 2], buf[ar_pos + 3]]);
                 ar_pos += 4;
-
-                if do_flags & 0x8000 != 0 {
-                    return None;
-                }
 
                 if ar_pos + 2 > buf.len() {
                     return None;

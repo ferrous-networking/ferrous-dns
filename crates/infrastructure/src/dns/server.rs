@@ -93,6 +93,8 @@ impl DnsServerHandler {
             }
         }
 
+        resp.set_edns(hickory_proto::op::Edns::new());
+
         encode_message(&resp)
     }
 }

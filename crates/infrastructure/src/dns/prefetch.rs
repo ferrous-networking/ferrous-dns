@@ -71,7 +71,7 @@ impl PrefetchPredictor {
             for pred in entry.iter_mut() {
                 pred.probability = pred.count as f64 / total as f64;
             }
-            entry.sort_by(|a, b| b.probability.partial_cmp(&a.probability).unwrap());
+            entry.sort_by(|a, b| b.probability.total_cmp(&a.probability));
             entry.truncate(max_predictions);
             total_patterns.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }

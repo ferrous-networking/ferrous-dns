@@ -41,6 +41,10 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/settings", post(handlers::update_settings))
         .merge(handlers::local_records::routes())
         .merge(handlers::block_filter::routes())
+        .route(
+            "/upstream/health",
+            get(handlers::upstream::get_upstream_health),
+        )
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_api_key,

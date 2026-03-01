@@ -709,7 +709,7 @@ async fn test_create_regex_filter_invalid_group_id() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 // ── GET /regex-filters/:id ─────────────────────────────────────────────────

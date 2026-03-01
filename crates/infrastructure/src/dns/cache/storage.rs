@@ -218,6 +218,9 @@ impl DnsCache {
 
             if record.is_expired_at_secs(now_secs) {
                 record.mark_for_deletion();
+                self.metrics
+                    .lazy_deletions
+                    .fetch_add(1, AtomicOrdering::Relaxed);
                 drop(entry);
             } else {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
@@ -275,6 +278,9 @@ impl DnsCache {
             dashmap::Entry::Vacant(e) => {
                 self.bloom.set(e.key());
                 e.insert(record);
+                self.metrics
+                    .insertions
+                    .fetch_add(1, AtomicOrdering::Relaxed);
             }
             dashmap::Entry::Occupied(mut e) => {
                 e.insert(record);
@@ -344,7 +350,7 @@ impl DnsCache {
         self.metrics.hits.store(0, AtomicOrdering::Relaxed);
         self.metrics.misses.store(0, AtomicOrdering::Relaxed);
         self.metrics.evictions.store(0, AtomicOrdering::Relaxed);
-        info!("Cache cleared");
+        info!("Cache cleared (L1 generation bumped for cross-thread invalidation)");
     }
 
     pub fn metrics(&self) -> Arc<CacheMetrics> {
@@ -496,7 +502,7 @@ impl DnsCache {
                 break;
             }
             let record = entry.value();
-            if record.is_marked_for_deletion() {
+            if record.is_marked_for_deletion() || record.is_permanent() {
                 continue;
             }
             snapshots.push(RecordSnapshot {
@@ -582,14 +588,20 @@ impl DnsCache {
             0
         };
 
-        self.metrics.evictions.fetch_add(
-            (scored_evicted + retain_removed) as u64,
-            AtomicOrdering::Relaxed,
-        );
+        let total_evicted = (scored_evicted + retain_removed) as u64;
+        self.metrics
+            .evictions
+            .fetch_add(total_evicted, AtomicOrdering::Relaxed);
+        self.metrics
+            .batch_evictions
+            .fetch_add(1, AtomicOrdering::Relaxed);
 
         if self.adaptive_thresholds && last_worst_score < f64::MAX {
             let current = self.get_threshold();
             self.set_threshold((current * 0.9) + (last_worst_score * 0.1));
+            self.metrics
+                .adaptive_adjustments
+                .fetch_add(1, AtomicOrdering::Relaxed);
         }
     }
 }

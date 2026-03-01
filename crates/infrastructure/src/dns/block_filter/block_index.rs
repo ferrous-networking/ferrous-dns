@@ -115,8 +115,9 @@ impl BlockIndex {
         }
 
         let mask = self.group_mask(group_id);
+        let has_advanced = self.groups_with_advanced_rules.contains(&group_id);
 
-        if self.groups_with_advanced_rules.contains(&group_id) {
+        if has_advanced {
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
                 for r in regexes {
                     if r.is_match(domain).unwrap_or(false) {
@@ -136,17 +137,18 @@ impl BlockIndex {
                     return Some(BlockSource::ManagedDomain);
                 }
             }
-
-            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                for r in regexes {
-                    if r.is_match(domain).unwrap_or(false) {
-                        return Some(BlockSource::RegexFilter);
-                    }
-                }
-            }
         }
 
         if !self.bloom.check(&domain) {
+            if has_advanced {
+                if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+                    for r in regexes {
+                        if r.is_match(domain).unwrap_or(false) {
+                            return Some(BlockSource::RegexFilter);
+                        }
+                    }
+                }
+            }
             return None;
         }
 
@@ -156,7 +158,22 @@ impl BlockIndex {
             }
         }
 
-        self.check_wildcard_and_patterns(domain, mask)
+        let wildcard_result = self.check_wildcard_and_patterns(domain, mask);
+        if wildcard_result.is_some() {
+            return wildcard_result;
+        }
+
+        if has_advanced {
+            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+                for r in regexes {
+                    if r.is_match(domain).unwrap_or(false) {
+                        return Some(BlockSource::RegexFilter);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     #[inline]

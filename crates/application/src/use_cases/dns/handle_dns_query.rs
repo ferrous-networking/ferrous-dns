@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const LAST_SEEN_CAPACITY: usize = 8_192;
 
@@ -26,6 +26,7 @@ fn coarse_now_ns() -> u64 {
         tv_sec: 0,
         tv_nsec: 0,
     };
+    // SAFETY: ts is stack-allocated and valid; clock_gettime only writes into the provided pointer.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_COARSE, &mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
 }
@@ -186,8 +187,8 @@ impl HandleDnsQueryUseCase {
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
-        let start = Instant::now();
-        let elapsed_us = || start.elapsed().as_micros() as u64;
+        let start_ns = coarse_now_ns();
+        let elapsed_us = || coarse_now_ns().saturating_sub(start_ns) / 1_000;
 
         self.maybe_track_client(request.client_ip);
 

@@ -27,7 +27,7 @@ pub fn build_cache_hit_response(
 
     let opt_size = if query.has_edns { OPT_RECORD.len() } else { 0 };
     let total_size = 12 + question_len + answers_size + opt_size;
-    let max_size = (query.client_max_size as usize).min(512) + opt_size;
+    let max_size = query.client_max_size as usize;
 
     if total_size > max_size {
         return None;

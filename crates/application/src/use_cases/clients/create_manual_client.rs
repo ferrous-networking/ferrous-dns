@@ -36,7 +36,7 @@ impl CreateManualClientUseCase {
                 .ok_or(DomainError::GroupNotFound(gid))?;
         }
 
-        let mut client = self.client_repo.get_or_create(ip_address).await?;
+        let initial = self.client_repo.get_or_create(ip_address).await?;
 
         if let Some(hostname) = hostname {
             self.client_repo
@@ -48,10 +48,11 @@ impl CreateManualClientUseCase {
             self.client_repo.update_mac_address(ip_address, mac).await?;
         }
 
-        if let (Some(client_id), Some(gid)) = (client.id, group_id) {
+        if let (Some(client_id), Some(gid)) = (initial.id, group_id) {
             self.client_repo.assign_group(client_id, gid).await?;
-            client.group_id = Some(gid);
         }
+
+        let client = self.client_repo.get_or_create(ip_address).await?;
 
         info!(
             ip = %ip_address,

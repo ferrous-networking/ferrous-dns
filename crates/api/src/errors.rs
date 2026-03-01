@@ -31,12 +31,15 @@ impl IntoResponse for ApiError {
 
             DomainError::Blocked => (StatusCode::FORBIDDEN, "blocked".to_string()),
 
+            DomainError::GroupNotFound(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
+
             DomainError::InvalidDomainName(_)
             | DomainError::InvalidIpAddress(_)
             | DomainError::InvalidCidr(_)
             | DomainError::ProtectedGroupCannotBeDisabled
-            | DomainError::ProtectedGroupCannotBeDeleted
-            | DomainError::GroupNotFound(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
+            | DomainError::ProtectedGroupCannotBeDeleted => {
+                (StatusCode::BAD_REQUEST, self.0.to_string())
+            }
 
             DomainError::InvalidBlocklistSource(_)
             | DomainError::InvalidWhitelistSource(_)

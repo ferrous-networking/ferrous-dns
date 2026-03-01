@@ -44,7 +44,10 @@ impl SqliteManagedDomainRepository {
             id: Some(id),
             name: Arc::from(name.as_str()),
             domain: Arc::from(domain.as_str()),
-            action: action.parse::<DomainAction>().unwrap_or(DomainAction::Deny),
+            action: action.parse::<DomainAction>().unwrap_or_else(|_| {
+                tracing::warn!(action = %action, "Invalid domain action in DB, defaulting to Deny");
+                DomainAction::Deny
+            }),
             group_id,
             comment: comment.map(|s| Arc::from(s.as_str())),
             enabled: enabled != 0,

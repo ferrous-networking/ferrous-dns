@@ -283,11 +283,12 @@ pub(super) async fn get_stats(
         unique_clients: 0,
         uptime_seconds: get_uptime(),
         cache_hit_rate,
-        avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0),
-        avg_cache_time_ms: row.get::<Option<f64>, _>("avg_cache_time").unwrap_or(0.0),
+        avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0) / 1000.0,
+        avg_cache_time_ms: row.get::<Option<f64>, _>("avg_cache_time").unwrap_or(0.0) / 1000.0,
         avg_upstream_time_ms: row
             .get::<Option<f64>, _>("avg_upstream_time")
-            .unwrap_or(0.0),
+            .unwrap_or(0.0)
+            / 1000.0,
         source_stats,
         queries_by_type: std::collections::HashMap::new(),
         most_queried_type: None,
