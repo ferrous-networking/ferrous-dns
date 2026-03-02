@@ -1,4 +1,4 @@
-use super::cache::{coarse_clock, CachedAddresses, DnsCache};
+use super::cache::{coarse_clock, CachedAddresses, CachedData, DnsCache};
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
@@ -53,20 +53,30 @@ impl DnsCacheMaintenance {
         let query = DnsQuery::new(domain, *record_type);
 
         match resolver.resolve(&query).await {
-            Ok(resolution) if !resolution.addresses.is_empty() => {
+            Ok(resolution)
+                if !resolution.addresses.is_empty() || resolution.upstream_wire_data.is_some() =>
+            {
                 let response_time = start.elapsed().as_micros() as u64;
 
                 let dnssec_status: Option<super::cache::DnssecStatus> =
                     resolution.dnssec_status.and_then(|s| s.parse().ok());
 
+                let new_data = if !resolution.addresses.is_empty() {
+                    CachedData::IpAddresses(CachedAddresses {
+                        addresses: Arc::clone(&resolution.addresses),
+                    })
+                } else if let Some(ref wire_bytes) = resolution.upstream_wire_data {
+                    CachedData::WireData(wire_bytes.clone())
+                } else {
+                    return Ok(false);
+                };
+
                 let refreshed = cache.refresh_record(
                     domain,
                     record_type,
-                    None,
-                    super::cache::CachedData::IpAddresses(CachedAddresses {
-                        addresses: Arc::clone(&resolution.addresses),
-                    }),
-                    dnssec_status.map(|_| super::cache::DnssecStatus::Unknown),
+                    resolution.min_ttl,
+                    new_data,
+                    dnssec_status,
                 );
 
                 if !refreshed {
@@ -104,7 +114,7 @@ impl DnsCacheMaintenance {
                     record_type = %record_type,
                     cache_hit = resolution.cache_hit,
                     dnssec_status = ?resolution.dnssec_status,
-                    response_time_ms = response_time,
+                    response_time_us = response_time,
                     "Cache entry refreshed with new DNSSEC validation"
                 );
 

@@ -4,6 +4,7 @@ use super::super::cache::{
 };
 use super::super::prefetch::PrefetchPredictor;
 use async_trait::async_trait;
+use bytes::Bytes;
 use dashmap::DashMap;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 use std::sync::LazyLock;
@@ -21,6 +22,7 @@ struct InflightResult {
     cname_chain: Arc<[Arc<str>]>,
     dnssec_status: Option<&'static str>,
     min_ttl: Option<u32>,
+    upstream_wire_data: Option<Bytes>,
 }
 
 type InflightSender = Arc<watch::Sender<Option<Arc<InflightResult>>>>;
@@ -93,7 +95,19 @@ impl CachedResolver {
                         negative_soa_ttl: None,
                         upstream_wire_data: None,
                     },
-                    CachedData::CanonicalName(_) => DnsResolution {
+                    CachedData::CanonicalName(name) => DnsResolution {
+                        addresses: Arc::clone(&EMPTY_ADDRESSES),
+                        cache_hit: true,
+                        local_dns: false,
+                        dnssec_status: dnssec_str,
+                        cname_chain: Arc::from([Arc::clone(&name)]),
+                        upstream_server: None,
+                        upstream_pool: None,
+                        min_ttl: remaining_ttl,
+                        negative_soa_ttl: None,
+                        upstream_wire_data: None,
+                    },
+                    CachedData::WireData(bytes) => DnsResolution {
                         addresses: Arc::clone(&EMPTY_ADDRESSES),
                         cache_hit: true,
                         local_dns: false,
@@ -103,7 +117,7 @@ impl CachedResolver {
                         upstream_pool: None,
                         min_ttl: remaining_ttl,
                         negative_soa_ttl: None,
-                        upstream_wire_data: None,
+                        upstream_wire_data: Some(bytes),
                     },
                     CachedData::NegativeResponse => DnsResolution {
                         addresses: Arc::clone(&EMPTY_ADDRESSES),
@@ -135,17 +149,32 @@ impl CachedResolver {
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
         if resolution.addresses.is_empty() {
-            let ttl = resolution
-                .negative_soa_ttl
-                .map(clamp_negative_ttl)
-                .unwrap_or_else(|| self.negative_ttl_tracker.record_and_get_ttl(&query.domain));
-            self.cache.insert(
-                query.domain.as_ref(),
-                query.record_type,
-                CachedData::NegativeResponse,
-                ttl,
-                Some(DnssecStatus::Insecure),
-            );
+            if let Some(ref wire_data) = resolution.upstream_wire_data {
+                let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl).max(1);
+                let dnssec_status = resolution
+                    .dnssec_status
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(DnssecStatus::Insecure);
+                self.cache.insert(
+                    query.domain.as_ref(),
+                    query.record_type,
+                    CachedData::WireData(wire_data.clone()),
+                    ttl,
+                    Some(dnssec_status),
+                );
+            } else {
+                let ttl = resolution
+                    .negative_soa_ttl
+                    .map(clamp_negative_ttl)
+                    .unwrap_or_else(|| self.negative_ttl_tracker.record_and_get_ttl(&query.domain));
+                self.cache.insert(
+                    query.domain.as_ref(),
+                    query.record_type,
+                    CachedData::NegativeResponse,
+                    ttl,
+                    Some(DnssecStatus::Insecure),
+                );
+            }
         } else {
             let addresses = Arc::clone(&resolution.addresses);
             let dnssec_status = resolution
@@ -204,7 +233,7 @@ impl CachedResolver {
                     upstream_pool: None,
                     min_ttl: result.min_ttl,
                     negative_soa_ttl: None,
-                    upstream_wire_data: None,
+                    upstream_wire_data: result.upstream_wire_data.clone(),
                 });
             }
         }
@@ -220,12 +249,12 @@ impl CachedResolver {
                 upstream_pool: None,
                 min_ttl: result.min_ttl,
                 negative_soa_ttl: None,
-                upstream_wire_data: None,
+                upstream_wire_data: result.upstream_wire_data.clone(),
             });
         }
 
         if let Some(cached) = self.check_cache(query) {
-            return if cached.addresses.is_empty() {
+            return if !cached.has_response_data() {
                 Err(DomainError::NxDomain)
             } else {
                 Ok(cached)
@@ -262,6 +291,7 @@ impl CachedResolver {
                         cname_chain: Arc::clone(&resolution.cname_chain),
                         dnssec_status: resolution.dnssec_status,
                         min_ttl: resolution.min_ttl,
+                        upstream_wire_data: resolution.upstream_wire_data.clone(),
                     });
                     let _ = tx.send(Some(inflight));
                 }
@@ -287,7 +317,7 @@ impl DnsResolver for CachedResolver {
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         if let Some(cached) = self.check_cache(query) {
-            return if cached.addresses.is_empty() {
+            return if !cached.has_response_data() {
                 Err(DomainError::NxDomain)
             } else {
                 Ok(cached)
@@ -299,6 +329,15 @@ impl DnsResolver for CachedResolver {
 
         if !is_leader {
             return self.resolve_as_follower(query, rx).await;
+        }
+
+        if let Some(cached) = self.check_cache(query) {
+            self.inflight.remove(&key);
+            return if !cached.has_response_data() {
+                Err(DomainError::NxDomain)
+            } else {
+                Ok(cached)
+            };
         }
 
         self.resolve_as_leader(query, key).await

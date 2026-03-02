@@ -274,9 +274,9 @@ impl DnsCache {
         let record = CachedRecord::new(data, ttl, record_type, dnssec_status);
         let expires_secs = record.expires_at_secs;
 
+        self.bloom.set(&key);
         match self.cache.entry(key) {
             dashmap::Entry::Vacant(e) => {
-                self.bloom.set(e.key());
                 e.insert(record);
                 self.metrics
                     .insertions
@@ -435,6 +435,8 @@ impl DnsCache {
         }
     }
 
+    /// L1 thread-local cache only holds IP addresses (A/AAAA).
+    /// WireData, CanonicalName, and NegativeResponse stay in L2 only.
     fn promote_to_l1(
         &self,
         domain: &str,

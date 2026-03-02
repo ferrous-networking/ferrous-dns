@@ -27,10 +27,6 @@ impl DnsCache {
             }
 
             let key = entry.key();
-            if matches!(key.record_type, RecordType::HTTPS) {
-                continue;
-            }
-
             let hit_count = record.counters.hit_count.load(AtomicOrdering::Relaxed);
             let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
             let age_since_access = now.saturating_sub(last_access);

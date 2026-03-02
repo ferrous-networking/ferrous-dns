@@ -208,7 +208,7 @@ impl HandleDnsQueryUseCase {
         }
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
-            if !cached.addresses.is_empty() {
+            if cached.has_response_data() {
                 self.log(&QueryLog {
                     cache_hit: true,
                     dnssec_status: cached.dnssec_status,

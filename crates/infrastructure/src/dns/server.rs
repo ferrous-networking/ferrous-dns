@@ -76,11 +76,12 @@ impl DnsServerHandler {
 
         if addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
-                if let Ok(message) = Message::from_vec(wire_data) {
-                    for record in message.name_servers() {
-                        resp.add_name_server(record.clone());
-                    }
+                let mut response = wire_data.to_vec();
+                if response.len() >= 2 {
+                    response[0] = (query_id >> 8) as u8;
+                    response[1] = query_id as u8;
                 }
+                return Some(response);
             }
         } else {
             let record_name = query_info.name().clone();
@@ -157,18 +158,37 @@ impl RequestHandler for DnsServerHandler {
         let addresses = resolution.addresses;
 
         if addresses.is_empty() {
+            if let Some(ref wire_data) = resolution.upstream_wire_data {
+                if let Ok(message) = Message::from_vec(wire_data) {
+                    let answers: Vec<Record> = message.answers().to_vec();
+                    let authority: Vec<Record> = message.name_servers().to_vec();
+                    let additional: Vec<Record> = message.additionals().to_vec();
+                    let builder = MessageResponseBuilder::from_message_request(request);
+                    let mut header = *request.header();
+                    header.set_message_type(MessageType::Response);
+                    header.set_recursion_available(true);
+                    let response = builder.build(
+                        header,
+                        answers.iter(),
+                        authority.iter(),
+                        &[],
+                        additional.iter(),
+                    );
+                    return match response_handle.send_response(response).await {
+                        Ok(info) => info,
+                        Err(e) => {
+                            error!(error = %e, "Failed to send wire data response");
+                            ResponseInfo::from(*request.header())
+                        }
+                    };
+                }
+            }
             debug!(domain = %domain_ref, "No records found (NODATA)");
             let builder = MessageResponseBuilder::from_message_request(request);
             let mut header = *request.header();
             header.set_message_type(MessageType::Response);
             header.set_recursion_available(true);
-            let authority_records: Vec<Record> = resolution
-                .upstream_wire_data
-                .as_ref()
-                .and_then(|wire_data| Message::from_vec(wire_data).ok())
-                .map(|msg| msg.name_servers().to_vec())
-                .unwrap_or_default();
-            let response = builder.build(header, &[], authority_records.iter(), &[], &[]);
+            let response = builder.build(header, &[], &[], &[], &[]);
             return match response_handle.send_response(response).await {
                 Ok(info) => info,
                 Err(e) => {

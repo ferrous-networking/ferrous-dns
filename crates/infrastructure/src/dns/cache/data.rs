@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -37,10 +38,6 @@ impl DnssecStatus {
         }
     }
 
-    pub fn from_string(s: &str) -> Option<Self> {
-        s.parse().ok()
-    }
-
     pub fn from_option_string(opt: Option<String>) -> Self {
         opt.and_then(|s| s.parse().ok()).unwrap_or(Self::Unknown)
     }
@@ -57,6 +54,9 @@ pub enum CachedData {
 
     CanonicalName(Arc<str>),
 
+    /// Raw upstream DNS wire bytes for non-A/AAAA record types (HTTPS, MX, TXT, etc.).
+    WireData(Bytes),
+
     NegativeResponse,
 }
 
@@ -65,6 +65,7 @@ impl CachedData {
         match self {
             CachedData::IpAddresses(entry) => entry.addresses.is_empty(),
             CachedData::CanonicalName(name) => name.is_empty(),
+            CachedData::WireData(bytes) => bytes.is_empty(),
             CachedData::NegativeResponse => false,
         }
     }
@@ -83,6 +84,13 @@ impl CachedData {
     pub fn as_canonical_name(&self) -> Option<&Arc<str>> {
         match self {
             CachedData::CanonicalName(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub fn as_wire_data(&self) -> Option<&Bytes> {
+        match self {
+            CachedData::WireData(bytes) => Some(bytes),
             _ => None,
         }
     }
