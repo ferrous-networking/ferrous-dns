@@ -43,7 +43,7 @@ fn test_ttl_zero_clamped_to_minimum() {
         None,
     );
     let ttl = cache.get_ttl("example.com", &RecordType::A);
-    assert_eq!(ttl, Some(1), "TTL 0 should be clamped to MIN (1)");
+    assert_eq!(ttl, Some(0), "TTL 0 should be preserved when min_ttl=0");
 }
 
 #[test]
@@ -102,18 +102,15 @@ fn test_negative_response_ttl_clamped() {
         "nxdomain.example.com",
         RecordType::A,
         CachedData::NegativeResponse,
-        0,
+        30,
         None,
     );
     let result = cache.get(&Arc::from("nxdomain.example.com"), &RecordType::A);
     assert!(
         result.is_some(),
-        "Negative response with clamped TTL should be retrievable"
+        "Negative response with valid TTL should be retrievable"
     );
     if let Some((_, _, Some(remaining))) = result {
-        assert!(
-            remaining >= 1,
-            "Remaining TTL should be at least 1 after clamping"
-        );
+        assert!(remaining >= 1, "Remaining TTL should be at least 1");
     }
 }

@@ -27,10 +27,9 @@ impl DnsCache {
             }
 
             let key = entry.key();
-            let hit_count = record.counters.hit_count.load(AtomicOrdering::Relaxed);
             let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
             let age_since_access = now.saturating_sub(last_access);
-            let within_window = hit_count > 0 && age_since_access <= self.access_window_secs;
+            let within_window = age_since_access <= self.access_window_secs;
 
             if !within_window {
                 continue;

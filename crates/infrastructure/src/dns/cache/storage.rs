@@ -139,8 +139,7 @@ impl DnsCache {
 
     #[inline(always)]
     fn clamp_ttl(&self, ttl: u32) -> u32 {
-        let floor = self.min_ttl.max(1);
-        ttl.clamp(floor, self.max_ttl)
+        ttl.clamp(self.min_ttl, self.max_ttl)
     }
 
     pub(super) fn get_threshold(&self) -> f64 {
@@ -225,6 +224,7 @@ impl DnsCache {
             } else {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
+                self.bloom.set(&borrowed);
                 let remaining_ttl = record.expires_at_secs.saturating_sub(now_secs) as u32;
                 self.promote_to_l1(domain.as_ref(), record_type, record, now_secs);
                 return Some((
@@ -523,8 +523,8 @@ impl DnsCache {
 
         for snap in &snapshots {
             if snap.is_expired {
-                let within_window = snap.hit_count > 0
-                    && now_secs.saturating_sub(snap.last_access) <= self.access_window_secs;
+                let within_window =
+                    now_secs.saturating_sub(snap.last_access) <= self.access_window_secs;
 
                 if !within_window {
                     let score = self.eviction_policy.compute_score_from_snapshot(

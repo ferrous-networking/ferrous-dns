@@ -321,9 +321,7 @@ fn test_lfuk_eviction_respects_min_score() {
 // ─── Testes de refresh_record e get_refresh_candidates ───────────────────────
 
 #[test]
-fn test_refresh_candidates_requires_hit_count() {
-    // Entradas sem nenhum hit no cache L2 NÃO devem ser candidatas,
-    // mesmo que o threshold de tempo seja 0 (passam imediatamente).
+fn test_refresh_candidates_includes_entries_within_access_window() {
     let cache = create_refresh_cache(u64::MAX);
 
     cache.insert(
@@ -334,11 +332,10 @@ fn test_refresh_candidates_requires_hit_count() {
         None,
     );
 
-    // Não chamamos cache.get() → hit_count permanece 0
     let candidates = cache.get_refresh_candidates();
     assert!(
-        candidates.is_empty(),
-        "Entrada sem hits não deve ser candidata ao refresh; candidates={:?}",
+        candidates.iter().any(|(d, _)| d == "never-hit.com"),
+        "Entrada dentro da access window deve ser candidata mesmo sem hits; candidates={:?}",
         candidates
     );
 }
@@ -370,11 +367,9 @@ fn test_refresh_candidates_with_recent_access() {
 }
 
 #[test]
-fn test_refresh_candidates_access_window_zero_excludes_entries() {
-    // Com access_window_secs = 0 apenas entradas acessadas no mesmo segundo
-    // exato podem ser candidatas; na prática o coarse clock pode ter avançado
-    // (ou não), mas entradas com hit_count = 0 são sempre excluídas.
-    // Este teste garante que o filtro de hit_count é a primeira barreira.
+fn test_refresh_candidates_access_window_zero_includes_same_tick_entries() {
+    // Com access_window_secs = 0, uma entry inserida no mesmo tick do
+    // coarse clock terá age_since_access == 0, logo 0 <= 0 = true.
     let cache_no_window = create_refresh_cache(0);
 
     cache_no_window.insert(
@@ -385,11 +380,11 @@ fn test_refresh_candidates_access_window_zero_excludes_entries() {
         None,
     );
 
-    // hit_count=0 → nunca candidato, independente da janela
     let candidates = cache_no_window.get_refresh_candidates();
     assert!(
-        candidates.is_empty(),
-        "Sem hits nunca deve ser candidato mesmo com window=0"
+        candidates.iter().any(|(d, _)| d == "zero-window.com"),
+        "Entry inserida no mesmo tick deve ser candidata com window=0; candidates={:?}",
+        candidates
     );
 }
 
