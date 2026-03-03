@@ -62,15 +62,12 @@ impl DnsServices {
             cache.set_stale_refresh_sender(stale_tx);
 
             let resolver_for_maintenance: Arc<dyn ferrous_dns_application::ports::DnsResolver> =
-                Arc::new(
-                    HickoryDnsResolver::new_with_pools(
-                        pool_manager_clone.clone(),
-                        timeout_ms,
-                        false,
-                        None,
-                    )?
-                    .with_cache(cache.clone(), config.dns.cache_ttl),
-                );
+                Arc::new(HickoryDnsResolver::new_with_pools(
+                    pool_manager_clone.clone(),
+                    timeout_ms,
+                    false,
+                    None,
+                )?);
 
             DnsCacheMaintenance::start_stale_listener(
                 cache.clone(),

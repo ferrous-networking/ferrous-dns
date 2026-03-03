@@ -165,8 +165,11 @@ impl DnsCache {
         domain: &Arc<str>,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+        let borrowed = BorrowedKey::new(domain.as_ref(), *record_type);
+
         if let Some((arc_data, remaining_ttl)) = l1_get(domain.as_ref(), record_type) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
+            self.bloom.set(&borrowed);
             return Some((
                 CachedData::IpAddresses(super::data::CachedAddresses {
                     addresses: arc_data,
@@ -176,7 +179,6 @@ impl DnsCache {
             ));
         }
 
-        let borrowed = BorrowedKey::new(domain.as_ref(), *record_type);
         let in_bloom = self.bloom.check(&borrowed);
 
         if !in_bloom {
@@ -201,6 +203,7 @@ impl DnsCache {
                     .stale_hits
                     .fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
+                self.bloom.set(&borrowed);
                 if let Some(tx) = self.stale_refresh_tx.get() {
                     if record.try_set_refreshing()
                         && tx.try_send((Arc::clone(domain), key.record_type)).is_err()
