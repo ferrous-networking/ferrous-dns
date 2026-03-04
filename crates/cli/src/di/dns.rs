@@ -61,9 +61,18 @@ impl DnsServices {
             let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(256);
             cache.set_stale_refresh_sender(stale_tx);
 
+            let pool_manager_for_maintenance = Arc::new(
+                PoolManager::new(
+                    config.dns.pools.clone(),
+                    stored_health_checker.clone(),
+                    QueryEventEmitter::new_disabled(),
+                )
+                .await?,
+            );
+
             let resolver_for_maintenance: Arc<dyn ferrous_dns_application::ports::DnsResolver> =
                 Arc::new(HickoryDnsResolver::new_with_pools(
-                    pool_manager_clone.clone(),
+                    pool_manager_for_maintenance,
                     timeout_ms,
                     false,
                     None,
