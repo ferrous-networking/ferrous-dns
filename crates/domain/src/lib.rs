@@ -17,6 +17,7 @@ pub mod query_filters;
 pub mod query_log;
 pub mod regex_filter;
 pub mod safe_search;
+pub mod schedule;
 pub mod service_catalog;
 pub mod validators;
 pub mod whitelist;
@@ -44,6 +45,9 @@ pub use query_filters::{FqdnFilter, PrivateIpFilter};
 pub use query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
 pub use regex_filter::RegexFilter;
 pub use safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};
+pub use schedule::{
+    evaluate_slots, GroupOverride, ScheduleAction, ScheduleProfile, TimeSlot, UnknownScheduleAction,
+};
 pub use service_catalog::ServiceDefinition;
 pub use whitelist::WhitelistedDomain;
 pub use whitelist_source::WhitelistSource;

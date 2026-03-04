@@ -25,9 +25,10 @@ impl IntoResponse for ApiError {
             | DomainError::CustomServiceNotFound(_)
             | DomainError::ClientNotFound(_)
             | DomainError::SubnetNotFound(_)
-            | DomainError::ServiceNotFoundInCatalog(_) => {
-                (StatusCode::NOT_FOUND, self.0.to_string())
-            }
+            | DomainError::ServiceNotFoundInCatalog(_)
+            | DomainError::ScheduleProfileNotFound(_)
+            | DomainError::TimeSlotNotFound(_)
+            | DomainError::GroupHasNoSchedule(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
 
             DomainError::Blocked => (StatusCode::FORBIDDEN, "blocked".to_string()),
 
@@ -37,6 +38,9 @@ impl IntoResponse for ApiError {
             | DomainError::InvalidIpAddress(_)
             | DomainError::InvalidCidr(_)
             | DomainError::InvalidSafeSearchEngine(_)
+            | DomainError::InvalidTimeSlot(_)
+            | DomainError::InvalidTimezone(_)
+            | DomainError::InvalidScheduleProfile(_)
             | DomainError::ProtectedGroupCannotBeDisabled
             | DomainError::ProtectedGroupCannotBeDeleted => {
                 (StatusCode::BAD_REQUEST, self.0.to_string())
@@ -47,6 +51,7 @@ impl IntoResponse for ApiError {
             | DomainError::InvalidManagedDomain(_)
             | DomainError::InvalidRegexFilter(_)
             | DomainError::InvalidGroupName(_)
+            | DomainError::DuplicateScheduleProfileName(_)
             | DomainError::BlockedServiceAlreadyExists(_)
             | DomainError::CustomServiceAlreadyExists(_)
             | DomainError::SubnetConflict(_)

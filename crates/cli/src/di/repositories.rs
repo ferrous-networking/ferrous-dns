@@ -1,6 +1,6 @@
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, CustomServiceRepository, SafeSearchConfigRepository,
-    SafeSearchEnginePort, ServiceCatalogPort,
+    SafeSearchEnginePort, ScheduleProfileRepository, ScheduleStatePort, ServiceCatalogPort,
 };
 use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
@@ -16,10 +16,12 @@ use ferrous_dns_infrastructure::repositories::{
     managed_domain_repository::SqliteManagedDomainRepository,
     query_log_repository::SqliteQueryLogRepository,
     regex_filter_repository::SqliteRegexFilterRepository,
+    schedule_profile_repository::SqliteScheduleProfileRepository,
     sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository,
     whitelist_repository::SqliteWhitelistRepository,
     whitelist_source_repository::SqliteWhitelistSourceRepository,
 };
+use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
 use ferrous_dns_infrastructure::service_catalog::{CompositeServiceCatalog, ServiceCatalog};
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
@@ -42,6 +44,8 @@ pub struct Repositories {
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     pub safe_search_config: Arc<SqliteSafeSearchConfigRepository>,
     pub safe_search_engine: Arc<dyn SafeSearchEnginePort>,
+    pub schedule_profile: Arc<dyn ScheduleProfileRepository>,
+    pub schedule_state: Arc<dyn ScheduleStatePort>,
 }
 
 impl Repositories {
@@ -62,8 +66,11 @@ impl Repositories {
                 .map(|row| row.get::<i64, _>("id"))
                 .unwrap_or(1);
 
+        let schedule_state: Arc<dyn ScheduleStatePort> = Arc::new(ScheduleStateStore::new());
+
         let block_filter_engine: Arc<dyn BlockFilterEnginePort> =
-            BlockFilterEngine::new(write_pool.clone(), default_group_id).await?;
+            BlockFilterEngine::new(write_pool.clone(), default_group_id, schedule_state.clone())
+                .await?;
 
         let composite = CompositeServiceCatalog::new(ServiceCatalog::load());
         let service_catalog: Arc<dyn ServiceCatalogPort> = Arc::new(composite);
@@ -108,6 +115,8 @@ impl Repositories {
             block_filter_engine,
             safe_search_config: safe_search_config.clone(),
             safe_search_engine,
+            schedule_profile: Arc::new(SqliteScheduleProfileRepository::new(write_pool.clone())),
+            schedule_state,
         })
     }
 }

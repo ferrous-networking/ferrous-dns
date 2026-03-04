@@ -38,4 +38,5 @@ pub use stats::get_stats;
 pub use timeline::get_timeline;
 pub use whitelist::get_whitelist;
 pub mod safe_search;
+pub mod schedule_profiles;
 pub mod upstream;

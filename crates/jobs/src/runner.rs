@@ -1,6 +1,6 @@
 use crate::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob,
-    WalCheckpointJob,
+    ScheduleEvaluatorJob, WalCheckpointJob,
 };
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -31,6 +31,7 @@ impl_spawnable_job!(QueryLogRetentionJob);
 impl_spawnable_job!(BlocklistSyncJob);
 impl_spawnable_job!(WalCheckpointJob);
 impl_spawnable_job!(CacheMaintenanceJob);
+impl_spawnable_job!(ScheduleEvaluatorJob);
 
 fn spawn_job<J: SpawnableJob>(job: Option<J>, shutdown: &Option<CancellationToken>) {
     if let Some(job) = job {
@@ -49,6 +50,7 @@ pub struct JobRunner {
     blocklist_sync: Option<BlocklistSyncJob>,
     wal_checkpoint: Option<WalCheckpointJob>,
     cache_maintenance: Option<CacheMaintenanceJob>,
+    schedule_evaluator: Option<ScheduleEvaluatorJob>,
     shutdown: Option<CancellationToken>,
 }
 
@@ -61,6 +63,7 @@ impl JobRunner {
             blocklist_sync: None,
             wal_checkpoint: None,
             cache_maintenance: None,
+            schedule_evaluator: None,
             shutdown: None,
         }
     }
@@ -95,6 +98,11 @@ impl JobRunner {
         self
     }
 
+    pub fn with_schedule_evaluator(mut self, job: ScheduleEvaluatorJob) -> Self {
+        self.schedule_evaluator = Some(job);
+        self
+    }
+
     pub fn with_shutdown_token(mut self, token: CancellationToken) -> Self {
         self.shutdown = Some(token);
         self
@@ -109,6 +117,7 @@ impl JobRunner {
         spawn_job(self.blocklist_sync, &self.shutdown);
         spawn_job(self.wal_checkpoint, &self.shutdown);
         spawn_job(self.cache_maintenance, &self.shutdown);
+        spawn_job(self.schedule_evaluator, &self.shutdown);
 
         info!("All background jobs started");
     }

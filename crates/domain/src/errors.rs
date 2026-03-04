@@ -130,4 +130,25 @@ pub enum DomainError {
 
     #[error("All upstream servers are unreachable")]
     TransportAllServersUnreachable,
+
+    #[error("Schedule profile not found: {0}")]
+    ScheduleProfileNotFound(i64),
+
+    #[error("Schedule profile name already exists: {0}")]
+    DuplicateScheduleProfileName(String),
+
+    #[error("Invalid schedule profile: {0}")]
+    InvalidScheduleProfile(String),
+
+    #[error("Group has no schedule assigned: {0}")]
+    GroupHasNoSchedule(i64),
+
+    #[error("Time slot not found: {0}")]
+    TimeSlotNotFound(i64),
+
+    #[error("Invalid time slot: {0}")]
+    InvalidTimeSlot(String),
+
+    #[error("Invalid timezone: {0}")]
+    InvalidTimezone(String),
 }

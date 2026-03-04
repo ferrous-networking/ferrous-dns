@@ -8,8 +8,8 @@ use crate::dns::cache::coarse_clock::coarse_now_secs;
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use dashmap::DashMap;
-use ferrous_dns_application::ports::{BlockFilterEnginePort, FilterDecision};
-use ferrous_dns_domain::{ClientSubnet, DomainError, SubnetMatcher};
+use ferrous_dns_application::ports::{BlockFilterEnginePort, FilterDecision, ScheduleStatePort};
+use ferrous_dns_domain::{BlockSource, ClientSubnet, DomainError, GroupOverride, SubnetMatcher};
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 use sqlx::{Row, SqlitePool};
@@ -36,13 +36,20 @@ pub struct BlockFilterEngine {
     decision_cache: BlockDecisionCache,
     client_groups: Arc<DashMap<IpAddr, i64, FxBuildHasher>>,
     subnet_matcher: ArcSwap<Option<SubnetMatcher>>,
+    /// Shared in-memory store of active schedule overrides per group.
+    /// Written by `ScheduleEvaluatorJob` every 60 s; read in `check()` on every query.
+    schedule_state: Arc<dyn ScheduleStatePort>,
     default_group_id: i64,
     pool: SqlitePool,
     http_client: reqwest::Client,
 }
 
 impl BlockFilterEngine {
-    pub async fn new(pool: SqlitePool, default_group_id: i64) -> Result<Arc<Self>, DomainError> {
+    pub async fn new(
+        pool: SqlitePool,
+        default_group_id: i64,
+        schedule_state: Arc<dyn ScheduleStatePort>,
+    ) -> Result<Arc<Self>, DomainError> {
         let http_client = reqwest::Client::builder()
             .user_agent("Ferrous-DNS/1.0 (blocklist-sync)")
             .timeout(std::time::Duration::from_secs(30))
@@ -54,6 +61,7 @@ impl BlockFilterEngine {
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             subnet_matcher: ArcSwap::from_pointee(None),
+            schedule_state,
             default_group_id,
             pool,
             http_client,
@@ -175,6 +183,27 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
+        // Schedule override check: O(1) is_empty() guard keeps cost zero when
+        // no schedules are configured. Not cached per-domain — schedule state
+        // changes every minute, not per query.
+        if !self.schedule_state.is_empty() {
+            match self.schedule_state.get(group_id) {
+                Some(GroupOverride::BlockAll) => {
+                    return FilterDecision::Block(BlockSource::Schedule);
+                }
+                Some(GroupOverride::AllowAll) => {
+                    return FilterDecision::Allow;
+                }
+                Some(GroupOverride::TimedBypassUntil(t)) if coarse_now_secs() < t => {
+                    return FilterDecision::Allow;
+                }
+                Some(GroupOverride::TimedBlockUntil(t)) if coarse_now_secs() < t => {
+                    return FilterDecision::Block(BlockSource::Schedule);
+                }
+                _ => {} // expired or no override — fall through to normal check
+            }
+        }
+
         let key = decision_key(domain, group_id);
 
         if let Some(cached_source) = decision_l0_get_by_key(key) {

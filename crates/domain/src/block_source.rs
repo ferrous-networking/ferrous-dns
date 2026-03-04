@@ -7,6 +7,8 @@ pub enum BlockSource {
     ManagedDomain,
     RegexFilter,
     CnameCloaking,
+    /// Blocked by a time-based schedule rule (ScheduleAction::BlockAll slot active).
+    Schedule,
 }
 
 impl BlockSource {
@@ -16,6 +18,7 @@ impl BlockSource {
             BlockSource::ManagedDomain => "managed_domain",
             BlockSource::RegexFilter => "regex_filter",
             BlockSource::CnameCloaking => "cname_cloaking",
+            BlockSource::Schedule => "schedule",
         }
     }
 
@@ -25,6 +28,7 @@ impl BlockSource {
             1 => Some(BlockSource::ManagedDomain),
             2 => Some(BlockSource::RegexFilter),
             3 => Some(BlockSource::CnameCloaking),
+            4 => Some(BlockSource::Schedule),
             _ => None,
         }
     }
@@ -35,6 +39,7 @@ impl BlockSource {
             BlockSource::ManagedDomain => 1,
             BlockSource::RegexFilter => 2,
             BlockSource::CnameCloaking => 3,
+            BlockSource::Schedule => 4,
         }
     }
 }

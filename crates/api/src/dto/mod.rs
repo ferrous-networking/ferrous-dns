@@ -16,6 +16,7 @@ pub mod query;
 pub mod rate;
 pub mod regex_filter;
 pub mod safe_search;
+pub mod schedule;
 pub mod stats;
 pub mod timeline;
 pub mod whitelist;

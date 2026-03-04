@@ -1,22 +1,24 @@
 use ferrous_dns_application::ports::{ConfigFilePersistence, DnsCachePort, UpstreamHealthPort};
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, BlockServiceUseCase, CreateBlocklistSourceUseCase,
-    CreateClientSubnetUseCase, CreateCustomServiceUseCase, CreateGroupUseCase,
-    CreateLocalRecordUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
-    CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
-    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase,
-    DeleteLocalRecordUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
-    DeleteSafeSearchConfigsUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    AssignClientGroupUseCase, AssignScheduleProfileUseCase, BlockServiceUseCase,
+    CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateCustomServiceUseCase,
+    CreateGroupUseCase, CreateLocalRecordUseCase, CreateManagedDomainUseCase,
+    CreateManualClientUseCase, CreateRegexFilterUseCase, CreateScheduleProfileUseCase,
+    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
+    DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteLocalRecordUseCase,
+    DeleteManagedDomainUseCase, DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase,
+    DeleteScheduleProfileUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
     GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
     GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
     GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
-    GetServiceCatalogUseCase, GetTimelineUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetScheduleProfilesUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
+    GetWhitelistUseCase, ManageTimeSlotsUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -106,6 +108,16 @@ pub struct SafeSearchUseCases {
 }
 
 #[derive(Clone)]
+pub struct ScheduleUseCases {
+    pub get_profiles: Arc<GetScheduleProfilesUseCase>,
+    pub create_profile: Arc<CreateScheduleProfileUseCase>,
+    pub update_profile: Arc<UpdateScheduleProfileUseCase>,
+    pub delete_profile: Arc<DeleteScheduleProfileUseCase>,
+    pub manage_slots: Arc<ManageTimeSlotsUseCase>,
+    pub assign_profile: Arc<AssignScheduleProfileUseCase>,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub query: QueryUseCases,
     pub dns: DnsUseCases,
@@ -114,6 +126,7 @@ pub struct AppState {
     pub blocking: BlockingUseCases,
     pub services: ServiceUseCases,
     pub safe_search: SafeSearchUseCases,
+    pub schedule: ScheduleUseCases,
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub api_key: Option<Arc<str>>,

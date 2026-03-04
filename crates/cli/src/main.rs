@@ -6,7 +6,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use clap::Parser;
 use ferrous_dns_api::{
     AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases, QueryUseCases,
-    SafeSearchUseCases, ServiceUseCases,
+    SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };
 use ferrous_dns_application::use_cases::{
     CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
@@ -17,7 +17,7 @@ use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
 use ferrous_dns_infrastructure::repositories::{SqliteConfigRepository, TomlConfigFilePersistence};
 use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, QueryLogRetentionJob,
-    RetentionJob, WalCheckpointJob,
+    RetentionJob, ScheduleEvaluatorJob, WalCheckpointJob,
 };
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -130,6 +130,10 @@ async fn async_main() -> anyhow::Result<()> {
         .with_wal_checkpoint(WalCheckpointJob::new(
             wal_pool,
             config.database.wal_checkpoint_interval_secs,
+        ))
+        .with_schedule_evaluator(ScheduleEvaluatorJob::new(
+            repos.schedule_profile.clone(),
+            repos.schedule_state.clone(),
         ));
 
     if let Some(maintenance) = dns_services.cache_maintenance {
@@ -232,6 +236,14 @@ async fn async_main() -> anyhow::Result<()> {
             get_configs: use_cases.get_safe_search_configs,
             toggle: use_cases.toggle_safe_search,
             delete_configs: use_cases.delete_safe_search_configs,
+        },
+        schedule: ScheduleUseCases {
+            get_profiles: use_cases.get_schedule_profiles,
+            create_profile: use_cases.create_schedule_profile,
+            update_profile: use_cases.update_schedule_profile,
+            delete_profile: use_cases.delete_schedule_profile,
+            manage_slots: use_cases.manage_time_slots,
+            assign_profile: use_cases.assign_schedule_profile,
         },
         config: config_arc.clone(),
         config_file_persistence: Arc::new(TomlConfigFilePersistence),

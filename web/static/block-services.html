@@ -153,6 +153,7 @@
         <button class="tab-btn" :class="activeTab === 'catalog' ? 'active' : ''" @click="switchTab('catalog')">Block Services</button>
         <button class="tab-btn" :class="activeTab === 'custom' ? 'active' : ''" @click="switchTab('custom')">Custom Services</button>
         <button class="tab-btn" :class="activeTab === 'safe-search' ? 'active' : ''" @click="switchTab('safe-search')">Safe Search</button>
+        <button class="tab-btn" :class="activeTab === 'schedule' ? 'active' : ''" @click="switchTab('schedule')">Schedule</button>
     </div>
 
     <!-- TAB: Service Catalog + Blocked Services -->
@@ -386,6 +387,283 @@
             </div>
         </template>
     </div>
+
+    <!-- TAB: Schedule -->
+    <div x-show="activeTab === 'schedule'">
+        <!-- How it works info panel -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;margin-bottom:20px;overflow:hidden">
+            <button @click="scheduleInfoOpen = !scheduleInfoOpen"
+                    style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:none;border:none;cursor:pointer;color:var(--text-primary)">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <i data-lucide="info" style="width:16px;height:16px;color:#6366F1;flex-shrink:0"></i>
+                    <span style="font-size:14px;font-weight:600">How scheduling works</span>
+                </div>
+                <i :data-lucide="scheduleInfoOpen ? 'chevron-up' : 'chevron-down'"
+                   style="width:16px;height:16px;color:var(--text-secondary);flex-shrink:0"
+                   x-effect="scheduleLucide()"></i>
+            </button>
+            <div x-show="scheduleInfoOpen" x-transition style="padding:0 20px 20px 20px">
+                <div style="height:1px;background:var(--border-color);margin-bottom:16px"></div>
+
+                <!-- 3-column concept grid -->
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px">
+                    <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <i data-lucide="layers" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Schedule Profile</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                            A reusable collection of time slots with a timezone. Create one profile and assign it to multiple groups.
+                        </p>
+                    </div>
+                    <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <i data-lucide="clock" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Time Slot</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                            Defines which days and hours an action applies. Multiple slots can overlap — the most restrictive wins.
+                        </p>
+                    </div>
+                    <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                            <i data-lucide="users" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Group Assignment</span>
+                        </div>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                            Each group can have one active profile. The schedule evaluator runs every 60 s and updates overrides automatically.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Actions legend -->
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+                    <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
+                        <span style="font-size:16px;flex-shrink:0">🔴</span>
+                        <div>
+                            <span style="font-size:13px;font-weight:600;color:#EF4444;display:block;margin-bottom:4px">Block All</span>
+                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Blocks <strong>every</strong> DNS query for the group during this window — overrides blocklists completely.</span>
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
+                        <span style="font-size:16px;flex-shrink:0">🟢</span>
+                        <div>
+                            <span style="font-size:13px;font-weight:600;color:#10B981;display:block;margin-bottom:4px">Allow All</span>
+                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Allows <strong>every</strong> domain — bypasses all blocklists. Useful for a scheduled "free access" window.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Practical example -->
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <i data-lucide="lightbulb" style="width:15px;height:15px;color:#F59E0B;flex-shrink:0"></i>
+                        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Typical example — "Kids" group</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:10px">
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
+                            <span style="font-size:12px">🔴</span>
+                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">00:00–07:00</strong> Block All</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
+                            <span style="font-size:12px">🟢</span>
+                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">17:00–18:00</strong> Allow All</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
+                            <span style="font-size:12px">🔴</span>
+                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">21:00–23:59</strong> Block All</span>
+                        </div>
+                    </div>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        Outside those windows the group's <strong style="color:var(--text-primary)">blocklists apply normally</strong> — gaming/social blocked, the rest works. The <em>Allow All</em> at 17h grants 1 h of unrestricted access even if gaming sites are in a blocklist.
+                    </p>
+                    <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15)">
+                        <span style="font-size:12px;color:#6366F1">
+                            <strong>Conflict rule:</strong> if a Block All and an Allow All slot overlap, Block All always wins — the most restrictive action takes priority.
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Group schedule assignment -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
+            <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 12px 0">
+                Schedule for group: <span x-text="groupName(selectedGroupId)"></span>
+            </h3>
+            <template x-if="!groupSchedule">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <span style="font-size:14px;color:var(--text-secondary)">No schedule assigned.</span>
+                    <select class="group-select" x-model="scheduleAssignId">
+                        <option value="">— Select profile —</option>
+                        <template x-for="p in scheduleProfiles" :key="p.id">
+                            <option :value="p.id" x-text="p.name + ' (' + p.timezone + ')'"></option>
+                        </template>
+                    </select>
+                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                            @click="assignSchedule()" :disabled="!scheduleAssignId">Assign</button>
+                </div>
+            </template>
+            <template x-if="groupSchedule">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <span style="font-size:14px;color:var(--text-primary);font-weight:500"
+                          x-text="profileName(groupSchedule.profile_id)"></span>
+                    <span style="font-size:12px;color:var(--text-secondary)"
+                          x-text="profileTimezone(groupSchedule.profile_id)"></span>
+                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px"
+                            @click="unassignSchedule()">Remove</button>
+                </div>
+            </template>
+        </div>
+
+        <!-- Schedule profiles list -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
+                    Schedule Profiles (<span x-text="scheduleProfiles.length"></span>)
+                </h3>
+                <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                        @click="openNewProfile()">+ New Profile</button>
+            </div>
+
+            <!-- New/Edit profile form -->
+            <template x-if="showProfileForm">
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                        <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="input" x-model="profileForm.name" placeholder="e.g. Kids Weeknight">
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
+                            <label class="form-label">Timezone (IANA)</label>
+                            <input type="text" class="input" x-model="profileForm.timezone" placeholder="UTC">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px">
+                        <label class="form-label">Comment (optional)</label>
+                        <input type="text" class="input" x-model="profileForm.comment" placeholder="Optional description">
+                    </div>
+                    <template x-if="profileFormError">
+                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="profileFormError"></div>
+                    </template>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" @click="saveProfile()"
+                                x-text="editingProfileId ? 'Update Profile' : 'Save Profile'"></button>
+                        <button class="btn btn-secondary" @click="showProfileForm = false; editingProfileId = null">Cancel</button>
+                    </div>
+                </div>
+            </template>
+
+            <template x-if="scheduleProfiles.length === 0 && !showProfileForm">
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No schedule profiles yet. Create one to get started.</div>
+            </template>
+
+            <template x-for="profile in scheduleProfiles" :key="profile.id">
+                <div style="border:1px solid var(--border-color);border-radius:8px;margin-bottom:12px;overflow:hidden">
+                    <!-- Profile header -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg-primary)">
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <i data-lucide="clock" style="width:16px;height:16px;color:var(--text-secondary)"></i>
+                            <span style="font-weight:600;color:var(--text-primary)" x-text="profile.name"></span>
+                            <span style="font-size:12px;color:var(--text-secondary)" x-text="'(' + profile.timezone + ')'"></span>
+                            <template x-if="groupSchedule && groupSchedule.profile_id == profile.id">
+                                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:600">Active</span>
+                            </template>
+                        </div>
+                        <div style="display:flex;gap:4px">
+                            <button class="btn-icon" title="Edit" @click="editProfile(profile)">
+                                <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                            </button>
+                            <button class="btn-icon" title="Delete" @click="deleteProfile(profile.id)">
+                                <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Slots table -->
+                    <div style="padding:0 16px 12px">
+                        <template x-if="(profileSlots[profile.id] || []).length === 0">
+                            <div style="padding:12px 0;color:var(--text-secondary);font-size:13px">No time slots. Add one below.</div>
+                        </template>
+                        <template x-if="(profileSlots[profile.id] || []).length > 0">
+                            <table class="table" style="margin-top:12px">
+                                <thead>
+                                    <tr>
+                                        <th>Days</th><th>Start</th><th>End</th><th>Action</th><th style="width:50px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="slot in (profileSlots[profile.id] || [])" :key="slot.id">
+                                        <tr>
+                                            <td style="font-size:13px;color:var(--text-secondary)" x-text="daysLabel(slot.days)"></td>
+                                            <td style="font-size:13px;color:var(--text-primary)" x-text="slot.start_time"></td>
+                                            <td style="font-size:13px;color:var(--text-primary)" x-text="slot.end_time"></td>
+                                            <td>
+                                                <span :style="slot.action === 'block_all' ? 'color:#EF4444;font-weight:500;font-size:13px' : 'color:#10B981;font-weight:500;font-size:13px'"
+                                                      x-text="slot.action === 'block_all' ? '🔴 Block All' : '🟢 Allow All'"></span>
+                                            </td>
+                                            <td>
+                                                <button class="btn-icon" title="Delete slot" @click="deleteSlot(profile.id, slot.id)">
+                                                    <i data-lucide="trash-2" style="width:14px;height:14px;color:#EF4444"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </template>
+
+                        <!-- Add slot form -->
+                        <template x-if="addingSlotFor == profile.id">
+                            <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:14px;margin-top:12px">
+                                <div style="margin-bottom:10px">
+                                    <label class="form-label" style="margin-bottom:6px">Days of week</label>
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                        <template x-for="(day, idx) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="idx">
+                                            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+                                                <input type="checkbox" :value="1 << idx"
+                                                       :checked="(slotForm.days & (1 << idx)) !== 0"
+                                                       @change="slotForm.days = $event.target.checked ? slotForm.days | (1 << idx) : slotForm.days & ~(1 << idx)">
+                                                <span x-text="day"></span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+                                    <div style="flex:1;min-width:100px">
+                                        <label class="form-label">From</label>
+                                        <input type="time" class="input" x-model="slotForm.start_time">
+                                    </div>
+                                    <div style="flex:1;min-width:100px">
+                                        <label class="form-label">To</label>
+                                        <input type="time" class="input" x-model="slotForm.end_time">
+                                    </div>
+                                    <div style="flex:1;min-width:140px">
+                                        <label class="form-label">Action</label>
+                                        <select class="group-select" style="width:100%" x-model="slotForm.action">
+                                            <option value="block_all">🔴 Block All</option>
+                                            <option value="allow_all">🟢 Allow All</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <template x-if="slotFormError">
+                                    <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="slotFormError"></div>
+                                </template>
+                                <div style="display:flex;gap:8px">
+                                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px" @click="saveSlot(profile.id)">Save Slot</button>
+                                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px" @click="addingSlotFor = null">Cancel</button>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="addingSlotFor != profile.id">
+                            <button class="btn btn-secondary" style="font-size:13px;padding:5px 12px;margin-top:8px"
+                                    @click="openAddSlot(profile.id)">+ Add Slot</button>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
 </main>
 <script>
 const SS_ENGINES = [
@@ -421,6 +699,20 @@ function app() {
         ssToggling: {},
         ssLoading: false,
 
+        // --- Schedule ---
+        scheduleInfoOpen: false,
+        scheduleProfiles: [],
+        profileSlots: {},        // { profileId: [TimeSlotResponse] }
+        groupSchedule: null,     // { group_id, profile_id } or null
+        scheduleAssignId: '',
+        showProfileForm: false,
+        editingProfileId: null,
+        profileForm: { name: '', timezone: 'UTC', comment: '' },
+        profileFormError: '',
+        addingSlotFor: null,
+        slotForm: { days: 127, start_time: '', end_time: '', action: 'block_all' },
+        slotFormError: '',
+
         async init() {
             this.theme = localStorage.getItem('theme') || 'light';
             document.documentElement.classList.toggle('dark', this.theme === 'dark');
@@ -438,6 +730,8 @@ function app() {
                     await Promise.all([
                         this.loadBlockedServices(),
                         this.loadSafeSearchConfigs(),
+                        this.loadScheduleProfiles(),
+                        this.loadGroupSchedule(),
                     ]);
                 }
             } catch (e) {
@@ -514,7 +808,11 @@ function app() {
 
         async selectGroup(groupId) {
             this.selectedGroupId = groupId;
-            await Promise.all([this.loadBlockedServices(), this.loadSafeSearchConfigs()]);
+            await Promise.all([
+                this.loadBlockedServices(),
+                this.loadSafeSearchConfigs(),
+                this.loadGroupSchedule(),
+            ]);
         },
 
         serviceName(serviceId) {
@@ -690,6 +988,167 @@ function app() {
             } catch (e) {
                 console.error('Failed to update youtube mode:', e);
             }
+        },
+
+        // --- Schedule ---
+
+        async loadScheduleProfiles() {
+            try {
+                const res = await fetch('/api/schedule-profiles');
+                this.scheduleProfiles = res.ok ? await res.json() : [];
+                for (const p of this.scheduleProfiles) {
+                    await this.loadProfileSlots(p.id);
+                }
+            } catch (e) {
+                console.error('Failed to load schedule profiles:', e);
+                this.scheduleProfiles = [];
+            }
+            this.$nextTick(() => scheduleLucide());
+        },
+
+        async loadProfileSlots(profileId) {
+            try {
+                const res = await fetch(`/api/schedule-profiles/${profileId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    this.profileSlots[profileId] = data.slots || [];
+                }
+            } catch (e) {
+                console.error('Failed to load slots for profile', profileId, e);
+                this.profileSlots[profileId] = [];
+            }
+        },
+
+        async loadGroupSchedule() {
+            if (!this.selectedGroupId) return;
+            try {
+                const res = await fetch(`/api/groups/${this.selectedGroupId}/schedule`);
+                this.groupSchedule = res.ok ? await res.json() : null;
+            } catch (e) {
+                this.groupSchedule = null;
+            }
+        },
+
+        profileName(profileId) {
+            const p = this.scheduleProfiles.find(p => p.id == profileId);
+            return p ? p.name : '—';
+        },
+
+        profileTimezone(profileId) {
+            const p = this.scheduleProfiles.find(p => p.id == profileId);
+            return p ? '(' + p.timezone + ')' : '';
+        },
+
+        async assignSchedule() {
+            if (!this.scheduleAssignId || !this.selectedGroupId) return;
+            try {
+                const res = await fetch(`/api/groups/${this.selectedGroupId}/schedule`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ profile_id: Number(this.scheduleAssignId) }),
+                });
+                if (res.ok) {
+                    this.groupSchedule = await res.json();
+                    this.scheduleAssignId = '';
+                }
+            } catch (e) {
+                console.error('Failed to assign schedule:', e);
+            }
+        },
+
+        async unassignSchedule() {
+            if (!this.selectedGroupId) return;
+            try {
+                await fetch(`/api/groups/${this.selectedGroupId}/schedule`, { method: 'DELETE' });
+                this.groupSchedule = null;
+            } catch (e) {
+                console.error('Failed to unassign schedule:', e);
+            }
+        },
+
+        openNewProfile() {
+            this.editingProfileId = null;
+            this.profileForm = { name: '', timezone: 'UTC', comment: '' };
+            this.profileFormError = '';
+            this.showProfileForm = true;
+        },
+
+        editProfile(profile) {
+            this.editingProfileId = profile.id;
+            this.profileForm = { name: profile.name, timezone: profile.timezone, comment: profile.comment || '' };
+            this.profileFormError = '';
+            this.showProfileForm = true;
+        },
+
+        async saveProfile() {
+            this.profileFormError = '';
+            if (!this.profileForm.name.trim()) { this.profileFormError = 'Name is required'; return; }
+            try {
+                const body = { name: this.profileForm.name.trim(), timezone: this.profileForm.timezone.trim() || 'UTC', comment: this.profileForm.comment.trim() || null };
+                const isNew = !this.editingProfileId;
+                const url = isNew ? '/api/schedule-profiles' : `/api/schedule-profiles/${this.editingProfileId}`;
+                const method = isNew ? 'POST' : 'PUT';
+                const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (!res.ok) { const err = await res.json(); throw new Error(err.error || `HTTP ${res.status}`); }
+                this.showProfileForm = false;
+                this.editingProfileId = null;
+                await this.loadScheduleProfiles();
+            } catch (e) {
+                this.profileFormError = e.message;
+            }
+        },
+
+        async deleteProfile(profileId) {
+            if (!confirm('Delete this schedule profile? It will be unassigned from all groups.')) return;
+            try {
+                await fetch(`/api/schedule-profiles/${profileId}`, { method: 'DELETE' });
+                await Promise.all([this.loadScheduleProfiles(), this.loadGroupSchedule()]);
+            } catch (e) {
+                console.error('Failed to delete profile:', e);
+            }
+        },
+
+        openAddSlot(profileId) {
+            this.addingSlotFor = profileId;
+            this.slotForm = { days: 127, start_time: '', end_time: '', action: 'block_all' };
+            this.slotFormError = '';
+        },
+
+        async saveSlot(profileId) {
+            this.slotFormError = '';
+            if (!this.slotForm.start_time || !this.slotForm.end_time) { this.slotFormError = 'Start and end time are required'; return; }
+            if (this.slotForm.start_time >= this.slotForm.end_time) { this.slotFormError = 'Start time must be before end time'; return; }
+            if (!this.slotForm.days) { this.slotFormError = 'Select at least one day'; return; }
+            try {
+                const res = await fetch(`/api/schedule-profiles/${profileId}/slots`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days: this.slotForm.days, start_time: this.slotForm.start_time, end_time: this.slotForm.end_time, action: this.slotForm.action }),
+                });
+                if (!res.ok) { const err = await res.json(); throw new Error(err.error || `HTTP ${res.status}`); }
+                this.addingSlotFor = null;
+                await this.loadProfileSlots(profileId);
+            } catch (e) {
+                this.slotFormError = e.message;
+            }
+        },
+
+        async deleteSlot(profileId, slotId) {
+            try {
+                await fetch(`/api/schedule-profiles/${profileId}/slots/${slotId}`, { method: 'DELETE' });
+                await this.loadProfileSlots(profileId);
+            } catch (e) {
+                console.error('Failed to delete slot:', e);
+            }
+        },
+
+        daysLabel(mask) {
+            const names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+            const days = names.filter((_, i) => mask & (1 << i));
+            if (days.length === 7) return 'Every day';
+            if (days.length === 5 && !(mask & 32) && !(mask & 64)) return 'Mon–Fri';
+            if (days.length === 2 && (mask & 32) && (mask & 64)) return 'Sat–Sun';
+            return days.join(', ');
         },
     };
 }

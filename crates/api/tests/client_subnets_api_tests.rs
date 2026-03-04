@@ -5,7 +5,7 @@ use axum::{
 };
 use ferrous_dns_api::{
     create_api_routes, AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
-    QueryUseCases, SafeSearchUseCases, ServiceUseCases,
+    QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };
 use ferrous_dns_application::{
     ports::{
@@ -13,7 +13,11 @@ use ferrous_dns_application::{
         SafeSearchConfigRepository, SafeSearchEnginePort, ServiceCatalogPort,
     },
     services::SubnetMatcherService,
-    use_cases::{GetBlockFilterStatsUseCase, *},
+    use_cases::{
+        AssignScheduleProfileUseCase, CreateScheduleProfileUseCase, DeleteScheduleProfileUseCase,
+        GetBlockFilterStatsUseCase, GetScheduleProfilesUseCase, ManageTimeSlotsUseCase,
+        UpdateScheduleProfileUseCase, *,
+    },
 };
 
 struct NullBlockFilterEngine;
@@ -199,6 +203,86 @@ use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
+
+struct NullScheduleProfileRepository;
+
+#[async_trait::async_trait]
+impl ferrous_dns_application::ports::ScheduleProfileRepository for NullScheduleProfileRepository {
+    async fn create(
+        &self,
+        _name: String,
+        _tz: String,
+        _comment: Option<String>,
+    ) -> Result<ferrous_dns_domain::ScheduleProfile, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn get_by_id(
+        &self,
+        _id: i64,
+    ) -> Result<Option<ferrous_dns_domain::ScheduleProfile>, ferrous_dns_domain::DomainError> {
+        Ok(None)
+    }
+    async fn get_all(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::ScheduleProfile>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn update(
+        &self,
+        _id: i64,
+        _name: Option<String>,
+        _tz: Option<String>,
+        _comment: Option<String>,
+    ) -> Result<ferrous_dns_domain::ScheduleProfile, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn delete(&self, _id: i64) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn get_slots(
+        &self,
+        _profile_id: i64,
+    ) -> Result<Vec<ferrous_dns_domain::TimeSlot>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn add_slot(
+        &self,
+        _pid: i64,
+        _days: u8,
+        _start: String,
+        _end: String,
+        _action: ferrous_dns_domain::ScheduleAction,
+    ) -> Result<ferrous_dns_domain::TimeSlot, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn delete_slot(&self, _slot_id: i64) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn assign_to_group(
+        &self,
+        _group_id: i64,
+        _profile_id: i64,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn unassign_from_group(
+        &self,
+        _group_id: i64,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn get_group_assignment(
+        &self,
+        _group_id: i64,
+    ) -> Result<Option<i64>, ferrous_dns_domain::DomainError> {
+        Ok(None)
+    }
+    async fn get_all_group_assignments(
+        &self,
+    ) -> Result<Vec<(i64, i64)>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+}
 
 async fn create_test_db() -> sqlx::SqlitePool {
     let pool = SqlitePoolOptions::new()
@@ -503,6 +587,14 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
                 group_repo.clone(),
                 Arc::new(NullSafeSearchEnginePort),
             )),
+        },
+        schedule: ScheduleUseCases {
+            get_profiles: Arc::new(GetScheduleProfilesUseCase::new(Arc::new(NullScheduleProfileRepository))),
+            create_profile: Arc::new(CreateScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository))),
+            update_profile: Arc::new(UpdateScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository))),
+            delete_profile: Arc::new(DeleteScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository))),
+            manage_slots: Arc::new(ManageTimeSlotsUseCase::new(Arc::new(NullScheduleProfileRepository))),
+            assign_profile: Arc::new(AssignScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository), group_repo.clone())),
         },
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),

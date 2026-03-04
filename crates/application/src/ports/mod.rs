@@ -18,6 +18,8 @@ mod query_log_repository;
 mod regex_filter_repository;
 mod safe_search_config_repository;
 mod safe_search_engine_port;
+mod schedule_profile_repository;
+mod schedule_state_port;
 mod service_catalog_port;
 mod upstream_health_port;
 mod whitelist_repository;
@@ -45,6 +47,8 @@ pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, 
 pub use regex_filter_repository::RegexFilterRepository;
 pub use safe_search_config_repository::SafeSearchConfigRepository;
 pub use safe_search_engine_port::SafeSearchEnginePort;
+pub use schedule_profile_repository::ScheduleProfileRepository;
+pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
 pub use upstream_health_port::{UpstreamHealthPort, UpstreamStatus};
 pub use whitelist_repository::WhitelistRepository;

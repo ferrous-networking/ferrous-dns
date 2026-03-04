@@ -1,23 +1,25 @@
 use super::Repositories;
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, BlockServiceUseCase, CleanupOldClientsUseCase,
-    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
-    CreateCustomServiceUseCase, CreateGroupUseCase, CreateManagedDomainUseCase,
-    CreateManualClientUseCase, CreateRegexFilterUseCase, CreateWhitelistSourceUseCase,
-    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
-    DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase, DeleteWhitelistSourceUseCase,
-    GetBlockFilterStatsUseCase, GetBlockedServicesUseCase, GetBlocklistSourcesUseCase,
-    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
-    GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
-    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
-    GetSafeSearchConfigsUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
+    AssignClientGroupUseCase, AssignScheduleProfileUseCase, BlockServiceUseCase,
+    CleanupOldClientsUseCase, CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase,
+    CreateClientSubnetUseCase, CreateCustomServiceUseCase, CreateGroupUseCase,
+    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
+    CreateScheduleProfileUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase,
+    DeleteManagedDomainUseCase, DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase,
+    DeleteScheduleProfileUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
+    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
+    GetScheduleProfilesUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
     GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
+    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateBlocklistSourceUseCase,
+    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -78,6 +80,12 @@ pub struct UseCases {
     pub get_safe_search_configs: Arc<GetSafeSearchConfigsUseCase>,
     pub toggle_safe_search: Arc<ToggleSafeSearchUseCase>,
     pub delete_safe_search_configs: Arc<DeleteSafeSearchConfigsUseCase>,
+    pub get_schedule_profiles: Arc<GetScheduleProfilesUseCase>,
+    pub create_schedule_profile: Arc<CreateScheduleProfileUseCase>,
+    pub update_schedule_profile: Arc<UpdateScheduleProfileUseCase>,
+    pub delete_schedule_profile: Arc<DeleteScheduleProfileUseCase>,
+    pub manage_time_slots: Arc<ManageTimeSlotsUseCase>,
+    pub assign_schedule_profile: Arc<AssignScheduleProfileUseCase>,
 }
 
 impl UseCases {
@@ -254,6 +262,25 @@ impl UseCases {
                 repos.safe_search_config.clone(),
                 repos.group.clone(),
                 repos.safe_search_engine.clone(),
+            )),
+            get_schedule_profiles: Arc::new(GetScheduleProfilesUseCase::new(
+                repos.schedule_profile.clone(),
+            )),
+            create_schedule_profile: Arc::new(CreateScheduleProfileUseCase::new(
+                repos.schedule_profile.clone(),
+            )),
+            update_schedule_profile: Arc::new(UpdateScheduleProfileUseCase::new(
+                repos.schedule_profile.clone(),
+            )),
+            delete_schedule_profile: Arc::new(DeleteScheduleProfileUseCase::new(
+                repos.schedule_profile.clone(),
+            )),
+            manage_time_slots: Arc::new(ManageTimeSlotsUseCase::new(
+                repos.schedule_profile.clone(),
+            )),
+            assign_schedule_profile: Arc::new(AssignScheduleProfileUseCase::new(
+                repos.schedule_profile.clone(),
+                repos.group.clone(),
             )),
         }
     }

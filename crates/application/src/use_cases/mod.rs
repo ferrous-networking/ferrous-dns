@@ -14,6 +14,7 @@ pub mod managed_domains;
 pub mod queries;
 pub mod regex_filters;
 pub mod safe_search;
+pub mod schedule;
 pub mod whitelist;
 pub mod whitelist_sources;
 
@@ -61,6 +62,10 @@ pub use regex_filters::{
 };
 pub use safe_search::{
     DeleteSafeSearchConfigsUseCase, GetSafeSearchConfigsUseCase, ToggleSafeSearchUseCase,
+};
+pub use schedule::{
+    AssignScheduleProfileUseCase, CreateScheduleProfileUseCase, DeleteScheduleProfileUseCase,
+    GetScheduleProfilesUseCase, ManageTimeSlotsUseCase, UpdateScheduleProfileUseCase,
 };
 pub use whitelist::GetWhitelistUseCase;
 pub use whitelist_sources::{

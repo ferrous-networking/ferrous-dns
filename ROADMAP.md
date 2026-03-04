@@ -46,8 +46,8 @@
 
 ### 🎯 v0.4.0 - Parental Controls (Current)
 
-- [ ] Per-group blocklist assignment (assign specific blocklists to client groups)
-- [ ] Scheduling per group + Parental Controls UI
+- [x] Per-group blocklist assignment (assign specific blocklists to client groups)
+- [x] Scheduling per group + Parental Controls UI
 - [ ] Temporary domain allow/block per group (timed bypass)
 
 ### 🎯 v0.5.0 - Server Advanced Features
