@@ -11,6 +11,7 @@ pub mod group_repository;
 pub mod managed_domain_repository;
 pub mod query_log_repository;
 pub mod regex_filter_repository;
+pub mod sqlite_safe_search_config_repository;
 pub mod whitelist_repository;
 pub mod whitelist_source_repository;
 
@@ -24,5 +25,6 @@ pub use custom_service_repository::SqliteCustomServiceRepository;
 pub use group_repository::SqliteGroupRepository;
 pub use managed_domain_repository::SqliteManagedDomainRepository;
 pub use regex_filter_repository::SqliteRegexFilterRepository;
+pub use sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository;
 pub use whitelist_repository::SqliteWhitelistRepository;
 pub use whitelist_source_repository::SqliteWhitelistSourceRepository;

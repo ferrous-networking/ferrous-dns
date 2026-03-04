@@ -10,6 +10,7 @@ pub mod load_balancer;
 pub mod prefetch;
 pub mod query_logger;
 pub mod resolver;
+pub mod safe_search;
 pub mod server;
 pub mod transport;
 pub mod wire_response;
@@ -29,3 +30,4 @@ pub use load_balancer::{
 pub use prefetch::PrefetchPredictor;
 pub use query_logger::QueryEventLogger;
 pub use resolver::HickoryDnsResolver;
+pub use safe_search::SafeSearchEnforcer;

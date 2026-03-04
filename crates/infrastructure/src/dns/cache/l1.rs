@@ -77,7 +77,6 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
             }
             state.cache.pop(key_str);
         }
-
         None
     })
 }

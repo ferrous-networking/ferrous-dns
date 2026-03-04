@@ -5,12 +5,12 @@ use axum::{
 };
 use ferrous_dns_api::{
     create_api_routes, AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
-    QueryUseCases, ServiceUseCases,
+    QueryUseCases, SafeSearchUseCases, ServiceUseCases,
 };
 use ferrous_dns_application::{
     ports::{
         BlockFilterEnginePort, BlockedServiceRepository, ConfigRepository, FilterDecision,
-        ServiceCatalogPort,
+        SafeSearchConfigRepository, SafeSearchEnginePort, ServiceCatalogPort,
     },
     services::SubnetMatcherService,
     use_cases::{GetBlockFilterStatsUseCase, *},
@@ -140,6 +140,45 @@ impl ConfigRepository for NullConfigRepository {
         &self,
         _config: &Config,
     ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+struct NullSafeSearchConfigRepository;
+#[async_trait::async_trait]
+impl SafeSearchConfigRepository for NullSafeSearchConfigRepository {
+    async fn get_all(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::SafeSearchConfig>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn get_by_group(
+        &self,
+        _group_id: i64,
+    ) -> Result<Vec<ferrous_dns_domain::SafeSearchConfig>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn upsert(
+        &self,
+        _group_id: i64,
+        _engine: ferrous_dns_domain::SafeSearchEngine,
+        _enabled: bool,
+        _youtube_mode: ferrous_dns_domain::YouTubeMode,
+    ) -> Result<ferrous_dns_domain::SafeSearchConfig, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn delete_by_group(&self, _group_id: i64) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+struct NullSafeSearchEnginePort;
+#[async_trait::async_trait]
+impl SafeSearchEnginePort for NullSafeSearchEnginePort {
+    fn cname_for(&self, _domain: &str, _group_id: i64) -> Option<&'static str> {
+        None
+    }
+    async fn reload(&self) -> Result<(), ferrous_dns_domain::DomainError> {
         Ok(())
     }
 }
@@ -464,6 +503,22 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
             update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), managed_domain_repo.clone(), Arc::new(NullBlockedServiceRepository), null_engine.clone())),
             delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), managed_domain_repo.clone(), null_engine.clone())),
+        },
+        safe_search: SafeSearchUseCases {
+            get_configs: Arc::new(GetSafeSearchConfigsUseCase::new(
+                Arc::new(NullSafeSearchConfigRepository),
+                group_repo.clone(),
+            )),
+            toggle: Arc::new(ToggleSafeSearchUseCase::new(
+                Arc::new(NullSafeSearchConfigRepository),
+                group_repo.clone(),
+                Arc::new(NullSafeSearchEnginePort),
+            )),
+            delete_configs: Arc::new(DeleteSafeSearchConfigsUseCase::new(
+                Arc::new(NullSafeSearchConfigRepository),
+                group_repo.clone(),
+                Arc::new(NullSafeSearchEnginePort),
+            )),
         },
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),

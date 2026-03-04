@@ -37,4 +37,5 @@ pub use rate::get_query_rate;
 pub use stats::get_stats;
 pub use timeline::get_timeline;
 pub use whitelist::get_whitelist;
+pub mod safe_search;
 pub mod upstream;

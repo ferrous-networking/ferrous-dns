@@ -13,6 +13,7 @@ pub mod local_records;
 pub mod managed_domains;
 pub mod queries;
 pub mod regex_filters;
+pub mod safe_search;
 pub mod whitelist;
 pub mod whitelist_sources;
 
@@ -57,6 +58,9 @@ pub use queries::{
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,
     UpdateRegexFilterUseCase,
+};
+pub use safe_search::{
+    DeleteSafeSearchConfigsUseCase, GetSafeSearchConfigsUseCase, ToggleSafeSearchUseCase,
 };
 pub use whitelist::GetWhitelistUseCase;
 pub use whitelist_sources::{

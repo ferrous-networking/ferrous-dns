@@ -1,6 +1,6 @@
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
-    QueryLogRepository,
+    QueryLogRepository, SafeSearchEnginePort,
 };
 use ferrous_dns_domain::{
     BlockSource, DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType,
@@ -44,6 +44,7 @@ fn coarse_now_ns() -> u64 {
 pub struct HandleDnsQueryUseCase {
     resolver: Arc<dyn DnsResolver>,
     block_filter: Arc<dyn BlockFilterEnginePort>,
+    safe_search: Option<Arc<dyn SafeSearchEnginePort>>,
     query_log: Arc<dyn QueryLogRepository>,
     client_repo: Option<Arc<dyn ClientRepository>>,
     client_tracking_interval: Duration,
@@ -58,10 +59,16 @@ impl HandleDnsQueryUseCase {
         Self {
             resolver,
             block_filter,
+            safe_search: None,
             query_log,
             client_repo: None,
             client_tracking_interval: Duration::from_secs(60),
         }
+    }
+
+    pub fn with_safe_search(mut self, safe_search: Arc<dyn SafeSearchEnginePort>) -> Self {
+        self.safe_search = Some(safe_search);
+        self
     }
 
     pub fn with_client_tracking(
@@ -205,6 +212,23 @@ impl HandleDnsQueryUseCase {
                 ..Self::base_query_log(request, elapsed_us(), group_id)
             });
             return Err(DomainError::Blocked);
+        }
+
+        if let Some(cname_target) = self
+            .safe_search
+            .as_deref()
+            .and_then(|ss| ss.cname_for(&request.domain, group_id))
+        {
+            let safe_query = DnsQuery::new(Arc::from(cname_target), request.record_type);
+            let resolution = self.resolver.resolve(&safe_query).await?;
+            self.log(&QueryLog {
+                cache_hit: resolution.cache_hit,
+                upstream_server: resolution.upstream_server.clone(),
+                upstream_pool: resolution.upstream_pool.clone(),
+                response_status: Some("SAFE_SEARCH"),
+                ..Self::base_query_log(request, elapsed_us(), group_id)
+            });
+            return Ok(resolution);
         }
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {

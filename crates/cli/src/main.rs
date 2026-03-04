@@ -6,7 +6,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use clap::Parser;
 use ferrous_dns_api::{
     AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases, QueryUseCases,
-    ServiceUseCases,
+    SafeSearchUseCases, ServiceUseCases,
 };
 use ferrous_dns_application::use_cases::{
     CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
@@ -227,6 +227,11 @@ async fn async_main() -> anyhow::Result<()> {
             get_custom_services: use_cases.get_custom_services,
             update_custom_service: use_cases.update_custom_service,
             delete_custom_service: use_cases.delete_custom_service,
+        },
+        safe_search: SafeSearchUseCases {
+            get_configs: use_cases.get_safe_search_configs,
+            toggle: use_cases.toggle_safe_search,
+            delete_configs: use_cases.delete_safe_search_configs,
         },
         config: config_arc.clone(),
         config_file_persistence: Arc::new(TomlConfigFilePersistence),

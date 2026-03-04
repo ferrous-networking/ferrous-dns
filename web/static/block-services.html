@@ -16,220 +16,85 @@
     </script>
     <link rel="stylesheet" href="/static/shared.css">
     <style>
-        .service-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 16px;
-        }
+        .service-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px }
         .service-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            transition: all .2s;
-            cursor: pointer;
-            position: relative;
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px;
+            padding:16px; display:flex; flex-direction:column; align-items:center; gap:10px;
+            transition:all .2s; cursor:pointer; position:relative;
         }
-        .service-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .service-card.blocked {
-            border-color: #EF4444;
-            background: rgba(239,68,68,0.05);
-        }
-        .service-icon {
-            width: 32px;
-            height: 32px;
-            flex-shrink: 0;
-        }
-        .service-icon svg {
-            width: 100%;
-            height: 100%;
-        }
+        .service-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1) }
+        .service-card.blocked { border-color:#EF4444; background:rgba(239,68,68,0.05) }
+        .service-icon { width:32px; height:32px; flex-shrink:0 }
+        .service-icon svg { width:100%; height:100% }
         .category-pill {
-            display: inline-flex;
-            align-items: center;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 500;
-            border: 1px solid var(--border-color);
-            background: var(--bg-secondary);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all .15s;
-            white-space: nowrap;
+            display:inline-flex; align-items:center; padding:6px 14px; border-radius:20px;
+            font-size:13px; font-weight:500; border:1px solid var(--border-color);
+            background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;
+            transition:all .15s; white-space:nowrap;
         }
-        .category-pill:hover {
-            border-color: var(--accent-color);
-            color: var(--text-primary);
-        }
-        .category-pill.active {
-            background: var(--accent-color);
-            border-color: var(--accent-color);
-            color: #fff;
-        }
+        .category-pill:hover { border-color:var(--accent-color); color:var(--text-primary) }
+        .category-pill.active { background:var(--accent-color); border-color:var(--accent-color); color:#fff }
         .toggle-switch {
-            position: relative;
-            width: 40px;
-            height: 22px;
-            border-radius: 11px;
-            background: var(--border-color);
-            cursor: pointer;
-            transition: background .2s;
-            flex-shrink: 0;
+            position:relative; width:40px; height:22px; border-radius:11px;
+            background:var(--border-color); cursor:pointer; transition:background .2s; flex-shrink:0;
         }
-        .toggle-switch.on {
-            background: #EF4444;
-        }
+        .toggle-switch.on { background:#EF4444 }
+        .toggle-switch.on-green { background:#10B981 }
         .toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #fff;
-            transition: transform .2s;
+            content:''; position:absolute; top:2px; left:2px; width:18px; height:18px;
+            border-radius:50%; background:#fff; transition:transform .2s;
         }
-        .toggle-switch.on::after {
-            transform: translateX(18px);
-        }
+        .toggle-switch.on::after, .toggle-switch.on-green::after { transform:translateX(18px) }
         .badge-category {
-            font-size: 11px;
-            padding: 2px 8px;
-            border-radius: 10px;
-            background: rgba(99,102,241,0.1);
-            color: #6366F1;
-            white-space: nowrap;
+            font-size:11px; padding:2px 8px; border-radius:10px;
+            background:rgba(99,102,241,0.1); color:#6366F1; white-space:nowrap;
         }
         .badge-count {
-            font-size: 13px;
-            padding: 4px 12px;
-            border-radius: 12px;
-            background: rgba(239,68,68,0.1);
-            color: #EF4444;
-            font-weight: 600;
+            font-size:13px; padding:4px 12px; border-radius:12px;
+            background:rgba(239,68,68,0.1); color:#EF4444; font-weight:600;
         }
         .search-input {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 8px 12px 8px 36px;
-            color: var(--text-primary);
-            font-size: 14px;
-            width: 100%;
-            max-width: 320px;
-            outline: none;
-            transition: border-color .2s;
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px;
+            padding:8px 12px 8px 36px; color:var(--text-primary); font-size:14px;
+            width:100%; max-width:320px; outline:none; transition:border-color .2s;
         }
-        .search-input:focus {
-            border-color: var(--accent-color);
-        }
+        .search-input:focus { border-color:var(--accent-color) }
         .group-select {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 8px 12px;
-            color: var(--text-primary);
-            font-size: 14px;
-            outline: none;
-            cursor: pointer;
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px;
+            padding:8px 12px; color:var(--text-primary); font-size:14px; outline:none; cursor:pointer;
         }
-        .group-select:focus {
-            border-color: var(--accent-color);
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            transition: all 0.15s
-        }
-        .btn-primary { background: var(--color-primary); color: white }
-        .btn-primary:hover { background: #2563EB }
-        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
-        .btn-secondary:hover { background: var(--border-color) }
-        .btn-danger { background: var(--color-error); color: white }
-        .btn-danger:hover { background: #DC2626 }
-        .btn-icon {
-            padding: 8px;
-            border-radius: 8px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.15s
-        }
-        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary) }
-
-        .input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-size: 14px;
-            box-sizing: border-box
-        }
-        .input:focus { outline: none; border-color: var(--color-primary) }
-
-        .table { width: 100%; border-collapse: collapse }
-        .table th {
-            text-align: left;
-            padding: 12px 16px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            background: var(--bg-tertiary);
-            border-bottom: 1px solid var(--border-color)
-        }
-        .table td {
-            padding: 14px 16px;
-            border-bottom: 1px solid var(--border-color);
-            vertical-align: middle
-        }
-        .table tbody tr:hover { background: var(--bg-tertiary) }
-
-        .form-group { margin-bottom: 16px }
-        .form-label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-primary)
-        }
-        .textarea {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-size: 14px;
-            resize: vertical;
-            min-height: 80px;
-            box-sizing: border-box
-        }
-        .textarea:focus { outline: none; border-color: var(--color-primary) }
-        .badge-custom {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 8px;
-            background: rgba(16,185,129,0.1);
-            color: #10B981;
-            font-weight: 600;
-        }
+        .group-select:focus { border-color:var(--accent-color) }
+        .btn { padding:8px 16px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; border:none; transition:all 0.15s }
+        .btn-primary { background:var(--color-primary); color:white }
+        .btn-primary:hover { background:#2563EB }
+        .btn-secondary { background:var(--bg-tertiary); color:var(--text-primary) }
+        .btn-secondary:hover { background:var(--border-color) }
+        .btn-danger { background:var(--color-error); color:white }
+        .btn-danger:hover { background:#DC2626 }
+        .btn-icon { padding:8px; border-radius:8px; background:none; border:none; cursor:pointer; color:var(--text-secondary); transition:all 0.15s }
+        .btn-icon:hover { background:var(--bg-tertiary); color:var(--text-primary) }
+        .input { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; box-sizing:border-box }
+        .input:focus { outline:none; border-color:var(--color-primary) }
+        .table { width:100%; border-collapse:collapse }
+        .table th { text-align:left; padding:12px 16px; font-size:12px; font-weight:600; color:var(--text-secondary); background:var(--bg-tertiary); border-bottom:1px solid var(--border-color) }
+        .table td { padding:14px 16px; border-bottom:1px solid var(--border-color); vertical-align:middle }
+        .table tbody tr:hover { background:var(--bg-tertiary) }
+        .form-group { margin-bottom:16px }
+        .form-label { display:block; margin-bottom:6px; font-size:14px; font-weight:500; color:var(--text-primary) }
+        .textarea { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; resize:vertical; min-height:80px; box-sizing:border-box }
+        .textarea:focus { outline:none; border-color:var(--color-primary) }
+        .badge-custom { font-size:10px; padding:2px 6px; border-radius:8px; background:rgba(16,185,129,0.1); color:#10B981; font-weight:600 }
+        .tab-bar { display:flex; border-bottom:1px solid var(--border-color); margin-bottom:24px }
+        .tab-btn { padding:12px 24px; font-size:14px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition:all .15s }
+        .tab-btn.active { color:var(--color-primary); border-bottom-color:var(--color-primary) }
+        .tab-btn:hover { color:var(--text-primary) }
+        .engine-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:16px; margin-bottom:24px }
+        .engine-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px 16px 16px; display:flex; flex-direction:column; align-items:center; gap:12px; transition:all .2s }
+        .engine-card.ss-on { border-color:#10B981; background:rgba(16,185,129,0.05) }
+        .engine-name { font-size:14px; font-weight:600; color:var(--text-primary); text-align:center }
+        .yt-mode { display:flex; gap:6px; flex-direction:column; width:100% }
+        .yt-mode label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer }
+        .yt-mode input[type=radio] { cursor:pointer; accent-color:#10B981 }
     </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -269,10 +134,12 @@
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
         <div>
             <h2 style="font-size:24px;font-weight:700;color:var(--text-primary);margin:0">Block Services</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Block entire services with one click. Domains are managed automatically per group.</p>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Block entire services and configure Safe Search per group.</p>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-            <span class="badge-count" x-text="blockedCount + ' blocked'">0 blocked</span>
+            <template x-if="activeTab === 'catalog'">
+                <span class="badge-count" x-text="blockedCount + ' blocked'">0 blocked</span>
+            </template>
             <span style="font-size:14px;font-weight:500;color:var(--text-secondary)">Group:</span>
             <select class="group-select" x-model="selectedGroupId" @change="selectGroup($event.target.value)">
                 <template x-for="g in groups" :key="g.id">
@@ -282,169 +149,259 @@
         </div>
     </div>
 
-    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
-                Custom Services (<span x-text="customServices.length"></span>)
+    <div class="tab-bar">
+        <button class="tab-btn" :class="activeTab === 'catalog' ? 'active' : ''" @click="switchTab('catalog')">Block Services</button>
+        <button class="tab-btn" :class="activeTab === 'custom' ? 'active' : ''" @click="switchTab('custom')">Custom Services</button>
+        <button class="tab-btn" :class="activeTab === 'safe-search' ? 'active' : ''" @click="switchTab('safe-search')">Safe Search</button>
+    </div>
+
+    <!-- TAB: Service Catalog + Blocked Services -->
+    <div x-show="activeTab === 'catalog'">
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
+            <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">
+                Blocked Services (<span x-text="blockedCount"></span>)
             </h3>
-            <button class="btn btn-primary" style="font-size:13px;padding:6px 14px" @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''">
-                + New
-            </button>
-        </div>
-
-        <template x-if="showCustomForm">
-            <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
-                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-                    <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                        <label class="form-label">Name</label>
-                        <input type="text" class="input" x-model="customForm.name" placeholder="e.g. Google">
-                    </div>
-                    <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                        <label class="form-label">Category</label>
-                        <input type="text" class="input" x-model="customForm.category_name" placeholder="Custom">
-                    </div>
-                </div>
-                <div class="form-group" style="margin-bottom:12px">
-                    <label class="form-label">Domains (one per line)</label>
-                    <textarea class="textarea" x-model="customForm.domains" placeholder="google.com&#10;*.google.com&#10;accounts.google.com"></textarea>
-                </div>
-                <template x-if="customFormError">
-                    <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="customFormError"></div>
-                </template>
-                <div style="display:flex;gap:8px">
-                    <button class="btn btn-primary" @click="saveCustomService()" :disabled="customFormSubmitting"
-                            x-text="editingCustomId ? 'Update Service' : 'Save Service'"></button>
-                    <button class="btn btn-secondary" @click="resetCustomForm()">Cancel</button>
-                </div>
-            </div>
-        </template>
-
-        <template x-if="customServices.length === 0 && !showCustomForm">
-            <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No custom services yet.</div>
-        </template>
-        <template x-if="customServices.length > 0">
-            <div style="overflow-x:auto">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Service</th>
-                            <th>Category</th>
-                            <th>Domains</th>
-                            <th>Created</th>
-                            <th style="width:80px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template x-for="cs in customServices" :key="cs.service_id">
+            <template x-if="blockedCount === 0">
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No services are currently blocked for this group.</div>
+            </template>
+            <template x-if="blockedCount > 0">
+                <div style="overflow-x:auto">
+                    <table class="table">
+                        <thead>
                             <tr>
-                                <td style="font-weight:500;color:var(--text-primary)" x-text="cs.name"></td>
-                                <td><span class="badge-category" x-text="cs.category_name"></span></td>
-                                <td style="color:var(--text-secondary);font-size:13px" x-text="cs.domains.length + ' domain' + (cs.domains.length !== 1 ? 's' : '')"></td>
-                                <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
-                                <td>
-                                    <div style="display:flex;gap:4px">
-                                        <button class="btn-icon" title="Edit" @click="editCustomService(cs)">
-                                            <i data-lucide="pencil" style="width:16px;height:16px"></i>
-                                        </button>
-                                        <button class="btn-icon" title="Delete" @click="deleteCustomService(cs.service_id)">
+                                <th>Service</th><th>Category</th><th>Group</th><th>Blocked At</th><th style="width:60px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="entry in blockedServices" :key="entry.service_id">
+                                <tr>
+                                    <td style="font-weight:500;color:var(--text-primary)" x-text="serviceName(entry.service_id)"></td>
+                                    <td><span class="badge-category" x-text="serviceCategory(entry.service_id)"></span></td>
+                                    <td style="color:var(--text-secondary)" x-text="groupName(entry.group_id)"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'"></td>
+                                    <td>
+                                        <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)">
                                             <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
                                         </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-        </template>
-    </div>
-
-    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
-        <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">
-            Blocked Services (<span x-text="blockedCount"></span>)
-        </h3>
-        <template x-if="blockedCount === 0">
-            <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No services are currently blocked for this group.</div>
-        </template>
-        <template x-if="blockedCount > 0">
-            <div style="overflow-x:auto">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Service</th>
-                            <th>Category</th>
-                            <th>Group</th>
-                            <th>Blocked At</th>
-                            <th style="width:60px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template x-for="entry in blockedServices" :key="entry.service_id">
-                            <tr>
-                                <td style="font-weight:500;color:var(--text-primary)" x-text="serviceName(entry.service_id)"></td>
-                                <td><span class="badge-category" x-text="serviceCategory(entry.service_id)"></span></td>
-                                <td style="color:var(--text-secondary)" x-text="groupName(entry.group_id)"></td>
-                                <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'"></td>
-                                <td>
-                                    <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-        </template>
-    </div>
-
-    <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">Service Catalog</h3>
-
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-        <template x-for="cat in categories" :key="cat.id">
-            <button class="category-pill"
-                    :class="{ active: selectedCategory === cat.id }"
-                    @click="selectedCategory = cat.id"
-                    x-text="cat.name"></button>
-        </template>
-    </div>
-
-    <div style="position:relative;margin-bottom:24px">
-        <i data-lucide="search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-secondary)"></i>
-        <input type="text" class="search-input" placeholder="Search services..." x-model="searchQuery">
-    </div>
-
-    <template x-if="loading">
-        <div style="text-align:center;padding:48px;color:var(--text-secondary)">Loading services...</div>
-    </template>
-
-    <template x-if="!loading">
-        <div>
-            <template x-if="filteredServices.length === 0">
-                <div style="text-align:center;padding:48px;color:var(--text-secondary)">No services match your filter.</div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
             </template>
-            <div class="service-grid">
-                <template x-for="svc in filteredServices" :key="svc.id">
-                    <div class="service-card" :class="{ blocked: isBlocked(svc.id) }" @click="toggleService(svc.id)">
-                        <div class="service-icon" x-html="svc.icon_svg"></div>
-                        <div style="font-size:14px;font-weight:600;color:var(--text-primary);text-align:center" x-text="svc.name"></div>
-                        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">
-                            <span class="badge-category" x-text="svc.category_name"></span>
-                            <template x-if="svc.is_custom"><span class="badge-custom">Custom</span></template>
+        </div>
+
+        <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">Service Catalog</h3>
+
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+            <template x-for="cat in categories" :key="cat.id">
+                <button class="category-pill" :class="{ active: selectedCategory === cat.id }" @click="selectedCategory = cat.id" x-text="cat.name"></button>
+            </template>
+        </div>
+
+        <div style="position:relative;margin-bottom:24px">
+            <i data-lucide="search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-secondary)"></i>
+            <input type="text" class="search-input" placeholder="Search services..." x-model="searchQuery">
+        </div>
+
+        <template x-if="loading">
+            <div style="text-align:center;padding:48px;color:var(--text-secondary)">Loading services...</div>
+        </template>
+
+        <template x-if="!loading">
+            <div>
+                <template x-if="filteredServices.length === 0">
+                    <div style="text-align:center;padding:48px;color:var(--text-secondary)">No services match your filter.</div>
+                </template>
+                <div class="service-grid">
+                    <template x-for="svc in filteredServices" :key="svc.id">
+                        <div class="service-card" :class="{ blocked: isBlocked(svc.id) }" @click="toggleService(svc.id)">
+                            <div class="service-icon" x-html="svc.icon_svg"></div>
+                            <div style="font-size:14px;font-weight:600;color:var(--text-primary);text-align:center" x-text="svc.name"></div>
+                            <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">
+                                <span class="badge-category" x-text="svc.category_name"></span>
+                                <template x-if="svc.is_custom"><span class="badge-custom">Custom</span></template>
+                            </div>
+                            <div class="toggle-switch" :class="{ on: isBlocked(svc.id) }"
+                                 :style="toggling[svc.id] ? 'opacity:0.5;pointer-events:none' : ''"
+                                 @click.stop="toggleService(svc.id)"></div>
                         </div>
-                        <div class="toggle-switch" :class="{ on: isBlocked(svc.id) }"
-                             :style="toggling[svc.id] ? 'opacity:0.5;pointer-events:none' : ''"
-                             @click.stop="toggleService(svc.id)"></div>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- TAB: Custom Services -->
+    <div x-show="activeTab === 'custom'">
+        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
+                    Custom Services (<span x-text="customServices.length"></span>)
+                </h3>
+                <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                        @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''">
+                    + New
+                </button>
+            </div>
+
+            <template x-if="showCustomForm">
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+                        <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="input" x-model="customForm.name" placeholder="e.g. Google">
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
+                            <label class="form-label">Category</label>
+                            <input type="text" class="input" x-model="customForm.category_name" placeholder="Custom">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:12px">
+                        <label class="form-label">Domains (one per line)</label>
+                        <textarea class="textarea" x-model="customForm.domains" placeholder="google.com&#10;*.google.com&#10;accounts.google.com"></textarea>
+                    </div>
+                    <template x-if="customFormError">
+                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="customFormError"></div>
+                    </template>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" @click="saveCustomService()" :disabled="customFormSubmitting"
+                                x-text="editingCustomId ? 'Update Service' : 'Save Service'"></button>
+                        <button class="btn btn-secondary" @click="resetCustomForm()">Cancel</button>
+                    </div>
+                </div>
+            </template>
+
+            <template x-if="customServices.length === 0 && !showCustomForm">
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No custom services yet.</div>
+            </template>
+            <template x-if="customServices.length > 0">
+                <div style="overflow-x:auto">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Service</th><th>Category</th><th>Domains</th><th>Created</th><th style="width:80px">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="cs in customServices" :key="cs.service_id">
+                                <tr>
+                                    <td style="font-weight:500;color:var(--text-primary)" x-text="cs.name"></td>
+                                    <td><span class="badge-category" x-text="cs.category_name"></span></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.domains.length + ' domain' + (cs.domains.length !== 1 ? 's' : '')"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
+                                    <td>
+                                        <div style="display:flex;gap:4px">
+                                            <button class="btn-icon" title="Edit" @click="editCustomService(cs)">
+                                                <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                            </button>
+                                            <button class="btn-icon" title="Delete" @click="deleteCustomService(cs.service_id)">
+                                                <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- TAB: Safe Search -->
+    <div x-show="activeTab === 'safe-search'">
+        <template x-if="ssLoading">
+            <div style="text-align:center;padding:48px;color:var(--text-secondary)">Loading Safe Search configuration...</div>
+        </template>
+
+        <template x-if="!ssLoading">
+            <div>
+                <p style="font-size:14px;color:var(--text-secondary);margin:0 0 20px">
+                    Force Safe Search on DNS level for the selected group. Enabling an engine redirects its domains to the official safe search endpoint automatically.
+                </p>
+
+                <div class="engine-grid">
+                    <template x-for="engine in engines" :key="engine.id">
+                        <div class="engine-card" :class="{ 'ss-on': ssEnabled(engine.id) }">
+                            <i :data-lucide="engine.icon" style="width:28px;height:28px;color:var(--text-secondary)"></i>
+                            <div class="engine-name" x-text="engine.name"></div>
+                            <div class="toggle-switch" :class="{ 'on-green': ssEnabled(engine.id) }"
+                                 :style="ssToggling[engine.id] ? 'opacity:0.5;pointer-events:none' : ''"
+                                 @click="toggleSafeSearch(engine.id)"></div>
+                            <template x-if="engine.id === 'youtube' && ssEnabled('youtube')">
+                                <div class="yt-mode">
+                                    <label>
+                                        <input type="radio" name="yt_mode" value="strict"
+                                               :checked="ssMode('youtube') === 'strict'"
+                                               @change="setSafeSearchMode('youtube', 'strict')">
+                                        Strict
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="yt_mode" value="moderate"
+                                               :checked="ssMode('youtube') === 'moderate'"
+                                               @change="setSafeSearchMode('youtube', 'moderate')">
+                                        Moderate
+                                    </label>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <template x-if="safeSearchConfigs.filter(c => c.enabled).length > 0">
+                    <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
+                        <h3 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 14px 0">Active Configurations</h3>
+                        <div style="overflow-x:auto">
+                            <table class="table">
+                                <thead>
+                                    <tr><th>Engine</th><th>Status</th><th>Mode</th><th>Updated</th></tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="cfg in safeSearchConfigs.filter(c => c.enabled)" :key="cfg.engine">
+                                        <tr>
+                                            <td style="font-weight:500;color:var(--text-primary);text-transform:capitalize" x-text="cfg.engine"></td>
+                                            <td>
+                                                <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#10B981;font-weight:500">
+                                                    <span style="width:7px;height:7px;border-radius:50%;background:#10B981;display:inline-block"></span>
+                                                    Enabled
+                                                </span>
+                                            </td>
+                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.engine === 'youtube' ? cfg.youtube_mode : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString() : '—'"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="safeSearchConfigs.filter(c => c.enabled).length === 0">
+                    <div style="text-align:center;padding:32px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;color:var(--text-secondary);font-size:14px">
+                        No Safe Search engines are enabled for this group.
                     </div>
                 </template>
             </div>
-        </div>
-    </template>
+        </template>
+    </div>
 </main>
 <script>
+const SS_ENGINES = [
+    { id: 'google',     name: 'Google',     icon: 'search'  },
+    { id: 'bing',       name: 'Bing',       icon: 'search'  },
+    { id: 'youtube',    name: 'YouTube',    icon: 'youtube' },
+    { id: 'duckduckgo', name: 'DuckDuckGo', icon: 'feather' },
+    { id: 'yandex',     name: 'Yandex',     icon: 'globe'   },
+    { id: 'brave',      name: 'Brave',      icon: 'shield'  },
+    { id: 'ecosia',     name: 'Ecosia',     icon: 'leaf'    },
+];
+
 function app() {
     return {
         theme: 'light',
+        activeTab: 'catalog',
         groups: [],
         selectedGroupId: null,
         catalog: [],
@@ -459,6 +416,10 @@ function app() {
         customFormError: '',
         customFormSubmitting: false,
         editingCustomId: null,
+        engines: SS_ENGINES,
+        safeSearchConfigs: [],
+        ssToggling: {},
+        ssLoading: false,
 
         async init() {
             this.theme = localStorage.getItem('theme') || 'light';
@@ -474,7 +435,10 @@ function app() {
                 this.customServices = customRes || [];
                 if (this.groups.length > 0) {
                     this.selectedGroupId = this.groups[0].id;
-                    await this.loadBlockedServices();
+                    await Promise.all([
+                        this.loadBlockedServices(),
+                        this.loadSafeSearchConfigs(),
+                    ]);
                 }
             } catch (e) {
                 console.error('Failed to initialize:', e);
@@ -484,16 +448,18 @@ function app() {
             }
         },
 
+        switchTab(tab) {
+            this.activeTab = tab;
+            this.$nextTick(() => scheduleLucide());
+        },
+
         get categories() {
             const seen = new Map();
             for (const svc of this.catalog) {
-                if (!seen.has(svc.category_id)) {
-                    seen.set(svc.category_id, svc.category_name);
-                }
+                if (!seen.has(svc.category_id)) seen.set(svc.category_id, svc.category_name);
             }
             const cats = [{ id: 'all', name: 'All' }];
-            const sorted = [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-            for (const [id, name] of sorted) {
+            for (const [id, name] of [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))) {
                 cats.push({ id, name });
             }
             return cats;
@@ -501,28 +467,17 @@ function app() {
 
         get filteredServices() {
             let result = this.catalog;
-            if (this.selectedCategory !== 'all') {
-                result = result.filter(s => s.category_id === this.selectedCategory);
-            }
+            if (this.selectedCategory !== 'all') result = result.filter(s => s.category_id === this.selectedCategory);
             if (this.searchQuery.trim()) {
                 const q = this.searchQuery.trim().toLowerCase();
                 result = result.filter(s => s.name.toLowerCase().includes(q));
             }
-            result = [...result].sort((a, b) => {
-                const aBlocked = this.isBlocked(a.id) ? 0 : 1;
-                const bBlocked = this.isBlocked(b.id) ? 0 : 1;
-                return aBlocked - bBlocked;
-            });
-            return result;
+            return [...result].sort((a, b) => (this.isBlocked(a.id) ? 0 : 1) - (this.isBlocked(b.id) ? 0 : 1));
         },
 
-        get blockedCount() {
-            return this.blockedServices.length;
-        },
+        get blockedCount() { return this.blockedServices.length },
 
-        isBlocked(serviceId) {
-            return this.blockedServices.some(s => s.service_id === serviceId);
-        },
+        isBlocked(serviceId) { return this.blockedServices.some(s => s.service_id === serviceId) },
 
         async toggleService(serviceId) {
             if (this.toggling[serviceId] || !this.selectedGroupId) return;
@@ -559,7 +514,7 @@ function app() {
 
         async selectGroup(groupId) {
             this.selectedGroupId = groupId;
-            await this.loadBlockedServices();
+            await Promise.all([this.loadBlockedServices(), this.loadSafeSearchConfigs()]);
         },
 
         serviceName(serviceId) {
@@ -612,44 +567,31 @@ function app() {
             this.customFormError = '';
             this.customFormSubmitting = true;
             try {
-                const domains = this.customForm.domains
-                    .split('\n').map(d => d.trim()).filter(d => d);
+                const domains = this.customForm.domains.split('\n').map(d => d.trim()).filter(d => d);
                 if (!this.customForm.name.trim()) throw new Error('Name is required');
                 if (domains.length === 0) throw new Error('At least one domain is required');
-
-                const body = {
-                    name: this.customForm.name.trim(),
-                    category_name: this.customForm.category_name.trim() || 'Custom',
-                    domains,
-                };
-
-                if (this.editingCustomId) {
-                    const res = await fetch(`/api/custom-services/${this.editingCustomId}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                    if (!res.ok) {
-                        const err = await res.text();
-                        throw new Error(err || `HTTP ${res.status}`);
-                    }
-                } else {
-                    const res = await fetch('/api/custom-services', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                    if (!res.ok) {
-                        const err = await res.text();
-                        throw new Error(err || `HTTP ${res.status}`);
+                const body = { name: this.customForm.name.trim(), category_name: this.customForm.category_name.trim() || 'Custom', domains };
+                const isNew = !this.editingCustomId;
+                const url = isNew ? '/api/custom-services' : `/api/custom-services/${this.editingCustomId}`;
+                const method = isNew ? 'POST' : 'PATCH';
+                const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (!res.ok) { const err = await res.text(); throw new Error(err || `HTTP ${res.status}`); }
+                const saved = await res.json();
+                // Auto-block new custom services for the selected group so domains
+                // are immediately created in Managed Domains and the block filter.
+                if (isNew && this.selectedGroupId) {
+                    try {
+                        await fetch('/api/services', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ service_id: saved.service_id, group_id: Number(this.selectedGroupId) }),
+                        });
+                    } catch (e) {
+                        console.warn('Auto-block after custom service create failed:', e);
                     }
                 }
                 this.resetCustomForm();
-                await Promise.all([
-                    this.loadCustomServices(),
-                    this.reloadCatalog(),
-                    this.loadBlockedServices(),
-                ]);
+                await Promise.all([this.loadCustomServices(), this.reloadCatalog(), this.loadBlockedServices()]);
             } catch (e) {
                 this.customFormError = e.message;
             } finally {
@@ -661,11 +603,7 @@ function app() {
             if (!confirm('Delete this custom service? All blocked entries and managed domains will be removed.')) return;
             try {
                 await fetch(`/api/custom-services/${serviceId}`, { method: 'DELETE' });
-                await Promise.all([
-                    this.loadCustomServices(),
-                    this.reloadCatalog(),
-                    this.loadBlockedServices(),
-                ]);
+                await Promise.all([this.loadCustomServices(), this.reloadCatalog(), this.loadBlockedServices()]);
             } catch (e) {
                 console.error('Failed to delete custom service:', e);
             }
@@ -685,6 +623,73 @@ function app() {
             this.editingCustomId = null;
             this.customForm = { name: '', category_name: 'Custom', domains: '' };
             this.customFormError = '';
+        },
+
+        // --- Safe Search ---
+
+        async loadSafeSearchConfigs() {
+            if (!this.selectedGroupId) return;
+            this.ssLoading = true;
+            try {
+                const res = await fetch(`/api/safe-search/configs/${this.selectedGroupId}`);
+                this.safeSearchConfigs = res.ok ? await res.json() : [];
+            } catch (e) {
+                console.error('Failed to load safe search configs:', e);
+                this.safeSearchConfigs = [];
+            } finally {
+                this.ssLoading = false;
+                this.$nextTick(() => scheduleLucide());
+            }
+        },
+
+        ssEnabled(engineId) {
+            const cfg = this.safeSearchConfigs.find(c => c.engine === engineId);
+            return cfg ? cfg.enabled : false;
+        },
+
+        ssMode(engineId) {
+            const cfg = this.safeSearchConfigs.find(c => c.engine === engineId);
+            return cfg ? cfg.youtube_mode : 'strict';
+        },
+
+        async toggleSafeSearch(engineId) {
+            if (this.ssToggling[engineId] || !this.selectedGroupId) return;
+            this.ssToggling[engineId] = true;
+            try {
+                const res = await fetch(`/api/safe-search/configs/${this.selectedGroupId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ engine: engineId, enabled: !this.ssEnabled(engineId), youtube_mode: this.ssMode(engineId) }),
+                });
+                if (res.ok) {
+                    const updated = await res.json();
+                    const idx = this.safeSearchConfigs.findIndex(c => c.engine === engineId);
+                    if (idx >= 0) { this.safeSearchConfigs[idx] = updated; } else { this.safeSearchConfigs.push(updated); }
+                }
+            } catch (e) {
+                console.error('Failed to toggle safe search:', e);
+            } finally {
+                this.ssToggling[engineId] = false;
+                this.$nextTick(() => scheduleLucide());
+            }
+        },
+
+        async setSafeSearchMode(engineId, mode) {
+            if (!this.selectedGroupId || !this.ssEnabled(engineId)) return;
+            try {
+                const res = await fetch(`/api/safe-search/configs/${this.selectedGroupId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ engine: engineId, enabled: true, youtube_mode: mode }),
+                });
+                if (res.ok) {
+                    const updated = await res.json();
+                    const idx = this.safeSearchConfigs.findIndex(c => c.engine === engineId);
+                    if (idx >= 0) this.safeSearchConfigs[idx] = updated;
+                }
+            } catch (e) {
+                console.error('Failed to update youtube mode:', e);
+            }
         },
     };
 }

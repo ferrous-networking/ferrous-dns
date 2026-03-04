@@ -1,0 +1,1039 @@
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+    Router,
+};
+use ferrous_dns_api::{
+    create_api_routes, AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
+    QueryUseCases, SafeSearchUseCases, ServiceUseCases,
+};
+use ferrous_dns_application::{
+    ports::{
+        BlockFilterEnginePort, BlockedServiceRepository, ConfigRepository, FilterDecision,
+        SafeSearchEnginePort, ServiceCatalogPort,
+    },
+    services::SubnetMatcherService,
+    use_cases::{GetBlockFilterStatsUseCase, *},
+};
+
+struct NullBlockFilterEngine;
+
+#[async_trait::async_trait]
+impl BlockFilterEnginePort for NullBlockFilterEngine {
+    fn resolve_group(&self, _ip: std::net::IpAddr) -> i64 {
+        1
+    }
+    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
+        FilterDecision::Allow
+    }
+    async fn reload(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn load_client_groups(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    fn compiled_domain_count(&self) -> usize {
+        0
+    }
+    fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
+}
+
+struct NullBlockedServiceRepository;
+
+#[async_trait::async_trait]
+impl BlockedServiceRepository for NullBlockedServiceRepository {
+    async fn block_service(
+        &self,
+        _service_id: &str,
+        _group_id: i64,
+    ) -> Result<ferrous_dns_domain::BlockedService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn unblock_service(
+        &self,
+        _service_id: &str,
+        _group_id: i64,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn get_blocked_for_group(
+        &self,
+        _group_id: i64,
+    ) -> Result<Vec<ferrous_dns_domain::BlockedService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn get_all_blocked(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::BlockedService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn delete_all_for_service(
+        &self,
+        _service_id: &str,
+    ) -> Result<u64, ferrous_dns_domain::DomainError> {
+        Ok(0)
+    }
+}
+
+struct NullCustomServiceRepository;
+
+#[async_trait::async_trait]
+impl ferrous_dns_application::ports::CustomServiceRepository for NullCustomServiceRepository {
+    async fn create(
+        &self,
+        _service_id: &str,
+        _name: &str,
+        _category_name: &str,
+        _domains: &[String],
+    ) -> Result<ferrous_dns_domain::CustomService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn get_by_service_id(
+        &self,
+        _service_id: &str,
+    ) -> Result<Option<ferrous_dns_domain::CustomService>, ferrous_dns_domain::DomainError> {
+        Ok(None)
+    }
+    async fn get_all(
+        &self,
+    ) -> Result<Vec<ferrous_dns_domain::CustomService>, ferrous_dns_domain::DomainError> {
+        Ok(vec![])
+    }
+    async fn update(
+        &self,
+        _service_id: &str,
+        _name: Option<String>,
+        _category_name: Option<String>,
+        _domains: Option<Vec<String>>,
+    ) -> Result<ferrous_dns_domain::CustomService, ferrous_dns_domain::DomainError> {
+        unimplemented!()
+    }
+    async fn delete(&self, _service_id: &str) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+struct NullServiceCatalog;
+
+#[async_trait::async_trait]
+impl ServiceCatalogPort for NullServiceCatalog {
+    fn get_by_id(&self, _id: &str) -> Option<ferrous_dns_domain::ServiceDefinition> {
+        None
+    }
+    fn all(&self) -> Vec<ferrous_dns_domain::ServiceDefinition> {
+        vec![]
+    }
+    fn normalized_rules_for(&self, _service_id: &str) -> Vec<String> {
+        vec![]
+    }
+    fn reload_custom(&self, _custom: Vec<ferrous_dns_domain::ServiceDefinition>) {}
+}
+
+struct NullConfigRepository;
+
+#[async_trait::async_trait]
+impl ConfigRepository for NullConfigRepository {
+    async fn get_config(
+        &self,
+    ) -> Result<ferrous_dns_domain::Config, ferrous_dns_domain::DomainError> {
+        Ok(ferrous_dns_domain::Config::default())
+    }
+    async fn save_config(
+        &self,
+        _config: &ferrous_dns_domain::Config,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    async fn save_local_records(
+        &self,
+        _config: &ferrous_dns_domain::Config,
+    ) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+struct NullSafeSearchEnginePort;
+
+#[async_trait::async_trait]
+impl SafeSearchEnginePort for NullSafeSearchEnginePort {
+    fn cname_for(&self, _domain: &str, _group_id: i64) -> Option<&'static str> {
+        None
+    }
+    async fn reload(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+}
+
+use ferrous_dns_domain::{config::DatabaseConfig, Config};
+use ferrous_dns_infrastructure::{
+    dns::cache::DnsCache,
+    repositories::{
+        client_repository::SqliteClientRepository,
+        client_subnet_repository::SqliteClientSubnetRepository,
+        group_repository::SqliteGroupRepository,
+        managed_domain_repository::SqliteManagedDomainRepository,
+        sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository,
+    },
+};
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
+use sqlx::sqlite::SqlitePoolOptions;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tower::ServiceExt;
+
+async fn create_test_db() -> sqlx::SqlitePool {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE groups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            enabled BOOLEAN NOT NULL DEFAULT 1,
+            comment TEXT,
+            is_default BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO groups (id, name, is_default) VALUES (1, 'Protected', 1), (2, 'Office', 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ip_address TEXT NOT NULL UNIQUE,
+            mac_address TEXT,
+            hostname TEXT,
+            first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            query_count INTEGER NOT NULL DEFAULT 0,
+            last_mac_update DATETIME,
+            last_hostname_update DATETIME,
+            group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id) ON DELETE RESTRICT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE client_subnets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subnet_cidr TEXT NOT NULL UNIQUE,
+            group_id INTEGER NOT NULL,
+            comment TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE managed_domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            domain TEXT NOT NULL,
+            action TEXT NOT NULL CHECK(action IN ('allow', 'deny')),
+            group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id),
+            comment TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            service_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        CREATE TABLE safe_search_configs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id     INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id),
+            engine       TEXT    NOT NULL CHECK(engine IN ('google','bing','youtube','duckduckgo','yandex','brave','ecosia')),
+            enabled      INTEGER NOT NULL DEFAULT 0,
+            youtube_mode TEXT    NOT NULL DEFAULT 'strict' CHECK(youtube_mode IN ('strict','moderate')),
+            created_at   TEXT    NOT NULL,
+            updated_at   TEXT    NOT NULL,
+            UNIQUE(group_id, engine)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    pool
+}
+
+async fn create_test_app() -> (Router, sqlx::SqlitePool) {
+    let pool = create_test_db().await;
+
+    let client_repo = Arc::new(SqliteClientRepository::new(
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
+    let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
+    let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
+    let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
+    let safe_search_repo = Arc::new(SqliteSafeSearchConfigRepository::new(pool.clone()));
+    let null_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
+
+    let config = Arc::new(RwLock::new(Config::default()));
+    let cache = Arc::new(DnsCache::new(
+        ferrous_dns_infrastructure::dns::DnsCacheConfig {
+            max_entries: 0,
+            eviction_strategy: ferrous_dns_infrastructure::dns::EvictionStrategy::LRU,
+            min_threshold: 0.0,
+            refresh_threshold: 0.0,
+            batch_eviction_percentage: 0.0,
+            adaptive_thresholds: false,
+            min_frequency: 0,
+            min_lfuk_score: 0.0,
+            shard_amount: 4,
+            access_window_secs: 7200,
+            eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
+            min_ttl: 0,
+            max_ttl: 86_400,
+        },
+    ));
+
+    use ferrous_dns_domain::config::upstream::{UpstreamPool, UpstreamStrategy};
+    use ferrous_dns_infrastructure::dns::{PoolManager, QueryEventEmitter};
+
+    let event_emitter = QueryEventEmitter::new_disabled();
+    let test_pool = UpstreamPool {
+        name: "test".to_string(),
+        strategy: UpstreamStrategy::Parallel,
+        priority: 1,
+        servers: vec!["8.8.8.8:53".to_string()],
+        weight: None,
+    };
+
+    let pool_manager = Arc::new(
+        PoolManager::new(vec![test_pool], None, event_emitter)
+            .await
+            .expect("Failed to create PoolManager"),
+    );
+
+    let safe_search_engine_port: Arc<dyn SafeSearchEnginePort> = Arc::new(NullSafeSearchEnginePort);
+
+    let state = AppState {
+        query: QueryUseCases {
+            get_stats: Arc::new(GetQueryStatsUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                ),
+                client_repo.clone(),
+            )),
+            get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                    pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                ),
+            ))),
+            get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                ),
+            )),
+            get_query_rate: Arc::new(
+                ferrous_dns_application::use_cases::GetQueryRateUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                )),
+            ),
+            get_cache_stats: Arc::new(
+                ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                )),
+            ),
+            get_top_blocked_domains: Arc::new(
+                ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                )),
+            ),
+            get_top_clients: Arc::new(
+                ferrous_dns_application::use_cases::GetTopClientsUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(
+                        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+                    ),
+                )),
+            ),
+        },
+        dns: DnsUseCases {
+            cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
+            create_local_record: Arc::new(CreateLocalRecordUseCase::new(
+                config.clone(),
+                Arc::new(NullConfigRepository),
+            )),
+            update_local_record: Arc::new(UpdateLocalRecordUseCase::new(
+                config.clone(),
+                Arc::new(NullConfigRepository),
+            )),
+            delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(
+                config.clone(),
+                Arc::new(NullConfigRepository),
+            )),
+            upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(
+                pool_manager,
+                None,
+            )),
+        },
+        groups: GroupUseCases {
+            get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
+            update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
+            delete_group: Arc::new(DeleteGroupUseCase::new(group_repo.clone())),
+            assign_client_group: Arc::new(AssignClientGroupUseCase::new(
+                client_repo.clone(),
+                group_repo.clone(),
+            )),
+        },
+        clients: ClientUseCases {
+            get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
+            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
+            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(
+                subnet_repo.clone(),
+                group_repo.clone(),
+            )),
+            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
+            create_manual_client: Arc::new(CreateManualClientUseCase::new(
+                client_repo.clone(),
+                group_repo.clone(),
+            )),
+            update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
+            delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
+            subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
+        },
+        blocking: BlockingUseCases {
+            get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(
+                    pool.clone(),
+                ),
+            ))),
+            get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(
+                    pool.clone(),
+                ),
+            ))),
+            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+                group_repo.clone(),
+            )),
+            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+                group_repo.clone(),
+            )),
+            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(
+                    pool.clone(),
+                ),
+            ))),
+            get_whitelist: Arc::new(ferrous_dns_application::use_cases::GetWhitelistUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::whitelist_repository::SqliteWhitelistRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+            )),
+            get_whitelist_sources: Arc::new(
+                ferrous_dns_application::use_cases::GetWhitelistSourcesUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(
+                        pool.clone(),
+                    ),
+                )),
+            ),
+            create_whitelist_source: Arc::new(
+                ferrous_dns_application::use_cases::CreateWhitelistSourceUseCase::new(
+                    Arc::new(
+                        ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(
+                            pool.clone(),
+                        ),
+                    ),
+                    group_repo.clone(),
+                ),
+            ),
+            update_whitelist_source: Arc::new(
+                ferrous_dns_application::use_cases::UpdateWhitelistSourceUseCase::new(
+                    Arc::new(
+                        ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(
+                            pool.clone(),
+                        ),
+                    ),
+                    group_repo.clone(),
+                ),
+            ),
+            delete_whitelist_source: Arc::new(
+                ferrous_dns_application::use_cases::DeleteWhitelistSourceUseCase::new(Arc::new(
+                    ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(
+                        pool.clone(),
+                    ),
+                )),
+            ),
+            get_managed_domains: Arc::new(GetManagedDomainsUseCase::new(
+                managed_domain_repo.clone(),
+            )),
+            create_managed_domain: Arc::new(CreateManagedDomainUseCase::new(
+                managed_domain_repo.clone(),
+                group_repo.clone(),
+                null_engine.clone(),
+            )),
+            update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(
+                managed_domain_repo.clone(),
+                group_repo.clone(),
+                null_engine.clone(),
+            )),
+            delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
+                managed_domain_repo.clone(),
+                null_engine.clone(),
+            )),
+            get_regex_filters: Arc::new(GetRegexFiltersUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(
+                    pool.clone(),
+                ),
+            ))),
+            create_regex_filter: Arc::new(CreateRegexFilterUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+                group_repo.clone(),
+                null_engine.clone(),
+            )),
+            update_regex_filter: Arc::new(UpdateRegexFilterUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+                group_repo.clone(),
+                null_engine.clone(),
+            )),
+            delete_regex_filter: Arc::new(DeleteRegexFilterUseCase::new(
+                Arc::new(
+                    ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(
+                        pool.clone(),
+                    ),
+                ),
+                null_engine.clone(),
+            )),
+            get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(
+                NullBlockFilterEngine,
+            ))),
+        },
+        services: ServiceUseCases {
+            get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(
+                NullServiceCatalog,
+            ))),
+            get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(
+                NullBlockedServiceRepository,
+            ))),
+            block_service: Arc::new(BlockServiceUseCase::new(
+                Arc::new(NullBlockedServiceRepository),
+                managed_domain_repo.clone(),
+                group_repo.clone(),
+                null_engine.clone(),
+                Arc::new(NullServiceCatalog),
+            )),
+            unblock_service: Arc::new(UnblockServiceUseCase::new(
+                Arc::new(NullBlockedServiceRepository),
+                managed_domain_repo.clone(),
+                null_engine.clone(),
+            )),
+            create_custom_service: Arc::new(
+                ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(
+                    Arc::new(NullCustomServiceRepository),
+                    Arc::new(NullServiceCatalog),
+                ),
+            ),
+            get_custom_services: Arc::new(
+                ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(
+                    NullCustomServiceRepository,
+                )),
+            ),
+            update_custom_service: Arc::new(
+                ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(
+                    Arc::new(NullCustomServiceRepository),
+                    Arc::new(NullServiceCatalog),
+                    managed_domain_repo.clone(),
+                    Arc::new(NullBlockedServiceRepository),
+                    null_engine.clone(),
+                ),
+            ),
+            delete_custom_service: Arc::new(
+                ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(
+                    Arc::new(NullCustomServiceRepository),
+                    Arc::new(NullServiceCatalog),
+                    Arc::new(NullBlockedServiceRepository),
+                    managed_domain_repo.clone(),
+                    null_engine.clone(),
+                ),
+            ),
+        },
+        safe_search: SafeSearchUseCases {
+            get_configs: Arc::new(GetSafeSearchConfigsUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+            )),
+            toggle: Arc::new(ToggleSafeSearchUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+                safe_search_engine_port.clone(),
+            )),
+            delete_configs: Arc::new(DeleteSafeSearchConfigsUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+                safe_search_engine_port.clone(),
+            )),
+        },
+        config: config.clone(),
+        config_file_persistence: Arc::new(
+            ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence,
+        ),
+        api_key: None,
+    };
+
+    let app = create_api_routes(state);
+    (app, pool)
+}
+
+// ── GET /safe-search/configs (empty) ───────────────────────────────────────
+
+#[tokio::test]
+async fn test_get_all_safe_search_configs_empty() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/safe-search/configs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.is_array());
+    assert_eq!(json.as_array().unwrap().len(), 0);
+}
+
+// ── GET /safe-search/configs/{group_id} (empty) ────────────────────────────
+
+#[tokio::test]
+async fn test_get_safe_search_configs_by_group_empty() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/safe-search/configs/1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.is_array());
+    assert_eq!(json.as_array().unwrap().len(), 0);
+}
+
+// ── GET /safe-search/configs/{group_id} (group not found) ──────────────────
+
+#[tokio::test]
+async fn test_get_safe_search_configs_by_group_not_found() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/safe-search/configs/999")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ── POST /safe-search/configs/{group_id} — enable Google ───────────────────
+
+#[tokio::test]
+async fn test_toggle_safe_search_enable_google() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "engine": "google",
+        "enabled": true,
+        "youtube_mode": null
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/safe-search/configs/1")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["engine"], "google");
+    assert_eq!(json["enabled"], true);
+    assert_eq!(json["group_id"], 1);
+}
+
+// ── POST /safe-search/configs/{group_id} — enable YouTube strict ───────────
+
+#[tokio::test]
+async fn test_toggle_safe_search_youtube_strict() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "engine": "youtube",
+        "enabled": true,
+        "youtube_mode": "strict"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/safe-search/configs/1")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["engine"], "youtube");
+    assert_eq!(json["enabled"], true);
+    assert_eq!(json["youtube_mode"], "strict");
+}
+
+// ── POST /safe-search/configs/{group_id} — unknown engine returns 400 ──────
+
+#[tokio::test]
+async fn test_toggle_safe_search_unknown_engine_returns_400() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "engine": "notanengine",
+        "enabled": true,
+        "youtube_mode": null
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/safe-search/configs/1")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+// ── POST /safe-search/configs/{group_id} — group not found returns 404 ─────
+
+#[tokio::test]
+async fn test_toggle_safe_search_group_not_found() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({
+        "engine": "bing",
+        "enabled": true,
+        "youtube_mode": null
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/safe-search/configs/999")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// ── GET /safe-search/configs after toggle ──────────────────────────────────
+
+#[tokio::test]
+async fn test_get_all_configs_after_toggle() {
+    let pool = create_test_db().await;
+
+    // Insert a config directly
+    sqlx::query(
+        "INSERT INTO safe_search_configs (group_id, engine, enabled, youtube_mode, created_at, updated_at)
+         VALUES (1, 'google', 1, 'strict', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let client_repo = Arc::new(SqliteClientRepository::new(
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
+    let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
+    let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
+    let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
+    let safe_search_repo = Arc::new(SqliteSafeSearchConfigRepository::new(pool.clone()));
+    let null_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
+    let safe_search_engine_port: Arc<dyn SafeSearchEnginePort> = Arc::new(NullSafeSearchEnginePort);
+
+    let config = Arc::new(RwLock::new(Config::default()));
+    let cache = Arc::new(DnsCache::new(
+        ferrous_dns_infrastructure::dns::DnsCacheConfig {
+            max_entries: 0,
+            eviction_strategy: ferrous_dns_infrastructure::dns::EvictionStrategy::LRU,
+            min_threshold: 0.0,
+            refresh_threshold: 0.0,
+            batch_eviction_percentage: 0.0,
+            adaptive_thresholds: false,
+            min_frequency: 0,
+            min_lfuk_score: 0.0,
+            shard_amount: 4,
+            access_window_secs: 7200,
+            eviction_sample_size: 8,
+            lfuk_k_value: 0.5,
+            refresh_sample_rate: 1.0,
+            min_ttl: 0,
+            max_ttl: 86_400,
+        },
+    ));
+
+    use ferrous_dns_domain::config::upstream::{UpstreamPool, UpstreamStrategy};
+    use ferrous_dns_infrastructure::dns::{PoolManager, QueryEventEmitter};
+
+    let event_emitter = QueryEventEmitter::new_disabled();
+    let test_pool = UpstreamPool {
+        name: "test".to_string(),
+        strategy: UpstreamStrategy::Parallel,
+        priority: 1,
+        servers: vec!["8.8.8.8:53".to_string()],
+        weight: None,
+    };
+    let pool_manager = Arc::new(
+        PoolManager::new(vec![test_pool], None, event_emitter)
+            .await
+            .expect("Failed to create PoolManager"),
+    );
+
+    let state = AppState {
+        query: QueryUseCases {
+            get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())), client_repo.clone())),
+            get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+            get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+            get_query_rate: Arc::new(ferrous_dns_application::use_cases::GetQueryRateUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+            get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+            get_top_blocked_domains: Arc::new(ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+            get_top_clients: Arc::new(ferrous_dns_application::use_cases::GetTopClientsUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default())))),
+        },
+        dns: DnsUseCases {
+            cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
+            create_local_record: Arc::new(CreateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            update_local_record: Arc::new(UpdateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(pool_manager, None)),
+        },
+        groups: GroupUseCases {
+            get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
+            update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
+            delete_group: Arc::new(DeleteGroupUseCase::new(group_repo.clone())),
+            assign_client_group: Arc::new(AssignClientGroupUseCase::new(client_repo.clone(), group_repo.clone())),
+        },
+        clients: ClientUseCases {
+            get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
+            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
+            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(subnet_repo.clone(), group_repo.clone())),
+            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone())),
+            create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
+            update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
+            delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
+            subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
+        },
+        blocking: BlockingUseCases {
+            get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone())))),
+            get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())))),
+            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())), group_repo.clone())),
+            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())), group_repo.clone())),
+            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())))),
+            get_whitelist: Arc::new(ferrous_dns_application::use_cases::GetWhitelistUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::whitelist_repository::SqliteWhitelistRepository::new(pool.clone())))),
+            get_whitelist_sources: Arc::new(ferrous_dns_application::use_cases::GetWhitelistSourcesUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone())))),
+            create_whitelist_source: Arc::new(ferrous_dns_application::use_cases::CreateWhitelistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone())), group_repo.clone())),
+            update_whitelist_source: Arc::new(ferrous_dns_application::use_cases::UpdateWhitelistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone())), group_repo.clone())),
+            delete_whitelist_source: Arc::new(ferrous_dns_application::use_cases::DeleteWhitelistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone())))),
+            get_managed_domains: Arc::new(GetManagedDomainsUseCase::new(managed_domain_repo.clone())),
+            create_managed_domain: Arc::new(CreateManagedDomainUseCase::new(managed_domain_repo.clone(), group_repo.clone(), null_engine.clone())),
+            update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(managed_domain_repo.clone(), group_repo.clone(), null_engine.clone())),
+            delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(managed_domain_repo.clone(), null_engine.clone())),
+            get_regex_filters: Arc::new(GetRegexFiltersUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())))),
+            create_regex_filter: Arc::new(CreateRegexFilterUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())), group_repo.clone(), null_engine.clone())),
+            update_regex_filter: Arc::new(UpdateRegexFilterUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())), group_repo.clone(), null_engine.clone())),
+            delete_regex_filter: Arc::new(DeleteRegexFilterUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())), null_engine.clone())),
+            get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+        },
+        services: ServiceUseCases {
+            get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
+            get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
+            block_service: Arc::new(BlockServiceUseCase::new(Arc::new(NullBlockedServiceRepository), managed_domain_repo.clone(), group_repo.clone(), null_engine.clone(), Arc::new(NullServiceCatalog))),
+            unblock_service: Arc::new(UnblockServiceUseCase::new(Arc::new(NullBlockedServiceRepository), managed_domain_repo.clone(), null_engine.clone())),
+            create_custom_service: Arc::new(ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog))),
+            get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
+            update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), managed_domain_repo.clone(), Arc::new(NullBlockedServiceRepository), null_engine.clone())),
+            delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), managed_domain_repo.clone(), null_engine.clone())),
+        },
+        safe_search: SafeSearchUseCases {
+            get_configs: Arc::new(GetSafeSearchConfigsUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+            )),
+            toggle: Arc::new(ToggleSafeSearchUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+                safe_search_engine_port.clone(),
+            )),
+            delete_configs: Arc::new(DeleteSafeSearchConfigsUseCase::new(
+                safe_search_repo.clone(),
+                group_repo.clone(),
+                safe_search_engine_port.clone(),
+            )),
+        },
+        config: config.clone(),
+        config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
+        api_key: None,
+    };
+
+    let app = create_api_routes(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/safe-search/configs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.is_array());
+    let arr = json.as_array().unwrap();
+    assert_eq!(arr.len(), 1);
+    assert_eq!(arr[0]["engine"], "google");
+    assert_eq!(arr[0]["enabled"], true);
+}
+
+// ── DELETE /safe-search/configs/{group_id} ─────────────────────────────────
+
+#[tokio::test]
+async fn test_delete_safe_search_configs_by_group() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/safe-search/configs/1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+// ── DELETE /safe-search/configs/{group_id} — group not found ───────────────
+
+#[tokio::test]
+async fn test_delete_safe_search_configs_group_not_found() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/safe-search/configs/999")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

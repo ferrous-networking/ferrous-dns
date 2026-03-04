@@ -5,6 +5,9 @@ pub enum DomainError {
     #[error("Invalid domain name: {0}")]
     InvalidDomainName(String),
 
+    #[error("Invalid Safe Search engine: {0}")]
+    InvalidSafeSearchEngine(String),
+
     #[error("Invalid IP address: {0}")]
     InvalidIpAddress(String),
 

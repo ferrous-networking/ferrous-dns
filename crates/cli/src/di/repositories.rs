@@ -1,9 +1,10 @@
 use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, CustomServiceRepository, ServiceCatalogPort,
+    BlockFilterEnginePort, CustomServiceRepository, SafeSearchConfigRepository,
+    SafeSearchEnginePort, ServiceCatalogPort,
 };
 use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
-use ferrous_dns_infrastructure::dns::BlockFilterEngine;
+use ferrous_dns_infrastructure::dns::{BlockFilterEngine, SafeSearchEnforcer};
 use ferrous_dns_infrastructure::repositories::{
     blocked_service_repository::SqliteBlockedServiceRepository,
     blocklist_repository::SqliteBlocklistRepository,
@@ -15,6 +16,7 @@ use ferrous_dns_infrastructure::repositories::{
     managed_domain_repository::SqliteManagedDomainRepository,
     query_log_repository::SqliteQueryLogRepository,
     regex_filter_repository::SqliteRegexFilterRepository,
+    sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository,
     whitelist_repository::SqliteWhitelistRepository,
     whitelist_source_repository::SqliteWhitelistSourceRepository,
 };
@@ -38,6 +40,8 @@ pub struct Repositories {
     pub custom_service: Arc<SqliteCustomServiceRepository>,
     pub service_catalog: Arc<dyn ServiceCatalogPort>,
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    pub safe_search_config: Arc<SqliteSafeSearchConfigRepository>,
+    pub safe_search_engine: Arc<dyn SafeSearchEnginePort>,
 }
 
 impl Repositories {
@@ -75,6 +79,13 @@ impl Repositories {
             }
         }
 
+        let safe_search_config =
+            Arc::new(SqliteSafeSearchConfigRepository::new(write_pool.clone()));
+        let safe_search_engine: Arc<dyn SafeSearchEnginePort> = {
+            let repo: Arc<dyn SafeSearchConfigRepository> = safe_search_config.clone();
+            SafeSearchEnforcer::new(repo).await?
+        };
+
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(
                 write_pool.clone(),
@@ -91,10 +102,12 @@ impl Repositories {
             client_subnet: Arc::new(SqliteClientSubnetRepository::new(write_pool.clone())),
             managed_domain: Arc::new(SqliteManagedDomainRepository::new(write_pool.clone())),
             regex_filter: Arc::new(SqliteRegexFilterRepository::new(write_pool.clone())),
-            blocked_service: Arc::new(SqliteBlockedServiceRepository::new(write_pool)),
+            blocked_service: Arc::new(SqliteBlockedServiceRepository::new(write_pool.clone())),
             custom_service,
             service_catalog,
             block_filter_engine,
+            safe_search_config: safe_search_config.clone(),
+            safe_search_engine,
         })
     }
 }

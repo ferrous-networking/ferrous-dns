@@ -7,16 +7,17 @@ use ferrous_dns_application::use_cases::{
     CreateManualClientUseCase, CreateRegexFilterUseCase, CreateWhitelistSourceUseCase,
     DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
     DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
-    DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
-    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
-    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
-    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
+    DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase, DeleteWhitelistSourceUseCase,
+    GetBlockFilterStatsUseCase, GetBlockedServicesUseCase, GetBlocklistSourcesUseCase,
+    GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
+    GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
+    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    GetSafeSearchConfigsUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
     GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, UnblockServiceUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
-    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
-    UpdateWhitelistSourceUseCase,
+    GetWhitelistUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, ToggleSafeSearchUseCase,
+    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -74,6 +75,9 @@ pub struct UseCases {
     pub update_custom_service: Arc<UpdateCustomServiceUseCase>,
     pub delete_custom_service: Arc<DeleteCustomServiceUseCase>,
     pub subnet_matcher: Arc<SubnetMatcherService>,
+    pub get_safe_search_configs: Arc<GetSafeSearchConfigsUseCase>,
+    pub toggle_safe_search: Arc<ToggleSafeSearchUseCase>,
+    pub delete_safe_search_configs: Arc<DeleteSafeSearchConfigsUseCase>,
 }
 
 impl UseCases {
@@ -237,6 +241,20 @@ impl UseCases {
                 repos.block_filter_engine.clone(),
             )),
             subnet_matcher,
+            get_safe_search_configs: Arc::new(GetSafeSearchConfigsUseCase::new(
+                repos.safe_search_config.clone(),
+                repos.group.clone(),
+            )),
+            toggle_safe_search: Arc::new(ToggleSafeSearchUseCase::new(
+                repos.safe_search_config.clone(),
+                repos.group.clone(),
+                repos.safe_search_engine.clone(),
+            )),
+            delete_safe_search_configs: Arc::new(DeleteSafeSearchConfigsUseCase::new(
+                repos.safe_search_config.clone(),
+                repos.group.clone(),
+                repos.safe_search_engine.clone(),
+            )),
         }
     }
 }

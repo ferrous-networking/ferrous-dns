@@ -36,6 +36,7 @@ impl IntoResponse for ApiError {
             DomainError::InvalidDomainName(_)
             | DomainError::InvalidIpAddress(_)
             | DomainError::InvalidCidr(_)
+            | DomainError::InvalidSafeSearchEngine(_)
             | DomainError::ProtectedGroupCannotBeDisabled
             | DomainError::ProtectedGroupCannotBeDeleted => {
                 (StatusCode::BAD_REQUEST, self.0.to_string())

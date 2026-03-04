@@ -15,6 +15,7 @@ pub mod managed_domain;
 pub mod query;
 pub mod rate;
 pub mod regex_filter;
+pub mod safe_search;
 pub mod stats;
 pub mod timeline;
 pub mod whitelist;
@@ -46,6 +47,7 @@ pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGro
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};
+pub use safe_search::{SafeSearchConfigResponse, ToggleSafeSearchRequest};
 pub use stats::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistribution};
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
 pub use whitelist::WhitelistResponse;

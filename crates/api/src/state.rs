@@ -7,15 +7,16 @@ use ferrous_dns_application::use_cases::{
     CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
     DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase,
     DeleteLocalRecordUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
-    DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlockedServicesUseCase,
-    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
-    GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    DeleteSafeSearchConfigsUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
+    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
+    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
     GetServiceCatalogUseCase, GetTimelineUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, UnblockServiceUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
-    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, ToggleSafeSearchUseCase,
+    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -98,6 +99,13 @@ pub struct ServiceUseCases {
 }
 
 #[derive(Clone)]
+pub struct SafeSearchUseCases {
+    pub get_configs: Arc<GetSafeSearchConfigsUseCase>,
+    pub toggle: Arc<ToggleSafeSearchUseCase>,
+    pub delete_configs: Arc<DeleteSafeSearchConfigsUseCase>,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub query: QueryUseCases,
     pub dns: DnsUseCases,
@@ -105,6 +113,7 @@ pub struct AppState {
     pub clients: ClientUseCases,
     pub blocking: BlockingUseCases,
     pub services: ServiceUseCases,
+    pub safe_search: SafeSearchUseCases,
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub api_key: Option<Arc<str>>,
