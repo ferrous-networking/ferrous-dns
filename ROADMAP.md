@@ -1,6 +1,6 @@
 ## 🗺️ Roadmap
 
-### ✅ v0.1.0 - Foundation 
+### ✅ v0.1.0 - Foundation
 
 - [x] Project structure with Clean Architecture
 - [x] Rust workspace with 5 crates + tests
@@ -10,67 +10,77 @@
 - [x] SQLite persistence
 - [x] Basic DNS server implementation
 - [x] Full DNS resolver (A, AAAA, CNAME, MX, TXT, PTR, RFC...)
-- [x] Upstream DNS forwarding udp 
+- [x] Upstream DNS forwarding UDP
 - [x] Upstream DNS-over-HTTPS (DoH)
 - [x] Upstream DNS-over-TLS (DoT)
-- [x] Load balancing across upstream
+- [x] Load balancing across upstreams
 - [x] Query caching with TTL
-- [x] Local Dns records domain.local
-- [x] Cache L1/L2 
+- [x] Local DNS records (domain.local)
+- [x] Cache L1/L2
 - [x] Cache LFUK eviction (sliding window)
 - [x] Bloom filter
 - [x] Core tests coverage
 
-### 🚧 v0.2.0 - Blocklist & Whitelist
-                   
-- [x] Auto detect Client ip and mac address                         
+### ✅ v0.2.0 - Blocklist & Whitelist
+
+- [x] Auto detect client IP and MAC address
 - [x] Client groups
 - [x] Wildcard domain blocking (`*.ads.com`)
 - [x] Whitelist support
 - [x] Blocklist functionality
-- [x] blocklist url import
-- [x] blocklist regex support
-- [x] button allows and block in the queries.html list
+- [x] Blocklist URL import
+- [x] Blocklist regex support
+- [x] Allow and block buttons in query log
 - [x] Conditional forwarding
 
-### 🔮 v0.3.0 - Advanced Features 
+### ✅ v0.3.0 - Advanced Features
 
-
-- [x] Advanced analytics and graphs, upstrens ms, top sites blocked sites
-- [x] DoQ upstream
-- [x] https3, h3 upstream
+- [x] Advanced analytics and graphs (upstream latency, top sites, blocked sites)
+- [x] DNS-over-QUIC (DoQ) upstream
+- [x] HTTP/3 upstream
 - [x] IPv6 upstreams
-- [x] dns name upstreams (e.: dns.google.com)
+- [x] DNS name upstreams (e.g. dns.google.com)
 - [x] CNAME cloaking detection
-- [x] Safe Search
+- [x] Safe Search enforcement
 - [x] Blockable services (1-click)
 
 ### 🎯 v0.4.0 - Parental Controls (Current)
 
 - [ ] Scheduling per group + Parental Controls UI
+- [ ] Temporary domain allow/block per group (timed bypass)
 
-### 🎯 v0.5.0 - server advanced features(Current)
+### 🎯 v0.5.0 - Server Advanced Features
 
-- [ ] DoH/DoT server (listener-side)
-- [ ] PTR auto-generation (add server local dns.: 192.168.1.10 → server.local) create a PTR reverse 10.1.168.192.in-addr.arpa → server.local
+- [ ] DoH/DoT server (listener-side, serve encrypted DNS to clients)
+- [ ] PROXY Protocol v2 (real client IP behind load balancers)
+- [ ] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [ ] DNS Rebinding Protection
+- [ ] Per-group blocklist assignment (assign specific blocklists to client groups)
 
-### 🎯 v0.6.0 - Performance & Scale
-
-- [ ] dashboard web socket performance slow queries
-- [ ] Prometheus metrics
-- [ ] Api compatible pi-hole
-- [ ] Performance benchmarks vs. competitors
-- [ ] OpenAPI / Swagger docs
-
-### 🎯 v0.6.0 Security
+### 🎯 v0.6.0 - Security
 
 - [ ] Login / Auth
-- [ ] HTTPS para Web UI
+- [ ] HTTPS for Web UI
 - [ ] API Key / token
+- [ ] TOTP / 2FA
 - [ ] Rate limiting DNS
 - [ ] DoS protection
+- [ ] Read-only / lockdown mode (disable config changes via flag)
+- [ ] Separate listening ports for DoH and Admin UI
 
+### 🎯 v0.7.0 - Performance & Scale
+
+- [ ] WebSocket dashboard for slow query monitoring
+- [ ] Prometheus metrics
+- [ ] Pi-hole compatible API
+- [ ] Performance benchmarks vs. competitors
+- [ ] OpenAPI / Swagger docs
+- [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
+
+### 🎯 v0.8.0 - Export & Observability
+
+- [ ] Config export/import (backup and restore)
+- [ ] Query log export (CSV / JSON)
 
 ### 🌟 v1.0.0 - Production Ready
 
@@ -80,15 +90,17 @@
 - [ ] API v1 stable
 - [ ] Full documentation
 
-### 🎯 v1.1.1 - next features
+### 🎯 v1.1.0 - Next Features
 
-- [ ] Time-based Blocking
+- [ ] Time-based Blocking (per blocklist and per domain)
 - [ ] Blocklist Dry-Run / Simulation Mode
 - [ ] Blocklist Impact Analysis
-- [ ] DDNS endpoint HTTP 
-- [ ] ACME DNS-01 endpoint
-- [ ] Split-horizon (Views), 
-
-See [ROADMAP.md](ROADMAP.md) for detailed milestones.
+- [ ] Per-blocklist hit stats (24h / 7d / 30d)
+- [ ] DDNS HTTP endpoint
+- [ ] ACME DNS-01 challenge endpoint
+- [ ] Split-horizon DNS (Views)
+- [ ] Per-group upstream DNS
+- [ ] Webhook / push notifications
+- [ ] Audit log for configuration changes
 
 ---
