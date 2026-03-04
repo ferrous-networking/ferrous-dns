@@ -45,11 +45,17 @@
 - [x] Safe Search
 - [x] Blockable services (1-click)
 
-### 🎯 v0.4.0 - Security (Current)
+### 🎯 v0.4.0 - Parental Controls (Current)
 
-- [ ] Scheduling por grupo + Parental Controls UI
+- [ ] Scheduling per group + Parental Controls UI
 
-### 🎯 v0.5.0 - Performance & Scale
+### 🎯 v0.5.0 - server advanced features(Current)
+
+- [ ] DoH/DoT server (listener-side)
+- [ ] PTR auto-generation (add server local dns.: 192.168.1.10 → server.local) create a PTR reverse 10.1.168.192.in-addr.arpa → server.local
+- [ ] DNS Rebinding Protection
+
+### 🎯 v0.6.0 - Performance & Scale
 
 - [ ] dashboard web socket performance slow queries
 - [ ] Prometheus metrics
@@ -57,7 +63,7 @@
 - [ ] Performance benchmarks vs. competitors
 - [ ] OpenAPI / Swagger docs
 
-### 🎯 v0.6.0
+### 🎯 v0.6.0 Security
 
 - [ ] Login / Auth
 - [ ] HTTPS para Web UI
@@ -79,7 +85,10 @@
 - [ ] Time-based Blocking
 - [ ] Blocklist Dry-Run / Simulation Mode
 - [ ] Blocklist Impact Analysis
- 
+- [ ] DDNS endpoint HTTP 
+- [ ] ACME DNS-01 endpoint
+- [ ] Split-horizon (Views), 
+
 See [ROADMAP.md](ROADMAP.md) for detailed milestones.
 
 ---
