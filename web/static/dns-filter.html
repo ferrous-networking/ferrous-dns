@@ -166,17 +166,105 @@
 
         .tab-btn:hover { color: var(--text-primary) }
 
-        .group-select {
-            padding: 6px 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-size: 13px;
-            cursor: pointer
+        .group-pills-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            position: relative;
+            min-width: 100px
         }
 
-        .group-select:focus { outline: none; border-color: var(--color-primary) }
+        .group-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(59,130,246,0.1);
+            color: var(--color-primary);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap
+        }
+
+        .pill-remove {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: inherit;
+            padding: 0;
+            line-height: 1;
+            font-size: 14px;
+            opacity: 0.7
+        }
+
+        .pill-remove:hover { opacity: 1 }
+
+        .btn-add-group {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: 1px dashed var(--border-color);
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+            line-height: 1;
+            padding: 0;
+            flex-shrink: 0
+        }
+
+        .btn-add-group:hover { border-color: var(--color-primary); color: var(--color-primary) }
+
+        .group-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            z-index: 50;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px;
+            min-width: 160px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12)
+        }
+
+        .group-check-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--text-primary);
+            user-select: none
+        }
+
+        .group-check-item:hover { background: var(--bg-tertiary) }
+
+        .group-check-item input[type=checkbox] { cursor: pointer; width: 14px; height: 14px }
+
+        .group-checkboxes {
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .group-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-primary)
+        }
+
+        .group-checkbox-row input[type=checkbox] { cursor: pointer; width: 16px; height: 16px }
     </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -272,12 +360,20 @@
 
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                     <div class="form-group">
-                        <label class="form-label">Group</label>
-                        <select class="input" x-model="form.group_id">
+                        <label class="form-label">Groups</label>
+                        <div class="group-checkboxes">
                             <template x-for="group in groups" :key="group.id">
-                                <option :value="group.id" x-text="group.name"></option>
+                                <label class="group-checkbox-row">
+                                    <input type="checkbox"
+                                           :value="group.id"
+                                           :checked="form.group_ids.includes(group.id)"
+                                           @change="$event.target.checked
+                                               ? (form.group_ids = [...form.group_ids, group.id])
+                                               : (form.group_ids = form.group_ids.filter(id => id !== group.id))">
+                                    <span x-text="group.name"></span>
+                                </label>
                             </template>
-                        </select>
+                        </div>
                     </div>
                     <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
@@ -344,15 +440,29 @@
                         <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
                     </td>
                     <td>
-                        <select class="group-select"
-                                :value="source.group_id"
-                                @change="changeGroup(source, parseInt($event.target.value))">
-                            <template x-for="group in groups" :key="group.id">
-                                <option :value="group.id"
-                                        :selected="group.id === source.group_id"
-                                        x-text="group.name"></option>
+                        <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
+                            <template x-for="gid in source.group_ids" :key="gid">
+                                <span class="group-pill">
+                                    <span x-text="groupName(gid)"></span>
+                                    <button class="pill-remove" type="button"
+                                            @click.stop="toggleGroup(source, gid, false)"
+                                            :title="'Remove from ' + groupName(gid)">×</button>
+                                </span>
                             </template>
-                        </select>
+                            <button type="button" class="btn-add-group"
+                                    @click.stop="source._showGroupMenu = !source._showGroupMenu"
+                                    title="Add to group">+</button>
+                            <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
+                                <template x-for="group in groups" :key="group.id">
+                                    <label class="group-check-item">
+                                        <input type="checkbox"
+                                               :checked="source.group_ids.includes(group.id)"
+                                               @change="toggleGroup(source, group.id, $event.target.checked)">
+                                        <span x-text="group.name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
                     </td>
                     <td>
                         <div style="display:flex;gap:4px">
@@ -406,12 +516,20 @@
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
                         <div class="form-group">
-                            <label class="form-label">Group</label>
-                            <select class="input" x-model="wForm.group_id">
+                            <label class="form-label">Groups</label>
+                            <div class="group-checkboxes">
                                 <template x-for="group in groups" :key="group.id">
-                                    <option :value="group.id" x-text="group.name"></option>
+                                    <label class="group-checkbox-row">
+                                        <input type="checkbox"
+                                               :value="group.id"
+                                               :checked="wForm.group_ids.includes(group.id)"
+                                               @change="$event.target.checked
+                                                   ? (wForm.group_ids = [...wForm.group_ids, group.id])
+                                                   : (wForm.group_ids = wForm.group_ids.filter(id => id !== group.id))">
+                                        <span x-text="group.name"></span>
+                                    </label>
                                 </template>
-                            </select>
+                            </div>
                         </div>
                         <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end">
                             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding-bottom:10px">
@@ -478,15 +596,29 @@
                             <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
                         </td>
                         <td>
-                            <select class="group-select"
-                                    :value="source.group_id"
-                                    @change="wChangeGroup(source, parseInt($event.target.value))">
-                                <template x-for="group in groups" :key="group.id">
-                                    <option :value="group.id"
-                                            :selected="group.id === source.group_id"
-                                            x-text="group.name"></option>
+                            <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
+                                <template x-for="gid in source.group_ids" :key="gid">
+                                    <span class="group-pill">
+                                        <span x-text="groupName(gid)"></span>
+                                        <button class="pill-remove" type="button"
+                                                @click.stop="wToggleGroup(source, gid, false)"
+                                                :title="'Remove from ' + groupName(gid)">×</button>
+                                    </span>
                                 </template>
-                            </select>
+                                <button type="button" class="btn-add-group"
+                                        @click.stop="source._showGroupMenu = !source._showGroupMenu"
+                                        title="Add to group">+</button>
+                                <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
+                                    <template x-for="group in groups" :key="group.id">
+                                        <label class="group-check-item">
+                                            <input type="checkbox"
+                                                   :checked="source.group_ids.includes(group.id)"
+                                                   @change="wToggleGroup(source, group.id, $event.target.checked)">
+                                            <span x-text="group.name"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                            </div>
                         </td>
                         <td>
                             <div style="display:flex;gap:4px">
@@ -822,7 +954,7 @@
             form: {
                 name: '',
                 url: '',
-                group_id: 1,
+                group_ids: [1],
                 comment: '',
                 enabled: true
             },
@@ -835,7 +967,7 @@
             wForm: {
                 name: '',
                 url: '',
-                group_id: 1,
+                group_ids: [1],
                 comment: '',
                 enabled: true
             },
@@ -914,12 +1046,40 @@
                 return def ? def.id : (this.groups.length > 0 ? this.groups[0].id : 1);
             },
 
+            groupName(gid) {
+                const g = this.groups.find(g => g.id === gid);
+                return g ? g.name : '?';
+            },
+
+            async toggleGroup(source, groupId, add) {
+                const newIds = add
+                    ? [...source.group_ids, groupId]
+                    : source.group_ids.filter(id => id !== groupId);
+                try {
+                    const res = await fetch(`/api/blocklist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_ids: newIds})
+                    });
+                    if (res.ok) {
+                        source.group_ids = newIds;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to update groups: ' + errorText);
+                        await this.loadSources();
+                    }
+                } catch (e) {
+                    console.error('Error updating groups:', e);
+                    await this.loadSources();
+                }
+            },
+
             editSource(source) {
                 this.editingSource = source;
                 this.form = {
                     name: source.name,
                     url: source.url || '',
-                    group_id: source.group_id,
+                    group_ids: [...(source.group_ids || [])],
                     comment: source.comment || '',
                     enabled: source.enabled
                 };
@@ -933,7 +1093,7 @@
                 this.form = {
                     name: '',
                     url: '',
-                    group_id: this.defaultGroupId(),
+                    group_ids: [this.defaultGroupId()],
                     comment: '',
                     enabled: true
                 };
@@ -945,7 +1105,7 @@
                 const payload = {
                     name: this.form.name.trim(),
                     url: this.form.url.trim() || null,
-                    group_id: parseInt(this.form.group_id),
+                    group_ids: this.form.group_ids,
                     comment: this.form.comment.trim() || null,
                     enabled: this.form.enabled
                 };
@@ -996,25 +1156,6 @@
                 }
             },
 
-            async changeGroup(source, newGroupId) {
-                try {
-                    const res = await fetch(`/api/blocklist-sources/${source.id}`, {
-                        method: 'PUT',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({group_id: newGroupId})
-                    });
-                    if (res.ok) {
-                        source.group_id = newGroupId;
-                    } else {
-                        const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
-                        await this.loadSources();
-                    }
-                } catch (e) {
-                    console.error('Error changing group:', e);
-                    await this.loadSources();
-                }
-            },
 
             async deleteSource(source) {
                 if (!confirm(`Delete blocklist source "${source.name}"? This cannot be undone.`)) {
@@ -1055,12 +1196,35 @@
                 }
             },
 
+            async wToggleGroup(source, groupId, add) {
+                const newIds = add
+                    ? [...source.group_ids, groupId]
+                    : source.group_ids.filter(id => id !== groupId);
+                try {
+                    const res = await fetch(`/api/whitelist-sources/${source.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({group_ids: newIds})
+                    });
+                    if (res.ok) {
+                        source.group_ids = newIds;
+                    } else {
+                        const errorText = await res.text();
+                        alert('Failed to update groups: ' + errorText);
+                        await this.loadWhitelistSources();
+                    }
+                } catch (e) {
+                    console.error('Error updating allowlist groups:', e);
+                    await this.loadWhitelistSources();
+                }
+            },
+
             wEditSource(source) {
                 this.wEditingSource = source;
                 this.wForm = {
                     name: source.name,
                     url: source.url || '',
-                    group_id: source.group_id,
+                    group_ids: [...(source.group_ids || [])],
                     comment: source.comment || '',
                     enabled: source.enabled
                 };
@@ -1074,7 +1238,7 @@
                 this.wForm = {
                     name: '',
                     url: '',
-                    group_id: this.defaultGroupId(),
+                    group_ids: [this.defaultGroupId()],
                     comment: '',
                     enabled: true
                 };
@@ -1086,7 +1250,7 @@
                 const payload = {
                     name: this.wForm.name.trim(),
                     url: this.wForm.url.trim() || null,
-                    group_id: parseInt(this.wForm.group_id),
+                    group_ids: this.wForm.group_ids,
                     comment: this.wForm.comment.trim() || null,
                     enabled: this.wForm.enabled
                 };
@@ -1137,25 +1301,6 @@
                 }
             },
 
-            async wChangeGroup(source, newGroupId) {
-                try {
-                    const res = await fetch(`/api/whitelist-sources/${source.id}`, {
-                        method: 'PUT',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({group_id: newGroupId})
-                    });
-                    if (res.ok) {
-                        source.group_id = newGroupId;
-                    } else {
-                        const errorText = await res.text();
-                        alert('Failed to change group: ' + errorText);
-                        await this.loadWhitelistSources();
-                    }
-                } catch (e) {
-                    console.error('Error changing allowlist group:', e);
-                    await this.loadWhitelistSources();
-                }
-            },
 
             async wDeleteSource(source) {
                 if (!confirm(`Delete allowlist source "${source.name}"? This cannot be undone.`)) {

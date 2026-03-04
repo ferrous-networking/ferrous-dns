@@ -7,7 +7,7 @@ fn test_whitelist_source_creation() {
         Some(1),
         Arc::from("Test Allowlist"),
         Some(Arc::from("https://example.com/allowlist.txt")),
-        1,
+        vec![1],
         Some(Arc::from("Test comment")),
         true,
     );
@@ -18,7 +18,7 @@ fn test_whitelist_source_creation() {
         source.url.as_deref(),
         Some("https://example.com/allowlist.txt")
     );
-    assert_eq!(source.group_id, 1);
+    assert_eq!(source.group_ids, vec![1]);
     assert_eq!(source.comment.as_deref(), Some("Test comment"));
     assert!(source.enabled);
     assert!(source.created_at.is_none());
@@ -26,8 +26,30 @@ fn test_whitelist_source_creation() {
 }
 
 #[test]
+fn test_whitelist_source_multiple_groups() {
+    let source = WhitelistSource::new(
+        Some(2),
+        Arc::from("Multi-Group Allowlist"),
+        None,
+        vec![1, 2, 3],
+        None,
+        true,
+    );
+
+    assert_eq!(source.group_ids, vec![1, 2, 3]);
+    assert_eq!(source.group_ids.len(), 3);
+}
+
+#[test]
 fn test_whitelist_source_no_url_no_comment() {
-    let source = WhitelistSource::new(None, Arc::from("Manual Allowlist"), None, 1, None, false);
+    let source = WhitelistSource::new(
+        None,
+        Arc::from("Manual Allowlist"),
+        None,
+        vec![1],
+        None,
+        false,
+    );
 
     assert!(source.id.is_none());
     assert_eq!(source.name.as_ref(), "Manual Allowlist");

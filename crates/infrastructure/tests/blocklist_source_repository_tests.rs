@@ -45,6 +45,17 @@ async fn create_test_db() -> SqlitePool {
     .unwrap();
 
     sqlx::query(
+        "CREATE TABLE IF NOT EXISTS blocklist_source_groups (
+            source_id INTEGER NOT NULL REFERENCES blocklist_sources(id) ON DELETE CASCADE,
+            group_id  INTEGER NOT NULL REFERENCES groups(id)            ON DELETE CASCADE,
+            PRIMARY KEY (source_id, group_id)
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
         "INSERT INTO groups (id, name, enabled, comment, is_default)
          VALUES (1, 'Protected', 1, 'Default group', 1)",
     )
@@ -64,7 +75,7 @@ async fn test_create_and_get_source() {
         .create(
             "AdGuard DNS".to_string(),
             Some("https://adguard.com/list.txt".to_string()),
-            1,
+            vec![1],
             Some("Ad blocking list".to_string()),
             true,
         )
@@ -74,7 +85,7 @@ async fn test_create_and_get_source() {
     assert!(source.id.is_some());
     assert_eq!(source.name.as_ref(), "AdGuard DNS");
     assert_eq!(source.url.as_deref(), Some("https://adguard.com/list.txt"));
-    assert_eq!(source.group_id, 1);
+    assert_eq!(source.group_ids, vec![1]);
     assert_eq!(source.comment.as_deref(), Some("Ad blocking list"));
     assert!(source.enabled);
     assert!(source.created_at.is_some());
@@ -82,6 +93,7 @@ async fn test_create_and_get_source() {
 
     let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
     assert_eq!(fetched.name.as_ref(), "AdGuard DNS");
+    assert_eq!(fetched.group_ids, vec![1]);
 }
 
 #[tokio::test]
@@ -90,7 +102,7 @@ async fn test_create_without_url() {
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
     let source = repo
-        .create("Manual List".to_string(), None, 1, None, true)
+        .create("Manual List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -99,16 +111,40 @@ async fn test_create_without_url() {
 }
 
 #[tokio::test]
+async fn test_create_with_multiple_groups() {
+    let pool = create_test_db().await;
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let repo = SqliteBlocklistSourceRepository::new(pool);
+
+    let source = repo
+        .create("Shared List".to_string(), None, vec![1, 2], None, true)
+        .await
+        .unwrap();
+
+    assert_eq!(source.group_ids.len(), 2);
+    assert!(source.group_ids.contains(&1));
+    assert!(source.group_ids.contains(&2));
+
+    let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids.len(), 2);
+}
+
+#[tokio::test]
 async fn test_create_unique_name_constraint() {
     let pool = create_test_db().await;
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
-    repo.create("Duplicate Name".to_string(), None, 1, None, true)
+    repo.create("Duplicate Name".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let result = repo
-        .create("Duplicate Name".to_string(), None, 1, None, false)
+        .create("Duplicate Name".to_string(), None, vec![1], None, false)
         .await;
 
     assert!(result.is_err());
@@ -134,13 +170,13 @@ async fn test_get_all_ordered_by_name() {
     let pool = create_test_db().await;
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
-    repo.create("Zzz List".to_string(), None, 1, None, true)
+    repo.create("Zzz List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
-    repo.create("Aaa List".to_string(), None, 1, None, true)
+    repo.create("Aaa List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
-    repo.create("Mmm List".to_string(), None, 1, None, true)
+    repo.create("Mmm List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -166,7 +202,7 @@ async fn test_update_enabled_field() {
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
     let source = repo
-        .create("Toggle List".to_string(), None, 1, None, true)
+        .create("Toggle List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
@@ -188,7 +224,7 @@ async fn test_update_name() {
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
     let source = repo
-        .create("Old Name".to_string(), None, 1, None, true)
+        .create("Old Name".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -208,7 +244,7 @@ async fn test_update_name() {
 }
 
 #[tokio::test]
-async fn test_update_group_id() {
+async fn test_update_group_ids() {
     let pool = create_test_db().await;
     let repo = SqliteBlocklistSourceRepository::new(pool.clone());
 
@@ -218,16 +254,48 @@ async fn test_update_group_id() {
         .unwrap();
 
     let source = repo
-        .create("Group Test".to_string(), None, 1, None, true)
+        .create("Group Test".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let updated = repo
-        .update(source.id.unwrap(), None, None, Some(2), None, None)
+        .update(source.id.unwrap(), None, None, Some(vec![2]), None, None)
         .await
         .unwrap();
 
-    assert_eq!(updated.group_id, 2);
+    assert_eq!(updated.group_ids, vec![2]);
+
+    let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids, vec![2]);
+}
+
+#[tokio::test]
+async fn test_update_assign_multiple_groups() {
+    let pool = create_test_db().await;
+    let repo = SqliteBlocklistSourceRepository::new(pool.clone());
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let source = repo
+        .create("Shared List".to_string(), None, vec![1], None, true)
+        .await
+        .unwrap();
+    let id = source.id.unwrap();
+
+    let updated = repo
+        .update(id, None, None, Some(vec![1, 2]), None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.group_ids.len(), 2);
+    assert!(updated.group_ids.contains(&1));
+    assert!(updated.group_ids.contains(&2));
+
+    let fetched = repo.get_by_id(id).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids.len(), 2);
 }
 
 #[tokio::test]
@@ -255,7 +323,7 @@ async fn test_update_clear_url() {
         .create(
             "URL List".to_string(),
             Some("https://example.com/list.txt".to_string()),
-            1,
+            vec![1],
             None,
             true,
         )
@@ -276,7 +344,7 @@ async fn test_delete_success() {
     let repo = SqliteBlocklistSourceRepository::new(pool);
 
     let source = repo
-        .create("To Delete".to_string(), None, 1, None, true)
+        .create("To Delete".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
@@ -285,6 +353,33 @@ async fn test_delete_success() {
 
     let fetched = repo.get_by_id(id).await.unwrap();
     assert!(fetched.is_none());
+}
+
+#[tokio::test]
+async fn test_delete_cascades_pivot_rows() {
+    let pool = create_test_db().await;
+    let repo = SqliteBlocklistSourceRepository::new(pool.clone());
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let source = repo
+        .create("Multi Group List".to_string(), None, vec![1, 2], None, true)
+        .await
+        .unwrap();
+    let id = source.id.unwrap();
+
+    repo.delete(id).await.unwrap();
+
+    let pivot_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM blocklist_source_groups WHERE source_id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pivot_count, 0);
 }
 
 #[tokio::test]
@@ -307,7 +402,7 @@ async fn test_fk_group_restricts_delete() {
     let pool = create_test_db().await;
     let repo = SqliteBlocklistSourceRepository::new(pool.clone());
 
-    repo.create("FK Test List".to_string(), None, 1, None, true)
+    repo.create("FK Test List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 

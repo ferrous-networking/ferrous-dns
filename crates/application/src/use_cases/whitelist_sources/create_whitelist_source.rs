@@ -22,7 +22,7 @@ impl CreateWhitelistSourceUseCase {
         &self,
         name: String,
         url: Option<String>,
-        group_id: i64,
+        group_ids: Vec<i64>,
         comment: Option<String>,
         enabled: bool,
     ) -> Result<WhitelistSource, DomainError> {
@@ -34,20 +34,22 @@ impl CreateWhitelistSourceUseCase {
         WhitelistSource::validate_comment(&comment.as_deref().map(Arc::from))
             .map_err(DomainError::InvalidWhitelistSource)?;
 
-        self.group_repo
-            .get_by_id(group_id)
-            .await?
-            .ok_or(DomainError::GroupNotFound(group_id))?;
+        for &gid in &group_ids {
+            self.group_repo
+                .get_by_id(gid)
+                .await?
+                .ok_or(DomainError::GroupNotFound(gid))?;
+        }
 
         let source = self
             .repo
-            .create(name.clone(), url, group_id, comment, enabled)
+            .create(name.clone(), url, group_ids.clone(), comment, enabled)
             .await?;
 
         info!(
             source_id = ?source.id,
             name = %name,
-            group_id = group_id,
+            group_ids = ?group_ids,
             "Whitelist source created successfully"
         );
 

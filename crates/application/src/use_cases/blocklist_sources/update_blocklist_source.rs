@@ -23,7 +23,7 @@ impl UpdateBlocklistSourceUseCase {
         id: i64,
         name: Option<String>,
         url: Option<Option<String>>,
-        group_id: Option<i64>,
+        group_ids: Option<Vec<i64>>,
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<BlocklistSource, DomainError> {
@@ -46,16 +46,18 @@ impl UpdateBlocklistSourceUseCase {
                 .map_err(DomainError::InvalidBlocklistSource)?;
         }
 
-        if let Some(gid) = group_id {
-            self.group_repo
-                .get_by_id(gid)
-                .await?
-                .ok_or(DomainError::GroupNotFound(gid))?;
+        if let Some(ref ids) = group_ids {
+            for &gid in ids {
+                self.group_repo
+                    .get_by_id(gid)
+                    .await?
+                    .ok_or(DomainError::GroupNotFound(gid))?;
+            }
         }
 
         let updated = self
             .repo
-            .update(id, name, url, group_id, comment, enabled)
+            .update(id, name, url, group_ids, comment, enabled)
             .await?;
 
         info!(

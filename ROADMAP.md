@@ -46,6 +46,7 @@
 
 ### 🎯 v0.4.0 - Parental Controls (Current)
 
+- [ ] Per-group blocklist assignment (assign specific blocklists to client groups)
 - [ ] Scheduling per group + Parental Controls UI
 - [ ] Temporary domain allow/block per group (timed bypass)
 
@@ -55,9 +56,15 @@
 - [ ] PROXY Protocol v2 (real client IP behind load balancers)
 - [ ] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [ ] DNS Rebinding Protection
-- [ ] Per-group blocklist assignment (assign specific blocklists to client groups)
 
-### 🎯 v0.6.0 - Security
+### 🎯 v0.6.0 - Performance & Scale
+
+- [ ] WebSocket dashboard for slow query monitoring
+- [ ] Pi-hole compatible API
+- [ ] Performance benchmarks vs. competitors
+- [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
+
+### 🎯 v0.7.0 - Security
 
 - [ ] Login / Auth
 - [ ] HTTPS for Web UI
@@ -68,19 +75,12 @@
 - [ ] Read-only / lockdown mode (disable config changes via flag)
 - [ ] Separate listening ports for DoH and Admin UI
 
-### 🎯 v0.7.0 - Performance & Scale
-
-- [ ] WebSocket dashboard for slow query monitoring
-- [ ] Prometheus metrics
-- [ ] Pi-hole compatible API
-- [ ] Performance benchmarks vs. competitors
-- [ ] OpenAPI / Swagger docs
-- [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
-
 ### 🎯 v0.8.0 - Export & Observability
 
 - [ ] Config export/import (backup and restore)
 - [ ] Query log export (CSV / JSON)
+- [ ] Prometheus metrics
+- [ ] OpenAPI / Swagger docs
 
 ### 🌟 v1.0.0 - Production Ready
 

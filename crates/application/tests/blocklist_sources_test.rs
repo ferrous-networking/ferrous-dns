@@ -26,7 +26,7 @@ async fn test_get_all_with_sources() {
     repo.create(
         "List A".to_string(),
         Some("https://example.com/a.txt".to_string()),
-        1,
+        vec![1],
         None,
         true,
     )
@@ -35,7 +35,7 @@ async fn test_get_all_with_sources() {
     repo.create(
         "List B".to_string(),
         None,
-        1,
+        vec![1],
         Some("Manual list".to_string()),
         false,
     )
@@ -55,7 +55,7 @@ async fn test_get_all_with_sources() {
 async fn test_get_by_id_found() {
     let repo = Arc::new(MockBlocklistSourceRepository::new());
     let created = repo
-        .create("Test List".to_string(), None, 1, None, true)
+        .create("Test List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = created.id.unwrap();
@@ -91,7 +91,7 @@ async fn test_create_success() {
         .execute(
             "AdGuard List".to_string(),
             Some("https://adguard.com/list.txt".to_string()),
-            1,
+            vec![1],
             Some("Main ad block list".to_string()),
             true,
         )
@@ -101,9 +101,25 @@ async fn test_create_success() {
     let source = result.unwrap();
     assert!(source.id.is_some());
     assert_eq!(source.name.as_ref(), "AdGuard List");
-    assert_eq!(source.group_id, 1);
+    assert_eq!(source.group_ids, vec![1]);
     assert!(source.enabled);
     assert_eq!(repo.count().await, 1);
+}
+
+#[tokio::test]
+async fn test_create_with_multiple_groups() {
+    let repo = Arc::new(MockBlocklistSourceRepository::new());
+    let group_repo = Arc::new(MockGroupRepository::new());
+    group_repo.create("Office".to_string(), None).await.unwrap();
+    let use_case = CreateBlocklistSourceUseCase::new(repo.clone(), group_repo);
+
+    let result = use_case
+        .execute("Multi-Group List".to_string(), None, vec![1, 2], None, true)
+        .await;
+
+    assert!(result.is_ok());
+    let source = result.unwrap();
+    assert_eq!(source.group_ids, vec![1, 2]);
 }
 
 #[tokio::test]
@@ -113,7 +129,7 @@ async fn test_create_without_url_succeeds() {
     let use_case = CreateBlocklistSourceUseCase::new(repo, group_repo);
 
     let result = use_case
-        .execute("Manual List".to_string(), None, 1, None, true)
+        .execute("Manual List".to_string(), None, vec![1], None, true)
         .await;
 
     assert!(result.is_ok());
@@ -127,7 +143,9 @@ async fn test_create_invalid_name_empty() {
     let group_repo = Arc::new(MockGroupRepository::new());
     let use_case = CreateBlocklistSourceUseCase::new(repo, group_repo);
 
-    let result = use_case.execute("".to_string(), None, 1, None, true).await;
+    let result = use_case
+        .execute("".to_string(), None, vec![1], None, true)
+        .await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -146,7 +164,7 @@ async fn test_create_invalid_url_scheme() {
         .execute(
             "Bad URL List".to_string(),
             Some("ftp://example.com/list.txt".to_string()),
-            1,
+            vec![1],
             None,
             true,
         )
@@ -166,7 +184,25 @@ async fn test_create_group_not_found() {
     let use_case = CreateBlocklistSourceUseCase::new(repo, group_repo);
 
     let result = use_case
-        .execute("Test List".to_string(), None, 999, None, true)
+        .execute("Test List".to_string(), None, vec![999], None, true)
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        DomainError::GroupNotFound(_) => {}
+        other => panic!("Expected GroupNotFound, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_create_one_invalid_group_in_multi_group_fails() {
+    let repo = Arc::new(MockBlocklistSourceRepository::new());
+    let group_repo = Arc::new(MockGroupRepository::new());
+    let use_case = CreateBlocklistSourceUseCase::new(repo, group_repo);
+
+    // group 1 exists (default), group 999 does not
+    let result = use_case
+        .execute("Multi List".to_string(), None, vec![1, 999], None, true)
         .await;
 
     assert!(result.is_err());
@@ -183,12 +219,12 @@ async fn test_create_duplicate_name() {
     let use_case = CreateBlocklistSourceUseCase::new(repo, group_repo);
 
     use_case
-        .execute("Duplicate".to_string(), None, 1, None, true)
+        .execute("Duplicate".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let result = use_case
-        .execute("Duplicate".to_string(), None, 1, None, true)
+        .execute("Duplicate".to_string(), None, vec![1], None, true)
         .await;
 
     assert!(result.is_err());
@@ -206,7 +242,7 @@ async fn test_update_toggle_enabled() {
     let update_uc = UpdateBlocklistSourceUseCase::new(repo, group_repo);
 
     let source = create_uc
-        .execute("Toggle List".to_string(), None, 1, None, true)
+        .execute("Toggle List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
@@ -220,7 +256,7 @@ async fn test_update_toggle_enabled() {
 }
 
 #[tokio::test]
-async fn test_update_change_group() {
+async fn test_update_change_groups() {
     let repo = Arc::new(MockBlocklistSourceRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
     group_repo.create("Office".to_string(), None).await.unwrap();
@@ -229,15 +265,43 @@ async fn test_update_change_group() {
     let update_uc = UpdateBlocklistSourceUseCase::new(repo, group_repo);
 
     let source = create_uc
-        .execute("Group Change List".to_string(), None, 1, None, true)
+        .execute("Group Change List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
 
-    let result = update_uc.execute(id, None, None, Some(2), None, None).await;
+    let result = update_uc
+        .execute(id, None, None, Some(vec![2]), None, None)
+        .await;
 
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().group_id, 2);
+    assert_eq!(result.unwrap().group_ids, vec![2]);
+}
+
+#[tokio::test]
+async fn test_update_assign_multiple_groups() {
+    let repo = Arc::new(MockBlocklistSourceRepository::new());
+    let group_repo = Arc::new(MockGroupRepository::new());
+    group_repo.create("Office".to_string(), None).await.unwrap();
+
+    let create_uc = CreateBlocklistSourceUseCase::new(repo.clone(), group_repo.clone());
+    let update_uc = UpdateBlocklistSourceUseCase::new(repo, group_repo);
+
+    let source = create_uc
+        .execute("Shared List".to_string(), None, vec![1], None, true)
+        .await
+        .unwrap();
+    let id = source.id.unwrap();
+
+    let result = update_uc
+        .execute(id, None, None, Some(vec![1, 2]), None, None)
+        .await;
+
+    assert!(result.is_ok());
+    let updated = result.unwrap();
+    assert_eq!(updated.group_ids.len(), 2);
+    assert!(updated.group_ids.contains(&1));
+    assert!(updated.group_ids.contains(&2));
 }
 
 #[tokio::test]
@@ -265,12 +329,12 @@ async fn test_update_invalid_group() {
     let update_uc = UpdateBlocklistSourceUseCase::new(repo, group_repo);
 
     let source = create_uc
-        .execute("List".to_string(), None, 1, None, true)
+        .execute("List".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let result = update_uc
-        .execute(source.id.unwrap(), None, None, Some(999), None, None)
+        .execute(source.id.unwrap(), None, None, Some(vec![999]), None, None)
         .await;
 
     assert!(result.is_err());
@@ -291,7 +355,7 @@ async fn test_update_clear_url() {
         .execute(
             "URL List".to_string(),
             Some("https://example.com/list.txt".to_string()),
-            1,
+            vec![1],
             None,
             true,
         )
@@ -314,7 +378,7 @@ async fn test_delete_success() {
     let delete_uc = DeleteBlocklistSourceUseCase::new(repo.clone());
 
     let source = create_uc
-        .execute("To Delete".to_string(), None, 1, None, true)
+        .execute("To Delete".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();

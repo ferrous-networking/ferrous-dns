@@ -61,13 +61,13 @@ async fn create_whitelist_source(
     State(state): State<AppState>,
     Json(req): Json<CreateWhitelistSourceRequest>,
 ) -> Result<(StatusCode, Json<WhitelistSourceResponse>), ApiError> {
-    let group_id = req.group_id.unwrap_or(1);
+    let group_ids = req.resolved_group_ids(1);
     let enabled = req.enabled.unwrap_or(true);
 
     let source = state
         .blocking
         .create_whitelist_source
-        .execute(req.name, req.url, group_id, req.comment, enabled)
+        .execute(req.name, req.url, group_ids, req.comment, enabled)
         .await?;
 
     Ok((
@@ -81,17 +81,11 @@ async fn update_whitelist_source(
     Path(id): Path<i64>,
     Json(req): Json<UpdateWhitelistSourceRequest>,
 ) -> Result<Json<WhitelistSourceResponse>, ApiError> {
+    let group_ids = req.resolved_group_ids();
     let source = state
         .blocking
         .update_whitelist_source
-        .execute(
-            id,
-            req.name,
-            req.url,
-            req.group_id,
-            req.comment,
-            req.enabled,
-        )
+        .execute(id, req.name, req.url, group_ids, req.comment, req.enabled)
         .await?;
     Ok(Json(WhitelistSourceResponse::from_source(source)))
 }

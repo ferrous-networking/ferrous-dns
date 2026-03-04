@@ -323,6 +323,19 @@ async fn create_test_db() -> sqlx::SqlitePool {
 
     sqlx::query(
         r#"
+        CREATE TABLE whitelist_source_groups (
+            source_id INTEGER NOT NULL REFERENCES whitelist_sources(id) ON DELETE CASCADE,
+            group_id  INTEGER NOT NULL REFERENCES groups(id)            ON DELETE CASCADE,
+            PRIMARY KEY (source_id, group_id)
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
         CREATE TABLE regex_filters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -612,7 +625,7 @@ async fn test_create_whitelist_source_success() {
     assert!(json["id"].is_number());
     assert_eq!(json["name"], "Safe Sites Allowlist");
     assert_eq!(json["url"], "https://example.com/allow.txt");
-    assert_eq!(json["group_id"], 1);
+    assert_eq!(json["group_ids"][0], 1);
     assert_eq!(json["comment"], "Main allow list");
     assert_eq!(json["enabled"], true);
     assert!(json["created_at"].is_string());
@@ -642,7 +655,7 @@ async fn test_create_whitelist_source_defaults() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["name"], "Minimal Allowlist");
-    assert_eq!(json["group_id"], 1);
+    assert_eq!(json["group_ids"][0], 1);
     assert_eq!(json["enabled"], true);
     assert!(json["url"].is_null());
 }

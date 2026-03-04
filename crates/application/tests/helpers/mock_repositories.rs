@@ -801,7 +801,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
         &self,
         name: String,
         url: Option<String>,
-        group_id: i64,
+        group_ids: Vec<i64>,
         comment: Option<String>,
         enabled: bool,
     ) -> Result<BlocklistSource, DomainError> {
@@ -822,7 +822,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
             id: Some(id),
             name: Arc::from(name.as_str()),
             url: url.as_deref().map(Arc::from),
-            group_id,
+            group_ids,
             comment: comment.as_deref().map(Arc::from),
             enabled,
             created_at: Some("2026-01-01 00:00:00".to_string()),
@@ -847,7 +847,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
         id: i64,
         name: Option<String>,
         url: Option<Option<String>>,
-        group_id: Option<i64>,
+        group_ids: Option<Vec<i64>>,
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<BlocklistSource, DomainError> {
@@ -864,8 +864,8 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
         if let Some(u_opt) = url {
             source.url = u_opt.as_deref().map(Arc::from);
         }
-        if let Some(gid) = group_id {
-            source.group_id = gid;
+        if let Some(ids) = group_ids {
+            source.group_ids = ids;
         }
         if let Some(c) = comment {
             source.comment = Some(Arc::from(c.as_str()));
@@ -1119,7 +1119,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
         &self,
         name: String,
         url: Option<String>,
-        group_id: i64,
+        group_ids: Vec<i64>,
         comment: Option<String>,
         enabled: bool,
     ) -> Result<WhitelistSource, DomainError> {
@@ -1140,7 +1140,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
             id: Some(id),
             name: Arc::from(name.as_str()),
             url: url.as_deref().map(Arc::from),
-            group_id,
+            group_ids,
             comment: comment.as_deref().map(Arc::from),
             enabled,
             created_at: Some("2026-01-01 00:00:00".to_string()),
@@ -1165,7 +1165,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
         id: i64,
         name: Option<String>,
         url: Option<Option<String>>,
-        group_id: Option<i64>,
+        group_ids: Option<Vec<i64>>,
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<WhitelistSource, DomainError> {
@@ -1182,8 +1182,8 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
         if let Some(u_opt) = url {
             source.url = u_opt.as_deref().map(Arc::from);
         }
-        if let Some(gid) = group_id {
-            source.group_id = gid;
+        if let Some(ids) = group_ids {
+            source.group_ids = ids;
         }
         if let Some(c) = comment {
             source.comment = Some(Arc::from(c.as_str()));

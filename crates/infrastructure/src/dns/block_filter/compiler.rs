@@ -132,12 +132,12 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         .map(|row| row.get::<i64, _>("id"))
         .unwrap_or(1);
 
-    let source_rows = sqlx::query(
-        "SELECT id, name, group_id, url FROM blocklist_sources WHERE enabled = 1 ORDER BY id",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    // Step 1: Load distinct enabled sources for bit assignment (max 63)
+    let source_rows =
+        sqlx::query("SELECT id, url FROM blocklist_sources WHERE enabled = 1 ORDER BY id")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
     if source_rows.len() > 63 {
         warn!(
@@ -146,13 +146,35 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         );
     }
 
-    let sources: Vec<SourceMeta> = source_rows
+    // Build id→bit map (capped at 63)
+    let id_to_bit: HashMap<i64, u8> = source_rows
         .iter()
         .take(63)
         .enumerate()
-        .map(|(idx, row)| SourceMeta {
-            group_id: row.get("group_id"),
-            bit: idx as u8,
+        .map(|(idx, row)| (row.get::<i64, _>("id"), idx as u8))
+        .collect();
+
+    // Step 2: Load all (source_id, group_id) assignments from pivot
+    let assignment_rows = sqlx::query(
+        "SELECT bsg.source_id, bsg.group_id
+         FROM blocklist_source_groups bsg
+         JOIN blocklist_sources bs ON bs.id = bsg.source_id
+         WHERE bs.enabled = 1",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+    // Expand into flat Vec<SourceMeta> — same bit can appear with multiple group_ids
+    // build_group_masks is unchanged: it iterates (bit, group_id) pairs
+    let sources: Vec<SourceMeta> = assignment_rows
+        .iter()
+        .filter_map(|row| {
+            let source_id: i64 = row.get("source_id");
+            let group_id: i64 = row.get("group_id");
+            id_to_bit
+                .get(&source_id)
+                .map(|&bit| SourceMeta { group_id, bit })
         })
         .collect();
 
@@ -517,44 +539,6 @@ pub async fn compile_block_index(
     })
 }
 
-struct WsFetch {
-    group_id: i64,
-    text: Option<String>,
-}
-
-async fn fetch_allowlists_parallel(
-    url_tasks: Vec<(i64, String)>,
-    client: &reqwest::Client,
-) -> Vec<WsFetch> {
-    let tasks: Vec<_> = url_tasks
-        .into_iter()
-        .map(|(group_id, u)| {
-            let client = client.clone();
-            tokio::spawn(async move {
-                let text = match fetch_url(&u, &client).await {
-                    Ok(t) => Some(t),
-                    Err(e) => {
-                        warn!(url = %u, error = %e, "Failed to fetch whitelist source");
-                        None
-                    }
-                };
-                WsFetch { group_id, text }
-            })
-        })
-        .collect();
-
-    let mut results = Vec::new();
-    for result in join_all(tasks).await {
-        match result {
-            Ok(wf) => results.push(wf),
-            Err(e) => {
-                warn!(error = %e, "Whitelist source fetch task panicked");
-            }
-        }
-    }
-    results
-}
-
 async fn build_allowlist_index(
     pool: &SqlitePool,
     client: &reqwest::Client,
@@ -595,38 +579,77 @@ async fn build_allowlist_index(
     }
 
     let ws_rows = sqlx::query(
-        "SELECT group_id, url FROM whitelist_sources WHERE enabled = 1 AND url IS NOT NULL",
+        "SELECT wsg.source_id, wsg.group_id, ws.url
+         FROM whitelist_source_groups wsg
+         JOIN whitelist_sources ws ON ws.id = wsg.source_id
+         WHERE ws.enabled = 1 AND ws.url IS NOT NULL",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
-    let url_tasks: Vec<(i64, String)> = ws_rows
-        .iter()
-        .filter_map(|row| {
-            let url: Option<String> = row.get("url");
-            url.map(|u| (row.get::<i64, _>("group_id"), u))
-        })
+    // Deduplicate URLs: each URL is fetched once, applied to all associated groups
+    let mut url_to_groups: HashMap<String, Vec<i64>> = HashMap::new();
+    for row in &ws_rows {
+        if let Some(url) = row.get::<Option<String>, _>("url") {
+            let group_id: i64 = row.get("group_id");
+            url_to_groups.entry(url).or_default().push(group_id);
+        }
+    }
+
+    let deduped_tasks: Vec<(i64, String)> = url_to_groups
+        .keys()
+        .map(|url| (0i64, url.clone()))
         .collect();
 
-    for wf in fetch_allowlists_parallel(url_tasks, client).await {
-        if let Some(text) = wf.text {
-            let group_id = wf.group_id;
-            let exact_set = allowlists
-                .group_exact
-                .entry(group_id)
-                .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
-            let trie = allowlists.group_wildcard.entry(group_id).or_default();
+    // Fetch each unique URL once; we'll re-map to group_ids after
+    let fetched: Vec<(String, Option<String>)> = {
+        let tasks: Vec<_> = deduped_tasks
+            .into_iter()
+            .map(|(_, url)| {
+                let client = client.clone();
+                let url_clone = url.clone();
+                let url_for_task = url.clone();
+                tokio::spawn(async move {
+                    let text = match fetch_url(&url_for_task, &client).await {
+                        Ok(t) => Some(t),
+                        Err(e) => {
+                            tracing::warn!(url = %url_for_task, error = %e, "Failed to fetch whitelist source");
+                            None
+                        }
+                    };
+                    (url_clone, text)
+                })
+            })
+            .collect();
+        join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect()
+    };
 
-            for entry in parse_list_text(&text) {
-                match entry {
-                    ParsedEntry::Exact(domain) => {
-                        exact_set.insert(CompactString::new(domain));
+    for (url, text_opt) in fetched {
+        if let Some(text) = text_opt {
+            let entries = parse_list_text(&text);
+            let group_ids = url_to_groups.get(&url).cloned().unwrap_or_default();
+            for group_id in group_ids {
+                let exact_set = allowlists
+                    .group_exact
+                    .entry(group_id)
+                    .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
+                let trie = allowlists.group_wildcard.entry(group_id).or_default();
+
+                for entry in &entries {
+                    match entry {
+                        ParsedEntry::Exact(domain) => {
+                            exact_set.insert(CompactString::new(domain));
+                        }
+                        ParsedEntry::Wildcard(pattern) => {
+                            trie.insert_wildcard(pattern, 1u64);
+                        }
+                        ParsedEntry::Pattern(_) => {}
                     }
-                    ParsedEntry::Wildcard(pattern) => {
-                        trie.insert_wildcard(&pattern, 1u64);
-                    }
-                    ParsedEntry::Pattern(_) => {}
                 }
             }
         }

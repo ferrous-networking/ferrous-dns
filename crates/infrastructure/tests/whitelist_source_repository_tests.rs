@@ -45,6 +45,17 @@ async fn create_test_db() -> SqlitePool {
     .unwrap();
 
     sqlx::query(
+        "CREATE TABLE IF NOT EXISTS whitelist_source_groups (
+            source_id INTEGER NOT NULL REFERENCES whitelist_sources(id) ON DELETE CASCADE,
+            group_id  INTEGER NOT NULL REFERENCES groups(id)            ON DELETE CASCADE,
+            PRIMARY KEY (source_id, group_id)
+        )",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
         "INSERT INTO groups (id, name, enabled, comment, is_default)
          VALUES (1, 'Protected', 1, 'Default group', 1)",
     )
@@ -64,7 +75,7 @@ async fn test_create_and_get_source() {
         .create(
             "AdGuard Allowlist".to_string(),
             Some("https://adguard.com/allowlist.txt".to_string()),
-            1,
+            vec![1],
             Some("Allow list for trusted domains".to_string()),
             true,
         )
@@ -77,7 +88,7 @@ async fn test_create_and_get_source() {
         source.url.as_deref(),
         Some("https://adguard.com/allowlist.txt")
     );
-    assert_eq!(source.group_id, 1);
+    assert_eq!(source.group_ids, vec![1]);
     assert_eq!(
         source.comment.as_deref(),
         Some("Allow list for trusted domains")
@@ -88,6 +99,7 @@ async fn test_create_and_get_source() {
 
     let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
     assert_eq!(fetched.name.as_ref(), "AdGuard Allowlist");
+    assert_eq!(fetched.group_ids, vec![1]);
 }
 
 #[tokio::test]
@@ -96,7 +108,7 @@ async fn test_create_without_url() {
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
     let source = repo
-        .create("Manual Allowlist".to_string(), None, 1, None, true)
+        .create("Manual Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -105,16 +117,40 @@ async fn test_create_without_url() {
 }
 
 #[tokio::test]
+async fn test_create_with_multiple_groups() {
+    let pool = create_test_db().await;
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let repo = SqliteWhitelistSourceRepository::new(pool);
+
+    let source = repo
+        .create("Shared Allowlist".to_string(), None, vec![1, 2], None, true)
+        .await
+        .unwrap();
+
+    assert_eq!(source.group_ids.len(), 2);
+    assert!(source.group_ids.contains(&1));
+    assert!(source.group_ids.contains(&2));
+
+    let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids.len(), 2);
+}
+
+#[tokio::test]
 async fn test_create_unique_name_constraint() {
     let pool = create_test_db().await;
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
-    repo.create("Duplicate Name".to_string(), None, 1, None, true)
+    repo.create("Duplicate Name".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let result = repo
-        .create("Duplicate Name".to_string(), None, 1, None, false)
+        .create("Duplicate Name".to_string(), None, vec![1], None, false)
         .await;
 
     assert!(result.is_err());
@@ -140,13 +176,13 @@ async fn test_get_all_ordered_by_name() {
     let pool = create_test_db().await;
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
-    repo.create("Zzz Allowlist".to_string(), None, 1, None, true)
+    repo.create("Zzz Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
-    repo.create("Aaa Allowlist".to_string(), None, 1, None, true)
+    repo.create("Aaa Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
-    repo.create("Mmm Allowlist".to_string(), None, 1, None, true)
+    repo.create("Mmm Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -172,7 +208,7 @@ async fn test_update_enabled_field() {
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
     let source = repo
-        .create("Toggle Allowlist".to_string(), None, 1, None, true)
+        .create("Toggle Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
@@ -194,7 +230,7 @@ async fn test_update_name() {
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
     let source = repo
-        .create("Old Name".to_string(), None, 1, None, true)
+        .create("Old Name".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
@@ -214,7 +250,7 @@ async fn test_update_name() {
 }
 
 #[tokio::test]
-async fn test_update_group_id() {
+async fn test_update_group_ids() {
     let pool = create_test_db().await;
     let repo = SqliteWhitelistSourceRepository::new(pool.clone());
 
@@ -224,16 +260,48 @@ async fn test_update_group_id() {
         .unwrap();
 
     let source = repo
-        .create("Group Test".to_string(), None, 1, None, true)
+        .create("Group Test".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 
     let updated = repo
-        .update(source.id.unwrap(), None, None, Some(2), None, None)
+        .update(source.id.unwrap(), None, None, Some(vec![2]), None, None)
         .await
         .unwrap();
 
-    assert_eq!(updated.group_id, 2);
+    assert_eq!(updated.group_ids, vec![2]);
+
+    let fetched = repo.get_by_id(source.id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids, vec![2]);
+}
+
+#[tokio::test]
+async fn test_update_assign_multiple_groups() {
+    let pool = create_test_db().await;
+    let repo = SqliteWhitelistSourceRepository::new(pool.clone());
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let source = repo
+        .create("Shared Allowlist".to_string(), None, vec![1], None, true)
+        .await
+        .unwrap();
+    let id = source.id.unwrap();
+
+    let updated = repo
+        .update(id, None, None, Some(vec![1, 2]), None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(updated.group_ids.len(), 2);
+    assert!(updated.group_ids.contains(&1));
+    assert!(updated.group_ids.contains(&2));
+
+    let fetched = repo.get_by_id(id).await.unwrap().unwrap();
+    assert_eq!(fetched.group_ids.len(), 2);
 }
 
 #[tokio::test]
@@ -261,7 +329,7 @@ async fn test_update_clear_url() {
         .create(
             "URL Allowlist".to_string(),
             Some("https://example.com/allow.txt".to_string()),
-            1,
+            vec![1],
             None,
             true,
         )
@@ -282,7 +350,7 @@ async fn test_delete_success() {
     let repo = SqliteWhitelistSourceRepository::new(pool);
 
     let source = repo
-        .create("To Delete".to_string(), None, 1, None, true)
+        .create("To Delete".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
     let id = source.id.unwrap();
@@ -291,6 +359,39 @@ async fn test_delete_success() {
 
     let fetched = repo.get_by_id(id).await.unwrap();
     assert!(fetched.is_none());
+}
+
+#[tokio::test]
+async fn test_delete_cascades_pivot_rows() {
+    let pool = create_test_db().await;
+    let repo = SqliteWhitelistSourceRepository::new(pool.clone());
+
+    sqlx::query("INSERT INTO groups (id, name) VALUES (2, 'Office')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let source = repo
+        .create(
+            "Multi Group Allowlist".to_string(),
+            None,
+            vec![1, 2],
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+    let id = source.id.unwrap();
+
+    repo.delete(id).await.unwrap();
+
+    let pivot_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM whitelist_source_groups WHERE source_id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pivot_count, 0);
 }
 
 #[tokio::test]
@@ -313,7 +414,7 @@ async fn test_fk_group_restricts_delete() {
     let pool = create_test_db().await;
     let repo = SqliteWhitelistSourceRepository::new(pool.clone());
 
-    repo.create("FK Test Allowlist".to_string(), None, 1, None, true)
+    repo.create("FK Test Allowlist".to_string(), None, vec![1], None, true)
         .await
         .unwrap();
 

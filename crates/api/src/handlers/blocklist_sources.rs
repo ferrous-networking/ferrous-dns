@@ -61,13 +61,13 @@ async fn create_blocklist_source(
     State(state): State<AppState>,
     Json(req): Json<CreateBlocklistSourceRequest>,
 ) -> Result<(StatusCode, Json<BlocklistSourceResponse>), ApiError> {
-    let group_id = req.group_id.unwrap_or(1);
+    let group_ids = req.resolved_group_ids(1);
     let enabled = req.enabled.unwrap_or(true);
 
     let source = state
         .blocking
         .create_blocklist_source
-        .execute(req.name, req.url, group_id, req.comment, enabled)
+        .execute(req.name, req.url, group_ids, req.comment, enabled)
         .await?;
 
     Ok((
@@ -81,17 +81,11 @@ async fn update_blocklist_source(
     Path(id): Path<i64>,
     Json(req): Json<UpdateBlocklistSourceRequest>,
 ) -> Result<Json<BlocklistSourceResponse>, ApiError> {
+    let group_ids = req.resolved_group_ids();
     let source = state
         .blocking
         .update_blocklist_source
-        .execute(
-            id,
-            req.name,
-            req.url,
-            req.group_id,
-            req.comment,
-            req.enabled,
-        )
+        .execute(id, req.name, req.url, group_ids, req.comment, req.enabled)
         .await?;
     Ok(Json(BlocklistSourceResponse::from_source(source)))
 }

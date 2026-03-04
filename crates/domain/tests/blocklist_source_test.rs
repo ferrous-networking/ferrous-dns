@@ -7,7 +7,7 @@ fn test_blocklist_source_creation() {
         Some(1),
         Arc::from("Test List"),
         Some(Arc::from("https://example.com/list.txt")),
-        1,
+        vec![1],
         Some(Arc::from("Test comment")),
         true,
     );
@@ -15,7 +15,7 @@ fn test_blocklist_source_creation() {
     assert_eq!(source.id, Some(1));
     assert_eq!(source.name.as_ref(), "Test List");
     assert_eq!(source.url.as_deref(), Some("https://example.com/list.txt"));
-    assert_eq!(source.group_id, 1);
+    assert_eq!(source.group_ids, vec![1]);
     assert_eq!(source.comment.as_deref(), Some("Test comment"));
     assert!(source.enabled);
     assert!(source.created_at.is_none());
@@ -23,8 +23,23 @@ fn test_blocklist_source_creation() {
 }
 
 #[test]
+fn test_blocklist_source_multiple_groups() {
+    let source = BlocklistSource::new(
+        Some(2),
+        Arc::from("Multi-Group List"),
+        None,
+        vec![1, 2, 3],
+        None,
+        true,
+    );
+
+    assert_eq!(source.group_ids, vec![1, 2, 3]);
+    assert_eq!(source.group_ids.len(), 3);
+}
+
+#[test]
 fn test_blocklist_source_no_url_no_comment() {
-    let source = BlocklistSource::new(None, Arc::from("Manual List"), None, 1, None, false);
+    let source = BlocklistSource::new(None, Arc::from("Manual List"), None, vec![1], None, false);
 
     assert!(source.id.is_none());
     assert_eq!(source.name.as_ref(), "Manual List");

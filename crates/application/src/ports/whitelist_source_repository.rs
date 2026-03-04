@@ -7,7 +7,7 @@ pub trait WhitelistSourceRepository: Send + Sync {
         &self,
         name: String,
         url: Option<String>,
-        group_id: i64,
+        group_ids: Vec<i64>,
         comment: Option<String>,
         enabled: bool,
     ) -> Result<WhitelistSource, DomainError>;
@@ -21,7 +21,7 @@ pub trait WhitelistSourceRepository: Send + Sync {
         id: i64,
         name: Option<String>,
         url: Option<Option<String>>,
-        group_id: Option<i64>,
+        group_ids: Option<Vec<i64>>,
         comment: Option<String>,
         enabled: Option<bool>,
     ) -> Result<WhitelistSource, DomainError>;
