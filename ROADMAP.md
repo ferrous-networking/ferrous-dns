@@ -33,7 +33,7 @@
 - [x] button allows and block in the queries.html list
 - [x] Conditional forwarding
 
-### 🔮 v0.3.0 - Advanced Features (Current)
+### 🔮 v0.3.0 - Advanced Features 
 
 
 - [x] Advanced analytics and graphs, upstrens ms, top sites blocked sites
@@ -42,16 +42,12 @@
 - [x] IPv6 upstreams
 - [x] dns name upstreams (e.: dns.google.com)
 - [x] CNAME cloaking detection
-- [ ] Safe Search
+- [x] Safe Search
 - [x] Blockable services (1-click)
 
-### 🎯 v0.4.0 - Security
+### 🎯 v0.4.0 - Security (Current)
 
-- [ ] Login / Auth
-- [ ] HTTPS para Web UI
-- [ ] API Key / token
-- [ ] Rate limiting DNS
-- [ ] DoS protection
+- [ ] Scheduling por grupo + Parental Controls UI
 
 ### 🎯 v0.5.0 - Performance & Scale
 
@@ -61,6 +57,15 @@
 - [ ] Performance benchmarks vs. competitors
 - [ ] OpenAPI / Swagger docs
 
+### 🎯 v0.6.0
+
+- [ ] Login / Auth
+- [ ] HTTPS para Web UI
+- [ ] API Key / token
+- [ ] Rate limiting DNS
+- [ ] DoS protection
+
+
 ### 🌟 v1.0.0 - Production Ready
 
 - [ ] Security audit
@@ -69,6 +74,12 @@
 - [ ] API v1 stable
 - [ ] Full documentation
 
+### 🎯 v1.1.1 - next features
+
+- [ ] Time-based Blocking
+- [ ] Blocklist Dry-Run / Simulation Mode
+- [ ] Blocklist Impact Analysis
+ 
 See [ROADMAP.md](ROADMAP.md) for detailed milestones.
 
 ---
