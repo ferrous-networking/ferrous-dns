@@ -49,14 +49,14 @@
 - [x] Per-group blocklist assignment (assign specific blocklists to client groups)
 - [x] Scheduling per group + Parental Controls UI
 
-### 🎯 v0.5.0 - Server Advanced Features (Current)
+### ✅ v0.5.0 - Server Advanced Features 
 
 - [x] DoH/DoT server (listener-side, serve encrypted DNS to clients)
 - [x] PROXY Protocol v2 (real client IP behind load balancers)
 - [x] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [x] DNS Rebinding Protection
 
-### 🎯 v0.6.0 - Performance & Scale
+### 🎯 v0.6.0 - Performance & Scale (Current)
 
 - [ ] Pi-hole compatible API
 - [ ] Performance benchmarks vs. competitors
