@@ -93,20 +93,6 @@ async fn test_multiple_queries_in_sequence() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_cache_warm_on_startup() {
-    let server = TestServerBuilder::new()
-        .with_cache(true)
-        .build()
-        .await
-        .expect("Failed to start server");
-
-    // Cache should be empty initially
-    // (Could verify via metrics if available)
-
-    server.shutdown();
-}
-
-#[tokio::test]
 async fn test_cache_eviction_flow() {
     let server = TestServerBuilder::new()
         .with_cache(true)
