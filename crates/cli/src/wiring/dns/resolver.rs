@@ -22,6 +22,7 @@ pub(super) fn build_resolver(
         config.dns.block_private_ptr,
         config.dns.block_non_fqdn,
         config.dns.local_domain.clone(),
+        config.dns.local_dns_server.is_some(),
     )
     .with_local_dns_server(config.dns.local_dns_server.clone());
 

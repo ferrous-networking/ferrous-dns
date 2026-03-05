@@ -2,7 +2,7 @@ use crate::dns::forwarding::DnsForwarder;
 use crate::dns::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DomainError, PrivateIpFilter};
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -114,6 +114,10 @@ impl DnsResolver for CoreResolver {
             record_type = %query.record_type,
             "CoreResolver: performing upstream query"
         );
+
+        if self.local_dns_server.is_some() && PrivateIpFilter::is_private_ptr_query(&query.domain) {
+            return self.resolve_local_tld(query).await;
+        }
 
         if self.is_local_tld(&query.domain) {
             return self.resolve_local_tld(query).await;

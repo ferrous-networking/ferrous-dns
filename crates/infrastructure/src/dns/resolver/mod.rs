@@ -6,6 +6,7 @@ pub mod dnssec_layer;
 pub mod filtered_resolver;
 pub mod filters;
 pub mod legacy;
+pub mod local_ptr;
 
 pub use builder::ResolverBuilder;
 pub use cache_layer::CachedResolver;
@@ -15,3 +16,4 @@ pub use dnssec_layer::DnssecResolver;
 pub use filtered_resolver::FilteredResolver;
 pub use filters::QueryFilters;
 pub use legacy::HickoryDnsResolver;
+pub use local_ptr::LocalPtrResolver;

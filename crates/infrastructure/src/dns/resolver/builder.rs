@@ -7,6 +7,7 @@ use super::core::CoreResolver;
 use super::dnssec_layer::DnssecResolver;
 use super::filtered_resolver::FilteredResolver;
 use super::filters::QueryFilters;
+use super::local_ptr::{LocalPtrResolver, PtrMap};
 use ferrous_dns_application::ports::DnsResolver;
 use std::sync::Arc;
 use tracing::info;
@@ -20,6 +21,7 @@ pub struct ResolverBuilder {
     local_dns_server: Option<String>,
     prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
+    local_ptr_map: Option<Arc<PtrMap>>,
 }
 
 impl ResolverBuilder {
@@ -33,6 +35,7 @@ impl ResolverBuilder {
             local_dns_server: None,
             prefetch_predictor: None,
             filters: None,
+            local_ptr_map: None,
         }
     }
 
@@ -76,11 +79,19 @@ impl ResolverBuilder {
         self
     }
 
+    /// Attaches a pre-populated PTR map so that `LocalPtrResolver` is added as the
+    /// outermost layer, intercepting PTR queries before any other resolver.
+    pub fn with_local_ptr_map(mut self, map: Arc<PtrMap>) -> Self {
+        self.local_ptr_map = Some(map);
+        self
+    }
+
     pub fn build(self) -> Arc<dyn DnsResolver> {
         info!(
             dnssec = self.config.dnssec_enabled,
             cache = self.cache.is_some(),
             filters = self.filters.is_some(),
+            local_ptr = self.local_ptr_map.is_some(),
             "Building DNS resolver"
         );
 
@@ -120,6 +131,10 @@ impl ResolverBuilder {
 
         if let Some(filters) = self.filters {
             resolver = Arc::new(FilteredResolver::new(resolver, filters));
+        }
+
+        if let Some(map) = self.local_ptr_map {
+            resolver = Arc::new(LocalPtrResolver::new(resolver, map));
         }
 
         info!("DNS resolver built successfully");

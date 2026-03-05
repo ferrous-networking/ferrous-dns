@@ -2,12 +2,12 @@ mod cache;
 mod pool;
 mod resolver;
 
-use ferrous_dns_application::ports::CacheMaintenancePort;
+use ferrous_dns_application::ports::{CacheMaintenancePort, PtrRecordRegistry};
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
-    HealthChecker, HickoryDnsResolver, PoolManager,
+    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, PoolManager,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -20,6 +20,7 @@ pub struct DnsServices {
     pub pool_manager: Arc<PoolManager>,
     pub health_checker: Option<Arc<HealthChecker>>,
     pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
+    pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
 }
 
 impl DnsServices {
@@ -68,20 +69,38 @@ impl DnsServices {
         )
         .await?;
 
-        let resolver = Arc::new(dns_resolver);
+        let ptr_registry: Option<Arc<dyn PtrRecordRegistry>> =
+            if !config.dns.local_records.is_empty() {
+                info!(
+                    count = config.dns.local_records.len(),
+                    "Preloading local DNS records into permanent cache..."
+                );
+                cache::preload_local_records_into_cache(
+                    &dns_cache,
+                    &config.dns.local_records,
+                    &config.dns.local_domain,
+                );
+                info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
 
-        if !config.dns.local_records.is_empty() {
-            info!(
-                count = config.dns.local_records.len(),
-                "Preloading local DNS records into permanent cache..."
-            );
-            cache::preload_local_records_into_cache(
-                &dns_cache,
-                &config.dns.local_records,
-                &config.dns.local_domain,
-            );
-            info!("✓ Local DNS records preloaded (cached permanently, <0.1ms resolution)");
-        }
+                let dummy_inner: Arc<dyn ferrous_dns_application::ports::DnsResolver> =
+                    Arc::new(HickoryDnsResolver::new_with_pools(
+                        pool_manager_clone.clone(),
+                        timeout_ms,
+                        false,
+                        None,
+                    )?);
+                let local_ptr = Arc::new(LocalPtrResolver::from_local_records(
+                    &config.dns.local_records,
+                    &config.dns.local_domain,
+                    dummy_inner,
+                ));
+                dns_resolver = dns_resolver.with_local_ptr_map(Arc::clone(&local_ptr.map));
+                Some(local_ptr as Arc<dyn PtrRecordRegistry>)
+            } else {
+                None
+            };
+
+        let resolver = Arc::new(dns_resolver);
 
         let handler_use_case = Arc::new(
             HandleDnsQueryUseCase::new(
@@ -104,6 +123,7 @@ impl DnsServices {
             pool_manager: pool_manager_clone,
             health_checker: stored_health_checker,
             cache_maintenance,
+            ptr_registry,
         })
     }
 

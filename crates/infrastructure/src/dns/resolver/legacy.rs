@@ -4,6 +4,7 @@ use super::super::prefetch::PrefetchPredictor;
 use super::builder::ResolverBuilder;
 use super::config::ResolverConfig;
 use super::filters::QueryFilters;
+use super::local_ptr::PtrMap;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DomainError};
@@ -26,6 +27,7 @@ struct BuilderState {
     local_dns_server: Option<String>,
     prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
+    local_ptr_map: Option<Arc<PtrMap>>,
 }
 
 impl HickoryDnsResolver {
@@ -51,6 +53,7 @@ impl HickoryDnsResolver {
             local_dns_server: None,
             prefetch_predictor: None,
             filters: None,
+            local_ptr_map: None,
         };
 
         let inner = ResolverBuilder::new(pool_manager)
@@ -82,11 +85,13 @@ impl HickoryDnsResolver {
         block_private_ptr: bool,
         block_non_fqdn: bool,
         local_domain: Option<String>,
+        has_local_dns_server: bool,
     ) -> Self {
         self.builder_state.filters = Some(QueryFilters {
             block_private_ptr,
             block_non_fqdn,
             local_domain: local_domain.clone(),
+            has_local_dns_server,
         });
         self.builder_state.local_domain = local_domain;
         self.rebuild();
@@ -101,6 +106,14 @@ impl HickoryDnsResolver {
 
     pub fn with_prefetch_predictor(mut self, predictor: Arc<PrefetchPredictor>) -> Self {
         self.builder_state.prefetch_predictor = Some(predictor);
+        self.rebuild();
+        self
+    }
+
+    /// Attaches a live PTR map so that PTR queries for local records are answered
+    /// without upstream forwarding.
+    pub fn with_local_ptr_map(mut self, map: Arc<PtrMap>) -> Self {
+        self.builder_state.local_ptr_map = Some(map);
         self.rebuild();
         self
     }
@@ -125,6 +138,10 @@ impl HickoryDnsResolver {
 
         if let Some(filters) = &self.builder_state.filters {
             builder = builder.with_filters(filters.clone());
+        }
+
+        if let Some(map) = &self.builder_state.local_ptr_map {
+            builder = builder.with_local_ptr_map(Arc::clone(map));
         }
 
         self.inner = builder.build();

@@ -53,7 +53,7 @@
 
 - [x] DoH/DoT server (listener-side, serve encrypted DNS to clients)
 - [x] PROXY Protocol v2 (real client IP behind load balancers)
-- [ ] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
+- [x] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [ ] DNS Rebinding Protection
 
 ### 🎯 v0.6.0 - Performance & Scale

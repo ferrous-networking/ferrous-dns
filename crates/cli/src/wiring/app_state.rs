@@ -37,18 +37,18 @@ pub fn build_app_state(
         dns: DnsUseCases {
             cache: dns_services.cache.clone()
                 as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
-            create_local_record: Arc::new(CreateLocalRecordUseCase::new(
-                config.clone(),
-                config_repo.clone(),
-            )),
-            update_local_record: Arc::new(UpdateLocalRecordUseCase::new(
-                config.clone(),
-                config_repo.clone(),
-            )),
-            delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(
-                config.clone(),
-                config_repo,
-            )),
+            create_local_record: Arc::new(
+                CreateLocalRecordUseCase::new(config.clone(), config_repo.clone())
+                    .with_ptr_registry(dns_services.ptr_registry.clone()),
+            ),
+            update_local_record: Arc::new(
+                UpdateLocalRecordUseCase::new(config.clone(), config_repo.clone())
+                    .with_ptr_registry(dns_services.ptr_registry.clone()),
+            ),
+            delete_local_record: Arc::new(
+                DeleteLocalRecordUseCase::new(config.clone(), config_repo)
+                    .with_ptr_registry(dns_services.ptr_registry.clone()),
+            ),
             upstream_health: Arc::new(UpstreamHealthAdapter::new(
                 dns_services.pool_manager.clone(),
                 dns_services.health_checker.clone(),

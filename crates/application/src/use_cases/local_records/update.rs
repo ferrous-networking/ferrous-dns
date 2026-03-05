@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord};
 use tokio::sync::RwLock;
+use tracing::warn;
 
-use crate::ports::ConfigRepository;
+use crate::ports::{ConfigRepository, PtrRecordRegistry};
 
 pub struct UpdateLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
     config_repo: Arc<dyn ConfigRepository>,
+    ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
 }
 
 impl UpdateLocalRecordUseCase {
@@ -15,7 +17,15 @@ impl UpdateLocalRecordUseCase {
         Self {
             config,
             config_repo,
+            ptr_registry: None,
         }
+    }
+
+    /// Attaches a live PTR registry so that a successful record update immediately
+    /// swaps the old IP → FQDN mapping for the new one without requiring a server restart.
+    pub fn with_ptr_registry(mut self, registry: Option<Arc<dyn PtrRecordRegistry>>) -> Self {
+        self.ptr_registry = registry;
+        self
     }
 
     pub async fn execute(
@@ -64,6 +74,28 @@ impl UpdateLocalRecordUseCase {
                 "Failed to save configuration: {}",
                 e
             )));
+        }
+
+        if let Some(ref registry) = self.ptr_registry {
+            match old_record.ip.parse() {
+                Ok(old_ip) => registry.unregister(old_ip),
+                Err(_) => {
+                    warn!(ip = %old_record.ip, "PTR registry: failed to parse old IP after update");
+                }
+            }
+            match updated_record.ip.parse() {
+                Ok(new_ip) => {
+                    let fqdn = updated_record.fqdn(&config.dns.local_domain);
+                    registry.register(
+                        new_ip,
+                        Arc::from(fqdn.as_str()),
+                        updated_record.ttl_or_default(),
+                    );
+                }
+                Err(_) => {
+                    warn!(ip = %updated_record.ip, "PTR registry: failed to parse new IP after update");
+                }
+            }
         }
 
         Ok((updated_record, old_record))

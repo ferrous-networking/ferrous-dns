@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord};
 use tokio::sync::RwLock;
+use tracing::warn;
 
-use crate::ports::ConfigRepository;
+use crate::ports::{ConfigRepository, PtrRecordRegistry};
 
 pub struct CreateLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
     config_repo: Arc<dyn ConfigRepository>,
+    ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
 }
 
 impl CreateLocalRecordUseCase {
@@ -15,7 +17,15 @@ impl CreateLocalRecordUseCase {
         Self {
             config,
             config_repo,
+            ptr_registry: None,
         }
+    }
+
+    /// Attaches a live PTR registry so that a successful record creation immediately
+    /// registers the new IP → FQDN mapping without requiring a server restart.
+    pub fn with_ptr_registry(mut self, registry: Option<Arc<dyn PtrRecordRegistry>>) -> Self {
+        self.ptr_registry = registry;
+        self
     }
 
     pub async fn execute(
@@ -54,6 +64,18 @@ impl CreateLocalRecordUseCase {
                 "Failed to save configuration: {}",
                 e
             )));
+        }
+
+        if let Some(ref registry) = self.ptr_registry {
+            match new_record.ip.parse() {
+                Ok(ip) => {
+                    let fqdn = new_record.fqdn(&config.dns.local_domain);
+                    registry.register(ip, Arc::from(fqdn.as_str()), new_record.ttl_or_default());
+                }
+                Err(_) => {
+                    warn!(ip = %new_record.ip, "PTR registry: failed to parse IP after save");
+                }
+            }
         }
 
         Ok((new_record, new_index))

@@ -7,6 +7,7 @@ pub struct QueryFilters {
     pub block_private_ptr: bool,
     pub block_non_fqdn: bool,
     pub local_domain: Option<String>,
+    pub has_local_dns_server: bool,
 }
 
 impl QueryFilters {
@@ -14,16 +15,21 @@ impl QueryFilters {
         block_private_ptr: bool,
         block_non_fqdn: bool,
         local_domain: Option<String>,
+        has_local_dns_server: bool,
     ) -> Self {
         Self {
             block_private_ptr,
             block_non_fqdn,
             local_domain,
+            has_local_dns_server,
         }
     }
 
     pub fn apply(&self, mut query: DnsQuery) -> Result<DnsQuery, DomainError> {
-        if self.block_private_ptr && PrivateIpFilter::is_private_ptr_query(&query.domain) {
+        if self.block_private_ptr
+            && !self.has_local_dns_server
+            && PrivateIpFilter::is_private_ptr_query(&query.domain)
+        {
             return Err(DomainError::FilteredQuery(format!(
                 "Private PTR query blocked: {}",
                 query.domain
@@ -62,6 +68,7 @@ impl Default for QueryFilters {
             block_private_ptr: true,
             block_non_fqdn: false,
             local_domain: None,
+            has_local_dns_server: false,
         }
     }
 }
