@@ -1,3 +1,4 @@
+use super::rebinding_guard::RebindingGuard;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
     QueryLogRepository, SafeSearchEnginePort,
@@ -47,6 +48,7 @@ pub struct HandleDnsQueryUseCase {
     query_log: Arc<dyn QueryLogRepository>,
     client_repo: Option<Arc<dyn ClientRepository>>,
     client_tracking_interval: Duration,
+    rebinding_guard: RebindingGuard,
 }
 
 impl HandleDnsQueryUseCase {
@@ -62,6 +64,7 @@ impl HandleDnsQueryUseCase {
             query_log,
             client_repo: None,
             client_tracking_interval: Duration::from_secs(60),
+            rebinding_guard: RebindingGuard::disabled(),
         }
     }
 
@@ -77,6 +80,19 @@ impl HandleDnsQueryUseCase {
     ) -> Self {
         self.client_repo = Some(client_repo);
         self.client_tracking_interval = Duration::from_secs(interval_secs);
+        self
+    }
+
+    /// Enables DNS rebinding protection. Resolving a public domain to a private IP
+    /// is blocked unless the domain matches `local_domain` suffix, is served by the
+    /// local DNS server, or is explicitly listed in `allowlist`.
+    pub fn with_rebinding_protection(
+        mut self,
+        enabled: bool,
+        local_domain: Option<&str>,
+        allowlist: &[String],
+    ) -> Self {
+        self.rebinding_guard = RebindingGuard::new(enabled, local_domain, allowlist);
         self
     }
 
@@ -258,6 +274,18 @@ impl HandleDnsQueryUseCase {
                         blocked: true,
                         response_status: Some("BLOCKED"),
                         block_source: Some(block_source),
+                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                    });
+                    return Err(DomainError::Blocked);
+                }
+                if self
+                    .rebinding_guard
+                    .is_rebinding_attempt(&request.domain, &resolution)
+                {
+                    self.log(&QueryLog {
+                        blocked: true,
+                        response_status: Some("BLOCKED"),
+                        block_source: Some(BlockSource::DnsRebinding),
                         ..Self::base_query_log(request, elapsed_us(), group_id)
                     });
                     return Err(DomainError::Blocked);

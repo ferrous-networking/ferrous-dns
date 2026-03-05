@@ -9,6 +9,8 @@ pub enum BlockSource {
     CnameCloaking,
     /// Blocked by a time-based schedule rule (ScheduleAction::BlockAll slot active).
     Schedule,
+    /// Blocked because a public domain resolved to a private/RFC1918 IP address.
+    DnsRebinding,
 }
 
 impl BlockSource {
@@ -19,6 +21,7 @@ impl BlockSource {
             BlockSource::RegexFilter => "regex_filter",
             BlockSource::CnameCloaking => "cname_cloaking",
             BlockSource::Schedule => "schedule",
+            BlockSource::DnsRebinding => "dns_rebinding",
         }
     }
 
@@ -29,6 +32,7 @@ impl BlockSource {
             2 => Some(BlockSource::RegexFilter),
             3 => Some(BlockSource::CnameCloaking),
             4 => Some(BlockSource::Schedule),
+            5 => Some(BlockSource::DnsRebinding),
             _ => None,
         }
     }
@@ -40,6 +44,7 @@ impl BlockSource {
             BlockSource::RegexFilter => 2,
             BlockSource::CnameCloaking => 3,
             BlockSource::Schedule => 4,
+            BlockSource::DnsRebinding => 5,
         }
     }
 }

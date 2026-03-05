@@ -54,11 +54,10 @@
 - [x] DoH/DoT server (listener-side, serve encrypted DNS to clients)
 - [x] PROXY Protocol v2 (real client IP behind load balancers)
 - [x] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
-- [ ] DNS Rebinding Protection
+- [x1] DNS Rebinding Protection
 
 ### 🎯 v0.6.0 - Performance & Scale
 
-- [ ] WebSocket dashboard for slow query monitoring
 - [ ] Pi-hole compatible API
 - [ ] Performance benchmarks vs. competitors
 - [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
@@ -72,7 +71,7 @@
 - [ ] Rate limiting DNS
 - [ ] DoS protection
 - [ ] Read-only / lockdown mode (disable config changes via flag)
-- [ ] Separate listening ports for DoH and Admin UI
+- [x] Separate listening ports for DoH and Admin UI
 
 ### 🎯 v0.8.0 - Export & Observability
 
@@ -101,5 +100,6 @@
 - [ ] Per-group upstream DNS
 - [ ] Webhook / push notifications
 - [ ] Audit log for configuration changes
+- [ ] WebSocket dashboard for slow query monitoring
 
 ---

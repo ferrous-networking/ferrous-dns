@@ -83,6 +83,18 @@ pub struct DnsConfig {
 
     #[serde(default)]
     pub local_records: Vec<LocalDnsRecord>,
+
+    /// Whether DNS rebinding protection is enabled. When `true`, responses that
+    /// resolve a public domain to a private/RFC1918 IP are blocked.
+    /// Defaults to `true` — opt-out rather than opt-in for security-sensitive features.
+    #[serde(default = "default_true")]
+    pub rebinding_protection_enabled: bool,
+
+    /// Domains that are always exempt from rebinding protection, regardless of the
+    /// resolved IP address. Useful for split-horizon DNS scenarios where an external
+    /// name intentionally resolves to a private address (e.g. VPN or router admin panels).
+    #[serde(default)]
+    pub rebinding_allowlist: Vec<String>,
 }
 
 impl Default for DnsConfig {
@@ -117,6 +129,8 @@ impl Default for DnsConfig {
             local_domain: None,
             local_dns_server: None,
             local_records: vec![],
+            rebinding_protection_enabled: true,
+            rebinding_allowlist: vec![],
         }
     }
 }

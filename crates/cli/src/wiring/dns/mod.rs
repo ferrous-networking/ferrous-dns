@@ -112,6 +112,11 @@ impl DnsServices {
             .with_client_tracking(
                 repos.client.clone(),
                 config.database.client_tracking_interval,
+            )
+            .with_rebinding_protection(
+                config.dns.rebinding_protection_enabled,
+                config.dns.local_domain.as_deref(),
+                &config.dns.rebinding_allowlist,
             ),
         );
 
