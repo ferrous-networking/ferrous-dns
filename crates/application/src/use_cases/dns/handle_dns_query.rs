@@ -1,4 +1,5 @@
 use super::rebinding_guard::RebindingGuard;
+use super::tsc_timer;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
     QueryLogRepository, SafeSearchEnginePort,
@@ -176,7 +177,7 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        let start_ns = coarse_now_ns();
+        let tsc_start = tsc_timer::now();
         let domain_arc: Arc<str> = Arc::from(domain);
         let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
@@ -184,7 +185,7 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        let elapsed_us = coarse_now_ns().saturating_sub(start_ns) / 1_000;
+        let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
         self.log(&QueryLog {
             id: None,
             domain: domain_arc,
@@ -209,8 +210,8 @@ impl HandleDnsQueryUseCase {
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
-        let start_ns = coarse_now_ns();
-        let elapsed_us = || coarse_now_ns().saturating_sub(start_ns) / 1_000;
+        let tsc_start = tsc_timer::now();
+        let elapsed_us = || tsc_timer::elapsed_us_since(tsc_start);
 
         self.maybe_track_client(request.client_ip);
 

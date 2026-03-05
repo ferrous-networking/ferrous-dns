@@ -3,6 +3,7 @@ mod pool;
 mod resolver;
 
 use ferrous_dns_application::ports::{CacheMaintenancePort, PtrRecordRegistry};
+use ferrous_dns_application::use_cases::dns::tsc_timer;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
@@ -26,6 +27,7 @@ pub struct DnsServices {
 impl DnsServices {
     pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
         info!("Initializing DNS services with load balancing");
+        tsc_timer::init();
 
         let emitter = pool::setup_event_logger(repos);
         let health_checker = pool::setup_health_checker(config);
