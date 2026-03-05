@@ -9,12 +9,13 @@ use socket2::Domain;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::task::JoinSet;
-use tracing::{error, info};
+use tracing::info;
 
 pub async fn start_dns_server(
     bind_addr: String,
     handler: DnsServerHandler,
     num_workers: usize,
+    proxy_protocol_enabled: bool,
 ) -> anyhow::Result<()> {
     let socket_addr: SocketAddr = bind_addr.parse()?;
     let domain = if socket_addr.is_ipv4() {
@@ -35,14 +36,10 @@ pub async fn start_dns_server(
             udp::run_udp_worker(udp_socket, handler_udp, i).await;
         });
 
-        let tcp_listener = tcp::create_tcp_listener(domain, socket_addr)?;
-        let handler_tcp = (*handler).clone();
+        let tcp_listener = Arc::new(tcp::create_tcp_listener(domain, socket_addr)?);
+        let handler_tcp = handler.clone();
         join_set.spawn(async move {
-            let mut server = hickory_server::ServerFuture::new(handler_tcp);
-            server.register_listener(tcp_listener, std::time::Duration::from_secs(10));
-            if let Err(e) = server.block_until_done().await {
-                error!(worker = i, error = %e, "TCP DNS worker error");
-            }
+            tcp::run_tcp_worker(tcp_listener, handler_tcp, proxy_protocol_enabled).await;
         });
     }
 

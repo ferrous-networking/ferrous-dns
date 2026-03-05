@@ -114,8 +114,16 @@ async fn async_main() -> anyhow::Result<()> {
         .unwrap_or(1)
         .max(1);
 
+    let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
     tokio::spawn(async move {
-        if let Err(e) = server::start_dns_server(dns_addr, dns_handler, num_dns_workers).await {
+        if let Err(e) = server::start_dns_server(
+            dns_addr,
+            dns_handler,
+            num_dns_workers,
+            proxy_protocol_enabled,
+        )
+        .await
+        {
             error!(error = %e, "DNS server error");
         }
     });
@@ -138,8 +146,14 @@ async fn async_main() -> anyhow::Result<()> {
             );
             let dot_handler = Arc::new(DnsServerHandler::new(handler_use_case.clone()));
             tokio::spawn(async move {
-                if let Err(e) =
-                    server::start_dot_server(dot_addr, dot_handler, tls_cfg, num_dns_workers).await
+                if let Err(e) = server::start_dot_server(
+                    dot_addr,
+                    dot_handler,
+                    tls_cfg,
+                    num_dns_workers,
+                    proxy_protocol_enabled,
+                )
+                .await
                 {
                     error!(error = %e, "DoT server error");
                 }

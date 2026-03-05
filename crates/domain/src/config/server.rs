@@ -17,6 +17,9 @@ pub struct ServerConfig {
 
     #[serde(default)]
     pub encrypted_dns: EncryptedDnsConfig,
+
+    #[serde(default)]
+    pub proxy_protocol_enabled: bool,
 }
 
 fn default_cors_origins() -> Vec<String> {
@@ -32,6 +35,7 @@ impl Default for ServerConfig {
             cors_allowed_origins: default_cors_origins(),
             api_key: None,
             encrypted_dns: EncryptedDnsConfig::default(),
+            proxy_protocol_enabled: false,
         }
     }
 }

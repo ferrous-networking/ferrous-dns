@@ -1,7 +1,11 @@
+use ferrous_dns_infrastructure::dns::proxy_protocol::{
+    read_proxy_v2_client_ip, ProxyProtocolError,
+};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
@@ -22,15 +26,12 @@ pub fn create_dot_listener(domain: Domain, addr: SocketAddr) -> anyhow::Result<T
     Ok(TcpListener::from_std(std_listener)?)
 }
 
-/// Starts a DNS-over-TLS server (RFC 7858) on the given address.
-///
-/// Each accepted connection runs a persistent loop reading DNS messages framed
-/// with a 2-byte big-endian length prefix (RFC 7766) over a TLS stream.
 pub async fn start_dot_server(
     bind_addr: String,
     handler: Arc<DnsServerHandler>,
     tls_config: Arc<rustls::ServerConfig>,
     num_workers: usize,
+    proxy_protocol_enabled: bool,
 ) -> anyhow::Result<()> {
     let addr: SocketAddr = bind_addr.parse()?;
     let domain = if addr.is_ipv4() {
@@ -50,6 +51,7 @@ pub async fn start_dot_server(
             listener.clone(),
             acceptor.clone(),
             handler.clone(),
+            proxy_protocol_enabled,
         )));
     }
 
@@ -64,6 +66,7 @@ async fn run_dot_accept_loop(
     listener: Arc<TcpListener>,
     acceptor: TlsAcceptor,
     handler: Arc<DnsServerHandler>,
+    proxy_protocol_enabled: bool,
 ) {
     loop {
         match listener.accept().await {
@@ -73,6 +76,7 @@ async fn run_dot_accept_loop(
                     peer_addr,
                     acceptor.clone(),
                     handler.clone(),
+                    proxy_protocol_enabled,
                 ));
             }
             Err(e) => {
@@ -83,13 +87,38 @@ async fn run_dot_accept_loop(
 }
 
 async fn handle_dot_connection(
-    stream: tokio::net::TcpStream,
+    mut stream: tokio::net::TcpStream,
     peer_addr: SocketAddr,
     acceptor: TlsAcceptor,
     handler: Arc<DnsServerHandler>,
+    proxy_protocol_enabled: bool,
 ) {
-    let client_ip = peer_addr.ip();
     debug!(client = %peer_addr, "DoT connection accepted");
+
+    let client_ip = if proxy_protocol_enabled {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            read_proxy_v2_client_ip(&mut stream, peer_addr.ip()),
+        )
+        .await
+        {
+            Ok(Ok(ip)) => ip,
+            Ok(Err(ProxyProtocolError::Io(e))) => {
+                warn!(client = %peer_addr, error = %e, "DoT PROXY Protocol I/O error");
+                return;
+            }
+            Ok(Err(e)) => {
+                warn!(client = %peer_addr, error = %e, "DoT PROXY Protocol v2 header invalid, closing connection");
+                return;
+            }
+            Err(_) => {
+                warn!(client = %peer_addr, "DoT PROXY Protocol header read timed out, closing connection");
+                return;
+            }
+        }
+    } else {
+        peer_addr.ip()
+    };
 
     let mut tls_stream = match acceptor.accept(stream).await {
         Ok(s) => s,
@@ -105,6 +134,9 @@ async fn handle_dot_connection(
             break;
         }
         let msg_len = u16::from_be_bytes(len_buf) as usize;
+        if msg_len == 0 {
+            break;
+        }
 
         let mut dns_buf = vec![0u8; msg_len];
         if tls_stream.read_exact(&mut dns_buf).await.is_err() {

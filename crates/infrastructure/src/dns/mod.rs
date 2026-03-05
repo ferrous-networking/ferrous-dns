@@ -8,6 +8,7 @@ pub mod fast_path;
 pub mod forwarding;
 pub mod load_balancer;
 pub mod prefetch;
+pub mod proxy_protocol;
 pub mod query_logger;
 pub mod resolver;
 pub mod safe_search;
@@ -28,6 +29,7 @@ pub use load_balancer::{
     ServerStatus, UpstreamHealthAdapter,
 };
 pub use prefetch::PrefetchPredictor;
+pub use proxy_protocol::read_proxy_v2_client_ip;
 pub use query_logger::QueryEventLogger;
 pub use resolver::HickoryDnsResolver;
 pub use safe_search::SafeSearchEnforcer;
