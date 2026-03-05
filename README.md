@@ -39,7 +39,7 @@ Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking c
 - 🚀 **DNS-over-QUIC (DoQ) + HTTP/3 upstream** ✅ — Cutting-edge transports that Pi-hole and most competitors don't support yet
 - 🌐 **IPv6 upstreams + DNS-name resolvers** ✅ — e.g. `dns.google.com` resolved at startup
 - 🛡️ **DoH + DoT server (listener-side)** ✅ — Serve encrypted DNS directly to clients on your network (v0.5.0)
-- 🔄 **DNS Rebinding Protection** 🔜 — Prevent malicious sites from attacking your internal network (v0.5.0)
+- 🔄 **DNS Rebinding Protection** ✅ — Prevent malicious sites from attacking your internal network (v0.5.0)
 
 **Blocking & Filtering**
 - 🚫 **Network-wide Ad & Tracker Blocking** ✅ — Blocklists, regex patterns, wildcard domains (`*.ads.com`), whitelist, and 1-click blockable services
