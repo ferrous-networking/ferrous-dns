@@ -7,6 +7,7 @@ use socket2::Socket;
 pub fn enable_pktinfo(socket: &Socket) {
     let fd = socket.as_raw_fd();
     let val: libc::c_int = 1;
+    // SAFETY: fd is valid for the lifetime of socket; val is a stack-allocated c_int.
     unsafe {
         libc::setsockopt(
             fd,
@@ -18,7 +19,7 @@ pub fn enable_pktinfo(socket: &Socket) {
     }
 }
 
-pub(crate) fn try_recv_with_pktinfo(
+pub(super) fn try_recv_with_pktinfo(
     socket: &std::net::UdpSocket,
     buf: &mut [u8],
 ) -> io::Result<(usize, SocketAddr, IpAddr)> {
@@ -27,6 +28,7 @@ pub(crate) fn try_recv_with_pktinfo(
         iov_base: buf.as_mut_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
     };
+    // SAFETY: sockaddr_in and msghdr are C structs; zeroing is the correct way to initialize them.
     let mut src_addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
     let mut cmsg_buf = [0u8; 128];
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
@@ -37,6 +39,7 @@ pub(crate) fn try_recv_with_pktinfo(
     msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
     msg.msg_controllen = cmsg_buf.len() as _;
 
+    // SAFETY: fd is valid; msg points to properly initialized iov and cmsg_buf on the stack.
     let n = unsafe { libc::recvmsg(fd, &mut msg, libc::MSG_DONTWAIT) };
     if n < 0 {
         return Err(io::Error::last_os_error());
@@ -51,18 +54,23 @@ pub(crate) fn try_recv_with_pktinfo(
 
 fn extract_pktinfo_dst(cmsg_buf: &[u8], controllen: usize) -> IpAddr {
     let mut ptr = cmsg_buf.as_ptr() as *const libc::cmsghdr;
+    // SAFETY: controllen is bounded by cmsg_buf.len() as set in try_recv_with_pktinfo.
     let end = unsafe { cmsg_buf.as_ptr().add(controllen) };
 
     while !ptr.is_null() && (ptr as *const u8) < end {
+        // SAFETY: ptr is within [cmsg_buf, end) which is valid memory from the kernel recvmsg call.
         let cmsg = unsafe { &*ptr };
         if cmsg.cmsg_level == libc::IPPROTO_IP && cmsg.cmsg_type == libc::IP_PKTINFO {
+            // SAFETY: CMSG_LEN(0) is the standard offset to the data payload; in_pktinfo is aligned.
             let pktinfo_ptr = unsafe {
                 (ptr as *const u8).add(libc::CMSG_LEN(0) as usize) as *const libc::in_pktinfo
             };
+            // SAFETY: kernel wrote a valid in_pktinfo at this location when IP_PKTINFO is set.
             let pktinfo = unsafe { &*pktinfo_ptr };
             let addr = Ipv4Addr::from(u32::from_be(pktinfo.ipi_addr.s_addr));
             return IpAddr::V4(addr);
         }
+        // SAFETY: CMSG_SPACE returns the aligned size; advancing by it keeps ptr within the buffer.
         let next_len = unsafe { libc::CMSG_SPACE(cmsg.cmsg_len as u32 - libc::CMSG_LEN(0)) };
         if next_len == 0 {
             break;
@@ -73,7 +81,7 @@ fn extract_pktinfo_dst(cmsg_buf: &[u8], controllen: usize) -> IpAddr {
     IpAddr::V4(Ipv4Addr::UNSPECIFIED)
 }
 
-pub(crate) fn try_send_with_src_ip(
+pub(super) fn try_send_with_src_ip(
     socket: &std::net::UdpSocket,
     buf: &[u8],
     to: SocketAddr,
@@ -94,6 +102,7 @@ pub(crate) fn try_send_with_src_ip(
         ipi_addr: libc::in_addr { s_addr: 0 },
     };
 
+    // SAFETY: CMSG_SPACE is a pure size computation; no pointer dereference.
     let cmsg_space =
         unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::in_pktinfo>() as u32) } as usize;
     let mut cmsg_buf = [0u8; 64];
@@ -102,6 +111,7 @@ pub(crate) fn try_send_with_src_ip(
         iov_base: buf.as_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
     };
+    // SAFETY: msghdr is a C struct; zeroing is the correct initialization before setting fields.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_name = &dst_addr as *const libc::sockaddr_in as *mut libc::c_void;
     msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
@@ -110,6 +120,7 @@ pub(crate) fn try_send_with_src_ip(
     msg.msg_control = cmsg_buf.as_mut_ptr() as *mut libc::c_void;
     msg.msg_controllen = cmsg_space as _;
 
+    // SAFETY: msg is fully initialized above; CMSG_FIRSTHDR/CMSG_DATA follow POSIX ancillary data protocol.
     unsafe {
         let cmsg = libc::CMSG_FIRSTHDR(&msg);
         if cmsg.is_null() {
@@ -122,6 +133,7 @@ pub(crate) fn try_send_with_src_ip(
         data.write(pktinfo);
     }
 
+    // SAFETY: fd is valid; msg points to properly initialized iov and cmsg_buf on the stack.
     let n = unsafe { libc::sendmsg(fd, &msg, libc::MSG_DONTWAIT) };
     if n < 0 {
         return Err(io::Error::last_os_error());
@@ -141,11 +153,13 @@ fn socket_send_fallback(
         iov_base: buf.as_ptr() as *mut libc::c_void,
         iov_len: buf.len(),
     };
+    // SAFETY: msghdr is a C struct; zeroing is the correct initialization before setting fields.
     let mut msg: libc::msghdr = unsafe { std::mem::zeroed() };
     msg.msg_name = &dst_addr as *const libc::sockaddr_in as *mut libc::c_void;
     msg.msg_namelen = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
     msg.msg_iov = &iov as *const libc::iovec as *mut libc::iovec;
     msg.msg_iovlen = 1;
+    // SAFETY: fd is valid; msg points to properly initialized iov on the stack.
     let n = unsafe { libc::sendmsg(fd, &msg, libc::MSG_DONTWAIT) };
     if n < 0 {
         return Err(io::Error::last_os_error());
@@ -160,6 +174,7 @@ fn sockaddr_in_to_socket_addr(addr: &libc::sockaddr_in) -> SocketAddr {
 }
 
 fn socket_addr_to_sockaddr_in(addr: SocketAddr) -> libc::sockaddr_in {
+    // SAFETY: sockaddr_in is a C struct; zeroing is the correct initialization before setting fields.
     let mut sa: libc::sockaddr_in = unsafe { std::mem::zeroed() };
     sa.sin_family = libc::AF_INET as libc::sa_family_t;
     if let IpAddr::V4(v4) = addr.ip() {
