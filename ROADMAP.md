@@ -44,12 +44,12 @@
 - [x] Safe Search enforcement
 - [x] Blockable services (1-click)
 
-### 🎯 v0.4.0 - Parental Controls (Current)
+### ✅ v0.4.0 - Parental Controls 
 
 - [x] Per-group blocklist assignment (assign specific blocklists to client groups)
 - [x] Scheduling per group + Parental Controls UI
 
-### 🎯 v0.5.0 - Server Advanced Features
+### 🎯 v0.5.0 - Server Advanced Features (Current)
 
 - [ ] DoH/DoT server (listener-side, serve encrypted DNS to clients)
 - [ ] PROXY Protocol v2 (real client IP behind load balancers)
