@@ -13,6 +13,23 @@ bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on
 # api_key = "your-secret-key"           # API key for authenticated endpoints (omit to disable)
 
 
+# ── Encrypted DNS (DoT / DoH) ─────────────────────────────────────────────────
+# Serves DNS-over-TLS (RFC 7858) and/or DNS-over-HTTPS (RFC 8484).
+# Requires a TLS certificate and private key in PEM format.
+# Default paths point to /data/ — the standard Docker volume for Ferrous DNS.
+# If the cert/key files are absent at startup, the affected listeners are skipped
+# with a warning; the server continues to serve plain DNS normally.
+# For DoH, HTTPS termination is handled by a reverse proxy (nginx/Traefik/Caddy).
+
+[server.encrypted_dns]
+dot_enabled   = true                    # Enable DoT listener on dot_port
+dot_port      = 853                     # TCP port for DNS-over-TLS (standard: 853)
+doh_enabled   = true                    # Enable /dns-query endpoint on web_port or doh_port
+doh_port      = 443                     # Dedicated port for DoH (omit to co-host on web_port)
+tls_cert_path = "/home/viudes/projects/Ferrous-DNS/cert.pem"
+tls_key_path  = "/home/viudes/projects/Ferrous-DNS/key.pem"
+
+
 # ── DNS Resolution ────────────────────────────────────────────────────────────
 
 [dns]

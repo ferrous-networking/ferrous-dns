@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::encrypted_dns::EncryptedDnsConfig;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
     pub dns_port: u16,
@@ -12,6 +14,9 @@ pub struct ServerConfig {
     pub cors_allowed_origins: Vec<String>,
 
     pub api_key: Option<String>,
+
+    #[serde(default)]
+    pub encrypted_dns: EncryptedDnsConfig,
 }
 
 fn default_cors_origins() -> Vec<String> {
@@ -26,6 +31,7 @@ impl Default for ServerConfig {
             bind_address: "0.0.0.0".to_string(),
             cors_allowed_origins: default_cors_origins(),
             api_key: None,
+            encrypted_dns: EncryptedDnsConfig::default(),
         }
     }
 }

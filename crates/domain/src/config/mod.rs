@@ -1,6 +1,7 @@
 pub mod blocking;
 pub mod database;
 pub mod dns;
+pub mod encrypted_dns;
 pub mod errors;
 pub mod health;
 pub mod local_records;
@@ -12,6 +13,7 @@ pub mod upstream;
 pub use blocking::BlockingConfig;
 pub use database::DatabaseConfig;
 pub use dns::DnsConfig;
+pub use encrypted_dns::EncryptedDnsConfig;
 pub use errors::ConfigError;
 pub use health::HealthCheckConfig;
 pub use local_records::LocalDnsRecord;

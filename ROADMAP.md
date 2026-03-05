@@ -51,7 +51,7 @@
 
 ### 🎯 v0.5.0 - Server Advanced Features (Current)
 
-- [ ] DoH/DoT server (listener-side, serve encrypted DNS to clients)
+- [x] DoH/DoT server (listener-side, serve encrypted DNS to clients)
 - [ ] PROXY Protocol v2 (real client IP behind load balancers)
 - [ ] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [ ] DNS Rebinding Protection

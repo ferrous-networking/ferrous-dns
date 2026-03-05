@@ -1,5 +1,7 @@
+pub mod dot;
 mod pktinfo;
 mod tcp;
+pub mod tls_config;
 mod udp;
 
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;

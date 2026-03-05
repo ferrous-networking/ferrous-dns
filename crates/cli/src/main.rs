@@ -3,6 +3,7 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+use anyhow::Context;
 use clap::Parser;
 use ferrous_dns_domain::CliOverrides;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
@@ -106,7 +107,8 @@ async fn async_main() -> anyhow::Result<()> {
     );
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
-    let dns_handler = DnsServerHandler::new(dns_services.handler_use_case);
+    let handler_use_case = dns_services.handler_use_case;
+    let dns_handler = DnsServerHandler::new(handler_use_case.clone());
     let num_dns_workers = core_affinity::get_core_ids()
         .map(|ids| ids.len())
         .unwrap_or(1)
@@ -118,11 +120,67 @@ async fn async_main() -> anyhow::Result<()> {
         }
     });
 
+    let tls_config =
+        if config.server.encrypted_dns.dot_enabled || config.server.encrypted_dns.doh_enabled {
+            server::load_server_tls_config(
+                &config.server.encrypted_dns.tls_cert_path,
+                &config.server.encrypted_dns.tls_key_path,
+            )?
+        } else {
+            None
+        };
+
+    if config.server.encrypted_dns.dot_enabled {
+        if let Some(tls_cfg) = tls_config.clone() {
+            let dot_addr = format!(
+                "{}:{}",
+                config.server.bind_address, config.server.encrypted_dns.dot_port
+            );
+            let dot_handler = Arc::new(DnsServerHandler::new(handler_use_case.clone()));
+            tokio::spawn(async move {
+                if let Err(e) =
+                    server::start_dot_server(dot_addr, dot_handler, tls_cfg, num_dns_workers).await
+                {
+                    error!(error = %e, "DoT server error");
+                }
+            });
+        }
+    }
+
+    let doh_handler = if config.server.encrypted_dns.doh_enabled {
+        if let Some(doh_port) = config.server.encrypted_dns.doh_port {
+            if tls_config.is_some() {
+                let doh_addr: SocketAddr = format!("{}:{}", config.server.bind_address, doh_port)
+                    .parse()
+                    .context("Invalid DoH bind address")?;
+                let dedicated_doh_handler =
+                    Arc::new(DnsServerHandler::new(handler_use_case.clone()));
+                tokio::spawn(async move {
+                    if let Err(e) = server::start_doh_server(doh_addr, dedicated_doh_handler).await
+                    {
+                        error!(error = %e, "DoH server error");
+                    }
+                });
+            }
+            None
+        } else {
+            tls_config.map(|_| Arc::new(DnsServerHandler::new(handler_use_case)))
+        }
+    } else {
+        None
+    };
+
     let web_addr: SocketAddr = format!("{}:{}", config.server.bind_address, config.server.web_port)
         .parse()
         .expect("Invalid address");
 
-    server::start_web_server(web_addr, app_state, &config.server.cors_allowed_origins).await?;
+    server::start_web_server(
+        web_addr,
+        app_state,
+        &config.server.cors_allowed_origins,
+        doh_handler,
+    )
+    .await?;
 
     info!("Server shutdown complete");
     Ok(())
