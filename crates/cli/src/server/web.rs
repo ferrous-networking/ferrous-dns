@@ -54,6 +54,8 @@ fn create_app(state: AppState, cors_allowed_origins: &[String]) -> Router {
     Router::new()
         .nest("/api", create_api_routes(state))
         .route("/static/shared.css", get(shared_css_handler))
+        .route("/static/shared.js", get(shared_js_handler))
+        .route("/static/logo.svg", get(logo_svg_handler))
         .route("/", get(index_handler))
         .route("/dashboard.html", get(dashboard_handler))
         .route("/queries.html", get(queries_handler))
@@ -71,6 +73,23 @@ async fn shared_css_handler() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
         include_str!("../../../../web/static/shared.css"),
+    )
+}
+
+async fn shared_js_handler() -> impl IntoResponse {
+    (
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
+        include_str!("../../../../web/static/shared.js"),
+    )
+}
+
+async fn logo_svg_handler() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+        include_str!("../../../../web/static/logo.svg"),
     )
 }
 

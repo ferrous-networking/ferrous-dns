@@ -530,17 +530,8 @@ impl DnsCache {
                     now_secs.saturating_sub(snap.last_access) <= self.access_window_secs;
 
                 if !within_window {
-                    let score = self.eviction_policy.compute_score_from_snapshot(
-                        snap.hit_count,
-                        snap.last_access,
-                        snap.inserted_at,
-                        snap.expires_at,
-                        now_secs,
-                    );
-                    if score < 0.0 {
-                        urgent_keys.push(snap.key.clone());
-                        continue;
-                    }
+                    urgent_keys.push(snap.key.clone());
+                    continue;
                 }
             }
 

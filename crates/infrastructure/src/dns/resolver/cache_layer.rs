@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
+use std::cell::Cell;
 use std::sync::LazyLock;
 
 static EMPTY_ADDRESSES: LazyLock<Arc<Vec<IpAddr>>> = LazyLock::new(|| Arc::new(vec![]));
@@ -30,12 +31,21 @@ type InflightSender = Arc<watch::Sender<Option<Arc<InflightResult>>>>;
 struct InflightLeaderGuard {
     inflight: Arc<DashMap<CacheKey, InflightSender, FxBuildHasher>>,
     key: CacheKey,
+    defused: Cell<bool>,
+}
+
+impl InflightLeaderGuard {
+    fn defuse(&self) {
+        self.defused.set(true);
+    }
 }
 
 impl Drop for InflightLeaderGuard {
     fn drop(&mut self) {
-        if let Some((_, tx)) = self.inflight.remove(&self.key) {
-            let _ = tx.send(None);
+        if !self.defused.get() {
+            if let Some((_, tx)) = self.inflight.remove(&self.key) {
+                let _ = tx.send(None);
+            }
         }
     }
 }
@@ -278,6 +288,7 @@ impl CachedResolver {
         let guard = InflightLeaderGuard {
             inflight: Arc::clone(&self.inflight),
             key: key.clone(),
+            defused: Cell::new(false),
         };
 
         let result = self.inner.resolve(query).await;
@@ -295,12 +306,14 @@ impl CachedResolver {
                     });
                     let _ = tx.send(Some(inflight));
                 }
+                guard.defuse();
             }
             Err(_) => {
                 self.insert_negative(query);
                 if let Some((_, tx)) = self.inflight.remove(&key) {
                     let _ = tx.send(None);
                 }
+                guard.defuse();
             }
         }
 

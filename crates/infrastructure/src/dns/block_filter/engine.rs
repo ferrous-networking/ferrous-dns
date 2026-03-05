@@ -186,6 +186,8 @@ impl BlockFilterEnginePort for BlockFilterEngine {
         // Schedule override check: O(1) is_empty() guard keeps cost zero when
         // no schedules are configured. Not cached per-domain — schedule state
         // changes every minute, not per query.
+        let mut skip_decision_cache = false;
+
         if !self.schedule_state.is_empty() {
             match self.schedule_state.get(group_id) {
                 Some(GroupOverride::BlockAll) => {
@@ -197,6 +199,9 @@ impl BlockFilterEnginePort for BlockFilterEngine {
                 Some(GroupOverride::TimedBypassUntil(t)) if coarse_now_secs() < t => {
                     return FilterDecision::Allow;
                 }
+                Some(GroupOverride::TimedBypassUntil(_)) => {
+                    skip_decision_cache = true;
+                }
                 Some(GroupOverride::TimedBlockUntil(t)) if coarse_now_secs() < t => {
                     return FilterDecision::Block(BlockSource::Schedule);
                 }
@@ -206,19 +211,21 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
         let key = decision_key(domain, group_id);
 
-        if let Some(cached_source) = decision_l0_get_by_key(key) {
-            return match cached_source {
-                Some(source) => FilterDecision::Block(source),
-                None => FilterDecision::Allow,
-            };
-        }
+        if !skip_decision_cache {
+            if let Some(cached_source) = decision_l0_get_by_key(key) {
+                return match cached_source {
+                    Some(source) => FilterDecision::Block(source),
+                    None => FilterDecision::Allow,
+                };
+            }
 
-        if let Some(cached_source) = self.decision_cache.get_by_key(key) {
-            decision_l0_set_by_key(key, cached_source);
-            return match cached_source {
-                Some(source) => FilterDecision::Block(source),
-                None => FilterDecision::Allow,
-            };
+            if let Some(cached_source) = self.decision_cache.get_by_key(key) {
+                decision_l0_set_by_key(key, cached_source);
+                return match cached_source {
+                    Some(source) => FilterDecision::Block(source),
+                    None => FilterDecision::Allow,
+                };
+            }
         }
 
         let guard = self.index.load();

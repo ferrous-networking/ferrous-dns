@@ -32,17 +32,18 @@ impl NegativeDnsCache {
         let key = CacheKey::new(domain, *record_type);
         let now = coarse_now_secs();
 
-        if let Some(entry) = self.cache.get(&key) {
-            let expires = entry.value().expires_at_secs;
-            if now < expires {
-                return Some(expires.saturating_sub(now) as u32);
+        match self.cache.get(&key) {
+            Some(entry) => {
+                let expires = entry.value().expires_at_secs;
+                if now < expires {
+                    return Some(expires.saturating_sub(now) as u32);
+                }
+                drop(entry);
+                self.cache.remove_if(&key, |_, v| v.expires_at_secs <= now);
+                None
             }
-        } else {
-            return None;
+            None => None,
         }
-
-        self.cache.remove(&key);
-        None
     }
 
     pub fn insert(&self, domain: &str, record_type: RecordType, ttl: u32) {

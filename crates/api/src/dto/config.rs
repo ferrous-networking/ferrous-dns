@@ -87,7 +87,16 @@ pub struct UpdateConfigRequest {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct PoolUpdate {
+    pub name: String,
+    pub strategy: String,
+    pub priority: u8,
+    pub servers: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct DnsConfigUpdate {
+    pub pools: Option<Vec<PoolUpdate>>,
     pub upstream_servers: Option<Vec<String>>,
     pub cache_enabled: Option<bool>,
     pub dnssec_enabled: Option<bool>,

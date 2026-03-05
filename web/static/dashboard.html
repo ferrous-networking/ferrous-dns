@@ -8,14 +8,9 @@
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script>
-        let _lucideTimer = null;
-        function scheduleLucide(delay = 50) {
-            clearTimeout(_lucideTimer);
-            _lucideTimer = setTimeout(() => lucide.createIcons(), delay);
-        }
-    </script>
     <link rel="stylesheet" href="/static/shared.css">
+    <script src="/static/shared.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <style>
         .card-stat {
             background: var(--bg-secondary);
@@ -34,10 +29,7 @@
 <body x-data="app()" x-init="init()">
 <aside class="sidebar">
     <div class="logo-container">
-        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
-        </svg>
+        <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
         <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
@@ -48,7 +40,7 @@
             <span>Active</span>
         </div>
         <div class="status-item">
-            <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor()"></i>
+            <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
             <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
         </div>
         <div class="status-item">
@@ -289,6 +281,7 @@
 
                     this.loadDashboard(true);
 
+                    startRatePolling(rate => { this.queryRate = rate; });
                     setTimeout(() => this.startPolling(), 100);
                 }, 500);
 
@@ -315,7 +308,6 @@
                     if (res.ok) {
                         const data = await res.json();
                         this.stats = data.stats;
-                        this.queryRate = data.rate;
                         this.cacheMetrics = {
                             total_hits: data.cache_stats.total_hits,
                             total_misses: data.cache_stats.total_misses,
@@ -342,12 +334,6 @@
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
                 }
-            },
-            getRateColor() {
-                const queries = this.queryRate.queries || 0;
-                if (queries >= 10000) return '#EF4444';
-                if (queries >= 1000) return '#F59E0B';
-                return '#10B981';
             },
             updateTimelineFromData(timeline) {
                 if (!this.chartsReady || !appCharts.timeline) return;
@@ -624,6 +610,7 @@
             stopPolling() {
                 clearInterval(this.pollingIntervals.fast);
                 clearInterval(this.pollingIntervals.slow);
+                stopRatePolling();
             },
             formatTime(ms) {
                 if (!ms) return '0 ms';

@@ -94,7 +94,7 @@ impl UdpTransport {
         let server_addr = self.resolved_addr()?;
 
         if let Some(ref pool) = self.pool {
-            let pooled = pool.acquire(server_addr).await.map_err(|e| {
+            let mut pooled = pool.acquire(server_addr).await.map_err(|e| {
                 DomainError::IoError(format!("Failed to acquire UDP socket: {}", e))
             })?;
 
@@ -141,8 +141,16 @@ impl UdpTransport {
                         ))
                     })?;
 
-            validate_response_source(from_addr, server_addr)?;
-            validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)?;
+            if let Err(e) = validate_response_source(from_addr, server_addr) {
+                pooled.poison();
+                return Err(e);
+            }
+            if let Err(e) =
+                validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)
+            {
+                pooled.poison();
+                return Err(e);
+            }
 
             debug!(
                 server = %server_addr,

@@ -42,6 +42,7 @@ impl UdpSocketPool {
                     server,
                     pool: self,
                     _permit: None,
+                    poisoned: false,
                 });
             }
         }
@@ -58,6 +59,7 @@ impl UdpSocketPool {
             server,
             pool: self,
             _permit: permit,
+            poisoned: false,
         })
     }
 
@@ -138,6 +140,7 @@ pub struct PooledUdpSocket<'a> {
     server: SocketAddr,
     pool: &'a UdpSocketPool,
     _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    poisoned: bool,
 }
 
 impl<'a> PooledUdpSocket<'a> {
@@ -148,11 +151,17 @@ impl<'a> PooledUdpSocket<'a> {
     pub fn server(&self) -> SocketAddr {
         self.server
     }
+
+    pub fn poison(&mut self) {
+        self.poisoned = true;
+    }
 }
 
 impl<'a> Drop for PooledUdpSocket<'a> {
     fn drop(&mut self) {
-        self.pool.release(self.server, self.socket.clone());
+        if !self.poisoned {
+            self.pool.release(self.server, self.socket.clone());
+        }
     }
 }
 

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Gray fill for right face -->
+  <polygon points="50,50 88,27 88,73 50,95" fill="#C5C5C4"/>
+
+  <!-- Red cube wireframe -->
+  <g stroke="#CE422B" stroke-width="8" stroke-linejoin="miter" stroke-miterlimit="10" stroke-linecap="butt" fill="none">
+    <!-- Outer hexagon -->
+    <polygon points="50,5 88,27 88,73 50,95 12,73 12,27"/>
+    <!-- Inner cube edges: upper-right→center, upper-left→center, center→bottom -->
+    <line x1="88" y1="27" x2="50" y2="50"/>
+    <line x1="12" y1="27" x2="50" y2="50"/>
+    <line x1="50" y1="50" x2="50" y2="95"/>
+    <!-- F bars on left face (perspective-parallel to face edges) -->
+    <!-- top bar: full width -->
+    <line x1="12" y1="41" x2="50" y2="64"/>
+    <!-- middle bar: ~55% width -->
+    <line x1="12" y1="55" x2="31" y2="66"/>
+  </g>
+
+  <!-- Diagonal arrow lower-left → upper-right -->
+  <path d="M14,76 Q44,20 84,8"
+        stroke="#CE422B" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- Arrowhead -->
+  <polygon points="84,8 75,14 77,21" fill="#CE422B"/>
+</svg>

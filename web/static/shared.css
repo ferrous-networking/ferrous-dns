@@ -1,4 +1,5 @@
 /* Shared styles for all Ferrous DNS pages */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
     --color-primary: #3B82F6;
@@ -38,6 +39,7 @@
 }
 
 body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg-primary);
     color: var(--text-primary);
     padding-left: 260px;
@@ -67,10 +69,6 @@ body {
 .logo-icon {
     width: 40px;
     height: 40px;
-    padding: 8px;
-    background: var(--color-primary);
-    color: white;
-    border-radius: 8px
 }
 
 .logo-text h1 {

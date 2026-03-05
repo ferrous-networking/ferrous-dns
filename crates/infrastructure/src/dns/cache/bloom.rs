@@ -29,7 +29,7 @@ impl AtomicBloom {
 
     #[inline]
     pub fn check<K: Hash>(&self, key: &K) -> bool {
-        let a = self.active.load(AtomicOrdering::Relaxed);
+        let a = self.active.load(AtomicOrdering::Acquire);
         let b = 1 - a;
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
@@ -62,7 +62,7 @@ impl AtomicBloom {
 
     #[inline]
     pub fn set<K: Hash>(&self, key: &K) {
-        let a = self.active.load(AtomicOrdering::Relaxed);
+        let a = self.active.load(AtomicOrdering::Acquire);
         let (h1, h2) = Self::double_hash(key);
         let num_hashes = self.num_hashes;
         let mask = self.mask;
@@ -95,14 +95,8 @@ impl AtomicBloom {
 
     fn clear_slot(&self, slot_idx: usize) {
         let slot = &self.slots[slot_idx];
-        let last = slot.len().saturating_sub(1);
-        for (i, word) in slot.iter().enumerate() {
-            let ordering = if i == last {
-                AtomicOrdering::Release
-            } else {
-                AtomicOrdering::Relaxed
-            };
-            word.store(0, ordering);
+        for word in slot.iter() {
+            word.store(0, AtomicOrdering::Relaxed);
         }
     }
 

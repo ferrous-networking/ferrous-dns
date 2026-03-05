@@ -555,9 +555,13 @@ async fn build_allowlist_index(
     for row in &whitelist_rows {
         let domain: String = row.get("domain");
         let domain_lc = domain.to_ascii_lowercase();
-        allowlists
-            .global_exact
-            .insert(CompactString::new(domain_lc));
+        if domain_lc.starts_with("*.") {
+            allowlists.global_wildcard.insert_wildcard(&domain_lc, 1u64);
+        } else {
+            allowlists
+                .global_exact
+                .insert(CompactString::new(domain_lc));
+        }
     }
 
     for entry in managed_entries {

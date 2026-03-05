@@ -34,11 +34,10 @@ fn coarse_now_ns() -> u64 {
 #[cfg(not(target_os = "linux"))]
 #[inline]
 fn coarse_now_ns() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64
+    use std::sync::LazyLock;
+    use std::time::Instant;
+    static START: LazyLock<Instant> = LazyLock::new(Instant::now);
+    START.elapsed().as_nanos() as u64
 }
 
 pub struct HandleDnsQueryUseCase {

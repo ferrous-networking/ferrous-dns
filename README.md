@@ -1,22 +1,20 @@
 <div align="center">
 
-# 🦀 Ferrous DNS
+<img src="web/static/logo.svg" alt="Ferrous DNS" width="80" height="80"/>
+
+# Ferrous DNS
 
 **A blazingly fast, memory-safe DNS server with network-wide ad-blocking**
 
 [![CI](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/docker.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/docker.yml)
-[![codecov](https://codecov.io/gh/ferrous-networking/Ferrous-DNS/branch/main/graph/badge.svg)](https://codecov.io/gh/ferrous-networking/Ferrous-DNS)
 [![Docker Pulls](https://img.shields.io/docker/pulls/andersonviudes/ferrous-dns?logo=docker)](https://hub.docker.com/r/andersonviudes/ferrous-dns)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![GitHub Issues](https://img.shields.io/github/issues/ferrous-networking/Ferrous-DNS)](https://github.com/ferrous-networking/Ferrous-DNS/issues)
 [![GitHub Stars](https://img.shields.io/github/stars/ferrous-networking/Ferrous-DNS?style=social)](https://github.com/ferrous-networking/Ferrous-DNS/stargazers)
 
-*Modern alternative to Pi-hole and AdGuard Home, built with Rust*
+*Modern alternative Dns server*
 
-[Features](#-features) • [Installation](#-installation) • [Docker](#-docker) • [Roadmap](ROADMAP.md)
+[docker](#-docker) • [docker-compose](#-docker-compose) • [Roadmap](ROADMAP.md)
 
 </div>
 
@@ -24,18 +22,51 @@
 
 ## 📖 About
 
-Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking capabilities. Written in Rust, it offers superior performance and memory safety compared to traditional solutions like Pi-hole and AdGuard Home.
+Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking capabilities. Written in Rust, it offers superior performance and memory safety compared to traditional solutions.
 
 **Key capabilities:**
-- ⚡ **High Performance** - 2x faster than Pi-hole with 50% lower latency
-- 🛡️ **Memory Safe** - Zero memory vulnerabilities thanks to Rust
-- 🌐 **Full DNS Implementation** - RFC 1035 compliant with support for A, AAAA, CNAME, MX, TXT, PTR records
-- 🔒 **Secure DNS** - DNS-over-HTTPS (DoH) and DNS-over-TLS (DoT) support
-- 🚫 **Ad Blocking** - Network-wide blocking of ads, trackers, and malware
-- 📊 **Modern Dashboard** - Real-time statistics with beautiful UI (HTMX + Alpine.js + TailwindCSS)
-- 🔄 **REST API** - Complete API for automation and integration
-- ⚡ **Smart Caching** - L1/L2 hierarchical cache with LFUK eviction
-- 🐳 **Docker Ready** - Easy deployment with Docker and Docker Compose
+
+> ✅ = Available now &nbsp;|&nbsp; 🔜 = Coming soon (on roadmap)
+
+**Performance & Architecture**
+- ⚡ **Rust-powered** ✅ — Zero GC pauses, ~10–20µs P99 cache hits; (C/dnsmasq) and  (Go) can't match this without a garbage collector
+- 🧠 **L1/L2 Hierarchical Cache** ✅ — Thread-local L1 (lock-free) + sharded L2 DashMap with LFUK sliding-window eviction and Bloom filter for ultra-fast negative lookups
+- 🦀 **Memory Safe by Design** ✅ — Rust ownership model eliminates entire classes of vulnerabilities (buffer overflows, use-after-free, data races) without a runtime
+- 📦 **Single Binary** ✅ — DNS server + REST API + Web UI in one process; no PHP, no lighttpd, no Python — just one container
+
+**Encrypted & Modern DNS**
+- 🔒 **DoH + DoT upstream** ✅ — Forward queries to upstream resolvers over HTTPS or TLS
+- 🚀 **DNS-over-QUIC (DoQ) + HTTP/3 upstream** ✅ — Cutting-edge transports that Pi-hole and most competitors don't support yet
+- 🌐 **IPv6 upstreams + DNS-name resolvers** ✅ — e.g. `dns.google.com` resolved at startup
+- 🛡️ **DoH + DoT server (listener-side)** 🔜 — Serve encrypted DNS directly to clients on your network (v0.5.0)
+- 🔄 **DNS Rebinding Protection** 🔜 — Prevent malicious sites from attacking your internal network (v0.5.0)
+
+**Blocking & Filtering**
+- 🚫 **Network-wide Ad & Tracker Blocking** ✅ — Blocklists, regex patterns, wildcard domains (`*.ads.com`), whitelist, and 1-click blockable services
+- 🕵️ **CNAME Cloaking Detection** ✅ — Catches trackers that hide behind first-party CNAMEs — a privacy gap Pi-hole leaves open
+- 🔍 **Safe Search Enforcement** ✅ — Force SafeSearch on Google, Bing, YouTube, and more per client group
+- 👨‍👩‍👧 **Per-Group Parental Controls + Scheduling** ✅ — Assign different blocklists and access schedules to each client group; AdGuard Home and Pi-hole require workarounds for this
+
+**Client Intelligence**
+- 📡 **Auto Client Detection** ✅ — Automatically identifies client IP and MAC address without manual configuration
+- 👥 **Client Groups** ✅ — Segment devices into groups with different policies (kids, work, IoT)
+- 🔀 **Conditional Forwarding** ✅ — Route specific domains to internal resolvers (e.g. your router)
+- 📊 **Advanced Analytics** ✅ — Upstream latency graphs, top queried domains, top blocked domains, per-group stats
+
+**Observability & Integrations (Roadmap)**
+- 📈 **Prometheus Metrics** 🔜 — Native metrics endpoint for Grafana and alerting (v0.8.0)
+- 📄 **OpenAPI / Swagger Docs** 🔜 — Self-documenting REST API (v0.8.0)
+- 🔁 **Pi-hole Compatible API** 🔜 — Drop-in replacement for existing Pi-hole integrations and dashboards (v0.6.0)
+- 🌍 **Split-Horizon DNS** 🔜 — Serve different answers per client/group/network (v1.1.0)
+- 🔔 **Webhook / Push Notifications** 🔜 — Alerts for anomalous query patterns (v1.1.0)
+
+**Security (Roadmap)**
+- 🔐 **Auth + TOTP/2FA** 🔜 — Login, API keys, and two-factor authentication (v0.7.0)
+- 🛑 **Rate Limiting + DoS Protection** 🔜 — DNS query rate limiting per client (v0.7.0)
+
+**Deployment**
+- 🐳 **Docker Ready** ✅ — Multi-arch images (amd64, arm64) for Docker and Docker Compose
+- 📋 **Full DNS Records** ✅ — RFC 1035 compliant with A, AAAA, CNAME, MX, TXT, PTR and local DNS records
 
 ---
 
@@ -137,7 +168,7 @@ Check out our [detailed roadmap](ROADMAP.md) to see what's planned for future re
 
 ---
 
-## 🦀 Ferrous DNS
+## Dashboard
 
 ![img.png](img.png)
 

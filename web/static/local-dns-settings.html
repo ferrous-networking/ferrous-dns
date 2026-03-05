@@ -7,19 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script>
-        let _lucideTimer = null;
-        function scheduleLucide(delay = 50) {
-            clearTimeout(_lucideTimer);
-            _lucideTimer = setTimeout(() => lucide.createIcons(), delay);
-        }
-    </script>
     <link rel="stylesheet" href="/static/shared.css">
+    <script src="/static/shared.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
-        }
-
         .btn {
             padding: 8px 16px;
             border-radius: 8px;
@@ -133,10 +124,7 @@
 <body x-data="localDnsApp()" x-init="init()">
 <aside class="sidebar">
     <div class="logo-container">
-        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
-        </svg>
+        <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
         <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
@@ -144,6 +132,10 @@
         <div class="status-item">
             <div class="status-indicator"></div>
             <span>Active</span>
+        </div>
+        <div class="status-item">
+            <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
+            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
         </div>
         <div class="status-item">
             <i data-lucide="server" style="width:12px;height:12px;color:var(--text-tertiary)"></i>
@@ -303,6 +295,7 @@
     function localDnsApp() {
         return {
             theme: localStorage.getItem('theme') || 'light',
+            queryRate: {queries: 0, rate: '0 q/s'},
             stats: {queries_total: 0},
             records: [],
             newRecord: {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300},
@@ -312,6 +305,7 @@
             _pollId: null,
             async init() {
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                startRatePolling(rate => { this.queryRate = rate; });
                 await Promise.all([this.loadRecords(), this.loadStats()]);
                 this.startPolling();
                 scheduleLucide(100);
@@ -337,6 +331,7 @@
             stopPolling() {
                 clearInterval(this._pollId);
                 this._pollId = null;
+                stopRatePolling();
             },
             async loadStats() {
                 this._ctrl.stats?.abort();

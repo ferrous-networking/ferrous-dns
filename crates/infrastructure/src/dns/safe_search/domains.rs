@@ -24,6 +24,7 @@ pub const fn cname_target(engine: SafeSearchEngine, youtube_strict: bool) -> &'s
 
 /// All domains that trigger Google Safe Search enforcement.
 pub static GOOGLE_DOMAINS: &[&str] = &[
+    "google.com",
     "www.google.com",
     "www.google.co.uk",
     "www.google.com.br",
@@ -82,8 +83,10 @@ pub static GOOGLE_DOMAINS: &[&str] = &[
 pub static BING_DOMAINS: &[&str] = &["www.bing.com", "bing.com", "www2.bing.com"];
 
 pub static YOUTUBE_DOMAINS: &[&str] = &[
+    "youtube.com",
     "www.youtube.com",
     "m.youtube.com",
+    "music.youtube.com",
     "youtubei.googleapis.com",
     "youtube.googleapis.com",
     "www.youtube-nocookie.com",

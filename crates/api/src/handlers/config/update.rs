@@ -1,6 +1,30 @@
-use crate::{dto::UpdateConfigRequest, state::AppState};
+use crate::{
+    dto::{SettingsDto, UpdateConfigRequest},
+    state::AppState,
+};
 use axum::{extract::State, Json};
+use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use tracing::{debug, error, info, instrument};
+
+fn get_writable_config_path() -> Result<String, Json<serde_json::Value>> {
+    let path = ferrous_dns_domain::Config::get_config_path().ok_or_else(|| {
+        error!("No config file found");
+        Json(serde_json::json!({
+            "success": false,
+            "error": "No config file found. Cannot update configuration."
+        }))
+    })?;
+    if let Ok(metadata) = std::fs::metadata(&path) {
+        if metadata.permissions().readonly() {
+            error!("Config file is read-only");
+            return Err(Json(serde_json::json!({
+                "success": false,
+                "error": "Permission denied: Config file is read-only. Please check file permissions."
+            })));
+        }
+    }
+    Ok(path)
+}
 
 #[instrument(skip(state), name = "api_update_config")]
 pub async fn update_config(
@@ -9,30 +33,35 @@ pub async fn update_config(
 ) -> Json<serde_json::Value> {
     debug!("Updating configuration");
 
-    let config_path = match ferrous_dns_domain::Config::get_config_path() {
-        Some(path) => path,
-        None => {
-            error!("No config file found");
-            return Json(serde_json::json!({
-                "success": false,
-                "error": "No config file found. Cannot update configuration."
-            }));
-        }
+    let config_path = match get_writable_config_path() {
+        Ok(p) => p,
+        Err(e) => return e,
     };
-
-    if let Ok(metadata) = std::fs::metadata(&config_path) {
-        if metadata.permissions().readonly() {
-            error!("Config file is read-only");
-            return Json(serde_json::json!({
-                "success": false,
-                "error": "Permission denied: Config file is read-only. Please check file permissions."
-            }));
-        }
-    }
 
     let mut config = state.config.write().await;
 
     if let Some(dns_update) = request.dns {
+        if let Some(pools) = dns_update.pools {
+            config.dns.pools = pools
+                .into_iter()
+                .map(|p| {
+                    let strategy = if p.strategy.eq_ignore_ascii_case("failover") {
+                        UpstreamStrategy::Failover
+                    } else if p.strategy.eq_ignore_ascii_case("balanced") {
+                        UpstreamStrategy::Balanced
+                    } else {
+                        UpstreamStrategy::Parallel
+                    };
+                    UpstreamPool {
+                        name: p.name,
+                        strategy,
+                        priority: p.priority,
+                        servers: p.servers,
+                        weight: None,
+                    }
+                })
+                .collect();
+        }
         if let Some(upstream) = dns_update.upstream_servers {
             config.dns.upstream_servers = upstream;
         }
@@ -137,9 +166,46 @@ pub async fn update_config(
 #[instrument(skip(state), name = "api_update_settings")]
 pub async fn update_settings(
     State(state): State<AppState>,
-    Json(request): Json<UpdateConfigRequest>,
+    Json(request): Json<SettingsDto>,
 ) -> Json<serde_json::Value> {
-    update_config(State(state), Json(request)).await
+    let config_path = match get_writable_config_path() {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+
+    let mut config = state.config.write().await;
+    config.dns.block_non_fqdn = request.never_forward_non_fqdn;
+    config.dns.block_private_ptr = request.never_forward_reverse_lookups;
+    config.dns.local_domain = if request.local_domain.is_empty() {
+        None
+    } else {
+        Some(request.local_domain)
+    };
+    config.dns.local_dns_server = if request.local_dns_server.is_empty() {
+        None
+    } else {
+        Some(request.local_dns_server)
+    };
+
+    match state
+        .config_file_persistence
+        .save_config_to_file(&config, &config_path)
+    {
+        Ok(_) => {
+            info!("DNS settings updated successfully");
+            Json(serde_json::json!({
+                "success": true,
+                "message": "DNS settings saved successfully."
+            }))
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to save DNS settings");
+            Json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to save settings: {}", e)
+            }))
+        }
+    }
 }
 
 #[instrument(skip(state), name = "api_reload_config")]

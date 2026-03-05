@@ -37,7 +37,7 @@ impl BlocklistSyncJob {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(self.interval_secs));
-            interval.tick().await;
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
             loop {
                 tokio::select! {

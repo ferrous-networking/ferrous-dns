@@ -47,7 +47,16 @@ impl SafeSearchIndex {
 
     #[inline]
     fn cname_for(&self, domain: &str, group_id: i64) -> Option<&'static str> {
-        let engine = self.domain_to_engine.get(domain)?;
+        let normalised = domain.trim_end_matches('.');
+        let lower;
+        let lookup = if normalised.bytes().any(|b| b.is_ascii_uppercase()) {
+            lower = normalised.to_ascii_lowercase();
+            lower.as_str()
+        } else {
+            normalised
+        };
+
+        let engine = self.domain_to_engine.get(lookup)?;
         let &(enabled, youtube_strict) = self.group_configs.get(&(group_id, *engine))?;
 
         if !enabled {
