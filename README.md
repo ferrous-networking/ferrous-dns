@@ -129,7 +129,7 @@ services:
     network_mode: host
     user: root
     environment:
-      # Config file (opcional - só usa se existir)
+      # Config file (optional - only used if present)
       - FERROUS_CONFIG=/data/config/ferrous-dns.toml
       # Database
       - FERROUS_DATABASE=/data/db/ferrous.db
