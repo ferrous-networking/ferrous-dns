@@ -71,6 +71,8 @@
 - [ ] TOTP / 2FA
 - [ ] Rate limiting DNS
 - [ ] DoS protection
+- [ ] DNS Tunneling
+- [ ] Entropy analysis (DGA detection)
 - [ ] Read-only / lockdown mode (disable config changes via flag)
 - [x] Separate listening ports for DoH and Admin UI
 
@@ -103,4 +105,5 @@
 - [ ] Audit log for configuration changes
 - [ ] WebSocket dashboard for slow query monitoring
 
+- [ ] Query anomaly detection
 ---
