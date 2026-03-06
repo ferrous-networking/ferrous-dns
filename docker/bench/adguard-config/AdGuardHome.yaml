@@ -1,0 +1,45 @@
+http:
+  address: 0.0.0.0:3000
+  session_ttl: 720h
+users:
+  - name: admin
+    password: $2a$10$sN7Hq6E3J7X3t1KZ3Xt6.OHgXJqQYbW8sMDQ4zUMqJ1V9Y7e9a5O
+auth_attempts: 5
+block_auth_min: 15
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  port: 53
+  ratelimit: 0
+  upstream_dns:
+    - 8.8.8.8
+    - 1.1.1.1
+  bootstrap_dns:
+    - 9.9.9.10
+  upstream_mode: load_balance
+  cache_size: 4194304
+  cache_optimistic: false
+  enable_dnssec: false
+  serve_plain_dns: true
+tls:
+  enabled: false
+querylog:
+  enabled: false
+  file_enabled: false
+statistics:
+  enabled: false
+filters:
+  - enabled: false
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+    name: AdGuard DNS filter
+    id: 1
+filtering:
+  protection_enabled: false
+  safe_search:
+    enabled: false
+dhcp:
+  enabled: false
+log:
+  enabled: true
+  verbose: false
+schema_version: 28

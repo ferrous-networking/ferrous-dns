@@ -14,9 +14,24 @@
 
 *Modern alternative Dns server*
 
-[docker](#-docker) • [docker-compose](#-docker-compose) • [Roadmap](ROADMAP.md)
+[docker](#-docker) • [docker-compose](#-docker-compose) • [Roadmap](ROADMAP.md) • [Benchmarks](benchmark-results.md)
 
 </div>
+
+---
+
+## ⚡ Performance
+
+Benchmarked against the most popular DNS servers using the same plain UDP upstream (`8.8.8.8` / `1.1.1.1`) for a fair comparison — 20s run, 10 concurrent clients, 125-domain dataset:
+
+| Server          |        QPS | Avg Latency | vs Ferrous-DNS |
+|:----------------|-----------:|:-----------:|:--------------:|
+| 🦀 Ferrous-DNS  | **377,777** | **0.58ms**  | —              |
+| ⚡ Unbound       |    203,967  |    0.85ms   | 1.85× slower   |
+| 🛡️ AdGuard Home |    105,837  |    2.45ms   | 3.57× slower   |
+| 🕳️ Pi-hole      |      7,652  |   21.99ms   | 49× slower     |
+
+→ [Full benchmark report with raw dnsperf output](benchmark-results.md)
 
 ---
 
@@ -56,7 +71,7 @@ Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking c
 **Observability & Integrations (Roadmap)**
 - 📈 **Prometheus Metrics** 🔜 — Native metrics endpoint for Grafana and alerting (v0.8.0)
 - 📄 **OpenAPI / Swagger Docs** 🔜 — Self-documenting REST API (v0.8.0)
-- 🔁 **Pi-hole Compatible API** 🔜 — Drop-in replacement for existing Pi-hole integrations and dashboards (v0.6.0)
+- 🔁 **Pi-hole Compatible API** ✅ — Drop-in replacement for existing Pi-hole integrations and dashboards (v0.6.0)
 - 🌍 **Split-Horizon DNS** 🔜 — Serve different answers per client/group/network (v1.1.0)
 - 🔔 **Webhook / Push Notifications** 🔜 — Alerts for anomalous query patterns (v1.1.0)
 

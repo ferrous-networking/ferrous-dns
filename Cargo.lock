@@ -801,6 +801,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrous-dns-bench"
+version = "0.0.1"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "ferrous-dns-domain"
 version = "0.6.1"
 dependencies = [

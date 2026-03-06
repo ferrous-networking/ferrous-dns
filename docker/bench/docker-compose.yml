@@ -1,0 +1,93 @@
+# =============================================================================
+# Ferrous-DNS Competitor Benchmark — Docker Compose
+# =============================================================================
+# Starts Pi-hole, AdGuard Home and Unbound on local ports for benchmarking.
+#
+# Usage:
+#   docker compose -f docker/bench/docker-compose.yml up -d
+#   ./scripts/benchmark-competitors.sh --no-ferrous
+#   docker compose -f docker/bench/docker-compose.yml down
+#
+# Ports (all on 127.0.0.1 to avoid conflicts):
+#   Pi-hole:      127.0.0.1:5354/udp
+#   AdGuard Home: 127.0.0.1:5355/udp
+#   Unbound:      127.0.0.1:5356/udp
+# ====================================11=========================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Pi-hole — DNS blocker (primary competitor)
+  # ---------------------------------------------------------------------------
+  pihole:
+    image: pihole/pihole:latest
+    container_name: bench-pihole
+    environment:
+      TZ: UTC
+      WEBPASSWORD: bench123
+      # Disable default upstream DoH — use plain DNS for fair comparison
+      PIHOLE_DNS_1: 8.8.8.8
+      PIHOLE_DNS_2: 1.1.1.1
+      DNSSEC: "false"
+      DNSMASQ_LISTENING: all
+    ports:
+      - "127.0.0.1:5354:53/udp"
+      - "127.0.0.1:5354:53/tcp"
+      - "127.0.0.1:8080:80/tcp"
+    volumes:
+      - pihole_data:/etc/pihole
+      - pihole_dnsmasq:/etc/dnsmasq.d
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "+short", "+timeout=2", "google.com", "@127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # AdGuard Home — DNS blocker + DoH/DoT support
+  # ---------------------------------------------------------------------------
+  adguard:
+    image: adguard/adguardhome:latest
+    container_name: bench-adguard
+    ports:
+      - "127.0.0.1:5355:53/udp"
+      - "127.0.0.1:5355:53/tcp"
+      - "127.0.0.1:3000:3000/tcp"
+    volumes:
+      - adguard_work:/opt/adguardhome/work
+      - ./adguard-config:/opt/adguardhome/conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Unbound — high-performance recursive DNS resolver
+  # ---------------------------------------------------------------------------
+  unbound:
+    image: mvance/unbound:latest
+    container_name: bench-unbound
+    ports:
+      - "127.0.0.1:5356:53/udp"
+      - "127.0.0.1:5356:53/tcp"
+    volumes:
+      - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "drill", "-p", "53", "google.com", "@127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pihole_data:
+  pihole_dnsmasq:
+  adguard_work:

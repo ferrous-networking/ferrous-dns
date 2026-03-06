@@ -1,0 +1,15 @@
+[package]
+name = "ferrous-dns-bench"
+version = "0.0.1"
+edition = "2021"
+publish = false
+description = "Integration tests and performance benchmarks for Ferrous-DNS"
+
+# competitor_comparison is self-contained — no dependency on internal crates.
+# Requires external DNS servers to be running (see #[ignore] tests).
+[[test]]
+name = "competitor_comparison"
+path = "performance/competitor_comparison.rs"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

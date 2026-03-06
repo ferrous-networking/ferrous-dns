@@ -59,7 +59,7 @@
 ### 🎯 v0.6.0 - Performance & Scale (Current)
 
 - [x] Pi-hole compatible API
-- [ ] Performance benchmarks vs. competitors
+- [x] Performance benchmarks vs. competitors
 - [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
 - [ ] Dashbodar Setting system status, pools dns status, cache ouverview, system information, kernel, uptime, load etc..
 
@@ -72,7 +72,7 @@
 - [ ] Rate limiting DNS
 - [ ] DoS protection
 - [ ] DNS Tunneling
-- [ ] Entropy analysis (DGA detection)
+- [ ] Entropy analysis (DGA detection)2
 - [ ] Read-only / lockdown mode (disable config changes via flag)
 - [x] Separate listening ports for DoH and Admin UI
 
