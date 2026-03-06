@@ -22,10 +22,17 @@ pub struct PoolManager {
     emitter: QueryEventEmitter,
 }
 
+/// Maps one original configured server string to its resolved protocol entries.
+pub struct ServerGroup {
+    pub original: Arc<str>,
+    pub protocols: Vec<Arc<DnsProtocol>>,
+}
+
 struct PoolWithStrategy {
     config: UpstreamPool,
     strategy: Strategy,
     server_protocols: Vec<Arc<DnsProtocol>>,
+    server_groups: Vec<ServerGroup>,
     name_arc: Arc<str>,
     server_displays: Arc<HashMap<Arc<DnsProtocol>, Arc<str>>>,
 }
@@ -50,22 +57,29 @@ impl PoolManager {
                 UpstreamStrategy::Failover => Strategy::Failover(FailoverStrategy::new()),
             };
 
-            let server_protocols: Result<Vec<DnsProtocol>, _> = pool
+            let server_entries: Result<Vec<(Arc<str>, DnsProtocol)>, _> = pool
                 .servers
                 .iter()
                 .map(|s| {
-                    s.parse::<DnsProtocol>().map_err(|e| {
-                        DomainError::InvalidDomainName(format!("Invalid endpoint '{}': {}", s, e))
-                    })
+                    s.parse::<DnsProtocol>()
+                        .map(|proto| (Arc::from(s.as_str()), proto))
+                        .map_err(|e| {
+                            DomainError::InvalidDomainName(format!(
+                                "Invalid endpoint '{}': {}",
+                                s, e
+                            ))
+                        })
                 })
                 .collect();
 
-            let parsed = server_protocols?;
-            let expanded = Self::expand_hostnames(parsed).await;
+            let parsed = server_entries?;
+            let server_groups = Self::expand_hostnames(parsed).await;
 
             let name_arc: Arc<str> = Arc::from(pool.name.as_str());
-            let server_protocols: Vec<Arc<DnsProtocol>> =
-                expanded.into_iter().map(Arc::new).collect();
+            let server_protocols: Vec<Arc<DnsProtocol>> = server_groups
+                .iter()
+                .flat_map(|g| g.protocols.iter().cloned())
+                .collect();
             let server_displays: Arc<HashMap<Arc<DnsProtocol>, Arc<str>>> = Arc::new(
                 server_protocols
                     .iter()
@@ -76,6 +90,7 @@ impl PoolManager {
                 config: pool,
                 strategy,
                 server_protocols,
+                server_groups,
                 name_arc,
                 server_displays,
             });
@@ -89,9 +104,9 @@ impl PoolManager {
         })
     }
 
-    async fn expand_hostnames(protocols: Vec<DnsProtocol>) -> Vec<DnsProtocol> {
-        let mut expanded = Vec::new();
-        for protocol in protocols {
+    async fn expand_hostnames(entries: Vec<(Arc<str>, DnsProtocol)>) -> Vec<ServerGroup> {
+        let mut groups = Vec::new();
+        for (original, protocol) in entries {
             if protocol.needs_resolution() {
                 match &protocol {
                     DnsProtocol::Udp { addr }
@@ -101,7 +116,10 @@ impl PoolManager {
                         let (hostname, port) = match addr.unresolved_parts() {
                             Some((h, p)) => (h.to_string(), p),
                             None => {
-                                expanded.push(protocol);
+                                groups.push(ServerGroup {
+                                    original,
+                                    protocols: vec![Arc::new(protocol)],
+                                });
                                 continue;
                             }
                         };
@@ -114,11 +132,18 @@ impl PoolManager {
                                     limited.len(),
                                     4
                                 );
-                                for addr in &limited {
-                                    let resolved = protocol.with_resolved_addr(*addr);
-                                    info!("  → {}", resolved);
-                                    expanded.push(resolved);
-                                }
+                                let protocols: Vec<Arc<DnsProtocol>> = limited
+                                    .iter()
+                                    .map(|addr| {
+                                        let resolved = protocol.with_resolved_addr(*addr);
+                                        info!("  → {}", addr);
+                                        Arc::new(resolved)
+                                    })
+                                    .collect();
+                                groups.push(ServerGroup {
+                                    original,
+                                    protocols,
+                                });
                             }
                             Err(e) => {
                                 warn!(
@@ -126,7 +151,10 @@ impl PoolManager {
                                     error = %e,
                                     "Failed to resolve upstream hostname, keeping unresolved"
                                 );
-                                expanded.push(protocol);
+                                groups.push(ServerGroup {
+                                    original,
+                                    protocols: vec![Arc::new(protocol)],
+                                });
                             }
                         }
                     }
@@ -142,7 +170,12 @@ impl PoolManager {
                                 for addr in &limited {
                                     info!("  → {}", addr);
                                 }
-                                expanded.push(protocol.with_resolved_addrs(limited));
+                                groups.push(ServerGroup {
+                                    original,
+                                    protocols: vec![Arc::new(
+                                        protocol.with_resolved_addrs(limited),
+                                    )],
+                                });
                             }
                             Err(e) => {
                                 warn!(
@@ -150,16 +183,22 @@ impl PoolManager {
                                     error = %e,
                                     "Failed to pre-resolve, transport will resolve at runtime"
                                 );
-                                expanded.push(protocol);
+                                groups.push(ServerGroup {
+                                    original,
+                                    protocols: vec![Arc::new(protocol)],
+                                });
                             }
                         }
                     }
                 }
             } else {
-                expanded.push(protocol);
+                groups.push(ServerGroup {
+                    original,
+                    protocols: vec![Arc::new(protocol)],
+                });
             }
         }
-        expanded
+        groups
     }
 
     fn limit_resolved_addrs(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {
@@ -277,6 +316,19 @@ impl PoolManager {
         self.pools
             .iter()
             .flat_map(|p| p.server_protocols.iter().map(|p| (**p).clone()))
+            .collect()
+    }
+
+    /// Returns all configured servers grouped by their original configured address,
+    /// each with the list of resolved IP protocols that came from that address.
+    pub fn get_all_server_groups(&self) -> Vec<(Arc<str>, Vec<Arc<DnsProtocol>>)> {
+        self.pools
+            .iter()
+            .flat_map(|p| {
+                p.server_groups
+                    .iter()
+                    .map(|g| (Arc::clone(&g.original), g.protocols.clone()))
+            })
             .collect()
     }
 }

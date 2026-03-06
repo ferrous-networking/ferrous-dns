@@ -56,14 +56,13 @@
 - [x] PTR auto-generation from A records (192.168.1.10 → server.local creates 10.1.168.192.in-addr.arpa PTR)
 - [x] DNS Rebinding Protection
 
-### 🎯 v0.6.0 - Performance & Scale (Current)
+### ✅ v0.6.0 - Performance & Scale 
 
 - [x] Pi-hole compatible API
 - [x] Performance benchmarks vs. competitors
-- [ ] Cache stats UI (hit rate, miss rate, per-domain flush)
-- [ ] Dashbodar Setting system status, pools dns status, cache ouverview, system information, kernel, uptime, load etc..
+- [x] Dashbodar Setting system status, pools dns status, cache ouverview, system information, kernel, uptime, load etc..
 
-### 🎯 v0.7.0 - Security
+### 🎯 v0.7.0 - Security (Current)
 
 - [ ] Login / Auth
 - [ ] HTTPS for Web UI

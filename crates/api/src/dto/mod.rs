@@ -18,6 +18,7 @@ pub mod regex_filter;
 pub mod safe_search;
 pub mod schedule;
 pub mod stats;
+pub mod system_info;
 pub mod timeline;
 pub mod whitelist;
 pub mod whitelist_source;
@@ -50,6 +51,7 @@ pub use query::{PaginatedQueries, QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};
 pub use safe_search::{SafeSearchConfigResponse, ToggleSafeSearchRequest};
 pub use stats::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistribution};
+pub use system_info::SystemInfoResponse;
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
 pub use whitelist::WhitelistResponse;
 pub use whitelist_source::{

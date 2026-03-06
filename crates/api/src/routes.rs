@@ -48,6 +48,11 @@ pub fn create_api_routes(state: AppState) -> Router {
             "/upstream/health",
             get(handlers::upstream::get_upstream_health),
         )
+        .route(
+            "/upstream/health/detail",
+            get(handlers::upstream::get_upstream_health_detail),
+        )
+        .route("/system/info", get(handlers::get_system_info))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_api_key,

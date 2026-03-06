@@ -20,6 +20,7 @@ pub mod queries;
 pub mod rate;
 pub mod regex_filters;
 pub mod stats;
+pub mod system_info;
 pub mod timeline;
 pub mod whitelist;
 pub mod whitelist_sources;
@@ -37,6 +38,7 @@ pub use manual_clients::{create_manual_client, delete_manual_client, update_manu
 pub use queries::get_queries;
 pub use rate::get_query_rate;
 pub use stats::get_stats;
+pub use system_info::get_system_info;
 pub use timeline::get_timeline;
 pub use whitelist::get_whitelist;
 pub mod safe_search;

@@ -2,7 +2,7 @@
         return {
             theme: 'light',
             queryRate: {queries: 0, rate: '0 q/s'},
-            currentTab: 'dnsbasic',
+            currentTab: 'systemstatus',
             loading: true,
             stats: {queries_total: 0},
             config: {
@@ -32,6 +32,20 @@
             },
             cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
             healthStatus: {},
+            systemStatus: {
+                hostname: '',
+            },
+            upstreamHealth: [],
+            expandedUpstreams: [],
+            cacheMetrics: {
+                total_entries: 0, hits: 0, misses: 0, evictions: 0,
+                insertions: 0, optimistic_refreshes: 0,
+                lazy_deletions: 0, compactions: 0, hit_rate: 0,
+            },
+            systemInfo: {
+                kernel: '', load_avg_1m: 0, load_avg_5m: 0, load_avg_15m: 0,
+                mem_total_kb: 0, mem_used_kb: 0, mem_available_kb: 0, mem_used_percent: 0,
+            },
             restartRequired: false,
             apiRestartRequired: false,
             newApiKey: '',
@@ -42,7 +56,7 @@
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats()]);
+                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus()]);
                 scheduleLucide(100);
                 this.startPolling();
                 document.addEventListener('visibilitychange', () => {
@@ -63,6 +77,7 @@
                 this._pollId = setInterval(() => {
                     this.loadHealthStatus();
                     this.loadStats();
+                    this.loadSystemStatus();
                 }, 10000);
             },
             stopPolling() {
@@ -305,6 +320,61 @@
                 } catch (e) {
                     this.showAlert('error', 'Error: ' + e.message)
                 }
+            },
+            async loadSystemStatus() {
+                this._ctrl.systemStatus?.abort();
+                this._ctrl.systemStatus = new AbortController();
+                const sig = this._ctrl.systemStatus.signal;
+                try {
+                    const [hostnameRes, upstreamRes, cacheRes, sysRes] = await Promise.all([
+                        fetch(`${API_BASE}/hostname`,               {signal: sig}),
+                        fetch(`${API_BASE}/upstream/health/detail`, {signal: sig}),
+                        fetch(`${API_BASE}/cache/metrics`,          {signal: sig}),
+                        fetch(`${API_BASE}/system/info`,            {signal: sig}),
+                    ]);
+                    if (hostnameRes.ok) this.systemStatus.hostname = (await hostnameRes.json()).hostname || '';
+                    if (upstreamRes.ok) this.upstreamHealth = await upstreamRes.json();
+                    if (cacheRes.ok)    this.cacheMetrics   = await cacheRes.json();
+                    if (sysRes.ok)      this.systemInfo      = await sysRes.json();
+                } catch (e) {
+                    if (e.name !== 'AbortError') console.error('loadSystemStatus error:', e);
+                }
+            },
+            formatUptime(seconds) {
+                if (!seconds) return '0s';
+                const total = Math.floor(seconds);
+                const d = Math.floor(total / 86400);
+                const h = Math.floor((total % 86400) / 3600);
+                const m = Math.floor((total % 3600) / 60);
+                const s = total % 60;
+                if (d > 0) return `${d}d ${h}h ${m}m`;
+                if (h > 0) return `${h}h ${String(m).padStart(2,'0')}m`;
+                return `${m}m ${s}s`;
+            },
+            kbToGb(kb) {
+                return (kb / 1048576).toFixed(1);
+            },
+            poolStatusColor(status) {
+                if (status === 'Healthy')   return 'var(--color-success)';
+                if (status === 'Unhealthy') return 'var(--color-error)';
+                if (status === 'Partial')   return 'var(--color-warning)';
+                return 'var(--text-tertiary)';
+            },
+            toggleUpstream(addr) {
+                const idx = this.expandedUpstreams.indexOf(addr);
+                if (idx >= 0) this.expandedUpstreams.splice(idx, 1);
+                else this.expandedUpstreams.push(addr);
+            },
+            isUpstreamExpanded(addr) {
+                return this.expandedUpstreams.includes(addr);
+            },
+            formatNumber(n) {
+                return (n || 0).toLocaleString();
+            },
+            formatTime(ms) {
+                if (!ms) return '0 ms';
+                if (ms < 1) return `${Math.round(ms * 1000)} µs`;
+                return `${ms.toFixed(1)} ms`;
             },
             showAlert(type, msg) {
                 this.alert = {show: true, type, message: msg};

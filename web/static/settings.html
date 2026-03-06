@@ -91,6 +91,8 @@
     </div>
 
     <div x-show="!loading" class="tab-bar">
+        <button @click="currentTab='systemstatus';scheduleLucide()"
+                :class="currentTab==='systemstatus'?'tab-btn active':'tab-btn'">System Status</button>
         <button @click="currentTab='dnsbasic';scheduleLucide()"
                 :class="currentTab==='dnsbasic'?'tab-btn active':'tab-btn'">DNS Settings</button>
         <button @click="currentTab='dnsadvanced';scheduleLucide()"
@@ -99,6 +101,248 @@
                 :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
         <button @click="currentTab='webinterface';scheduleLucide()"
                 :class="currentTab==='webinterface'?'tab-btn active':'tab-btn'">Web Interface</button>
+    </div>
+
+    <!-- SYSTEM STATUS TAB -->
+    <div x-show="currentTab==='systemstatus'&&!loading" x-cloak>
+
+        <!-- Row 1: Server + Performance cards -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+            <!-- Server card -->
+            <div class="card" style="padding:24px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                    <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,0.1)">
+                        <i data-lucide="server" style="width:22px;height:22px;color:var(--color-success)"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)" x-text="systemStatus.hostname||'DNS Server'">DNS Server</h3>
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                            <div class="status-indicator"></div>
+                            <span style="font-size:12px;color:var(--color-success);font-weight:600">Active</span>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Uptime</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="formatUptime(stats.uptime)">—</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Queries</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(stats.queries_total)">0</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Blocked</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--color-error)" x-text="formatNumber(stats.queries_blocked)">0</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Block rate</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="stats.queries_total > 0 ? ((stats.queries_blocked / stats.queries_total) * 100).toFixed(1) + '%' : '0%'">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance card -->
+            <div class="card" style="padding:24px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                    <div style="padding:10px;border-radius:8px;background:rgba(59,130,246,0.1)">
+                        <i data-lucide="zap" style="width:22px;height:22px;color:var(--color-primary)"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">Performance</h3>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Real-time metrics</p>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Cache hit rate</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--color-success)" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Throughput</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="queryRate.rate || '0 q/s'">0 q/s</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Avg cache</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="formatTime(stats.avg_cache_time_ms)">—</div>
+                    </div>
+                    <div style="background:var(--bg-tertiary);border-radius:8px;padding:12px">
+                        <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em">Avg upstream</div>
+                        <div style="font-size:16px;font-weight:700;color:var(--text-primary)" x-text="formatTime(stats.avg_upstream_time_ms)">—</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 2: DNS Upstream Pools -->
+        <div class="card" style="padding:24px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <div style="padding:10px;border-radius:8px;background:rgba(245,158,11,0.1)">
+                    <i data-lucide="network" style="width:22px;height:22px;color:var(--color-warning)"></i>
+                </div>
+                <div>
+                    <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">DNS Upstream Pools</h3>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Click a server to see per-IP health breakdown</p>
+                </div>
+            </div>
+            <div x-show="upstreamHealth.length === 0" style="text-align:center;padding:24px 0;color:var(--text-secondary);font-size:14px">
+                No upstream servers configured
+            </div>
+            <div x-show="upstreamHealth.length > 0">
+                <template x-for="group in upstreamHealth" :key="group.address">
+                    <div style="border-bottom:1px solid var(--border-color)">
+                        <!-- Server row — clickable -->
+                        <div @click="toggleUpstream(group.address); scheduleLucide(50)"
+                             style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;user-select:none">
+                            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+                                <div :style="'flex-shrink:0;width:8px;height:8px;border-radius:50%;background:' + poolStatusColor(group.status)"></div>
+                                <span style="font-size:14px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                      x-text="group.address"></span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
+                                <span :style="'background:' + poolStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
+                                      x-text="group.status"></span>
+                                <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
+                                   style="width:16px;height:16px;color:var(--text-tertiary)"></i>
+                            </div>
+                        </div>
+                        <!-- Expanded: per-IP breakdown -->
+                        <div x-show="isUpstreamExpanded(group.address)" style="padding-bottom:10px">
+                            <template x-for="(ep, idx) in group.resolved" :key="ep.address">
+                                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 6px 20px">
+                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                                        <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
+                                              x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
+                                        <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
+                                              x-text="ep.family.toUpperCase()"></span>
+                                        <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                              x-text="ep.address"></span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
+                                        <template x-if="ep.latency_ms != null">
+                                            <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
+                                        </template>
+                                        <template x-if="ep.last_error && ep.status !== 'Healthy'">
+                                            <span :title="ep.last_error"
+                                                  style="font-size:11px;color:var(--color-error);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default"
+                                                  x-text="ep.last_error"></span>
+                                        </template>
+                                        <span :style="'background:' + poolStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
+                                              x-text="ep.status"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Row 3: Cache Overview -->
+        <div class="card" style="padding:24px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <div style="padding:10px;border-radius:8px;background:rgba(139,92,246,0.1)">
+                    <i data-lucide="database" style="width:22px;height:22px;color:#8B5CF6"></i>
+                </div>
+                <div>
+                    <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">Cache Overview</h3>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Live cache engine metrics</p>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Entries</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.total_entries)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Hit rate</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--color-success)" x-text="(cacheMetrics.hit_rate || 0).toFixed(1) + '%'">0%</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Evictions</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.evictions)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Hits</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.hits)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Misses</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.misses)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Insertions</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.insertions)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Opt. Refreshes</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.optimistic_refreshes)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Lazy deletions</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.lazy_deletions)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Compactions</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheMetrics.compactions)">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row 4: System Information -->
+        <div class="card" style="padding:24px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,0.08)">
+                    <i data-lucide="cpu" style="width:22px;height:22px;color:var(--color-success)"></i>
+                </div>
+                <div>
+                    <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">System Information</h3>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">OS kernel, CPU load and memory usage</p>
+                </div>
+            </div>
+
+            <!-- Kernel + Load averages -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+                <div>
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Kernel</div>
+                    <div style="font-size:14px;font-weight:600;color:var(--text-primary);font-family:monospace;background:var(--bg-tertiary);padding:8px 12px;border-radius:6px" x-text="systemInfo.kernel || '—'">—</div>
+                </div>
+                <div>
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">CPU Load avg (1m / 5m / 15m)</div>
+                    <div style="font-size:14px;font-weight:600;color:var(--text-primary);background:var(--bg-tertiary);padding:8px 12px;border-radius:6px">
+                        <span x-text="systemInfo.load_avg_1m.toFixed(2)">0.00</span>
+                        <span style="color:var(--text-tertiary)"> / </span>
+                        <span x-text="systemInfo.load_avg_5m.toFixed(2)">0.00</span>
+                        <span style="color:var(--text-tertiary)"> / </span>
+                        <span x-text="systemInfo.load_avg_15m.toFixed(2)">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RAM usage -->
+            <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em">Memory usage</div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text-primary)">
+                        <span x-text="kbToGb(systemInfo.mem_used_kb)">0</span> GB
+                        <span style="color:var(--text-tertiary)"> / </span>
+                        <span x-text="kbToGb(systemInfo.mem_total_kb)">0</span> GB
+                        <span style="color:var(--text-secondary);font-weight:400">
+                            (<span x-text="systemInfo.mem_used_percent.toFixed(1)">0</span>%)
+                        </span>
+                    </div>
+                </div>
+                <div style="height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden">
+                    <div :style="'width:' + systemInfo.mem_used_percent + '%;height:100%;border-radius:4px;transition:width 0.5s ease;background:' + (systemInfo.mem_used_percent > 85 ? 'var(--color-error)' : systemInfo.mem_used_percent > 60 ? 'var(--color-warning)' : 'var(--color-success)')"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px">
+                    <span style="font-size:11px;color:var(--text-tertiary)">0</span>
+                    <span style="font-size:11px;color:var(--text-tertiary)" x-text="kbToGb(systemInfo.mem_total_kb) + ' GB'">—</span>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- DNS SETTINGS TAB -->

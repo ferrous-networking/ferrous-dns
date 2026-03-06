@@ -52,7 +52,10 @@ pub use safe_search_engine_port::SafeSearchEnginePort;
 pub use schedule_profile_repository::ScheduleProfileRepository;
 pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
-pub use upstream_health_port::{UpstreamHealthPort, UpstreamStatus};
+pub use upstream_health_port::{
+    AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
+    UpstreamStatus,
+};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

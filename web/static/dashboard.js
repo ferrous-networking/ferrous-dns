@@ -17,7 +17,10 @@
         if (key.includes(':')) {
             const parts = key.split(':');
             const pool = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-            const server = parts.slice(1).join(':');
+            const server = parts.slice(1).join(':')
+                .replace(/^[a-z0-9]+:\/\//, '')
+                .replace(/\/.*$/, '')
+                .replace(/:\d+$/, '');
             return pool + ': ' + server;
         }
         return key
