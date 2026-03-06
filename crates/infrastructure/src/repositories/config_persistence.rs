@@ -57,6 +57,17 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "bind_address",
             toml_edit::Value::from(config.server.bind_address.clone()),
         );
+        match &config.server.api_key {
+            Some(key) => set_val(t, "api_key", toml_edit::Value::from(key.clone())),
+            None => {
+                t.remove("api_key");
+            }
+        }
+        set_val(
+            t,
+            "pihole_compat",
+            toml_edit::Value::from(config.server.pihole_compat),
+        );
     }
 
     if let Some(dns_item) = doc.get_mut("dns") {
@@ -171,8 +182,21 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
                 "block_non_fqdn",
                 toml_edit::Value::from(config.dns.block_non_fqdn),
             );
-            if let Some(ref domain) = config.dns.local_domain {
-                set_val(t, "local_domain", toml_edit::Value::from(domain.clone()));
+            match &config.dns.local_domain {
+                Some(domain) => set_val(t, "local_domain", toml_edit::Value::from(domain.clone())),
+                None => {
+                    t.remove("local_domain");
+                }
+            }
+            match &config.dns.local_dns_server {
+                Some(server) => set_val(
+                    t,
+                    "local_dns_server",
+                    toml_edit::Value::from(server.clone()),
+                ),
+                None => {
+                    t.remove("local_dns_server");
+                }
             }
 
             if let Some(hc) = t.get_mut("health_check").and_then(|i| i.as_table_mut()) {

@@ -1,0 +1,12 @@
+        .card-stat {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            transition: all .2s
+        }
+
+        .card-stat:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px)
+        }

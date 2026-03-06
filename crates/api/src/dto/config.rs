@@ -16,6 +16,8 @@ pub struct ServerConfigResponse {
     pub dns_port: u16,
     pub web_port: u16,
     pub bind_address: String,
+    pub api_key_enabled: bool,
+    pub pihole_compat: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -82,8 +84,18 @@ pub struct DatabaseConfigResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct UpdateConfigRequest {
+    pub server: Option<ServerConfigUpdate>,
     pub dns: Option<DnsConfigUpdate>,
     pub blocking: Option<BlockingConfigUpdate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ServerConfigUpdate {
+    /// Set a new API key. Use `clear_api_key: true` to remove instead.
+    pub api_key: Option<String>,
+    /// When `true`, removes the current API key (disables authentication).
+    pub clear_api_key: Option<bool>,
+    pub pihole_compat: Option<bool>,
 }
 
 #[derive(Deserialize, Debug)]

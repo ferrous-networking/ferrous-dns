@@ -1,0 +1,316 @@
+    function app() {
+        return {
+            theme: 'light',
+            queryRate: {queries: 0, rate: '0 q/s'},
+            currentTab: 'dnsbasic',
+            loading: true,
+            stats: {queries_total: 0},
+            config: {
+                dns: {
+                    pools: [],
+                    health_check: {enabled: true, interval_seconds: 30, timeout_ms: 2000, failure_threshold: 3},
+                    dnssec_enabled: false,
+                    cache_enabled: true,
+                    cache_ttl: 3600,
+                    cache_min_ttl: 0,
+                    cache_max_ttl: 86400,
+                    cache_max_entries: 10000,
+                    cache_eviction_strategy: 'lfu',
+                    cache_min_hit_rate: 0.3,
+                    cache_refresh_threshold: 0.8,
+                    cache_compaction_interval: 300,
+                    cache_optimistic_refresh: true,
+                    cache_adaptive_thresholds: true,
+                    cache_access_window_secs: 7200
+                }
+            },
+            settings: {
+                never_forward_non_fqdn: false,
+                never_forward_reverse_lookups: false,
+                local_domain: '',
+                local_dns_server: ''
+            },
+            cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
+            healthStatus: {},
+            restartRequired: false,
+            apiRestartRequired: false,
+            newApiKey: '',
+            showApiKey: false,
+            apiKeyJustGenerated: false,
+            alert: {show: false, type: 'success', message: ''},
+            async init() {
+                this.theme = localStorage.getItem('theme') || 'light';
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                startRatePolling(rate => { this.queryRate = rate; });
+                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats()]);
+                scheduleLucide(100);
+                this.startPolling();
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) this.stopPolling();
+                    else this.startPolling();
+                });
+            },
+            toggleTheme() {
+                this.theme = this.theme === 'light' ? 'dark' : 'light';
+                localStorage.setItem('theme', this.theme);
+                document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                scheduleLucide(50)
+            },
+            _ctrl: {},
+            _pollId: null,
+            startPolling() {
+                this.stopPolling();
+                this._pollId = setInterval(() => {
+                    this.loadHealthStatus();
+                    this.loadStats();
+                }, 10000);
+            },
+            stopPolling() {
+                clearInterval(this._pollId);
+                this._pollId = null;
+                stopRatePolling();
+            },
+            async loadStats() {
+                this._ctrl.stats?.abort();
+                this._ctrl.stats = new AbortController();
+                try {
+                    const r = await fetch(`${API_BASE}/stats`, {signal: this._ctrl.stats.signal});
+                    if (r.ok) this.stats = await r.json()
+                } catch (e) {
+                    if (e.name !== 'AbortError') console.error(e)
+                }
+            },
+            async loadConfig() {
+                try {
+                    this.loading = true;
+                    const res = await fetch(`${API_BASE}/config`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.config = {
+                            ...this.config, ...data,
+                            server: {
+                                dns_port: data.server?.dns_port ?? 53,
+                                web_port: data.server?.web_port ?? 8080,
+                                bind_address: data.server?.bind_address ?? '0.0.0.0',
+                                api_key_enabled: data.server?.api_key_enabled ?? false,
+                                pihole_compat: data.server?.pihole_compat ?? false,
+                            },
+                            dns: {
+                                ...this.config.dns, ...(data.dns || {}),
+                                pools: data.dns?.pools || [],
+                                health_check: {
+                                    enabled: data.dns?.health_check?.enabled ?? true,
+                                    interval_seconds: data.dns?.health_check?.interval_seconds ?? 30,
+                                    timeout_ms: data.dns?.health_check?.timeout_ms ?? 2000,
+                                    failure_threshold: data.dns?.health_check?.failure_threshold ?? 3
+                                },
+                                cache_ttl: data.dns?.cache_ttl ?? 3600,
+                                cache_min_ttl: data.dns?.cache_min_ttl ?? 0,
+                                cache_max_ttl: data.dns?.cache_max_ttl ?? 86400,
+                                cache_max_entries: data.dns?.cache_max_entries ?? 10000,
+                                cache_eviction_strategy: data.dns?.cache_eviction_strategy ?? 'lfu',
+                                cache_min_hit_rate: data.dns?.cache_min_hit_rate ?? 0.3,
+                                cache_refresh_threshold: data.dns?.cache_refresh_threshold ?? 0.8,
+                                cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
+                                cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
+                                cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
+                                cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200
+                            }
+                        };
+                        if (this.config.dns.pools.length === 0 && data.dns?.upstream_servers?.length > 0) {
+                            this.config.dns.pools = [{
+                                name: 'default',
+                                strategy: 'parallel',
+                                priority: 1,
+                                servers: [...data.dns.upstream_servers]
+                            }]
+                        }
+                    } else {
+                        this.showAlert('error', 'Failed to load configuration')
+                    }
+                } catch (e) {
+                    console.error('Load config error:', e);
+                    this.showAlert('error', 'Failed to load: ' + e.message)
+                } finally {
+                    this.loading = false
+                }
+            },
+            async loadDnsSettings() {
+                try {
+                    const r = await fetch(`${API_BASE}/settings`);
+                    if (r.ok) this.settings = await r.json()
+                } catch (e) {
+                    console.log('Using default DNS settings', e)
+                }
+            },
+            async loadHealthStatus() {
+                this._ctrl.health?.abort();
+                this._ctrl.health = new AbortController();
+                try {
+                    const res = await fetch(`${API_BASE}/health/upstreams`, {signal: this._ctrl.health.signal});
+                    if (res.ok) this.healthStatus = await res.json()
+                } catch (e) {
+                    if (e.name !== 'AbortError') console.error('Load health error:', e)
+                }
+            },
+            async loadCacheStats() {
+                try {
+                    const res = await fetch(`${API_BASE}/cache/stats`);
+                    if (res.ok) this.cacheStats = await res.json()
+                } catch (e) {
+                    console.error('Load cache stats error:', e)
+                }
+            },
+            getServerHealth(s) {
+                return this.healthStatus[s] || 'Unknown'
+            },
+            addPool() {
+                this.config.dns.pools.push({name: '', strategy: 'parallel', priority: 1, servers: ['']});
+                setTimeout(() => lucide.createIcons(), 50)
+            },
+            removePool(idx) {
+                this.config.dns.pools.splice(idx, 1)
+            },
+            getFirstPoolStrategy() {
+                return this.config.dns.pools[0]?.strategy || 'parallel'
+            },
+            setFirstPoolStrategy(s) {
+                if (this.config.dns.pools.length > 0) {
+                    this.config.dns.pools[0].strategy = s
+                } else {
+                    this.addPool();
+                    this.config.dns.pools[0].strategy = s
+                }
+            },
+            async saveConfig() {
+                try {
+                    const res = await fetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({dns: this.config.dns, blocking: this.config.blocking})
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success !== false) {
+                        this.showAlert('success', 'Configuration saved successfully!')
+                    } else {
+                        this.showAlert('error', 'Failed to save: ' + (data.error || data.message || 'Unknown error'))
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Failed to save: ' + e.message)
+                }
+            },
+            async saveDnsSettings() {
+                try {
+                    const r = await fetch(`${API_BASE}/settings`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(this.settings)
+                    });
+                    const data = await r.json();
+                    if (r.ok && data.success !== false) {
+                        this.showAlert('success', 'DNS settings saved!');
+                        if (data.message && data.message.includes('restart')) {
+                            this.restartRequired = true
+                        }
+                    } else {
+                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.showAlert('error', 'Error: ' + e.message)
+                }
+            },
+            toggleLocalDomain() {
+                if (this.settings.local_domain) {
+                    this.settings.local_domain = '';
+                    this.settings.local_dns_server = '';
+                } else {
+                    this.settings.local_domain = 'lan';
+                }
+            },
+            async generateApiKey() {
+                try {
+                    const r = await fetch(`${API_BASE}/api-key/generate`, {method: 'POST'});
+                    if (r.ok) {
+                        const data = await r.json();
+                        this.newApiKey = data.key;
+                        this.showApiKey = true;
+                        this.apiKeyJustGenerated = true;
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', 'Failed to generate key')
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Error: ' + e.message)
+                }
+            },
+            async saveApiKey() {
+                if (!this.newApiKey.trim()) return;
+                try {
+                    const r = await fetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({server: {api_key: this.newApiKey.trim()}})
+                    });
+                    const data = await r.json();
+                    if (r.ok && data.success !== false) {
+                        this.config.server.api_key_enabled = true;
+                        this.apiRestartRequired = true;
+                        this.apiKeyJustGenerated = false;
+                        this.showAlert('success', 'API key saved. Restart the server to activate.');
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Error: ' + e.message)
+                }
+            },
+            async removeApiKey() {
+                try {
+                    const r = await fetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({server: {clear_api_key: true}})
+                    });
+                    const data = await r.json();
+                    if (r.ok && data.success !== false) {
+                        this.config.server.api_key_enabled = false;
+                        this.newApiKey = '';
+                        this.apiRestartRequired = true;
+                        this.showAlert('success', 'API key removed. Restart the server to apply.');
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Error: ' + e.message)
+                }
+            },
+            async savePiholeCompat() {
+                try {
+                    const r = await fetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({server: {pihole_compat: this.config.server.pihole_compat}})
+                    });
+                    const data = await r.json();
+                    if (r.ok && data.success !== false) {
+                        this.apiRestartRequired = true;
+                        this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Error: ' + e.message)
+                }
+            },
+            showAlert(type, msg) {
+                this.alert = {show: true, type, message: msg};
+                setTimeout(() => {
+                    this.alert.show = false
+                }, 5000)
+            }
+        }
+    }

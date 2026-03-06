@@ -22,6 +22,7 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/config", get(handlers::get_config))
         .route("/config", post(handlers::update_config))
         .route("/config/reload", post(handlers::reload_config))
+        .route("/api-key/generate", post(handlers::generate_api_key))
         .route("/hostname", get(handlers::get_hostname))
         .route("/clients", get(handlers::get_clients))
         .route("/clients", post(handlers::create_manual_client))

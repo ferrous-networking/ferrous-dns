@@ -1,0 +1,79 @@
+        .service-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px }
+        .service-card {
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px;
+            padding:16px; display:flex; flex-direction:column; align-items:center; gap:10px;
+            transition:all .2s; cursor:pointer; position:relative;
+        }
+        .service-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1) }
+        .service-card.blocked { border-color:#EF4444; background:rgba(239,68,68,0.05) }
+        .service-icon { width:32px; height:32px; flex-shrink:0 }
+        .service-icon svg { width:100%; height:100% }
+        .category-pill {
+            display:inline-flex; align-items:center; padding:6px 14px; border-radius:20px;
+            font-size:13px; font-weight:500; border:1px solid var(--border-color);
+            background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;
+            transition:all .15s; white-space:nowrap;
+        }
+        .category-pill:hover { border-color:var(--accent-color); color:var(--text-primary) }
+        .category-pill.active { background:var(--accent-color); border-color:var(--accent-color); color:#fff }
+        .toggle-switch {
+            position:relative; width:40px; height:22px; border-radius:11px;
+            background:var(--border-color); cursor:pointer; transition:background .2s; flex-shrink:0;
+        }
+        .toggle-switch.on { background:#EF4444 }
+        .toggle-switch.on-green { background:#10B981 }
+        .toggle-switch::after {
+            content:''; position:absolute; top:2px; left:2px; width:18px; height:18px;
+            border-radius:50%; background:#fff; transition:transform .2s;
+        }
+        .toggle-switch.on::after, .toggle-switch.on-green::after { transform:translateX(18px) }
+        .badge-category {
+            font-size:11px; padding:2px 8px; border-radius:10px;
+            background:rgba(99,102,241,0.1); color:#6366F1; white-space:nowrap;
+        }
+        .badge-count {
+            font-size:13px; padding:4px 12px; border-radius:12px;
+            background:rgba(239,68,68,0.1); color:#EF4444; font-weight:600;
+        }
+        .search-input {
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px;
+            padding:8px 12px 8px 36px; color:var(--text-primary); font-size:14px;
+            width:100%; max-width:320px; outline:none; transition:border-color .2s;
+        }
+        .search-input:focus { border-color:var(--accent-color) }
+        .group-select {
+            background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px;
+            padding:8px 12px; color:var(--text-primary); font-size:14px; outline:none; cursor:pointer;
+        }
+        .group-select:focus { border-color:var(--accent-color) }
+        .btn { padding:8px 16px; border-radius:8px; font-size:14px; font-weight:500; cursor:pointer; border:none; transition:all 0.15s }
+        .btn-primary { background:var(--color-primary); color:white }
+        .btn-primary:hover { background:#2563EB }
+        .btn-secondary { background:var(--bg-tertiary); color:var(--text-primary) }
+        .btn-secondary:hover { background:var(--border-color) }
+        .btn-danger { background:var(--color-error); color:white }
+        .btn-danger:hover { background:#DC2626 }
+        .btn-icon { padding:8px; border-radius:8px; background:none; border:none; cursor:pointer; color:var(--text-secondary); transition:all 0.15s }
+        .btn-icon:hover { background:var(--bg-tertiary); color:var(--text-primary) }
+        .input { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; box-sizing:border-box }
+        .input:focus { outline:none; border-color:var(--color-primary) }
+        .table { width:100%; border-collapse:collapse }
+        .table th { text-align:left; padding:12px 16px; font-size:12px; font-weight:600; color:var(--text-secondary); background:var(--bg-tertiary); border-bottom:1px solid var(--border-color) }
+        .table td { padding:14px 16px; border-bottom:1px solid var(--border-color); vertical-align:middle }
+        .table tbody tr:hover { background:var(--bg-tertiary) }
+        .form-group { margin-bottom:16px }
+        .form-label { display:block; margin-bottom:6px; font-size:14px; font-weight:500; color:var(--text-primary) }
+        .textarea { width:100%; padding:10px 12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; resize:vertical; min-height:80px; box-sizing:border-box }
+        .textarea:focus { outline:none; border-color:var(--color-primary) }
+        .badge-custom { font-size:10px; padding:2px 6px; border-radius:8px; background:rgba(16,185,129,0.1); color:#10B981; font-weight:600 }
+        .tab-bar { display:flex; border-bottom:1px solid var(--border-color); margin-bottom:24px }
+        .tab-btn { padding:12px 24px; font-size:14px; font-weight:500; color:var(--text-secondary); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition:all .15s }
+        .tab-btn.active { color:var(--color-primary); border-bottom-color:var(--color-primary) }
+        .tab-btn:hover { color:var(--text-primary) }
+        .engine-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:16px; margin-bottom:24px }
+        .engine-card { background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px 16px 16px; display:flex; flex-direction:column; align-items:center; gap:12px; transition:all .2s }
+        .engine-card.ss-on { border-color:#10B981; background:rgba(16,185,129,0.05) }
+        .engine-name { font-size:14px; font-weight:600; color:var(--text-primary); text-align:center }
+        .yt-mode { display:flex; gap:6px; flex-direction:column; width:100% }
+        .yt-mode label { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); cursor:pointer }
+        .yt-mode input[type=radio] { cursor:pointer; accent-color:#10B981 }

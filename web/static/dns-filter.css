@@ -1,0 +1,245 @@
+        .theme-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all .15s;
+            font-size: 14px
+        }
+
+        .theme-btn:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s
+        }
+
+        .btn-primary { background: var(--color-primary); color: white }
+        .btn-primary:hover { background: #2563EB }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
+        .btn-secondary:hover { background: var(--border-color) }
+        .btn-danger { background: var(--color-error); color: white }
+        .btn-danger:hover { background: #DC2626 }
+
+        .btn-icon {
+            padding: 8px;
+            border-radius: 8px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s
+        }
+
+        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary) }
+
+        .input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            box-sizing: border-box
+        }
+
+        .input:focus { outline: none; border-color: var(--color-primary) }
+
+        .textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: vertical;
+            min-height: 80px;
+            box-sizing: border-box
+        }
+
+        .textarea:focus { outline: none; border-color: var(--color-primary) }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s
+        }
+
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--color-success) }
+        .badge-success:hover { background: rgba(16, 185, 129, 0.2) }
+        .badge-inactive { background: rgba(107, 114, 128, 0.1); color: var(--text-secondary) }
+        .badge-inactive:hover { background: rgba(107, 114, 128, 0.2) }
+
+        .table { width: 100%; border-collapse: collapse }
+
+        .table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        .table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle
+        }
+
+        .table tbody tr:hover { background: var(--bg-tertiary) }
+
+        .form-group { margin-bottom: 16px }
+
+        .form-label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-primary)
+        }
+
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: -1px
+        }
+
+        .tab-btn.active {
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary)
+        }
+
+        .tab-btn:hover { color: var(--text-primary) }
+
+        .group-pills-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            position: relative;
+            min-width: 100px
+        }
+
+        .group-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(59,130,246,0.1);
+            color: var(--color-primary);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap
+        }
+
+        .pill-remove {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: inherit;
+            padding: 0;
+            line-height: 1;
+            font-size: 14px;
+            opacity: 0.7
+        }
+
+        .pill-remove:hover { opacity: 1 }
+
+        .btn-add-group {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: 1px dashed var(--border-color);
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            font-size: 16px;
+            color: var(--text-secondary);
+            line-height: 1;
+            padding: 0;
+            flex-shrink: 0
+        }
+
+        .btn-add-group:hover { border-color: var(--color-primary); color: var(--color-primary) }
+
+        .group-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            z-index: 50;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px;
+            min-width: 160px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12)
+        }
+
+        .group-check-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--text-primary);
+            user-select: none
+        }
+
+        .group-check-item:hover { background: var(--bg-tertiary) }
+
+        .group-check-item input[type=checkbox] { cursor: pointer; width: 14px; height: 14px }
+
+        .group-checkboxes {
+            display: flex;
+            flex-direction: column;
+            gap: 6px
+        }
+
+        .group-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-primary)
+        }
+
+        .group-checkbox-row input[type=checkbox] { cursor: pointer; width: 16px; height: 16px }

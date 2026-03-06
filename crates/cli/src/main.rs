@@ -97,7 +97,8 @@ async fn async_main() -> anyhow::Result<()> {
     }
     info!("Subnet matcher cache loaded");
 
-    let api_key = config.server.api_key.as_deref().map(Arc::from);
+    let api_key: Option<Arc<str>> = config.server.api_key.as_deref().map(Arc::from);
+    let pihole_state = wiring::build_pihole_state(&use_cases, api_key.clone());
     let app_state = wiring::build_app_state(
         use_cases,
         &dns_services,
@@ -191,7 +192,9 @@ async fn async_main() -> anyhow::Result<()> {
     server::start_web_server(
         web_addr,
         app_state,
+        pihole_state,
         &config.server.cors_allowed_origins,
+        config.server.pihole_compat,
         doh_handler,
     )
     .await?;

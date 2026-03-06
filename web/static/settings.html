@@ -8,185 +8,10 @@
     <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="/static/shared.css">
+    <script src="/ferrous-config.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
-    <style>
-        .card {
-            padding: 24px;
-            margin-bottom: 24px
-        }
-
-        .card-stat {
-            background: var(--bg-secondary);
-            border-radius: 12px;
-            padding: 24px;
-            border: 1px solid var(--border-color);
-            transition: all .2s
-        }
-
-        .card-stat:hover {
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transform: translateY(-2px)
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            border: none;
-            transition: all 0.15s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px
-        }
-
-        .btn-primary { background: var(--color-primary); color: white }
-        .btn-primary:hover { background: #2563EB }
-        .btn-success { background: var(--color-success); color: white }
-        .btn-success:hover { background: #059669 }
-        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary) }
-        .btn-secondary:hover { background: var(--border-color) }
-
-        .btn-icon {
-            padding: 8px;
-            border-radius: 8px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.15s
-        }
-
-        .btn-icon:hover { background: var(--bg-tertiary); color: var(--text-primary) }
-
-        .tab-bar {
-            display: flex;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 24px
-        }
-
-        .tab-btn {
-            padding: 12px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            background: none;
-            border: none;
-            border-bottom: 2px solid transparent;
-            cursor: pointer;
-            transition: all .15s
-        }
-
-        .tab-btn.active {
-            color: var(--color-primary);
-            border-bottom-color: var(--color-primary)
-        }
-
-        .tab-btn:hover { color: var(--text-primary) }
-
-        .strategy-card {
-            padding: 16px;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            transition: all .2s;
-            cursor: pointer;
-            background: var(--bg-secondary)
-        }
-
-        .strategy-card:hover { border-color: var(--color-primary) }
-
-        .strategy-card.selected {
-            border-color: var(--color-primary);
-            background: rgba(59, 130, 246, 0.05)
-        }
-
-        .input, select, input[type="text"], input[type="number"] {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            font-size: 14px;
-            box-sizing: border-box
-        }
-
-        .input:focus, select:focus, input[type="text"]:focus, input[type="number"]:focus {
-            outline: none;
-            border-color: var(--color-primary)
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-primary)
-        }
-
-        .form-group { margin-bottom: 16px }
-
-        label {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 6px;
-            display: block
-        }
-
-        .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between
-        }
-
-        .alert-success {
-            background: #ECFDF5;
-            border: 1px solid #10B981;
-            color: #065F46
-        }
-
-        .alert-error {
-            background: #FEF2F2;
-            border: 1px solid #EF4444;
-            color: #991B1B
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 24px;
-            background: var(--text-tertiary);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background .3s;
-            flex-shrink: 0
-        }
-
-        .toggle-switch.active { background: var(--color-success) }
-
-        .toggle-slider {
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background: white;
-            border-radius: 50%;
-            transition: transform .3s
-        }
-
-        .toggle-switch.active .toggle-slider { transform: translateX(24px) }
-
-        @keyframes spin {
-            to { transform: rotate(360deg) }
-        }
-    </style>
+    <link rel="stylesheet" href="/static/settings.css">
 </head>
 <body x-data="app()" x-init="init()">
 <aside class="sidebar">
@@ -953,9 +778,14 @@
 
     <!-- WEB INTERFACE TAB -->
     <div x-show="currentTab==='webinterface'&&!loading" x-cloak>
+
+        <!-- Appearance -->
         <div class="card">
-            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Appearance</h2>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Choose the color scheme for the web interface</p>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="palette" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Appearance</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Choose the color scheme for the web interface.</p>
             <div class="form-group" style="max-width:240px">
                 <label class="form-label">Theme</label>
                 <select x-model="theme"
@@ -965,238 +795,115 @@
                 </select>
             </div>
         </div>
+
+        <!-- API Access -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="key-round" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">API Access</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
+                Protect the dashboard and API with a key. When enabled, all requests must include
+                <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">X-API-Key: &lt;key&gt;</code> or
+                <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">Authorization: Bearer &lt;key&gt;</code>.
+                Changes require a server restart to take effect.
+            </p>
+
+            <!-- Status badge -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+                <span style="font-size:13px;font-weight:500;color:var(--text-secondary)">Status:</span>
+                <span x-show="config.server?.api_key_enabled"
+                      style="display:inline-flex;align-items:center;gap:6px;background:#d1fae5;color:#065f46;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">
+                    <i data-lucide="shield-check" style="width:13px;height:13px"></i> Enabled
+                </span>
+                <span x-show="!config.server?.api_key_enabled"
+                      style="display:inline-flex;align-items:center;gap:6px;background:var(--bg-tertiary);color:var(--text-secondary);border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">
+                    <i data-lucide="shield-off" style="width:13px;height:13px"></i> Disabled
+                </span>
+            </div>
+
+            <!-- Key input row -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+                <div style="position:relative;flex:1;max-width:480px">
+                    <input :type="showApiKey?'text':'password'"
+                           x-model="newApiKey"
+                           placeholder="Enter or generate an API key…"
+                           style="width:100%;padding-right:40px;font-family:monospace;font-size:13px">
+                    <button @click="showApiKey=!showApiKey" class="btn-icon"
+                            style="position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:4px">
+                        <i :data-lucide="showApiKey?'eye-off':'eye'" style="width:16px;height:16px"></i>
+                    </button>
+                </div>
+                <button @click="generateApiKey()" class="btn btn-secondary"
+                        style="white-space:nowrap;flex-shrink:0">
+                    <i data-lucide="refresh-cw" style="width:15px;height:15px"></i> Generate
+                </button>
+            </div>
+
+            <!-- Hint shown after generate -->
+            <p x-show="apiKeyJustGenerated" x-cloak
+               style="font-size:12px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:16px">
+                <i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px"></i>
+                Copy this key now — it will not be shown again after saving.
+            </p>
+
+            <!-- Actions -->
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button @click="saveApiKey()" class="btn btn-primary"
+                        :disabled="!newApiKey.trim()"
+                        style="opacity:1" :style="!newApiKey.trim()?'opacity:0.5;cursor:not-allowed':''">
+                    <i data-lucide="save" style="width:15px;height:15px"></i> Save Key
+                </button>
+                <button @click="removeApiKey()" class="btn btn-secondary"
+                        x-show="config.server?.api_key_enabled"
+                        style="color:#ef4444">
+                    <i data-lucide="trash-2" style="width:15px;height:15px"></i> Remove Key
+                </button>
+            </div>
+
+            <!-- Restart notice -->
+            <div x-show="apiRestartRequired" x-cloak
+                 style="display:flex;align-items:center;gap:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-top:16px">
+                <i data-lucide="rotate-ccw" style="width:16px;height:16px;color:#d97706;flex-shrink:0"></i>
+                <p style="font-size:13px;color:#92400e;margin:0">
+                    API key change saved. <strong>Restart the server</strong> for the new settings to take effect.
+                </p>
+            </div>
+        </div>
+
+        <!-- Pi-hole Compatibility -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="plug-zap" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Pi-hole Compatibility</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
+                Expose a Pi-hole v6 compatible API at <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">/api/*</code>.
+                The Ferrous DNS dashboard will automatically move to <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">/ferrous/api/*</code>.
+                Enables third-party tools, plugins, and dashboards built for Pi-hole to work without modification.
+                Requires a server restart.
+            </p>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
+                <div style="flex:1;margin-right:32px">
+                    <h4 style="font-size:15px;font-weight:600;margin:0 0 4px">Enable Pi-hole Compatible API</h4>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">
+                        When enabled, third-party apps that expect the Pi-hole v6 API will work without any reconfiguration.
+                    </p>
+                </div>
+                <div @click="config.server.pihole_compat=!config.server?.pihole_compat"
+                     :class="config.server?.pihole_compat?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+            <button @click="savePiholeCompat()" class="btn btn-primary">
+                <i data-lucide="save" style="width:15px;height:15px"></i> Save Compatibility Settings
+            </button>
+        </div>
+
     </div>
 
 </main>
 
-<script>
-    function app() {
-        return {
-            theme: 'light',
-            queryRate: {queries: 0, rate: '0 q/s'},
-            currentTab: 'dnsbasic',
-            loading: true,
-            stats: {queries_total: 0},
-            config: {
-                dns: {
-                    pools: [],
-                    health_check: {enabled: true, interval_seconds: 30, timeout_ms: 2000, failure_threshold: 3},
-                    dnssec_enabled: false,
-                    cache_enabled: true,
-                    cache_ttl: 3600,
-                    cache_min_ttl: 0,
-                    cache_max_ttl: 86400,
-                    cache_max_entries: 10000,
-                    cache_eviction_strategy: 'lfu',
-                    cache_min_hit_rate: 0.3,
-                    cache_refresh_threshold: 0.8,
-                    cache_compaction_interval: 300,
-                    cache_optimistic_refresh: true,
-                    cache_adaptive_thresholds: true,
-                    cache_access_window_secs: 7200
-                }
-            },
-            settings: {
-                never_forward_non_fqdn: false,
-                never_forward_reverse_lookups: false,
-                local_domain: '',
-                local_dns_server: ''
-            },
-            cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
-            healthStatus: {},
-            restartRequired: false,
-            alert: {show: false, type: 'success', message: ''},
-            async init() {
-                this.theme = localStorage.getItem('theme') || 'light';
-                document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats()]);
-                scheduleLucide(100);
-                this.startPolling();
-                document.addEventListener('visibilitychange', () => {
-                    if (document.hidden) this.stopPolling();
-                    else this.startPolling();
-                });
-            },
-            toggleTheme() {
-                this.theme = this.theme === 'light' ? 'dark' : 'light';
-                localStorage.setItem('theme', this.theme);
-                document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                setTimeout(() => lucide.createIcons(), 50)
-            },
-            _ctrl: {},
-            _pollId: null,
-            startPolling() {
-                this.stopPolling();
-                this._pollId = setInterval(() => {
-                    this.loadHealthStatus();
-                    this.loadStats();
-                }, 10000);
-            },
-            stopPolling() {
-                clearInterval(this._pollId);
-                this._pollId = null;
-                stopRatePolling();
-            },
-            async loadStats() {
-                this._ctrl.stats?.abort();
-                this._ctrl.stats = new AbortController();
-                try {
-                    const r = await fetch('/api/stats', {signal: this._ctrl.stats.signal});
-                    if (r.ok) this.stats = await r.json()
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error(e)
-                }
-            },
-            async loadConfig() {
-                try {
-                    this.loading = true;
-                    const res = await fetch('/api/config');
-                    if (res.ok) {
-                        const data = await res.json();
-                        this.config = {
-                            ...this.config, ...data,
-                            dns: {
-                                ...this.config.dns, ...(data.dns || {}),
-                                pools: data.dns?.pools || [],
-                                health_check: {
-                                    enabled: data.dns?.health_check?.enabled ?? true,
-                                    interval_seconds: data.dns?.health_check?.interval_seconds ?? 30,
-                                    timeout_ms: data.dns?.health_check?.timeout_ms ?? 2000,
-                                    failure_threshold: data.dns?.health_check?.failure_threshold ?? 3
-                                },
-                                cache_ttl: data.dns?.cache_ttl ?? 3600,
-                                cache_min_ttl: data.dns?.cache_min_ttl ?? 0,
-                                cache_max_ttl: data.dns?.cache_max_ttl ?? 86400,
-                                cache_max_entries: data.dns?.cache_max_entries ?? 10000,
-                                cache_eviction_strategy: data.dns?.cache_eviction_strategy ?? 'lfu',
-                                cache_min_hit_rate: data.dns?.cache_min_hit_rate ?? 0.3,
-                                cache_refresh_threshold: data.dns?.cache_refresh_threshold ?? 0.8,
-                                cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
-                                cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
-                                cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
-                                cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200
-                            }
-                        };
-                        if (this.config.dns.pools.length === 0 && data.dns?.upstream_servers?.length > 0) {
-                            this.config.dns.pools = [{
-                                name: 'default',
-                                strategy: 'parallel',
-                                priority: 1,
-                                servers: [...data.dns.upstream_servers]
-                            }]
-                        }
-                    } else {
-                        this.showAlert('error', 'Failed to load configuration')
-                    }
-                } catch (e) {
-                    console.error('Load config error:', e);
-                    this.showAlert('error', 'Failed to load: ' + e.message)
-                } finally {
-                    this.loading = false
-                }
-            },
-            async loadDnsSettings() {
-                try {
-                    const r = await fetch('/api/settings');
-                    if (r.ok) this.settings = await r.json()
-                } catch (e) {
-                    console.log('Using default DNS settings', e)
-                }
-            },
-            async loadHealthStatus() {
-                this._ctrl.health?.abort();
-                this._ctrl.health = new AbortController();
-                try {
-                    const res = await fetch('/api/health/upstreams', {signal: this._ctrl.health.signal});
-                    if (res.ok) this.healthStatus = await res.json()
-                } catch (e) {
-                    if (e.name !== 'AbortError') console.error('Load health error:', e)
-                }
-            },
-            async loadCacheStats() {
-                try {
-                    const res = await fetch('/api/cache/stats');
-                    if (res.ok) this.cacheStats = await res.json()
-                } catch (e) {
-                    console.error('Load cache stats error:', e)
-                }
-            },
-            getServerHealth(s) {
-                return this.healthStatus[s] || 'Unknown'
-            },
-            addPool() {
-                this.config.dns.pools.push({name: '', strategy: 'parallel', priority: 1, servers: ['']});
-                setTimeout(() => lucide.createIcons(), 50)
-            },
-            removePool(idx) {
-                this.config.dns.pools.splice(idx, 1)
-            },
-            getFirstPoolStrategy() {
-                return this.config.dns.pools[0]?.strategy || 'parallel'
-            },
-            setFirstPoolStrategy(s) {
-                if (this.config.dns.pools.length > 0) {
-                    this.config.dns.pools[0].strategy = s
-                } else {
-                    this.addPool();
-                    this.config.dns.pools[0].strategy = s
-                }
-            },
-            async saveConfig() {
-                try {
-                    const res = await fetch('/api/config', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(this.config)
-                    });
-                    const data = await res.json();
-                    if (res.ok && data.success !== false) {
-                        this.showAlert('success', 'Configuration saved successfully!')
-                    } else {
-                        this.showAlert('error', 'Failed to save: ' + (data.error || data.message || 'Unknown error'))
-                    }
-                } catch (e) {
-                    this.showAlert('error', 'Failed to save: ' + e.message)
-                }
-            },
-            async saveDnsSettings() {
-                try {
-                    const r = await fetch('/api/settings', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(this.settings)
-                    });
-                    const data = await r.json();
-                    if (r.ok && data.success !== false) {
-                        this.showAlert('success', 'DNS settings saved!');
-                        if (data.message && data.message.includes('restart')) {
-                            this.restartRequired = true
-                        }
-                    } else {
-                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
-                    }
-                } catch (e) {
-                    console.error(e);
-                    this.showAlert('error', 'Error: ' + e.message)
-                }
-            },
-            toggleLocalDomain() {
-                if (this.settings.local_domain) {
-                    this.settings.local_domain = '';
-                    this.settings.local_dns_server = '';
-                } else {
-                    this.settings.local_domain = 'lan';
-                }
-            },
-            showAlert(type, msg) {
-                this.alert = {show: true, type, message: msg};
-                setTimeout(() => {
-                    this.alert.show = false
-                }, 5000)
-            }
-        }
-    }
-</script>
+<script src="/static/settings.js"></script>
 </body>
 </html>

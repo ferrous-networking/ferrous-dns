@@ -5,6 +5,7 @@ members = [
     "crates/infrastructure",
     "crates/jobs",
     "crates/api",
+    "crates/api-pihole",
     "crates/cli"
 ]
 resolver = "2"
@@ -21,6 +22,7 @@ ferrous-dns-application = { path = "crates/application" }
 ferrous-dns-infrastructure = { path = "crates/infrastructure" }
 ferrous-dns-jobs = { path = "crates/jobs" }
 ferrous-dns-api = { path = "crates/api" }
+ferrous-dns-api-pihole = { path = "crates/api-pihole" }
 
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"

@@ -12,6 +12,12 @@ bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on
 # cors_allowed_origins = ["*"]          # Allowed CORS origins for the REST API
 # api_key = "your-secret-key"           # API key for authenticated endpoints (omit to disable)
 
+# Enables the Pi-hole v6 compatible API at /api/* so third-party dashboards,
+# plugins, and automations that expect the Pi-hole API continue to work.
+# When true, the Ferrous dashboard API moves to /ferrous/api/* and the
+# frontend discovers the correct prefix automatically via /ferrous-config.js.
+# pihole_compat = false
+
 # Enable PROXY Protocol v2 on TCP DNS and DoT listeners.
 # Only activate when a trusted load balancer (HAProxy, AWS NLB, nginx) is always
 # in front — it injects the real client IP before each TCP connection.

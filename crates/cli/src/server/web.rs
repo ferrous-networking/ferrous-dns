@@ -1,10 +1,12 @@
 use axum::{
+    extract::State,
     http::{header, HeaderValue, Method},
     response::{Html, IntoResponse},
     routing::get,
     Router,
 };
 use ferrous_dns_api::{create_api_routes, AppState};
+use ferrous_dns_api_pihole::{create_pihole_routes, PiholeAppState};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -40,18 +42,36 @@ pub async fn start_doh_server(
 
 pub async fn start_web_server(
     bind_addr: SocketAddr,
-    state: AppState,
+    ferrous_state: AppState,
+    pihole_state: PiholeAppState,
     cors_allowed_origins: &[String],
+    pihole_compat: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
 ) -> anyhow::Result<()> {
-    info!(
-        bind_address = %bind_addr,
-        dashboard_url = format!("http://{}", bind_addr),
-        api_url = format!("http://{}/api", bind_addr),
-        "Starting web server"
-    );
+    if pihole_compat {
+        info!(
+            bind_address = %bind_addr,
+            dashboard_url = format!("http://{}", bind_addr),
+            ferrous_api_url = format!("http://{}/ferrous/api", bind_addr),
+            pihole_api_url = format!("http://{}/api", bind_addr),
+            "Starting web server (Pi-hole compat mode)"
+        );
+    } else {
+        info!(
+            bind_address = %bind_addr,
+            dashboard_url = format!("http://{}", bind_addr),
+            api_url = format!("http://{}/api", bind_addr),
+            "Starting web server"
+        );
+    }
 
-    let app = create_app(state, cors_allowed_origins, doh_handler);
+    let app = create_app(
+        ferrous_state,
+        pihole_state,
+        cors_allowed_origins,
+        pihole_compat,
+        doh_handler,
+    );
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     info!("Web server started successfully");
@@ -80,15 +100,55 @@ fn build_strict_cors(allowed_origins: &[String]) -> CorsLayer {
 }
 
 fn create_app(
-    state: AppState,
+    ferrous_state: AppState,
+    pihole_state: PiholeAppState,
     cors_allowed_origins: &[String],
+    pihole_compat: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
 ) -> Router {
-    let mut app = Router::new()
-        .nest("/api", create_api_routes(state))
+    // In compat mode the Pi-hole API occupies /api/* and the Ferrous
+    // dashboard API moves to /ferrous/api/* so both can coexist.
+    let router = if pihole_compat {
+        Router::new()
+            .nest("/api", create_pihole_routes(pihole_state))
+            .nest("/ferrous/api", create_api_routes(ferrous_state))
+    } else {
+        Router::new().nest("/api", create_api_routes(ferrous_state))
+    };
+
+    let mut app = router
+        .route(
+            "/ferrous-config.js",
+            get(ferrous_config_js_handler).with_state(pihole_compat),
+        )
         .route("/static/shared.css", get(shared_css_handler))
         .route("/static/shared.js", get(shared_js_handler))
         .route("/static/logo.svg", get(logo_svg_handler))
+        .route("/static/dashboard.css", get(dashboard_css_handler))
+        .route("/static/dashboard.js", get(dashboard_js_handler))
+        .route("/static/queries.css", get(queries_css_handler))
+        .route("/static/queries.js", get(queries_js_handler))
+        .route("/static/clients.css", get(clients_css_handler))
+        .route("/static/clients.js", get(clients_js_handler))
+        .route("/static/groups.css", get(groups_css_handler))
+        .route("/static/groups.js", get(groups_js_handler))
+        .route(
+            "/static/local-dns-settings.css",
+            get(local_dns_settings_css_handler),
+        )
+        .route(
+            "/static/local-dns-settings.js",
+            get(local_dns_settings_js_handler),
+        )
+        .route("/static/settings.css", get(settings_css_handler))
+        .route("/static/settings.js", get(settings_js_handler))
+        .route("/static/dns-filter.css", get(dns_filter_css_handler))
+        .route("/static/dns-filter.js", get(dns_filter_js_handler))
+        .route(
+            "/static/block-services.css",
+            get(block_services_css_handler),
+        )
+        .route("/static/block-services.js", get(block_services_js_handler))
         .route("/", get(index_handler))
         .route("/dashboard.html", get(dashboard_handler))
         .route("/queries.html", get(queries_handler))
@@ -112,6 +172,29 @@ fn create_app(
     }
 
     app
+}
+
+/// Returns a small JS snippet that sets `window.FERROUS_API_BASE` at runtime.
+///
+/// The HTMLs are compiled into the binary via `include_str!` and cannot be
+/// patched at runtime, so the frontend discovers the correct API prefix here.
+///
+/// - `pihole_compat = false` → `window.FERROUS_API_BASE = "/api";`
+/// - `pihole_compat = true`  → `window.FERROUS_API_BASE = "/ferrous/api";`
+async fn ferrous_config_js_handler(State(pihole_compat): State<bool>) -> impl IntoResponse {
+    let api_base = if pihole_compat {
+        "/ferrous/api"
+    } else {
+        "/api"
+    };
+    let body = format!(r#"window.FERROUS_API_BASE = "{api_base}";"#);
+    (
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
+        body,
+    )
 }
 
 async fn shared_css_handler() -> impl IntoResponse {
@@ -175,3 +258,66 @@ async fn dns_filter_handler() -> Html<&'static str> {
 async fn block_services_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/block-services.html"))
 }
+
+macro_rules! css_handler {
+    ($name:ident, $path:expr) => {
+        async fn $name() -> impl IntoResponse {
+            (
+                [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+                include_str!($path),
+            )
+        }
+    };
+}
+
+macro_rules! js_handler {
+    ($name:ident, $path:expr) => {
+        async fn $name() -> impl IntoResponse {
+            (
+                [(
+                    header::CONTENT_TYPE,
+                    "application/javascript; charset=utf-8",
+                )],
+                include_str!($path),
+            )
+        }
+    };
+}
+
+css_handler!(
+    dashboard_css_handler,
+    "../../../../web/static/dashboard.css"
+);
+js_handler!(dashboard_js_handler, "../../../../web/static/dashboard.js");
+css_handler!(queries_css_handler, "../../../../web/static/queries.css");
+js_handler!(queries_js_handler, "../../../../web/static/queries.js");
+css_handler!(clients_css_handler, "../../../../web/static/clients.css");
+js_handler!(clients_js_handler, "../../../../web/static/clients.js");
+css_handler!(groups_css_handler, "../../../../web/static/groups.css");
+js_handler!(groups_js_handler, "../../../../web/static/groups.js");
+css_handler!(
+    local_dns_settings_css_handler,
+    "../../../../web/static/local-dns-settings.css"
+);
+js_handler!(
+    local_dns_settings_js_handler,
+    "../../../../web/static/local-dns-settings.js"
+);
+css_handler!(settings_css_handler, "../../../../web/static/settings.css");
+js_handler!(settings_js_handler, "../../../../web/static/settings.js");
+css_handler!(
+    dns_filter_css_handler,
+    "../../../../web/static/dns-filter.css"
+);
+js_handler!(
+    dns_filter_js_handler,
+    "../../../../web/static/dns-filter.js"
+);
+css_handler!(
+    block_services_css_handler,
+    "../../../../web/static/block-services.css"
+);
+js_handler!(
+    block_services_js_handler,
+    "../../../../web/static/block-services.js"
+);

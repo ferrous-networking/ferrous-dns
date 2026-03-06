@@ -39,6 +39,21 @@ pub async fn update_config(
     };
 
     let mut config = state.config.write().await;
+    let mut restart_required = false;
+
+    if let Some(server_update) = request.server {
+        if matches!(server_update.clear_api_key, Some(true)) {
+            config.server.api_key = None;
+            restart_required = true;
+        } else if let Some(key) = server_update.api_key {
+            config.server.api_key = Some(key);
+            restart_required = true;
+        }
+        if let Some(pihole_compat) = server_update.pihole_compat {
+            config.server.pihole_compat = pihole_compat;
+            restart_required = true;
+        }
+    }
 
     if let Some(dns_update) = request.dns {
         if let Some(pools) = dns_update.pools {
@@ -147,10 +162,16 @@ pub async fn update_config(
     {
         Ok(_) => {
             info!("Configuration updated successfully");
+            let message = if restart_required {
+                "Configuration saved. Restart the server for API key and compatibility changes to take effect."
+            } else {
+                "Configuration saved successfully. Use 'Save & Apply Now' button to reload and apply changes immediately, or restart server later."
+            };
             Json(serde_json::json!({
                 "success": true,
-                "message": "Configuration saved successfully. Use 'Save & Apply Now' button to reload and apply changes immediately, or restart server later.",
-                "reload_available": true
+                "message": message,
+                "reload_available": true,
+                "restart_required": restart_required
             }))
         }
         Err(e) => {

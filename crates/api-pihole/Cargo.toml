@@ -1,5 +1,5 @@
 [package]
-name = "ferrous-dns-api"
+name = "ferrous-dns-api-pihole"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,17 +9,18 @@ license.workspace = true
 ferrous-dns-domain.workspace = true
 ferrous-dns-application.workspace = true
 axum.workspace = true
-tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-chrono = "0.4"
-hostname = "0.4"
-ring.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true
+tokio.workspace = true
 async-trait.workspace = true
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+sqlx.workspace = true
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+serde_json.workspace = true

@@ -1,3 +1,7 @@
+// API base URL — injected at runtime via /ferrous-config.js
+// In normal mode: /api  |  In Pi-hole compat mode: /ferrous/api
+const API_BASE = window.FERROUS_API_BASE || '/api';
+
 // --- Lucide icon refresh ---
 
 let _lucideTimer = null;
@@ -18,7 +22,7 @@ async function _fetchRate() {
     if (_rateAbort) _rateAbort.abort();
     _rateAbort = new AbortController();
     try {
-        const res = await fetch('/api/stats/rate?unit=second', {signal: _rateAbort.signal});
+        const res = await fetch(`${API_BASE}/stats/rate?unit=second`, {signal: _rateAbort.signal});
         if (res.ok) {
             const data = await res.json();
             if (_rateCallback) _rateCallback(data);

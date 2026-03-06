@@ -1,0 +1,118 @@
+        .card {
+            padding: 16px
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            min-width: 480px
+        }
+
+        @media (max-width: 1100px) {
+            .col-rt { display: none }
+        }
+
+        @media (max-width: 820px) {
+            .col-type { display: none }
+        }
+
+        th {
+            padding: 8px 10px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px
+        }
+
+        tr.row-allowed {
+            background: rgba(16, 185, 129, 0.08)
+        }
+
+        tr.row-blocked {
+            background: rgba(239, 68, 68, 0.08)
+        }
+
+        tr:hover {
+            opacity: 0.85
+        }
+
+        .dnssec-icon {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: default;
+        }
+
+        .dnssec-icon::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 7px);
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: monospace;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        .dnssec-icon::before {
+            content: '';
+            position: absolute;
+            bottom: calc(100% + 2px);
+            left: 50%;
+            transform: translateX(-50%);
+            border: 4px solid transparent;
+            border-top-color: var(--border-color);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 10;
+        }
+
+        .dnssec-icon:hover::after,
+        .dnssec-icon:hover::before {
+            opacity: 1;
+        }
+
+        .dnssec-icon[data-tooltip="SECURE"]::after    { color: #22C55E; }
+        .dnssec-icon[data-tooltip="INSECURE"]::after  { color: #EAB308; }
+        .dnssec-icon[data-tooltip="BOGUS"]::after     { color: #EF4444; }
+
+        .col-action { text-align: center }
+        @media (max-width: 700px) {
+            .col-action { display: none }
+        }
+        .btn-action { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; transition: background 0.15s }
+        .btn-action:disabled { opacity: 0.5; cursor: not-allowed }
+        .btn-action-allow { background: rgba(16, 185, 129, 0.15); color: #10B981 }
+        .btn-action-allow:hover:not(:disabled) { background: rgba(16, 185, 129, 0.3) }
+        .btn-action-block { background: rgba(239, 68, 68, 0.15); color: #EF4444 }
+        .btn-action-block:hover:not(:disabled) { background: rgba(239, 68, 68, 0.3) }

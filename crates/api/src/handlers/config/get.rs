@@ -28,6 +28,8 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             dns_port: config.server.dns_port,
             web_port: config.server.web_port,
             bind_address: config.server.bind_address.clone(),
+            api_key_enabled: config.server.api_key.is_some(),
+            pihole_compat: config.server.pihole_compat,
         },
         dns: DnsConfigResponse {
             upstream_servers: config.dns.upstream_servers.clone(),

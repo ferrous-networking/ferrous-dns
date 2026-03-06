@@ -20,6 +20,13 @@ pub struct ServerConfig {
 
     #[serde(default)]
     pub proxy_protocol_enabled: bool,
+
+    /// When `true`, mounts the Pi-hole v6 compatible API at `/api/*` and
+    /// moves the Ferrous dashboard API to `/ferrous/api/*`.
+    /// The frontend discovers the correct prefix via `/ferrous-config.js`.
+    /// Defaults to `false` — no change in behaviour for existing deployments.
+    #[serde(default)]
+    pub pihole_compat: bool,
 }
 
 fn default_cors_origins() -> Vec<String> {
@@ -36,6 +43,7 @@ impl Default for ServerConfig {
             api_key: None,
             encrypted_dns: EncryptedDnsConfig::default(),
             proxy_protocol_enabled: false,
+            pihole_compat: false,
         }
     }
 }
