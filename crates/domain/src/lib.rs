@@ -1,53 +1,40 @@
-pub mod block_source;
-pub mod blocked_service;
-pub mod blocklist;
-pub mod blocklist_source;
-pub mod client;
-pub mod client_subnet;
 pub mod config;
-pub mod custom_service;
-pub mod dns_protocol;
-pub mod dns_query;
 pub mod dns_record;
-pub mod dns_request;
+pub mod entities;
 pub mod errors;
-pub mod group;
-pub mod managed_domain;
-pub mod query_filters;
-pub mod query_log;
-pub mod regex_filter;
-pub mod safe_search;
-pub mod schedule;
-pub mod service_catalog;
-pub mod validators;
-pub mod whitelist;
-pub mod whitelist_source;
+pub mod value_objects;
 
-pub use block_source::BlockSource;
-pub use blocked_service::BlockedService;
-pub use blocklist::BlockedDomain;
-pub use blocklist_source::BlocklistSource;
-pub use client::{Client, ClientStats};
-pub use client_subnet::{ClientSubnet, SubnetMatcher};
+pub use entities::blocklist;
+pub use entities::client;
+pub use entities::query_log;
+pub use entities::schedule;
+pub use entities::whitelist;
+
 pub use config::{
     CliOverrides, Config, ConfigError, DnsConfig, EncryptedDnsConfig, HealthCheckConfig,
     LocalDnsRecord, UpstreamPool, UpstreamStrategy,
 };
-pub use custom_service::CustomService;
-pub use dns_protocol::{DnsProtocol, UpstreamAddr};
-pub use dns_query::DnsQuery;
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
-pub use dns_request::DnsRequest;
-pub use errors::DomainError;
-pub use group::{Group, GroupStats};
-pub use managed_domain::{DomainAction, ManagedDomain};
-pub use query_filters::{FqdnFilter, PrivateIpFilter};
-pub use query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
-pub use regex_filter::RegexFilter;
-pub use safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};
-pub use schedule::{
+pub use entities::block_source::BlockSource;
+pub use entities::blocked_service::BlockedService;
+pub use entities::blocklist::BlockedDomain;
+pub use entities::blocklist_source::BlocklistSource;
+pub use entities::client::{Client, ClientStats};
+pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
+pub use entities::custom_service::CustomService;
+pub use entities::group::{Group, GroupStats};
+pub use entities::managed_domain::{DomainAction, ManagedDomain};
+pub use entities::query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
+pub use entities::regex_filter::RegexFilter;
+pub use entities::safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};
+pub use entities::schedule::{
     evaluate_slots, GroupOverride, ScheduleAction, ScheduleProfile, TimeSlot, UnknownScheduleAction,
 };
-pub use service_catalog::ServiceDefinition;
-pub use whitelist::WhitelistedDomain;
-pub use whitelist_source::WhitelistSource;
+pub use entities::service_catalog::ServiceDefinition;
+pub use entities::whitelist::WhitelistedDomain;
+pub use entities::whitelist_source::WhitelistSource;
+pub use errors::domain_error::DomainError;
+pub use value_objects::dns_protocol::{DnsProtocol, UpstreamAddr};
+pub use value_objects::dns_query::DnsQuery;
+pub use value_objects::dns_request::DnsRequest;
+pub use value_objects::query_filters::{FqdnFilter, PrivateIpFilter};

@@ -1,4 +1,4 @@
-use crate::managed_domain::DomainAction;
+use super::managed_domain::DomainAction;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

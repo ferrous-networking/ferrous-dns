@@ -1,3 +1,4 @@
+use crate::value_objects::validators;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -35,14 +36,14 @@ impl WhitelistSource {
     }
 
     pub fn validate_name(name: &str) -> Result<(), String> {
-        crate::validators::validate_source_name(name, "Whitelist source")
+        validators::validate_source_name(name, "Whitelist source")
     }
 
     pub fn validate_url(url: &Option<Arc<str>>) -> Result<(), String> {
-        crate::validators::validate_url(url)
+        validators::validate_url(url)
     }
 
     pub fn validate_comment(comment: &Option<Arc<str>>) -> Result<(), String> {
-        crate::validators::validate_comment(comment)
+        validators::validate_comment(comment)
     }
 }

@@ -1,4 +1,4 @@
-use super::RecordType;
+use crate::dns_record::RecordType;
 use std::net::IpAddr;
 use std::sync::Arc;
 

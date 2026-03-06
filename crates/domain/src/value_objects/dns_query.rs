@@ -1,4 +1,4 @@
-use super::RecordType;
+use crate::dns_record::RecordType;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-use crate::block_source::BlockSource;
+use super::block_source::BlockSource;
 use crate::dns_record::RecordType;
 use std::collections::HashMap;
 use std::net::IpAddr;
