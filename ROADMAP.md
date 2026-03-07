@@ -103,6 +103,5 @@
 - [ ] Webhook / push notifications
 - [ ] Audit log for configuration changes
 - [ ] WebSocket dashboard for slow query monitoring
-
 - [ ] Query anomaly detection
 ---
