@@ -2,6 +2,20 @@
 
 > Generated: 2026-03-07 18:33:38 UTC
 > Duration per server: 60s | Clients: 10 | Queries: 187
+>
+> **Host:** Intel Core i9-9900KF @ 3.60GHz | 16 cores / 46 GB RAM | Arch Linux | Kernel 6.12.75-1-lts
+>
+> **Docker config (identical for all servers):**
+>
+> | Setting | Value |
+> |:--------|:------|
+> | CPUs | `cpuset: 0-15` — 16 cores |
+> | Network | host mode |
+> | Log level | info |
+> | Cache | enabled |
+> | Rate limiting | disabled |
+> | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` |
+> | Blocking | disabled — isolates raw forwarding performance |
 
 ## Results
 

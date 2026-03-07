@@ -364,9 +364,20 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 ## Benchmark Results
 
-> Intel Core i9-9900KF @ 3.60GHz | 8c/16t | Arch Linux
-> dnsperf 2.14.0 | 60s | 10 clients | 187 domains (A, AAAA, MX, TXT, NS)
-> All servers in Docker with identical resource constraints: 16 CPUs, cache enabled, log info, rate limiting disabled, plain UDP upstreams `8.8.8.8` and `1.1.1.1`
+> **Host:** Intel Core i9-9900KF @ 3.60GHz | 16 cores / 46 GB RAM | Arch Linux | Kernel 6.12.75-1-lts
+> **Tool:** dnsperf 2.14.0 | 60s per server | 10 concurrent clients | 187 domains (A, AAAA, MX, TXT, NS)
+>
+> **Docker config (identical for all servers):**
+>
+> | Setting | Value |
+> |:--------|:------|
+> | CPUs | `cpuset: 0-15` — 16 cores |
+> | Network | host mode |
+> | Log level | info |
+> | Cache | enabled |
+> | Rate limiting | disabled |
+> | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` |
+> | Blocking | disabled — isolates raw forwarding performance |
 
 | Server | QPS | Avg Lat | P99 Lat | Lost |
 |:-------|----:|--------:|--------:|-----:|
