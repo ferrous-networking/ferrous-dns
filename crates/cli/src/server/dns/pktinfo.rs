@@ -157,7 +157,8 @@ impl RecvBatch {
         let data = &self.recv_bufs[i * RECV_BUF_SIZE..i * RECV_BUF_SIZE + n];
         let src = sockaddr_in_to_socket_addr(&self.src_addrs[i]);
         let cmsg_slice = &self.cmsg_bufs[i * CMSG_BUF_SIZE..i * CMSG_BUF_SIZE + CMSG_BUF_SIZE];
-        let controllen = self.hdrs[i].msg_hdr.msg_controllen;
+        #[allow(clippy::unnecessary_cast)]
+        let controllen = self.hdrs[i].msg_hdr.msg_controllen as usize;
         let dst_ip = extract_pktinfo_dst(cmsg_slice, controllen);
         ReceivedMsg { data, src, dst_ip }
     }
@@ -213,7 +214,7 @@ pub(super) fn recv_batch(fd: RawFd, batch: &mut RecvBatch) -> io::Result<usize> 
             fd,
             batch.hdrs.as_mut_ptr(),
             BATCH_SIZE as libc::c_uint,
-            libc::MSG_DONTWAIT,
+            libc::MSG_DONTWAIT as _,
             std::ptr::null_mut(),
         )
     };
@@ -310,7 +311,7 @@ pub(super) fn send_batch(fd: RawFd, responses: &[PendingResponse]) -> io::Result
             fd,
             hdrs.as_mut_ptr(),
             count as libc::c_uint,
-            libc::MSG_DONTWAIT,
+            libc::MSG_DONTWAIT as _,
         )
     };
 
