@@ -1,95 +1,71 @@
 <div align="center">
 
-<img src="web/static/logo.svg" alt="Ferrous DNS" width="80" height="80"/>
+<img src="logo.png" alt="Ferrous DNS" width="80" height="80"/>
 
 # Ferrous DNS
 
-**A blazingly fast, memory-safe DNS server with network-wide ad-blocking**
+**High-performance DNS server with network-wide ad-blocking, written in Rust**
 
 [![CI](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/andersonviudes/ferrous-dns?logo=docker)](https://hub.docker.com/r/andersonviudes/ferrous-dns)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub Stars](https://img.shields.io/github/stars/ferrous-networking/Ferrous-DNS?style=social)](https://github.com/ferrous-networking/Ferrous-DNS/stargazers)
 
-*Modern alternative Dns server*
-
-[docker](#-docker) • [docker-compose](#-docker-compose) • [Roadmap](ROADMAP.md) • [Benchmarks](benchmark-results.md)
+[Docker](#docker) • [Docker Compose](#docker-compose) • [Configuration](#configuration) • [Benchmarks](benchmark-results.md) • [Roadmap](ROADMAP.md)
 
 </div>
 
 ---
 
-## ⚡ Performance
+## Performance
 
-Benchmarked against the most popular DNS servers using the same plain UDP upstream (`8.8.8.8` / `1.1.1.1`) for a fair comparison — 20s run, 10 concurrent clients, 125-domain dataset:
+At **438,925 queries/second**, Ferrous-DNS is nearly **2× faster than Unbound**, **3.3× faster than Blocky**, **4× faster than AdGuard Home**, and **64× faster than Pi-hole** — benchmarked under identical conditions with plain UDP upstreams on loopback.
 
-| Server          |        QPS | Avg Latency | vs Ferrous-DNS |
-|:----------------|-----------:|:-----------:|:--------------:|
-| 🦀 Ferrous-DNS  | **377,777** | **0.58ms**  | —              |
-| ⚡ Unbound       |    203,967  |    0.85ms   | 1.85× slower   |
-| 🛡️ AdGuard Home |    105,837  |    2.45ms   | 3.57× slower   |
-| 🕳️ Pi-hole      |      7,652  |   21.99ms   | 49× slower     |
-
-→ [Full benchmark report with raw dnsperf output](benchmark-results.md)
+[Full benchmark report with raw dnsperf output](benchmark-results.md)
 
 ---
 
-## 📖 About
+## Features
 
-Ferrous DNS is a modern, high-performance DNS server with built-in ad-blocking capabilities. Written in Rust, it offers superior performance and memory safety compared to traditional solutions.
+**Performance**
+- L1/L2 hierarchical cache — thread-local lock-free L1 + sharded DashMap L2 with LFUK eviction and Bloom filter for negative lookups
+- In-flight coalescing — deduplicates concurrent queries for the same domain to a single upstream request
+- Single binary — DNS server, REST API, and Web UI in one process; no extra dependencies
 
-**Key capabilities:**
-
-> ✅ = Available now &nbsp;|&nbsp; 🔜 = Coming soon (on roadmap)
-
-**Performance & Architecture**
-- ⚡ **Rust-powered** ✅ — Zero GC pauses, ~10–20µs P99 cache hits; (C/dnsmasq) and  (Go) can't match this without a garbage collector
-- 🧠 **L1/L2 Hierarchical Cache** ✅ — Thread-local L1 (lock-free) + sharded L2 DashMap with LFUK sliding-window eviction and Bloom filter for ultra-fast negative lookups
-- 🦀 **Memory Safe by Design** ✅ — Rust ownership model eliminates entire classes of vulnerabilities (buffer overflows, use-after-free, data races) without a runtime
-- 📦 **Single Binary** ✅ — DNS server + REST API + Web UI in one process; no PHP, no lighttpd, no Python — just one container
-
-**Encrypted & Modern DNS**
-- 🔒 **DoH + DoT upstream** ✅ — Forward queries to upstream resolvers over HTTPS or TLS
-- 🚀 **DNS-over-QUIC (DoQ) + HTTP/3 upstream** ✅ — Cutting-edge transports that Pi-hole and most competitors don't support yet
-- 🌐 **IPv6 upstreams + DNS-name resolvers** ✅ — e.g. `dns.google.com` resolved at startup
-- 🛡️ **DoH + DoT server (listener-side)** ✅ — Serve encrypted DNS directly to clients on your network (v0.5.0)
-- 🔄 **DNS Rebinding Protection** ✅ — Prevent malicious sites from attacking your internal network (v0.5.0)
+**Encrypted DNS**
+- Upstream: plain UDP, DoH, DoT, DoQ, and HTTP/3
+- Server (listener): DoH and DoT — serve encrypted DNS directly to clients
+- IPv6 upstreams and DNS-name resolvers (e.g. `dns.google.com` resolved at startup)
 
 **Blocking & Filtering**
-- 🚫 **Network-wide Ad & Tracker Blocking** ✅ — Blocklists, regex patterns, wildcard domains (`*.ads.com`), whitelist, and 1-click blockable services
-- 🕵️ **CNAME Cloaking Detection** ✅ — Catches trackers that hide behind first-party CNAMEs — a privacy gap Pi-hole leaves open
-- 🔍 **Safe Search Enforcement** ✅ — Force SafeSearch on Google, Bing, YouTube, and more per client group
-- 👨‍👩‍👧 **Per-Group Parental Controls + Scheduling** ✅ — Assign different blocklists and access schedules to each client group; AdGuard Home and Pi-hole require workarounds for this
+- Blocklists with regex patterns and wildcard domains (`*.ads.com`)
+- Allowlist
+- 1-click blockable service categories
+- CNAME cloaking detection — catches trackers hiding behind first-party CNAMEs
+- Safe Search enforcement for Google, Bing, YouTube, and others
 
-**Client Intelligence**
-- 📡 **Auto Client Detection** ✅ — Automatically identifies client IP and MAC address without manual configuration
-- 👥 **Client Groups** ✅ — Segment devices into groups with different policies (kids, work, IoT)
-- 🔀 **Conditional Forwarding** ✅ — Route specific domains to internal resolvers (e.g. your router)
-- 📊 **Advanced Analytics** ✅ — Upstream latency graphs, top queried domains, top blocked domains, per-group stats
+**Client Management**
+- Auto client detection by IP and MAC address
+- Client groups with independent policies (e.g. kids, work, IoT)
+- Per-group parental controls with time-based scheduling
+- Conditional forwarding — route specific domains to internal resolvers
 
-**Observability & Integrations (Roadmap)**
-- 📈 **Prometheus Metrics** 🔜 — Native metrics endpoint for Grafana and alerting (v0.8.0)
-- 📄 **OpenAPI / Swagger Docs** 🔜 — Self-documenting REST API (v0.8.0)
-- 🔁 **Pi-hole Compatible API** ✅ — Drop-in replacement for existing Pi-hole integrations and dashboards (v0.6.0)
-- 🌍 **Split-Horizon DNS** 🔜 — Serve different answers per client/group/network (v1.1.0)
-- 🔔 **Webhook / Push Notifications** 🔜 — Alerts for anomalous query patterns (v1.1.0)
+**Security**
+- DNSSEC validation
+- DNS rebinding protection
+- PROXY Protocol v2 support
 
-**Security (Roadmap)**
-- 🔐 **Auth + TOTP/2FA** 🔜 — Login, API keys, and two-factor authentication (v0.7.0)
-- 🛑 **Rate Limiting + DoS Protection** 🔜 — DNS query rate limiting per client (v0.7.0)
-
-**Deployment**
-- 🐳 **Docker Ready** ✅ — Multi-arch images (amd64, arm64) for Docker and Docker Compose
-- 📋 **Full DNS Records** ✅ — RFC 1035 compliant with A, AAAA, CNAME, MX, TXT, PTR and local DNS records
+**Compatibility & Deployment**
+- Pi-hole API compatibility — works as a drop-in replacement for existing integrations
+- Docker multi-arch images (amd64, arm64)
+- RFC 1035 compliant: A, AAAA, CNAME, MX, TXT, PTR, NS, SRV, and local DNS records
+- Auto PTR generation for local A records
 
 ---
 
-## 🚀 Installation
+## Installation
 
-### 🐳 Docker
-
-Quick start with Docker:
+### Docker
 
 ```bash
 docker run -d \
@@ -114,13 +90,9 @@ docker run -d \
 
 Access the dashboard at `http://localhost:8080`
 
-### 🐳 Docker Compose
-
-Create a `docker-compose.yml` file:
+### Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   ferrous-dns:
     image: andersonviudes/ferrous-dns:latest
@@ -129,17 +101,12 @@ services:
     network_mode: host
     user: root
     environment:
-      # Config file (optional - only used if present)
       - FERROUS_CONFIG=/data/config/ferrous-dns.toml
-      # Database
       - FERROUS_DATABASE=/data/db/ferrous.db
-      # Network
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
       - FERROUS_BIND_ADDRESS=0.0.0.0
-      # Logging
       - FERROUS_LOG_LEVEL=info
-      # Timezone
       - TZ=America/Sao_Paulo
     dns:
       - 10.0.0.1
@@ -155,64 +122,34 @@ volumes:
   ferrous-data:
 ```
 
-Start the service:
-
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-### ⚙️ Configuration
+### Configuration
 
 #### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FERROUS_CONFIG` | - | Path to config file |
-| `FERROUS_DNS_PORT` | `53` | DNS server port |
-| `FERROUS_WEB_PORT` | `8080` | Web dashboard port |
-| `FERROUS_BIND_ADDRESS` | `0.0.0.0` | Bind address |
-| `FERROUS_DATABASE` | `/var/lib/ferrous-dns/ferrous.db` | Database path |
-| `FERROUS_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
-
-
----
-
-## 🗺️ Roadmap
-
-Check out our [detailed roadmap](ROADMAP.md) to see what's planned for future releases.
+| Variable              | Default                               | Description                         |
+|:----------------------|:--------------------------------------|:------------------------------------|
+| `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
+| `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
+| `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
+| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
+| `FERROUS_DATABASE`    | `/var/lib/ferrous-dns/ferrous.db`     | SQLite database path                |
+| `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
 ---
 
 ## Dashboard
 
-![img.png](img.png)
-
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
-
-- **Report bugs**: [GitHub Issues](https://github.com/ferrous-networking/Ferrous-DNS/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ferrous-networking/Ferrous-DNS/discussions)
+![Dashboard](img.png)
 
 ---
 
-## 📄 License
+## Contributing
 
-This project is dual-licensed under:
-- [MIT License](https://opensource.org/licenses/MIT)
-- [Apache License 2.0](https://opensource.org/licenses/Apache-2.0)
+Bug reports, feature requests, and pull requests are welcome.
 
-You may choose either license for your use.
-
----
-
-<div align="center">
-
-**Made with ❤️ and 🦀 by [Anderson Viudes](https://github.com/andersonviudes)**
-
-If you find this project useful, please consider giving it a ⭐
-
-[⬆ Back to Top](#-ferrous-dns)
-
-</div>
+- Issues: [GitHub Issues](https://github.com/ferrous-networking/Ferrous-DNS/issues)
+- Discussions: [GitHub Discussions](https://github.com/ferrous-networking/Ferrous-DNS/discussions)

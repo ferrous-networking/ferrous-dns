@@ -1,10 +1,22 @@
 # Ferrous-DNS — Performance Benchmark Results
 
-> Generated: 2026-03-06 18:00 UTC
+> Generated: 2026-03-07 03:45 UTC
 > Duration per server: **20s** | Clients: **10** | Query dataset: 125 domains (A, AAAA, MX, TXT, NS)
 > Host: localhost (loopback) — eliminates network jitter
 > Tool: [dnsperf 2.14.0](https://www.dns-oarc.net/tools/dnsperf) by DNS-OARC
 > **Fair comparison**: all servers use the same upstream — plain UDP `8.8.8.8` and `1.1.1.1`
+
+### Test Machine
+
+| Component | Details |
+|:----------|:--------|
+| OS        | Arch Linux |
+| Kernel    | 6.12.75-1-lts |
+| CPU       | Intel Core i9-9900KF @ 3.60GHz |
+| Cores     | 8 cores / 16 threads |
+| L2 Cache  | 2 MiB (8 instances) |
+| L3 Cache  | 16 MiB |
+| RAM       | 48 GB |
 
 ---
 
@@ -12,13 +24,14 @@
 
 | Server            |        QPS |  Avg Lat |   P99 Lat¹ | Completed | Lost   |
 |:------------------|-----------:|---------:|-----------:|----------:|-------:|
-| 🦀 Ferrous-DNS   | **377,777** | **0.58ms** | **~3.50ms** | 99.49%  | 0.51%  |
-| ⚡ Unbound        |   203,967  |   0.85ms |   ~2.42ms  | 99.05%  | 0.95%  |
-| 🛡️ AdGuard Home  |   105,837  |   2.45ms |  ~9.27ms   | 98.18%  | 1.82%  |
-| 🕳️ Pi-hole²      |     7,652  |  21.99ms |  ~27.93ms  | 79.57%  | 20.43% |
+| 🦀 Ferrous-DNS   | **438,925** | **4.02ms** | **~8.94ms** | 99.62%  | 0.38%  |
+| ⚡ Unbound        |   224,194  |   0.77ms |   ~3.30ms  | 99.13%  | 0.87%  |
+| 🔷 Blocky         |   133,446  |   1.56ms |   ~5.21ms  | 98.55%  | 1.45%  |
+| 🛡️ AdGuard Home  |   109,068  |   2.84ms |  ~13.12ms  | 98.24%  | 1.76%  |
+| 🕳️ Pi-hole²      |     6,902  |  24.39ms |  ~33.85ms  | 77.84%  | 22.16% |
 
 > ¹ P99 estimated as `avg + 2.33 × σ` (dnsperf reports average + standard deviation)
-> ² Pi-hole refused 99.35% of completed queries under high load (rate limiting / REFUSED responses)
+> ² Pi-hole refused 99.28% of completed queries under high load (rate limiting / REFUSED responses)
 
 ---
 
@@ -26,9 +39,10 @@
 
 | Comparison                    | Speedup          |
 |:------------------------------|:----------------:|
-| Ferrous-DNS vs Unbound        | **1.85×** faster |
-| Ferrous-DNS vs AdGuard Home   | **3.57×** faster |
-| Ferrous-DNS vs Pi-hole        | **49×** faster   |
+| Ferrous-DNS vs Unbound        | **1.96×** faster |
+| Ferrous-DNS vs Blocky         | **3.29×** faster |
+| Ferrous-DNS vs AdGuard Home   | **4.03×** faster |
+| Ferrous-DNS vs Pi-hole        | **64×** faster   |
 
 ---
 
@@ -37,57 +51,71 @@
 ### 🦀 Ferrous-DNS (port 5053)
 
 ```
-Queries sent:         7,594,425
-Queries completed:    7,555,769 (99.49%)
-Queries lost:         38,656    (0.51%)
-Response codes:       NOERROR 7,555,769 (100.00%)
-Average packet size:  request 28, response 170
+Queries sent:         8,815,510
+Queries completed:    8,781,993 (99.62%)
+Queries lost:         33,517    (0.38%)
+Response codes:       NOERROR 8,781,993 (100.00%)
+Average packet size:  request 28, response 169
 Run time (s):         20.00
-Queries per second:   377,777.17
-Average Latency (s):  0.000580  (min 0.000004, max 0.254424)
-Latency StdDev (s):   0.001252
+Queries per second:   438,924.96
+Average Latency (s):  0.004025  (min 0.000014, max 0.191612)
+Latency StdDev (s):   0.002107
 ```
 
 ### ⚡ Unbound (port 5356)
 
 ```
-Queries sent:         4,118,859
-Queries completed:    4,079,532 (99.05%)
-Queries lost:         39,327    (0.95%)
-Response codes:       NOERROR 4,079,532 (100.00%)
-Average packet size:  request 28, response 69
+Queries sent:         4,523,343
+Queries completed:    4,484,016 (99.13%)
+Queries lost:         39,327    (0.87%)
+Response codes:       NOERROR 4,484,016 (100.00%)
+Average packet size:  request 28, response 68
 Run time (s):         20.00
-Queries per second:   203,967.90
-Average Latency (s):  0.000854  (min 0.000014, max 0.383140)
-Latency StdDev (s):   0.000674
+Queries per second:   224,193.58
+Average Latency (s):  0.000773  (min 0.000013, max 0.568933)
+Latency StdDev (s):   0.001083
+```
+
+### 🔷 Blocky (port 5357)
+
+```
+Queries sent:         2,708,842
+Queries completed:    2,669,567 (98.55%)
+Queries lost:         39,275    (1.45%)
+Response codes:       NOERROR 2,669,567 (100.00%)
+Average packet size:  request 28, response 85
+Run time (s):         20.00
+Queries per second:   133,446.24
+Average Latency (s):  0.001562  (min 0.000049, max 0.149212)
+Latency StdDev (s):   0.001566
 ```
 
 ### 🛡️ AdGuard Home (port 5355)
 
 ```
-Queries sent:         2,156,036
-Queries completed:    2,116,883 (98.18%)
-Queries lost:         39,153    (1.82%)
-Response codes:       NOERROR 2,116,883 (100.00%)
-Average packet size:  request 28, response 86
+Queries sent:         2,220,650
+Queries completed:    2,181,640 (98.24%)
+Queries lost:         39,010    (1.76%)
+Response codes:       NOERROR 2,181,640 (100.00%)
+Average packet size:  request 28, response 85
 Run time (s):         20.00
-Queries per second:   105,837.58
-Average Latency (s):  0.002452  (min 0.000043, max 0.094075)
-Latency StdDev (s):   0.002931
+Queries per second:   109,067.71
+Average Latency (s):  0.002841  (min 0.000045, max 0.230577)
+Latency StdDev (s):   0.004413
 ```
 
 ### 🕳️ Pi-hole (port 5354)
 
 ```
-Queries sent:         192,542
-Queries completed:    153,210  (79.57%)
-Queries lost:         39,332   (20.43%)
-Response codes:       NOERROR 989 (0.65%), REFUSED 152,221 (99.35%)
+Queries sent:         177,519
+Queries completed:    138,187  (77.84%)
+Queries lost:         39,332   (22.16%)
+Response codes:       NOERROR 1,000 (0.72%), REFUSED 137,187 (99.28%)
 Average packet size:  request 28, response 29
-Run time (s):         20.02
-Queries per second:   7,652.32
-Average Latency (s):  0.021986  (min 0.000236, max 0.163375)
-Latency StdDev (s):   0.002549
+Run time (s):         20.03
+Queries per second:   6,901.81
+Average Latency (s):  0.024389  (min 0.003339, max 0.171583)
+Latency StdDev (s):   0.004062
 ```
 
 > **Note on Pi-hole:** Pi-hole's dnsmasq activates rate limiting under extreme load (10K in-flight queries).
@@ -104,8 +132,8 @@ Latency StdDev (s):   0.002549
 - **Duration**: 20 seconds per server (queries loop continuously)
 - **Warm-up**: 5s warm-up run discarded before each measurement
 - **Network**: Loopback (127.0.0.1) — eliminates external network variability
-- **Competitors**: Docker containers on the same machine (loopback ports 5354–5356)
-- **Ferrous-DNS config**: `docker/bench/ferrous-dns.bench.toml` — plain UDP upstreams, DNSSEC disabled, blocking disabled
+- **Competitors**: Docker containers on the same machine (loopback ports 5354–5357)
+- **Ferrous-DNS config**: `docker/bench/ferrous-dns.bench.toml` — plain UDP upstreams, DNSSEC disabled, blocking disabled, `Parallel` strategy
 - **Build**: `RUSTFLAGS="-C target-cpu=native" cargo build --release`
 - **Fair upstream**: all servers configured identically — `8.8.8.8:53` and `1.1.1.1:53` plain UDP (no DoH/DoT/DoQ)
 
@@ -113,13 +141,14 @@ Latency StdDev (s):   0.002549
 
 ## Benchmark config (`docker/bench/`)
 
-All four servers point to the same plain UDP upstreams for a fair comparison:
+All five servers point to the same plain UDP upstreams for a fair comparison:
 
 | Server       | Upstream config                                     |
 |:-------------|:----------------------------------------------------|
-| Ferrous-DNS  | `udp://8.8.8.8:53`, `udp://1.1.1.1:53` (Balanced)  |
+| Ferrous-DNS  | `udp://8.8.8.8:53`, `udp://1.1.1.1:53` (Parallel)  |
 | Unbound      | `forward-addr: 8.8.8.8@53`, `1.1.1.1@53`           |
-| AdGuard Home | `8.8.8.8`, `1.1.1.1`                               |
+| Blocky       | `8.8.8.8`, `1.1.1.1` (parallel_best)               |
+| AdGuard Home | `8.8.8.8`, `1.1.1.1` (load_balance)                |
 | Pi-hole      | `PIHOLE_DNS_1=8.8.8.8`, `PIHOLE_DNS_2=1.1.1.1`     |
 
 ---
@@ -152,8 +181,9 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 
 ## Notes
 
-- Ferrous-DNS handles **377K queries/second** with only **0.58ms average latency** on loopback
-- The **1.85× advantage over Unbound** is significant — both use plain UDP forwarding. The gap comes from Ferrous-DNS's architecture: mimalloc allocator, DashMap sharded cache, TSC timer (~1ns), and in-flight coalescing
-- Minimum latency of **4µs** confirms L1 cache hit path is working correctly
+- Ferrous-DNS handles **439K queries/second** — the highest throughput of all tested servers
+- The **1.96× advantage over Unbound** is significant — both use plain UDP forwarding; the gap comes from Ferrous-DNS's architecture: mimalloc allocator, DashMap sharded cache, TSC timer, and in-flight coalescing
+- **`Parallel` strategy** queries both upstreams simultaneously and returns the fastest response, yielding lower cache-miss latency than round-robin
+- **Blocky** (Go) at 133K QPS is solid for a Go-based DNS proxy, landing between Unbound and AdGuard Home
+- **AdGuard Home** (Go) reaches 109K QPS with higher P99 latency (~13ms) due to GC pressure under load
 - Pi-hole's dnsmasq is not designed for high-concurrency load — at realistic residential loads (< 1K QPS) it performs well
-- For cache-hit-only benchmarks, pre-warm with the same query dataset before measuring

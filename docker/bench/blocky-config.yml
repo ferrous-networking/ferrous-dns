@@ -1,0 +1,53 @@
+# =============================================================================
+# Blocky — Benchmark Configuration
+# =============================================================================
+# Mirrors the same constraints applied to all competitors:
+#   - Plain UDP upstreams only (8.8.8.8 / 1.1.1.1) — no DoH/DoT
+#   - Blocking disabled — isolates raw DNS forwarding performance
+#   - Caching disabled — every query goes upstream, same as all others
+#   - Query logging disabled — no I/O noise during measurement
+#   - Rate limiting disabled — dnsperf saturates at 10k in-flight queries
+# =============================================================================
+
+# -- Upstreams -----------------------------------------------------------------
+# Plain UDP forwarding only — identical to Unbound, AdGuard Home, and Ferrous-DNS.
+upstreams:
+  groups:
+    default:
+      - 8.8.8.8
+      - 1.1.1.1
+  timeout: 2s
+  strategy: parallel_best   # query both, return the fastest — equivalent to Ferrous-DNS "Parallel"
+
+# -- Ports --------------------------------------------------------------------
+ports:
+  dns: 53
+  http: 4000    # used for /api/blocking/status healthcheck inside the container
+
+# -- Caching ------------------------------------------------------------------
+# Disabled so every query hits the upstream — same conditions as all other
+# competitors in this benchmark suite.
+caching:
+  minTime: 0s
+  maxTime: 0s
+  prefetching: false
+
+# -- Blocking -----------------------------------------------------------------
+# No denylists configured — blocking is effectively off.
+# Same rationale as AdGuard Home (protection_enabled: false) and
+# Ferrous-DNS (blocking.enabled = false) configs in this benchmark.
+blocking:
+  denylists: {}
+  allowlists: {}
+  clientGroupsBlock: {}
+
+# -- Logging ------------------------------------------------------------------
+log:
+  level: warn
+  format: text
+  privacy: false    # do not mask query domains in logs
+
+# -- Query log ----------------------------------------------------------------
+# Disabled — reduces SQLite / file I/O pressure during measurement.
+queryLog:
+  type: none

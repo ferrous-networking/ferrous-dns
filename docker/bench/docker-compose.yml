@@ -1,18 +1,21 @@
 # =============================================================================
 # Ferrous-DNS Competitor Benchmark — Docker Compose
 # =============================================================================
-# Starts Pi-hole, AdGuard Home and Unbound on local ports for benchmarking.
+# Starts Pi-hole, AdGuard Home, Unbound, and Blocky on local ports.
+# All servers use the same plain UDP upstreams (8.8.8.8 / 1.1.1.1),
+# blocking disabled, and logging disabled for a fair comparison.
 #
 # Usage:
 #   docker compose -f docker/bench/docker-compose.yml up -d
-#   ./scripts/benchmark-competitors.sh --no-ferrous
+#   ./scripts/benchmark-competitors.sh --no-docker
 #   docker compose -f docker/bench/docker-compose.yml down
 #
 # Ports (all on 127.0.0.1 to avoid conflicts):
-#   Pi-hole:      127.0.0.1:5354/udp
-#   AdGuard Home: 127.0.0.1:5355/udp
-#   Unbound:      127.0.0.1:5356/udp
-# ====================================11=========================================
+#   Pi-hole:      127.0.0.1:5354/udp+tcp
+#   AdGuard Home: 127.0.0.1:5355/udp+tcp
+#   Unbound:      127.0.0.1:5356/udp+tcp
+#   Blocky:       127.0.0.1:5357/udp+tcp
+# =============================================================================
 
 services:
 
@@ -82,6 +85,31 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "drill", "-p", "53", "google.com", "@127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Blocky — fast DNS proxy and ad-blocker (Go)
+  # Config: docker/bench/blocky-config.yml
+  #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: parallel_best
+  #   - Blocking disabled (no denylists)
+  #   - Caching disabled (minTime/maxTime = 0)
+  #   - Query log disabled (type: none)
+  # ---------------------------------------------------------------------------
+  blocky:
+    image: ghcr.io/0xerr0r/blocky:latest
+    container_name: bench-blocky
+    ports:
+      - "127.0.0.1:5357:53/udp"
+      - "127.0.0.1:5357:53/tcp"
+    volumes:
+      - ./blocky-config.yml:/app/config.yml:ro
+    restart: unless-stopped
+    # Blocky runs on a scratch image (no shell/wget/dig). Use its built-in healthcheck subcommand.
+    healthcheck:
+      test: ["CMD", "/app/blocky", "healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 10

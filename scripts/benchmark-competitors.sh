@@ -7,6 +7,7 @@
 #   - Pi-hole
 #   - AdGuard Home
 #   - Unbound
+#   - Blocky
 #
 # Prerequisites:
 #   - dnsperf  (DNS-OARC):  apt install dnsperf  |  brew install dnsperf
@@ -41,6 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PIHOLE_PORT=5354
 ADGUARD_PORT=5355
 UNBOUND_PORT=5356
+BLOCKY_PORT=5357
 
 # ── colour output ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -324,6 +326,16 @@ main() {
     ok "Unbound: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
   else
     ROWS+=("$(format_row "⚡ Unbound" "N/A" "N/A" "N/A" "N/A" "N/A")")
+  fi
+
+  # ── Blocky ───────────────────────────────────────────────────────────────
+  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$BLOCKY_PORT" "Blocky" 5; then
+    warm_up "127.0.0.1" "$BLOCKY_PORT" "Blocky"
+    read -r qps p50 p99 comp lost < <(run_dnsperf "Blocky" "127.0.0.1" "$BLOCKY_PORT")
+    ROWS+=("$(format_row "🔷 Blocky" "$qps" "$p50" "$p99" "$comp" "$lost")")
+    ok "Blocky: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
+  else
+    ROWS+=("$(format_row "🔷 Blocky" "N/A" "N/A" "N/A" "N/A" "N/A")")
   fi
 
   # ── Results ───────────────────────────────────────────────────────────────

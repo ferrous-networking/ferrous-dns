@@ -96,7 +96,7 @@ cache_lfuk_history_size = 10            # Number of recent access timestamps tra
 
 [[dns.pools]]
 name = "pool1"
-strategy = "Balanced"
+strategy = "Parallel"          # query both upstreams simultaneously, return the fastest
 priority = 1
 servers = [
     "udp://8.8.8.8:53",
