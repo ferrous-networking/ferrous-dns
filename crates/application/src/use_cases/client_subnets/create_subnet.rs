@@ -1,22 +1,25 @@
 use ferrous_dns_domain::{ClientSubnet, DomainError};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
-use crate::ports::{ClientSubnetRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, ClientSubnetRepository, GroupRepository};
 
 pub struct CreateClientSubnetUseCase {
     subnet_repo: Arc<dyn ClientSubnetRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl CreateClientSubnetUseCase {
     pub fn new(
         subnet_repo: Arc<dyn ClientSubnetRepository>,
         group_repo: Arc<dyn GroupRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     ) -> Self {
         Self {
             subnet_repo,
             group_repo,
+            block_filter_engine,
         }
     }
 
@@ -56,6 +59,10 @@ impl CreateClientSubnetUseCase {
             group_id = group_id,
             "Client subnet created successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after subnet creation");
+        }
 
         Ok(subnet)
     }

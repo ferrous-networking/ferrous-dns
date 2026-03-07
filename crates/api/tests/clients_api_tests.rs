@@ -470,6 +470,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             assign_client_group: Arc::new(ferrous_dns_application::use_cases::AssignClientGroupUseCase::new(
                 client_repo.clone(),
                 Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
             )),
         },
         clients: ClientUseCases {
@@ -480,10 +481,12 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
             create_client_subnet: Arc::new(ferrous_dns_application::use_cases::CreateClientSubnetUseCase::new(
                 Arc::new(ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone())),
                 Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
             )),
-            delete_client_subnet: Arc::new(ferrous_dns_application::use_cases::DeleteClientSubnetUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
-            ))),
+            delete_client_subnet: Arc::new(ferrous_dns_application::use_cases::DeleteClientSubnetUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
             create_manual_client: Arc::new(ferrous_dns_application::use_cases::CreateManualClientUseCase::new(
                 client_repo.clone(),
                 Arc::new(ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(pool.clone())),

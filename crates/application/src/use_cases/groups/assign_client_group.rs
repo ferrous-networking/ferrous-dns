@@ -1,22 +1,25 @@
 use ferrous_dns_domain::{Client, DomainError};
 use std::sync::Arc;
-use tracing::{info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 
-use crate::ports::{ClientRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, ClientRepository, GroupRepository};
 
 pub struct AssignClientGroupUseCase {
     client_repo: Arc<dyn ClientRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl AssignClientGroupUseCase {
     pub fn new(
         client_repo: Arc<dyn ClientRepository>,
         group_repo: Arc<dyn GroupRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     ) -> Self {
         Self {
             client_repo,
             group_repo,
+            block_filter_engine,
         }
     }
 
@@ -63,6 +66,10 @@ impl AssignClientGroupUseCase {
             group_name = %group.name,
             "Client assigned to group successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after group assignment");
+        }
 
         Ok(updated_client)
     }

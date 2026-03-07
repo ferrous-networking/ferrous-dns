@@ -75,6 +75,7 @@
             },
 
             getGroupName(id) {
+                if (id == null) return null;
                 const g = this.groups.find(x => x.id === id);
                 return g ? g.name : '-';
             },

@@ -133,14 +133,17 @@ impl UseCases {
             assign_client_group: Arc::new(AssignClientGroupUseCase::new(
                 repos.client.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
             get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(repos.client_subnet.clone())),
             create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(
                 repos.client_subnet.clone(),
                 repos.group.clone(),
+                repos.block_filter_engine.clone(),
             )),
             delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(
                 repos.client_subnet.clone(),
+                repos.block_filter_engine.clone(),
             )),
             create_manual_client: Arc::new(CreateManualClientUseCase::new(
                 repos.client.clone(),

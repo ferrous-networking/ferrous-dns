@@ -1,16 +1,23 @@
 use ferrous_dns_domain::DomainError;
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
-use crate::ports::ClientSubnetRepository;
+use crate::ports::{BlockFilterEnginePort, ClientSubnetRepository};
 
 pub struct DeleteClientSubnetUseCase {
     subnet_repo: Arc<dyn ClientSubnetRepository>,
+    block_filter_engine: Arc<dyn BlockFilterEnginePort>,
 }
 
 impl DeleteClientSubnetUseCase {
-    pub fn new(subnet_repo: Arc<dyn ClientSubnetRepository>) -> Self {
-        Self { subnet_repo }
+    pub fn new(
+        subnet_repo: Arc<dyn ClientSubnetRepository>,
+        block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    ) -> Self {
+        Self {
+            subnet_repo,
+            block_filter_engine,
+        }
     }
 
     #[instrument(skip(self))]
@@ -31,6 +38,10 @@ impl DeleteClientSubnetUseCase {
             cidr = %subnet.subnet_cidr,
             "Client subnet deleted successfully"
         );
+
+        if let Err(e) = self.block_filter_engine.load_client_groups().await {
+            error!(error = %e, "Failed to reload client groups after subnet deletion");
+        }
 
         Ok(())
     }
