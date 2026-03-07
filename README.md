@@ -23,7 +23,7 @@ Full documentation is available at **[ferrous-networking.github.io/Ferrous-DNS](
 
 ## Performance
 
-At **427,310 queries/second** under identical Docker conditions (16 CPUs, cache enabled, log info, rate limiting disabled), Ferrous-DNS is **4.2× faster than AdGuard Home**, **4.1× faster than Blocky**, and **108× faster than Pi-hole** — all running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process. PowerDNS Recursor (916K QPS) and Unbound (1.1M QPS) lead as purpose-built pure recursive resolvers with no additional features.
+At **477,744 queries/second** under identical Docker conditions (16 CPUs, cache enabled, log info, rate limiting disabled), Ferrous-DNS is **4.7× faster than AdGuard Home**, **4.7× faster than Blocky**, and **125× faster than Pi-hole** — all running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process. PowerDNS Recursor (899K QPS) and Unbound (1.1M QPS) lead as purpose-built pure recursive resolvers with no additional features.
 
 [Full benchmark report](https://ferrous-networking.github.io/Ferrous-DNS/performance/benchmarks/)
 
