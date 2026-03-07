@@ -1,0 +1,89 @@
+site_name: Ferrous DNS
+site_description: High-performance DNS server with network-wide ad-blocking, written in Rust
+site_url: https://ferrous-networking.github.io/Ferrous-DNS
+repo_url: https://github.com/ferrous-networking/Ferrous-DNS
+repo_name: ferrous-networking/Ferrous-DNS
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+  - Configuration:
+    - Overview: configuration/index.md
+    - Server: configuration/server.md
+    - DNS & Upstreams: configuration/dns.md
+    - Cache: configuration/cache.md
+    - Blocking: configuration/blocking.md
+    - Database: configuration/database.md
+  - Features:
+    - Upstream Management: features/upstream-management.md
+    - Encrypted DNS: features/encrypted-dns.md
+    - Blocking & Filtering: features/blocking-filtering.md
+    - Client Management: features/client-management.md
+    - Security: features/security.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Crate Structure: architecture/crates.md
+  - Performance:
+    - Benchmarks: performance/benchmarks.md
+  - Contributing: contributing.md
+  - Roadmap: roadmap.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ferrous-networking/Ferrous-DNS
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/andersonviudes/ferrous-dns
