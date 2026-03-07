@@ -110,10 +110,8 @@ async fn async_main() -> anyhow::Result<()> {
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
     let handler_use_case = dns_services.handler_use_case;
     let dns_handler = DnsServerHandler::new(handler_use_case.clone());
-    let num_dns_workers = core_affinity::get_core_ids()
-        .map(|ids| ids.len())
-        .unwrap_or(1)
-        .max(1);
+    let core_ids_for_dns = core_affinity::get_core_ids().unwrap_or_default();
+    let num_dns_workers = core_ids_for_dns.len().max(1);
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
     tokio::spawn(async move {
@@ -122,6 +120,7 @@ async fn async_main() -> anyhow::Result<()> {
             dns_handler,
             num_dns_workers,
             proxy_protocol_enabled,
+            core_ids_for_dns,
         )
         .await
         {
