@@ -57,21 +57,6 @@ At **147,241 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 ---
 
-## Quick Comparison
-
-| Server          |        QPS | vs Ferrous DNS |
-|:----------------|-----------:|:--------------:|
-| PowerDNS (C++)  |   220,635  | 1.50× faster   |
-| Unbound (C)     |   217,527  | 1.48× faster   |
-| **Ferrous DNS** | **147,241** | —              |
-| AdGuard Home    |    93,159  | 1.58× slower   |
-| Blocky (Go)     |    91,417  | 1.61× slower   |
-| Pi-hole         |     4,427  | 33× slower     |
-
-[Full benchmark report](performance/benchmarks.md)
-
----
-
 ## Getting Started
 
 <div class="grid cards" markdown>
