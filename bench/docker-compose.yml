@@ -17,6 +17,7 @@
 #   AdGuard Home: 127.0.0.1:5355/udp+tcp
 #   Unbound:      127.0.0.1:5356/udp+tcp
 #   Blocky:       127.0.0.1:5357/udp+tcp
+#   PowerDNS:     127.0.0.1:5358/udp+tcp
 # =============================================================================
 
 services:
@@ -204,6 +205,41 @@ services:
     # Blocky runs on a scratch image (no shell/wget/dig). Use its built-in healthcheck subcommand.
     healthcheck:
       test: ["CMD", "/app/blocky", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # PowerDNS Recursor — high-performance recursive resolver (C++)
+  # Config: bench/powerdns-recursor.conf
+  #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1) via forward-zones-recurse
+  #   - Cache enabled (200k entries, 300s TTL)
+  #   - Log level: info (loglevel=5)
+  #   - Rate limiting disabled (ratelimit=0)
+  #   - threads=16 — matches CPU limit
+  # ---------------------------------------------------------------------------
+  powerdns:
+    image: powerdns/pdns-recursor-master:latest
+    container_name: bench-powerdns
+    ports:
+      - "127.0.0.1:5358:53/udp"
+      - "127.0.0.1:5358:53/tcp"
+    volumes:
+      - ./powerdns-recursor.yml:/etc/powerdns/recursor.yml:ro
+    cpuset: "0-15"
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rec_control", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10

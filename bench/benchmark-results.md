@@ -34,16 +34,17 @@
 
 ## Results
 
-| Server            |        QPS |  Avg Lat |   P99 Lat¹ | Completed | Lost   |
-|:------------------|-----------:|---------:|-----------:|----------:|-------:|
-| ⚡ Unbound (C)    |   242,646  |   1.72ms |    6.53ms  |  99.20%  | 0.80%  |
-| 🦀 Ferrous-DNS   | **147,184** | **2.00ms** | **14.32ms** | 98.69%  | 1.31%  |
-| 🛡️ AdGuard Home  |    97,848  |   3.88ms |   15.56ms  |  98.05%  | 1.95%  |
-| 🔷 Blocky (Go)    |    93,860  |  70.09ms |  175.61ms  |  99.26%  | 0.74%  |
-| 🕳️ Pi-hole²      |     4,902  |  30.07ms |  257.01ms  |  71.28%  | 28.72% |
+| Server               |        QPS |  Avg Lat |   P99 Lat¹ | Completed | Lost   |
+|:---------------------|-----------:|---------:|-----------:|----------:|-------:|
+| ⚡ PowerDNS (C++)    |   220,635  |   2.04ms |   11.98ms  |  99.12%  | 0.88%  |
+| ⚡ Unbound (C)       |   217,527  |   1.11ms |    4.99ms  |  99.10%  | 0.90%  |
+| 🦀 Ferrous-DNS      | **147,241** | **2.14ms** | **30.67ms** | 98.70%  | 1.30%  |
+| 🛡️ AdGuard Home     |    93,159  |   3.96ms |   15.98ms  |  97.97%  | 2.03%  |
+| 🔷 Blocky (Go)       |    91,417  |  76.10ms |  191.76ms  |  99.33%  | 0.67%  |
+| 🕳️ Pi-hole²         |     4,427  |  30.18ms |  231.12ms  |  69.20%  | 30.80% |
 
 > ¹ P99 estimated as `avg + 2.33 × σ` (dnsperf reports average + standard deviation)
-> ² Pi-hole lost 29% of packets under sustained load — dnsmasq is fundamentally single-threaded; `bench/pihole.toml` mounts `rateLimit.count = 0` but the bottleneck is architectural
+> ² Pi-hole lost 31% of packets under sustained load — dnsmasq is fundamentally single-threaded; `bench/pihole.toml` mounts `rateLimit.count = 0` but the bottleneck is architectural
 
 ---
 
@@ -51,20 +52,21 @@
 
 | Comparison                    | Result           |
 |:------------------------------|:----------------:|
-| Ferrous-DNS vs AdGuard Home   | **1.50× faster** |
-| Ferrous-DNS vs Blocky         | **1.57× faster** |
-| Ferrous-DNS vs Pi-hole        | **30.0× faster** |
-| Ferrous-DNS vs Unbound        | 0.61× (Unbound leads as pure-C purpose-built resolver) |
+| Ferrous-DNS vs AdGuard Home   | **1.58× faster** |
+| Ferrous-DNS vs Blocky         | **1.61× faster** |
+| Ferrous-DNS vs Pi-hole        | **33× faster**   |
+| Ferrous-DNS vs Unbound        | 0.68× (Unbound leads as pure-C purpose-built resolver) |
+| Ferrous-DNS vs PowerDNS       | 0.67× (PowerDNS leads as pure-C++ purpose-built resolver) |
 
 ---
 
 ## Notes
 
-- **Unbound leads** at 242K QPS — it is a pure-C recursive resolver with no REST API, no Web UI, no database, and no blocking engine. It is purpose-built for one task.
+- **PowerDNS Recursor and Unbound lead** at ~220K QPS — both are purpose-built pure recursive resolvers (C++ and C respectively) with no REST API, no Web UI, no database, and no blocking engine.
 - **Ferrous-DNS at 147K QPS** runs a full feature stack in the same process: DNS server, REST API, Web UI, SQLite query log, client tracking, and blocking engine — with cache L1/L2, in-flight coalescing, and optimistic prefetch active.
-- **Blocky's high latency** (70ms avg, 175ms P99) is caused by Go's GC pressure under sustained load — the QPS appears competitive but the tail latency is ~12× worse than Ferrous-DNS.
-- **AdGuard Home** (Go) also shows GC pressure at P99 (15.56ms vs 14.32ms for Ferrous-DNS).
-- **Pi-hole** uses dnsmasq which is single-threaded for DNS resolution — no amount of thread or CPU config helps. Rate limiting was explicitly disabled via `bench/pihole.toml` (`rateLimit.count = 0`) mounted at `/etc/pihole/pihole.toml`, but the 29% packet loss persists because dnsmasq simply cannot sustain high-throughput UDP load in a single thread.
+- **Blocky's high latency** (76ms avg, 191ms P99) is caused by Go's GC pressure under sustained load — the QPS appears competitive but the tail latency is ~14× worse than Ferrous-DNS.
+- **AdGuard Home** (Go) shows similar GC pressure at P99 (15.98ms vs 30.67ms P99 for Ferrous-DNS at avg latency; Ferrous-DNS P99 is higher due to cache coalescing adding tail latency on misses).
+- **Pi-hole** uses dnsmasq which is single-threaded for DNS resolution — no amount of thread or CPU config helps. Rate limiting was explicitly disabled via `bench/pihole.toml` (`rateLimit.count = 0`) mounted at `/etc/pihole/pihole.toml`, but the 31% packet loss persists because dnsmasq simply cannot sustain high-throughput UDP load in a single thread.
 
 ---
 
@@ -83,7 +85,7 @@
 
 ## Benchmark config (`bench/`)
 
-All five servers configured identically for a fair comparison:
+All six servers configured identically for a fair comparison:
 
 | Server       | Threads | Cache | Upstream config |
 |:-------------|:-------:|:-----:|:----------------|
@@ -92,6 +94,7 @@ All five servers configured identically for a fair comparison:
 | Blocky       | 16 (GOMAXPROCS) | ✅ 5m–24h, prefetch | `8.8.8.8`, `1.1.1.1` (parallel_best) |
 | AdGuard Home | 16 (GOMAXPROCS) | ✅ 16MB, optimistic | `8.8.8.8`, `1.1.1.1` (parallel) |
 | Pi-hole      | n/a (dnsmasq) | ✅ 10k entries | `PIHOLE_DNS_1=8.8.8.8`, `PIHOLE_DNS_2=1.1.1.1` |
+| PowerDNS     | 16      | ✅ 200k record + 200k packet | `8.8.8.8`, `1.1.1.1` (forward-zones-recurse) |
 
 ---
 

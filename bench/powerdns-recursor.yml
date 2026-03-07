@@ -1,0 +1,26 @@
+# PowerDNS Recursor v5 — YAML config (Ferrous-DNS benchmark)
+# Fair comparison: same upstreams, cache enabled, log info, rate limiting disabled
+
+incoming:
+  listen:
+    - "0.0.0.0:53"
+
+recursor:
+  threads: 16
+  forward_zones_recurse:
+    - zone: "."
+      forwarders:
+        - "8.8.8.8"
+        - "1.1.1.1"
+
+recordcache:
+  max_entries: 200000
+
+packetcache:
+  max_entries: 200000
+
+logging:
+  loglevel: 5
+
+dnssec:
+  validation: "off"

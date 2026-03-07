@@ -8,6 +8,7 @@
 #   - AdGuard Home
 #   - Unbound
 #   - Blocky
+#   - PowerDNS Recursor
 #
 # Prerequisites:
 #   - dnsperf  (DNS-OARC):  apt install dnsperf  |  brew install dnsperf
@@ -43,6 +44,7 @@ PIHOLE_PORT=5354
 ADGUARD_PORT=5355
 UNBOUND_PORT=5356
 BLOCKY_PORT=5357
+POWERDNS_PORT=5358
 
 # ── colour output ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -336,6 +338,16 @@ main() {
     ok "Blocky: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
   else
     ROWS+=("$(format_row "🔷 Blocky" "N/A" "N/A" "N/A" "N/A" "N/A")")
+  fi
+
+  # ── PowerDNS Recursor ────────────────────────────────────────────────────
+  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$POWERDNS_PORT" "PowerDNS" 5; then
+    warm_up "127.0.0.1" "$POWERDNS_PORT" "PowerDNS"
+    read -r qps p50 p99 comp lost < <(run_dnsperf "PowerDNS" "127.0.0.1" "$POWERDNS_PORT")
+    ROWS+=("$(format_row "⚡ PowerDNS (C++)" "$qps" "$p50" "$p99" "$comp" "$lost")")
+    ok "PowerDNS: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
+  else
+    ROWS+=("$(format_row "⚡ PowerDNS (C++)" "N/A" "N/A" "N/A" "N/A" "N/A")")
   fi
 
   # ── Results ───────────────────────────────────────────────────────────────
