@@ -5,6 +5,20 @@ const OPT_RECORD: [u8; 11] = [
     0x00, 0x00, 0x29, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
+/// Clones the cached wire bytes and overwrites the query ID (bytes 0–1) with
+/// `new_id` so the response matches the client's original query.
+///
+/// Returns `None` if `wire` is shorter than 2 bytes.
+pub fn patch_wire_id(wire: &[u8], new_id: u16) -> Option<Vec<u8>> {
+    if wire.len() < 2 {
+        return None;
+    }
+    let mut buf = wire.to_vec();
+    buf[0] = (new_id >> 8) as u8;
+    buf[1] = new_id as u8;
+    Some(buf)
+}
+
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],

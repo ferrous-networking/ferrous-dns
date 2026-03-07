@@ -383,4 +383,4 @@ PowerDNS Recursor and Unbound lead as purpose-built pure recursive resolvers (C+
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 
-Full benchmark report and methodology: [`bench/benchmark-results.md`](../../bench/benchmark-results.md)
+Full benchmark report and methodology: [`bench/benchmark-results.md`](https://github.com/andersonviudes/Ferrous-DNS/blob/main/bench/benchmark-results.md)

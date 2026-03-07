@@ -2,9 +2,21 @@ use ferrous_dns_domain::RecordType;
 
 const MAX_DOMAIN_LEN: usize = 253;
 
+/// Distinguishes A/AAAA queries (served inline via `build_cache_hit_response`)
+/// from other record types whose cached form is raw wire data.
+pub enum FastPathKind {
+    /// A (1) or AAAA (28) — address records, served inline without heap alloc.
+    IpAddress,
+    /// NS (2), CNAME (5), SOA (6), PTR (12), MX (15), TXT (16) — cached as
+    /// `CachedData::WireData`; served by patching the query ID in the raw bytes.
+    WireData,
+}
+
 pub struct FastPathQuery {
     pub id: u16,
     pub record_type: RecordType,
+    /// How this query's cache hit should be served.
+    pub kind: FastPathKind,
     pub question_end: usize,
     pub client_max_size: u16,
     pub has_edns: bool,
@@ -89,9 +101,15 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         return None;
     }
 
-    let record_type = match qtype {
-        1 => RecordType::A,
-        28 => RecordType::AAAA,
+    let (record_type, kind) = match qtype {
+        1 => (RecordType::A, FastPathKind::IpAddress),
+        2 => (RecordType::NS, FastPathKind::WireData),
+        5 => (RecordType::CNAME, FastPathKind::WireData),
+        6 => (RecordType::SOA, FastPathKind::WireData),
+        12 => (RecordType::PTR, FastPathKind::WireData),
+        15 => (RecordType::MX, FastPathKind::WireData),
+        16 => (RecordType::TXT, FastPathKind::WireData),
+        28 => (RecordType::AAAA, FastPathKind::IpAddress),
         _ => return None,
     };
 
@@ -152,6 +170,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     Some(FastPathQuery {
         id,
         record_type,
+        kind,
         question_end,
         client_max_size,
         has_edns,

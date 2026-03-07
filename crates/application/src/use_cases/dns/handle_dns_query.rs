@@ -165,6 +165,29 @@ impl HandleDnsQueryUseCase {
             .map(|_| BlockSource::CnameCloaking)
     }
 
+    /// Checks the cache for a non-IP record type (NS, CNAME, SOA, PTR, MX, TXT)
+    /// and returns the raw wire bytes if there is a hit. The caller is
+    /// responsible for patching the query ID before sending the response.
+    pub fn try_cache_wire_direct(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        client_ip: IpAddr,
+    ) -> Option<(bytes::Bytes, u32)> {
+        let group_id = self.block_filter.resolve_group(client_ip);
+
+        if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
+            return None;
+        }
+
+        let domain_arc: Arc<str> = Arc::from(domain);
+        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
+        let resolution = self.resolver.try_cache(&query)?;
+        let wire = resolution.upstream_wire_data?;
+        let ttl = resolution.min_ttl.unwrap_or(0);
+        Some((wire, ttl))
+    }
+
     pub fn try_cache_direct(
         &self,
         domain: &str,

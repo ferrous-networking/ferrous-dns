@@ -1,4 +1,5 @@
 use crate::dns::forwarding::RecordTypeMapper;
+use bytes::Bytes;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{DomainError, RecordType};
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
@@ -34,6 +35,18 @@ impl DnsServerHandler {
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
         self.use_case
             .try_cache_direct(domain, record_type, client_ip)
+    }
+
+    /// Returns cached wire bytes for non-IP record types (NS, CNAME, SOA, PTR,
+    /// MX, TXT). The caller must patch the query ID before sending.
+    pub fn try_fast_path_wire(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        client_ip: IpAddr,
+    ) -> Option<(Bytes, u32)> {
+        self.use_case
+            .try_cache_wire_direct(domain, record_type, client_ip)
     }
 
     pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {

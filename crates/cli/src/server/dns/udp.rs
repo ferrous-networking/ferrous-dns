@@ -1,4 +1,4 @@
-use ferrous_dns_infrastructure::dns::fast_path;
+use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -64,8 +64,11 @@ async fn run_udp_worker_batch(
 ) {
     // Pre-allocate batch state once per worker — reused across all iterations.
     let mut batch = pktinfo::RecvBatch::new(pktinfo::BATCH_SIZE);
-    // Pre-allocate response queue — cleared between batches, never reallocated.
+    let mut send_batch = pktinfo::SendBatch::new(pktinfo::BATCH_SIZE);
+    // Pre-allocate response queues — cleared between batches, never reallocated.
     let mut pending: Vec<pktinfo::PendingResponse> = Vec::with_capacity(pktinfo::BATCH_SIZE);
+    let mut pending_wire: Vec<pktinfo::PendingWireResponse> =
+        Vec::with_capacity(pktinfo::BATCH_SIZE);
 
     let fd = socket.get_ref().as_raw_fd();
 
@@ -96,35 +99,60 @@ async fn run_udp_worker_batch(
 
             // Process each received packet in the batch.
             pending.clear();
+            pending_wire.clear();
             for i in 0..n {
                 let msg = batch.get_msg(i);
                 let client_ip = msg.src.ip();
 
                 if let Some(fast_query) = fast_path::parse_query(msg.data) {
-                    if let Some((addresses, ttl)) = handler.try_fast_path(
-                        fast_query.domain(),
-                        fast_query.record_type,
-                        client_ip,
-                    ) {
-                        if let Some((wire, wire_len)) = wire_response::build_cache_hit_response(
-                            &fast_query,
-                            msg.data,
-                            &addresses,
-                            ttl,
-                        ) {
-                            // Fast path: inline wire buf — zero extra heap allocation.
-                            pending.push(pktinfo::PendingResponse {
-                                wire,
-                                len: wire_len,
-                                to: msg.src,
-                                src_ip: msg.dst_ip,
-                            });
-                            continue;
+                    match fast_query.kind {
+                        FastPathKind::IpAddress => {
+                            if let Some((addresses, ttl)) = handler.try_fast_path(
+                                fast_query.domain(),
+                                fast_query.record_type,
+                                client_ip,
+                            ) {
+                                if let Some((wire, wire_len)) =
+                                    wire_response::build_cache_hit_response(
+                                        &fast_query,
+                                        msg.data,
+                                        &addresses,
+                                        ttl,
+                                    )
+                                {
+                                    // Fast path: inline wire buf — zero extra heap allocation.
+                                    pending.push(pktinfo::PendingResponse {
+                                        wire,
+                                        len: wire_len,
+                                        to: msg.src,
+                                        src_ip: msg.dst_ip,
+                                    });
+                                    continue;
+                                }
+                            }
+                        }
+                        FastPathKind::WireData => {
+                            if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                                fast_query.domain(),
+                                fast_query.record_type,
+                                client_ip,
+                            ) {
+                                if let Some(patched) =
+                                    wire_response::patch_wire_id(&wire_bytes, fast_query.id)
+                                {
+                                    pending_wire.push(pktinfo::PendingWireResponse {
+                                        data: patched,
+                                        to: msg.src,
+                                        src_ip: msg.dst_ip,
+                                    });
+                                    continue;
+                                }
+                            }
                         }
                     }
                 }
 
-                // Cache miss — spawn async task (same path as before).
+                // Cache miss — spawn async task (slow path).
                 let handler_clone = handler.clone();
                 let socket_clone = socket.clone();
                 let owned_buf: Arc<[u8]> = Arc::from(msg.data);
@@ -145,13 +173,23 @@ async fn run_udp_worker_batch(
                 });
             }
 
-            // Flush all fast-path responses in a single sendmmsg call.
+            // Flush A/AAAA responses via sendmmsg (pre-allocated, single syscall).
             if !pending.is_empty() {
-                if let Err(e) = pktinfo::send_batch(fd, &pending) {
+                if let Err(e) = send_batch.send(fd, &pending) {
                     if e.kind() != io::ErrorKind::WouldBlock {
                         error!(worker = worker_id, error = %e, "UDP sendmmsg error");
                     }
                 }
+            }
+
+            // Flush wire-data responses (MX, TXT, NS, etc.) individually.
+            for resp in &pending_wire {
+                let _ = pktinfo::try_send_with_src_ip(
+                    socket.get_ref(),
+                    &resp.data,
+                    resp.to,
+                    resp.src_ip,
+                );
             }
         }
     }
@@ -180,24 +218,49 @@ async fn run_udp_worker_single(
                     let client_ip = from.ip();
 
                     if let Some(fast_query) = fast_path::parse_query(query_buf) {
-                        if let Some((addresses, ttl)) = handler.try_fast_path(
-                            fast_query.domain(),
-                            fast_query.record_type,
-                            client_ip,
-                        ) {
-                            if let Some((wire, wire_len)) = wire_response::build_cache_hit_response(
-                                &fast_query,
-                                query_buf,
-                                &addresses,
-                                ttl,
-                            ) {
-                                let _ = pktinfo::try_send_with_src_ip(
-                                    socket.get_ref(),
-                                    &wire[..wire_len],
-                                    from,
-                                    dst_ip,
-                                );
-                                continue;
+                        match fast_query.kind {
+                            FastPathKind::IpAddress => {
+                                if let Some((addresses, ttl)) = handler.try_fast_path(
+                                    fast_query.domain(),
+                                    fast_query.record_type,
+                                    client_ip,
+                                ) {
+                                    if let Some((wire, wire_len)) =
+                                        wire_response::build_cache_hit_response(
+                                            &fast_query,
+                                            query_buf,
+                                            &addresses,
+                                            ttl,
+                                        )
+                                    {
+                                        let _ = pktinfo::try_send_with_src_ip(
+                                            socket.get_ref(),
+                                            &wire[..wire_len],
+                                            from,
+                                            dst_ip,
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                            FastPathKind::WireData => {
+                                if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                                    fast_query.domain(),
+                                    fast_query.record_type,
+                                    client_ip,
+                                ) {
+                                    if let Some(patched) =
+                                        wire_response::patch_wire_id(&wire_bytes, fast_query.id)
+                                    {
+                                        let _ = pktinfo::try_send_with_src_ip(
+                                            socket.get_ref(),
+                                            &patched,
+                                            from,
+                                            dst_ip,
+                                        );
+                                        continue;
+                                    }
+                                }
                             }
                         }
                     }
