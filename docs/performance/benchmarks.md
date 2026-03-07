@@ -364,33 +364,34 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 ## Benchmark Results
 
-> **Host:** Intel Core i9-9900KF @ 3.60GHz | 16 cores / 46 GB RAM | Arch Linux | Kernel 6.12.75-1-lts
+> **Host:** Intel Core i9-9900KF @ 3.60GHz | 8 cores / 16 threads / 46 GB RAM | Arch Linux | Kernel 6.12.75-1-lts
 > **Tool:** dnsperf 2.14.0 | 60s per server | 10 concurrent clients | 187 domains (A, AAAA, MX, TXT, NS)
 >
 > **Docker config (identical for all servers):**
 >
 > | Setting | Value |
 > |:--------|:------|
-> | CPUs | `cpuset: 0-15` — 16 cores |
+> | CPUs | `cpuset: 0-15` — 16 threads |
 > | Network | host mode |
-> | Log level | info |
+> | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` (parallel) |
 > | Cache | enabled |
+> | Blocking / denylists | disabled — isolates raw forwarding performance |
 > | Rate limiting | disabled |
-> | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` |
-> | Blocking | disabled — isolates raw forwarding performance |
+> | Log level | info |
+> | Query logging (disk I/O) | disabled |
 
-| Server | QPS | Avg Lat | P99 Lat | Lost |
-|:-------|----:|--------:|--------:|-----:|
-| ⚡ Unbound (C) | 1,102,095 | 1.00ms | 2.62ms | 0.16% |
-| ⚡ PowerDNS (C++) | 899,679 | 2.07ms | 14.64ms | 0.18% |
-| 🦀 **Ferrous-DNS** | **477,744** | **1.25ms** | **36.01ms** | **0.40%** |
-| 🔷 Blocky (Go) | 102,299 | 78.44ms | 197.75ms | 0.38% |
-| 🛡️ AdGuard Home | 100,971 | 3.74ms | 14.85ms | 1.88% |
-| 🕳️ Pi-hole | 3,814 | 35.82ms | 349.64ms | 34.13% |
+| Server | QPS | Avg Lat | P99 Lat | Completed | Lost |
+|:-------|----:|--------:|--------:|----------:|-----:|
+| ⚡ Unbound (C) | 952,810 | 0.98ms | 2.19ms | 99.81% | 0.19% |
+| ⚡ PowerDNS (C++) | 884,128 | 2.06ms | 15.68ms | 99.82% | 0.18% |
+| 🦀 **Ferrous-DNS** | **482,506** | **1.19ms** | **13.32ms** | **99.60%** | **0.40%** |
+| 🔷 Blocky (Go) | 101,747 | 82.83ms | 206.78ms | 99.69% | 0.31% |
+| 🛡️ AdGuard Home | 97,627 | 3.82ms | 15.27ms | 98.06% | 1.94% |
+| 🕳️ Pi-hole | 2,066 | 46.43ms | 562.34ms | 51.00% | 49.00% |
 
-**Ferrous-DNS vs competitors:** 4.7× faster than AdGuard Home | 4.7× faster than Blocky | 125× faster than Pi-hole
+**Ferrous-DNS vs competitors:** 4.9× faster than AdGuard Home | 4.7× faster than Blocky | 233× faster than Pi-hole
 
-PowerDNS Recursor and Unbound lead as purpose-built pure recursive resolvers (C++ and C) — no REST API, no Web UI, no database, no blocking engine. Ferrous-DNS runs all of these in the same process.
+Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) — no REST API, no Web UI, no database, no blocking engine. Ferrous-DNS runs all of these in the same single-process binary.
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 
