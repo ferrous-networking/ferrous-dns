@@ -22,7 +22,7 @@ upstreams:
 
 # -- Ports --------------------------------------------------------------------
 ports:
-  dns: 53
+  dns: 5357
   http: 4000    # used for /api/blocking/status healthcheck inside the container
 
 # -- Caching ------------------------------------------------------------------

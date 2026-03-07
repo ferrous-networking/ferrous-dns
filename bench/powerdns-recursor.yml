@@ -3,7 +3,7 @@
 
 incoming:
   listen:
-    - "0.0.0.0:53"
+    - "0.0.0.0:5358"
 
 recursor:
   threads: 16

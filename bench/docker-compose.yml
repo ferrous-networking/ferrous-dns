@@ -11,13 +11,13 @@
 #   ./bench/benchmark.sh --no-docker
 #   docker compose -f bench/docker-compose.yml down
 #
-# Ports (all on 127.0.0.1 to avoid conflicts):
-#   Ferrous-DNS:  127.0.0.1:5353/udp+tcp
-#   Pi-hole:      127.0.0.1:5354/udp+tcp
-#   AdGuard Home: 127.0.0.1:5355/udp+tcp
-#   Unbound:      127.0.0.1:5356/udp+tcp
-#   Blocky:       127.0.0.1:5357/udp+tcp
-#   PowerDNS:     127.0.0.1:5358/udp+tcp
+# Ports (host networking — each server binds directly on the host):
+#   Ferrous-DNS:  0.0.0.0:5353/udp+tcp
+#   Pi-hole:      0.0.0.0:5354/udp+tcp
+#   AdGuard Home: 0.0.0.0:5355/udp+tcp
+#   Unbound:      0.0.0.0:5356/udp+tcp
+#   Blocky:       0.0.0.0:5357/udp+tcp
+#   PowerDNS:     0.0.0.0:5358/udp+tcp
 # =============================================================================
 
 services:
@@ -33,15 +33,12 @@ services:
   ferrous-dns:
     image: andersonviudes/ferrous-dns:latest
     container_name: bench-ferrous-dns
-    ports:
-      - "127.0.0.1:5353:5053/udp"
-      - "127.0.0.1:5353:5053/tcp"
-      - "127.0.0.1:9090:9090/tcp"
+    network_mode: host
     volumes:
       - ./ferrous-dns-config.toml:/data/config/ferrous-dns-config.toml:ro
     environment:
       FERROUS_CONFIG: /data/config/ferrous-dns-config.toml
-      FERROUS_DNS_PORT: 5053
+      FERROUS_DNS_PORT: 5353
       FERROUS_WEB_PORT: 9090
       FERROUS_BIND_ADDRESS: 0.0.0.0
       FERROUS_DATABASE: /tmp/ferrous-bench.db
@@ -72,6 +69,7 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: bench-pihole
+    network_mode: host
     environment:
       TZ: UTC
       WEBPASSWORD: bench123
@@ -79,13 +77,10 @@ services:
       PIHOLE_DNS_2: 1.1.1.1
       DNSSEC: "false"
       DNSMASQ_LISTENING: all
-      DNSMASQ_OPTS: "--cache-size=10000"
+      DNSMASQ_OPTS: "--cache-size=10000 --port=5354"
       # FTL rate limiting disabled (Pi-hole v6 format)
       FTLCONF_dns_rateLimit_count: "0"
-    ports:
-      - "127.0.0.1:5354:53/udp"
-      - "127.0.0.1:5354:53/tcp"
-      - "127.0.0.1:8080:80/tcp"
+      FTLCONF_dns_port: "5354"
     volumes:
       - pihole_data:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
@@ -102,7 +97,7 @@ services:
           cpus: '16'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "dig", "+short", "+timeout=2", "google.com", "@127.0.0.1"]
+      test: ["CMD", "dig", "+short", "+timeout=2", "-p", "5354", "google.com", "@127.0.0.1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -115,12 +110,9 @@ services:
   adguard:
     image: adguard/adguardhome:latest
     container_name: bench-adguard
+    network_mode: host
     environment:
       GOMAXPROCS: 16
-    ports:
-      - "127.0.0.1:5355:53/udp"
-      - "127.0.0.1:5355:53/tcp"
-      - "127.0.0.1:3000:3000/tcp"
     volumes:
       - adguard_work:/opt/adguardhome/work
       - ./adguard-config:/opt/adguardhome/conf
@@ -149,9 +141,7 @@ services:
   unbound:
     image: mvance/unbound:latest
     container_name: bench-unbound
-    ports:
-      - "127.0.0.1:5356:53/udp"
-      - "127.0.0.1:5356:53/tcp"
+    network_mode: host
     volumes:
       - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
     cpuset: "0-15"
@@ -166,7 +156,7 @@ services:
           cpus: '16'
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "drill", "-p", "53", "google.com", "@127.0.0.1"]
+      test: ["CMD", "drill", "-p", "5356", "google.com", "@127.0.0.1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -184,11 +174,9 @@ services:
   blocky:
     image: ghcr.io/0xerr0r/blocky:latest
     container_name: bench-blocky
+    network_mode: host
     environment:
       GOMAXPROCS: 16
-    ports:
-      - "127.0.0.1:5357:53/udp"
-      - "127.0.0.1:5357:53/tcp"
     volumes:
       - ./blocky-config.yml:/app/config.yml:ro
     cpuset: "0-15"
@@ -222,9 +210,7 @@ services:
   powerdns:
     image: powerdns/pdns-recursor-master:latest
     container_name: bench-powerdns
-    ports:
-      - "127.0.0.1:5358:53/udp"
-      - "127.0.0.1:5358:53/tcp"
+    network_mode: host
     volumes:
       - ./powerdns-recursor.yml:/etc/powerdns/recursor.yml:ro
     cpuset: "0-15"
