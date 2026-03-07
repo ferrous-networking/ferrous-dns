@@ -4,9 +4,10 @@
 # Mirrors the same constraints applied to all competitors:
 #   - Plain UDP upstreams only (8.8.8.8 / 1.1.1.1) — no DoH/DoT
 #   - Blocking disabled — isolates raw DNS forwarding performance
-#   - Caching disabled — every query goes upstream, same as all others
+#   - Caching enabled (minTime: 60s / maxTime: 86400s) — matches Ferrous-DNS
 #   - Query logging disabled — no I/O noise during measurement
 #   - Rate limiting disabled — dnsperf saturates at 10k in-flight queries
+#   - Log level: info — matches Ferrous-DNS logging.level = "info"
 # =============================================================================
 
 # -- Upstreams -----------------------------------------------------------------
@@ -25,17 +26,14 @@ ports:
   http: 4000    # used for /api/blocking/status healthcheck inside the container
 
 # -- Caching ------------------------------------------------------------------
-# Disabled so every query hits the upstream — same conditions as all other
-# competitors in this benchmark suite.
+# Enabled with same settings as Ferrous-DNS: min 300s, max 86400s, prefetching.
 caching:
-  minTime: 0s
-  maxTime: 0s
-  prefetching: false
+  minTime: 5m
+  maxTime: 24h
+  prefetching: true         # background refresh — equivalent to Ferrous-DNS cache_optimistic_refresh
 
 # -- Blocking -----------------------------------------------------------------
 # No denylists configured — blocking is effectively off.
-# Same rationale as AdGuard Home (protection_enabled: false) and
-# Ferrous-DNS (blocking.enabled = false) configs in this benchmark.
 blocking:
   denylists: {}
   allowlists: {}
@@ -43,9 +41,9 @@ blocking:
 
 # -- Logging ------------------------------------------------------------------
 log:
-  level: warn
+  level: info
   format: text
-  privacy: false    # do not mask query domains in logs
+  privacy: false
 
 # -- Query log ----------------------------------------------------------------
 # Disabled — reduces SQLite / file I/O pressure during measurement.

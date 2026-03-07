@@ -1,16 +1,18 @@
 # =============================================================================
 # Ferrous-DNS Competitor Benchmark — Docker Compose
 # =============================================================================
-# Starts Pi-hole, AdGuard Home, Unbound, and Blocky on local ports.
+# Starts Ferrous-DNS, Pi-hole, AdGuard Home, Unbound, and Blocky on local ports.
 # All servers use the same plain UDP upstreams (8.8.8.8 / 1.1.1.1),
-# blocking disabled, and logging disabled for a fair comparison.
+# blocking disabled, logging at info level, and caching enabled for a
+# realistic production-like comparison.
 #
 # Usage:
-#   docker compose -f docker/bench/docker-compose.yml up -d
-#   ./scripts/benchmark-competitors.sh --no-docker
-#   docker compose -f docker/bench/docker-compose.yml down
+#   docker compose -f bench/docker-compose.yml up -d
+#   ./bench/benchmark.sh --no-docker
+#   docker compose -f bench/docker-compose.yml down
 #
 # Ports (all on 127.0.0.1 to avoid conflicts):
+#   Ferrous-DNS:  127.0.0.1:5353/udp+tcp
 #   Pi-hole:      127.0.0.1:5354/udp+tcp
 #   AdGuard Home: 127.0.0.1:5355/udp+tcp
 #   Unbound:      127.0.0.1:5356/udp+tcp
@@ -18,6 +20,50 @@
 # =============================================================================
 
 services:
+
+  # ---------------------------------------------------------------------------
+  # Ferrous-DNS — high-performance DNS server (Rust)
+  # Config: docker/bench/ferrous-dns-config.toml
+  #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: Parallel
+  #   - Blocking disabled — isolates raw DNS forwarding performance
+  #   - Caching enabled — production-like settings (200k entries, hit_rate eviction)
+  #   - Log level: info
+  # ---------------------------------------------------------------------------
+  ferrous-dns:
+    image: andersonviudes/ferrous-dns:latest
+    container_name: bench-ferrous-dns
+    ports:
+      - "127.0.0.1:5353:5053/udp"
+      - "127.0.0.1:5353:5053/tcp"
+      - "127.0.0.1:9090:9090/tcp"
+    volumes:
+      - ./ferrous-dns-config.toml:/data/config/ferrous-dns-config.toml:ro
+    environment:
+      FERROUS_CONFIG: /data/config/ferrous-dns-config.toml
+      FERROUS_DNS_PORT: 5053
+      FERROUS_WEB_PORT: 9090
+      FERROUS_BIND_ADDRESS: 0.0.0.0
+      FERROUS_DATABASE: /tmp/ferrous-bench.db
+      FERROUS_LOG_LEVEL: info
+      RUST_LOG: info
+      TZ: UTC
+    cpuset: "0-15"
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/ferrous-dns", "--version"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
 
   # ---------------------------------------------------------------------------
   # Pi-hole — DNS blocker (primary competitor)
@@ -28,11 +74,13 @@ services:
     environment:
       TZ: UTC
       WEBPASSWORD: bench123
-      # Disable default upstream DoH — use plain DNS for fair comparison
       PIHOLE_DNS_1: 8.8.8.8
       PIHOLE_DNS_2: 1.1.1.1
       DNSSEC: "false"
       DNSMASQ_LISTENING: all
+      DNSMASQ_OPTS: "--cache-size=10000"
+      # FTL rate limiting disabled (Pi-hole v6 format)
+      FTLCONF_dns_rateLimit_count: "0"
     ports:
       - "127.0.0.1:5354:53/udp"
       - "127.0.0.1:5354:53/tcp"
@@ -40,8 +88,17 @@ services:
     volumes:
       - pihole_data:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
+      - ./pihole.toml:/etc/pihole/pihole.toml:ro
+    cpuset: "0-15"
     cap_add:
       - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "dig", "+short", "+timeout=2", "google.com", "@127.0.0.1"]
@@ -52,10 +109,13 @@ services:
 
   # ---------------------------------------------------------------------------
   # AdGuard Home — DNS blocker + DoH/DoT support
+  # GOMAXPROCS=16 — Go runtime uses 16 OS threads
   # ---------------------------------------------------------------------------
   adguard:
     image: adguard/adguardhome:latest
     container_name: bench-adguard
+    environment:
+      GOMAXPROCS: 16
     ports:
       - "127.0.0.1:5355:53/udp"
       - "127.0.0.1:5355:53/tcp"
@@ -63,6 +123,16 @@ services:
     volumes:
       - adguard_work:/opt/adguardhome/work
       - ./adguard-config:/opt/adguardhome/conf
+    cpuset: "0-15"
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
@@ -73,6 +143,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Unbound — high-performance recursive DNS resolver
+  # num-threads: 16 — matches CPU limit
   # ---------------------------------------------------------------------------
   unbound:
     image: mvance/unbound:latest
@@ -82,6 +153,16 @@ services:
       - "127.0.0.1:5356:53/tcp"
     volumes:
       - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+    cpuset: "0-15"
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "drill", "-p", "53", "google.com", "@127.0.0.1"]
@@ -95,17 +176,30 @@ services:
   # Config: docker/bench/blocky-config.yml
   #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: parallel_best
   #   - Blocking disabled (no denylists)
-  #   - Caching disabled (minTime/maxTime = 0)
-  #   - Query log disabled (type: none)
+  #   - Caching enabled (minTime: 60s, maxTime: 86400s, prefetching: true)
+  #   - Log level: info
+  # GOMAXPROCS=16 — Go runtime uses 16 OS threads
   # ---------------------------------------------------------------------------
   blocky:
     image: ghcr.io/0xerr0r/blocky:latest
     container_name: bench-blocky
+    environment:
+      GOMAXPROCS: 16
     ports:
       - "127.0.0.1:5357:53/udp"
       - "127.0.0.1:5357:53/tcp"
     volumes:
       - ./blocky-config.yml:/app/config.yml:ro
+    cpuset: "0-15"
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '16'
     restart: unless-stopped
     # Blocky runs on a scratch image (no shell/wget/dig). Use its built-in healthcheck subcommand.
     healthcheck:

@@ -69,7 +69,7 @@ cache_adaptive_thresholds = false       # Automatically tune eviction thresholds
 # Number of internal cache shards (DashMap).
 # When omitted, auto-detected as 4x CPU cores rounded up to the next power of 2
 # (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
-# cache_shard_amount = 512
+cache_shard_amount = 512
 
 
 # ── Cache: Optimistic Refresh ─────────────────────────────────────────────────

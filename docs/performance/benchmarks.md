@@ -365,16 +365,21 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 ## Benchmark Results
 
 > Intel Core i9-9900KF @ 3.60GHz | 8c/16t | Arch Linux
-> dnsperf 2.14.0 | 20s | 10 clients | plain UDP upstreams (identical config for all servers)
+> dnsperf 2.14.0 | 60s | 10 clients | 197 domains (A, AAAA, MX, TXT, NS)
+> All servers in Docker with identical resource constraints: 16 CPUs, cache enabled, log info, rate limiting disabled, plain UDP upstreams `8.8.8.8` and `1.1.1.1`
 
-| Server | QPS | vs Ferrous DNS |
-|:-------|----:|:--------------:|
-| **Ferrous DNS** | **438,925** | — |
-| Unbound (C) | 224,194 | 1.96x slower |
-| Blocky (Go) | 133,446 | 3.29x slower |
-| AdGuard Home (Go) | 109,068 | 4.03x slower |
-| Pi-hole | 6,902 | 64x slower |
+| Server | QPS | Avg Lat | P99 Lat | Lost |
+|:-------|----:|--------:|--------:|-----:|
+| ⚡ Unbound (C) | 242,646 | 1.72ms | 6.53ms | 0.80% |
+| 🦀 **Ferrous-DNS** | **147,184** | **2.00ms** | **14.32ms** | **1.31%** |
+| 🛡️ AdGuard Home | 97,848 | 3.88ms | 15.56ms | 1.95% |
+| 🔷 Blocky (Go) | 93,860 | 70.09ms | 175.61ms | 0.74% |
+| 🕳️ Pi-hole | 4,902 | 30.07ms | 257.01ms | 28.72% |
+
+**Ferrous-DNS vs competitors:** 1.50× faster than AdGuard Home | 1.57× faster than Blocky | 30× faster than Pi-hole
+
+Unbound leads as a purpose-built pure-C recursive resolver — no REST API, no Web UI, no database, no blocking engine. Ferrous-DNS runs all of these in the same process.
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 
-Raw `dnsperf` output is available in the repository under `tests/performance/`.
+Full benchmark report and methodology: [`bench/benchmark-results.md`](../../bench/benchmark-results.md)

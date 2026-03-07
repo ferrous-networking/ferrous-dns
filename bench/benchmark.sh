@@ -15,10 +15,10 @@
 #   - A running Ferrous-DNS instance (or pass FERROUS_DNS_ADDR)
 #
 # Usage:
-#   ./scripts/benchmark-competitors.sh [options]
+#   ./bench/benchmark.sh [options]
 #
 # Options:
-#   --duration   <s>     Benchmark duration per server in seconds (default: 30)
+#   --duration   <s>     Benchmark duration per server in seconds (default: 60)
 #   --clients    <n>     Concurrent dnsperf clients (default: 10)
 #   --ferrous    <addr>  Ferrous-DNS address (default: 127.0.0.1:5353)
 #   --no-docker          Skip starting competitor containers
@@ -29,11 +29,11 @@
 set -euo pipefail
 
 # ── defaults ────────────────────────────────────────────────────────────────
-DURATION=${DURATION:-30}
+DURATION=${DURATION:-60}
 CLIENTS=${CLIENTS:-10}
 FERROUS_ADDR=${FERROUS_DNS_ADDR:-"127.0.0.1:5353"}
-QUERIES_FILE="$(dirname "$0")/bench-data/queries.txt"
-DOCKER_COMPOSE="$(dirname "$0")/../docker/bench/docker-compose.yml"
+QUERIES_FILE="$(dirname "$0")/data/queries.txt"
+DOCKER_COMPOSE="$(dirname "$0")/docker-compose.yml"
 USE_DOCKER=true
 OUTPUT_FILE=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -1,0 +1,10 @@
+[dns]
+  # Rate limiting disabled — allow unlimited queries (benchmark mode)
+  rateLimit.count = 0
+  rateLimit.interval = 0
+  upstreams = ["8.8.8.8", "1.1.1.1"]
+  dnssec = false
+
+[misc]
+  # Suppress startup checks that slow down container init
+  check.load = false
