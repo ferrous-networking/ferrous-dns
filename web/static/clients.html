@@ -211,12 +211,14 @@
                     <!-- Group: display or edit -->
                     <td>
                         <template x-if="editingId !== c.id">
-                            <template x-if="getGroupName(c.group_id) !== null">
-                                <span x-text="getGroupName(c.group_id)"></span>
-                            </template>
-                            <template x-if="getGroupName(c.group_id) === null">
-                                <span style="opacity:0.45;font-style:italic">auto</span>
-                            </template>
+                            <span>
+                                <template x-if="getGroupName(c.group_id) !== null">
+                                    <span x-text="getGroupName(c.group_id)"></span>
+                                </template>
+                                <template x-if="getGroupName(c.group_id) === null">
+                                    <span style="opacity:0.45;font-style:italic">auto</span>
+                                </template>
+                            </span>
                         </template>
                         <template x-if="editingId === c.id">
                             <select class="select-inline" x-model="editForm.group_id">
