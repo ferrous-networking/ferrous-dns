@@ -377,4 +377,4 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 
-[Full benchmark report with raw dnsperf output](../benchmark-results.md)
+Raw `dnsperf` output is available in the repository under `tests/performance/`.

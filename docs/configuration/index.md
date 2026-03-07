@@ -126,7 +126,7 @@ sqlite_mmap_size_mb       = 16
 ```
 
 !!! tip "SD card longevity"
-    Move the database to a USB drive or a `tmpfs` mount to reduce SD card writes. See [Database](database.md#sd-card-tips) for details.
+    Move the database to a USB drive or a `tmpfs` mount to reduce SD card writes. See the [Database configuration](database.md) for SD card tuning options.
 
 ---
 
