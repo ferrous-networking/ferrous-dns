@@ -5,7 +5,5 @@ CREATE TABLE IF NOT EXISTS whitelist_source_groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wsg_group_id ON whitelist_source_groups(group_id);
-
--- Retrocompat: populate from existing single group_id assignment
 INSERT INTO whitelist_source_groups (source_id, group_id)
 SELECT id, group_id FROM whitelist_sources;

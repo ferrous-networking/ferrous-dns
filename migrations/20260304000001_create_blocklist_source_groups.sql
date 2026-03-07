@@ -5,7 +5,5 @@ CREATE TABLE IF NOT EXISTS blocklist_source_groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bsg_group_id ON blocklist_source_groups(group_id);
-
--- Retrocompat: populate from existing single group_id assignment
 INSERT INTO blocklist_source_groups (source_id, group_id)
 SELECT id, group_id FROM blocklist_sources;

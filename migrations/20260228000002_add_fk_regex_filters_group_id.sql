@@ -1,6 +1,3 @@
--- Add FK constraint on regex_filters.group_id → groups(id)
--- SQLite does not support ALTER TABLE ADD CONSTRAINT, so we recreate the table.
-
 CREATE TABLE regex_filters_new (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL UNIQUE,

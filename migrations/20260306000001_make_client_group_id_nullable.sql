@@ -1,23 +1,3 @@
--- ============================================================================
--- Make clients.group_id nullable
--- ============================================================================
--- Fix: clients auto-discovered by DNS were getting group_id=1 (Protected) via
--- the NOT NULL DEFAULT 1 constraint. This caused the block filter engine to
--- load every client into the per-IP cache, which was checked BEFORE the subnet
--- matcher. As a result, CIDR-based group assignments were silently ignored for
--- any client that had ever been seen.
---
--- New semantics:
---   group_id = NULL  → no explicit assignment; effective group is resolved at
---                      query time via subnet matcher → default group fallback
---   group_id = X     → user explicitly assigned this client to group X
---
--- Data migration: clients that only have group_id=1 because of the old DEFAULT
--- are reset to NULL. Clients explicitly assigned to a non-default group keep
--- their assignment. Clients explicitly assigned to Protected (id=1) are also
--- reset — there is no way to distinguish them from the auto-assigned ones, and
--- with NULL they will still fall back to Protected through the default group.
-
 PRAGMA foreign_keys = OFF;
 
 CREATE TABLE clients_new (
