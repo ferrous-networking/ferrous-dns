@@ -190,50 +190,62 @@
                 No upstream servers configured
             </div>
             <div x-show="upstreamHealth.length > 0">
-                <template x-for="group in upstreamHealth" :key="group.address">
-                    <div style="border-bottom:1px solid var(--border-color)">
-                        <!-- Server row — clickable -->
-                        <div @click="toggleUpstream(group.address); scheduleLucide(50)"
-                             style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;user-select:none">
-                            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
-                                <div :style="'flex-shrink:0;width:8px;height:8px;border-radius:50%;background:' + poolStatusColor(group.status)"></div>
-                                <span style="font-size:14px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                                      x-text="group.address"></span>
-                            </div>
-                            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
-                                <span :style="'background:' + poolStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
-                                      x-text="group.status"></span>
-                                <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
-                                   style="width:16px;height:16px;color:var(--text-tertiary)"></i>
-                            </div>
+                <template x-for="(pool, poolIdx) in groupedUpstreams" :key="pool.pool_name">
+                    <div :style="poolIdx > 0 ? 'margin-top:16px' : ''">
+                        <!-- Pool header -->
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-bottom:2px solid var(--border-color);margin-bottom:2px">
+                            <i data-lucide="layers" style="width:14px;height:14px;color:var(--text-tertiary);flex-shrink:0"></i>
+                            <span style="font-size:12px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.06em" x-text="pool.pool_name"></span>
+                            <span :style="'font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;' + strategyStyle(pool.strategy)"
+                                  x-text="pool.strategy"></span>
                         </div>
-                        <!-- Expanded: per-IP breakdown -->
-                        <div x-show="isUpstreamExpanded(group.address)" style="padding-bottom:10px">
-                            <template x-for="(ep, idx) in group.resolved" :key="ep.address">
-                                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 6px 20px">
-                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                                        <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
-                                              x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
-                                        <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
-                                              x-text="ep.family.toUpperCase()"></span>
-                                        <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                                              x-text="ep.address"></span>
+                        <!-- Servers in this pool -->
+                        <template x-for="group in pool.servers" :key="group.address">
+                            <div style="border-bottom:1px solid var(--border-color)">
+                                <!-- Server row — clickable -->
+                                <div @click="toggleUpstream(group.address); scheduleLucide(50)"
+                                     style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;user-select:none">
+                                    <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+                                        <div :style="'flex-shrink:0;width:8px;height:8px;border-radius:50%;background:' + poolStatusColor(group.status)"></div>
+                                        <span style="font-size:14px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                              x-text="group.address"></span>
                                     </div>
-                                    <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
-                                        <template x-if="ep.latency_ms != null">
-                                            <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
-                                        </template>
-                                        <template x-if="ep.last_error && ep.status !== 'Healthy'">
-                                            <span :title="ep.last_error"
-                                                  style="font-size:11px;color:var(--color-error);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default"
-                                                  x-text="ep.last_error"></span>
-                                        </template>
-                                        <span :style="'background:' + poolStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
-                                              x-text="ep.status"></span>
+                                    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
+                                        <span :style="'background:' + poolStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
+                                              x-text="group.status"></span>
+                                        <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
+                                           style="width:16px;height:16px;color:var(--text-tertiary)"></i>
                                     </div>
                                 </div>
-                            </template>
-                        </div>
+                                <!-- Expanded: per-IP breakdown -->
+                                <div x-show="isUpstreamExpanded(group.address)" style="padding-bottom:10px">
+                                    <template x-for="(ep, idx) in group.resolved" :key="ep.address">
+                                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 6px 20px">
+                                            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                                                <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
+                                                      x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
+                                                <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
+                                                      x-text="ep.family.toUpperCase()"></span>
+                                                <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                                      x-text="ep.address"></span>
+                                            </div>
+                                            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
+                                                <template x-if="ep.latency_ms != null">
+                                                    <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
+                                                </template>
+                                                <template x-if="ep.last_error && ep.status !== 'Healthy'">
+                                                    <span :title="ep.last_error"
+                                                          style="font-size:11px;color:var(--color-error);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default"
+                                                          x-text="ep.last_error"></span>
+                                                </template>
+                                                <span :style="'background:' + poolStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
+                                                      x-text="ep.status"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
                     </div>
                 </template>
             </div>

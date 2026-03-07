@@ -1,4 +1,4 @@
-use super::{HealthChecker, PoolManager, ServerStatus};
+use super::{HealthChecker, PoolGroupEntry, PoolManager, ServerStatus};
 use ferrous_dns_application::ports::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
     UpstreamStatus,
@@ -45,29 +45,33 @@ impl UpstreamHealthPort for UpstreamHealthAdapter {
         let Some(checker) = &self.health_checker else {
             return self
                 .pool_manager
-                .get_all_server_groups()
+                .get_pool_groups()
                 .into_iter()
-                .map(|(original, protocols)| {
-                    let resolved = protocols
+                .map(|e: PoolGroupEntry| {
+                    let resolved = e
+                        .protocols
                         .iter()
                         .flat_map(|p| {
                             expand_endpoint_health(p, UpstreamStatus::Unknown, None, None, 0)
                         })
                         .collect();
                     UpstreamGroupHealth {
-                        address: original.to_string(),
+                        address: e.original.to_string(),
                         status: AggregateStatus::Unknown,
                         resolved,
+                        pool_name: e.pool_name.to_string(),
+                        strategy: e.strategy,
                     }
                 })
                 .collect();
         };
 
         self.pool_manager
-            .get_all_server_groups()
+            .get_pool_groups()
             .into_iter()
-            .map(|(original, protocols)| {
-                let resolved: Vec<ResolvedEndpointHealth> = protocols
+            .map(|e: PoolGroupEntry| {
+                let resolved: Vec<ResolvedEndpointHealth> = e
+                    .protocols
                     .iter()
                     .flat_map(|p| {
                         let health = checker.get_health_info(p);
@@ -84,9 +88,11 @@ impl UpstreamHealthPort for UpstreamHealthAdapter {
 
                 let status = aggregate_status(&resolved);
                 UpstreamGroupHealth {
-                    address: original.to_string(),
+                    address: e.original.to_string(),
                     status,
                     resolved,
+                    pool_name: e.pool_name.to_string(),
+                    strategy: e.strategy,
                 }
             })
             .collect()

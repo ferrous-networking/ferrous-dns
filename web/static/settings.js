@@ -354,6 +354,23 @@
             kbToGb(kb) {
                 return (kb / 1048576).toFixed(1);
             },
+            get groupedUpstreams() {
+                const pools = new Map();
+                for (const group of this.upstreamHealth) {
+                    const key = group.pool_name || 'default';
+                    if (!pools.has(key)) {
+                        pools.set(key, { pool_name: key, strategy: group.strategy || 'Parallel', servers: [] });
+                    }
+                    pools.get(key).servers.push(group);
+                }
+                return Array.from(pools.values());
+            },
+            strategyStyle(strategy) {
+                if (strategy === 'Parallel') return 'background:rgba(168,85,247,0.12);color:#A855F7';
+                if (strategy === 'Failover') return 'background:rgba(59,130,246,0.12);color:#3B82F6';
+                if (strategy === 'Balanced') return 'background:rgba(16,185,129,0.12);color:#10B981';
+                return 'background:var(--bg-tertiary);color:var(--text-secondary)';
+            },
             poolStatusColor(status) {
                 if (status === 'Healthy')   return 'var(--color-success)';
                 if (status === 'Unhealthy') return 'var(--color-error)';

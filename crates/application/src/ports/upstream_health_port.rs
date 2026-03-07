@@ -1,3 +1,5 @@
+use ferrous_dns_domain::UpstreamStrategy;
+
 /// Status of an upstream DNS server.
 #[derive(Debug, Clone, Copy)]
 pub enum UpstreamStatus {
@@ -52,6 +54,10 @@ pub struct UpstreamGroupHealth {
     pub status: AggregateStatus,
     /// One entry per resolved IP address.
     pub resolved: Vec<ResolvedEndpointHealth>,
+    /// Name of the pool this server belongs to.
+    pub pool_name: String,
+    /// Strategy of the pool.
+    pub strategy: UpstreamStrategy,
 }
 
 /// Port for querying upstream DNS server health status.

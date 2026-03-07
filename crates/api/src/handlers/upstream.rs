@@ -1,5 +1,6 @@
 use axum::{extract::State, Json};
 use ferrous_dns_application::ports::{AggregateStatus, IpFamily, UpstreamStatus};
+use ferrous_dns_domain::UpstreamStrategy;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -43,6 +44,8 @@ pub struct UpstreamGroupResponse {
     pub address: String,
     pub status: String,
     pub resolved: Vec<ResolvedEndpointResponse>,
+    pub pool_name: String,
+    pub strategy: String,
 }
 
 pub async fn get_upstream_health_detail(
@@ -59,6 +62,13 @@ pub async fn get_upstream_health_detail(
                 AggregateStatus::Partial => "Partial",
                 AggregateStatus::Unhealthy => "Unhealthy",
                 AggregateStatus::Unknown => "Unknown",
+            }
+            .to_string(),
+            pool_name: g.pool_name,
+            strategy: match g.strategy {
+                UpstreamStrategy::Parallel => "Parallel",
+                UpstreamStrategy::Failover => "Failover",
+                UpstreamStrategy::Balanced => "Balanced",
             }
             .to_string(),
             resolved: g

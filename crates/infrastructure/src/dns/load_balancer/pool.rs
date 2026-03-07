@@ -319,16 +319,30 @@ impl PoolManager {
             .collect()
     }
 
-    /// Returns all configured servers grouped by their original configured address,
-    /// each with the list of resolved IP protocols that came from that address.
-    pub fn get_all_server_groups(&self) -> Vec<(Arc<str>, Vec<Arc<DnsProtocol>>)> {
+    /// Returns all configured servers grouped by original address, enriched with
+    /// their pool name and strategy for health display purposes.
+    pub fn get_pool_groups(&self) -> Vec<PoolGroupEntry> {
         self.pools
             .iter()
             .flat_map(|p| {
-                p.server_groups
-                    .iter()
-                    .map(|g| (Arc::clone(&g.original), g.protocols.clone()))
+                let pool_name = Arc::clone(&p.name_arc);
+                let strategy = p.config.strategy;
+                p.server_groups.iter().map(move |g| PoolGroupEntry {
+                    pool_name: Arc::clone(&pool_name),
+                    strategy,
+                    original: Arc::clone(&g.original),
+                    protocols: g.protocols.clone(),
+                })
             })
             .collect()
     }
+}
+
+/// One entry returned by [`PoolManager::get_pool_groups`]: a single configured server
+/// together with its pool metadata and the list of resolved IP protocols.
+pub struct PoolGroupEntry {
+    pub pool_name: Arc<str>,
+    pub strategy: UpstreamStrategy,
+    pub original: Arc<str>,
+    pub protocols: Vec<Arc<DnsProtocol>>,
 }

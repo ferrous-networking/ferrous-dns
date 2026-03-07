@@ -11,6 +11,6 @@ pub use balanced::BalancedStrategy;
 pub use failover::FailoverStrategy;
 pub use health::{HealthChecker, ServerHealth, ServerStatus};
 pub use parallel::ParallelStrategy;
-pub use pool::PoolManager;
+pub use pool::{PoolGroupEntry, PoolManager};
 pub use strategy::{Strategy, UpstreamResult};
 pub use upstream_health_adapter::UpstreamHealthAdapter;
