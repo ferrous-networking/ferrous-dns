@@ -21,19 +21,6 @@
 
 Full documentation is available at **[ferrous-networking.github.io/Ferrous-DNS](https://ferrous-networking.github.io/Ferrous-DNS/)**.
 
-| Section | Description |
-|:--------|:------------|
-| [Installation](https://ferrous-networking.github.io/Ferrous-DNS/getting-started/installation/) | Docker, Docker Compose, build from source |
-| [Quick Start](https://ferrous-networking.github.io/Ferrous-DNS/getting-started/quick-start/) | Up and running in minutes |
-| [Configuration](https://ferrous-networking.github.io/Ferrous-DNS/configuration/) | Deployment profiles and full config reference |
-| [Upstream Management](https://ferrous-networking.github.io/Ferrous-DNS/features/upstream-management/) | Pools, strategies, health checks |
-| [Encrypted DNS](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/) | DoH, DoT, DoQ — server and upstream |
-| [Blocking & Filtering](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/) | Blocklists, wildcards, CNAME cloaking |
-| [Client Management](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/) | Groups, parental controls, scheduling |
-| [Performance](https://ferrous-networking.github.io/Ferrous-DNS/performance/benchmarks/) | Benchmarks and architecture internals |
-
----
-
 ## Performance
 
 At **438,925 queries/second**, Ferrous-DNS is nearly **2× faster than Unbound**, **3.3× faster than Blocky**, **4× faster than AdGuard Home**, and **64× faster than Pi-hole** — benchmarked under identical conditions with plain UDP upstreams on loopback.
