@@ -727,6 +727,7 @@ dependencies = [
  "ferrous-dns-domain",
  "ferrous-dns-infrastructure",
  "ferrous-dns-jobs",
+ "futures",
  "hickory-proto",
  "hickory-server",
  "libc",

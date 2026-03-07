@@ -69,6 +69,13 @@ async fn run_udp_worker_batch(
     let mut pending: Vec<pktinfo::PendingResponse> = Vec::with_capacity(pktinfo::BATCH_SIZE);
     let mut pending_wire: Vec<pktinfo::PendingWireResponse> =
         Vec::with_capacity(pktinfo::BATCH_SIZE);
+    // Cache misses processed inline via join_all — avoids per-task Tokio spawn overhead.
+    let mut pending_misses: Vec<(
+        Arc<[u8]>,
+        std::net::SocketAddr,
+        std::net::IpAddr,
+        std::net::IpAddr,
+    )> = Vec::with_capacity(pktinfo::BATCH_SIZE);
 
     let fd = socket.get_ref().as_raw_fd();
 
@@ -100,6 +107,7 @@ async fn run_udp_worker_batch(
             // Process each received packet in the batch.
             pending.clear();
             pending_wire.clear();
+            pending_misses.clear();
             for i in 0..n {
                 let msg = batch.get_msg(i);
                 let client_ip = msg.src.ip();
@@ -152,25 +160,8 @@ async fn run_udp_worker_batch(
                     }
                 }
 
-                // Cache miss — spawn async task (slow path).
-                let handler_clone = handler.clone();
-                let socket_clone = socket.clone();
-                let owned_buf: Arc<[u8]> = Arc::from(msg.data);
-                let from = msg.src;
-                let dst_ip = msg.dst_ip;
-                tokio::spawn(async move {
-                    if let Some(response) = handler_clone
-                        .handle_raw_udp_fallback(&owned_buf, client_ip)
-                        .await
-                    {
-                        let _ = pktinfo::try_send_with_src_ip(
-                            socket_clone.get_ref(),
-                            &response,
-                            from,
-                            dst_ip,
-                        );
-                    }
-                });
+                // Cache miss — queue for inline batch processing (slow path).
+                pending_misses.push((Arc::from(msg.data), msg.src, client_ip, msg.dst_ip));
             }
 
             // Flush A/AAAA responses via sendmmsg (pre-allocated, single syscall).
@@ -190,6 +181,20 @@ async fn run_udp_worker_batch(
                     resp.to,
                     resp.src_ip,
                 );
+            }
+
+            // Process cache misses inline — parallel within the batch, no scheduler pressure.
+            if !pending_misses.is_empty() {
+                let futs = pending_misses.drain(..).map(|(buf, from, cip, dst_ip)| {
+                    let h = handler.clone();
+                    let s = socket.clone();
+                    async move {
+                        if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip).await {
+                            let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
+                        }
+                    }
+                });
+                futures::future::join_all(futs).await;
             }
         }
     }

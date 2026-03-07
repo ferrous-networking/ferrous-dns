@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
-use tracing::{debug, info};
+use tracing::info;
 
 pub struct UdpSocketPool {
     pools: DashMap<SocketAddr, Vec<Arc<UdpSocket>>>,
@@ -35,7 +35,6 @@ impl UdpSocketPool {
         if let Some(mut entry) = self.pools.get_mut(&server) {
             if let Some(socket) = entry.pop() {
                 self.total_reused.fetch_add(1, Ordering::Relaxed);
-                debug!(server = %server, "Reusing UDP socket from pool");
 
                 return Ok(PooledUdpSocket {
                     socket,
@@ -51,8 +50,6 @@ impl UdpSocketPool {
 
         let socket = self.create_socket(server).await?;
         self.total_created.fetch_add(1, Ordering::Relaxed);
-
-        debug!(server = %server, "Created new UDP socket");
 
         Ok(PooledUdpSocket {
             socket: Arc::new(socket),
@@ -97,13 +94,6 @@ impl UdpSocketPool {
 
         if entry.len() < self.max_per_server {
             entry.push(socket);
-            debug!(
-                server = %server,
-                pool_size = entry.len(),
-                "Returned UDP socket to pool"
-            );
-        } else {
-            debug!(server = %server, "Pool full, dropping socket");
         }
     }
 
@@ -119,13 +109,7 @@ impl UdpSocketPool {
     }
 
     pub fn clear_server(&self, server: &SocketAddr) {
-        if let Some((_, sockets)) = self.pools.remove(server) {
-            debug!(
-                server = %server,
-                count = sockets.len(),
-                "Cleared socket pool for server"
-            );
-        }
+        self.pools.remove(server);
     }
 
     pub fn clear_all(&self) {

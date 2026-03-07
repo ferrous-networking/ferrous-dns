@@ -18,6 +18,7 @@ ferrous-dns-api.workspace = true
 ferrous-dns-api-pihole.workspace = true
 
 tokio.workspace = true
+futures.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
 tokio-rustls.workspace = true

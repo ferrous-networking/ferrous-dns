@@ -16,7 +16,6 @@ use rustc_hash::FxBuildHasher;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::watch;
-use tracing::debug;
 
 struct InflightResult {
     addresses: Arc<Vec<IpAddr>>,
@@ -84,12 +83,6 @@ impl CachedResolver {
     fn check_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
         self.cache.get(&query.domain, &query.record_type).map(
             |(data, dnssec_status, remaining_ttl)| {
-                debug!(
-                    domain = %query.domain,
-                    record_type = %query.record_type,
-                    "Cache HIT"
-                );
-
                 let dnssec_str = dnssec_status.map(|s| s.as_str());
 
                 match data {
@@ -279,12 +272,6 @@ impl CachedResolver {
         query: &DnsQuery,
         key: CacheKey,
     ) -> Result<DnsResolution, DomainError> {
-        debug!(
-            domain = %query.domain,
-            record_type = %query.record_type,
-            "Cache MISS"
-        );
-
         let guard = InflightLeaderGuard {
             inflight: Arc::clone(&self.inflight),
             key: key.clone(),

@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::debug;
 
 pub struct QueryAttemptResult {
     pub response: DnsResponse,
@@ -57,11 +56,6 @@ pub async fn query_server(
 
     if dns_response.truncated {
         if let DnsProtocol::Udp { addr } = protocol {
-            debug!(
-                server = %addr,
-                "Response truncated (TC bit), retrying via TCP"
-            );
-
             let tcp_protocol = DnsProtocol::Tcp { addr: addr.clone() };
             let tcp_transport = transport::get_or_create_transport(&tcp_protocol)?;
 
