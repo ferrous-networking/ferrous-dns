@@ -244,6 +244,9 @@ yarn.lock
 # Data directory (databases, logs, etc.)
 data/
 *.data
+# Exception: benchmark query dataset is source-controlled
+!bench/data/
+!bench/data/**
 
 # Blocklists (downloaded)
 blocklists/
