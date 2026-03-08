@@ -10,23 +10,24 @@ theme:
   logo: assets/logo.png
   favicon: assets/logo.png
   palette:
-    - scheme: slate
-      primary: teal
-      accent: teal
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
     - scheme: default
       primary: teal
       accent: teal
       toggle:
-        icon: material/brightness-7
+        icon: material/brightness-4
         name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
     - navigation.expand
+    - navigation.indexes
     - navigation.top
     - navigation.footer
     - search.highlight
@@ -40,15 +41,26 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - footnotes
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.inlinehilite
+  - pymdownx.snippets
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
       custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - attr_list
   - md_in_html
@@ -79,6 +91,7 @@ nav:
   - Performance:
     - Benchmarks: performance/benchmarks.md
   - Contributing: contributing.md
+  - Changelog: changelog.md
   - Roadmap: roadmap.md
 
 extra:

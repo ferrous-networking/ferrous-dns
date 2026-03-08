@@ -26,12 +26,10 @@ When enabled, Ferrous DNS validates DNSSEC signatures on all upstream responses.
 
 DNS rebinding attacks trick browsers into making requests to internal network resources by returning private IP addresses for public domain names.
 
-Ferrous DNS detects and blocks responses that would return RFC-1918 private addresses for publicly-registered domains:
+Ferrous DNS detects and blocks responses that would return RFC-1918 private addresses for publicly-registered domains.
 
-```toml
-[dns]
-# (built-in, always active when blocking is enabled)
-```
+!!! info "No configuration required"
+    DNS rebinding protection is built-in and always active when blocking is enabled. There is no TOML option to configure — it engages automatically.
 
 **Protected ranges**:
 - `10.0.0.0/8`
@@ -113,19 +111,6 @@ The following are planned for v0.7.0:
 | **DNS Tunneling Detection** | Detect DNS used as a covert data channel |
 | **Entropy Analysis** | Detect DGA (Domain Generation Algorithm) malware |
 | **Read-Only Mode** | Disable config changes via a flag |
-
----
-
-## Pi-hole API Compatibility
-
-Ferrous DNS implements the Pi-hole v6 API, making it a drop-in replacement for existing integrations:
-
-```toml
-[server]
-pihole_compat = true
-```
-
-Compatible integrations include Gravity Sync, third-party dashboards, monitoring scripts, and home automation systems that expect the Pi-hole API format.
 
 ---
 

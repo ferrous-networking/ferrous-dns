@@ -34,7 +34,7 @@ api_key = "your-secret-api-key"
 
 When set, all API requests must include the header:
 
-```
+```http
 Authorization: Bearer your-secret-api-key
 ```
 
@@ -125,7 +125,7 @@ For production, use [Let's Encrypt](https://letsencrypt.org/) or your CA.
 
 Configure your devices or router to use DoT:
 
-```
+```text
 DNS server: 192.168.1.100
 Port: 853
 Protocol: DNS-over-TLS
@@ -135,7 +135,7 @@ Protocol: DNS-over-TLS
 
 Use the DoH endpoint with any compatible client:
 
-```
+```text
 https://192.168.1.100/dns-query
 ```
 

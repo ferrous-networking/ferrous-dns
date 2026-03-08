@@ -57,18 +57,18 @@ Time-based blocking lets you enforce internet policies automatically:
 ### Example Schedules
 
 **School hours** (block social media during school days):
-```
+```text
 Monday–Friday, 08:00–15:00 → block Social Media category
 ```
 
 **Bedtime** (block internet entirely after hours):
-```
+```text
 Sunday–Thursday, 21:00–07:00 → block all non-essential traffic
 Friday–Saturday, 23:00–08:00 → block all non-essential traffic
 ```
 
 **Work hours** (block entertainment at work devices):
-```
+```text
 Monday–Friday, 09:00–18:00 → block Gaming, Streaming, Social Media
 ```
 

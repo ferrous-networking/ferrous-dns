@@ -22,7 +22,7 @@ local_dns_server = "10.0.0.1:53"
 |:-------|:--------|:------------|
 | `upstream_servers` | `[]` | Fallback upstreams when no pool matches (same URL format as pools) |
 | `query_timeout` | `3` | Seconds to wait for an upstream response |
-| `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"` or `"Sequential"` |
+| `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"`, `"Balanced"`, or `"Failover"` |
 | `dnssec_enabled` | `true` | Validate DNSSEC signatures on upstream responses |
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `true` | Block queries for non-fully-qualified domain names |
@@ -211,7 +211,7 @@ local_dns_server = "192.168.1.1:53"
 
 When a client queries Ferrous DNS, the server knows the client's IP address. To display a human-readable hostname in the dashboard, logs, and per-client group matching, Ferrous DNS issues a PTR (reverse DNS) lookup for that IP.
 
-```
+```text
 Client IP: 192.168.1.42
          │
          ▼
@@ -261,7 +261,7 @@ At startup, Ferrous DNS must resolve these hostnames to IP addresses before it c
 - You want to avoid a circular dependency (Ferrous DNS cannot query itself to bootstrap its own upstreams)
 - Your internal network routes DNS differently than the default system resolver
 
-```
+```text
 Startup: resolve "dns.adguard-dns.com"
               │
               ▼ (if local_dns_server is set)

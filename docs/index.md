@@ -61,9 +61,28 @@ At **147,241 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 <div class="grid cards" markdown>
 
-- **[Installation](getting-started/installation.md)** — Docker, Docker Compose, or build from source
-- **[Quick Start](getting-started/quick-start.md)** — Get up and running in minutes
-- **[Configuration](configuration/index.md)** — All configuration options explained
-- **[Architecture](architecture/overview.md)** — Clean Architecture internals
+- :material-rocket-launch:{ .lg .middle } **[Installation](getting-started/installation.md)**
+
+    ---
+
+    Docker, Docker Compose, or build from source
+
+- :material-lightning-bolt:{ .lg .middle } **[Quick Start](getting-started/quick-start.md)**
+
+    ---
+
+    Get up and running in minutes
+
+- :material-cog:{ .lg .middle } **[Configuration](configuration/index.md)**
+
+    ---
+
+    All configuration options explained
+
+- :material-layers:{ .lg .middle } **[Architecture](architecture/overview.md)**
+
+    ---
+
+    Clean Architecture internals
 
 </div>

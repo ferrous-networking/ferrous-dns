@@ -71,7 +71,7 @@ When a query arrives, Ferrous DNS selects the pool with:
 
 If all servers in pool 1 are down, queries automatically fall through to pool 2 — no configuration changes required.
 
-```
+```text
 Query arrives
      │
      ▼
@@ -108,7 +108,7 @@ servers  = [
 
 **How it works:**
 
-```
+```text
 Query "example.com"
         │
         ├──► Server A  ──► responds in  8ms  ← returned to client
@@ -144,7 +144,7 @@ servers  = [
 
 **How it works:**
 
-```
+```text
 Query 1 → Server A
 Query 2 → Server B
 Query 3 → Server C
@@ -175,7 +175,7 @@ servers  = [
 
 **How it works:**
 
-```
+```text
 Normal state:    all queries → Server A (primary)
 
 Server A fails:  all queries → Server B (first fallback)
@@ -239,7 +239,7 @@ success_threshold = 2     # consecutive successes to restore a server
 
 **Health check flow:**
 
-```
+```text
 Server A: probe every 30s
 
 3 consecutive failures → marked UNHEALTHY → removed from rotation
@@ -385,12 +385,4 @@ Internal domain routing (e.g. `corp.internal` → `10.0.0.10:53`) is configured 
 
 ## Public Resolver Reference
 
-| Provider | DoH | DoT | DoQ |
-|:---------|:----|:----|:----|
-| Cloudflare | `https://cloudflare-dns.com/dns-query` | `tls://1.1.1.1:853` | — |
-| Google | `https://dns.google/dns-query` | `tls://8.8.8.8:853` | — |
-| Quad9 | `https://dns.quad9.net/dns-query` | `tls://dns.quad9.net:853` | — |
-| AdGuard | `https://dns.adguard-dns.com/dns-query` | `tls://dns.adguard-dns.com:853` | `doq://dns.adguard-dns.com:853` |
-| NextDNS | `https://dns.nextdns.io` | — | — |
-| CleanBrowsing | `https://doh.cleanbrowsing.org/doh/security-filter/` | — | — |
-| AliDNS | — | — | `doq://dns.alidns.com:853` |
+For a complete list of public resolvers with DoH, DoT, and DoQ URLs, see [Encrypted DNS — Public Resolver Reference](encrypted-dns.md#configuring-upstreams).

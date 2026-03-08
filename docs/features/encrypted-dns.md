@@ -89,6 +89,9 @@ openssl req -x509 -newkey rsa:4096 -nodes \
 
 Copy to your data directory and reference in config.
 
+!!! warning "Browsers and DoH with self-signed certificates"
+    Browsers will reject DoH requests to a server with a self-signed certificate unless the certificate is explicitly trusted by the OS or browser. For browser-based DoH, use a Let's Encrypt certificate with a public domain. For DoT on Android and iOS, self-signed certificates are generally accepted.
+
 ### Let's Encrypt Certificate
 
 If your server has a public domain, use Certbot:
@@ -114,11 +117,11 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
 === "Android"
 
     Settings > Network > Private DNS > Enter hostname:
-    ```
+    ```text
     192.168.1.100
     ```
     Or with custom hostname:
-    ```
+    ```text
     dns.home.local
     ```
 
@@ -132,7 +135,7 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
 === "Router (Unifi / OPNsense)"
 
     Under DNS settings, set upstream to:
-    ```
+    ```text
     tls://192.168.1.100:853
     ```
 
@@ -150,14 +153,14 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
 === "Firefox"
 
     Settings > Privacy & Security > DNS over HTTPS > Custom:
-    ```
+    ```text
     https://192.168.1.100/dns-query
     ```
 
 === "Chrome / Edge"
 
     Settings > Privacy > Security > Use secure DNS > Custom:
-    ```
+    ```text
     https://192.168.1.100/dns-query
     ```
 

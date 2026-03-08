@@ -6,7 +6,7 @@ Ferrous DNS is organized as a Rust workspace with 7 crates. Each crate has a sin
 
 ## Workspace Layout
 
-```
+```text
 ferrous-dns/
 ├── crates/
 │   ├── domain/          # Entities, value objects, domain errors — zero external deps
@@ -97,7 +97,7 @@ Contains:
 - `ResolverBuilder` for assembling the resolver pipeline
 - Background job implementations
 
-```
+```text
 crates/infrastructure/src/
 ├── repositories/
 ├── dns/
@@ -196,7 +196,7 @@ Contains:
 - Server bootstrap (UDP server, TCP server, DoT, DoH, Axum)
 - Graceful shutdown coordination
 
-```
+```text
 cli/src/
 ├── main.rs
 └── wiring/
@@ -216,7 +216,7 @@ cli/src/
 
 Cross-crate integration tests that test complete flows end-to-end:
 
-```
+```text
 tests/
 ├── common/          # Mock repositories, test builders, helpers
 ├── flows/           # End-to-end scenarios (block query, cache hit, etc.)
@@ -243,16 +243,4 @@ RUST_LOG=debug cargo test --workspace
 
 ## Coverage Targets
 
-| Crate | Minimum |
-|:------|:--------|
-| domain | 90% |
-| application | 85% |
-| infrastructure | 70% |
-| api | 75% |
-| global | 80% |
-
-```bash
-# Generate coverage report
-cargo install cargo-tarpaulin
-cargo tarpaulin --workspace --out Html
-```
+See [Contributing — Coverage Targets](../contributing.md#coverage-targets) for per-crate minimums and how to run coverage reports.

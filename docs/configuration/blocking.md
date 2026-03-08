@@ -59,7 +59,7 @@ All blocklist management is done via the dashboard or REST API — not the TOML 
 
 ### Blocklist URL Examples
 
-```
+```text title="Blocklist URLs"
 # Hosts format
 https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 
@@ -76,7 +76,7 @@ https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt
 
 Ferrous DNS supports wildcard patterns for blocking entire subdomains:
 
-```
+```text
 *.ads.example.com    — blocks ads.example.com, video.ads.example.com, etc.
 *.doubleclick.net    — blocks all subdomains of doubleclick.net
 ```
@@ -89,7 +89,7 @@ Wildcards can be added in the dashboard under **Blocklists > Custom Rules**.
 
 Regex patterns are supported in blocklists and custom rules:
 
-```
+```text
 /^ads\d+\.example\.com$/     — matches ads1.example.com, ads42.example.com
 /tracker/                    — matches any domain containing "tracker"
 ```

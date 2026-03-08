@@ -153,7 +153,7 @@ Before making changes, read the [Architecture Overview](architecture/overview.md
 
 For a complete feature (e.g. "DNS Tunneling Detection"):
 
-```
+```text
 1. domain/        → entity or value object if needed
 2. application/   → port trait + use case
 3. infrastructure/ → concrete implementation

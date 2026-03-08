@@ -52,17 +52,17 @@ Set the DNS server in your router's DHCP settings to your Ferrous DNS server IP.
 ### Option B — Single device
 
 **Linux** (`/etc/resolv.conf` or NetworkManager):
-```
+```text
 nameserver 192.168.1.100
 ```
 
 **Windows** (Network Adapter settings → IPv4 → DNS Server):
-```
+```text
 192.168.1.100
 ```
 
 **macOS** (System Settings → Network → DNS):
-```
+```text
 192.168.1.100
 ```
 
