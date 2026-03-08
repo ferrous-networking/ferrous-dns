@@ -21,25 +21,53 @@ bind_address = "0.0.0.0"
 
 ---
 
-## API Security
+## Authentication {#authentication}
 
-### API Key
+Ferrous DNS supports session-based authentication and API tokens to protect the dashboard and REST API.
 
-Protect the REST API with a static key:
+### Enabling Authentication
 
-```toml
-[server]
-api_key = "your-secret-api-key"
+```toml title="ferrous-dns.toml"
+[auth]
+enabled = true                          # Enable authentication globally
+session_ttl_hours = 24                  # Session lifetime without "Remember Me"
+remember_me_days = 30                   # Session lifetime with "Remember Me"
+login_rate_limit_attempts = 5           # Max failed attempts before lockout
+login_rate_limit_window_secs = 900      # Lockout window (15 min)
+
+[auth.admin]
+username = "admin"                      # Admin username
+password_hash = ""                      # Argon2id hash (set via setup wizard or CLI)
 ```
 
-When set, all API requests must include the header:
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `true` | Enable or disable authentication globally |
+| `session_ttl_hours` | `int` | `24` | Default session lifetime in hours |
+| `remember_me_days` | `int` | `30` | Extended session lifetime with "Remember Me" |
+| `login_rate_limit_attempts` | `int` | `5` | Max failed login attempts before lockout |
+| `login_rate_limit_window_secs` | `int` | `900` | Lockout window duration in seconds |
+| `username` | `str` | `admin` | Admin username |
+| `password_hash` | `str` | `""` | Argon2id password hash |
 
-```http
-Authorization: Bearer your-secret-api-key
-```
+### First-Run Setup
 
-!!! warning
-    Full authentication (login, TOTP, HTTPS) is planned for v0.7.0. Until then, restrict dashboard access at the network or reverse proxy level.
+When `password_hash` is empty, Ferrous DNS shows a setup wizard on the dashboard. Set the admin password via the web UI — the Argon2id hash is written to the config file automatically.
+
+### Session Authentication
+
+Users log in with username and password. A `ferrous_session` cookie is set on success. The "Remember Me" option extends the session from `session_ttl_hours` to `remember_me_days`.
+
+### API Token Authentication
+
+API tokens provide programmatic access via the `X-Api-Key` header. Tokens are managed through the REST API or the dashboard under **Settings > Security**. See [API Tokens](../api.md#api-tokens) for endpoint details.
+
+### Auth Guard
+
+All API endpoints are protected except public auth routes (`/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/logout`) and the health check (`/api/health`).
+
+!!! info "Background cleanup"
+    A `SessionCleanupJob` runs periodically to prune expired sessions from the database.
 
 ### CORS
 

@@ -329,6 +329,7 @@ env/
 # *.toml
 # !Cargo.toml
 # !**/Cargo.toml
+.cargo/**
 
 # Keep empty directories
 # !.gitkeep
@@ -342,3 +343,4 @@ env/
 # ============================================================================
 CLAUDE.md
 .claude/*
+

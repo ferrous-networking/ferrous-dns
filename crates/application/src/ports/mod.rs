@@ -1,3 +1,4 @@
+mod api_token_repository;
 mod arp_reader;
 mod block_filter_engine;
 mod blocked_service_repository;
@@ -22,10 +23,13 @@ mod safe_search_engine_port;
 mod schedule_profile_repository;
 mod schedule_state_port;
 mod service_catalog_port;
+mod session_repository;
 mod upstream_health_port;
+mod user_repository;
 mod whitelist_repository;
 mod whitelist_source_repository;
 
+pub use api_token_repository::ApiTokenRepository;
 pub use arp_reader::{ArpReader, ArpTable};
 pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
 pub use blocked_service_repository::BlockedServiceRepository;
@@ -52,10 +56,12 @@ pub use safe_search_engine_port::SafeSearchEnginePort;
 pub use schedule_profile_repository::ScheduleProfileRepository;
 pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
+pub use session_repository::SessionRepository;
 pub use upstream_health_port::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
     UpstreamStatus,
 };
+pub use user_repository::{CreateUserInput, PasswordHasher, UserProvider, UserRepository};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

@@ -11,10 +11,12 @@ pub use entities::schedule;
 pub use entities::whitelist;
 
 pub use config::{
-    CliOverrides, Config, ConfigError, DnsConfig, EncryptedDnsConfig, HealthCheckConfig,
-    LocalDnsRecord, UpstreamPool, UpstreamStrategy,
+    AdminConfig, AuthConfig, CliOverrides, Config, ConfigError, DnsConfig, EncryptedDnsConfig,
+    HealthCheckConfig, LocalDnsRecord, UpstreamPool, UpstreamStrategy,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
+pub use entities::api_token::ApiToken;
+pub use entities::auth_session::AuthSession;
 pub use entities::block_source::BlockSource;
 pub use entities::blocked_service::BlockedService;
 pub use entities::blocklist::BlockedDomain;
@@ -31,6 +33,7 @@ pub use entities::schedule::{
     evaluate_slots, GroupOverride, ScheduleAction, ScheduleProfile, TimeSlot, UnknownScheduleAction,
 };
 pub use entities::service_catalog::ServiceDefinition;
+pub use entities::user::{User, UserRole, UserSource};
 pub use entities::whitelist::WhitelistedDomain;
 pub use entities::whitelist_source::WhitelistSource;
 pub use errors::domain_error::DomainError;

@@ -84,6 +84,49 @@ function apiFetch(url, options = {}) {
     return fetch(url, options);
 }
 
+// --- Auth guard ---
+
+async function checkAuth() {
+    try {
+        const res = await fetch(`${API_BASE}/auth/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.enabled) return;
+        // Auth is enabled — check if we have a valid session
+        const probe = await apiFetch(`${API_BASE}/auth/sessions`);
+        if (probe.status === 401) {
+            window.location.href = '/login.html';
+        }
+    } catch (e) {
+        console.error('Auth check failed:', e);
+    }
+}
+
+async function logout() {
+    try {
+        await apiFetch(`${API_BASE}/auth/logout`, {method: 'POST'});
+    } catch (e) {
+        console.error('Logout error:', e);
+    }
+    localStorage.removeItem('ferrous_api_key');
+    window.location.href = '/login.html';
+}
+
+// --- User-agent parser ---
+
+function parseBrowser(ua) {
+    if (!ua || ua === 'unknown') return 'Unknown';
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
+    if (ua.includes('Vivaldi/')) return 'Vivaldi';
+    if (ua.includes('Brave')) return 'Brave';
+    if (ua.includes('Chrome/') && ua.includes('Safari/')) return 'Chrome';
+    if (ua.includes('Firefox/')) return 'Firefox';
+    if (ua.includes('Safari/') && !ua.includes('Chrome')) return 'Safari';
+    if (ua.includes('curl/')) return 'curl';
+    return ua.length > 30 ? ua.substring(0, 30) + '...' : ua;
+}
+
 // --- Rate color using CSS custom properties ---
 
 function getRateColor(queryRate) {

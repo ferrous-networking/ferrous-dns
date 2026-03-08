@@ -16,6 +16,11 @@ pub mod sqlite_safe_search_config_repository;
 pub mod whitelist_repository;
 pub mod whitelist_source_repository;
 
+pub mod api_token_repository;
+pub mod session_repository;
+pub mod user_repository;
+
+pub use api_token_repository::SqliteApiTokenRepository;
 pub use blocked_service_repository::SqliteBlockedServiceRepository;
 pub use blocklist_source_repository::SqliteBlocklistSourceRepository;
 pub use client_repository::SqliteClientRepository;
@@ -27,6 +32,8 @@ pub use group_repository::SqliteGroupRepository;
 pub use managed_domain_repository::SqliteManagedDomainRepository;
 pub use regex_filter_repository::SqliteRegexFilterRepository;
 pub use schedule_profile_repository::SqliteScheduleProfileRepository;
+pub use session_repository::SqliteSessionRepository;
 pub use sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository;
+pub use user_repository::SqliteUserRepository;
 pub use whitelist_repository::SqliteWhitelistRepository;
 pub use whitelist_source_repository::SqliteWhitelistSourceRepository;

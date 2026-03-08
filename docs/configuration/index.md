@@ -141,7 +141,15 @@ Suitable for dedicated home servers, Intel NUCs, Beelink / Minisforum mini PCs, 
 dns_port     = 53
 web_port     = 8080
 bind_address = "0.0.0.0"
-# api_key = "change-me"           # ← uncomment and set a strong key
+
+# ── Authentication ────────────────────────────────────────────────────────────
+
+[auth]
+enabled = true
+
+[auth.admin]
+username = "admin"
+password_hash = ""                       # ← set via setup wizard on first run
 
 # ── DNS ───────────────────────────────────────────────────────────────────────
 
@@ -251,7 +259,17 @@ For environments handling thousands of clients simultaneously: enterprise networ
 dns_port     = 53
 web_port     = 8080
 bind_address = "0.0.0.0"
-api_key      = "your-strong-secret-key"   # ← required for production
+
+# ── Authentication ────────────────────────────────────────────────────────────
+
+[auth]
+enabled = true
+session_ttl_hours = 8                     # shorter sessions for production
+login_rate_limit_attempts = 3             # stricter rate limiting
+
+[auth.admin]
+username = "admin"
+password_hash = ""                        # ← set via setup wizard on first run
 
 # ── DNS ───────────────────────────────────────────────────────────────────────
 
@@ -374,9 +392,21 @@ dns_port     = 53                           # UDP/TCP port for DNS queries
 web_port     = 8080                         # HTTP port for the dashboard and REST API
 bind_address = "0.0.0.0"                    # Listen on all interfaces
 # cors_allowed_origins = ["*"]              # CORS origins for the REST API
-# api_key = "your-secret-key"               # API key (omit to disable)
 # pihole_compat = false                     # Pi-hole v6 compatible API at /api/*
 # proxy_protocol_enabled = false            # PROXY Protocol v2 on TCP/DoT listeners
+
+# ── Authentication ────────────────────────────────────────────────────────────
+
+[auth]
+enabled = true                              # Enable authentication globally
+session_ttl_hours = 24                      # Session lifetime without "Remember Me"
+remember_me_days = 30                       # Session lifetime with "Remember Me"
+login_rate_limit_attempts = 5               # Max failed attempts before lockout
+login_rate_limit_window_secs = 900          # Lockout window (15 min)
+
+[auth.admin]
+username = "admin"                          # Admin username
+password_hash = ""                          # Argon2id hash (set via setup wizard or CLI)
 
 # ── Encrypted DNS ─────────────────────────────────────────────────────────────
 
@@ -501,7 +531,8 @@ sqlite_mmap_size_mb          = 64
 
 | Section | Description |
 |:--------|:------------|
-| [`[server]`](server.md) | Ports, bind address, API key, Pi-hole compat |
+| [`[server]`](server.md) | Ports, bind address, Pi-hole compat |
+| [`[auth]`](server.md#authentication) | Authentication, sessions, API tokens, rate limiting |
 | [`[server.encrypted_dns]`](server.md#encrypted-dns) | DoT and DoH server-side listeners |
 | [`[dns]`](dns.md) | Upstream resolution, DNSSEC, local records |
 | [`[[dns.pools]]`](dns.md#upstream-pools) | Upstream server groups and strategies |

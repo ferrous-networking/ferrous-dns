@@ -55,6 +55,9 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 - Conditional forwarding — route specific domains to internal resolvers
 
 **Security**
+- Session-based authentication (login/logout with rate limiting)
+- Named API tokens (SHA-256 hashed, `X-Api-Key` header)
+- First-run setup wizard for password configuration
 - DNSSEC validation
 - DNS rebinding protection
 - PROXY Protocol v2 support

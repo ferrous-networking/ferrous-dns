@@ -45,10 +45,10 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
-anyhow = "1"
+anyhow = "1.0.102"
 clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"], default-features = false }
-chrono = "0.4.43"
+chrono = "0.4.44"
 hickory-server = "0.26.0-alpha.1"
 hickory-proto = { version = "0.26.0-alpha.1", features = ["dnssec-ring"] }
 toml = "0.9.8"
@@ -58,7 +58,7 @@ futures = "0.3"
 rustc-hash = "2.1.0"
 compact_str = "0.9.0"
 smallvec = "1.15.1"
-socket2 = "0.6.2"
+socket2 = "0.6.3"
 
 # DNSSEC Crypto (FASE 2)
 ring = "0.17"
@@ -67,7 +67,7 @@ sha2 = "0.10"
 base64 = "0.22.1"
 
 # Transport layer
-rustls = "0.23"
+rustls = "0.23.37"
 rustls-pemfile = "2"
 tokio-rustls = "0.26"
 webpki-roots = "1.0"
@@ -79,7 +79,7 @@ http = "1"
 bytes = "1"
 mimalloc = { version = "0.1", default-features = false }
 core_affinity = "0.8"
-libc = "0.2"
+libc = "0.2.183"
 
 # ============================================================================
 # PERFORMANCE OPTIMIZATION PROFILES

@@ -261,7 +261,18 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
     pool
 }
 
-pub async fn create_pihole_test_app(pool: sqlx::SqlitePool, api_key: Option<&str>) -> Router {
+pub async fn create_pihole_test_app_with_auth(
+    pool: sqlx::SqlitePool,
+    login: Arc<ferrous_dns_application::use_cases::LoginUseCase>,
+    admin_username: &str,
+) -> Router {
+    let mut state = build_pihole_state(pool).await;
+    state.login = Some(login);
+    state.admin_username = Some(admin_username.to_string());
+    create_pihole_routes(state)
+}
+
+async fn build_pihole_state(pool: sqlx::SqlitePool) -> PiholeAppState {
     let db_config = DatabaseConfig::default();
     let client_repo = Arc::new(SqliteClientRepository::new(pool.clone(), &db_config));
     let query_log_repo = Arc::new(SqliteQueryLogRepository::new(
@@ -278,7 +289,7 @@ pub async fn create_pihole_test_app(pool: sqlx::SqlitePool, api_key: Option<&str
 
     let block_filter_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(MockBlockFilterEngine);
 
-    let state = PiholeAppState {
+    PiholeAppState {
         query: PiholeQueryState {
             get_stats: Arc::new(GetQueryStatsUseCase::new(
                 query_log_repo.clone(),
@@ -391,10 +402,13 @@ pub async fn create_pihole_test_app(pool: sqlx::SqlitePool, api_key: Option<&str
             config_path: None,
             process_start: std::time::Instant::now(),
         },
-        api_key: api_key.map(Arc::from),
-    };
+        login: None,
+        admin_username: None,
+    }
+}
 
-    create_pihole_routes(state)
+pub async fn create_pihole_test_app(pool: sqlx::SqlitePool, _unused: Option<&str>) -> Router {
+    create_pihole_routes(build_pihole_state(pool).await)
 }
 
 pub async fn insert_query(

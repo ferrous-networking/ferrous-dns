@@ -17,6 +17,7 @@ chrono.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 hostname = "0.4"
+ring.workspace = true
 libc = "0.2"
 
 [dev-dependencies]

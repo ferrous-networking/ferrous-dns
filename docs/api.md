@@ -17,16 +17,36 @@ When `pihole_compat = true`, the Ferrous API moves to `/ferrous/api/*` and the P
 
 ## Authentication
 
-When `api_key` is set in `ferrous-dns.toml`, all mutating requests (POST, PUT, PATCH, DELETE) require the API key header:
+When authentication is enabled (`[auth]` section in config), all API endpoints require either a valid session cookie or an API token — except the public auth endpoints listed below.
+
+### Session Authentication
+
+Authenticate via the login endpoint to receive a session cookie:
 
 ```http
-X-Api-Key: your-secret-api-key
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "your-password"
+}
 ```
 
-GET requests are not authenticated by default.
+The server sets a `ferrous_session` cookie on successful login. The cookie is sent automatically with subsequent requests from the dashboard.
 
-!!! note "Dashboard authentication"
-    The web dashboard stores the API key in the browser's `localStorage` and sends it automatically via the `X-Api-Key` header. You can set the key in **Settings > Dashboard Session Key**.
+### API Token Authentication
+
+For programmatic access, include an API token in the `X-Api-Key` header:
+
+```http
+X-Api-Key: your-api-token
+```
+
+Create and manage tokens via the [API Token endpoints](#api-tokens) below.
+
+!!! note "Both methods accepted"
+    The auth guard accepts either a valid session cookie or an `X-Api-Key` header. You do not need both.
 
 ---
 
@@ -171,18 +191,7 @@ Partial update — only include the sections you want to change:
 ```json
 {
   "server": {
-    "api_key": "new-key",
     "pihole_compat": true
-  }
-}
-```
-
-To remove the API key:
-
-```json
-{
-  "server": {
-    "clear_api_key": true
   }
 }
 ```
@@ -193,7 +202,7 @@ To remove the API key:
 POST /api/config/reload
 ```
 
-Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, API key, pihole_compat) require a full restart.
+Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart.
 
 ### Get Settings
 
@@ -220,24 +229,191 @@ POST /api/settings
 
 ---
 
-## API Key Management
+## Auth Endpoints
 
-### Generate API Key
+### Auth Status
 
 ```http
-POST /api/api-key/generate
+GET /api/auth/status
 ```
 
-Generates a new random API key. Returns the key — save it, as it cannot be retrieved again.
+Returns whether authentication is enabled and whether a password has been configured. **Public** — no auth required.
 
 ```json
 {
-  "key": "generated-base64-key"
+  "auth_enabled": true,
+  "password_configured": true
+}
+```
+
+### First-Run Setup
+
+```http
+POST /api/auth/setup
+```
+
+Sets the admin password on first run (when no password is configured). **Public** — no auth required.
+
+```json
+{
+  "password": "your-new-password"
 }
 ```
 
 !!! warning
-    The generated key is not active until saved via `POST /api/config` and the server is restarted.
+    This endpoint is only available when `password_hash` is empty. Once a password is set, it returns `403 Forbidden`.
+
+### Login
+
+```http
+POST /api/auth/login
+```
+
+Authenticates with username and password. Returns a session cookie (`ferrous_session`).
+
+```json
+{
+  "username": "admin",
+  "password": "your-password",
+  "remember_me": false
+}
+```
+
+| Field | Type | Default | Description |
+|:------|:-----|:--------|:------------|
+| `username` | `str` | — | Admin username |
+| `password` | `str` | — | Admin password |
+| `remember_me` | `bool` | `false` | Extend session lifetime to `remember_me_days` |
+
+### Logout
+
+```http
+POST /api/auth/logout
+```
+
+Invalidates the current session. **Public** — no auth required (clears session if present).
+
+### Change Password
+
+```http
+POST /api/auth/change-password
+```
+
+Changes the admin password. **Protected** — requires valid session or API token.
+
+```json
+{
+  "current_password": "old-password",
+  "new_password": "new-password"
+}
+```
+
+### List Sessions
+
+```http
+GET /api/auth/sessions
+```
+
+Returns all active sessions. **Protected**.
+
+### Revoke Session
+
+```http
+DELETE /api/auth/sessions/{id}
+```
+
+Revokes a specific session by ID. **Protected**.
+
+---
+
+## API Tokens
+
+Named API tokens for programmatic access. Tokens are stored as SHA-256 hashes — the full token is only shown once at creation.
+
+### List Tokens
+
+```http
+GET /api/api-tokens
+```
+
+Returns all tokens. Only the token prefix is shown in the listing.
+
+### Create Token
+
+```http
+POST /api/api-tokens
+```
+
+```json
+{
+  "name": "Grafana Integration"
+}
+```
+
+Response includes the full token value — save it immediately:
+
+```json
+{
+  "id": 1,
+  "name": "Grafana Integration",
+  "token": "fdns_a1b2c3d4e5f6..."
+}
+```
+
+### Update Token
+
+```http
+PUT /api/api-tokens/{id}
+```
+
+Update the token name or import a custom key:
+
+```json
+{
+  "name": "New Name",
+  "key": "custom-imported-key"
+}
+```
+
+!!! tip "Pi-hole migration"
+    Use the `key` field to import existing API keys from Pi-hole or other tools.
+
+### Delete Token
+
+```http
+DELETE /api/api-tokens/{id}
+```
+
+---
+
+## User Management
+
+### List Users
+
+```http
+GET /api/users
+```
+
+Returns all users. **Protected**.
+
+### Create User
+
+```http
+POST /api/users
+```
+
+```json
+{
+  "username": "operator",
+  "password": "secure-password"
+}
+```
+
+### Delete User
+
+```http
+DELETE /api/users/{id}
+```
 
 ---
 
@@ -794,9 +970,9 @@ When `pihole_compat = true`, the following Pi-hole v6 endpoints are available at
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/auth` | Get current session |
-| `POST` | `/api/auth` | Login (returns session token) |
-| `DELETE` | `/api/auth` | Logout |
+| `POST` | `/api/auth` | Pi-hole v6 login (session-based, same flow as Pi-hole) |
+| `GET` | `/api/auth` | Pi-hole v6 session status |
+| `DELETE` | `/api/auth` | Pi-hole v6 logout |
 | `GET` | `/api/stats/summary` | Dashboard summary stats |
 | `GET` | `/api/stats/history` | Query history timeline |
 | `GET` | `/api/stats/top_blocked` | Top blocked domains |

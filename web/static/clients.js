@@ -20,6 +20,7 @@
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
                 await this.loadAll();
                 scheduleLucide(100);

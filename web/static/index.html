@@ -2,10 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=/dashboard.html">
     <title>Redirecting...</title>
+    <script src="/ferrous-config.js"></script>
+    <script src="/static/shared.js"></script>
+    <script>
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/auth/status`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.enabled) {
+                        const probe = await apiFetch(`${API_BASE}/auth/sessions`);
+                        if (probe.status === 401) {
+                            window.location.href = '/login.html';
+                            return;
+                        }
+                    }
+                }
+            } catch (e) {}
+            window.location.href = '/dashboard.html';
+        })();
+    </script>
 </head>
 <body>
-<p>Redirecting to dashboard...</p>
+<p>Redirecting...</p>
 </body>
 </html>

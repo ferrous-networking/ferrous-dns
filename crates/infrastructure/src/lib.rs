@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod database;
 pub mod dns;
 pub mod repositories;

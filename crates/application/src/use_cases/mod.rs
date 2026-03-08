@@ -1,3 +1,5 @@
+pub mod api_tokens;
+pub mod auth;
 pub mod block_filter;
 pub mod blocked_services;
 pub mod blocklist;
@@ -15,9 +17,18 @@ pub mod queries;
 pub mod regex_filters;
 pub mod safe_search;
 pub mod schedule;
+pub mod users;
 pub mod whitelist;
 pub mod whitelist_sources;
 
+pub use api_tokens::{
+    CreateApiTokenUseCase, CreatedApiToken, DeleteApiTokenUseCase, GetApiTokensUseCase,
+    UpdateApiTokenUseCase, ValidateApiTokenUseCase,
+};
+pub use auth::{
+    AuthStatus, ChangePasswordUseCase, GetActiveSessionsUseCase, GetAuthStatusUseCase,
+    LoginUseCase, LogoutUseCase, SetupPasswordUseCase, ValidateSessionUseCase,
+};
 pub use block_filter::GetBlockFilterStatsUseCase;
 pub use blocked_services::{
     BlockServiceUseCase, GetBlockedServicesUseCase, GetServiceCatalogUseCase, UnblockServiceUseCase,
@@ -68,6 +79,7 @@ pub use schedule::{
     AssignScheduleProfileUseCase, CreateScheduleProfileUseCase, DeleteScheduleProfileUseCase,
     GetScheduleProfilesUseCase, ManageTimeSlotsUseCase, UpdateScheduleProfileUseCase,
 };
+pub use users::{CreateUserUseCase, DeleteUserUseCase, GetUsersUseCase};
 pub use whitelist::GetWhitelistUseCase;
 pub use whitelist_sources::{
     CreateWhitelistSourceUseCase, DeleteWhitelistSourceUseCase, GetWhitelistSourcesUseCase,

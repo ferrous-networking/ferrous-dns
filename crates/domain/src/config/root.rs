@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::auth::AuthConfig;
 use super::blocking::BlockingConfig;
 use super::database::DatabaseConfig;
 use super::dns::DnsConfig;
@@ -19,6 +20,9 @@ pub struct Config {
     pub logging: LoggingConfig,
 
     pub database: DatabaseConfig,
+
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 impl Config {

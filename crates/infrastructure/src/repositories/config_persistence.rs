@@ -57,12 +57,7 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "bind_address",
             toml_edit::Value::from(config.server.bind_address.clone()),
         );
-        match &config.server.api_key {
-            Some(key) => set_val(t, "api_key", toml_edit::Value::from(key.clone())),
-            None => {
-                t.remove("api_key");
-            }
-        }
+        t.remove("api_key");
         set_val(
             t,
             "pihole_compat",
@@ -322,6 +317,54 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "wal_autocheckpoint",
             toml_edit::Value::from(config.database.wal_autocheckpoint as i64),
         );
+    }
+
+    // Ensure [auth] table exists before writing auth fields
+    if doc.get("auth").is_none() {
+        doc.insert("auth", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    if let Some(t) = doc.get_mut("auth").and_then(|i| i.as_table_mut()) {
+        set_val(t, "enabled", toml_edit::Value::from(config.auth.enabled));
+        set_val(
+            t,
+            "session_ttl_hours",
+            toml_edit::Value::from(config.auth.session_ttl_hours as i64),
+        );
+        set_val(
+            t,
+            "remember_me_days",
+            toml_edit::Value::from(config.auth.remember_me_days as i64),
+        );
+        set_val(
+            t,
+            "login_rate_limit_attempts",
+            toml_edit::Value::from(config.auth.login_rate_limit_attempts as i64),
+        );
+        set_val(
+            t,
+            "login_rate_limit_window_secs",
+            toml_edit::Value::from(config.auth.login_rate_limit_window_secs as i64),
+        );
+
+        // Ensure [auth.admin] sub-table exists
+        if t.get("admin").is_none() {
+            t.insert("admin", toml_edit::Item::Table(toml_edit::Table::new()));
+        }
+        if let Some(admin) = t.get_mut("admin").and_then(|i| i.as_table_mut()) {
+            set_val(
+                admin,
+                "username",
+                toml_edit::Value::from(config.auth.admin.username.clone()),
+            );
+            match &config.auth.admin.password_hash {
+                Some(hash) => {
+                    set_val(admin, "password_hash", toml_edit::Value::from(hash.clone()));
+                }
+                None => {
+                    admin.remove("password_hash");
+                }
+            }
+        }
     }
 
     std::fs::write(path, doc.to_string())

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferrous DNS - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/static/shared.css">
+    <link rel="stylesheet" href="/static/login.css">
+    <script src="/ferrous-config.js"></script>
+    <script src="/static/shared.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+</head>
+<body x-data="loginApp()" x-init="init()">
+
+<div class="login-card">
+    <div style="text-align:center;margin-bottom:20px">
+        <img src="/static/logo.svg" alt="Ferrous DNS" style="width:56px;height:56px;margin:0 auto">
+    </div>
+    <h1>Ferrous DNS</h1>
+    <p class="subtitle" x-text="setupRequired ? 'Set up your admin password' : 'Sign in to continue'"></p>
+
+    <!-- Setup mode (first-run) -->
+    <template x-if="setupRequired">
+        <div>
+            <div class="setup-info">
+                <i data-lucide="info" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
+                No password configured yet. Create your admin password to get started.
+            </div>
+            <div class="form-group">
+                <label class="form-label">New Password</label>
+                <input type="password" x-model="setupPassword" placeholder="Minimum 8 characters"
+                       @keydown.enter="setupAdmin()">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Confirm Password</label>
+                <input type="password" x-model="setupConfirm" placeholder="Re-enter password"
+                       @keydown.enter="setupAdmin()">
+            </div>
+            <p x-show="setupPassword && setupConfirm && setupPassword !== setupConfirm" x-cloak
+               style="font-size:12px;color:#ef4444;margin-bottom:12px">Passwords do not match.</p>
+            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+            <p x-show="setupPassword && setupPassword.length < 8" x-cloak
+               style="font-size:12px;color:#ef4444;margin-bottom:12px">Password must be at least 8 characters.</p>
+            <button class="login-btn" @click="setupAdmin()" :disabled="loading || !setupPassword || setupPassword.length < 8 || setupPassword !== setupConfirm">
+                <span x-show="!loading">Create Password</span>
+                <span x-show="loading">Setting up...</span>
+            </button>
+        </div>
+    </template>
+
+    <!-- Login mode -->
+    <template x-if="!setupRequired">
+        <div>
+            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" x-model="username" placeholder="admin" @keydown.enter="login()" autofocus>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" x-model="password" placeholder="Enter password" @keydown.enter="login()">
+            </div>
+            <div class="remember-row">
+                <input type="checkbox" id="remember" x-model="rememberMe">
+                <label for="remember">Remember me</label>
+            </div>
+            <button class="login-btn" @click="login()" :disabled="loading || !username || !password">
+                <span x-show="!loading">Sign In</span>
+                <span x-show="loading">Signing in...</span>
+            </button>
+        </div>
+    </template>
+</div>
+
+<script src="/static/login.js"></script>
+</body>
+</html>

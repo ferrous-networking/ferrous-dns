@@ -1,5 +1,5 @@
 use crate::handlers;
-use crate::middleware::require_api_key;
+use crate::middleware::require_auth;
 use crate::state::AppState;
 use axum::{
     middleware,
@@ -8,7 +8,13 @@ use axum::{
 };
 
 pub fn create_api_routes(state: AppState) -> Router {
-    Router::new()
+    let public_auth_routes = Router::new()
+        .route("/auth/status", get(handlers::auth::get_auth_status_public))
+        .route("/auth/setup", post(handlers::auth::setup_password_public))
+        .route("/auth/login", post(handlers::auth::login_public))
+        .route("/auth/logout", post(handlers::auth::logout_public));
+
+    let protected_routes = Router::new()
         .route("/health", get(handlers::health_check))
         .route("/dashboard", get(handlers::get_dashboard))
         .route("/stats", get(handlers::get_stats))
@@ -22,7 +28,6 @@ pub fn create_api_routes(state: AppState) -> Router {
         .route("/config", get(handlers::get_config))
         .route("/config", post(handlers::update_config))
         .route("/config/reload", post(handlers::reload_config))
-        .route("/api-key/generate", post(handlers::generate_api_key))
         .route("/hostname", get(handlers::get_hostname))
         .route("/clients", get(handlers::get_clients))
         .route("/clients", post(handlers::create_manual_client))
@@ -53,9 +58,13 @@ pub fn create_api_routes(state: AppState) -> Router {
             get(handlers::upstream::get_upstream_health_detail),
         )
         .route("/system/info", get(handlers::get_system_info))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_api_key,
-        ))
+        .merge(handlers::auth::protected_routes())
+        .merge(handlers::users::routes())
+        .merge(handlers::api_tokens::routes())
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth));
+
+    Router::new()
+        .merge(public_auth_routes)
+        .merge(protected_routes)
         .with_state(state)
 }

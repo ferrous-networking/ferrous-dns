@@ -4,6 +4,136 @@ Ferrous DNS includes several security mechanisms to protect your network from DN
 
 ---
 
+## Authentication
+
+Ferrous DNS provides session-based authentication to protect the dashboard and REST API.
+
+### First-Run Setup
+
+On first launch (when no password is configured), Ferrous DNS shows a setup wizard. Set the admin password via the web UI or CLI before the server accepts API requests.
+
+### Session-Based Login
+
+Users authenticate with username and password via the login page. On success, a session cookie (`ferrous_session`) is issued.
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "your-password"
+}
+```
+
+| Option | Description |
+|:-------|:------------|
+| **Remember Me** | Extends session lifetime from `session_ttl_hours` (default 24h) to `remember_me_days` (default 30 days) |
+| **Rate Limiting** | After `login_rate_limit_attempts` failed attempts (default 5), login is locked for `login_rate_limit_window_secs` (default 900s / 15 min) |
+
+### Auth Guard
+
+All API endpoints are protected by the auth guard middleware, except:
+
+- `GET /api/auth/status` — check if auth is enabled
+- `POST /api/auth/setup` — first-run password setup
+- `POST /api/auth/login` — login
+- `POST /api/auth/logout` — logout
+- `GET /api/health` — health check
+
+### Session Management
+
+View and revoke active sessions from **Settings > Security** or via the API:
+
+```http
+GET /api/auth/sessions
+DELETE /api/auth/sessions/{id}
+```
+
+### Password Change
+
+Change the admin password from **Settings > Security** or via:
+
+```http
+POST /api/auth/change-password
+Content-Type: application/json
+
+{
+  "current_password": "old-password",
+  "new_password": "new-password"
+}
+```
+
+### Background Cleanup
+
+A `SessionCleanupJob` runs periodically to prune expired sessions from the database.
+
+---
+
+## API Tokens
+
+Named API tokens provide programmatic access to the Ferrous DNS API without requiring a session login. Tokens are ideal for automation scripts, monitoring integrations, and third-party tools.
+
+### Token Authentication
+
+Include the token in the `X-Api-Key` header:
+
+```http
+X-Api-Key: your-api-token
+```
+
+API tokens and session cookies are both valid authentication methods. The auth guard accepts either.
+
+### Token Management
+
+```http
+GET    /api/api-tokens          # List all tokens (only prefix shown)
+POST   /api/api-tokens          # Create a new token
+PUT    /api/api-tokens/{id}     # Update token name or key
+DELETE /api/api-tokens/{id}     # Delete a token
+```
+
+!!! note "Token storage"
+    Tokens are stored as SHA-256 hashes. The full token is only returned once at creation time — save it immediately.
+
+### Import Custom Keys
+
+You can import existing API keys (e.g., from a Pi-hole migration) via `PUT /api/api-tokens/{id}` with a custom key value.
+
+---
+
+## Auth Configuration
+
+```toml title="ferrous-dns.toml"
+[auth]
+enabled = true                          # Enable authentication globally
+session_ttl_hours = 24                  # Session lifetime without "Remember Me"
+remember_me_days = 30                   # Session lifetime with "Remember Me"
+login_rate_limit_attempts = 5           # Max failed attempts before lockout
+login_rate_limit_window_secs = 900      # Lockout window (15 min)
+
+[auth.admin]
+username = "admin"                      # Admin username
+password_hash = ""                      # Argon2id hash (set via setup wizard or CLI)
+```
+
+| Field | Type | Default | Description |
+|:------|:-----|:--------|:------------|
+| `enabled` | `bool` | `true` | Enable or disable authentication globally |
+| `session_ttl_hours` | `int` | `24` | Default session lifetime in hours |
+| `remember_me_days` | `int` | `30` | Extended session lifetime when "Remember Me" is checked |
+| `login_rate_limit_attempts` | `int` | `5` | Max failed login attempts before lockout |
+| `login_rate_limit_window_secs` | `int` | `900` | Duration of lockout window in seconds |
+| `username` | `str` | `admin` | Admin username |
+| `password_hash` | `str` | `""` | Argon2id password hash (set via setup wizard or CLI) |
+
+!!! tip "Setting the password hash"
+    Use the setup wizard on first run to set the password interactively. The Argon2id hash is written to the config file automatically.
+
+See [Auth Configuration](../configuration/server.md#authentication) for full details.
+
+---
+
 ## DNSSEC Validation
 
 DNSSEC (DNS Security Extensions) validates that DNS responses are authentic and have not been tampered with in transit.
@@ -96,15 +226,13 @@ See [Encrypted DNS](encrypted-dns.md) for setup.
 
 ---
 
-## Upcoming Security Features (v0.7.0)
+## Upcoming Security Features
 
-The following are planned for v0.7.0:
+The following are planned for future releases:
 
 | Feature | Description |
 |:--------|:------------|
-| **Authentication** | Login with username/password for the dashboard |
 | **HTTPS for Web UI** | TLS for the dashboard and REST API |
-| **API Keys / Tokens** | Per-application API tokens |
 | **TOTP / 2FA** | Time-based one-time passwords for login |
 | **Rate Limiting** | Per-client DNS query rate limits |
 | **DoS Protection** | Protection against DNS flooding |
@@ -123,10 +251,7 @@ The following are planned for v0.7.0:
 | Encrypted upstream (DoH/DoT/DoQ) | Active |
 | Server-side DoT/DoH | Active |
 | PROXY Protocol v2 | Active |
-| Dashboard authentication | Planned (v0.7.0) |
-| API key authentication | Partial (static key) |
-| TOTP / 2FA | Planned (v0.7.0) |
-| HTTPS dashboard | Planned (v0.7.0) |
-
-!!! warning "Dashboard access"
-    Until v0.7.0 ships authentication, restrict dashboard access at the network level (firewall rule, VPN, or reverse proxy with HTTP basic auth).
+| Dashboard authentication | Active |
+| API token authentication | Active |
+| TOTP / 2FA | Planned |
+| HTTPS dashboard | Planned |

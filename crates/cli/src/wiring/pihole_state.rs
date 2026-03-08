@@ -19,7 +19,6 @@ pub fn build_pihole_state(
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     upstream_health: Arc<dyn UpstreamHealthPort>,
     config: Arc<RwLock<Config>>,
-    api_key: Option<Arc<str>>,
     config_path: Option<Arc<str>>,
 ) -> PiholeAppState {
     PiholeAppState {
@@ -75,6 +74,7 @@ pub fn build_pihole_state(
             config_path,
             process_start: std::time::Instant::now(),
         },
-        api_key,
+        login: None,
+        admin_username: None,
     }
 }

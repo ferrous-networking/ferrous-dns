@@ -65,6 +65,11 @@
             <a href="/settings.html" class="nav-item active"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
+    <div style="padding:12px 16px;border-top:1px solid var(--border-color)">
+        <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
+            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+        </a>
+    </div>
 </aside>
 
 <main style="padding:24px">
@@ -99,8 +104,12 @@
                 :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">DNS Advanced</button>
         <button @click="currentTab='cache';scheduleLucide()"
                 :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
-        <button @click="currentTab='webinterface';scheduleLucide()"
-                :class="currentTab==='webinterface'?'tab-btn active':'tab-btn'">Web Interface</button>
+        <button @click="currentTab='appearance';scheduleLucide()"
+                :class="currentTab==='appearance'?'tab-btn active':'tab-btn'">Appearance</button>
+        <button @click="currentTab='api';scheduleLucide()"
+                :class="currentTab==='api'?'tab-btn active':'tab-btn'">API</button>
+        <button @click="currentTab='security';scheduleLucide()"
+                :class="currentTab==='security'?'tab-btn active':'tab-btn'">Security</button>
     </div>
 
     <!-- SYSTEM STATUS TAB -->
@@ -1033,9 +1042,9 @@
     </div>
 
     <!-- WEB INTERFACE TAB -->
-    <div x-show="currentTab==='webinterface'&&!loading" x-cloak>
+    <!-- APPEARANCE TAB -->
+    <div x-show="currentTab==='appearance'&&!loading" x-cloak>
 
-        <!-- Appearance -->
         <div class="card">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
                 <i data-lucide="palette" style="width:20px;height:20px;color:var(--color-primary)"></i>
@@ -1052,78 +1061,176 @@
             </div>
         </div>
 
-        <!-- API Access -->
+    </div>
+
+    <!-- API TAB -->
+    <div x-show="currentTab==='api'&&!loading" x-cloak>
+
+        <!-- API Tokens -->
         <div class="card">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-                <i data-lucide="key-round" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">API Access</h2>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <i data-lucide="key-round" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">API Tokens</h2>
+                </div>
+                <button @click="showCreateToken=true" class="btn btn-primary" style="font-size:13px;padding:6px 14px">
+                    <i data-lucide="plus" style="width:14px;height:14px"></i> Create Token
+                </button>
             </div>
-            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
-                Protect the dashboard and API with a key. When enabled, all requests must include
-                <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">X-API-Key: &lt;key&gt;</code> or
-                <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">Authorization: Bearer &lt;key&gt;</code>.
-                Changes require a server restart to take effect.
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">
+                Named, revocable tokens for machine integrations (Home Assistant, Homarr, scripts).
+                Send via <code style="background:var(--bg-tertiary);padding:1px 6px;border-radius:4px;font-size:12px">X-Api-Key: &lt;token&gt;</code> header.
             </p>
 
-            <!-- Status badge -->
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-                <span style="font-size:13px;font-weight:500;color:var(--text-secondary)">Status:</span>
-                <span x-show="config.server?.api_key_enabled"
-                      style="display:inline-flex;align-items:center;gap:6px;background:#d1fae5;color:#065f46;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">
-                    <i data-lucide="shield-check" style="width:13px;height:13px"></i> Enabled
-                </span>
-                <span x-show="!config.server?.api_key_enabled"
-                      style="display:inline-flex;align-items:center;gap:6px;background:var(--bg-tertiary);color:var(--text-secondary);border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600">
-                    <i data-lucide="shield-off" style="width:13px;height:13px"></i> Disabled
-                </span>
-            </div>
-
-            <!-- Key input row -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-                <div style="position:relative;flex:1;max-width:480px">
-                    <input :type="showApiKey?'text':'password'"
-                           x-model="newApiKey"
-                           placeholder="Enter or generate an API key…"
-                           style="width:100%;padding-right:40px;font-family:monospace;font-size:13px">
-                    <button @click="showApiKey=!showApiKey" class="btn-icon"
-                            style="position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:4px">
-                        <i :data-lucide="showApiKey?'eye-off':'eye'" style="width:16px;height:16px"></i>
+            <!-- Create Token Form -->
+            <div x-show="showCreateToken" x-cloak
+                 style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                <div class="form-group" style="max-width:400px">
+                    <label class="form-label">Token Name</label>
+                    <input type="text" x-model="newTokenName" placeholder="e.g. home-assistant, homarr" style="font-size:13px">
+                </div>
+                <div class="form-group" style="max-width:480px;margin-top:12px">
+                    <label class="form-label">Custom Token <span style="font-weight:400;color:var(--text-tertiary)">(optional)</span></label>
+                    <input type="text" x-model="newTokenCustomKey"
+                           placeholder="Paste an existing API key (e.g. from Pi-hole) or leave empty to auto-generate"
+                           style="font-size:13px;font-family:monospace">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0">
+                        Import an existing key so your integrations keep working without reconfiguration.
+                    </p>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px">
+                    <button @click="createApiToken()" class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                            :disabled="!newTokenName.trim()"
+                            :style="!newTokenName.trim()?'opacity:0.5;cursor:not-allowed':''">
+                        <i data-lucide="check" style="width:14px;height:14px"></i>
+                        <span x-text="newTokenCustomKey.trim() ? 'Import Token' : 'Generate Token'">Generate Token</span>
+                    </button>
+                    <button @click="showCreateToken=false;newTokenName='';newTokenCustomKey=''" class="btn btn-secondary" style="font-size:13px;padding:6px 14px">
+                        Cancel
                     </button>
                 </div>
-                <button @click="generateApiKey()" class="btn btn-secondary"
-                        style="white-space:nowrap;flex-shrink:0">
-                    <i data-lucide="refresh-cw" style="width:15px;height:15px"></i> Generate
-                </button>
             </div>
 
-            <!-- Hint shown after generate -->
-            <p x-show="apiKeyJustGenerated" x-cloak
-               style="font-size:12px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:16px">
-                <i data-lucide="alert-triangle" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px"></i>
-                Copy this key now — it will not be shown again after saving.
-            </p>
-
-            <!-- Actions -->
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <button @click="saveApiKey()" class="btn btn-primary"
-                        :disabled="!newApiKey.trim()"
-                        style="opacity:1" :style="!newApiKey.trim()?'opacity:0.5;cursor:not-allowed':''">
-                    <i data-lucide="save" style="width:15px;height:15px"></i> Save Key
-                </button>
-                <button @click="removeApiKey()" class="btn btn-secondary"
-                        x-show="config.server?.api_key_enabled"
-                        style="color:#ef4444">
-                    <i data-lucide="trash-2" style="width:15px;height:15px"></i> Remove Key
-                </button>
-            </div>
-
-            <!-- Restart notice -->
-            <div x-show="apiRestartRequired" x-cloak
-                 style="display:flex;align-items:center;gap:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-top:16px">
-                <i data-lucide="rotate-ccw" style="width:16px;height:16px;color:#d97706;flex-shrink:0"></i>
-                <p style="font-size:13px;color:#92400e;margin:0">
-                    API key change saved. <strong>Restart the server</strong> for the new settings to take effect.
+            <!-- Show generated token (once) -->
+            <div x-show="generatedToken" x-cloak
+                 style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:16px">
+                <p style="font-size:13px;font-weight:600;color:#92400e;margin:0 0 8px">
+                    <i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
+                    Copy this token now — it will not be shown again.
                 </p>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <code style="flex:1;background:#fff;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:13px;word-break:break-all"
+                          x-text="generatedToken"></code>
+                    <button @click="navigator.clipboard.writeText(generatedToken)" class="btn btn-secondary" style="flex-shrink:0;font-size:12px;padding:6px 12px">
+                        <i data-lucide="copy" style="width:14px;height:14px"></i> Copy
+                    </button>
+                </div>
+                <button @click="generatedToken=''" class="btn btn-secondary" style="margin-top:10px;font-size:12px;padding:4px 12px">
+                    Dismiss
+                </button>
+            </div>
+
+            <!-- Tokens Table -->
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border-color)">
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Name</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Token</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Created</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Last Used</th>
+                            <th style="text-align:right;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="token in apiTokens" :key="token.id">
+                            <tr style="border-bottom:1px solid var(--border-color)" x-data="{showToken:false}">
+                                <!-- Normal view -->
+                                <template x-if="editingToken !== token.id">
+                                    <td style="padding:10px 12px;font-weight:500" x-text="token.name"></td>
+                                </template>
+                                <template x-if="editingToken !== token.id">
+                                    <td style="padding:10px 12px;font-family:monospace;color:var(--text-secondary)">
+                                        <div style="display:flex;align-items:center;gap:6px">
+                                            <span x-text="showToken && token.token ? token.token : token.key_prefix + '…'"
+                                                  style="word-break:break-all;max-width:260px;overflow:hidden;text-overflow:ellipsis"></span>
+                                            <template x-if="token.token">
+                                                <button @click="showToken=!showToken" class="btn-icon" style="padding:2px;flex-shrink:0"
+                                                        :title="showToken?'Hide token':'Show full token'">
+                                                    <i :data-lucide="showToken?'eye-off':'eye'" style="width:14px;height:14px"></i>
+                                                </button>
+                                            </template>
+                                            <template x-if="token.token">
+                                                <button @click="navigator.clipboard.writeText(token.token)" class="btn-icon" style="padding:2px;flex-shrink:0"
+                                                        title="Copy token">
+                                                    <i data-lucide="copy" style="width:14px;height:14px"></i>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </td>
+                                </template>
+                                <template x-if="editingToken !== token.id">
+                                    <td style="padding:10px 12px;color:var(--text-secondary)" x-text="token.created_at || '—'"></td>
+                                </template>
+                                <template x-if="editingToken !== token.id">
+                                    <td style="padding:10px 12px;color:var(--text-secondary)" x-text="token.last_used_at || 'Never'"></td>
+                                </template>
+                                <template x-if="editingToken !== token.id">
+                                    <td style="padding:10px 12px;text-align:right">
+                                        <div style="display:flex;gap:6px;justify-content:flex-end">
+                                            <button @click="startEditToken(token)" class="btn btn-secondary"
+                                                    style="font-size:11px;padding:4px 10px">
+                                                <i data-lucide="pencil" style="width:12px;height:12px"></i> Edit
+                                            </button>
+                                            <button @click="revokeApiToken(token.id)" class="btn btn-secondary"
+                                                    style="font-size:11px;padding:4px 10px;color:#ef4444">
+                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Revoke
+                                            </button>
+                                        </div>
+                                    </td>
+                                </template>
+                                <!-- Inline edit view -->
+                                <template x-if="editingToken === token.id">
+                                    <td colspan="5" style="padding:12px">
+                                        <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:14px">
+                                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+                                                <div style="flex:1;min-width:200px">
+                                                    <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">Name</label>
+                                                    <input type="text" x-model="editTokenName" style="font-size:13px;width:100%">
+                                                </div>
+                                                <div style="flex:2;min-width:280px">
+                                                    <label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px">
+                                                        Replace Token <span style="font-weight:400;color:var(--text-tertiary)">(optional)</span>
+                                                    </label>
+                                                    <input type="text" x-model="editTokenCustomKey"
+                                                           placeholder="Paste a new API key or leave empty to keep current"
+                                                           style="font-size:13px;font-family:monospace;width:100%">
+                                                </div>
+                                            </div>
+                                            <div style="display:flex;gap:8px;margin-top:12px">
+                                                <button @click="saveApiTokenEdit(token.id)" class="btn btn-primary" style="font-size:12px;padding:5px 12px"
+                                                        :disabled="!editTokenName.trim()"
+                                                        :style="!editTokenName.trim()?'opacity:0.5;cursor:not-allowed':''">
+                                                    <i data-lucide="check" style="width:13px;height:13px"></i> Save
+                                                </button>
+                                                <button @click="cancelEditToken()" class="btn btn-secondary" style="font-size:12px;padding:5px 12px">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                        <template x-if="apiTokens.length === 0">
+                            <tr>
+                                <td colspan="5" style="padding:24px;text-align:center;color:var(--text-tertiary)">
+                                    No API tokens created yet.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -1154,6 +1261,265 @@
             <button @click="savePiholeCompat()" class="btn btn-primary">
                 <i data-lucide="save" style="width:15px;height:15px"></i> Save Compatibility Settings
             </button>
+        </div>
+
+    </div>
+
+    <!-- SECURITY TAB -->
+    <div x-show="currentTab==='security'&&!loading" x-cloak>
+
+        <!-- Authentication Settings -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="shield" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Authentication</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
+                Control login requirements and session behaviour. When disabled, all endpoints are accessible without credentials.
+            </p>
+
+            <!-- Auth Enabled Toggle -->
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 0 20px;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:32px">
+                    <h4 style="font-size:15px;font-weight:600;margin:0 0 4px">Enable Authentication</h4>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">
+                        Require login for dashboard access and API write operations.
+                    </p>
+                </div>
+                <div @click="authConfig.enabled=!authConfig.enabled"
+                     :class="authConfig.enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <!-- Session Settings -->
+            <div x-show="authConfig.enabled" style="padding-top:20px">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:600px">
+                    <div class="form-group">
+                        <label class="form-label">Session Lifetime (hours)</label>
+                        <input type="number" x-model.number="authConfig.session_ttl_hours" min="1" max="720"
+                               style="font-size:13px">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0">Without "Remember Me"</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Remember Me (days)</label>
+                        <input type="number" x-model.number="authConfig.remember_me_days" min="1" max="365"
+                               style="font-size:13px">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0">When "Remember Me" is checked</p>
+                    </div>
+                </div>
+
+                <!-- Rate Limiting -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:600px;margin-top:16px">
+                    <div class="form-group">
+                        <label class="form-label">Max Login Attempts</label>
+                        <input type="number" x-model.number="authConfig.login_rate_limit_attempts" min="1" max="100"
+                               style="font-size:13px">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Lockout Window (seconds)</label>
+                        <input type="number" x-model.number="authConfig.login_rate_limit_window_secs" min="60" max="86400"
+                               style="font-size:13px">
+                    </div>
+                </div>
+
+                <button @click="saveAuthConfig()" class="btn btn-primary" style="margin-top:20px">
+                    <i data-lucide="save" style="width:15px;height:15px"></i> Save Authentication Settings
+                </button>
+            </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="lock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Change Password</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
+                Update the password for the currently logged-in account.
+            </p>
+            <div style="max-width:400px">
+                <div class="form-group" style="margin-bottom:12px">
+                    <label class="form-label">Current Password</label>
+                    <input type="password" x-model="changePass.current" placeholder="Enter current password"
+                           style="font-size:13px">
+                </div>
+                <div class="form-group" style="margin-bottom:12px">
+                    <label class="form-label">New Password</label>
+                    <input type="password" x-model="changePass.newPassword" placeholder="Minimum 8 characters"
+                           style="font-size:13px">
+                </div>
+                <div class="form-group" style="margin-bottom:16px">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" x-model="changePass.confirm" placeholder="Re-enter new password"
+                           style="font-size:13px">
+                </div>
+                <p x-show="changePass.newPassword && changePass.confirm && changePass.newPassword !== changePass.confirm"
+                   x-cloak style="font-size:12px;color:#ef4444;margin-bottom:12px">
+                    Passwords do not match.
+                </p>
+                <button @click="changePassword()" class="btn btn-primary"
+                        :disabled="!changePass.current || !changePass.newPassword || changePass.newPassword !== changePass.confirm"
+                        :style="(!changePass.current || !changePass.newPassword || changePass.newPassword !== changePass.confirm)?'opacity:0.5;cursor:not-allowed':''">
+                    <i data-lucide="key" style="width:15px;height:15px"></i> Update Password
+                </button>
+            </div>
+        </div>
+
+        <!-- Users -->
+        <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <i data-lucide="users" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Users</h2>
+                </div>
+                <button @click="showAddUser=true" class="btn btn-primary" style="font-size:13px;padding:6px 14px">
+                    <i data-lucide="user-plus" style="width:14px;height:14px"></i> Add User
+                </button>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">
+                Manage user accounts. The TOML admin is always protected and cannot be deleted from the UI.
+            </p>
+
+            <!-- Add User Form (inline) -->
+            <div x-show="showAddUser" x-cloak
+                 style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;max-width:700px">
+                    <div class="form-group">
+                        <label class="form-label">Username</label>
+                        <input type="text" x-model="newUser.username" placeholder="e.g. viewer1" style="font-size:13px">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" x-model="newUser.password" placeholder="Min 8 characters" style="font-size:13px">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Role</label>
+                        <select x-model="newUser.role" style="font-size:13px">
+                            <option value="admin">Admin</option>
+                            <option value="viewer">Viewer</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="max-width:300px;margin-top:8px">
+                    <label class="form-label">Display Name (optional)</label>
+                    <input type="text" x-model="newUser.display_name" placeholder="e.g. John" style="font-size:13px">
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px">
+                    <button @click="createUser()" class="btn btn-primary" style="font-size:13px;padding:6px 14px"
+                            :disabled="!newUser.username || !newUser.password"
+                            :style="(!newUser.username || !newUser.password)?'opacity:0.5;cursor:not-allowed':''">
+                        <i data-lucide="check" style="width:14px;height:14px"></i> Create
+                    </button>
+                    <button @click="showAddUser=false;resetNewUser()" class="btn btn-secondary" style="font-size:13px;padding:6px 14px">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border-color)">
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Username</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Display Name</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Role</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Source</th>
+                            <th style="text-align:right;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="user in users" :key="user.username">
+                            <tr style="border-bottom:1px solid var(--border-color)">
+                                <td style="padding:10px 12px;font-weight:500" x-text="user.username"></td>
+                                <td style="padding:10px 12px;color:var(--text-secondary)" x-text="user.display_name || '—'"></td>
+                                <td style="padding:10px 12px">
+                                    <span :style="user.role==='admin'?'background:#dbeafe;color:#1e40af':'background:#f3e8ff;color:#6b21a8'"
+                                          style="display:inline-block;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;text-transform:uppercase"
+                                          x-text="user.role"></span>
+                                </td>
+                                <td style="padding:10px 12px">
+                                    <span :style="user.source==='Toml'?'background:#fef3c7;color:#92400e':'background:var(--bg-tertiary);color:var(--text-secondary)'"
+                                          style="display:inline-block;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600"
+                                          x-text="user.source"></span>
+                                </td>
+                                <td style="padding:10px 12px;text-align:right">
+                                    <button x-show="user.source!=='Toml'" @click="deleteUser(user.id)"
+                                            class="btn btn-secondary" style="font-size:11px;padding:4px 10px;color:#ef4444">
+                                        <i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete
+                                    </button>
+                                    <span x-show="user.source==='Toml'"
+                                          style="font-size:11px;color:var(--text-tertiary);font-style:italic">Protected</span>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="users.length === 0">
+                            <tr>
+                                <td colspan="5" style="padding:24px;text-align:center;color:var(--text-tertiary)">
+                                    No users configured. Authentication may be disabled.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Active Sessions -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="monitor-smartphone" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Active Sessions</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">
+                Browser sessions currently active. You can revoke any session to force re-login.
+            </p>
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border-color)">
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">User</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">IP Address</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Browser</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Last Seen</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Expires</th>
+                            <th style="text-align:left;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Remember</th>
+                            <th style="text-align:right;padding:8px 12px;font-weight:600;color:var(--text-secondary)">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="session in activeSessions" :key="session.id">
+                            <tr style="border-bottom:1px solid var(--border-color)">
+                                <td style="padding:10px 12px;font-weight:500" x-text="session.username"></td>
+                                <td style="padding:10px 12px;font-family:monospace;color:var(--text-secondary);font-size:12px" x-text="session.ip_address"></td>
+                                <td style="padding:10px 12px;color:var(--text-secondary);font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" x-text="parseBrowser(session.user_agent)" :title="session.user_agent"></td>
+                                <td style="padding:10px 12px;color:var(--text-secondary)" x-text="session.last_seen_at"></td>
+                                <td style="padding:10px 12px;color:var(--text-secondary)" x-text="session.expires_at"></td>
+                                <td style="padding:10px 12px">
+                                    <span x-show="session.remember_me"
+                                          style="display:inline-block;background:#d1fae5;color:#065f46;border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600">Yes</span>
+                                    <span x-show="!session.remember_me"
+                                          style="display:inline-block;background:var(--bg-tertiary);color:var(--text-secondary);border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600">No</span>
+                                </td>
+                                <td style="padding:10px 12px;text-align:right">
+                                    <button @click="revokeSession(session.id)" class="btn btn-secondary"
+                                            style="font-size:11px;padding:4px 10px;color:#ef4444">
+                                        <i data-lucide="log-out" style="width:12px;height:12px"></i> Revoke
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="activeSessions.length === 0">
+                            <tr>
+                                <td colspan="7" style="padding:24px;text-align:center;color:var(--text-tertiary)">
+                                    No active sessions.
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
     </div>

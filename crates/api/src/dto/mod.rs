@@ -1,3 +1,5 @@
+pub mod api_token;
+pub mod auth;
 pub mod block_filter;
 pub mod blocked_service;
 pub mod blocklist;
@@ -20,6 +22,7 @@ pub mod schedule;
 pub mod stats;
 pub mod system_info;
 pub mod timeline;
+pub mod user;
 pub mod whitelist;
 pub mod whitelist_source;
 

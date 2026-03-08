@@ -29,8 +29,10 @@ pub struct PiholeAppState {
     pub groups: PiholeGroupState,
     pub clients: PiholeClientState,
     pub system: PiholeSystemState,
-    /// Optional API key — when `Some`, POST /api/auth validates against it.
-    pub api_key: Option<Arc<str>>,
+    /// Auth use cases for real session-based auth.
+    pub login: Option<Arc<ferrous_dns_application::use_cases::LoginUseCase>>,
+    /// Admin username from TOML config (for Pi-hole password-only login).
+    pub admin_username: Option<String>,
 }
 
 #[derive(Clone)]

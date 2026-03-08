@@ -49,6 +49,7 @@
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await checkAuth();
 
                 await this.loadAllData();
                 await this.$nextTick();

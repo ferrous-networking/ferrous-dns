@@ -11,6 +11,7 @@
             _pollId: null,
             async init() {
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
                 await Promise.all([this.loadRecords(), this.loadStats()]);
                 this.startPolling();

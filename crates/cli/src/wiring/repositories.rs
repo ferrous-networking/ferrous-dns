@@ -1,3 +1,4 @@
+use ferrous_dns_application::ports::{ApiTokenRepository, SessionRepository, UserRepository};
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, CustomServiceRepository, SafeSearchConfigRepository,
     SafeSearchEnginePort, ScheduleProfileRepository, ScheduleStatePort, ServiceCatalogPort,
@@ -6,6 +7,7 @@ use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::dns::{BlockFilterEngine, SafeSearchEnforcer};
 use ferrous_dns_infrastructure::repositories::{
+    api_token_repository::SqliteApiTokenRepository,
     blocked_service_repository::SqliteBlockedServiceRepository,
     blocklist_repository::SqliteBlocklistRepository,
     blocklist_source_repository::SqliteBlocklistSourceRepository,
@@ -17,8 +19,9 @@ use ferrous_dns_infrastructure::repositories::{
     query_log_repository::SqliteQueryLogRepository,
     regex_filter_repository::SqliteRegexFilterRepository,
     schedule_profile_repository::SqliteScheduleProfileRepository,
+    session_repository::SqliteSessionRepository,
     sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository,
-    whitelist_repository::SqliteWhitelistRepository,
+    user_repository::SqliteUserRepository, whitelist_repository::SqliteWhitelistRepository,
     whitelist_source_repository::SqliteWhitelistSourceRepository,
 };
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
@@ -46,6 +49,9 @@ pub struct Repositories {
     pub safe_search_engine: Arc<dyn SafeSearchEnginePort>,
     pub schedule_profile: Arc<dyn ScheduleProfileRepository>,
     pub schedule_state: Arc<dyn ScheduleStatePort>,
+    pub session: Arc<dyn SessionRepository>,
+    pub user: Arc<dyn UserRepository>,
+    pub api_token: Arc<dyn ApiTokenRepository>,
 }
 
 impl Repositories {
@@ -127,6 +133,9 @@ impl Repositories {
             safe_search_engine,
             schedule_profile: Arc::new(SqliteScheduleProfileRepository::new(write_pool.clone())),
             schedule_state,
+            session: Arc::new(SqliteSessionRepository::new(Arc::new(write_pool.clone()))),
+            user: Arc::new(SqliteUserRepository::new(Arc::new(write_pool.clone()))),
+            api_token: Arc::new(SqliteApiTokenRepository::new(Arc::new(write_pool))),
         })
     }
 }

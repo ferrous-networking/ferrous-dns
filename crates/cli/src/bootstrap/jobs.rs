@@ -2,7 +2,7 @@ use ferrous_dns_application::ports::CacheMaintenancePort;
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, QueryLogRetentionJob,
-    RetentionJob, ScheduleEvaluatorJob, WalCheckpointJob,
+    RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -34,7 +34,8 @@ pub fn build_job_runner(
         .with_schedule_evaluator(ScheduleEvaluatorJob::new(
             repos.schedule_profile.clone(),
             repos.schedule_state.clone(),
-        ));
+        ))
+        .with_session_cleanup(SessionCleanupJob::new(repos.session.clone()).with_interval(3600));
 
     if let Some(maintenance) = cache_maintenance {
         runner = runner.with_cache_maintenance(

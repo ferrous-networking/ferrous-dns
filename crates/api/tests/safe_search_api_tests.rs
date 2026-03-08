@@ -190,6 +190,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
 
+mod helpers;
+
 struct NullScheduleProfileRepository;
 
 #[async_trait::async_trait]
@@ -730,11 +732,11 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             manage_slots: Arc::new(ManageTimeSlotsUseCase::new(Arc::new(NullScheduleProfileRepository))),
             assign_profile: Arc::new(AssignScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository), group_repo.clone())),
         },
+        auth: helpers::build_test_auth_use_cases(),
         config: config.clone(),
         config_file_persistence: Arc::new(
             ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence,
         ),
-        api_key: None,
         config_path: None,
     };
 
@@ -1078,9 +1080,9 @@ async fn test_get_all_configs_after_toggle() {
             manage_slots: Arc::new(ManageTimeSlotsUseCase::new(Arc::new(NullScheduleProfileRepository))),
             assign_profile: Arc::new(AssignScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository), group_repo.clone())),
         },
+        auth: helpers::build_test_auth_use_cases(),
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
-        api_key: None,
         config_path: None,
     };
 

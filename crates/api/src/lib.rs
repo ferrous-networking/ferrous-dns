@@ -9,6 +9,6 @@ pub mod utils;
 pub use errors::ApiError;
 pub use routes::create_api_routes;
 pub use state::{
-    AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases, QueryUseCases,
-    SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
+    AppState, AuthUseCases, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
+    QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };

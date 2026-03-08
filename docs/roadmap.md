@@ -71,9 +71,9 @@
 
 ### v0.7.0 — Security
 
-- [ ] Login / authentication
+- [x] Login / authentication
 - [ ] HTTPS for Web UI
-- [ ] API Key / token system
+- [x] API Key / token system
 - [ ] TOTP / 2FA
 - [ ] Per-client DNS rate limiting
 - [ ] DoS protection
@@ -145,7 +145,7 @@
 | v0.4.0 | Parental Controls + Scheduling | Done |
 | v0.5.0 | DoH/DoT server, PROXY Protocol v2, PTR auto-gen, Rebinding | Done |
 | v0.6.x | Performance & Scale | Done |
-| v0.7.0 | Security — Auth, HTTPS, API Keys, TOTP, Rate limiting | In Progress |
+| v0.7.0 | Security — Auth, API Tokens, HTTPS, TOTP, Rate limiting | In Progress |
 | v0.8.0 | Observability — Prometheus, OpenAPI, Config export | Planned |
 | v1.0.0 | Production Ready — Security audit, > 80% coverage | Planned |
 | v1.1.0 | Advanced — Split-horizon, Tunneling detection, Webhooks | Planned |

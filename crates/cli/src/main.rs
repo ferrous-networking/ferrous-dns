@@ -103,8 +103,6 @@ async fn async_main() -> anyhow::Result<()> {
     }
     info!("Subnet matcher cache loaded");
 
-    let api_key: Option<Arc<str>> = config.server.api_key.as_deref().map(Arc::from);
-
     let effective_config_path: Option<Arc<str>> =
         cli.config.as_deref().map(Arc::from).or_else(|| {
             ferrous_dns_domain::Config::get_config_path().map(|p| Arc::from(p.as_str()))
@@ -121,18 +119,18 @@ async fn async_main() -> anyhow::Result<()> {
         repos.block_filter_engine.clone(),
         upstream_health,
         config_arc.clone(),
-        api_key.clone(),
         effective_config_path.clone(),
     );
 
     let app_state = wiring::build_app_state(
         use_cases,
+        &repos,
         &dns_services,
         config_arc,
         config_repo_pool,
-        api_key,
         effective_config_path,
-    );
+    )
+    .await;
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
     let handler_use_case = dns_services.handler_use_case;

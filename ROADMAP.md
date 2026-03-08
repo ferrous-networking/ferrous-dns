@@ -64,9 +64,9 @@
 
 ### 🎯 v0.7.0 - Security (Current)
 
-- [ ] Login / Auth
+- [x] Login / Auth
 - [ ] HTTPS for Web UI
-- [ ] API Key / token
+- [x] API Key / token
 - [ ] TOTP / 2FA
 - [ ] Rate limiting DNS
 - [ ] DoS protection

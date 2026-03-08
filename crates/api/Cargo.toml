@@ -16,6 +16,7 @@ tracing.workspace = true
 chrono = "0.4"
 hostname = "0.4"
 ring.workspace = true
+subtle = "2"
 
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true

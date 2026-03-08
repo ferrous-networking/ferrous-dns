@@ -50,6 +50,10 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 === "Security"
 
+    - Session-based authentication with login/logout
+    - Named API tokens with SHA-256 hashed storage
+    - First-run setup wizard for password configuration
+    - Login rate limiting and session management
     - DNSSEC validation
     - DNS rebinding protection
     - PROXY Protocol v2 support

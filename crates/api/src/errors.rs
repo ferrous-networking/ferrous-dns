@@ -30,7 +30,29 @@ impl IntoResponse for ApiError {
             | DomainError::TimeSlotNotFound(_)
             | DomainError::GroupHasNoSchedule(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
 
+            DomainError::ApiTokenNotFound(_)
+            | DomainError::UserNotFound(_)
+            | DomainError::SessionNotFound => (StatusCode::NOT_FOUND, self.0.to_string()),
+
+            DomainError::InvalidCredentials
+            | DomainError::AuthRequired
+            | DomainError::PasswordNotConfigured => (StatusCode::UNAUTHORIZED, self.0.to_string()),
+
+            DomainError::InsufficientPermissions | DomainError::ProtectedUser => {
+                (StatusCode::FORBIDDEN, self.0.to_string())
+            }
+
             DomainError::Blocked => (StatusCode::FORBIDDEN, "blocked".to_string()),
+
+            DomainError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, self.0.to_string()),
+
+            DomainError::DuplicateApiTokenName(_)
+            | DomainError::DuplicateUsername(_)
+            | DomainError::PasswordAlreadyConfigured => (StatusCode::CONFLICT, self.0.to_string()),
+
+            DomainError::InvalidUsername(_)
+            | DomainError::InvalidPassword(_)
+            | DomainError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
 
             DomainError::GroupNotFound(_) => (StatusCode::NOT_FOUND, self.0.to_string()),
 

@@ -40,26 +40,19 @@ pub async fn update_config(
         Err(e) => return e,
     };
 
-    let mut config = state.config.write().await;
+    let mut new_config = state.config.read().await.clone();
     let mut restart_required = false;
 
     if let Some(server_update) = request.server {
-        if matches!(server_update.clear_api_key, Some(true)) {
-            config.server.api_key = None;
-            restart_required = true;
-        } else if let Some(key) = server_update.api_key {
-            config.server.api_key = Some(key);
-            restart_required = true;
-        }
         if let Some(pihole_compat) = server_update.pihole_compat {
-            config.server.pihole_compat = pihole_compat;
+            new_config.server.pihole_compat = pihole_compat;
             restart_required = true;
         }
     }
 
     if let Some(dns_update) = request.dns {
         if let Some(pools) = dns_update.pools {
-            config.dns.pools = pools
+            new_config.dns.pools = pools
                 .into_iter()
                 .map(|p| {
                     let strategy = if p.strategy.eq_ignore_ascii_case("failover") {
@@ -80,65 +73,65 @@ pub async fn update_config(
                 .collect();
         }
         if let Some(upstream) = dns_update.upstream_servers {
-            config.dns.upstream_servers = upstream;
+            new_config.dns.upstream_servers = upstream;
         }
         if let Some(cache) = dns_update.cache_enabled {
-            config.dns.cache_enabled = cache;
+            new_config.dns.cache_enabled = cache;
         }
         if let Some(dnssec) = dns_update.dnssec_enabled {
-            config.dns.dnssec_enabled = dnssec;
+            new_config.dns.dnssec_enabled = dnssec;
         }
         if let Some(strategy) = dns_update.cache_eviction_strategy {
-            config.dns.cache_eviction_strategy = strategy;
+            new_config.dns.cache_eviction_strategy = strategy;
         }
         if let Some(max) = dns_update.cache_max_entries {
-            config.dns.cache_max_entries = max;
+            new_config.dns.cache_max_entries = max;
         }
         if let Some(hit_rate) = dns_update.cache_min_hit_rate {
-            config.dns.cache_min_hit_rate = hit_rate;
+            new_config.dns.cache_min_hit_rate = hit_rate;
         }
         if let Some(freq) = dns_update.cache_min_frequency {
-            config.dns.cache_min_frequency = freq;
+            new_config.dns.cache_min_frequency = freq;
         }
         if let Some(score) = dns_update.cache_min_lfuk_score {
-            config.dns.cache_min_lfuk_score = score;
+            new_config.dns.cache_min_lfuk_score = score;
         }
         if let Some(interval) = dns_update.cache_compaction_interval {
-            config.dns.cache_compaction_interval = interval;
+            new_config.dns.cache_compaction_interval = interval;
         }
         if let Some(threshold) = dns_update.cache_refresh_threshold {
-            config.dns.cache_refresh_threshold = threshold;
+            new_config.dns.cache_refresh_threshold = threshold;
         }
         if let Some(refresh) = dns_update.cache_optimistic_refresh {
-            config.dns.cache_optimistic_refresh = refresh;
+            new_config.dns.cache_optimistic_refresh = refresh;
         }
         if let Some(adaptive) = dns_update.cache_adaptive_thresholds {
-            config.dns.cache_adaptive_thresholds = adaptive;
+            new_config.dns.cache_adaptive_thresholds = adaptive;
         }
         if let Some(window) = dns_update.cache_access_window_secs {
-            config.dns.cache_access_window_secs = window;
+            new_config.dns.cache_access_window_secs = window;
         }
         if let Some(min_ttl) = dns_update.cache_min_ttl {
-            config.dns.cache_min_ttl = min_ttl;
+            new_config.dns.cache_min_ttl = min_ttl;
         }
         if let Some(max_ttl) = dns_update.cache_max_ttl {
-            config.dns.cache_max_ttl = max_ttl;
+            new_config.dns.cache_max_ttl = max_ttl;
         }
         if let Some(block_non_fqdn) = dns_update.block_non_fqdn {
-            config.dns.block_non_fqdn = block_non_fqdn;
+            new_config.dns.block_non_fqdn = block_non_fqdn;
         }
         if let Some(block_private_ptr) = dns_update.block_private_ptr {
-            config.dns.block_private_ptr = block_private_ptr;
+            new_config.dns.block_private_ptr = block_private_ptr;
         }
         if let Some(local_domain) = dns_update.local_domain {
-            config.dns.local_domain = if local_domain.is_empty() {
+            new_config.dns.local_domain = if local_domain.is_empty() {
                 None
             } else {
                 Some(local_domain)
             };
         }
         if let Some(server) = dns_update.local_dns_server {
-            config.dns.local_dns_server = if server.is_empty() {
+            new_config.dns.local_dns_server = if server.is_empty() {
                 None
             } else {
                 Some(server)
@@ -148,24 +141,43 @@ pub async fn update_config(
 
     if let Some(blocking_update) = request.blocking {
         if let Some(enabled) = blocking_update.enabled {
-            config.blocking.enabled = enabled;
+            new_config.blocking.enabled = enabled;
         }
         if let Some(custom) = blocking_update.custom_blocked {
-            config.blocking.custom_blocked = custom;
+            new_config.blocking.custom_blocked = custom;
         }
         if let Some(whitelist) = blocking_update.whitelist {
-            config.blocking.whitelist = whitelist;
+            new_config.blocking.whitelist = whitelist;
+        }
+    }
+
+    if let Some(auth_update) = request.auth {
+        if let Some(enabled) = auth_update.enabled {
+            new_config.auth.enabled = enabled;
+        }
+        if let Some(ttl) = auth_update.session_ttl_hours {
+            new_config.auth.session_ttl_hours = ttl;
+        }
+        if let Some(days) = auth_update.remember_me_days {
+            new_config.auth.remember_me_days = days;
+        }
+        if let Some(attempts) = auth_update.login_rate_limit_attempts {
+            new_config.auth.login_rate_limit_attempts = attempts;
+        }
+        if let Some(window) = auth_update.login_rate_limit_window_secs {
+            new_config.auth.login_rate_limit_window_secs = window;
         }
     }
 
     match state
         .config_file_persistence
-        .save_config_to_file(&config, &config_path)
+        .save_config_to_file(&new_config, &config_path)
     {
         Ok(_) => {
+            *state.config.write().await = new_config;
             info!("Configuration updated successfully");
             let message = if restart_required {
-                "Configuration saved. Restart the server for API key and compatibility changes to take effect."
+                "Configuration saved. Restart the server for compatibility changes to take effect."
             } else {
                 "Configuration saved successfully. Use 'Save & Apply Now' button to reload and apply changes immediately, or restart server later."
             };
@@ -196,15 +208,15 @@ pub async fn update_settings(
         Err(e) => return e,
     };
 
-    let mut config = state.config.write().await;
-    config.dns.block_non_fqdn = request.never_forward_non_fqdn;
-    config.dns.block_private_ptr = request.never_forward_reverse_lookups;
-    config.dns.local_domain = if request.local_domain.is_empty() {
+    let mut new_config = state.config.read().await.clone();
+    new_config.dns.block_non_fqdn = request.never_forward_non_fqdn;
+    new_config.dns.block_private_ptr = request.never_forward_reverse_lookups;
+    new_config.dns.local_domain = if request.local_domain.is_empty() {
         None
     } else {
         Some(request.local_domain)
     };
-    config.dns.local_dns_server = if request.local_dns_server.is_empty() {
+    new_config.dns.local_dns_server = if request.local_dns_server.is_empty() {
         None
     } else {
         Some(request.local_dns_server)
@@ -212,9 +224,10 @@ pub async fn update_settings(
 
     match state
         .config_file_persistence
-        .save_config_to_file(&config, &config_path)
+        .save_config_to_file(&new_config, &config_path)
     {
         Ok(_) => {
+            *state.config.write().await = new_config;
             info!("DNS settings updated successfully");
             Json(serde_json::json!({
                 "success": true,

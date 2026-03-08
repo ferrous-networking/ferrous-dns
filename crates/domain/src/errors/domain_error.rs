@@ -151,4 +151,50 @@ pub enum DomainError {
 
     #[error("Invalid timezone: {0}")]
     InvalidTimezone(String),
+
+    // Auth errors
+    #[error("Invalid credentials")]
+    InvalidCredentials,
+
+    #[error("Authentication required")]
+    AuthRequired,
+
+    #[error("Session not found or expired")]
+    SessionNotFound,
+
+    #[error("Too many login attempts, try again later")]
+    RateLimited,
+
+    #[error("Password not configured, run initial setup")]
+    PasswordNotConfigured,
+
+    #[error("Password already configured")]
+    PasswordAlreadyConfigured,
+
+    #[error("API token not found: {0}")]
+    ApiTokenNotFound(i64),
+
+    #[error("API token name already exists: {0}")]
+    DuplicateApiTokenName(String),
+
+    #[error("User not found: {0}")]
+    UserNotFound(String),
+
+    #[error("Username already exists: {0}")]
+    DuplicateUsername(String),
+
+    #[error("Protected user cannot be modified via API")]
+    ProtectedUser,
+
+    #[error("Invalid username: {0}")]
+    InvalidUsername(String),
+
+    #[error("Invalid password: {0}")]
+    InvalidPassword(String),
+
+    #[error("Insufficient permissions")]
+    InsufficientPermissions,
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
 }

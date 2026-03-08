@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod blocking;
 pub mod database;
 pub mod dns;
@@ -10,6 +11,7 @@ pub mod root;
 pub mod server;
 pub mod upstream;
 
+pub use auth::{AdminConfig, AuthConfig};
 pub use blocking::BlockingConfig;
 pub use database::DatabaseConfig;
 pub use dns::DnsConfig;

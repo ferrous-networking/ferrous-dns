@@ -34,6 +34,9 @@ smallvec.workspace = true
 # FASE 2: UDP Socket Pool
 socket2.workspace = true
 
+# Auth (password hashing)
+argon2 = { version = "0.5", features = ["std"] }
+
 # DNSSEC Crypto (FASE 2)
 ring.workspace = true
 sha1.workspace = true

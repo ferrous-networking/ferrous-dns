@@ -2,23 +2,27 @@ use ferrous_dns_application::ports::{ConfigFilePersistence, DnsCachePort, Upstre
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, AssignScheduleProfileUseCase, BlockServiceUseCase,
-    CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateCustomServiceUseCase,
-    CreateGroupUseCase, CreateLocalRecordUseCase, CreateManagedDomainUseCase,
-    CreateManualClientUseCase, CreateRegexFilterUseCase, CreateScheduleProfileUseCase,
-    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
-    DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteLocalRecordUseCase,
-    DeleteManagedDomainUseCase, DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase,
-    DeleteScheduleProfileUseCase, DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase,
-    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
-    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
-    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
-    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
-    GetScheduleProfilesUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
-    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    GetWhitelistUseCase, ManageTimeSlotsUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
-    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    ChangePasswordUseCase, CreateApiTokenUseCase, CreateBlocklistSourceUseCase,
+    CreateClientSubnetUseCase, CreateCustomServiceUseCase, CreateGroupUseCase,
+    CreateLocalRecordUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
+    CreateRegexFilterUseCase, CreateScheduleProfileUseCase, CreateUserUseCase,
+    CreateWhitelistSourceUseCase, DeleteApiTokenUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase,
+    DeleteLocalRecordUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
+    DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase, DeleteUserUseCase,
+    DeleteWhitelistSourceUseCase, GetActiveSessionsUseCase, GetApiTokensUseCase,
+    GetAuthStatusUseCase, GetBlockFilterStatsUseCase, GetBlockedServicesUseCase,
+    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
+    GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
+    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
+    GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUsersUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, LoginUseCase, LogoutUseCase,
+    ManageTimeSlotsUseCase, SetupPasswordUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateApiTokenUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
+    UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -118,6 +122,25 @@ pub struct ScheduleUseCases {
 }
 
 #[derive(Clone)]
+pub struct AuthUseCases {
+    pub login: Arc<LoginUseCase>,
+    pub logout: Arc<LogoutUseCase>,
+    pub validate_session: Arc<ValidateSessionUseCase>,
+    pub setup_password: Arc<SetupPasswordUseCase>,
+    pub change_password: Arc<ChangePasswordUseCase>,
+    pub get_auth_status: Arc<GetAuthStatusUseCase>,
+    pub get_active_sessions: Arc<GetActiveSessionsUseCase>,
+    pub create_api_token: Arc<CreateApiTokenUseCase>,
+    pub get_api_tokens: Arc<GetApiTokensUseCase>,
+    pub update_api_token: Arc<UpdateApiTokenUseCase>,
+    pub delete_api_token: Arc<DeleteApiTokenUseCase>,
+    pub validate_api_token: Arc<ValidateApiTokenUseCase>,
+    pub create_user: Arc<CreateUserUseCase>,
+    pub get_users: Arc<GetUsersUseCase>,
+    pub delete_user: Arc<DeleteUserUseCase>,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub query: QueryUseCases,
     pub dns: DnsUseCases,
@@ -127,9 +150,9 @@ pub struct AppState {
     pub services: ServiceUseCases,
     pub safe_search: SafeSearchUseCases,
     pub schedule: ScheduleUseCases,
+    pub auth: AuthUseCases,
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
-    pub api_key: Option<Arc<str>>,
     pub config_path: Option<Arc<str>>,
 }
 
@@ -140,5 +163,10 @@ impl AppState {
             .as_deref()
             .map(String::from)
             .or_else(ferrous_dns_domain::Config::get_config_path)
+    }
+
+    /// Returns whether authentication is globally enabled.
+    pub async fn auth_enabled(&self) -> bool {
+        self.auth.get_auth_status.execute().await.auth_enabled
     }
 }

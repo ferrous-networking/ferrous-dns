@@ -7,8 +7,18 @@ pub struct ConfigResponse {
     pub blocking: BlockingConfigResponse,
     pub logging: LoggingConfigResponse,
     pub database: DatabaseConfigResponse,
+    pub auth: AuthConfigResponse,
     pub config_path: Option<String>,
     pub writable: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct AuthConfigResponse {
+    pub enabled: bool,
+    pub session_ttl_hours: u32,
+    pub remember_me_days: u32,
+    pub login_rate_limit_attempts: u32,
+    pub login_rate_limit_window_secs: u64,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -16,7 +26,6 @@ pub struct ServerConfigResponse {
     pub dns_port: u16,
     pub web_port: u16,
     pub bind_address: String,
-    pub api_key_enabled: bool,
     pub pihole_compat: bool,
 }
 
@@ -87,14 +96,20 @@ pub struct UpdateConfigRequest {
     pub server: Option<ServerConfigUpdate>,
     pub dns: Option<DnsConfigUpdate>,
     pub blocking: Option<BlockingConfigUpdate>,
+    pub auth: Option<AuthConfigUpdate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AuthConfigUpdate {
+    pub enabled: Option<bool>,
+    pub session_ttl_hours: Option<u32>,
+    pub remember_me_days: Option<u32>,
+    pub login_rate_limit_attempts: Option<u32>,
+    pub login_rate_limit_window_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ServerConfigUpdate {
-    /// Set a new API key. Use `clear_api_key: true` to remove instead.
-    pub api_key: Option<String>,
-    /// When `true`, removes the current API key (disables authentication).
-    pub clear_api_key: Option<bool>,
     pub pihole_compat: Option<bool>,
 }
 

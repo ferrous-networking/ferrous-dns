@@ -1,3 +1,5 @@
+pub mod api_token;
+pub mod auth_session;
 pub mod block_source;
 pub mod blocked_service;
 pub mod blocklist;
@@ -12,5 +14,6 @@ pub mod regex_filter;
 pub mod safe_search;
 pub mod schedule;
 pub mod service_catalog;
+pub mod user;
 pub mod whitelist;
 pub mod whitelist_source;

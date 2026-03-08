@@ -1,4 +1,4 @@
 #![allow(unused_imports)]
-mod test_app;
+pub mod mock_auth;
 
-pub use test_app::*;
+pub use mock_auth::build_test_auth_use_cases;

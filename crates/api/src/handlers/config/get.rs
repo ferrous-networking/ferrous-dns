@@ -1,7 +1,8 @@
 use crate::{
     dto::{
-        BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse, DnsConfigResponse,
-        HealthCheckResponse, LoggingConfigResponse, ServerConfigResponse, UpstreamPoolResponse,
+        AuthConfigResponse, BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse,
+        DnsConfigResponse, HealthCheckResponse, LoggingConfigResponse, ServerConfigResponse,
+        UpstreamPoolResponse,
     },
     state::AppState,
 };
@@ -29,7 +30,6 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             dns_port: config.server.dns_port,
             web_port: config.server.web_port,
             bind_address: config.server.bind_address.clone(),
-            api_key_enabled: state.api_key.is_some(),
             pihole_compat: config.server.pihole_compat,
         },
         dns: DnsConfigResponse {
@@ -84,6 +84,13 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
         database: DatabaseConfigResponse {
             path: config.database.path.clone(),
             log_queries: config.database.log_queries,
+        },
+        auth: AuthConfigResponse {
+            enabled: config.auth.enabled,
+            session_ttl_hours: config.auth.session_ttl_hours,
+            remember_me_days: config.auth.remember_me_days,
+            login_rate_limit_attempts: config.auth.login_rate_limit_attempts,
+            login_rate_limit_window_secs: config.auth.login_rate_limit_window_secs,
         },
         config_path,
         writable,

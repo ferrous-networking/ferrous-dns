@@ -1,29 +1,92 @@
 use ferrous_dns_api::{
-    AppState, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases, QueryUseCases,
-    SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
+    AppState, AuthUseCases, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
+    QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };
+use ferrous_dns_application::ports::{ConfigFilePersistence, UserProvider};
 use ferrous_dns_application::use_cases::{
-    CreateLocalRecordUseCase, DeleteLocalRecordUseCase, UpdateLocalRecordUseCase,
+    ChangePasswordUseCase, CreateApiTokenUseCase, CreateLocalRecordUseCase, CreateUserUseCase,
+    DeleteApiTokenUseCase, DeleteLocalRecordUseCase, DeleteUserUseCase, GetActiveSessionsUseCase,
+    GetApiTokensUseCase, GetAuthStatusUseCase, GetUsersUseCase, LoginUseCase, LogoutUseCase,
+    SetupPasswordUseCase, UpdateApiTokenUseCase, UpdateLocalRecordUseCase, ValidateApiTokenUseCase,
+    ValidateSessionUseCase,
 };
 use ferrous_dns_domain::Config;
+use ferrous_dns_infrastructure::auth::{
+    Argon2PasswordHasher, CompositeUserProvider, TomlAdminProvider,
+};
 use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
 use ferrous_dns_infrastructure::repositories::{SqliteConfigRepository, TomlConfigFilePersistence};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::{DnsServices, UseCases};
+use super::{DnsServices, Repositories, UseCases};
 
-pub fn build_app_state(
+pub async fn build_app_state(
     use_cases: UseCases,
+    repos: &Repositories,
     dns_services: &DnsServices,
     config: Arc<RwLock<Config>>,
     config_repo_pool: SqlitePool,
-    api_key: Option<Arc<str>>,
     config_path: Option<Arc<str>>,
 ) -> AppState {
     let config_repo: Arc<dyn ferrous_dns_application::ports::ConfigRepository> =
         Arc::new(SqliteConfigRepository::new(config_repo_pool));
+
+    let auth_config = {
+        let cfg = config.read().await;
+        Arc::new(cfg.auth.clone())
+    };
+
+    let config_persistence: Arc<dyn ConfigFilePersistence> = Arc::new(TomlConfigFilePersistence);
+
+    let password_hasher = Arc::new(Argon2PasswordHasher::new());
+
+    let toml_admin = TomlAdminProvider::new(auth_config.admin.clone());
+    let user_provider: Arc<dyn UserProvider> = Arc::new(CompositeUserProvider::new(
+        toml_admin,
+        repos.user.clone(),
+        config.clone(),
+        config_path
+            .as_deref()
+            .map(String::from)
+            .or_else(Config::get_config_path),
+        config_persistence.clone(),
+    ));
+
+    let auth = AuthUseCases {
+        login: Arc::new(LoginUseCase::new(
+            user_provider.clone(),
+            repos.session.clone(),
+            password_hasher.clone(),
+            auth_config.clone(),
+        )),
+        logout: Arc::new(LogoutUseCase::new(repos.session.clone())),
+        validate_session: Arc::new(ValidateSessionUseCase::new(repos.session.clone())),
+        setup_password: Arc::new(SetupPasswordUseCase::new(
+            user_provider.clone(),
+            password_hasher.clone(),
+            auth_config.admin.username.clone(),
+        )),
+        change_password: Arc::new(ChangePasswordUseCase::new(
+            user_provider.clone(),
+            password_hasher.clone(),
+        )),
+        get_auth_status: Arc::new(GetAuthStatusUseCase::new(config.clone())),
+        get_active_sessions: Arc::new(GetActiveSessionsUseCase::new(repos.session.clone())),
+        create_api_token: Arc::new(CreateApiTokenUseCase::new(repos.api_token.clone())),
+        get_api_tokens: Arc::new(GetApiTokensUseCase::new(repos.api_token.clone())),
+        update_api_token: Arc::new(UpdateApiTokenUseCase::new(repos.api_token.clone())),
+        delete_api_token: Arc::new(DeleteApiTokenUseCase::new(repos.api_token.clone())),
+        validate_api_token: Arc::new(ValidateApiTokenUseCase::new(repos.api_token.clone())),
+        create_user: Arc::new(CreateUserUseCase::new(
+            repos.user.clone(),
+            user_provider.clone(),
+            password_hasher,
+        )),
+        get_users: Arc::new(GetUsersUseCase::new(user_provider)),
+        delete_user: Arc::new(DeleteUserUseCase::new(repos.user.clone())),
+    };
 
     AppState {
         query: QueryUseCases {
@@ -116,9 +179,9 @@ pub fn build_app_state(
             manage_slots: use_cases.manage_time_slots,
             assign_profile: use_cases.assign_schedule_profile,
         },
+        auth,
         config,
-        config_file_persistence: Arc::new(TomlConfigFilePersistence),
-        api_key,
+        config_file_persistence: config_persistence,
         config_path,
     }
 }

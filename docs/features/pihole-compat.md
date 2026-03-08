@@ -54,15 +54,15 @@ When `pihole_compat = false` (default):
 
 ## Authentication
 
-The Pi-hole API uses **session-based authentication**:
+The Pi-hole v6 compatible API uses **session-based authentication**, matching the same flow as Pi-hole v6:
 
-1. `POST /api/auth` with `{"password": "your-api-key"}` — returns a session token
+1. `POST /api/auth` with `{"password": "your-password"}` — creates a session and returns a session token
 2. Include the session token in subsequent requests via the `sid` cookie or header
 
-The Pi-hole API password is the same `api_key` configured in `ferrous-dns.toml`.
+The Pi-hole API uses the same authentication backend as the Ferrous DNS native API. The admin password configured in the `[auth]` section is used for both.
 
-!!! important "Independent auth systems"
-    The Pi-hole session (`sid`) and the Ferrous API key (`X-Api-Key`) are completely independent authentication systems. Authenticating with one does not grant access to the other.
+!!! note "Shared auth backend"
+    Since v0.7.0, Pi-hole compat auth and Ferrous DNS auth share the same session system. A session created via `POST /api/auth` (Pi-hole) is also valid for Ferrous DNS native endpoints, and vice versa.
 
 ---
 
