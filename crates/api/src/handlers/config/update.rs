@@ -6,15 +6,17 @@ use axum::{extract::State, Json};
 use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use tracing::{debug, error, info, instrument};
 
-fn get_writable_config_path() -> Result<String, Json<serde_json::Value>> {
-    let path = ferrous_dns_domain::Config::get_config_path().ok_or_else(|| {
+async fn get_writable_config_path(
+    state: &crate::state::AppState,
+) -> Result<String, Json<serde_json::Value>> {
+    let path = state.resolve_config_path().ok_or_else(|| {
         error!("No config file found");
         Json(serde_json::json!({
             "success": false,
             "error": "No config file found. Cannot update configuration."
         }))
     })?;
-    if let Ok(metadata) = std::fs::metadata(&path) {
+    if let Ok(metadata) = tokio::fs::metadata(&path).await {
         if metadata.permissions().readonly() {
             error!("Config file is read-only");
             return Err(Json(serde_json::json!({
@@ -33,7 +35,7 @@ pub async fn update_config(
 ) -> Json<serde_json::Value> {
     debug!("Updating configuration");
 
-    let config_path = match get_writable_config_path() {
+    let config_path = match get_writable_config_path(&state).await {
         Ok(p) => p,
         Err(e) => return e,
     };
@@ -189,7 +191,7 @@ pub async fn update_settings(
     State(state): State<AppState>,
     Json(request): Json<SettingsDto>,
 ) -> Json<serde_json::Value> {
-    let config_path = match get_writable_config_path() {
+    let config_path = match get_writable_config_path(&state).await {
         Ok(p) => p,
         Err(e) => return e,
     };
@@ -233,7 +235,7 @@ pub async fn update_settings(
 pub async fn reload_config(State(state): State<AppState>) -> Json<serde_json::Value> {
     info!("Config reload requested");
 
-    let config_path = match ferrous_dns_domain::Config::get_config_path() {
+    let config_path = match state.resolve_config_path() {
         Some(path) => path,
         None => {
             error!("No config file found");

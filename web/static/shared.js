@@ -22,7 +22,7 @@ async function _fetchRate() {
     if (_rateAbort) _rateAbort.abort();
     _rateAbort = new AbortController();
     try {
-        const res = await fetch(`${API_BASE}/stats/rate?unit=second`, {signal: _rateAbort.signal});
+        const res = await apiFetch(`${API_BASE}/stats/rate?unit=second`, {signal: _rateAbort.signal});
         if (res.ok) {
             const data = await res.json();
             if (_rateCallback) _rateCallback(data);
@@ -68,6 +68,20 @@ function stopRatePolling() {
         document.removeEventListener('visibilitychange', _visibilityHandler);
         _visibilityHandler = null;
     }
+}
+
+// --- Dashboard API key (stored in localStorage) ---
+
+function apiKey() {
+    return localStorage.getItem('ferrous_api_key') || '';
+}
+
+function apiFetch(url, options = {}) {
+    const key = apiKey();
+    if (key) {
+        options.headers = { ...options.headers, 'X-Api-Key': key };
+    }
+    return fetch(url, options);
 }
 
 // --- Rate color using CSS custom properties ---

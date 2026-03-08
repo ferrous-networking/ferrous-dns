@@ -99,12 +99,19 @@ async fn async_main() -> anyhow::Result<()> {
 
     let api_key: Option<Arc<str>> = config.server.api_key.as_deref().map(Arc::from);
     let pihole_state = wiring::build_pihole_state(&use_cases, api_key.clone());
+
+    let effective_config_path: Option<Arc<str>> =
+        cli.config.as_deref().map(Arc::from).or_else(|| {
+            ferrous_dns_domain::Config::get_config_path().map(|p| Arc::from(p.as_str()))
+        });
+
     let app_state = wiring::build_app_state(
         use_cases,
         &dns_services,
         config_arc,
         config_repo_pool,
         api_key,
+        effective_config_path,
     );
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);

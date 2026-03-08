@@ -106,8 +106,6 @@ fn create_app(
     pihole_compat: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
 ) -> Router {
-    // In compat mode the Pi-hole API occupies /api/* and the Ferrous
-    // dashboard API moves to /ferrous/api/* so both can coexist.
     let router = if pihole_compat {
         Router::new()
             .nest("/api", create_pihole_routes(pihole_state))

@@ -130,7 +130,7 @@
 | RFC 9250 | DNS-over-QUIC (DoQ) upstream | Done |
 | RFC 9114 | HTTP/3 upstream | Done |
 | RFC 4035 | DNSSEC validation | Done |
-| RFC 5936 | PROXY Protocol v2 | Done |
+| [PROXY Protocol v2](https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt) | PROXY Protocol v2 (HAProxy spec) | Done |
 | RFC 7828 | edns-tcp-keepalive | Planned |
 
 ---

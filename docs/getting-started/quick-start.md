@@ -96,8 +96,9 @@ dig @<server-ip> example.com
 # Check blocking is working (should return NXDOMAIN or 0.0.0.0)
 dig @<server-ip> ads.doubleclick.net
 
-# Check encrypted DNS (DoH)
-curl -s "http://<server-ip>:8080/dns-query?name=example.com&type=A"
+# Check DNS-over-HTTPS (requires DoH enabled with TLS certificate)
+curl -s -H "accept: application/dns-json" \
+  "https://<server-ip>/dns-query?name=example.com&type=A"
 ```
 
 ---

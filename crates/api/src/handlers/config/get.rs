@@ -13,10 +13,11 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     debug!("Fetching current configuration");
 
     let config = state.config.read().await;
-    let config_path = ferrous_dns_domain::Config::get_config_path();
+    let config_path = state.resolve_config_path();
 
     let writable = if let Some(ref path) = config_path {
-        std::fs::metadata(path)
+        tokio::fs::metadata(path)
+            .await
             .map(|m| !m.permissions().readonly())
             .unwrap_or(false)
     } else {
@@ -28,7 +29,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             dns_port: config.server.dns_port,
             web_port: config.server.web_port,
             bind_address: config.server.bind_address.clone(),
-            api_key_enabled: config.server.api_key.is_some(),
+            api_key_enabled: state.api_key.is_some(),
             pihole_compat: config.server.pihole_compat,
         },
         dns: DnsConfigResponse {

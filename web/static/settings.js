@@ -51,6 +51,8 @@
             newApiKey: '',
             showApiKey: false,
             apiKeyJustGenerated: false,
+            dashboardSessionKey: localStorage.getItem('ferrous_api_key') || '',
+            dashboardAuthenticated: !!localStorage.getItem('ferrous_api_key'),
             alert: {show: false, type: 'success', message: ''},
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
@@ -89,7 +91,7 @@
                 this._ctrl.stats?.abort();
                 this._ctrl.stats = new AbortController();
                 try {
-                    const r = await fetch(`${API_BASE}/stats`, {signal: this._ctrl.stats.signal});
+                    const r = await apiFetch(`${API_BASE}/stats`, {signal: this._ctrl.stats.signal});
                     if (r.ok) this.stats = await r.json()
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
@@ -98,7 +100,7 @@
             async loadConfig() {
                 try {
                     this.loading = true;
-                    const res = await fetch(`${API_BASE}/config`);
+                    const res = await apiFetch(`${API_BASE}/config`);
                     if (res.ok) {
                         const data = await res.json();
                         this.config = {
@@ -152,7 +154,7 @@
             },
             async loadDnsSettings() {
                 try {
-                    const r = await fetch(`${API_BASE}/settings`);
+                    const r = await apiFetch(`${API_BASE}/settings`);
                     if (r.ok) this.settings = await r.json()
                 } catch (e) {
                     console.log('Using default DNS settings', e)
@@ -162,7 +164,7 @@
                 this._ctrl.health?.abort();
                 this._ctrl.health = new AbortController();
                 try {
-                    const res = await fetch(`${API_BASE}/health/upstreams`, {signal: this._ctrl.health.signal});
+                    const res = await apiFetch(`${API_BASE}/health/upstreams`, {signal: this._ctrl.health.signal});
                     if (res.ok) this.healthStatus = await res.json()
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error('Load health error:', e)
@@ -170,7 +172,7 @@
             },
             async loadCacheStats() {
                 try {
-                    const res = await fetch(`${API_BASE}/cache/stats`);
+                    const res = await apiFetch(`${API_BASE}/cache/stats`);
                     if (res.ok) this.cacheStats = await res.json()
                 } catch (e) {
                     console.error('Load cache stats error:', e)
@@ -199,7 +201,7 @@
             },
             async saveConfig() {
                 try {
-                    const res = await fetch(`${API_BASE}/config`, {
+                    const res = await apiFetch(`${API_BASE}/config`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({dns: this.config.dns, blocking: this.config.blocking})
@@ -216,7 +218,7 @@
             },
             async saveDnsSettings() {
                 try {
-                    const r = await fetch(`${API_BASE}/settings`, {
+                    const r = await apiFetch(`${API_BASE}/settings`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(this.settings)
@@ -235,6 +237,18 @@
                     this.showAlert('error', 'Error: ' + e.message)
                 }
             },
+            saveDashboardSessionKey() {
+                const key = this.dashboardSessionKey.trim();
+                if (key) {
+                    localStorage.setItem('ferrous_api_key', key);
+                    this.dashboardAuthenticated = true;
+                    this.showAlert('success', 'Dashboard authenticated successfully');
+                } else {
+                    localStorage.removeItem('ferrous_api_key');
+                    this.dashboardAuthenticated = false;
+                    this.showAlert('success', 'Dashboard session key cleared');
+                }
+            },
             toggleLocalDomain() {
                 if (this.settings.local_domain) {
                     this.settings.local_domain = '';
@@ -245,7 +259,7 @@
             },
             async generateApiKey() {
                 try {
-                    const r = await fetch(`${API_BASE}/api-key/generate`, {method: 'POST'});
+                    const r = await apiFetch(`${API_BASE}/api-key/generate`, {method: 'POST'});
                     if (r.ok) {
                         const data = await r.json();
                         this.newApiKey = data.key;
@@ -262,7 +276,7 @@
             async saveApiKey() {
                 if (!this.newApiKey.trim()) return;
                 try {
-                    const r = await fetch(`${API_BASE}/config`, {
+                    const r = await apiFetch(`${API_BASE}/config`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({server: {api_key: this.newApiKey.trim()}})
@@ -272,6 +286,9 @@
                         this.config.server.api_key_enabled = true;
                         this.apiRestartRequired = true;
                         this.apiKeyJustGenerated = false;
+                        localStorage.setItem('ferrous_api_key', this.newApiKey.trim());
+                        this.dashboardSessionKey = this.newApiKey.trim();
+                        this.dashboardAuthenticated = true;
                         this.showAlert('success', 'API key saved. Restart the server to activate.');
                         scheduleLucide(50);
                     } else {
@@ -283,7 +300,7 @@
             },
             async removeApiKey() {
                 try {
-                    const r = await fetch(`${API_BASE}/config`, {
+                    const r = await apiFetch(`${API_BASE}/config`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({server: {clear_api_key: true}})
@@ -293,6 +310,9 @@
                         this.config.server.api_key_enabled = false;
                         this.newApiKey = '';
                         this.apiRestartRequired = true;
+                        localStorage.removeItem('ferrous_api_key');
+                        this.dashboardSessionKey = '';
+                        this.dashboardAuthenticated = false;
                         this.showAlert('success', 'API key removed. Restart the server to apply.');
                         scheduleLucide(50);
                     } else {
@@ -304,7 +324,7 @@
             },
             async savePiholeCompat() {
                 try {
-                    const r = await fetch(`${API_BASE}/config`, {
+                    const r = await apiFetch(`${API_BASE}/config`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({server: {pihole_compat: this.config.server.pihole_compat}})
@@ -327,10 +347,10 @@
                 const sig = this._ctrl.systemStatus.signal;
                 try {
                     const [hostnameRes, upstreamRes, cacheRes, sysRes] = await Promise.all([
-                        fetch(`${API_BASE}/hostname`,               {signal: sig}),
-                        fetch(`${API_BASE}/upstream/health/detail`, {signal: sig}),
-                        fetch(`${API_BASE}/cache/metrics`,          {signal: sig}),
-                        fetch(`${API_BASE}/system/info`,            {signal: sig}),
+                        apiFetch(`${API_BASE}/hostname`,               {signal: sig}),
+                        apiFetch(`${API_BASE}/upstream/health/detail`, {signal: sig}),
+                        apiFetch(`${API_BASE}/cache/metrics`,          {signal: sig}),
+                        apiFetch(`${API_BASE}/system/info`,            {signal: sig}),
                     ]);
                     if (hostnameRes.ok) this.systemStatus.hostname = (await hostnameRes.json()).hostname || '';
                     if (upstreamRes.ok) this.upstreamHealth = await upstreamRes.json();

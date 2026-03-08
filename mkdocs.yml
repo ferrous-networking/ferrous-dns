@@ -26,7 +26,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
     - navigation.indexes
     - navigation.top
     - navigation.footer
@@ -34,10 +33,16 @@ theme:
     - search.suggest
     - content.code.copy
     - content.code.annotate
+    - content.tabs.link
     - toc.follow
 
 plugins:
   - search
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
 
 markdown_extensions:
   - admonition
@@ -80,16 +85,20 @@ nav:
     - Blocking: configuration/blocking.md
     - Database: configuration/database.md
   - Features:
+    - Dashboard: features/dashboard.md
     - Upstream Management: features/upstream-management.md
     - Encrypted DNS: features/encrypted-dns.md
     - Blocking & Filtering: features/blocking-filtering.md
     - Client Management: features/client-management.md
+    - Pi-hole Compatibility: features/pihole-compat.md
     - Security: features/security.md
+  - API Reference: api.md
   - Architecture:
     - Overview: architecture/overview.md
     - Crate Structure: architecture/crates.md
   - Performance:
     - Benchmarks: performance/benchmarks.md
+  - Troubleshooting: troubleshooting.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - Roadmap: roadmap.md

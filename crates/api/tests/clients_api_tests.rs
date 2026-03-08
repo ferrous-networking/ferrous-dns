@@ -615,6 +615,7 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         api_key: None,
+        config_path: None,
     };
 
     let app = create_api_routes(state);

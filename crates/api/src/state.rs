@@ -130,4 +130,15 @@ pub struct AppState {
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub api_key: Option<Arc<str>>,
+    pub config_path: Option<Arc<str>>,
+}
+
+impl AppState {
+    /// Resolves the effective config file path: explicit CLI path first, then auto-discovery.
+    pub fn resolve_config_path(&self) -> Option<String> {
+        self.config_path
+            .as_deref()
+            .map(String::from)
+            .or_else(ferrous_dns_domain::Config::get_config_path)
+    }
 }

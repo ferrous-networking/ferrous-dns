@@ -731,6 +731,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence,
         ),
         api_key: None,
+        config_path: None,
     };
 
     let app = create_api_routes(state);
@@ -1076,6 +1077,7 @@ async fn test_get_all_configs_after_toggle() {
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         api_key: None,
+        config_path: None,
     };
 
     let app = create_api_routes(state);

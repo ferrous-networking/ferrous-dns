@@ -12,7 +12,7 @@
 
 Ferrous DNS is a self-hosted DNS server and network-wide ad-blocker designed as a high-performance alternative to Pi-hole and AdGuard Home. It runs as a **single binary** combining DNS resolution, REST API, and Web UI — with no external runtime dependencies.
 
-At **147,241 queries/second** under identical Docker conditions (16 CPUs, cache enabled, rate limiting disabled), Ferrous DNS is **1.58× faster than AdGuard Home**, **1.61× faster than Blocky**, and **33× faster than Pi-hole** — running a full feature stack in a single process. PowerDNS Recursor (220K QPS) and Unbound (217K QPS) lead as purpose-built pure recursive resolvers with no additional features.
+At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache enabled, rate limiting disabled), Ferrous DNS is **4.9× faster than AdGuard Home**, **4.7× faster than Blocky**, and **233× faster than Pi-hole** — running a full feature stack in a single process. Unbound (952K QPS) and PowerDNS Recursor (884K QPS) lead as purpose-built pure recursive resolvers with no additional features.
 
 ---
 

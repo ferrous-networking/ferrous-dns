@@ -20,6 +20,7 @@ pub fn build_app_state(
     config: Arc<RwLock<Config>>,
     config_repo_pool: SqlitePool,
     api_key: Option<Arc<str>>,
+    config_path: Option<Arc<str>>,
 ) -> AppState {
     let config_repo: Arc<dyn ferrous_dns_application::ports::ConfigRepository> =
         Arc::new(SqliteConfigRepository::new(config_repo_pool));
@@ -118,5 +119,6 @@ pub fn build_app_state(
         config,
         config_file_persistence: Arc::new(TomlConfigFilePersistence),
         api_key,
+        config_path,
     }
 }
