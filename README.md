@@ -7,7 +7,7 @@
 **High-performance DNS server with network-wide ad-blocking, written in Rust**
 
 [![CI](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml/badge.svg)](https://github.com/ferrous-networking/Ferrous-DNS/actions/workflows/ci.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/andersonviudes/ferrous-dns?logo=docker)](https://hub.docker.com/r/andersonviudes/ferrous-dns)
+[![Docker Pulls](https://img.shields.io/docker/pulls/ferrousnetworking/ferrous-dns?logo=docker)](https://hub.docker.com/r/ferrousnetworking/ferrous-dns)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -94,7 +94,7 @@ docker run -d \
   --cap-add SYS_TIME \
   --cap-add SYS_NICE \
   --cap-add NET_BIND_SERVICE \
-  andersonviudes/ferrous-dns:latest
+  ferrousnetworking/ferrous-dns:latest
 ```
 
 Access the dashboard at `http://localhost:8080`
@@ -104,7 +104,7 @@ Access the dashboard at `http://localhost:8080`
 ```yaml
 services:
   ferrous-dns:
-    image: andersonviudes/ferrous-dns:latest
+    image: ferrousnetworking/ferrous-dns:latest
     container_name: ferrous-dns
     restart: always
     network_mode: host

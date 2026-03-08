@@ -18,7 +18,7 @@ This guide gets Ferrous DNS running on your network in minutes.
     docker run -d --name ferrous-dns --network host \
       --restart always --user root \
       --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE \
-      andersonviudes/ferrous-dns:latest
+      ferrousnetworking/ferrous-dns:latest
     ```
 
 === "Binary"

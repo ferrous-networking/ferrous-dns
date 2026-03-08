@@ -108,4 +108,4 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/ferrous-networking/Ferrous-DNS
     - icon: fontawesome/brands/docker
-      link: https://hub.docker.com/r/andersonviudes/ferrous-dns
+      link: https://hub.docker.com/r/ferrousnetworking/ferrous-dns

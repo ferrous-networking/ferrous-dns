@@ -31,7 +31,7 @@ services:
   #   - Log level: info
   # ---------------------------------------------------------------------------
   ferrous-dns:
-    image: andersonviudes/ferrous-dns:latest
+    image: ferrousnetworking/ferrous-dns:latest
     container_name: bench-ferrous-dns
     network_mode: host
     volumes:

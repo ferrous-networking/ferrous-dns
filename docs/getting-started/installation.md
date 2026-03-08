@@ -26,7 +26,7 @@ docker run -d \
   --cap-add SYS_TIME \
   --cap-add SYS_NICE \
   --cap-add NET_BIND_SERVICE \
-  andersonviudes/ferrous-dns:latest
+  ferrousnetworking/ferrous-dns:latest
 ```
 
 Access the dashboard at `http://localhost:8080`
@@ -43,7 +43,7 @@ Create a `docker-compose.yml`:
 ```yaml
 services:
   ferrous-dns:
-    image: andersonviudes/ferrous-dns:latest
+    image: ferrousnetworking/ferrous-dns:latest
     container_name: ferrous-dns
     restart: always
     network_mode: host
@@ -140,7 +140,7 @@ Docker images are published for both `amd64` and `arm64` (Raspberry Pi 4/5, Appl
 
 ```bash
 # Pull latest (auto-selects your arch)
-docker pull andersonviudes/ferrous-dns:latest
+docker pull ferrousnetworking/ferrous-dns:latest
 ```
 
 !!! tip "Raspberry Pi"

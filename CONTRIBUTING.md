@@ -14,7 +14,7 @@ git clone https://github.com/YOUR_USERNAME/ferrous-dns.git
 cd ferrous-dns
 
 # Add upstream
-git remote add upstream https://github.com/andersonviudes/ferrous-dns.git
+git remote add upstream https://github.com/ferrousnetworking/ferrous-dns.git
 ```
 
 ### 2. Create Branch

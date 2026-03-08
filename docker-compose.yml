@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   ferrous-dns:
-    image: ghcr.io/andersonviudes/ferrous-dns:latest
+    image: ghcr.io/ferrousnetworking/ferrous-dns:latest
     container_name: ferrous-dns
     restart: unless-stopped
 

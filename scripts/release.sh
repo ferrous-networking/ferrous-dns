@@ -247,7 +247,7 @@ main() {
     log_info "Next steps:"
     echo "  1. GitHub Actions will build and publish the release"
     echo "  2. Docker images will be built and pushed"
-    echo "  3. Check: https://github.com/andersonviudes/ferrous-dns/releases"
+    echo "  3. Check: https://github.com/ferrousnetworking/ferrous-dns/releases"
     echo ""
 }
 

@@ -11,7 +11,7 @@ on:
     types: [release-created]
 
 env:
-  REGISTRY_IMAGE_DOCKERHUB: andersonviudes/ferrous-dns
+  REGISTRY_IMAGE_DOCKERHUB: ferrousnetworking/ferrous-dns
 
 jobs:
   docker:
