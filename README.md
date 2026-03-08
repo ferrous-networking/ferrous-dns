@@ -23,7 +23,7 @@ Full documentation is available at **[ferrous-networking.github.io/Ferrous-DNS](
 
 ## Performance
 
-At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache enabled, log info, rate limiting disabled), Ferrous-DNS is **4.9× faster than AdGuard Home**, **4.7× faster than Blocky**, and **233× faster than Pi-hole** — all running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process. PowerDNS Recursor (884K QPS) and Unbound (952K QPS) lead as purpose-built pure recursive resolvers with no additional features.
+At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache enabled, log info, rate limiting disabled), Ferrous-DNS is **4.9x faster than AdGuard Home**, **4.7x faster than Blocky**, and **233x faster than Pi-hole** — all running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process. PowerDNS Recursor (884K QPS) and Unbound (952K QPS) lead as purpose-built pure recursive resolvers with no additional features.
 
 [Full benchmark report](https://ferrous-networking.github.io/Ferrous-DNS/performance/benchmarks/)
 
@@ -31,43 +31,54 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 ## Features
 
-**Performance**
-- L1/L2 hierarchical cache — thread-local lock-free L1 + sharded DashMap L2 with LFUK eviction and Bloom filter for negative lookups
+**Performance** — [Cache docs](https://ferrous-networking.github.io/Ferrous-DNS/configuration/cache/)
+- [L1/L2 hierarchical cache](https://ferrous-networking.github.io/Ferrous-DNS/configuration/cache/) — thread-local lock-free L1 + sharded DashMap L2 with LFUK eviction and Bloom filter for negative lookups
 - In-flight coalescing — deduplicates concurrent queries for the same domain to a single upstream request
-- Single binary — DNS server, REST API, and Web UI in one process; no extra dependencies
+- Single binary — DNS server, REST API, Web UI, and SQLite query log in one process; no extra dependencies
 
-**Encrypted DNS**
-- Upstream: plain UDP, DoH, DoT, DoQ, and HTTP/3
-- Server (listener): DoH and DoT — serve encrypted DNS directly to clients
+**Dashboard** — [Dashboard docs](https://ferrous-networking.github.io/Ferrous-DNS/features/dashboard/)
+- Real-time query log with block/allow actions
+- Query rate, blocked queries, top domains, top clients
+- Upstream latency graphs and health status
+- Dark mode, built with HTMX + Alpine.js + TailwindCSS
+
+**Encrypted DNS** — [Encrypted DNS docs](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/)
+- Upstream: plain UDP, [DoH](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/), [DoT](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/), [DoQ](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/), and [HTTP/3](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/)
+- Server (listener): [DoH and DoT](https://ferrous-networking.github.io/Ferrous-DNS/features/encrypted-dns/) — serve encrypted DNS directly to clients
 - IPv6 upstreams and DNS-name resolvers (e.g. `dns.google.com` resolved at startup)
 
-**Blocking & Filtering**
-- Blocklists with regex patterns and wildcard domains (`*.ads.com`)
-- Allowlist
-- 1-click blockable service categories
-- CNAME cloaking detection — catches trackers hiding behind first-party CNAMEs
-- Safe Search enforcement for Google, Bing, YouTube, and others
+**Upstream Management** — [Upstream docs](https://ferrous-networking.github.io/Ferrous-DNS/features/upstream-management/)
+- [Named pools](https://ferrous-networking.github.io/Ferrous-DNS/features/upstream-management/) with priority-based routing and automatic failover
+- Resolution strategies: [Parallel, Balanced, Failover](https://ferrous-networking.github.io/Ferrous-DNS/features/upstream-management/)
+- [Health checks](https://ferrous-networking.github.io/Ferrous-DNS/features/upstream-management/) with configurable thresholds and global fallback upstreams
 
-**Client Management**
-- Auto client detection by IP and MAC address
-- Client groups with independent policies (e.g. kids, work, IoT)
-- Per-group parental controls with time-based scheduling
-- Conditional forwarding — route specific domains to internal resolvers
+**Blocking & Filtering** — [Blocking docs](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/)
+- [Blocklists](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/) with regex patterns and wildcard domains (`*.ads.com`)
+- [Allowlist](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/)
+- [1-click blockable service categories](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/) — Advertising, Analytics, Social Media, Telemetry, Adult Content, Gambling
+- [CNAME cloaking detection](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/) — catches trackers hiding behind first-party CNAMEs
+- [Safe Search](https://ferrous-networking.github.io/Ferrous-DNS/features/blocking-filtering/) enforcement for Google, Bing, YouTube, and DuckDuckGo
 
-**Security**
-- HTTPS for dashboard and REST API (single port, automatic HTTP → HTTPS redirect)
-- Session-based authentication (login/logout with rate limiting)
-- Named API tokens (SHA-256 hashed, `X-Api-Key` header)
-- First-run setup wizard for password configuration
-- Self-signed certificate generation from the UI
-- DNSSEC validation
-- DNS rebinding protection
-- PROXY Protocol v2 support
+**Client Management** — [Client docs](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/)
+- [Auto client detection](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/) by IP, MAC address, and hostname
+- [Client groups](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/) with independent policies (e.g. Kids, Work, IoT, Guest)
+- [Parental controls](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/) with time-based scheduling per group
+- [Conditional forwarding](https://ferrous-networking.github.io/Ferrous-DNS/features/client-management/) — route specific domains to internal resolvers
+
+**Security** — [Security docs](https://ferrous-networking.github.io/Ferrous-DNS/features/security/)
+- [HTTPS](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) for dashboard and REST API (single port, automatic HTTP -> HTTPS redirect)
+- [Session-based authentication](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) (login/logout with rate limiting)
+- [Named API tokens](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) (SHA-256 hashed, `X-Api-Key` header)
+- [First-run setup wizard](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) for password configuration
+- [Self-signed certificate generation](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) from the UI
+- [DNSSEC validation](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) (RFC 4035)
+- [DNS rebinding protection](https://ferrous-networking.github.io/Ferrous-DNS/features/security/)
+- [PROXY Protocol v2](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) support
 
 **Compatibility & Deployment**
-- Pi-hole API compatibility — works as a drop-in replacement for existing integrations
-- Docker multi-arch images (amd64, arm64)
-- RFC 1035 compliant: A, AAAA, CNAME, MX, TXT, PTR, NS, SRV, and local DNS records
+- [Pi-hole v6 API compatibility](https://ferrous-networking.github.io/Ferrous-DNS/features/pihole-compat/) — drop-in replacement for existing integrations and third-party apps
+- [Docker multi-arch images](https://ferrous-networking.github.io/Ferrous-DNS/getting-started/installation/) (amd64, arm64)
+- RFC 1035 compliant: A, AAAA, CNAME, MX, TXT, PTR, NS, SRV, and [local DNS records](https://ferrous-networking.github.io/Ferrous-DNS/configuration/dns/)
 - Auto PTR generation for local A records
 
 ---
@@ -98,6 +109,8 @@ docker run -d \
 ```
 
 Access the dashboard at `http://localhost:8080`
+
+See [full installation guide](https://ferrous-networking.github.io/Ferrous-DNS/getting-started/installation/) for Docker Compose, build from source, and Raspberry Pi setup.
 
 ### Docker Compose
 
@@ -135,7 +148,18 @@ volumes:
 docker compose up -d
 ```
 
+### Build from Source
+
+```bash
+git clone https://github.com/ferrous-networking/Ferrous-DNS.git
+cd Ferrous-DNS
+cargo build --release
+./target/release/ferrous-dns --config ferrous-dns.toml
+```
+
 ### Configuration
+
+See the [full configuration reference](https://ferrous-networking.github.io/Ferrous-DNS/configuration/) for all options.
 
 #### Environment Variables
 
@@ -154,6 +178,8 @@ docker compose up -d
 
 ![Dashboard](img.png)
 
+[Dashboard docs](https://ferrous-networking.github.io/Ferrous-DNS/features/dashboard/)
+
 ---
 
 ## Contributing
@@ -163,3 +189,9 @@ Bug reports, feature requests, and pull requests are welcome.
 - Issues: [GitHub Issues](https://github.com/ferrous-networking/Ferrous-DNS/issues)
 - Discussions: [GitHub Discussions](https://github.com/ferrous-networking/Ferrous-DNS/discussions)
 - Docs: [Contributing Guide](https://ferrous-networking.github.io/Ferrous-DNS/contributing/)
+
+---
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) and [Apache 2.0](LICENSE-APACHE).
