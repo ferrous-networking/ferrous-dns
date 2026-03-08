@@ -86,8 +86,9 @@ pub async fn login_public(
 
     let max_age = state.auth.login.session_max_age(req.remember_me);
 
+    let secure_flag = if state.tls_enabled { "; Secure" } else { "" };
     let cookie = format!(
-        "{SESSION_COOKIE_NAME}={}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age={max_age}",
+        "{SESSION_COOKIE_NAME}={}; HttpOnly; SameSite=Strict{secure_flag}; Path=/; Max-Age={max_age}",
         session.id
     );
 
@@ -112,8 +113,10 @@ pub async fn logout_public(State(state): State<AppState>, request: Request) -> i
         let _ = state.auth.logout.execute(&session_id).await;
     }
 
-    let clear_cookie =
-        format!("{SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=0");
+    let secure_flag = if state.tls_enabled { "; Secure" } else { "" };
+    let clear_cookie = format!(
+        "{SESSION_COOKIE_NAME}=; HttpOnly; SameSite=Strict{secure_flag}; Path=/; Max-Age=0"
+    );
 
     (StatusCode::NO_CONTENT, [(header::SET_COOKIE, clear_cookie)])
 }

@@ -739,6 +739,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         ),
         config_path: None,
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
+        tls_enabled: false,
     };
 
     let app = create_api_routes(state);
@@ -1086,6 +1087,7 @@ async fn test_get_all_configs_after_toggle() {
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         config_path: None,
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
+        tls_enabled: false,
     };
 
     let app = create_api_routes(state);

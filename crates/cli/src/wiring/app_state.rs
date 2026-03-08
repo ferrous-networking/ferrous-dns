@@ -39,6 +39,8 @@ pub async fn build_app_state(
         Arc::new(cfg.auth.clone())
     };
 
+    let tls_enabled = config.read().await.server.web_tls.enabled;
+
     let config_persistence: Arc<dyn ConfigFilePersistence> = Arc::new(TomlConfigFilePersistence);
 
     let password_hasher = Arc::new(Argon2PasswordHasher::new());
@@ -181,6 +183,7 @@ pub async fn build_app_state(
             assign_profile: use_cases.assign_schedule_profile,
         },
         auth,
+        tls_enabled,
         config,
         config_file_persistence: config_persistence,
         config_path,
