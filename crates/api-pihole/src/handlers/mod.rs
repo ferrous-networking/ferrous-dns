@@ -1,2 +1,12 @@
+pub mod action;
 pub mod auth;
+pub mod clients;
+pub mod dns;
+pub mod domains;
+pub mod groups;
+pub mod history;
+pub mod info;
+pub mod lists;
+pub mod queries;
+pub mod search;
 pub mod stats;

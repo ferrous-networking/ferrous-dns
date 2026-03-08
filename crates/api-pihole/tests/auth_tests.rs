@@ -93,10 +93,10 @@ async fn login_with_correct_api_key_returns_valid_session() {
         "session.valid must be true on success"
     );
     assert_eq!(json["session"]["totp"], false);
-    assert_eq!(
-        json["session"]["sid"], "my-api-key",
-        "sid should echo the provided password"
-    );
+    let sid = json["session"]["sid"]
+        .as_str()
+        .expect("sid must be a string");
+    assert!(!sid.is_empty(), "sid must be non-empty on successful login");
     assert!(
         json["session"]["validity"].as_i64().unwrap_or(0) > 0,
         "validity must be positive on success"

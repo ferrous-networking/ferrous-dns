@@ -68,3 +68,16 @@ pub struct QueryTypesResponse {
     /// Values are percentages (0.0–100.0).
     pub querytypes: HashMap<String, f64>,
 }
+
+/// Pi-hole v6 GET /api/stats/top_domains response.
+#[derive(Debug, Serialize)]
+pub struct TopDomainsResponse {
+    pub top_domains: HashMap<String, u64>,
+    pub top_blocked: HashMap<String, u64>,
+}
+
+/// Pi-hole v6 GET /api/stats/recent_blocked response.
+#[derive(Debug, Serialize)]
+pub struct RecentBlockedResponse {
+    pub domain: Option<String>,
+}

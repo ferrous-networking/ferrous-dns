@@ -16,6 +16,7 @@ use sqlx::{Row, SqlitePool};
 use std::cell::RefCell;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -39,6 +40,8 @@ pub struct BlockFilterEngine {
     /// Shared in-memory store of active schedule overrides per group.
     /// Written by `ScheduleEvaluatorJob` every 60 s; read in `check()` on every query.
     schedule_state: Arc<dyn ScheduleStatePort>,
+    /// Global blocking toggle — when `false`, `check()` returns `Allow` immediately.
+    blocking_enabled: AtomicBool,
     default_group_id: i64,
     pool: SqlitePool,
     http_client: reqwest::Client,
@@ -49,6 +52,7 @@ impl BlockFilterEngine {
         pool: SqlitePool,
         default_group_id: i64,
         schedule_state: Arc<dyn ScheduleStatePort>,
+        blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
         let http_client = reqwest::Client::builder()
             .user_agent("Ferrous-DNS/1.0 (blocklist-sync)")
@@ -62,6 +66,7 @@ impl BlockFilterEngine {
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             subnet_matcher: ArcSwap::from_pointee(None),
             schedule_state,
+            blocking_enabled: AtomicBool::new(blocking_enabled),
             default_group_id,
             pool,
             http_client,
@@ -183,6 +188,10 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
+        if !self.blocking_enabled.load(Ordering::Acquire) {
+            return FilterDecision::Allow;
+        }
+
         // Schedule override check: O(1) is_empty() guard keeps cost zero when
         // no schedules are configured. Not cached per-domain — schedule state
         // changes every minute, not per query.
@@ -274,5 +283,14 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     fn compiled_domain_count(&self) -> usize {
         self.index.load().total_blocked_domains
+    }
+
+    fn is_blocking_enabled(&self) -> bool {
+        self.blocking_enabled.load(Ordering::Acquire)
+    }
+
+    fn set_blocking_enabled(&self, enabled: bool) {
+        self.blocking_enabled.store(enabled, Ordering::Release);
+        info!(enabled, "Blocking toggle changed");
     }
 }

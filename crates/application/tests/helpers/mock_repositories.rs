@@ -423,6 +423,14 @@ impl QueryLogRepository for MockQueryLogRepository {
         Ok(Vec::new())
     }
 
+    async fn get_top_allowed_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        Ok(Vec::new())
+    }
+
     async fn get_top_clients(
         &self,
         _limit: u32,
@@ -1619,4 +1627,10 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     fn compiled_domain_count(&self) -> usize {
         0
     }
+
+    fn is_blocking_enabled(&self) -> bool {
+        true
+    }
+
+    fn set_blocking_enabled(&self, _enabled: bool) {}
 }

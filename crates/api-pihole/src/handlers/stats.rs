@@ -1,29 +1,53 @@
-use axum::{extract::State, Json};
+use axum::extract::{Query, State};
+use axum::Json;
 use chrono::DateTime;
 use ferrous_dns_application::ports::TimeGranularity;
+use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::{
     dto::stats::{
         ClientSummary, GravitySummary, HistoryBucket, HistoryResponse, QuerySummary,
-        QueryTypesResponse, SummaryResponse, TopBlockedResponse, TopClientsResponse,
+        QueryTypesResponse, RecentBlockedResponse, SummaryResponse, TopBlockedResponse,
+        TopClientsResponse, TopDomainsResponse,
     },
+    dto::upstreams::UpstreamsResponse,
     errors::PiholeApiError,
     state::PiholeAppState,
 };
 
-const STATS_PERIOD_HOURS: f32 = 24.0;
-const TOP_ITEMS_LIMIT: u32 = 25;
+pub const STATS_PERIOD_HOURS: f32 = 24.0;
+pub const TOP_ITEMS_LIMIT: u32 = 25;
+
+/// Known internal source_stats keys that are not upstream servers.
+const INTERNAL_SOURCE_KEYS: &[&str] = &["cache", "local_dns", "blocked", "safe_search"];
+
+/// Query parameters for database endpoints (`/stats/database/*`).
+#[derive(Debug, Deserialize)]
+pub struct DatabaseQueryParams {
+    /// Period in hours (default 24).
+    pub from: Option<f32>,
+    /// Limit for top-N queries (default 25).
+    pub limit: Option<u32>,
+}
+
+impl DatabaseQueryParams {
+    fn period(&self) -> f32 {
+        self.from.unwrap_or(STATS_PERIOD_HOURS)
+    }
+
+    fn limit(&self) -> u32 {
+        self.limit.unwrap_or(TOP_ITEMS_LIMIT)
+    }
+}
 
 /// Pi-hole v6 GET /api/stats/summary
-///
-/// Returns DNS query statistics in Pi-hole v6 schema so third-party dashboards
-/// (e.g. Gravity Sync, Pihole-Exporter, HomeAssistant integration) work without
-/// modification.
 pub async fn get_summary(
     State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<SummaryResponse>, PiholeApiError> {
-    let stats = state.get_stats.execute(STATS_PERIOD_HOURS).await?;
+    let period = params.period();
+    let stats = state.query.get_stats.execute(period).await?;
 
     let total = stats.queries_total;
     let blocked = stats.queries_blocked;
@@ -42,6 +66,8 @@ pub async fn get_summary(
         .map(|(record_type, count)| (format!("{record_type:?}"), count))
         .collect();
 
+    let domains_being_blocked = state.blocking.block_filter_engine.compiled_domain_count() as u64;
+
     let response = SummaryResponse {
         queries: QuerySummary {
             total,
@@ -58,24 +84,27 @@ pub async fn get_summary(
             total: stats.unique_clients,
         },
         gravity: GravitySummary {
-            domains_being_blocked: 0,
+            domains_being_blocked,
         },
-        status: "enabled",
+        status: if state.blocking.block_filter_engine.is_blocking_enabled() {
+            "enabled"
+        } else {
+            "disabled"
+        },
     };
 
     Ok(Json(response))
 }
 
 /// Pi-hole v6 GET /api/stats/history
-///
-/// Returns query history bucketed into 10-minute intervals for the last 24
-/// hours, matching the Pi-hole v6 timeline format consumed by most dashboards.
 pub async fn get_history(
     State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<HistoryResponse>, PiholeApiError> {
     let buckets = state
+        .query
         .get_timeline
-        .execute(24, TimeGranularity::QuarterHour)
+        .execute(params.period() as u32, TimeGranularity::QuarterHour)
         .await?;
 
     let history: Vec<HistoryBucket> = buckets
@@ -101,14 +130,17 @@ pub async fn get_history(
 }
 
 /// Pi-hole v6 GET /api/stats/top_blocked
-///
-/// Returns the top blocked domains in Pi-hole v6 format.
 pub async fn get_top_blocked(
     State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<TopBlockedResponse>, PiholeApiError> {
+    let period = params.period();
+    let limit = params.limit();
+
     let domains = state
+        .query
         .get_top_blocked_domains
-        .execute(TOP_ITEMS_LIMIT, STATS_PERIOD_HOURS)
+        .execute(limit, period)
         .await?;
 
     let top_blocked: HashMap<String, u64> = domains.into_iter().collect();
@@ -117,16 +149,14 @@ pub async fn get_top_blocked(
 }
 
 /// Pi-hole v6 GET /api/stats/top_clients
-///
-/// Returns the top clients in Pi-hole v6 format.
-/// Key format: `"<ip>|<hostname>"` (hostname is empty string when unknown).
 pub async fn get_top_clients(
     State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<TopClientsResponse>, PiholeApiError> {
-    let clients = state
-        .get_top_clients
-        .execute(TOP_ITEMS_LIMIT, STATS_PERIOD_HOURS)
-        .await?;
+    let period = params.period();
+    let limit = params.limit();
+
+    let clients = state.query.get_top_clients.execute(limit, period).await?;
 
     let top_sources: HashMap<String, u64> = clients
         .into_iter()
@@ -140,12 +170,12 @@ pub async fn get_top_clients(
 }
 
 /// Pi-hole v6 GET /api/stats/query_types
-///
-/// Returns per-type query percentages in Pi-hole v6 format.
 pub async fn get_query_types(
     State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<QueryTypesResponse>, PiholeApiError> {
-    let stats = state.get_stats.execute(STATS_PERIOD_HOURS).await?;
+    let period = params.period();
+    let stats = state.query.get_stats.execute(period).await?;
 
     let total: u64 = stats.queries_by_type.values().sum();
 
@@ -163,4 +193,71 @@ pub async fn get_query_types(
         .collect();
 
     Ok(Json(QueryTypesResponse { querytypes }))
+}
+
+/// Pi-hole v6 GET /api/stats/top_domains
+///
+/// Returns top allowed + top blocked domains in a single response.
+pub async fn get_top_domains(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<TopDomainsResponse>, PiholeApiError> {
+    let period = params.period();
+    let limit = params.limit();
+
+    let (allowed, blocked) = tokio::join!(
+        state.query.get_top_allowed_domains.execute(limit, period),
+        state.query.get_top_blocked_domains.execute(limit, period),
+    );
+
+    Ok(Json(TopDomainsResponse {
+        top_domains: allowed?.into_iter().collect(),
+        top_blocked: blocked?.into_iter().collect(),
+    }))
+}
+
+/// Pi-hole v6 GET /api/stats/upstreams
+///
+/// Returns upstream DNS server usage statistics.
+/// Upstream keys are identified by exclusion of known internal source names.
+pub async fn get_upstreams(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<UpstreamsResponse>, PiholeApiError> {
+    let stats = state.query.get_stats.execute(params.period()).await?;
+
+    let upstreams: HashMap<String, u64> = stats
+        .source_stats
+        .iter()
+        .filter(|(key, _)| !INTERNAL_SOURCE_KEYS.contains(&key.as_str()))
+        .map(|(key, count)| (key.clone(), *count))
+        .collect();
+
+    let forwarded_queries: u64 = upstreams.values().sum();
+
+    Ok(Json(UpstreamsResponse {
+        upstreams,
+        forwarded_queries,
+        total_queries: stats.queries_total,
+    }))
+}
+
+/// Pi-hole v6 GET /api/stats/recent_blocked
+///
+/// Returns the most recently blocked domain.
+pub async fn get_recent_blocked(
+    State(state): State<PiholeAppState>,
+) -> Result<Json<RecentBlockedResponse>, PiholeApiError> {
+    let queries = state
+        .query
+        .get_recent_queries
+        .execute(200, STATS_PERIOD_HOURS)
+        .await?;
+
+    let domain = queries
+        .into_iter()
+        .find(|q| q.blocked)
+        .map(|q| q.domain.to_string());
+
+    Ok(Json(RecentBlockedResponse { domain }))
 }

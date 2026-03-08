@@ -59,8 +59,9 @@ fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
         | DomainError::InvalidWhitelistSource(_)
         | DomainError::InvalidManagedDomain(_)
         | DomainError::InvalidRegexFilter(_)
-        | DomainError::InvalidGroupName(_)
-        | DomainError::DuplicateScheduleProfileName(_)
+        | DomainError::InvalidGroupName(_) => (StatusCode::UNPROCESSABLE_ENTITY, "bad_request"),
+
+        DomainError::DuplicateScheduleProfileName(_)
         | DomainError::BlockedServiceAlreadyExists(_)
         | DomainError::CustomServiceAlreadyExists(_)
         | DomainError::SubnetConflict(_)

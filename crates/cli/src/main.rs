@@ -72,8 +72,14 @@ async fn async_main() -> anyhow::Result<()> {
     let wal_pool = write_pool.clone();
     let config_repo_pool = wal_pool.clone();
 
-    let repos =
-        wiring::Repositories::new(write_pool, query_log_pool, read_pool, &config.database).await?;
+    let repos = wiring::Repositories::new(
+        write_pool,
+        query_log_pool,
+        read_pool,
+        &config.database,
+        config.blocking.enabled,
+    )
+    .await?;
     let dns_services = wiring::DnsServices::new(&config, &repos).await?;
     let use_cases = wiring::UseCases::new(
         &repos,
@@ -98,12 +104,26 @@ async fn async_main() -> anyhow::Result<()> {
     info!("Subnet matcher cache loaded");
 
     let api_key: Option<Arc<str>> = config.server.api_key.as_deref().map(Arc::from);
-    let pihole_state = wiring::build_pihole_state(&use_cases, api_key.clone());
 
     let effective_config_path: Option<Arc<str>> =
         cli.config.as_deref().map(Arc::from).or_else(|| {
             ferrous_dns_domain::Config::get_config_path().map(|p| Arc::from(p.as_str()))
         });
+
+    let upstream_health: Arc<dyn ferrous_dns_application::ports::UpstreamHealthPort> =
+        Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(
+            dns_services.pool_manager.clone(),
+            dns_services.health_checker.clone(),
+        ));
+
+    let pihole_state = wiring::build_pihole_state(
+        &use_cases,
+        repos.block_filter_engine.clone(),
+        upstream_health,
+        config_arc.clone(),
+        api_key.clone(),
+        effective_config_path.clone(),
+    );
 
     let app_state = wiring::build_app_state(
         use_cases,

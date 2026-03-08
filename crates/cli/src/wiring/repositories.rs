@@ -25,7 +25,7 @@ use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
 use ferrous_dns_infrastructure::service_catalog::{CompositeServiceCatalog, ServiceCatalog};
 use sqlx::{Row, SqlitePool};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 pub struct Repositories {
     pub query_log: Arc<SqliteQueryLogRepository>,
@@ -54,23 +54,33 @@ impl Repositories {
         query_log_pool: SqlitePool,
         read_pool: SqlitePool,
         db_config: &DatabaseConfig,
+        blocking_enabled: bool,
     ) -> Result<Self, ferrous_dns_domain::DomainError> {
         let blocklist = SqliteBlocklistRepository::load(write_pool.clone()).await?;
         let whitelist = SqliteWhitelistRepository::load(write_pool.clone()).await?;
 
         let default_group_id: i64 =
-            sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
+            match sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
                 .fetch_optional(&write_pool)
                 .await
                 .map_err(|e| ferrous_dns_domain::DomainError::DatabaseError(e.to_string()))?
-                .map(|row| row.get::<i64, _>("id"))
-                .unwrap_or(1);
+            {
+                Some(row) => row.get::<i64, _>("id"),
+                None => {
+                    warn!("No default group found in database, falling back to group_id=1");
+                    1
+                }
+            };
 
         let schedule_state: Arc<dyn ScheduleStatePort> = Arc::new(ScheduleStateStore::new());
 
-        let block_filter_engine: Arc<dyn BlockFilterEnginePort> =
-            BlockFilterEngine::new(write_pool.clone(), default_group_id, schedule_state.clone())
-                .await?;
+        let block_filter_engine: Arc<dyn BlockFilterEnginePort> = BlockFilterEngine::new(
+            write_pool.clone(),
+            default_group_id,
+            schedule_state.clone(),
+            blocking_enabled,
+        )
+        .await?;
 
         let composite = CompositeServiceCatalog::new(ServiceCatalog::load());
         let service_catalog: Arc<dyn ServiceCatalogPort> = Arc::new(composite);

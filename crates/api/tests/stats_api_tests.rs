@@ -56,6 +56,10 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
         0
     }
     fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
+    fn is_blocking_enabled(&self) -> bool {
+        true
+    }
+    fn set_blocking_enabled(&self, _enabled: bool) {}
 }
 
 struct NullBlockedServiceRepository;

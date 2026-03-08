@@ -16,4 +16,6 @@ pub trait BlockFilterEnginePort: Send + Sync {
     async fn reload(&self) -> Result<(), DomainError>;
     async fn load_client_groups(&self) -> Result<(), DomainError>;
     fn compiled_domain_count(&self) -> usize;
+    fn is_blocking_enabled(&self) -> bool;
+    fn set_blocking_enabled(&self, enabled: bool);
 }

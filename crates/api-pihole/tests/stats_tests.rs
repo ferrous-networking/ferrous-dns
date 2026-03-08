@@ -326,22 +326,23 @@ async fn history_buckets_contain_required_pihole_v6_fields() {
 
     let history = json["history"].as_array().expect("history must be array");
 
-    // With real data we expect at least one bucket
-    if !history.is_empty() {
-        let bucket = &history[0];
-        assert!(
-            bucket["timestamp"].is_number(),
-            "bucket.timestamp must be unix epoch (integer)"
-        );
-        assert!(bucket["total"].is_number(), "bucket.total must be number");
-        assert!(
-            bucket["blocked"].is_number(),
-            "bucket.blocked must be number"
-        );
+    assert!(
+        !history.is_empty(),
+        "expected at least one bucket after inserting queries"
+    );
+    let bucket = &history[0];
+    assert!(
+        bucket["timestamp"].is_number(),
+        "bucket.timestamp must be unix epoch (integer)"
+    );
+    assert!(bucket["total"].is_number(), "bucket.total must be number");
+    assert!(
+        bucket["blocked"].is_number(),
+        "bucket.blocked must be number"
+    );
 
-        let ts = bucket["timestamp"].as_i64().expect("timestamp must be i64");
-        assert!(ts > 0, "timestamp must be a positive unix epoch");
-    }
+    let ts = bucket["timestamp"].as_i64().expect("timestamp must be i64");
+    assert!(ts > 0, "timestamp must be a positive unix epoch");
 }
 
 // ---------------------------------------------------------------------------
@@ -633,13 +634,15 @@ async fn query_types_percentages_sum_to_100_when_queries_are_present() {
     let types = json["querytypes"]
         .as_object()
         .expect("querytypes must be object");
-    if !types.is_empty() {
-        let total: f64 = types.values().filter_map(|v| v.as_f64()).sum();
-        assert!(
-            (total - 100.0).abs() < 0.01,
-            "percentages must sum to ~100.0, got {total}"
-        );
-    }
+    assert!(
+        !types.is_empty(),
+        "querytypes must not be empty when queries have been inserted"
+    );
+    let total: f64 = types.values().filter_map(|v| v.as_f64()).sum();
+    assert!(
+        (total - 100.0).abs() < 0.01,
+        "percentages must sum to ~100.0, got {total}"
+    );
 }
 
 #[tokio::test]
@@ -673,5 +676,257 @@ async fn query_types_returns_zero_percentages_when_no_queries_logged() {
     assert!(
         types.is_empty(),
         "querytypes must be empty when no queries have been logged"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/top_domains
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn top_domains_returns_both_top_domains_and_top_blocked_keys() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool, None).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/top_domains")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert!(
+        json["top_domains"].is_object(),
+        "response must have a 'top_domains' object field"
+    );
+    assert!(
+        json["top_blocked"].is_object(),
+        "response must have a 'top_blocked' object field"
+    );
+}
+
+#[tokio::test]
+async fn top_domains_separates_allowed_and_blocked_domains() {
+    let pool = helpers::create_test_db().await;
+
+    // 3 allowed queries for "example.com"
+    for _ in 0..3 {
+        helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
+    }
+    // 2 blocked queries for "ads.com"
+    for _ in 0..2 {
+        helpers::insert_query(&pool, "ads.com", "10.0.0.1", true, false, Some("blocklist")).await;
+    }
+
+    let app = helpers::create_pihole_test_app(pool, None).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/top_domains")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    let top_domains = &json["top_domains"];
+    let top_blocked = &json["top_blocked"];
+
+    assert_eq!(
+        top_domains["example.com"], 3,
+        "example.com should appear in top_domains with count 3"
+    );
+    assert!(
+        top_domains["ads.com"].is_null(),
+        "blocked domain must not appear in top_domains"
+    );
+
+    assert_eq!(
+        top_blocked["ads.com"], 2,
+        "ads.com should appear in top_blocked with count 2"
+    );
+    assert!(
+        top_blocked["example.com"].is_null(),
+        "allowed domain must not appear in top_blocked"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/upstreams
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn upstreams_returns_required_fields() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool, None).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/upstreams")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert!(
+        json["upstreams"].is_object(),
+        "response must have an 'upstreams' object field"
+    );
+    assert!(
+        json["forwarded_queries"].is_number(),
+        "response must have a 'forwarded_queries' number field"
+    );
+    assert!(
+        json["total_queries"].is_number(),
+        "response must have a 'total_queries' number field"
+    );
+}
+
+#[tokio::test]
+async fn upstreams_total_queries_matches_data() {
+    let pool = helpers::create_test_db().await;
+
+    for _ in 0..5 {
+        helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
+    }
+
+    let app = helpers::create_pihole_test_app(pool, None).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/upstreams")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert_eq!(
+        json["total_queries"], 5,
+        "total_queries must equal the number of inserted queries"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/recent_blocked
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn recent_blocked_returns_domain_field() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool, None).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/recent_blocked")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert!(
+        json.get("domain").is_some(),
+        "response must have a 'domain' key"
+    );
+}
+
+#[tokio::test]
+async fn recent_blocked_returns_most_recently_blocked_domain() {
+    let pool = helpers::create_test_db().await;
+
+    // 2 allowed queries
+    helpers::insert_query(&pool, "good.com", "10.0.0.1", false, false, None).await;
+    helpers::insert_query(&pool, "safe.org", "10.0.0.1", false, false, None).await;
+
+    // 1 blocked query
+    helpers::insert_query(
+        &pool,
+        "ads.evil.com",
+        "10.0.0.1",
+        true,
+        false,
+        Some("blocklist"),
+    )
+    .await;
+
+    let app = helpers::create_pihole_test_app(pool, None).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/recent_blocked")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert_eq!(
+        json["domain"], "ads.evil.com",
+        "most recently blocked domain must be ads.evil.com"
     );
 }

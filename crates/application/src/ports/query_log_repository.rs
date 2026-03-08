@@ -52,6 +52,11 @@ pub trait QueryLogRepository: Send + Sync {
         limit: u32,
         period_hours: f32,
     ) -> Result<Vec<(String, u64)>, DomainError>;
+    async fn get_top_allowed_domains(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError>;
     async fn get_top_clients(
         &self,
         limit: u32,

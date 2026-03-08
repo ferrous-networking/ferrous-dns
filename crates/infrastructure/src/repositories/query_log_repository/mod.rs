@@ -142,6 +142,14 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         reader::get_top_blocked_domains(&self.read_pool, limit, period_hours).await
     }
 
+    async fn get_top_allowed_domains(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        reader::get_top_allowed_domains(&self.read_pool, limit, period_hours).await
+    }
+
     async fn get_top_clients(
         &self,
         limit: u32,

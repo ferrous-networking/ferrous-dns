@@ -14,12 +14,12 @@ use ferrous_dns_application::use_cases::{
     GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
     GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
     GetScheduleProfilesUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
-    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase,
-    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
-    UpdateWhitelistSourceUseCase,
+    GetTopAllowedDomainsUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase,
+    SyncHostnamesUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -34,6 +34,7 @@ pub struct UseCases {
     pub get_block_filter_stats: Arc<GetBlockFilterStatsUseCase>,
     pub get_cache_stats: Arc<GetCacheStatsUseCase>,
     pub get_top_blocked_domains: Arc<GetTopBlockedDomainsUseCase>,
+    pub get_top_allowed_domains: Arc<GetTopAllowedDomainsUseCase>,
     pub get_top_clients: Arc<GetTopClientsUseCase>,
     pub get_clients: Arc<GetClientsUseCase>,
     pub sync_arp: Arc<SyncArpCacheUseCase>,
@@ -115,6 +116,9 @@ impl UseCases {
             )),
             get_cache_stats: Arc::new(GetCacheStatsUseCase::new(repos.query_log.clone())),
             get_top_blocked_domains: Arc::new(GetTopBlockedDomainsUseCase::new(
+                repos.query_log.clone(),
+            )),
+            get_top_allowed_domains: Arc::new(GetTopAllowedDomainsUseCase::new(
                 repos.query_log.clone(),
             )),
             get_top_clients: Arc::new(GetTopClientsUseCase::new(repos.query_log.clone())),

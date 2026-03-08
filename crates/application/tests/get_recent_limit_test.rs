@@ -61,6 +61,14 @@ impl QueryLogRepository for CaptureLimitRepository {
         unimplemented!()
     }
 
+    async fn get_top_allowed_domains(
+        &self,
+        _: u32,
+        _: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        unimplemented!()
+    }
+
     async fn get_top_clients(
         &self,
         _: u32,
