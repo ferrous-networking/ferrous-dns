@@ -9,21 +9,27 @@ use tracing::warn;
 /// Loads a `rustls::ServerConfig` from PEM certificate and key files.
 ///
 /// Returns `Ok(None)` if either file is absent — the caller should skip the
-/// encrypted listener and continue with plain DNS. Returns `Err` only when a
+/// encrypted listener and continue with plain transport. Returns `Err` only when a
 /// file exists but cannot be parsed or contains an invalid key.
 pub fn load_server_tls_config(
     cert_path: &str,
     key_path: &str,
+    listener_name: &str,
 ) -> anyhow::Result<Option<Arc<rustls::ServerConfig>>> {
     if !Path::new(cert_path).exists() {
         warn!(
             path = cert_path,
-            "TLS cert file not found — DoT/DoH disabled"
+            listener = listener_name,
+            "TLS cert file not found — {listener_name} disabled"
         );
         return Ok(None);
     }
     if !Path::new(key_path).exists() {
-        warn!(path = key_path, "TLS key file not found — DoT/DoH disabled");
+        warn!(
+            path = key_path,
+            listener = listener_name,
+            "TLS key file not found — {listener_name} disabled"
+        );
         return Ok(None);
     }
 

@@ -58,6 +58,9 @@ pub fn create_api_routes(state: AppState) -> Router {
             get(handlers::upstream::get_upstream_health_detail),
         )
         .route("/system/info", get(handlers::get_system_info))
+        .route("/tls/status", get(handlers::tls::get_tls_status))
+        .route("/tls/upload", post(handlers::tls::upload_tls_certs))
+        .route("/tls/generate", post(handlers::tls::generate_self_signed))
         .merge(handlers::auth::protected_routes())
         .merge(handlers::users::routes())
         .merge(handlers::api_tokens::routes())

@@ -23,6 +23,7 @@ pub mod regex_filters;
 pub mod stats;
 pub mod system_info;
 pub mod timeline;
+pub mod tls;
 pub mod whitelist;
 pub mod whitelist_sources;
 

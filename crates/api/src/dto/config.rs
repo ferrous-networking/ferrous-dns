@@ -27,6 +27,14 @@ pub struct ServerConfigResponse {
     pub web_port: u16,
     pub bind_address: String,
     pub pihole_compat: bool,
+    pub web_tls: WebTlsConfigResponse,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct WebTlsConfigResponse {
+    pub enabled: bool,
+    pub tls_cert_path: String,
+    pub tls_key_path: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -111,6 +119,14 @@ pub struct AuthConfigUpdate {
 #[derive(Deserialize, Debug)]
 pub struct ServerConfigUpdate {
     pub pihole_compat: Option<bool>,
+    pub web_tls: Option<WebTlsConfigUpdate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct WebTlsConfigUpdate {
+    pub enabled: Option<bool>,
+    pub tls_cert_path: Option<String>,
+    pub tls_key_path: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

@@ -16,6 +16,7 @@ use ferrous_dns_infrastructure::auth::{
 };
 use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
 use ferrous_dns_infrastructure::repositories::{SqliteConfigRepository, TomlConfigFilePersistence};
+use ferrous_dns_infrastructure::tls::TlsCertificateService;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -183,5 +184,6 @@ pub async fn build_app_state(
         config,
         config_file_persistence: config_persistence,
         config_path,
+        tls_cert: Arc::new(TlsCertificateService),
     }
 }

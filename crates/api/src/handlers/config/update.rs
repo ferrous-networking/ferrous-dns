@@ -48,6 +48,18 @@ pub async fn update_config(
             new_config.server.pihole_compat = pihole_compat;
             restart_required = true;
         }
+        if let Some(web_tls_update) = server_update.web_tls {
+            if let Some(enabled) = web_tls_update.enabled {
+                new_config.server.web_tls.enabled = enabled;
+            }
+            if let Some(cert) = web_tls_update.tls_cert_path {
+                new_config.server.web_tls.tls_cert_path = cert;
+            }
+            if let Some(key) = web_tls_update.tls_key_path {
+                new_config.server.web_tls.tls_key_path = key;
+            }
+            restart_required = true;
+        }
     }
 
     if let Some(dns_update) = request.dns {

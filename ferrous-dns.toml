@@ -23,6 +23,16 @@ pihole_compat = true
 # proxy_protocol_enabled = true
 
 
+# ── Web HTTPS (TLS for Dashboard / API) ──────────────────────────────────────
+# When enabled, the web dashboard and REST API are served over HTTPS on the
+# same web_port (8080). If cert/key files are missing, falls back to HTTP.
+
+[server.web_tls]
+enabled       = true
+tls_cert_path = "/data/cert.pem"
+tls_key_path  = "/data/key.pem"
+
+
 # ── Encrypted DNS (DoT / DoH) ─────────────────────────────────────────────────
 # Serves DNS-over-TLS (RFC 7858) and/or DNS-over-HTTPS (RFC 8484).
 # Requires a TLS certificate and private key in PEM format.
@@ -97,12 +107,11 @@ name = "pool1"
 strategy = "Parallel"
 priority = 1
 servers = [
-    "doq://dns.adguard-dns.com:853",
     "https://dns.quad9.net/dns-query",
     "https://cloudflare-dns.com/dns-query",
     "https://dns.google/dns-query",
     "https://doh.cleanbrowsing.org/doh/security-filter/",
-    "doq://dns.alidns.com:853"
+    "https://dns.nextdns.io",
 ]
 
 [[dns.pools]]
@@ -110,8 +119,8 @@ name = "pool2"
 strategy = "Failover"
 priority = 2
 servers = [
+    "doq://dns.adguard-dns.com:853",
     "doq://dns.caliph.dev:853",
-    "https://dns.nextdns.io",
 ]
 
 

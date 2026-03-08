@@ -9,6 +9,61 @@ impl ConfigFilePersistence for TomlConfigFilePersistence {
     }
 }
 
+/// Updates an existing value preserving its inline comment (suffix decoration),
+/// or inserts a new key if absent.
+fn set_val(table: &mut toml_edit::Table, key: &str, new_val: toml_edit::Value) {
+    match table.get_mut(key) {
+        Some(item @ toml_edit::Item::Value(_)) => {
+            let suffix = item.as_value().and_then(|v| v.decor().suffix()).cloned();
+            *item = toml_edit::Item::Value(new_val);
+            if let (Some(s), Some(v)) = (suffix, item.as_value_mut()) {
+                v.decor_mut().set_suffix(s);
+            }
+        }
+        Some(item) => *item = toml_edit::Item::Value(new_val),
+        None => {
+            table.insert(key, toml_edit::Item::Value(new_val));
+        }
+    }
+}
+
+fn str_array(values: &[String]) -> toml_edit::Value {
+    let mut arr = toml_edit::Array::new();
+    for v in values {
+        arr.push(v.as_str());
+    }
+    toml_edit::Value::Array(arr)
+}
+
+/// Gets a mutable reference to a top-level table, creating it if absent
+/// (handles commented-out sections that `toml_edit` doesn't see).
+fn ensure_table<'a>(
+    doc: &'a mut toml_edit::DocumentMut,
+    key: &str,
+) -> Result<&'a mut toml_edit::Table, ConfigError> {
+    if doc.get(key).is_none() {
+        doc.insert(key, toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    doc.get_mut(key)
+        .and_then(|item| item.as_table_mut())
+        .ok_or_else(|| ConfigError::Parse(format!("Failed to ensure table '{key}'")))
+}
+
+/// Gets a mutable reference to a sub-table inside a parent table,
+/// creating it if absent.
+fn ensure_subtable<'a>(
+    parent: &'a mut toml_edit::Table,
+    key: &str,
+) -> Result<&'a mut toml_edit::Table, ConfigError> {
+    if parent.get(key).is_none() {
+        parent.insert(key, toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    parent
+        .get_mut(key)
+        .and_then(|item| item.as_table_mut())
+        .ok_or_else(|| ConfigError::Parse(format!("Failed to ensure subtable '{key}'")))
+}
+
 pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigError> {
     let existing = std::fs::read_to_string(path)
         .map_err(|e| ConfigError::FileRead(path.to_string(), e.to_string()))?;
@@ -17,31 +72,9 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| ConfigError::Parse(format!("Failed to parse config file: {}", e)))?;
 
-    fn set_val(table: &mut toml_edit::Table, key: &str, new_val: toml_edit::Value) {
-        match table.get_mut(key) {
-            Some(item @ toml_edit::Item::Value(_)) => {
-                let suffix = item.as_value().and_then(|v| v.decor().suffix()).cloned();
-                *item = toml_edit::Item::Value(new_val);
-                if let (Some(s), Some(v)) = (suffix, item.as_value_mut()) {
-                    v.decor_mut().set_suffix(s);
-                }
-            }
-            Some(item) => *item = toml_edit::Item::Value(new_val),
-            None => {
-                table.insert(key, toml_edit::Item::Value(new_val));
-            }
-        }
-    }
-
-    fn str_array(values: &[String]) -> toml_edit::Value {
-        let mut arr = toml_edit::Array::new();
-        for v in values {
-            arr.push(v.as_str());
-        }
-        toml_edit::Value::Array(arr)
-    }
-
-    if let Some(t) = doc.get_mut("server").and_then(|i| i.as_table_mut()) {
+    // ── [server] ────────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "server")?;
         set_val(
             t,
             "dns_port",
@@ -65,161 +98,187 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
     }
 
-    if let Some(dns_item) = doc.get_mut("dns") {
-        if let Some(t) = dns_item.as_table_mut() {
-            set_val(
-                t,
-                "upstream_servers",
-                str_array(&config.dns.upstream_servers),
-            );
-            set_val(
-                t,
-                "query_timeout",
-                toml_edit::Value::from(config.dns.query_timeout as i64),
-            );
-            set_val(
-                t,
-                "cache_enabled",
-                toml_edit::Value::from(config.dns.cache_enabled),
-            );
-            set_val(
-                t,
-                "cache_ttl",
-                toml_edit::Value::from(config.dns.cache_ttl as i64),
-            );
-            set_val(
-                t,
-                "cache_min_ttl",
-                toml_edit::Value::from(config.dns.cache_min_ttl as i64),
-            );
-            set_val(
-                t,
-                "cache_max_ttl",
-                toml_edit::Value::from(config.dns.cache_max_ttl as i64),
-            );
-            set_val(
-                t,
-                "dnssec_enabled",
-                toml_edit::Value::from(config.dns.dnssec_enabled),
-            );
-            set_val(
-                t,
-                "default_strategy",
-                toml_edit::Value::from(format!("{:?}", config.dns.default_strategy)),
-            );
-            set_val(
-                t,
-                "cache_max_entries",
-                toml_edit::Value::from(config.dns.cache_max_entries as i64),
-            );
-            set_val(
-                t,
-                "cache_eviction_strategy",
-                toml_edit::Value::from(config.dns.cache_eviction_strategy.clone()),
-            );
-            set_val(
-                t,
-                "cache_optimistic_refresh",
-                toml_edit::Value::from(config.dns.cache_optimistic_refresh),
-            );
-            set_val(
-                t,
-                "cache_min_hit_rate",
-                toml_edit::Value::from(config.dns.cache_min_hit_rate),
-            );
-            set_val(
-                t,
-                "cache_min_frequency",
-                toml_edit::Value::from(config.dns.cache_min_frequency as i64),
-            );
-            set_val(
-                t,
-                "cache_min_lfuk_score",
-                toml_edit::Value::from(config.dns.cache_min_lfuk_score),
-            );
-            set_val(
-                t,
-                "cache_refresh_threshold",
-                toml_edit::Value::from(config.dns.cache_refresh_threshold),
-            );
-            set_val(
-                t,
-                "cache_lfuk_history_size",
-                toml_edit::Value::from(config.dns.cache_lfuk_history_size as i64),
-            );
-            set_val(
-                t,
-                "cache_batch_eviction_percentage",
-                toml_edit::Value::from(config.dns.cache_batch_eviction_percentage),
-            );
-            set_val(
-                t,
-                "cache_compaction_interval",
-                toml_edit::Value::from(config.dns.cache_compaction_interval as i64),
-            );
-            set_val(
-                t,
-                "cache_adaptive_thresholds",
-                toml_edit::Value::from(config.dns.cache_adaptive_thresholds),
-            );
-            set_val(
-                t,
-                "cache_access_window_secs",
-                toml_edit::Value::from(config.dns.cache_access_window_secs as i64),
-            );
-            set_val(
-                t,
-                "block_private_ptr",
-                toml_edit::Value::from(config.dns.block_private_ptr),
-            );
-            set_val(
-                t,
-                "block_non_fqdn",
-                toml_edit::Value::from(config.dns.block_non_fqdn),
-            );
-            match &config.dns.local_domain {
-                Some(domain) => set_val(t, "local_domain", toml_edit::Value::from(domain.clone())),
-                None => {
-                    t.remove("local_domain");
-                }
-            }
-            match &config.dns.local_dns_server {
-                Some(server) => set_val(
-                    t,
-                    "local_dns_server",
-                    toml_edit::Value::from(server.clone()),
-                ),
-                None => {
-                    t.remove("local_dns_server");
-                }
-            }
+    // ── [server.web_tls] ────────────────────────────────────────────────
+    {
+        let server = ensure_table(&mut doc, "server")?;
+        let wt = ensure_subtable(server, "web_tls")?;
+        set_val(
+            wt,
+            "enabled",
+            toml_edit::Value::from(config.server.web_tls.enabled),
+        );
+        set_val(
+            wt,
+            "tls_cert_path",
+            toml_edit::Value::from(config.server.web_tls.tls_cert_path.clone()),
+        );
+        set_val(
+            wt,
+            "tls_key_path",
+            toml_edit::Value::from(config.server.web_tls.tls_key_path.clone()),
+        );
+    }
 
-            if let Some(hc) = t.get_mut("health_check").and_then(|i| i.as_table_mut()) {
-                set_val(
-                    hc,
-                    "interval",
-                    toml_edit::Value::from(config.dns.health_check.interval as i64),
-                );
-                set_val(
-                    hc,
-                    "timeout",
-                    toml_edit::Value::from(config.dns.health_check.timeout as i64),
-                );
-                set_val(
-                    hc,
-                    "failure_threshold",
-                    toml_edit::Value::from(config.dns.health_check.failure_threshold as i64),
-                );
-                set_val(
-                    hc,
-                    "success_threshold",
-                    toml_edit::Value::from(config.dns.health_check.success_threshold as i64),
-                );
+    // ── [dns] ───────────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "dns")?;
+        set_val(
+            t,
+            "upstream_servers",
+            str_array(&config.dns.upstream_servers),
+        );
+        set_val(
+            t,
+            "query_timeout",
+            toml_edit::Value::from(config.dns.query_timeout as i64),
+        );
+        set_val(
+            t,
+            "cache_enabled",
+            toml_edit::Value::from(config.dns.cache_enabled),
+        );
+        set_val(
+            t,
+            "cache_ttl",
+            toml_edit::Value::from(config.dns.cache_ttl as i64),
+        );
+        set_val(
+            t,
+            "cache_min_ttl",
+            toml_edit::Value::from(config.dns.cache_min_ttl as i64),
+        );
+        set_val(
+            t,
+            "cache_max_ttl",
+            toml_edit::Value::from(config.dns.cache_max_ttl as i64),
+        );
+        set_val(
+            t,
+            "dnssec_enabled",
+            toml_edit::Value::from(config.dns.dnssec_enabled),
+        );
+        set_val(
+            t,
+            "default_strategy",
+            toml_edit::Value::from(format!("{:?}", config.dns.default_strategy)),
+        );
+        set_val(
+            t,
+            "cache_max_entries",
+            toml_edit::Value::from(config.dns.cache_max_entries as i64),
+        );
+        set_val(
+            t,
+            "cache_eviction_strategy",
+            toml_edit::Value::from(config.dns.cache_eviction_strategy.clone()),
+        );
+        set_val(
+            t,
+            "cache_optimistic_refresh",
+            toml_edit::Value::from(config.dns.cache_optimistic_refresh),
+        );
+        set_val(
+            t,
+            "cache_min_hit_rate",
+            toml_edit::Value::from(config.dns.cache_min_hit_rate),
+        );
+        set_val(
+            t,
+            "cache_min_frequency",
+            toml_edit::Value::from(config.dns.cache_min_frequency as i64),
+        );
+        set_val(
+            t,
+            "cache_min_lfuk_score",
+            toml_edit::Value::from(config.dns.cache_min_lfuk_score),
+        );
+        set_val(
+            t,
+            "cache_refresh_threshold",
+            toml_edit::Value::from(config.dns.cache_refresh_threshold),
+        );
+        set_val(
+            t,
+            "cache_lfuk_history_size",
+            toml_edit::Value::from(config.dns.cache_lfuk_history_size as i64),
+        );
+        set_val(
+            t,
+            "cache_batch_eviction_percentage",
+            toml_edit::Value::from(config.dns.cache_batch_eviction_percentage),
+        );
+        set_val(
+            t,
+            "cache_compaction_interval",
+            toml_edit::Value::from(config.dns.cache_compaction_interval as i64),
+        );
+        set_val(
+            t,
+            "cache_adaptive_thresholds",
+            toml_edit::Value::from(config.dns.cache_adaptive_thresholds),
+        );
+        set_val(
+            t,
+            "cache_access_window_secs",
+            toml_edit::Value::from(config.dns.cache_access_window_secs as i64),
+        );
+        set_val(
+            t,
+            "block_private_ptr",
+            toml_edit::Value::from(config.dns.block_private_ptr),
+        );
+        set_val(
+            t,
+            "block_non_fqdn",
+            toml_edit::Value::from(config.dns.block_non_fqdn),
+        );
+        match &config.dns.local_domain {
+            Some(domain) => set_val(t, "local_domain", toml_edit::Value::from(domain.clone())),
+            None => {
+                t.remove("local_domain");
+            }
+        }
+        match &config.dns.local_dns_server {
+            Some(server) => set_val(
+                t,
+                "local_dns_server",
+                toml_edit::Value::from(server.clone()),
+            ),
+            None => {
+                t.remove("local_dns_server");
             }
         }
     }
 
-    if let Some(t) = doc.get_mut("blocking").and_then(|i| i.as_table_mut()) {
+    // ── [dns.health_check] ──────────────────────────────────────────────
+    {
+        let dns = ensure_table(&mut doc, "dns")?;
+        let hc = ensure_subtable(dns, "health_check")?;
+        set_val(
+            hc,
+            "interval",
+            toml_edit::Value::from(config.dns.health_check.interval as i64),
+        );
+        set_val(
+            hc,
+            "timeout",
+            toml_edit::Value::from(config.dns.health_check.timeout as i64),
+        );
+        set_val(
+            hc,
+            "failure_threshold",
+            toml_edit::Value::from(config.dns.health_check.failure_threshold as i64),
+        );
+        set_val(
+            hc,
+            "success_threshold",
+            toml_edit::Value::from(config.dns.health_check.success_threshold as i64),
+        );
+    }
+
+    // ── [blocking] ──────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "blocking")?;
         set_val(
             t,
             "enabled",
@@ -233,7 +292,9 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         set_val(t, "whitelist", str_array(&config.blocking.whitelist));
     }
 
-    if let Some(t) = doc.get_mut("logging").and_then(|i| i.as_table_mut()) {
+    // ── [logging] ───────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "logging")?;
         set_val(
             t,
             "level",
@@ -241,7 +302,9 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
     }
 
-    if let Some(t) = doc.get_mut("database").and_then(|i| i.as_table_mut()) {
+    // ── [database] ──────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "database")?;
         set_val(
             t,
             "path",
@@ -319,11 +382,9 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
     }
 
-    // Ensure [auth] table exists before writing auth fields
-    if doc.get("auth").is_none() {
-        doc.insert("auth", toml_edit::Item::Table(toml_edit::Table::new()));
-    }
-    if let Some(t) = doc.get_mut("auth").and_then(|i| i.as_table_mut()) {
+    // ── [auth] ──────────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "auth")?;
         set_val(t, "enabled", toml_edit::Value::from(config.auth.enabled));
         set_val(
             t,
@@ -345,24 +406,21 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "login_rate_limit_window_secs",
             toml_edit::Value::from(config.auth.login_rate_limit_window_secs as i64),
         );
+    }
 
-        // Ensure [auth.admin] sub-table exists
-        if t.get("admin").is_none() {
-            t.insert("admin", toml_edit::Item::Table(toml_edit::Table::new()));
-        }
-        if let Some(admin) = t.get_mut("admin").and_then(|i| i.as_table_mut()) {
-            set_val(
-                admin,
-                "username",
-                toml_edit::Value::from(config.auth.admin.username.clone()),
-            );
-            match &config.auth.admin.password_hash {
-                Some(hash) => {
-                    set_val(admin, "password_hash", toml_edit::Value::from(hash.clone()));
-                }
-                None => {
-                    admin.remove("password_hash");
-                }
+    // ── [auth.admin] ────────────────────────────────────────────────────
+    {
+        let auth = ensure_table(&mut doc, "auth")?;
+        let admin = ensure_subtable(auth, "admin")?;
+        set_val(
+            admin,
+            "username",
+            toml_edit::Value::from(config.auth.admin.username.clone()),
+        );
+        match &config.auth.admin.password_hash {
+            Some(hash) => set_val(admin, "password_hash", toml_edit::Value::from(hash.clone())),
+            None => {
+                admin.remove("password_hash");
             }
         }
     }
@@ -380,26 +438,25 @@ pub fn save_local_records_to_file(config: &Config, path: &str) -> Result<(), Con
         .parse::<toml_edit::DocumentMut>()
         .map_err(|e| ConfigError::Parse(format!("Failed to parse config file: {}", e)))?;
 
-    if let Some(dns) = doc.get_mut("dns").and_then(|i| i.as_table_mut()) {
-        if config.dns.local_records.is_empty() {
-            dns.remove("local_records");
-        } else {
-            let mut aot = toml_edit::ArrayOfTables::new();
-            for record in &config.dns.local_records {
-                let mut table = toml_edit::Table::new();
-                table.insert("hostname", toml_edit::value(record.hostname.clone()));
-                if let Some(ref domain) = record.domain {
-                    table.insert("domain", toml_edit::value(domain.clone()));
-                }
-                table.insert("ip", toml_edit::value(record.ip.clone()));
-                table.insert("record_type", toml_edit::value(record.record_type.clone()));
-                if let Some(ttl) = record.ttl {
-                    table.insert("ttl", toml_edit::value(ttl as i64));
-                }
-                aot.push(table);
+    let dns = ensure_table(&mut doc, "dns")?;
+    if config.dns.local_records.is_empty() {
+        dns.remove("local_records");
+    } else {
+        let mut aot = toml_edit::ArrayOfTables::new();
+        for record in &config.dns.local_records {
+            let mut table = toml_edit::Table::new();
+            table.insert("hostname", toml_edit::value(record.hostname.clone()));
+            if let Some(ref domain) = record.domain {
+                table.insert("domain", toml_edit::value(domain.clone()));
             }
-            dns.insert("local_records", toml_edit::Item::ArrayOfTables(aot));
+            table.insert("ip", toml_edit::value(record.ip.clone()));
+            table.insert("record_type", toml_edit::value(record.record_type.clone()));
+            if let Some(ttl) = record.ttl {
+                table.insert("ttl", toml_edit::value(ttl as i64));
+            }
+            aot.push(table);
         }
+        dns.insert("local_records", toml_edit::Item::ArrayOfTables(aot));
     }
 
     std::fs::write(path, doc.to_string())

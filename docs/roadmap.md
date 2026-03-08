@@ -72,7 +72,7 @@
 ### v0.7.0 — Security
 
 - [x] Login / authentication
-- [ ] HTTPS for Web UI
+- [x] HTTPS for Web UI
 - [x] API Key / token system
 - [ ] TOTP / 2FA
 - [ ] Per-client DNS rate limiting

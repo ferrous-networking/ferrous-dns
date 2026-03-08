@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::encrypted_dns::EncryptedDnsConfig;
+use super::web_tls::WebTlsConfig;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServerConfig {
@@ -25,6 +26,9 @@ pub struct ServerConfig {
     /// Defaults to `false` — no change in behaviour for existing deployments.
     #[serde(default)]
     pub pihole_compat: bool,
+
+    #[serde(default)]
+    pub web_tls: WebTlsConfig,
 }
 
 fn default_cors_origins() -> Vec<String> {
@@ -41,6 +45,7 @@ impl Default for ServerConfig {
             encrypted_dns: EncryptedDnsConfig::default(),
             proxy_protocol_enabled: false,
             pihole_compat: false,
+            web_tls: WebTlsConfig::default(),
         }
     }
 }

@@ -1,6 +1,7 @@
 pub mod dns;
 pub mod doh;
 pub mod web;
+mod web_tls;
 
 pub use dns::dot::start_dot_server;
 pub use dns::start_dns_server;

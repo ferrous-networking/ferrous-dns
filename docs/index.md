@@ -50,9 +50,11 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 === "Security"
 
+    - **HTTPS for dashboard and API** — single port with automatic HTTP → HTTPS redirect
     - Session-based authentication with login/logout
     - Named API tokens with SHA-256 hashed storage
     - First-run setup wizard for password configuration
+    - Self-signed certificate generation from the UI
     - Login rate limiting and session management
     - DNSSEC validation
     - DNS rebinding protection

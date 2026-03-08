@@ -2,7 +2,7 @@ use crate::{
     dto::{
         AuthConfigResponse, BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse,
         DnsConfigResponse, HealthCheckResponse, LoggingConfigResponse, ServerConfigResponse,
-        UpstreamPoolResponse,
+        UpstreamPoolResponse, WebTlsConfigResponse,
     },
     state::AppState,
 };
@@ -31,6 +31,11 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             web_port: config.server.web_port,
             bind_address: config.server.bind_address.clone(),
             pihole_compat: config.server.pihole_compat,
+            web_tls: WebTlsConfigResponse {
+                enabled: config.server.web_tls.enabled,
+                tls_cert_path: config.server.web_tls.tls_cert_path.clone(),
+                tls_key_path: config.server.web_tls.tls_key_path.clone(),
+            },
         },
         dns: DnsConfigResponse {
             upstream_servers: config.dns.upstream_servers.clone(),

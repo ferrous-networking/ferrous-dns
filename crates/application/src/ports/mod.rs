@@ -24,6 +24,7 @@ mod schedule_profile_repository;
 mod schedule_state_port;
 mod service_catalog_port;
 mod session_repository;
+mod tls_certificate_port;
 mod upstream_health_port;
 mod user_repository;
 mod whitelist_repository;
@@ -57,6 +58,7 @@ pub use schedule_profile_repository::ScheduleProfileRepository;
 pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
 pub use session_repository::SessionRepository;
+pub use tls_certificate_port::{TlsCertificateInfo, TlsCertificatePort};
 pub use upstream_health_port::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
     UpstreamStatus,

@@ -63,12 +63,17 @@
             editTokenName: '',
             editTokenCustomKey: '',
             activeSessions: [],
+            // TLS state
+            webTls: { enabled: false, tls_cert_path: '', tls_key_path: '' },
+            tlsStatus: { cert_exists: false, key_exists: false, cert_valid: false, cert_subject: '', cert_not_after: '' },
+            tlsCertFile: null,
+            tlsKeyFile: null,
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadAuthConfig(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions()]);
+                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadAuthConfig(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
                 scheduleLucide(100);
                 this.startPolling();
                 document.addEventListener('visibilitychange', () => {
@@ -150,6 +155,13 @@
                                 priority: 1,
                                 servers: [...data.dns.upstream_servers]
                             }]
+                        }
+                        if (data.server?.web_tls) {
+                            this.webTls = {
+                                enabled: data.server.web_tls.enabled ?? false,
+                                tls_cert_path: data.server.web_tls.tls_cert_path ?? '/data/cert.pem',
+                                tls_key_path: data.server.web_tls.tls_key_path ?? '/data/key.pem',
+                            };
                         }
                         if (data.auth) {
                             this.authConfig = {
@@ -272,7 +284,8 @@
                     });
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
-                        this.apiRestartRequired = true;
+                        this.restartRequired = true;
+                        setRestartRequired();
                         this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
                         scheduleLucide(50);
                     } else {
@@ -537,6 +550,80 @@
                     } else {
                         const data = await r.json().catch(() => ({}));
                         this.showAlert('error', data.error || 'Failed to revoke session');
+                    }
+                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+            },
+            // --- TLS methods ---
+            async loadTlsStatus() {
+                try {
+                    const r = await apiFetch(`${API_BASE}/tls/status`);
+                    if (r.ok) this.tlsStatus = await r.json();
+                } catch (e) { console.error('Load TLS status:', e); }
+            },
+            async saveWebTlsConfig() {
+                try {
+                    const r = await apiFetch(`${API_BASE}/config`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({server: {web_tls: {
+                            enabled: this.webTls.enabled,
+                            tls_cert_path: this.webTls.tls_cert_path,
+                            tls_key_path: this.webTls.tls_key_path
+                        }}})
+                    });
+                    const data = await r.json();
+                    if (r.ok && data.success !== false) {
+                        this.showAlert('success', 'HTTPS settings saved');
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            setRestartRequired();
+                        }
+                    } else {
+                        this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'));
+                    }
+                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+            },
+            async uploadCerts() {
+                const certInput = document.getElementById('tls-cert-input');
+                const keyInput = document.getElementById('tls-key-input');
+                if (!certInput?.files[0] || !keyInput?.files[0]) {
+                    this.showAlert('error', 'Please select both certificate and key files');
+                    return;
+                }
+                const fd = new FormData();
+                fd.append('cert', certInput.files[0]);
+                fd.append('key', keyInput.files[0]);
+                try {
+                    const r = await apiFetch(`${API_BASE}/tls/upload`, {method: 'POST', body: fd});
+                    const data = await r.json();
+                    if (data.success) {
+                        this.showAlert('success', data.message);
+                        await this.loadTlsStatus();
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            setRestartRequired();
+                        }
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', data.message || 'Upload failed');
+                    }
+                } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+            },
+            async generateSelfSigned() {
+                const force = this.tlsStatus.cert_exists ? '?force=true' : '';
+                try {
+                    const r = await apiFetch(`${API_BASE}/tls/generate${force}`, {method: 'POST'});
+                    const data = await r.json();
+                    if (data.success) {
+                        this.showAlert('success', data.message);
+                        await this.loadTlsStatus();
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            setRestartRequired();
+                        }
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', data.message || 'Generation failed');
                     }
                 } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
             },

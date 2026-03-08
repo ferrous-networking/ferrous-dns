@@ -22,6 +22,7 @@ pub mod schedule;
 pub mod stats;
 pub mod system_info;
 pub mod timeline;
+pub mod tls;
 pub mod user;
 pub mod whitelist;
 pub mod whitelist_source;
@@ -56,6 +57,7 @@ pub use safe_search::{SafeSearchConfigResponse, ToggleSafeSearchRequest};
 pub use stats::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistribution};
 pub use system_info::SystemInfoResponse;
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
+pub use tls::{GenerateQuery, TlsStatusResponse, TlsUploadResponse};
 pub use whitelist::WhitelistResponse;
 pub use whitelist_source::{
     CreateWhitelistSourceRequest, UpdateWhitelistSourceRequest, WhitelistSourceResponse,

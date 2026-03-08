@@ -16,7 +16,7 @@ bind_address = "0.0.0.0"
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
-| `web_port` | `8080` | HTTP port for the dashboard and REST API |
+| `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
 | `bind_address` | `0.0.0.0` | Network interface to bind to. Use a specific IP to restrict access |
 
 ---
@@ -79,6 +79,33 @@ cors_allowed_origins = ["https://dashboard.example.com"]
 ```
 
 Use `["*"]` to allow all origins (not recommended for production).
+
+---
+
+## HTTPS (Web TLS) {#web-tls}
+
+Serve the dashboard and REST API over HTTPS. When enabled, the same `web_port` handles both HTTPS and plain HTTP (with automatic redirect to HTTPS).
+
+```toml title="ferrous-dns.toml"
+[server.web_tls]
+enabled       = false               # Enable HTTPS
+tls_cert_path = "/data/cert.pem"    # PEM certificate path
+tls_key_path  = "/data/key.pem"     # PEM private key path
+```
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `false` | Enable HTTPS for the web server |
+| `tls_cert_path` | `str` | `/data/cert.pem` | Path to the PEM-encoded TLS certificate |
+| `tls_key_path` | `str` | `/data/key.pem` | Path to the PEM-encoded TLS private key |
+
+!!! tip "Quick setup"
+    You can generate a self-signed certificate directly from the UI under **Settings > Security > HTTPS / TLS** — no command-line tools needed.
+
+!!! note "Graceful fallback"
+    If `enabled = true` but certificate files are missing, the server logs a warning and falls back to plain HTTP.
+
+See [HTTPS for Web UI](../features/security.md#https) for full details, API endpoints, and UI management.
 
 ---
 

@@ -1268,6 +1268,95 @@
     <!-- SECURITY TAB -->
     <div x-show="currentTab==='security'&&!loading" x-cloak>
 
+        <!-- HTTPS / TLS -->
+        <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="lock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">HTTPS / TLS</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">
+                Secure the web dashboard and API with TLS encryption.
+            </p>
+
+            <!-- Enable HTTPS Toggle -->
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:0 0 20px;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:32px">
+                    <h4 style="font-size:15px;font-weight:600;margin:0 0 4px">Enable HTTPS</h4>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">
+                        Serve the dashboard and API over HTTPS instead of HTTP. Requires a valid TLS certificate.
+                    </p>
+                </div>
+                <div @click="webTls.enabled=!webTls.enabled"
+                     :class="webTls.enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <!-- TLS Details (shown when enabled) -->
+            <div x-show="webTls.enabled" style="padding-top:20px">
+
+                <!-- TLS Status Badge -->
+                <div style="margin-bottom:20px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <div :style="tlsStatus.cert_valid?'width:8px;height:8px;border-radius:50%;background:var(--color-success)':'width:8px;height:8px;border-radius:50%;background:var(--color-error)'"></div>
+                        <span style="font-size:13px;font-weight:600" x-text="tlsStatus.cert_valid?'Certificate Valid':'No Valid Certificate'"></span>
+                    </div>
+                    <template x-if="tlsStatus.cert_exists">
+                        <div style="font-size:12px;color:var(--text-secondary);display:flex;flex-direction:column;gap:4px">
+                            <span x-show="tlsStatus.cert_subject">Subject: <span x-text="tlsStatus.cert_subject" style="font-family:monospace"></span></span>
+                            <span x-show="tlsStatus.cert_not_after">Expires: <span x-text="tlsStatus.cert_not_after" style="font-family:monospace"></span></span>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Certificate Paths (readonly) -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:600px;margin-bottom:20px">
+                    <div class="form-group">
+                        <label class="form-label">Certificate Path</label>
+                        <input type="text" x-model="webTls.tls_cert_path" style="font-size:13px;font-family:monospace" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Key Path</label>
+                        <input type="text" x-model="webTls.tls_key_path" style="font-size:13px;font-family:monospace" readonly>
+                    </div>
+                </div>
+
+                <!-- Upload Certificate -->
+                <div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
+                    <h4 style="font-size:14px;font-weight:600;margin:0 0 12px">Upload Certificate</h4>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:600px;margin-bottom:12px">
+                        <div class="form-group">
+                            <label class="form-label">Certificate File (.pem, .crt)</label>
+                            <input type="file" id="tls-cert-input" accept=".pem,.crt" style="font-size:12px">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Private Key File (.pem, .key)</label>
+                            <input type="file" id="tls-key-input" accept=".pem,.key" style="font-size:12px">
+                        </div>
+                    </div>
+                    <button @click="uploadCerts()" class="btn btn-primary" style="font-size:13px;padding:6px 14px">
+                        <i data-lucide="upload" style="width:14px;height:14px"></i> Upload Certificate
+                    </button>
+                </div>
+
+                <!-- Generate Self-Signed -->
+                <div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:20px">
+                    <h4 style="font-size:14px;font-weight:600;margin:0 0 4px">Quick Setup</h4>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">
+                        Generate a self-signed certificate for immediate HTTPS. Browsers will show a security warning, but the connection is encrypted.
+                    </p>
+                    <button @click="generateSelfSigned()" class="btn btn-secondary" style="font-size:13px;padding:6px 14px">
+                        <i data-lucide="shield-check" style="width:14px;height:14px"></i> Generate Self-Signed Certificate
+                    </button>
+                </div>
+
+            </div>
+
+            <button @click="saveWebTlsConfig()" class="btn btn-primary" style="margin-top:20px">
+                <i data-lucide="save" style="width:15px;height:15px"></i> Save HTTPS Settings
+            </button>
+        </div>
+
         <!-- Authentication Settings -->
         <div class="card">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">

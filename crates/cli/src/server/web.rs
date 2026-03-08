@@ -14,6 +14,8 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+use super::web_tls;
+
 pub async fn start_doh_server(
     bind_addr: SocketAddr,
     handler: Arc<DnsServerHandler>,
@@ -47,20 +49,27 @@ pub async fn start_web_server(
     cors_allowed_origins: &[String],
     pihole_compat: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
+    tls_config: Option<Arc<rustls::ServerConfig>>,
 ) -> anyhow::Result<()> {
+    let scheme = if tls_config.is_some() {
+        "https"
+    } else {
+        "http"
+    };
+
     if pihole_compat {
         info!(
             bind_address = %bind_addr,
-            dashboard_url = format!("http://{}", bind_addr),
-            ferrous_api_url = format!("http://{}/ferrous/api", bind_addr),
-            pihole_api_url = format!("http://{}/api", bind_addr),
+            dashboard_url = format!("{}://{}", scheme, bind_addr),
+            ferrous_api_url = format!("{}://{}/ferrous/api", scheme, bind_addr),
+            pihole_api_url = format!("{}://{}/api", scheme, bind_addr),
             "Starting web server (Pi-hole compat mode)"
         );
     } else {
         info!(
             bind_address = %bind_addr,
-            dashboard_url = format!("http://{}", bind_addr),
-            api_url = format!("http://{}/api", bind_addr),
+            dashboard_url = format!("{}://{}", scheme, bind_addr),
+            api_url = format!("{}://{}/api", scheme, bind_addr),
             "Starting web server"
         );
     }
@@ -72,11 +81,15 @@ pub async fn start_web_server(
         pihole_compat,
         doh_handler,
     );
-    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
-    info!("Web server started successfully");
-
-    axum::serve(listener, app).await?;
+    if let Some(tls_cfg) = tls_config {
+        info!("Web server started successfully (HTTPS)");
+        web_tls::start_https_web_server(bind_addr, app, tls_cfg).await?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+        info!("Web server started successfully");
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }

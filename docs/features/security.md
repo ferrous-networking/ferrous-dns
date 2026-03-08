@@ -214,6 +214,62 @@ proxy_protocol_enabled = true
 
 ---
 
+## HTTPS for Web UI {#https}
+
+Ferrous DNS can serve the dashboard and REST API over HTTPS, encrypting all traffic between your browser and the server.
+
+### How It Works
+
+When HTTPS is enabled, the web server uses a single port (default `8080`) that automatically detects the protocol:
+
+- **TLS connections** (browsers accessing `https://`) are served normally over HTTPS
+- **Plain HTTP connections** receive a `301 Moved Permanently` redirect to `https://`
+
+This means you never need to configure separate HTTP and HTTPS ports.
+
+### Configuration
+
+```toml title="ferrous-dns.toml"
+[server.web_tls]
+enabled       = false               # Enable HTTPS for the dashboard and API
+tls_cert_path = "/data/cert.pem"    # Path to PEM certificate
+tls_key_path  = "/data/key.pem"     # Path to PEM private key
+```
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `false` | Enable HTTPS for the web server |
+| `tls_cert_path` | `str` | `/data/cert.pem` | Path to the PEM-encoded TLS certificate |
+| `tls_key_path` | `str` | `/data/key.pem` | Path to the PEM-encoded TLS private key |
+
+!!! note "Graceful fallback"
+    If `enabled = true` but the certificate files are missing at startup, the server logs a warning and falls back to plain HTTP.
+
+### Managing Certificates via the UI
+
+Navigate to **Settings > Security > HTTPS / TLS** to:
+
+- **Enable/disable** HTTPS with a toggle
+- **View certificate status** — subject, expiration date, and validity
+- **Upload certificates** — drag and drop PEM certificate and key files
+- **Generate a self-signed certificate** — instant HTTPS with one click (browsers will show a security warning, but the connection is encrypted)
+
+!!! tip "Quick setup"
+    Click **Generate Self-Signed Certificate** for immediate HTTPS without needing external certificates. For production, use [Let's Encrypt](https://letsencrypt.org/) or your CA.
+
+### TLS API Endpoints
+
+```http
+GET  /api/tls/status              # Certificate status (exists, valid, subject, expiration)
+POST /api/tls/upload              # Upload cert + key (multipart/form-data)
+POST /api/tls/generate?force=true # Generate self-signed certificate
+```
+
+!!! warning "Restart required"
+    Changing HTTPS settings requires a server restart to take effect. The UI shows a "Restart Required" banner after saving.
+
+---
+
 ## Encrypted DNS Transports
 
 Encrypting DNS traffic prevents:
@@ -232,7 +288,6 @@ The following are planned for future releases:
 
 | Feature | Description |
 |:--------|:------------|
-| **HTTPS for Web UI** | TLS for the dashboard and REST API |
 | **TOTP / 2FA** | Time-based one-time passwords for login |
 | **Rate Limiting** | Per-client DNS query rate limits |
 | **DoS Protection** | Protection against DNS flooding |
@@ -253,5 +308,5 @@ The following are planned for future releases:
 | PROXY Protocol v2 | Active |
 | Dashboard authentication | Active |
 | API token authentication | Active |
+| HTTPS dashboard | Active |
 | TOTP / 2FA | Planned |
-| HTTPS dashboard | Planned |

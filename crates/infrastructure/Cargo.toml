@@ -65,6 +65,11 @@ libc.workspace = true
 equivalent = "1"
 toml_edit.workspace = true
 
+# TLS certificate management
+rcgen = "0.13"
+x509-parser = "0.16"
+rustls-pemfile = "2"
+
 [dev-dependencies]
 tempfile = "3.8"
 time = "0.3"

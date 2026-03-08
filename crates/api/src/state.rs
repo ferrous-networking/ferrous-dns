@@ -1,4 +1,6 @@
-use ferrous_dns_application::ports::{ConfigFilePersistence, DnsCachePort, UpstreamHealthPort};
+use ferrous_dns_application::ports::{
+    ConfigFilePersistence, DnsCachePort, TlsCertificatePort, UpstreamHealthPort,
+};
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, AssignScheduleProfileUseCase, BlockServiceUseCase,
@@ -154,6 +156,7 @@ pub struct AppState {
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub config_path: Option<Arc<str>>,
+    pub tls_cert: Arc<dyn TlsCertificatePort>,
 }
 
 impl AppState {

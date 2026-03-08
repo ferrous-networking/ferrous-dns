@@ -158,6 +158,7 @@ async fn async_main() -> anyhow::Result<()> {
             server::load_server_tls_config(
                 &config.server.encrypted_dns.tls_cert_path,
                 &config.server.encrypted_dns.tls_key_path,
+                "DoT/DoH",
             )?
         } else {
             None
@@ -209,6 +210,16 @@ async fn async_main() -> anyhow::Result<()> {
         None
     };
 
+    let web_tls_config = if config.server.web_tls.enabled {
+        server::load_server_tls_config(
+            &config.server.web_tls.tls_cert_path,
+            &config.server.web_tls.tls_key_path,
+            "Web HTTPS",
+        )?
+    } else {
+        None
+    };
+
     let web_addr: SocketAddr = format!("{}:{}", config.server.bind_address, config.server.web_port)
         .parse()
         .expect("Invalid address");
@@ -220,6 +231,7 @@ async fn async_main() -> anyhow::Result<()> {
         &config.server.cors_allowed_origins,
         config.server.pihole_compat,
         doh_handler,
+        web_tls_config,
     )
     .await?;
 

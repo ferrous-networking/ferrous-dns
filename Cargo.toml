@@ -37,7 +37,7 @@ aho-corasick = "1.1"
 fancy-regex = "0.17.0"
 hostname = "0.4"
 async-trait = "0.1"
-axum = { version = "0.8.8", features = ["macros"] }
+axum = { version = "0.8.8", features = ["macros", "multipart"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["cors", "trace", "fs", "compression-gzip"] }
 serde = { version = "1", features = ["derive", "rc"] }

@@ -65,7 +65,7 @@
 ### 🎯 v0.7.0 - Security (Current)
 
 - [x] Login / Auth
-- [ ] HTTPS for Web UI
+- [x] HTTPS for Web UI
 - [x] API Key / token
 - [ ] TOTP / 2FA
 - [ ] Rate limiting DNS
@@ -88,7 +88,7 @@
 - [ ] Comprehensive test coverage (>80%)
 - [ ] Production deployment guide
 - [ ] API v1 stable
-- [ ] Full documentation
+- [x] Full documentation
 
 ### 🎯 v1.1.0 - Next Features
 

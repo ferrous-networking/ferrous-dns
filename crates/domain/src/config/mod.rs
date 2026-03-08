@@ -10,6 +10,7 @@ pub mod logging;
 pub mod root;
 pub mod server;
 pub mod upstream;
+pub mod web_tls;
 
 pub use auth::{AdminConfig, AuthConfig};
 pub use blocking::BlockingConfig;
@@ -23,3 +24,4 @@ pub use logging::LoggingConfig;
 pub use root::{CliOverrides, Config};
 pub use server::ServerConfig;
 pub use upstream::{UpstreamPool, UpstreamStrategy};
+pub use web_tls::WebTlsConfig;

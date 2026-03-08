@@ -127,6 +127,42 @@ function parseBrowser(ua) {
     return ua.length > 30 ? ua.substring(0, 30) + '...' : ua;
 }
 
+// --- Global restart-required banner ---
+
+function checkRestartRequired() {
+    if (localStorage.getItem('ferrous_restart_required') === 'true') {
+        showRestartBanner();
+    }
+}
+
+function setRestartRequired() {
+    localStorage.setItem('ferrous_restart_required', 'true');
+    showRestartBanner();
+}
+
+function clearRestartRequired() {
+    localStorage.removeItem('ferrous_restart_required');
+    hideRestartBanner();
+}
+
+function showRestartBanner() {
+    if (document.getElementById('global-restart-banner')) return;
+    const main = document.querySelector('main');
+    if (!main) return;
+    const banner = document.createElement('div');
+    banner.id = 'global-restart-banner';
+    banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px';
+    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take effect</p>';
+    main.insertBefore(banner, main.firstChild.nextSibling);
+}
+
+function hideRestartBanner() {
+    const banner = document.getElementById('global-restart-banner');
+    if (banner) banner.remove();
+}
+
+document.addEventListener('DOMContentLoaded', checkRestartRequired);
+
 // --- Rate color using CSS custom properties ---
 
 function getRateColor(queryRate) {
