@@ -90,6 +90,7 @@ nav:
     - Upstream Management: features/upstream-management.md
     - Encrypted DNS: features/encrypted-dns.md
     - Blocking & Filtering: features/blocking-filtering.md
+    - Block Services & Schedules: features/block-services.md
     - Client Management: features/client-management.md
     - Pi-hole Compatibility: features/pihole-compat.md
     - Security: features/security.md

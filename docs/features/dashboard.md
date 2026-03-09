@@ -31,7 +31,7 @@ The landing page shows a real-time overview of your DNS server:
 - **Top queried domains** — most popular DNS lookups
 - **Top blocked domains** — most frequently blocked domains
 - **Top clients** — most active clients by query count
-- **Block filter stats** — blocklist size, bloom filter entries
+- **Block filter stats** — blocklist size, total entries
 
 ### Queries
 

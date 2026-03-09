@@ -744,7 +744,7 @@ DELETE /api/regex-filters/{id}
 GET /api/block-filter/stats
 ```
 
-Returns blocking engine statistics: total domains in blocklist, total in allowlist, bloom filter size.
+Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
 
 ---
 

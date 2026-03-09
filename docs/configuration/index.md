@@ -599,7 +599,7 @@ sqlite_mmap_size_mb          = 64
 | [`[dns.health_check]`](dns.md#health-checks) | Upstream health monitoring |
 | [`[dns.rate_limit]`](rate-limiting.md) | Token bucket rate limiting, NXDOMAIN budget, TC=1 slip, connection limits |
 | [`[dns]` local_dns_server](dns.md#local-dns-server) | PTR lookups, DHCP, upstream hostname resolution |
-| [`cache_*`](cache.md) | L1/L2 cache tuning, eviction, refresh |
+| [`cache_*`](cache.md) | DNS cache tuning, eviction, refresh |
 | [`[blocking]`](blocking.md) | Ad-blocking, allowlist, custom rules |
 | [`[logging]`](database.md) | Log verbosity |
 | [`[database]`](database.md) | SQLite path, query log, write pipeline, tuning |

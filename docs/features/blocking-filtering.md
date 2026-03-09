@@ -8,14 +8,14 @@ Ferrous DNS provides multi-layer DNS filtering with support for blocklists, wild
 
 When a DNS query arrives, Ferrous DNS checks it through several filtering layers before forwarding to an upstream:
 
-```
+```text
 Query: ads.doubleclick.net
          │
          ▼
   1. Allowlist check ──► in allowlist? → ALLOW (skip all blocking)
          │ no
          ▼
-  2. Bloom filter ──────► definite miss? → skip blocklist lookup (~10ns)
+  2. Quick pre-check ──────► definitely not blocked? → skip lookup
          │ possible match
          ▼
   3. Exact domain match ─► in blocklist? → BLOCK (NXDOMAIN)
@@ -56,27 +56,27 @@ custom_blocked = [
 ### Supported Formats
 
 **Hosts file** (`0.0.0.0` or `127.0.0.1` format):
-```
+```text
 0.0.0.0 ads.example.com
 0.0.0.0 tracker.example.org
 127.0.0.1 malware.example.net
 ```
 
 **Domain list** (one domain per line):
-```
+```text
 ads.example.com
 tracker.example.org
 malware.example.net
 ```
 
 **Wildcard** (blocks entire subdomain trees):
-```
+```text
 *.ads.example.com
 *.doubleclick.net
 ```
 
 **Regex** (for complex patterns):
-```
+```text
 /^ads\d+\.example\.com$/
 /^tracking\./
 /telemetry/
@@ -116,7 +116,7 @@ Or add directly from the query log dashboard with one click.
 
 Some trackers hide behind first-party CNAME records to bypass simple domain blocklists:
 
-```
+```text
 tracking.yoursite.com  CNAME  tracking.third-party-analytics.com
 ```
 
@@ -166,6 +166,8 @@ Pre-defined service categories that can be blocked network-wide or per group:
 - Online gambling domains
 
 Access via dashboard: **Services**
+
+See [Block Services & Schedules](block-services.md) for the full guide with per-group examples, custom services, and time-based scheduling.
 
 ---
 

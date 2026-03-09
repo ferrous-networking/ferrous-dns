@@ -38,17 +38,9 @@ Contains:
 - `DomainError` — the single error type used across all layers
 - Business rules that don't depend on any I/O
 
-```rust
-// Example entity — no imports from other crates
-pub struct DnsRecord {
-    pub domain: Arc<str>,
-    pub record_type: RecordType,
-    pub ttl: u32,
-    pub data: RecordData,
-}
-```
+Entities like `DnsRecord`, `DnsQuery`, and `DnsResolution` live here with no external dependencies.
 
-**Rule**: nothing outside of `thiserror` is imported here. If you need I/O, it belongs in `infrastructure`.
+**Rule**: no I/O, no frameworks, no database access. If you need I/O, it belongs in `infrastructure`.
 
 ---
 
@@ -62,23 +54,9 @@ Contains:
 - Orchestration services (subnet matching, schedule evaluation)
 - No infrastructure details
 
-```rust
-// Port definition — just a trait, no implementation
-#[async_trait]
-pub trait DnsResolver: Send + Sync {
-    fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution>;
-    async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError>;
-}
+Ports define abstract interfaces (e.g., `DnsResolver`, `BlocklistSourceRepository`, `QueryLogRepository`). Use cases orchestrate operations by depending on these interfaces, not concrete implementations.
 
-// Use case — receives ports via injection
-pub struct HandleDnsQueryUseCase {
-    resolver: Arc<dyn DnsResolver>,
-    block_filter: Arc<dyn BlockFilterEnginePort>,
-    query_log: Arc<dyn QueryLogRepository>,
-}
-```
-
-**Rule**: use cases never instantiate infrastructure types. They receive `Arc<dyn Port>` via constructor injection.
+**Rule**: use cases never instantiate infrastructure types. They receive abstract interfaces via constructor injection.
 
 ---
 
@@ -136,17 +114,7 @@ Contains:
 - `ApiError` — maps `DomainError` to HTTP status codes
 - Middleware (API key, compression)
 
-```rust
-// Handler delegates to use case — zero business logic in handlers
-pub async fn create(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<CreateBlocklistSourceRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let input = CreateBlocklistSourceInput::from(body);
-    let source = state.use_cases.create_blocklist_source.execute(input).await?;
-    Ok((StatusCode::CREATED, Json(BlocklistSourceResponse::from(source))))
-}
-```
+Handlers delegate to use cases -- they contain zero business logic. Request parsing, validation, and response formatting happen in the API layer, but all data access and domain logic flows through application use cases.
 
 **Rule**: handlers never access infrastructure directly. All data access is through use cases.
 
@@ -175,12 +143,7 @@ Contains:
 - `ScheduleEvaluatorJob` — activates/deactivates time-based blocking rules
 - `JobRunner` — assembles and starts all jobs with `CancellationToken` for graceful shutdown
 
-```rust
-pub trait SpawnableJob: Send + 'static {
-    fn with_cancellation(self, token: CancellationToken) -> Self;
-    fn start_job(self: Arc<Self>) -> tokio::task::JoinHandle<()>;
-}
-```
+All jobs support graceful shutdown via cancellation tokens.
 
 **Rule**: jobs use ports from `application` only. They never import `infrastructure` directly.
 
@@ -208,7 +171,7 @@ cli/src/
     └── jobs.rs             # wires jobs with repositories
 ```
 
-**Rule**: `cli` is the only place where concrete infrastructure types (`SqliteBlocklistSourceRepository`, `DashMapCache`, etc.) are instantiated and injected into use cases.
+**Rule**: `cli` is the only place where concrete infrastructure types (SQLite repositories, cache implementations, etc.) are instantiated and injected into use cases.
 
 ---
 
@@ -226,12 +189,6 @@ tests/
 Run all tests:
 ```bash
 cargo test --workspace
-```
-
-Run specific crate:
-```bash
-cargo test -p ferrous-dns-domain
-cargo test -p ferrous-dns-application
 ```
 
 Run with logging:

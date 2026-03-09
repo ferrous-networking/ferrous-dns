@@ -14,19 +14,16 @@ Every DNS query traverses this sequence. The goal: respond in microseconds when 
 UDP packet received
         │
         ▼
-  Bloom filter check          ~10–15ns   ← guaranteed misses skip everything
-        │ possible hit
-        ▼
-  L1 cache lookup             ~1–3µs     ← thread-local, zero locks
+  L1 cache lookup             ~1-3µs     ← per-thread, zero locks
         │ miss
         ▼
-  L2 cache lookup             ~10–20µs   ← sharded DashMap, per-shard lock
+  L2 cache lookup             ~10-20µs   ← shared, per-shard lock
         │ miss
         ▼
-  In-flight map check         ~200ns     ← is someone already fetching this?
+  In-flight check             ~200ns     ← is someone already fetching this?
         │ nobody fetching
         ▼
-  Upstream query              ~1–50ms    ← DoH / DoT / DoQ / UDP
+  Upstream query              ~1-50ms    ← DoH / DoT / DoQ / UDP
         │
         ▼
   Write to L2 + L1
@@ -35,43 +32,37 @@ UDP packet received
   Send UDP response
 ```
 
-Nothing in this path allocates on the heap for cache hits. No global locks. No syscalls for timing. Every micro-optimization is intentional.
+Nothing in this path allocates memory for cache hits. No global locks. No expensive system calls for timing.
 
 ---
 
 ## L1/L2 Hierarchical Cache
 
-### L1 — Thread-Local, Lock-Free
+### L1 — Per-Thread, Lock-Free
 
-Each Tokio worker thread has its own private L1 cache stored in thread-local storage. Because it is private to the thread, there is zero synchronization overhead.
+Each worker thread has its own private L1 cache. Because it is private to the thread, there is zero synchronization overhead.
 
-```rust
-thread_local! {
-    static L1: RefCell<LruCache<CacheKey, CachedRecord>> = RefCell::new(...);
-}
-```
+- No locks, no contention -- direct memory access
+- Holds the hottest ~100-500 entries per thread
+- L1 hit overhead: ~1-3µs P99
 
-- No mutex, no atomic CAS, no contention — just a direct memory access
-- Holds the hottest ~100–500 entries per thread
-- L1 hit overhead: ~1–3µs P99
+### L2 — Shared, Sharded Cache
 
-### L2 — Sharded DashMap
-
-L2 is a shared cache backed by `DashMap` with `FxBuildHasher`. Instead of a single global lock, DashMap splits into independent shards (default: 4× CPU core count, rounded to the next power of two).
+L2 is a shared cache split into independent shards (default: 4x CPU core count). Each shard has its own lock, so queries for different domains never block each other.
 
 ```
-16-core machine → 64 shards, each with its own RwLock
+16-core machine → 64 shards
 
 Query "google.com" → hash → shard #17 → lock shard #17 only
 Query "reddit.com" → hash → shard #31 → lock shard #31 only
                                          ↑ never blocks each other
 ```
 
-Under real-world load with hundreds of distinct active domains, shard contention is effectively zero.
+Under real-world load with hundreds of distinct active domains, contention is effectively zero.
 
 - Capacity: up to 200,000 entries (configurable)
-- L2 hit overhead: ~10–20µs P99
-- Hash function: `FxBuildHasher` — 3x faster than Rust's `DefaultHasher` for short strings
+- L2 hit overhead: ~10-20µs P99
+- Optimized hash function for fast domain name lookups
 
 ### Why Two Levels?
 
@@ -79,27 +70,27 @@ L1 absorbs the hottest queries (top ~0.1% of domains queried thousands of times 
 
 ---
 
-## Bloom Filter for Negative Lookups
+## Fast Negative Lookups
 
-A significant fraction of DNS queries hit domains that are simply not in the blocklist. Without a Bloom filter, each such query would trigger a full blocklist lookup — an O(n) regex scan or hash table lookup across potentially millions of entries.
+A significant fraction of DNS queries hit domains that are simply not in the blocklist. Without a quick pre-check, each query would trigger a full blocklist lookup across potentially millions of entries.
 
-The Bloom filter answers one question in ~10ns: **"Is this domain definitely not in the blocklist?"**
+Ferrous DNS uses a probabilistic filter that answers one question almost instantly: **"Is this domain definitely not in the blocklist?"**
 
 ```
 Query: "example.com"
          │
          ▼
-   Bloom filter:
-   "Is this in the filter?" → NO  → skip all blocklist checks instantly (~10ns total)
-                            → YES → run full blocklist lookup (possible match)
+   Quick pre-check:
+   "Could this be blocked?" → NO  → skip all blocklist checks instantly
+                             → YES → run full blocklist lookup (possible match)
 ```
 
-- False negatives are impossible — a "no" answer is guaranteed correct
+- A "no" answer is guaranteed correct -- no blocked domain is ever missed
 - False positive rate is kept very low
-- Backed by `AtomicBloom` — concurrent-safe with no locking
-- Cost: ~10–15ns per lookup, regardless of blocklist size
+- Concurrent-safe with no locking
+- Negligible overhead per lookup, regardless of blocklist size
 
-For the ~99% of queries hitting common non-blocked domains, the entire blocklist engine costs only 10–15ns per query.
+For the ~99% of queries hitting common non-blocked domains, the entire blocklist engine adds negligible overhead per query.
 
 ---
 
@@ -125,22 +116,9 @@ Client 3  → cache miss → sees in-flight entry → waits on channel
 Client 50 → upstream responds → all 50 clients receive the answer simultaneously
 ```
 
-The first task to see a cache miss becomes the leader and starts the upstream request. All subsequent requests for the same domain subscribe to a `tokio::watch` channel and receive the response the moment it arrives — at zero additional upstream cost.
+The first query to see a cache miss becomes the "leader" and starts the upstream request. All subsequent requests for the same domain wait on a notification channel and receive the response the moment it arrives -- at zero additional upstream cost.
 
-The `InflightLeaderGuard` uses Rust's RAII (`Drop`) to guarantee the in-flight entry is always cleaned up, even if the upstream request fails or the task is cancelled:
-
-```rust
-impl Drop for InflightLeaderGuard {
-    fn drop(&mut self) {
-        if !self.defused.get() {
-            // Notify all waiters that the upstream request failed
-            if let Some((_, tx)) = self.inflight.remove(&self.key) {
-                let _ = tx.send(None);
-            }
-        }
-    }
-}
-```
+If the upstream request fails or is cancelled, all waiting clients are notified immediately and the tracking entry is cleaned up automatically.
 
 Under load with many clients hitting the same popular domain, this eliminates the thundering-herd problem entirely and reduces upstream traffic by orders of magnitude.
 
@@ -200,62 +178,20 @@ Three eviction strategies are available:
 
 ## Zero-Allocation Hot Path
 
-Heap allocations in the hot path are the primary cause of GC pause spikes in Go-based DNS servers (Blocky, AdGuard Home). Rust eliminates GC entirely, but heap allocations still have measurable cost at scale.
+Go-based DNS servers (Blocky, AdGuard Home) suffer from garbage collector pause spikes under load. Rust eliminates GC entirely. On top of that, Ferrous DNS enforces a strict no-allocation policy on the cache hit path:
 
-Ferrous DNS enforces a strict no-allocation policy on the cache hit path:
-
-**`Arc<str>` instead of `String`**
-
-Domain names are stored as `Arc<str>`. Cloning is a single atomic increment — no allocation, no copy:
-
-```rust
-// One allocation when the Arc is first created (on cache write)
-let domain: Arc<str> = Arc::from("api.github.com");
-
-// All subsequent clones: ~1ns, no heap
-let domain2 = domain.clone();
-```
-
-**`SmallVec` for DNS record sets**
-
-Most DNS responses contain 1–4 records. `SmallVec<[T; 4]>` stores up to 4 elements on the stack, falling back to heap only for larger sets — zero heap allocation for the common case.
-
-**`eq_ignore_ascii_case` for case-insensitive comparison**
-
-DNS names are case-insensitive. The naive approach allocates:
-
-```rust
-domain.to_lowercase() == other.to_lowercase()  // two allocations — forbidden in hot path
-```
-
-Ferrous DNS compares byte-by-byte without allocating:
-
-```rust
-domain.eq_ignore_ascii_case(other)  // zero allocation
-```
-
-**`FxBuildHasher` for DashMap**
-
-The default Rust hasher (SipHash) is designed for hash-flooding resistance, not speed. `FxBuildHasher` is 3x faster for short strings like domain names.
+- **Shared domain strings** -- domain names are stored once and shared by reference. Copying a reference costs ~1ns with no memory allocation
+- **Stack-allocated record sets** -- most DNS responses contain 1-4 records, which are stored on the stack without heap allocation
+- **Zero-copy case comparison** -- DNS names are compared case-insensitively without creating temporary copies
+- **Fast hashing** -- an optimized hash function for short strings (domain names) provides ~3x faster lookups than the standard approach
 
 ---
 
-## TSC Timer — ~1–5ns Hot Path Timing
+## Low-Overhead Timing
 
-Measuring cache hit latency with `Instant::now()` calls `clock_gettime(CLOCK_MONOTONIC)`, which costs ~20ns per call on x86_64. For a ~1µs operation that is 2% overhead per measurement.
+Measuring cache hit latency requires a fast timer. Standard system clock calls cost ~20ns on x86_64, which adds measurable overhead to ~1µs cache hit operations.
 
-Ferrous DNS reads the CPU's timestamp counter directly via the `RDTSC` instruction:
-
-```rust
-// SAFETY: `_rdtsc` is available on all x86_64 CPUs.
-// No memory is accessed — reads hardware registers only.
-#[inline(always)]
-pub fn now() -> u64 {
-    unsafe { core::arch::x86_64::_rdtsc() }
-}
-```
-
-`RDTSC` costs ~1–5ns — roughly 4–20x cheaper than a syscall. On non-x86_64 platforms, Ferrous DNS falls back to `CLOCK_MONOTONIC_COARSE` via the kernel vDSO (~10–15ns, no syscall).
+Ferrous DNS reads the CPU's hardware timestamp counter directly, costing only ~1-5ns -- roughly 4-20x cheaper than a standard clock call. On ARM platforms, it falls back to a fast kernel clock with ~10-15ns overhead.
 
 ---
 
@@ -283,18 +219,13 @@ Batching is critical: a single transaction with 2,000 rows is ~100x faster than 
 
 ---
 
-## mimalloc — System Allocator Replacement
+## Optimized Memory Allocator
 
-Rust's default allocator delegates to the system `malloc`, which is general-purpose but not optimized for high-throughput server patterns. Ferrous DNS replaces it with Microsoft's `mimalloc`:
+Ferrous DNS uses a high-performance memory allocator optimized for server workloads:
 
-- 2–3x faster than glibc malloc for small, short-lived allocations
-- Per-thread free lists minimize cross-thread contention
-- Reduces long-term fragmentation under sustained server load
-
-```rust
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-```
+- 2-3x faster than the default system allocator for small, short-lived allocations
+- Per-thread memory pools minimize cross-thread contention
+- Reduces long-term memory fragmentation under sustained server load
 
 ---
 
@@ -316,18 +247,11 @@ This eliminates the tail-latency risk of any single upstream being momentarily s
 
 ---
 
-## socket2 UDP Buffer Tuning
+## UDP Buffer Tuning
 
 The OS UDP receive buffer determines how many packets the kernel queues before the application processes them. With default buffer sizes, large query bursts overflow the kernel queue and are dropped silently.
 
-Ferrous DNS sets enlarged socket buffers at startup via `socket2`:
-
-```rust
-socket.set_recv_buffer_size(8 * 1024 * 1024)?;  // 8 MB receive buffer
-socket.set_send_buffer_size(8 * 1024 * 1024)?;  // 8 MB send buffer
-```
-
-This directly improves the "queries lost" metric under peak load.
+Ferrous DNS sets enlarged socket buffers (8 MB send and receive) at startup. This directly improves the "queries lost" metric under peak load.
 
 ---
 
@@ -347,18 +271,18 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 | Optimization | Benefit |
 |:-------------|:--------|
-| L1 thread-local cache | Lock-free hits, ~1–3µs P99 |
-| L2 sharded DashMap + FxBuildHasher | Near-zero contention, ~10–20µs P99 |
-| Bloom filter | Negative blocklist lookups in ~10ns |
-| In-flight coalescing | N identical cache-miss queries → 1 upstream request |
+| L1 per-thread cache | Lock-free hits, ~1-3µs P99 |
+| L2 sharded cache | Near-zero contention, ~10-20µs P99 |
+| Fast negative lookups | Non-blocked domains skip blocklist checks instantly |
+| In-flight coalescing | N identical cache-miss queries to 1 upstream request |
 | Optimistic prefetch | Hot entries never expire; near-100% hit rate |
-| LFU-K eviction | Preserves most-active entries under memory pressure |
-| `Arc<str>` + `SmallVec` + `eq_ignore_ascii_case` | Zero heap allocations on cache hit path |
-| TSC timer (RDTSC) | Hot-path timing at ~1–5ns vs ~20ns syscall |
+| Frequency-based eviction | Preserves most-active entries under memory pressure |
+| Zero-allocation hot path | No memory allocation on cache hit path |
+| Hardware timestamp counter | Hot-path timing at ~1-5ns vs ~20ns syscall |
 | Async query log pipeline | Query logging never blocks the resolver |
-| mimalloc | 2–3x faster allocation than system malloc |
+| Optimized memory allocator | 2-3x faster allocation than system default |
 | Parallel upstream strategy | Lowest cache-miss latency, transparent failover |
-| socket2 UDP buffer tuning | Absorbs large bursts without packet loss |
+| UDP buffer tuning | Absorbs large bursts without packet loss |
 
 ---
 

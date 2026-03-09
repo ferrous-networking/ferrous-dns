@@ -120,21 +120,13 @@ If the channel is full (backpressure), entries are dropped and a warning is logg
 
 | Layer | Technology |
 |:------|:----------|
-| Runtime | Tokio async + rayon |
-| Web server | Axum 0.8 |
-| DNS protocol | Hickory DNS 0.26-alpha |
-| Cache L2 | DashMap + FxBuildHasher (sharded) |
-| Cache L1 | Thread-local LRU (lock-free) |
-| Bloom filter | bloomfilter (AtomicBloom) |
+| Language | Rust (async) |
+| Web server | Axum |
+| DNS protocol | Hickory DNS |
+| Cache | Two-level: per-thread L1 + sharded L2 |
 | Cache eviction | LFU-K sliding window |
-| Timer hot path | rdtsc x86_64 (~1–5ns) / CLOCK_MONOTONIC_COARSE |
-| Database | SQLite via sqlx async |
-| Strings | `Arc<str>`, CompactString |
-| Collections (hot path) | SmallVec (stack-allocated) |
-| Sockets | socket2 (UDP buffer tuning) |
-| Allocator | mimalloc |
-| CPU affinity | core_affinity |
-| Transport | rustls, tokio-rustls, quinn (QUIC), reqwest (HTTP/3) |
+| Database | SQLite (async, WAL mode) |
+| TLS/QUIC | rustls, QUIC (HTTP/3 + DoQ) |
 | Frontend | HTMX + Alpine.js + TailwindCSS |
 
 ---
@@ -143,56 +135,41 @@ If the channel is full (backpressure), entries are dropped and a warning is logg
 
 ### Decorator (Resolver Pipeline)
 
-Each resolver layer wraps the previous one via `Arc<dyn DnsResolver>`. Adding caching, DNSSEC, or rate limiting requires only a new struct — existing layers are never modified.
+Each resolver layer wraps the previous one. Adding caching, DNSSEC, or rate limiting requires only a new layer -- existing layers are never modified.
 
 ### Builder (Complex Object Construction)
 
-Objects with multiple optional parameters use Builder pattern:
-
-```rust
-let resolver = ResolverBuilder::new(pool_manager)
-    .with_cache(dns_cache, config.cache_ttl)
-    .with_dnssec()
-    .with_filters(filters)
-    .with_prefetch(predictor)
-    .build()?;
-```
+Objects with multiple optional parameters are assembled step-by-step. The resolver pipeline, for example, is built by chaining optional layers (cache, DNSSEC, filters, prefetch) onto a base resolver.
 
 ### Strategy (Algorithms)
 
-Upstream resolution strategy (`Parallel` / `Balanced` / `Failover`) and cache eviction policy (`hit_rate` / `lfu` / `lru`) are interchangeable at runtime via configuration. No conditional branches in hot-path code.
+Upstream resolution strategy (`Parallel` / `Balanced` / `Failover`) and cache eviction policy (`hit_rate` / `lfu` / `lru`) are interchangeable at runtime via configuration.
 
 ### Observer (Async Events)
 
-DNS query side effects (logging, metrics) are decoupled from query processing via async channels. The hot path emits events with a non-blocking `try_send`. Background workers consume and persist them.
+DNS query side effects (logging, metrics) are decoupled from query processing via async channels. The DNS handler emits events without blocking. Background workers consume and persist them.
 
 ### Repository (Data Access Abstraction)
 
-Use cases interact with data through traits (`BlocklistSourceRepository`, `QueryLogRepository`). SQLite implementations live in the infrastructure layer and are invisible to business logic.
+Use cases interact with data through abstract interfaces. SQLite implementations live in the infrastructure layer and are invisible to business logic.
 
-### Guard (RAII Cleanup)
+### Guard (Automatic Cleanup)
 
-Resources like in-flight map entries use Rust's `Drop` trait for guaranteed cleanup, even on cancellation or panic:
-
-```rust
-// Automatically removes the in-flight entry on Drop
-struct InflightLeaderGuard { ... }
-impl Drop for InflightLeaderGuard { ... }
-```
+Resources like in-flight map entries are automatically cleaned up when they go out of scope, even on failure or cancellation.
 
 ---
 
 ## Hot Path Performance Rules
 
-The DNS hot path is: **UDP recv → bloom check → L1 cache → L2 cache → in-flight → upstream → send**
+The DNS hot path is: **UDP recv -> L1 cache -> L2 cache -> in-flight check -> upstream -> send**
 
 Key constraints on the hot path:
 
-- No heap allocations (`Vec::new()`, `Box::new()`, `String::new()`)
-- No blocking locks — DashMap per-shard or thread-local only
-- No precise syscalls — use `rdtsc` (~1–5ns) not `Instant::now()`
-- No string cloning — use `Arc<str>` (clone = atomic increment only)
-- Case-insensitive comparison without allocation: `eq_ignore_ascii_case()`
+- No memory allocations for cache hits
+- No global locks -- only per-shard or per-thread access
+- Hardware timestamp counter for low-overhead timing
+- Shared string references instead of copies
+- Case-insensitive comparison without allocation
 
 ---
 

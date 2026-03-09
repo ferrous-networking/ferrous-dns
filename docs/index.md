@@ -20,12 +20,12 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 
 === "Performance"
 
-    - **L1/L2 hierarchical cache** — thread-local lock-free L1 + sharded DashMap L2
-    - **LFUK eviction** with sliding window and Bloom filter for negative lookups
+    - **Two-level cache** — fast per-thread L1 cache + shared L2 cache for maximum hit rate
+    - **Smart eviction** — frequency-based eviction keeps popular domains cached
     - **In-flight coalescing** — deduplicates concurrent queries to a single upstream request
-    - **TSC timer** (~1–5ns overhead) for sub-microsecond cache hit measurements
-    - **mimalloc** allocator for reduced allocation overhead
-    - Cache hit P99 < 35µs (actual ~10–20µs)
+    - **Optimistic prefetch** — refreshes popular entries before they expire
+    - **482K queries/second** — 4.9x faster than AdGuard Home, 233x faster than Pi-hole
+    - Cache hit P99 < 35µs (actual ~10-20µs)
 
 === "Encrypted DNS"
 
@@ -57,7 +57,7 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
     - Self-signed certificate generation from the UI
     - Login rate limiting and session management
     - **DNS rate limiting** — token bucket per subnet with NXDOMAIN budget, TC=1 slip, and dry-run mode
-    - **TCP/DoT connection limiting** — per-IP RAII guards prevent connection exhaustion
+    - **TCP/DoT connection limiting** — per-IP limits prevent connection exhaustion
     - DNSSEC validation
     - DNS rebinding protection
     - PROXY Protocol v2 support

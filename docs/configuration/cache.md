@@ -11,22 +11,16 @@ Query arrives
     │
     ▼
 ┌─────────────┐
-│  L1 Cache   │  Thread-local, lock-free, per-CPU
+│  L1 Cache   │  Per-thread, lock-free
 │  ~100–500   │  Cache hit P99 < 5µs
 │  entries    │
 └─────┬───────┘
       │ miss
       ▼
 ┌─────────────┐
-│  L2 Cache   │  DashMap sharded, FxBuildHasher
+│  L2 Cache   │  Shared, sharded across CPU cores
 │  up to 200k │  Cache hit P99 < 35µs
 │  entries    │
-└─────┬───────┘
-      │ miss
-      ▼
-┌─────────────┐
-│ Bloom Filter│  Negative lookup filter (~10–15ns)
-│             │  Avoids L2 lookup for guaranteed misses
 └─────┬───────┘
       │ miss
       ▼
@@ -68,7 +62,7 @@ cache_adaptive_thresholds = false
 | `cache_compaction_interval` | `600` | Seconds between full compaction runs (removes expired entries) |
 | `cache_batch_eviction_percentage` | `0.1` | Fraction of cache evicted in one pass when full (0.1 = 10%) |
 | `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
-| `cache_shard_amount` | auto | DashMap shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
+| `cache_shard_amount` | auto | Cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
 
 !!! tip "Shard tuning"
     The default auto-detection works well for most cases. Override only if you have a specific reason:
@@ -112,7 +106,7 @@ cache_access_window_secs = 43200
 | `cache_min_frequency` | `10` | Minimum total hits before an entry is eligible for refresh |
 | `cache_access_window_secs` | `43200` | Time window (seconds) since last access for refresh eligibility (43200 = 12h) |
 
-**How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold × original_ttl`, and the entry meets the minimum hit rate and frequency thresholds, a background Tokio task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes — zero latency impact for clients.
+**How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold x original_ttl`, and the entry meets the minimum hit rate and frequency thresholds, a background task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes -- zero latency impact for clients.
 
 !!! note
     `cache_min_ttl` should be >= 240 seconds so the refresh job has time to act before expiry.
@@ -142,10 +136,9 @@ LFU-K tracks the K most recent access times per entry. The score is computed as 
 
 | Metric | Target | Actual |
 |:-------|:-------|:-------|
-| L1 cache hit P99 | < 5µs | ~1–3µs |
-| L2 cache hit P99 | < 35µs | ~10–20µs |
+| L1 cache hit P99 | < 5µs | ~1-3µs |
+| L2 cache hit P99 | < 35µs | ~10-20µs |
 | Cache hit rate (normal use) | > 90% | ~95% |
-| Bloom filter lookup | < 50ns | ~10–15ns |
 
 ---
 
@@ -194,7 +187,7 @@ cache_shard_amount              = 16       # 4 cores × 4
 cache_optimistic_refresh = false
 ```
 
-**Why `lru` on ARM?** The `hit_rate` and `lfu` strategies track per-entry access frequency using the LFU-K sliding window algorithm, which requires maintaining and sorting timestamps. On a 1-core or 4-core ARM CPU at low clock speeds, this adds measurable overhead. `lru` is a simple doubly-linked list operation and has near-zero CPU cost.
+**Why `lru` on ARM?** The `hit_rate` and `lfu` strategies track per-entry access frequency, which requires maintaining timestamps. On low-power ARM CPUs, this adds measurable overhead. `lru` is simpler and has near-zero CPU cost.
 
 **Why 25,000 entries?** Each cache entry uses approximately 500 bytes on average. 25,000 entries = ~12 MB, well within the 512 MB–1 GB available after the OS, Ferrous DNS process, and SQLite overhead.
 

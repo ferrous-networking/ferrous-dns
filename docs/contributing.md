@@ -94,48 +94,23 @@ Open a Pull Request on GitHub.
 
 ### Error Handling
 
-```rust
-// Always return Result — never panic in production code
-pub fn parse_domain(input: &str) -> Result<Domain, DomainError> {
-    if input.is_empty() {
-        return Err(DomainError::InvalidInput("empty domain".into()));
-    }
-    Ok(Domain::new(input))
-}
-```
+- Always return `Result` -- never panic in production code
+- Use `DomainError` for all domain-level errors
+- Propagate errors with `?` -- don't swallow them silently
 
 ### Naming
 
-```rust
-// Descriptive, not abbreviated
-pub fn resolve_dns_query() {}
-const MAX_CACHE_ENTRIES: usize = 200_000;
-
-// Not:
-pub fn rslv() {}
-const MCE: usize = 200000;
-```
+- Use descriptive names, not abbreviations (e.g., `resolve_dns_query()` not `rslv()`)
+- Constants should be clear: `MAX_CACHE_ENTRIES` not `MCE`
 
 ### Comments
 
 Only comment what the code cannot express:
 
-```rust
-// Required: safety justification for unsafe blocks
-// SAFETY: `_rdtsc` is available on all x86_64 CPUs.
-unsafe { core::arch::x86_64::_rdtsc() }
-
-// Required: non-obvious performance invariant
-// Bloom check before regex: avoids O(n) pattern matching on 99% cache hits.
-if self.bloom.check(domain) && self.matches_regex(domain) { ... }
-
-// Required: doc comments on public API items
-/// Resolves a DNS query, checking L1/L2 cache before forwarding upstream.
-pub async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> { ... }
-
-// Forbidden: comments that explain "what" (the code should be self-explanatory)
-let ttl = record.ttl; // gets the TTL ← never write this
-```
+- **Required**: safety justification for `unsafe` blocks
+- **Required**: non-obvious performance invariants
+- **Required**: doc comments on public API items
+- **Forbidden**: comments that explain "what" -- the code should be self-explanatory
 
 ---
 
@@ -143,26 +118,24 @@ let ttl = record.ttl; // gets the TTL ← never write this
 
 Before making changes, read the [Architecture Overview](architecture/overview.md). The key rules:
 
-1. **`domain` has zero external dependencies** — no I/O, no frameworks, no DB
-2. **`application` never imports `infrastructure`** — only traits (ports)
-3. **`api` and `api-pihole` never import each other** — only `cli` knows both
-4. **Use cases receive `Arc<dyn Port>`** — never instantiate concrete types in use cases
-5. **`cli/wiring/` is the only place** where concrete types are wired together
+1. **Domain layer has zero external dependencies** -- no I/O, no frameworks, no DB
+2. **Application layer never imports infrastructure** -- only abstract interfaces (ports)
+3. **API layers never import each other** -- only the CLI entrypoint knows both
+4. **Use cases receive abstract interfaces** -- never instantiate concrete types in use cases
+5. **Wiring is centralized** -- concrete types are only assembled in one place
 
 ### Adding a New Feature (Checklist)
 
 For a complete feature (e.g. "DNS Tunneling Detection"):
 
-```text
-1. domain/        → entity or value object if needed
-2. application/   → port trait + use case
-3. infrastructure/ → concrete implementation
-4. api/           → handler + DTO (if REST endpoint needed)
-5. jobs/          → job (if periodic processing needed)
-6. cli/wiring/    → inject into dependency graph
-7. migrations/    → SQL migration (if DB schema changes)
-8. tests/         → mock + integration tests
-```
+1. **Domain layer** -- entity or value object if needed
+2. **Application layer** -- port trait + use case
+3. **Infrastructure layer** -- concrete implementation
+4. **API layer** -- handler + DTO (if REST endpoint needed)
+5. **Jobs** -- background job (if periodic processing needed)
+6. **Wiring** -- inject into dependency graph
+7. **Migrations** -- SQL migration (if DB schema changes)
+8. **Tests** -- mock + integration tests
 
 ---
 
@@ -170,30 +143,14 @@ For a complete feature (e.g. "DNS Tunneling Detection"):
 
 ### Structure
 
-```rust
-// Test names describe expected behavior, not implementation
-#[test]
-fn cache_hit_returns_cached_record_without_upstream_call() { ... }
+Test names should describe expected behavior, not implementation details. Examples:
 
-#[tokio::test]
-async fn create_blocklist_source_fails_when_name_already_exists() { ... }
-```
+- `cache_hit_returns_cached_record_without_upstream_call`
+- `create_blocklist_source_fails_when_name_already_exists`
 
 ### Mocks
 
-Mocks implement the same trait as production code:
-
-```rust
-pub struct MockDnsResolver {
-    responses: Arc<RwLock<HashMap<String, DnsResolution>>>,
-}
-
-impl DnsResolver for MockDnsResolver {
-    async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        // test implementation
-    }
-}
-```
+Mocks implement the same interface as production code. This ensures that any implementation can be swapped in tests without changing the calling code.
 
 ### Coverage Targets
 
@@ -234,7 +191,7 @@ cargo clippy --all-targets --all-features --workspace -- -D warnings
 cargo tree --workspace
 
 # Run benchmarks
-cargo bench -p ferrous-dns-infrastructure
+cargo bench --workspace
 ```
 
 ---

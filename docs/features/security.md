@@ -66,7 +66,7 @@ Content-Type: application/json
 
 ### Background Cleanup
 
-A `SessionCleanupJob` runs periodically to prune expired sessions from the database.
+A background task runs periodically to prune expired sessions from the database.
 
 ---
 
@@ -355,7 +355,7 @@ dot_max_connections_per_ip = 15    # max concurrent DoT connections per IP
 | `tcp_max_connections_per_ip` | `30` | Max concurrent TCP connections per IP. 0 = unlimited |
 | `dot_max_connections_per_ip` | `15` | Max concurrent DoT connections per IP. 0 = unlimited |
 
-Connections that exceed the limit are immediately closed. Each connection uses an RAII guard that automatically decrements the counter when the connection closes, preventing resource leaks.
+Connections that exceed the limit are immediately closed. The connection counter is automatically decremented when a connection closes, preventing resource leaks.
 
 ---
 

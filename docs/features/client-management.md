@@ -82,6 +82,8 @@ Monday–Friday, 09:00–18:00 → block Gaming, Streaming, Social Media
 
 The schedule evaluator runs every minute and activates/deactivates blocking rules automatically.
 
+See [Block Services & Schedules](block-services.md) for the complete scheduling guide with REST API examples, days bitmask reference, and real-world scenarios.
+
 ---
 
 ## Conditional Forwarding

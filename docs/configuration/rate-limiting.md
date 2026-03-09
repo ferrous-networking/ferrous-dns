@@ -206,12 +206,10 @@ When rate limiting is enabled:
 
 ## Performance
 
-The rate limiter is designed for the DNS hot path with zero-allocation per-query checks:
+The rate limiter is designed for minimal impact on query processing:
 
-- **DashMap** with `FxBuildHasher` for sharded concurrent access
-- **AtomicU64** with `Ordering::Relaxed` for lock-free token operations
-- **SubnetKey(u64)** — register-sized key with zero heap allocation
-- **CLOCK_MONOTONIC_COARSE** timestamps (~5ns vs ~25ns for `Instant::now()`)
+- Sharded, lock-free token operations for high concurrency
+- Per-subnet tracking with minimal memory overhead
 - Background eviction task removes idle buckets every `stale_entry_ttl_secs`
 
-When `enabled = false`, the rate limiter returns immediately with zero overhead.
+When `enabled = false`, the rate limiter is bypassed entirely with zero overhead.

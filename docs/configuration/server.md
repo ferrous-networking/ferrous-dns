@@ -67,7 +67,7 @@ API tokens provide programmatic access via the `X-Api-Key` header. Tokens are ma
 All API endpoints are protected except public auth routes (`/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/logout`) and the health check (`/api/health`).
 
 !!! info "Background cleanup"
-    A `SessionCleanupJob` runs periodically to prune expired sessions from the database.
+    A background task runs periodically to prune expired sessions from the database.
 
 ### CORS
 
