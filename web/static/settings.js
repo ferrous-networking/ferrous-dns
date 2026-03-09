@@ -71,9 +71,10 @@
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
+                this.restartRequired = isRestartRequired();
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadAuthConfig(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
+                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
                 scheduleLucide(100);
                 this.startPolling();
                 document.addEventListener('visibilitychange', () => {
@@ -107,9 +108,23 @@
                 this._ctrl.stats = new AbortController();
                 try {
                     const r = await apiFetch(`${API_BASE}/stats`, {signal: this._ctrl.stats.signal});
-                    if (r.ok) this.stats = await r.json()
+                    if (r.ok) {
+                        this.stats = await r.json();
+                        this.checkServerRestarted();
+                    }
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
+                }
+            },
+            checkServerRestarted() {
+                const savedAt = parseInt(localStorage.getItem('ferrous_config_saved_at'), 10);
+                if (!savedAt || isNaN(savedAt)) return;
+                const uptime = this.stats.uptime;
+                if (!uptime || uptime <= 0) return;
+                const elapsedSinceSave = (Date.now() - savedAt) / 1000;
+                if (uptime < elapsedSinceSave) {
+                    this.restartRequired = false;
+                    clearRestartRequired();
                 }
             },
             async loadConfig() {
@@ -213,7 +228,7 @@
             },
             addPool() {
                 this.config.dns.pools.push({name: '', strategy: 'parallel', priority: 1, servers: ['']});
-                setTimeout(() => lucide.createIcons(), 50)
+                scheduleLucide(50)
             },
             removePool(idx) {
                 this.config.dns.pools.splice(idx, 1)
@@ -238,7 +253,10 @@
                     });
                     const data = await res.json();
                     if (res.ok && data.success !== false) {
-                        this.showAlert('success', 'Configuration saved successfully!')
+                        this.restartRequired = true;
+                        markRestartRequired();
+                        this.showAlert('success', 'Configuration saved. Restart the server to apply changes.');
+                        scheduleLucide(50);
                     } else {
                         this.showAlert('error', 'Failed to save: ' + (data.error || data.message || 'Unknown error'))
                     }
@@ -255,10 +273,10 @@
                     });
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
-                        this.showAlert('success', 'DNS settings saved!');
-                        if (data.message && data.message.includes('restart')) {
-                            this.restartRequired = true
-                        }
+                        this.restartRequired = true;
+                        markRestartRequired();
+                        this.showAlert('success', 'DNS settings saved. Restart the server to apply changes.');
+                        scheduleLucide(50);
                     } else {
                         this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
                     }
@@ -285,7 +303,7 @@
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
                         this.restartRequired = true;
-                        setRestartRequired();
+                        markRestartRequired();
                         this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
                         scheduleLucide(50);
                     } else {
@@ -368,9 +386,6 @@
                 return `${ms.toFixed(1)} ms`;
             },
             // --- Security tab methods ---
-            async loadAuthConfig() {
-                // Auth config is now populated by loadConfig() to avoid duplicate fetch
-            },
             async saveAuthConfig() {
                 try {
                     const r = await apiFetch(`${API_BASE}/config`, {
@@ -576,7 +591,7 @@
                         this.showAlert('success', 'HTTPS settings saved');
                         if (data.restart_required) {
                             this.restartRequired = true;
-                            setRestartRequired();
+                            markRestartRequired();
                         }
                     } else {
                         this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'));
@@ -601,7 +616,7 @@
                         await this.loadTlsStatus();
                         if (data.restart_required) {
                             this.restartRequired = true;
-                            setRestartRequired();
+                            markRestartRequired();
                         }
                         scheduleLucide(50);
                     } else {
@@ -619,7 +634,7 @@
                         await this.loadTlsStatus();
                         if (data.restart_required) {
                             this.restartRequired = true;
-                            setRestartRequired();
+                            markRestartRequired();
                         }
                         scheduleLucide(50);
                     } else {

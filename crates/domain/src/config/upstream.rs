@@ -35,6 +35,16 @@ impl UpstreamStrategy {
     }
 }
 
+impl std::fmt::Display for UpstreamStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Parallel => f.write_str("Parallel"),
+            Self::Failover => f.write_str("Failover"),
+            Self::Balanced => f.write_str("Balanced"),
+        }
+    }
+}
+
 fn default_priority() -> u8 {
     1
 }

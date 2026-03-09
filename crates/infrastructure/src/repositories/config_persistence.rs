@@ -27,6 +27,7 @@ fn set_val(table: &mut toml_edit::Table, key: &str, new_val: toml_edit::Value) {
     }
 }
 
+/// Converts a slice of strings into a TOML inline array value.
 fn str_array(values: &[String]) -> toml_edit::Value {
     let mut arr = toml_edit::Array::new();
     for v in values {
@@ -160,7 +161,7 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         set_val(
             t,
             "default_strategy",
-            toml_edit::Value::from(format!("{:?}", config.dns.default_strategy)),
+            toml_edit::Value::from(config.dns.default_strategy.to_string()),
         );
         set_val(
             t,
@@ -247,6 +248,27 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             None => {
                 t.remove("local_dns_server");
             }
+        }
+    }
+
+    // ── [[dns.pools]] ────────────────────────────────────────────────────
+    {
+        let dns = ensure_table(&mut doc, "dns")?;
+        dns.remove("pools");
+        if !config.dns.pools.is_empty() {
+            let mut aot = toml_edit::ArrayOfTables::new();
+            for pool in &config.dns.pools {
+                let mut table = toml_edit::Table::new();
+                table.insert("name", toml_edit::value(pool.name.clone()));
+                table.insert("strategy", toml_edit::value(pool.strategy.to_string()));
+                table.insert("priority", toml_edit::value(pool.priority as i64));
+                table.insert("servers", toml_edit::Item::Value(str_array(&pool.servers)));
+                if let Some(weight) = pool.weight {
+                    table.insert("weight", toml_edit::value(weight as i64));
+                }
+                aot.push(table);
+            }
+            dns.insert("pools", toml_edit::Item::ArrayOfTables(aot));
         }
     }
 
@@ -462,4 +484,85 @@ pub fn save_local_records_to_file(config: &Config, path: &str) -> Result<(), Con
     std::fs::write(path, doc.to_string())
         .map_err(|e| ConfigError::FileWrite(path.to_string(), e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_set_val_preserves_inline_comment() {
+        let input = r#"
+[server]
+dns_port = 53  # UDP port
+"#;
+        let mut doc = input.parse::<toml_edit::DocumentMut>().unwrap();
+        let server = doc.get_mut("server").unwrap().as_table_mut().unwrap();
+
+        set_val(server, "dns_port", toml_edit::Value::from(5353i64));
+
+        let output = doc.to_string();
+        assert!(output.contains("5353"));
+        assert!(output.contains("# UDP port"));
+    }
+
+    #[test]
+    fn test_set_val_inserts_missing_key() {
+        let input = r#"
+[server]
+dns_port = 53
+"#;
+        let mut doc = input.parse::<toml_edit::DocumentMut>().unwrap();
+        let server = doc.get_mut("server").unwrap().as_table_mut().unwrap();
+
+        set_val(server, "new_key", toml_edit::Value::from("new_value"));
+
+        let output = doc.to_string();
+        assert!(output.contains("new_key = \"new_value\""));
+    }
+
+    #[test]
+    fn test_ensure_table_creates_missing_section() {
+        let input = "# empty config\n";
+        let mut doc = input.parse::<toml_edit::DocumentMut>().unwrap();
+
+        let table = ensure_table(&mut doc, "new_section").unwrap();
+        table.insert("key", toml_edit::value("val"));
+
+        let output = doc.to_string();
+        assert!(output.contains("[new_section]"));
+        assert!(output.contains("key = \"val\""));
+    }
+
+    #[test]
+    fn test_ensure_subtable_creates_nested_section() {
+        let input = r#"
+[dns]
+cache_enabled = true
+"#;
+        let mut doc = input.parse::<toml_edit::DocumentMut>().unwrap();
+        let dns = ensure_table(&mut doc, "dns").unwrap();
+        let sub = ensure_subtable(dns, "nested").unwrap();
+        sub.insert("value", toml_edit::value(42i64));
+
+        let output = doc.to_string();
+        assert!(output.contains("[dns.nested]") && output.contains("value = 42"));
+    }
+
+    #[test]
+    fn test_str_array_empty() {
+        let result = str_array(&[]);
+        let arr = result.as_array().unwrap();
+        assert!(arr.is_empty());
+    }
+
+    #[test]
+    fn test_str_array_multiple_values() {
+        let values = vec!["https://a.com".to_string(), "https://b.com".to_string()];
+        let result = str_array(&values);
+        let arr = result.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr.get(0).unwrap().as_str().unwrap(), "https://a.com");
+        assert_eq!(arr.get(1).unwrap().as_str().unwrap(), "https://b.com");
+    }
 }

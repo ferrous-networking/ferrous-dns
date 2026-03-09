@@ -13,7 +13,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/settings.css">
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="app()" x-init="init()" data-page="settings">
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
@@ -82,7 +82,7 @@
     <div x-show="restartRequired" x-cloak
          style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
         <i data-lucide="alert-triangle" style="width:20px;height:20px;color:#F59E0B;flex-shrink:0"></i>
-        <p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take effect</p>
+        <p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Configuration saved. Restart the server to apply changes.</p>
     </div>
 
     <div x-show="alert.show" :class="alert.type==='success'?'alert-success':'alert-error'" class="alert" x-cloak>

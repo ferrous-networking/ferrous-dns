@@ -129,19 +129,16 @@ function parseBrowser(ua) {
 
 // --- Global restart-required banner ---
 
-function checkRestartRequired() {
-    if (localStorage.getItem('ferrous_restart_required') === 'true') {
-        showRestartBanner();
-    }
+function isRestartRequired() {
+    return !!localStorage.getItem('ferrous_config_saved_at');
 }
 
-function setRestartRequired() {
-    localStorage.setItem('ferrous_restart_required', 'true');
-    showRestartBanner();
+function markRestartRequired() {
+    localStorage.setItem('ferrous_config_saved_at', String(Date.now()));
 }
 
 function clearRestartRequired() {
-    localStorage.removeItem('ferrous_restart_required');
+    localStorage.removeItem('ferrous_config_saved_at');
     hideRestartBanner();
 }
 
@@ -152,8 +149,8 @@ function showRestartBanner() {
     const banner = document.createElement('div');
     banner.id = 'global-restart-banner';
     banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px';
-    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Server restart required for settings to take effect</p>';
-    main.insertBefore(banner, main.firstChild.nextSibling);
+    banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Configuration saved. Restart the server to apply changes.</p>';
+    main.insertBefore(banner, main.children[1] || null);
 }
 
 function hideRestartBanner() {
@@ -161,7 +158,10 @@ function hideRestartBanner() {
     if (banner) banner.remove();
 }
 
-document.addEventListener('DOMContentLoaded', checkRestartRequired);
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.body.dataset.page === 'settings') return;
+    if (isRestartRequired()) showRestartBanner();
+});
 
 // --- Rate color using CSS custom properties ---
 
