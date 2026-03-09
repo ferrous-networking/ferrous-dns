@@ -1,8 +1,8 @@
 site_name: Ferrous DNS
 site_description: High-performance DNS server with network-wide ad-blocking, written in Rust
-site_url: https://ferrous-networking.github.io/Ferrous-DNS
-repo_url: https://github.com/ferrous-networking/Ferrous-DNS
-repo_name: ferrous-networking/Ferrous-DNS
+site_url: https://ferrous-networking.github.io/ferrous-dns
+repo_url: https://github.com/ferrous-networking/ferrous-dns
+repo_name: ferrous-networking/ferrous-dns
 edit_uri: edit/main/docs/
 
 theme:
@@ -107,6 +107,6 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/ferrous-networking/Ferrous-DNS
+      link: https://github.com/ferrous-networking/ferrous-dns
     - icon: fontawesome/brands/docker
       link: https://hub.docker.com/r/ferrousnetworking/ferrous-dns

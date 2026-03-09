@@ -4,21 +4,21 @@
 # Mirrors the same constraints applied to all competitors:
 #   - Plain UDP upstreams only (8.8.8.8 / 1.1.1.1) — no DoH/DoT
 #   - Blocking disabled — isolates raw DNS forwarding performance
-#   - Caching enabled (minTime: 60s / maxTime: 86400s) — matches Ferrous-DNS
+#   - Caching enabled (minTime: 60s / maxTime: 86400s) — matches ferrous-dns
 #   - Query logging disabled — no I/O noise during measurement
 #   - Rate limiting disabled — dnsperf saturates at 10k in-flight queries
-#   - Log level: info — matches Ferrous-DNS logging.level = "info"
+#   - Log level: info — matches ferrous-dns logging.level = "info"
 # =============================================================================
 
 # -- Upstreams -----------------------------------------------------------------
-# Plain UDP forwarding only — identical to Unbound, AdGuard Home, and Ferrous-DNS.
+# Plain UDP forwarding only — identical to Unbound, AdGuard Home, and ferrous-dns.
 upstreams:
   groups:
     default:
       - 8.8.8.8
       - 1.1.1.1
   timeout: 2s
-  strategy: parallel_best   # query both, return the fastest — equivalent to Ferrous-DNS "Parallel"
+  strategy: parallel_best   # query both, return the fastest — equivalent to ferrous-dns "Parallel"
 
 # -- Ports --------------------------------------------------------------------
 ports:
@@ -26,11 +26,11 @@ ports:
   http: 4000    # used for /api/blocking/status healthcheck inside the container
 
 # -- Caching ------------------------------------------------------------------
-# Enabled with same settings as Ferrous-DNS: min 300s, max 86400s, prefetching.
+# Enabled with same settings as ferrous-dns: min 300s, max 86400s, prefetching.
 caching:
   minTime: 5m
   maxTime: 24h
-  prefetching: true         # background refresh — equivalent to Ferrous-DNS cache_optimistic_refresh
+  prefetching: true         # background refresh — equivalent to ferrous-dns cache_optimistic_refresh
 
 # -- Blocking -----------------------------------------------------------------
 # No denylists configured — blocking is effectively off.

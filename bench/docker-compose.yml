@@ -1,7 +1,7 @@
 # =============================================================================
-# Ferrous-DNS Competitor Benchmark — Docker Compose
+# ferrous-dns Competitor Benchmark — Docker Compose
 # =============================================================================
-# Starts Ferrous-DNS, Pi-hole, AdGuard Home, Unbound, and Blocky on local ports.
+# Starts ferrous-dns, Pi-hole, AdGuard Home, Unbound, and Blocky on local ports.
 # All servers use the same plain UDP upstreams (8.8.8.8 / 1.1.1.1),
 # blocking disabled, logging at info level, and caching enabled for a
 # realistic production-like comparison.
@@ -12,7 +12,7 @@
 #   docker compose -f bench/docker-compose.yml down
 #
 # Ports (host networking — each server binds directly on the host):
-#   Ferrous-DNS:  0.0.0.0:5353/udp+tcp
+#   ferrous-dns:  0.0.0.0:5353/udp+tcp
 #   Pi-hole:      0.0.0.0:5354/udp+tcp
 #   AdGuard Home: 0.0.0.0:5355/udp+tcp
 #   Unbound:      0.0.0.0:5356/udp+tcp
@@ -23,7 +23,7 @@
 services:
 
   # ---------------------------------------------------------------------------
-  # Ferrous-DNS — high-performance DNS server (Rust)
+  # ferrous-dns — high-performance DNS server (Rust)
   # Config: docker/bench/ferrous-dns-config.toml
   #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: Parallel
   #   - Blocking disabled — isolates raw DNS forwarding performance

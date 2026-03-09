@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Ferrous-DNS — Performance Benchmark vs. Competitors
+# ferrous-dns — Performance Benchmark vs. Competitors
 # =============================================================================
 # Measures QPS, P50/P99 latency and cache hit throughput against:
-#   - Ferrous-DNS (this project)
+#   - ferrous-dns (this project)
 #   - Pi-hole
 #   - AdGuard Home
 #   - Unbound
@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - dnsperf  (DNS-OARC):  apt install dnsperf  |  brew install dnsperf
 #   - docker + docker compose
-#   - A running Ferrous-DNS instance (or pass FERROUS_DNS_ADDR)
+#   - A running ferrous-dns instance (or pass FERROUS_DNS_ADDR)
 #
 # Usage:
 #   ./bench/benchmark.sh [options]
@@ -21,7 +21,7 @@
 # Options:
 #   --duration   <s>     Benchmark duration per server in seconds (default: 60)
 #   --clients    <n>     Concurrent dnsperf clients (default: 10)
-#   --ferrous    <addr>  Ferrous-DNS address (default: 127.0.0.1:5353)
+#   --ferrous    <addr>  ferrous-dns address (default: 127.0.0.1:5353)
 #   --no-docker          Skip starting competitor containers
 #   --output     <file>  Save Markdown report to file
 #   --help               Show this help
@@ -223,7 +223,7 @@ save_report() {
   local -n rows_ref=$1
 
   cat > "$OUTPUT_FILE" <<EOF
-# Ferrous-DNS — Performance Benchmark Results
+# ferrous-dns — Performance Benchmark Results
 
 > Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 > Duration per server: ${DURATION}s | Clients: ${CLIENTS} | Queries: $(grep -vc '^[[:space:]]*[;#]' "$QUERIES_FILE" 2>/dev/null || echo "N/A")
@@ -258,7 +258,7 @@ brew install dnsperf  # macOS
 # Run benchmark
 ./scripts/benchmark-competitors.sh --duration 30 --clients 10
 
-# With custom Ferrous-DNS address
+# With custom ferrous-dns address
 FERROUS_DNS_ADDR=192.168.1.10:53 ./scripts/benchmark-competitors.sh
 ```
 EOF
@@ -270,7 +270,7 @@ EOF
 main() {
   echo ""
   echo -e "${BOLD}╔══════════════════════════════════════════════════════╗${RESET}"
-  echo -e "${BOLD}║       Ferrous-DNS Performance Benchmark Suite        ║${RESET}"
+  echo -e "${BOLD}║       ferrous-dns Performance Benchmark Suite        ║${RESET}"
   echo -e "${BOLD}╚══════════════════════════════════════════════════════╝${RESET}"
   echo ""
 
@@ -284,20 +284,20 @@ main() {
 
   declare -a ROWS
 
-  # ── Ferrous-DNS ──────────────────────────────────────────────────────────
+  # ── ferrous-dns ──────────────────────────────────────────────────────────
   local ferrous_host ferrous_port
   ferrous_host="${FERROUS_ADDR%%:*}"
   ferrous_port="${FERROUS_ADDR##*:}"
 
   if nc -z -u "$ferrous_host" "$ferrous_port" 2>/dev/null || \
      dig +short +timeout=1 google.com @"$ferrous_host" -p "$ferrous_port" &>/dev/null; then
-    warm_up "$ferrous_host" "$ferrous_port" "Ferrous-DNS"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "Ferrous-DNS" "$ferrous_host" "$ferrous_port")
-    ROWS+=("$(format_row "🦀 Ferrous-DNS" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "Ferrous-DNS: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
+    warm_up "$ferrous_host" "$ferrous_port" "ferrous-dns"
+    read -r qps p50 p99 comp lost < <(run_dnsperf "ferrous-dns" "$ferrous_host" "$ferrous_port")
+    ROWS+=("$(format_row "🦀 ferrous-dns" "$qps" "$p50" "$p99" "$comp" "$lost")")
+    ok "ferrous-dns: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
   else
-    warn "Ferrous-DNS not reachable at ${FERROUS_ADDR} — start it first or set FERROUS_DNS_ADDR"
-    ROWS+=("$(format_row "🦀 Ferrous-DNS" "N/A" "N/A" "N/A" "N/A" "N/A")")
+    warn "ferrous-dns not reachable at ${FERROUS_ADDR} — start it first or set FERROUS_DNS_ADDR"
+    ROWS+=("$(format_row "🦀 ferrous-dns" "N/A" "N/A" "N/A" "N/A" "N/A")")
   fi
 
   # ── Pi-hole ──────────────────────────────────────────────────────────────

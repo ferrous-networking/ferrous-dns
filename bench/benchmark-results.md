@@ -1,4 +1,4 @@
-# Ferrous-DNS — Performance Benchmark Results
+# ferrous-dns — Performance Benchmark Results
 
 > Generated: 2026-03-07 20:14:46 UTC
 > Tool: dnsperf 2.14.0 | Duration: 60s per server | Clients: 10 concurrent | Query dataset: 187 domains (A, AAAA, MX, TXT, NS)
@@ -33,7 +33,7 @@
 
 ## Per-Server Configuration
 
-### 🦀 Ferrous-DNS
+### 🦀 ferrous-dns
 
 | Key setting | Value |
 |:------------|:------|
@@ -117,14 +117,14 @@
 |:-------|----:|--------:|--------:|----------:|-----:|
 | ⚡ Unbound (C) | 952,810 | 0.98ms | 2.19ms | 99.81% | 0.19% |
 | ⚡ PowerDNS (C++) | 884,128 | 2.06ms | 15.68ms | 99.82% | 0.18% |
-| 🦀 **Ferrous-DNS** | **482,506** | **1.19ms** | **13.32ms** | **99.60%** | **0.40%** |
+| 🦀 **ferrous-dns** | **482,506** | **1.19ms** | **13.32ms** | **99.60%** | **0.40%** |
 | 🔷 Blocky (Go) | 101,747 | 82.83ms | 206.78ms | 99.69% | 0.31% |
 | 🛡️ AdGuard Home | 97,627 | 3.82ms | 15.27ms | 98.06% | 1.94% |
 | 🕳️ Pi-hole | 2,066 | 46.43ms | 562.34ms | 51.00% | 49.00% |
 
-**Ferrous-DNS vs competitors:** 4.9× faster than AdGuard Home | 4.7× faster than Blocky | 233× faster than Pi-hole
+**ferrous-dns vs competitors:** 4.9× faster than AdGuard Home | 4.7× faster than Blocky | 233× faster than Pi-hole
 
-Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) with no REST API, no Web UI, no database, and no blocking engine. Ferrous-DNS runs all of these in the same single-process binary.
+Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) with no REST API, no Web UI, no database, and no blocking engine. ferrous-dns runs all of these in the same single-process binary.
 
 ---
 
@@ -148,9 +148,9 @@ pacman -S dnsperf       # Arch Linux
 brew install dnsperf    # macOS
 
 # Run the full benchmark suite
-cd /path/to/Ferrous-DNS
+cd /path/to/ferrous-dns
 bash bench/benchmark.sh --duration 60 --clients 10 --output bench/benchmark-results.md
 
-# Custom Ferrous-DNS address (if running externally)
+# Custom ferrous-dns address (if running externally)
 FERROUS_DNS_ADDR=192.168.1.10:5353 bash bench/benchmark.sh
 ```

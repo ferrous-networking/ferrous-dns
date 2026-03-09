@@ -10,7 +10,7 @@ Improve README documentation with professional layout and better organization.
 - Simplify Docker and Docker Compose installation instructions
 - Add prominent link to ROADMAP.md with milestone summary
 - Consolidate environment variables into clean reference table
-- Update repository URLs to ferrous-networking/Ferrous-DNS
+- Update repository URLs to ferrous-networking/ferrous-dns
 - Remove redundant sections and improve overall readability
 
 ### Badges added:

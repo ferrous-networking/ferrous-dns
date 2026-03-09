@@ -99,8 +99,8 @@ brew install sqlite
 ### Build
 
 ```bash
-git clone https://github.com/ferrous-networking/Ferrous-DNS.git
-cd Ferrous-DNS
+git clone https://github.com/ferrous-networking/ferrous-dns.git
+cd ferrous-dns
 
 # Standard build
 cargo build --release

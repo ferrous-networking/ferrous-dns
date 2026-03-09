@@ -384,15 +384,15 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 |:-------|----:|--------:|--------:|----------:|-----:|
 | ⚡ Unbound (C) | 952,810 | 0.98ms | 2.19ms | 99.81% | 0.19% |
 | ⚡ PowerDNS (C++) | 884,128 | 2.06ms | 15.68ms | 99.82% | 0.18% |
-| 🦀 **Ferrous-DNS** | **482,506** | **1.19ms** | **13.32ms** | **99.60%** | **0.40%** |
+| 🦀 **ferrous-dns** | **482,506** | **1.19ms** | **13.32ms** | **99.60%** | **0.40%** |
 | 🔷 Blocky (Go) | 101,747 | 82.83ms | 206.78ms | 99.69% | 0.31% |
 | 🛡️ AdGuard Home | 97,627 | 3.82ms | 15.27ms | 98.06% | 1.94% |
 | 🕳️ Pi-hole | 2,066 | 46.43ms | 562.34ms | 51.00% | 49.00% |
 
-**Ferrous-DNS vs competitors:** 4.9× faster than AdGuard Home | 4.7× faster than Blocky | 233× faster than Pi-hole
+**ferrous-dns vs competitors:** 4.9× faster than AdGuard Home | 4.7× faster than Blocky | 233× faster than Pi-hole
 
-Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) — no REST API, no Web UI, no database, no blocking engine. Ferrous-DNS runs all of these in the same single-process binary.
+Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) — no REST API, no Web UI, no database, no blocking engine. ferrous-dns runs all of these in the same single-process binary.
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 
-Full benchmark report and methodology: [`bench/benchmark-results.md`](https://github.com/andersonviudes/Ferrous-DNS/blob/main/bench/benchmark-results.md)
+Full benchmark report and methodology: [`bench/benchmark-results.md`](https://github.com/andersonviudes/ferrous-dns/blob/main/bench/benchmark-results.md)

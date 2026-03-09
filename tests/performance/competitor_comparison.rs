@@ -10,7 +10,7 @@
 //! # Start competitors
 //! docker compose -f docker/bench/docker-compose.yml up -d
 //!
-//! # Start Ferrous-DNS
+//! # Start ferrous-dns
 //! cargo run --release -- --config ferrous-dns.toml
 //!
 //! # Run comparison
@@ -21,7 +21,7 @@
 //!
 //! | Variable              | Default         | Description                 |
 //! |-----------------------|-----------------|-----------------------------|
-//! | `FERROUS_DNS_ADDR`    | 127.0.0.1:5353  | Ferrous-DNS UDP address     |
+//! | `FERROUS_DNS_ADDR`    | 127.0.0.1:5353  | ferrous-dns UDP address     |
 //! | `PIHOLE_ADDR`         | 127.0.0.1:5354  | Pi-hole UDP address         |
 //! | `ADGUARD_ADDR`        | 127.0.0.1:5355  | AdGuard Home UDP address    |
 //! | `UNBOUND_ADDR`        | 127.0.0.1:5356  | Unbound UDP address         |
@@ -213,13 +213,13 @@ fn print_table(results: &[BenchResult]) {
     }
     println!();
 
-    // Highlight Ferrous-DNS speedup vs others
-    if let Some(ferrous) = results.iter().find(|r| r.name.contains("Ferrous-DNS")) {
-        for other in results.iter().filter(|r| !r.name.contains("Ferrous-DNS")) {
+    // Highlight ferrous-dns speedup vs others
+    if let Some(ferrous) = results.iter().find(|r| r.name.contains("ferrous-dns")) {
+        for other in results.iter().filter(|r| !r.name.contains("ferrous-dns")) {
             if other.p50_us > 0 {
                 let speedup = other.p50_us as f64 / ferrous.p50_us as f64;
                 println!(
-                    "  Ferrous-DNS is {:.1}x faster than {} (P50 latency)",
+                    "  ferrous-dns is {:.1}x faster than {} (P50 latency)",
                     speedup, other.name
                 );
             }
@@ -258,7 +258,7 @@ fn competitor_comparison() {
 
     let servers = [
         (
-            "Ferrous-DNS",
+            "ferrous-dns",
             env_addr("FERROUS_DNS_ADDR", "127.0.0.1:5353"),
         ),
         ("Pi-hole", env_addr("PIHOLE_ADDR", "127.0.0.1:5354")),
@@ -266,7 +266,7 @@ fn competitor_comparison() {
         ("Unbound", env_addr("UNBOUND_ADDR", "127.0.0.1:5356")),
     ];
 
-    println!("\n=== Ferrous-DNS Competitor Comparison ===");
+    println!("\n=== ferrous-dns Competitor Comparison ===");
     println!("Queries per server: {queries} | Warm-up: {warmup}");
     println!("Domains: {} (cycling)", DOMAINS.len());
 
@@ -295,24 +295,24 @@ fn competitor_comparison() {
     );
 }
 
-/// Benchmark only Ferrous-DNS — no competitors needed.
+/// Benchmark only ferrous-dns — no competitors needed.
 ///
 /// Useful for quick local performance regression checks.
 ///
 ///   FERROUS_DNS_ADDR=127.0.0.1:5353 \
 ///   cargo test -p ferrous-dns-bench ferrous_only -- --ignored --nocapture
 #[test]
-#[ignore = "requires Ferrous-DNS to be running"]
+#[ignore = "requires ferrous-dns to be running"]
 fn ferrous_only() {
     let addr = env_addr("FERROUS_DNS_ADDR", "127.0.0.1:5353");
     let queries = env_usize("BENCH_QUERIES", 1000);
     let warmup = env_usize("BENCH_WARMUP", 100);
 
-    println!("\n=== Ferrous-DNS Latency Benchmark ===");
+    println!("\n=== ferrous-dns Latency Benchmark ===");
     println!("Target: {addr} | Queries: {queries} | Warm-up: {warmup}");
 
-    let result = run_bench("Ferrous-DNS", &addr, queries, warmup)
-        .expect("Ferrous-DNS must be reachable at {addr}");
+    let result = run_bench("ferrous-dns", &addr, queries, warmup)
+        .expect("ferrous-dns must be reachable at {addr}");
 
     println!();
     println!("  QPS:        {:.1}", result.qps);
@@ -327,7 +327,7 @@ fn ferrous_only() {
     // Cache hit P99 target: < 35µs (~35_000ns = 35µs)
     // NOTE: P99 here includes upstream latency (not just cache hits).
     // For pure cache-hit P99, warm up the cache first by querying same domains.
-    println!("Ferrous-DNS P99 target (cache hit): < 35µs");
+    println!("ferrous-dns P99 target (cache hit): < 35µs");
     println!("  Measured P99: {}µs", result.p99_us);
 }
 
@@ -336,17 +336,17 @@ fn ferrous_only() {
 ///   FERROUS_DNS_ADDR=127.0.0.1:5353 \
 ///   cargo test -p ferrous-dns-bench cache_hit_latency -- --ignored --nocapture
 #[test]
-#[ignore = "requires Ferrous-DNS to be running"]
+#[ignore = "requires ferrous-dns to be running"]
 fn cache_hit_latency() {
     let addr = env_addr("FERROUS_DNS_ADDR", "127.0.0.1:5353");
     let queries = env_usize("BENCH_QUERIES", 1000);
     let warmup = env_usize("BENCH_WARMUP", 200);
 
-    println!("\n=== Ferrous-DNS Cache-Hit Latency ===");
+    println!("\n=== ferrous-dns Cache-Hit Latency ===");
     println!("Target: {addr} | Queries: {queries} | Warm-up: {warmup}");
     println!("Domain: google.com A (repeated, should be in cache after warm-up)");
 
-    let client = DnsClient::new(&addr).expect("Ferrous-DNS must be reachable");
+    let client = DnsClient::new(&addr).expect("ferrous-dns must be reachable");
 
     // Warm up — force google.com into cache
     for _ in 0..warmup {

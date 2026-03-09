@@ -60,7 +60,7 @@ impl BlockFilterEngine {
         blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
         let http_client = reqwest::Client::builder()
-            .user_agent("Ferrous-DNS/1.0 (blocklist-sync)")
+            .user_agent("ferrous-dns/1.0 (blocklist-sync)")
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;

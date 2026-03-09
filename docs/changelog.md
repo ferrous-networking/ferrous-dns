@@ -4,7 +4,7 @@ Ferrous DNS uses [Conventional Commits](https://www.conventionalcommits.org/) an
 
 The full changelog is published with each release on GitHub:
 
-**[View Changelog on GitHub Releases](https://github.com/ferrous-networking/Ferrous-DNS/releases)**
+**[View Changelog on GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases)**
 
 ---
 

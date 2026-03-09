@@ -9,11 +9,11 @@ Contributions are welcome — bug reports, feature requests, documentation impro
 ### 1. Fork & Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Ferrous-DNS.git
-cd Ferrous-DNS
+git clone https://github.com/YOUR_USERNAME/ferrous-dns.git
+cd ferrous-dns
 
 # Add upstream
-git remote add upstream https://github.com/ferrous-networking/Ferrous-DNS.git
+git remote add upstream https://github.com/ferrous-networking/ferrous-dns.git
 ```
 
 ### 2. Create a Branch
@@ -241,5 +241,5 @@ cargo bench -p ferrous-dns-infrastructure
 
 ## Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/ferrous-networking/Ferrous-DNS/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ferrous-networking/Ferrous-DNS/discussions)
+- **Issues**: [GitHub Issues](https://github.com/ferrous-networking/ferrous-dns/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ferrous-networking/ferrous-dns/discussions)

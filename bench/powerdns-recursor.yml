@@ -1,4 +1,4 @@
-# PowerDNS Recursor v5 — YAML config (Ferrous-DNS benchmark)
+# PowerDNS Recursor v5 — YAML config (ferrous-dns benchmark)
 # Fair comparison: same upstreams, cache enabled, log info, rate limiting disabled
 
 incoming:
