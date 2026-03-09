@@ -59,6 +59,9 @@ fn to_static_response_status(s: &str) -> Option<&'static str> {
         "TIMEOUT" => Some("TIMEOUT"),
         "BLOCKED" => Some("BLOCKED"),
         "LOCAL_DNS" => Some("LOCAL_DNS"),
+        "RATE_LIMITED" => Some("RATE_LIMITED"),
+        "RATE_LIMITED_TC" => Some("RATE_LIMITED_TC"),
+        "SAFE_SEARCH" => Some("SAFE_SEARCH"),
         _ => None,
     }
 }
@@ -87,6 +90,9 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
                 "managed_domain" => Some(BlockSource::ManagedDomain),
                 "regex_filter" => Some(BlockSource::RegexFilter),
                 "cname_cloaking" => Some(BlockSource::CnameCloaking),
+                "schedule" => Some(BlockSource::Schedule),
+                "dns_rebinding" => Some(BlockSource::DnsRebinding),
+                "rate_limit" => Some(BlockSource::RateLimit),
                 _ => None,
             });
 

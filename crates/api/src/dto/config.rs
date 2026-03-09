@@ -62,6 +62,23 @@ pub struct DnsConfigResponse {
     pub block_private_ptr: bool,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
+    pub rate_limit: RateLimitConfigResponse,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct RateLimitConfigResponse {
+    pub enabled: bool,
+    pub queries_per_second: u32,
+    pub burst_size: u32,
+    pub ipv4_prefix_len: u8,
+    pub ipv6_prefix_len: u8,
+    pub whitelist: Vec<String>,
+    pub nxdomain_per_second: u32,
+    pub slip_ratio: u32,
+    pub dry_run: bool,
+    pub stale_entry_ttl_secs: u64,
+    pub tcp_max_connections_per_ip: u32,
+    pub dot_max_connections_per_ip: u32,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -159,6 +176,23 @@ pub struct DnsConfigUpdate {
     pub block_private_ptr: Option<bool>,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
+    pub rate_limit: Option<RateLimitConfigUpdate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RateLimitConfigUpdate {
+    pub enabled: Option<bool>,
+    pub queries_per_second: Option<u32>,
+    pub burst_size: Option<u32>,
+    pub ipv4_prefix_len: Option<u8>,
+    pub ipv6_prefix_len: Option<u8>,
+    pub whitelist: Option<Vec<String>>,
+    pub nxdomain_per_second: Option<u32>,
+    pub slip_ratio: Option<u32>,
+    pub dry_run: Option<bool>,
+    pub stale_entry_ttl_secs: Option<u64>,
+    pub tcp_max_connections_per_ip: Option<u32>,
+    pub dot_max_connections_per_ip: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]

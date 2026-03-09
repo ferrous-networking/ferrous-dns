@@ -179,6 +179,48 @@ When `dnssec_enabled = true`, Ferrous DNS validates DNSSEC signatures on all ups
 
 ---
 
+## Rate Limiting {#rate-limiting}
+
+Token-bucket rate limiting per client subnet protects against query floods and DoS attacks.
+
+```toml
+[dns.rate_limit]
+enabled                    = true
+queries_per_second         = 1000
+burst_size                 = 500
+ipv4_prefix_len            = 24
+ipv6_prefix_len            = 48
+whitelist                  = ["127.0.0.0/8", "::1/128", "10.0.0.0/8"]
+nxdomain_per_second        = 50
+slip_ratio                 = 2
+dry_run                    = false
+stale_entry_ttl_secs       = 300
+tcp_max_connections_per_ip = 30
+dot_max_connections_per_ip = 15
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `enabled` | `false` | Master switch — `false` disables all rate limiting with zero overhead |
+| `queries_per_second` | `1000` | Sustained token refill rate per subnet per second |
+| `burst_size` | `500` | Token bucket capacity — allows short bursts above `queries_per_second` |
+| `ipv4_prefix_len` | `24` | IPv4 prefix length for subnet grouping (e.g. 24 = /24) |
+| `ipv6_prefix_len` | `48` | IPv6 prefix length for subnet grouping (e.g. 48 = /48) |
+| `whitelist` | `[]` | CIDRs that bypass rate limiting entirely |
+| `nxdomain_per_second` | `50` | Separate, stricter budget for NXDOMAIN responses per subnet |
+| `slip_ratio` | `0` | Every Nth rate-limited UDP response sends TC=1 (forcing TCP retry). 0 = disabled |
+| `dry_run` | `false` | Log rate-limit events without refusing queries |
+| `stale_entry_ttl_secs` | `300` | Seconds before an idle subnet bucket is evicted from memory |
+| `tcp_max_connections_per_ip` | `30` | Max concurrent TCP DNS connections per IP. 0 = unlimited |
+| `dot_max_connections_per_ip` | `15` | Max concurrent DoT connections per IP. 0 = unlimited |
+
+!!! tip "Tuning for your network"
+    For a typical household (~100 devices), the defaults work well. The `whitelist` should include your local networks to avoid rate-limiting internal traffic. Use `dry_run = true` to validate thresholds before enforcing.
+
+See [Security > Rate Limiting](../features/security.md#rate-limiting) for detailed explanations of each feature.
+
+---
+
 ## Supported Record Types
 
 Ferrous DNS supports all common DNS record types per RFC 1035:

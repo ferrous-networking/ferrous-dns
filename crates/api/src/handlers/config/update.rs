@@ -149,6 +149,45 @@ pub async fn update_config(
                 Some(server)
             };
         }
+        if let Some(rl) = dns_update.rate_limit {
+            if let Some(v) = rl.enabled {
+                new_config.dns.rate_limit.enabled = v;
+            }
+            if let Some(v) = rl.queries_per_second {
+                new_config.dns.rate_limit.queries_per_second = v;
+            }
+            if let Some(v) = rl.burst_size {
+                new_config.dns.rate_limit.burst_size = v;
+            }
+            if let Some(v) = rl.ipv4_prefix_len {
+                new_config.dns.rate_limit.ipv4_prefix_len = v;
+            }
+            if let Some(v) = rl.ipv6_prefix_len {
+                new_config.dns.rate_limit.ipv6_prefix_len = v;
+            }
+            if let Some(v) = rl.nxdomain_per_second {
+                new_config.dns.rate_limit.nxdomain_per_second = v;
+            }
+            if let Some(v) = rl.slip_ratio {
+                new_config.dns.rate_limit.slip_ratio = v;
+            }
+            if let Some(v) = rl.dry_run {
+                new_config.dns.rate_limit.dry_run = v;
+            }
+            if let Some(v) = rl.stale_entry_ttl_secs {
+                new_config.dns.rate_limit.stale_entry_ttl_secs = v;
+            }
+            if let Some(v) = rl.tcp_max_connections_per_ip {
+                new_config.dns.rate_limit.tcp_max_connections_per_ip = v;
+            }
+            if let Some(v) = rl.dot_max_connections_per_ip {
+                new_config.dns.rate_limit.dot_max_connections_per_ip = v;
+            }
+            if let Some(v) = rl.whitelist {
+                new_config.dns.rate_limit.whitelist = v;
+            }
+            restart_required = true;
+        }
     }
 
     if let Some(blocking_update) = request.blocking {

@@ -21,7 +21,14 @@
                     cache_compaction_interval: 300,
                     cache_optimistic_refresh: true,
                     cache_adaptive_thresholds: true,
-                    cache_access_window_secs: 7200
+                    cache_access_window_secs: 7200,
+                    rate_limit: {
+                        enabled: false, queries_per_second: 1000, burst_size: 500,
+                        ipv4_prefix_len: 24, ipv6_prefix_len: 48, whitelist: [],
+                        nxdomain_per_second: 50, slip_ratio: 0, dry_run: false,
+                        stale_entry_ttl_secs: 300, tcp_max_connections_per_ip: 30,
+                        dot_max_connections_per_ip: 15
+                    }
                 }
             },
             settings: {
@@ -160,7 +167,11 @@
                                 cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
                                 cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
                                 cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
-                                cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200
+                                cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200,
+                                rate_limit: {
+                                    ...this.config.dns.rate_limit,
+                                    ...(data.dns?.rate_limit || {})
+                                }
                             }
                         };
                         if (this.config.dns.pools.length === 0 && data.dns?.upstream_servers?.length > 0) {

@@ -71,6 +71,12 @@ impl DnsServerHandler {
             Err(DomainError::Blocked) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
             }
+            Err(DomainError::DnsRateLimited) => {
+                return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
+            }
+            Err(DomainError::DnsRateLimitedSlip) => {
+                return build_truncated_wire(query_id, rd, &queries)
+            }
             Err(DomainError::NxDomain) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::NXDomain)
             }
@@ -155,6 +161,15 @@ impl RequestHandler for DnsServerHandler {
                 warn!(domain = %domain_ref, "Domain blocked");
                 return send_error_response(request, &mut response_handle, ResponseCode::Refused)
                     .await;
+            }
+            Err(DomainError::DnsRateLimited) => {
+                debug!(domain = %domain_ref, client = %client_ip, "Rate limited");
+                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
+                    .await;
+            }
+            Err(DomainError::DnsRateLimitedSlip) => {
+                debug!(domain = %domain_ref, client = %client_ip, "Rate limited (TC=1 slip)");
+                return send_truncated_response(request, &mut response_handle).await;
             }
             Err(DomainError::NxDomain) => {
                 return send_error_response(request, &mut response_handle, ResponseCode::NXDomain)
@@ -259,6 +274,42 @@ fn build_error_wire(
         resp.add_query(q.clone());
     }
     encode_message(&resp)
+}
+
+fn build_truncated_wire(
+    id: u16,
+    rd: bool,
+    queries: &[hickory_proto::op::Query],
+) -> Option<Vec<u8>> {
+    let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
+    resp.set_recursion_desired(rd);
+    resp.set_recursion_available(true);
+    resp.set_truncated(true);
+    resp.set_response_code(ResponseCode::NoError);
+    for q in queries {
+        resp.add_query(q.clone());
+    }
+    encode_message(&resp)
+}
+
+async fn send_truncated_response<R: ResponseHandler>(
+    request: &Request,
+    response_handle: &mut R,
+) -> ResponseInfo {
+    debug!("Sending truncated (TC=1) response");
+    let builder = MessageResponseBuilder::from_message_request(request);
+    let mut header = *request.header();
+    header.set_message_type(MessageType::Response);
+    header.set_truncated(true);
+    header.set_recursion_available(true);
+    let response = builder.build(header, &[], &[], &[], &[]);
+    match response_handle.send_response(response).await {
+        Ok(info) => info,
+        Err(e) => {
+            error!(error = %e, "Failed to send truncated response");
+            ResponseInfo::from(*request.header())
+        }
+    }
 }
 
 async fn send_error_response<R: ResponseHandler>(

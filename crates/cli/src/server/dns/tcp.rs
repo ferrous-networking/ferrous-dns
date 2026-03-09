@@ -1,3 +1,4 @@
+use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use ferrous_dns_infrastructure::dns::proxy_protocol::{
     read_proxy_v2_client_ip, ProxyProtocolError,
 };
@@ -32,15 +33,25 @@ pub(super) async fn run_tcp_worker(
     listener: Arc<TcpListener>,
     handler: Arc<DnsServerHandler>,
     proxy_protocol_enabled: bool,
+    conn_limiter: ConnectionLimiter,
 ) {
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                let guard = match conn_limiter.try_acquire(peer_addr.ip()) {
+                    Some(g) => g,
+                    None => {
+                        debug!(client = %peer_addr, "TCP connection rejected: per-IP limit");
+                        drop(stream);
+                        continue;
+                    }
+                };
                 tokio::spawn(handle_tcp_connection(
                     stream,
                     peer_addr,
                     handler.clone(),
                     proxy_protocol_enabled,
+                    guard,
                 ));
             }
             Err(e) => {
@@ -55,6 +66,7 @@ async fn handle_tcp_connection(
     peer_addr: SocketAddr,
     handler: Arc<DnsServerHandler>,
     proxy_protocol_enabled: bool,
+    _guard: ConnectionGuard,
 ) {
     debug!(client = %peer_addr, "TCP DNS connection accepted");
 

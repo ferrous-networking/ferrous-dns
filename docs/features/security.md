@@ -282,6 +282,83 @@ See [Encrypted DNS](encrypted-dns.md) for setup.
 
 ---
 
+## DNS Rate Limiting {#rate-limiting}
+
+Ferrous DNS includes a token-bucket rate limiter that throttles abusive clients per subnet, protecting the server from query floods without affecting legitimate traffic.
+
+### How It Works
+
+Each client subnet (default `/24` for IPv4, `/48` for IPv6) gets an independent token bucket. Tokens refill at the configured `queries_per_second` rate, up to the `burst_size` capacity. When a subnet exhausts its tokens, queries are either **refused** (`REFUSED` response code) or **slipped** (`TC=1` truncated response forcing a TCP retry).
+
+### Configuration
+
+```toml title="ferrous-dns.toml"
+[dns.rate_limit]
+enabled                    = true
+queries_per_second         = 1000     # sustained QPS per subnet
+burst_size                 = 500      # token bucket capacity
+ipv4_prefix_len            = 24       # /24 groups the home LAN
+ipv6_prefix_len            = 48       # /48 standard home delegation
+whitelist                  = ["127.0.0.0/8", "::1/128", "10.0.0.0/8"]
+nxdomain_per_second        = 50       # separate stricter budget for NXDOMAIN
+slip_ratio                 = 2        # every 2nd rate-limited response is TC=1
+dry_run                    = false    # true = log only, don't refuse
+stale_entry_ttl_secs       = 300      # evict idle subnet buckets after 5 min
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `enabled` | `false` | Master switch for rate limiting |
+| `queries_per_second` | `1000` | Sustained token refill rate per subnet |
+| `burst_size` | `500` | Maximum tokens (allows short bursts above QPS) |
+| `ipv4_prefix_len` | `24` | IPv4 subnet grouping prefix length |
+| `ipv6_prefix_len` | `48` | IPv6 subnet grouping prefix length |
+| `whitelist` | `[]` | CIDRs that bypass rate limiting entirely |
+| `nxdomain_per_second` | `50` | Separate, stricter budget for NXDOMAIN responses |
+| `slip_ratio` | `0` | Every Nth rate-limited response sends TC=1 instead of REFUSED. 0 = disabled |
+| `dry_run` | `false` | Log rate-limit events without refusing queries |
+| `stale_entry_ttl_secs` | `300` | Seconds before an idle subnet bucket is evicted |
+
+### TC=1 Slip Mechanism
+
+When `slip_ratio` is set (e.g. `2`), every Nth rate-limited UDP response is sent as a **truncated** response (`TC=1` flag set) instead of `REFUSED`. This forces the client to retry over TCP, which:
+
+- Verifies the client is a legitimate resolver (not a spoofed-source flood)
+- Allows real clients to still get answers via TCP even when rate-limited on UDP
+- Follows the same approach used by NSD and BIND
+
+### NXDOMAIN Budget
+
+The `nxdomain_per_second` setting provides a separate, stricter budget for NXDOMAIN responses. This catches malware and IoT devices that probe many random subdomains while leaving the general query budget unaffected.
+
+### Dry-Run Mode
+
+Set `dry_run = true` to log rate-limit events without actually refusing queries. This is useful for calibrating thresholds before enforcing limits in production. Rate-limited queries appear in the query log with status `RATE_LIMITED` and in the dashboard stats.
+
+!!! tip "Recommended first deployment"
+    Enable rate limiting with `dry_run = true` for 24-48 hours. Check the dashboard for false positives, then switch to `dry_run = false` once thresholds are validated.
+
+---
+
+## TCP/DoT Connection Limiting {#connection-limiting}
+
+Per-IP connection limits protect against TCP and DoT connection exhaustion:
+
+```toml title="ferrous-dns.toml"
+[dns.rate_limit]
+tcp_max_connections_per_ip = 30    # max concurrent TCP DNS connections per IP
+dot_max_connections_per_ip = 15    # max concurrent DoT connections per IP
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `tcp_max_connections_per_ip` | `30` | Max concurrent TCP connections per IP. 0 = unlimited |
+| `dot_max_connections_per_ip` | `15` | Max concurrent DoT connections per IP. 0 = unlimited |
+
+Connections that exceed the limit are immediately closed. Each connection uses an RAII guard that automatically decrements the counter when the connection closes, preventing resource leaks.
+
+---
+
 ## Upcoming Security Features
 
 The following are planned for future releases:
@@ -289,8 +366,6 @@ The following are planned for future releases:
 | Feature | Description |
 |:--------|:------------|
 | **TOTP / 2FA** | Time-based one-time passwords for login |
-| **Rate Limiting** | Per-client DNS query rate limits |
-| **DoS Protection** | Protection against DNS flooding |
 | **DNS Tunneling Detection** | Detect DNS used as a covert data channel |
 | **Entropy Analysis** | Detect DGA (Domain Generation Algorithm) malware |
 | **Read-Only Mode** | Disable config changes via a flag |
@@ -301,12 +376,14 @@ The following are planned for future releases:
 
 | Mechanism | Status |
 |:----------|:-------|
-| DNSSEC validation | Active |
-| DNS rebinding protection | Active |
-| Encrypted upstream (DoH/DoT/DoQ) | Active |
-| Server-side DoT/DoH | Active |
-| PROXY Protocol v2 | Active |
-| Dashboard authentication | Active |
-| API token authentication | Active |
-| HTTPS dashboard | Active |
-| TOTP / 2FA | Planned |
+| DNSSEC validation | :white_check_mark: Active |
+| DNS rebinding protection | :white_check_mark: Active |
+| Encrypted upstream (DoH/DoT/DoQ) | :white_check_mark: Active |
+| Server-side DoT/DoH | :white_check_mark: Active |
+| PROXY Protocol v2 | :white_check_mark: Active |
+| Dashboard authentication | :white_check_mark: Active |
+| API token authentication | :white_check_mark: Active |
+| HTTPS dashboard | :white_check_mark: Active |
+| DNS rate limiting | :white_check_mark: Active |
+| TCP/DoT connection limiting | :white_check_mark: Active |
+| TOTP / 2FA | :material-clock-outline: Planned |

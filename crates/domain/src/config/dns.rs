@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
+use super::rate_limit::RateLimitConfig;
 use super::upstream::UpstreamPool;
 use super::upstream::UpstreamStrategy;
 
@@ -95,6 +96,10 @@ pub struct DnsConfig {
     /// name intentionally resolves to a private address (e.g. VPN or router admin panels).
     #[serde(default)]
     pub rebinding_allowlist: Vec<String>,
+
+    /// DNS query rate limiting and DoS protection configuration.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 impl Default for DnsConfig {
@@ -131,6 +136,7 @@ impl Default for DnsConfig {
             local_records: vec![],
             rebinding_protection_enabled: true,
             rebinding_allowlist: vec![],
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }

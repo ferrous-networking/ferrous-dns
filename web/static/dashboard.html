@@ -108,6 +108,15 @@
         </div>
         <div class="card-stat">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                <div style="padding:12px;border-radius:8px;background:rgba(245,158,11,0.1)">
+                    <i data-lucide="shield-alert" style="width:24px;height:24px;color:#F59E0B"></i>
+                </div>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Rate Limited</p>
+            </div>
+            <p style="font-size:32px;font-weight:700;color:#F59E0B" x-text="formatNumber(stats.queries_rate_limited || 0)">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
                 <div style="padding:12px;border-radius:8px;background:rgba(249,115,22,0.1)">
                     <i data-lucide="shield-check" style="width:24px;height:24px;color:#F97316"></i>
                 </div>

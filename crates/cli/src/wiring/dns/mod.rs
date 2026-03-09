@@ -2,7 +2,9 @@ mod cache;
 mod pool;
 mod resolver;
 
+use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{CacheMaintenancePort, PtrRecordRegistry};
+use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
@@ -22,6 +24,8 @@ pub struct DnsServices {
     pub health_checker: Option<Arc<HealthChecker>>,
     pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
+    pub tcp_conn_limiter: ConnectionLimiter,
+    pub dot_conn_limiter: ConnectionLimiter,
 }
 
 impl DnsServices {
@@ -104,6 +108,15 @@ impl DnsServices {
 
         let resolver = Arc::new(dns_resolver);
 
+        let rate_limiter = Arc::new(DnsRateLimiter::new(&config.dns.rate_limit));
+        if config.dns.rate_limit.enabled {
+            rate_limiter.start_eviction_task();
+            info!(
+                "DNS rate limiter enabled ({}qps, burst {})",
+                config.dns.rate_limit.queries_per_second, config.dns.rate_limit.burst_size
+            );
+        }
+
         let handler_use_case = Arc::new(
             HandleDnsQueryUseCase::new(
                 resolver.clone(),
@@ -119,8 +132,14 @@ impl DnsServices {
                 config.dns.rebinding_protection_enabled,
                 config.dns.local_domain.as_deref(),
                 &config.dns.rebinding_allowlist,
-            ),
+            )
+            .with_rate_limiter(rate_limiter),
         );
+
+        let tcp_conn_limiter =
+            ConnectionLimiter::new(config.dns.rate_limit.tcp_max_connections_per_ip);
+        let dot_conn_limiter =
+            ConnectionLimiter::new(config.dns.rate_limit.dot_max_connections_per_ip);
 
         info!("DNS services initialized successfully with load balancing");
 
@@ -131,6 +150,8 @@ impl DnsServices {
             health_checker: stored_health_checker,
             cache_maintenance,
             ptr_registry,
+            tcp_conn_limiter,
+            dot_conn_limiter,
         })
     }
 

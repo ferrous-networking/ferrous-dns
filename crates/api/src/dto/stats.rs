@@ -17,6 +17,7 @@ pub type QuerySourceStats = HashMap<String, u64>;
 pub struct StatsResponse {
     pub queries_total: u64,
     pub queries_blocked: u64,
+    pub queries_rate_limited: u64,
     pub clients: u64,
     pub uptime: u64,
     pub cache_hit_rate: f64,
@@ -48,6 +49,7 @@ impl Default for StatsResponse {
         Self {
             queries_total: 0,
             queries_blocked: 0,
+            queries_rate_limited: 0,
             clients: 0,
             uptime: 0,
             cache_hit_rate: 0.0,

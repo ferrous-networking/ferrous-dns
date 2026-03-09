@@ -44,7 +44,11 @@ impl IntoResponse for ApiError {
 
             DomainError::Blocked => (StatusCode::FORBIDDEN, "blocked".to_string()),
 
-            DomainError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, self.0.to_string()),
+            DomainError::RateLimited
+            | DomainError::DnsRateLimited
+            | DomainError::DnsRateLimitedSlip => {
+                (StatusCode::TOO_MANY_REQUESTS, self.0.to_string())
+            }
 
             DomainError::DuplicateApiTokenName(_)
             | DomainError::DuplicateUsername(_)

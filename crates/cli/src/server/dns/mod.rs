@@ -1,9 +1,11 @@
+pub(crate) mod connection_limiter;
 pub mod dot;
 mod pktinfo;
 mod tcp;
 pub mod tls_config;
 mod udp;
 
+use connection_limiter::ConnectionLimiter;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use socket2::Domain;
 use std::net::SocketAddr;
@@ -17,6 +19,7 @@ pub async fn start_dns_server(
     num_workers: usize,
     proxy_protocol_enabled: bool,
     core_ids: Vec<core_affinity::CoreId>,
+    tcp_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let socket_addr: SocketAddr = bind_addr.parse()?;
     let domain = if socket_addr.is_ipv4() {
@@ -44,8 +47,15 @@ pub async fn start_dns_server(
 
         let tcp_listener = Arc::new(tcp::create_tcp_listener(domain, socket_addr)?);
         let handler_tcp = handler.clone();
+        let tcp_limiter = tcp_conn_limiter.clone();
         join_set.spawn(async move {
-            tcp::run_tcp_worker(tcp_listener, handler_tcp, proxy_protocol_enabled).await;
+            tcp::run_tcp_worker(
+                tcp_listener,
+                handler_tcp,
+                proxy_protocol_enabled,
+                tcp_limiter,
+            )
+            .await;
         });
     }
 

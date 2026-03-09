@@ -98,30 +98,25 @@ cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for evic
 cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for scoring
 
 
-# ── Upstream Pools ────────────────────────────────────────────────────────────
-# Each pool groups one or more upstream servers with a resolution strategy.
-# Lower priority value = higher priority when multiple pools are available.
+# ── DNS Rate Limiting ────────────────────────────────────────────────────────
+# Token bucket rate limiter per client subnet — protects against query floods.
+# Tuned for a large household (~100 devices: phones, PCs, smart TVs, IoT).
+# Server benchmarked at 482K QPS — the limiter protects against abuse,
+# not server capacity. All limits are per /24 subnet (IPv4) or /48 (IPv6).
 
-[[dns.pools]]
-name = "pool1"
-strategy = "Parallel"
-priority = 1
-servers = [
-    "https://dns.quad9.net/dns-query",
-    "https://cloudflare-dns.com/dns-query",
-    "https://dns.google/dns-query",
-    "https://doh.cleanbrowsing.org/doh/security-filter/",
-    "https://dns.nextdns.io",
-]
-
-[[dns.pools]]
-name = "pool2"
-strategy = "Failover"
-priority = 2
-servers = [
-    "doq://dns.adguard-dns.com:853",
-    "doq://dns.caliph.dev:853",
-]
+[dns.rate_limit]
+enabled = true                          # Master switch — false disables all rate limiting
+queries_per_second = 1000               # ~2.5 QPS/device × 100 devices, covers heavy browsing + IoT
+burst_size = 500                        # 2× QPS — absorbs page loads (50+ queries/page) and IoT bursts
+ipv4_prefix_len = 24                    # /24 groups the entire home LAN as one subnet
+ipv6_prefix_len = 48                    # /48 is the standard home delegation (more generous than /56)
+whitelist = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+nxdomain_per_second = 50                # 20% of QPS — IoT devices probe many subdomains legitimately
+slip_ratio = 2                          # 50% of rate-limited responses send TC=1 (forces TCP retry)
+dry_run = false                         # Enforce limits in production (set true to test first)
+tcp_max_connections_per_ip = 30         # Browsers + DoH clients pool TCP; 100 devices behind NAT need room
+dot_max_connections_per_ip = 15         # Android Private DNS keeps 2-4 persistent conns per device
+stale_entry_ttl_secs = 300              # Evict idle subnet buckets after 5 minutes
 
 
 # ── Upstream Health Checks ────────────────────────────────────────────────────
@@ -149,6 +144,18 @@ domain = "server"
 ip = "10.0.1.1"
 record_type = "A"
 ttl = 300
+
+[[dns.pools]]
+name = "pool1"
+strategy = "Parallel"
+priority = 1
+servers = ["https://dns.quad9.net/dns-query", "https://cloudflare-dns.com/dns-query", "https://dns.google/dns-query", "https://doh.cleanbrowsing.org/doh/security-filter/", "https://dns.nextdns.io"]
+
+[[dns.pools]]
+name = "pool2"
+strategy = "Failover"
+priority = 2
+servers = ["doq://dns.adguard-dns.com:853", "doq://dns.caliph.dev:853"]
 
 
 # ── Authentication ───────────────────────────────────────────────────────────

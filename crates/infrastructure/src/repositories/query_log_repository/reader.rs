@@ -171,6 +171,7 @@ pub(super) async fn get_stats(
                 "SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
+                    SUM(CASE WHEN response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC') THEN 1 ELSE 0 END) as rate_limited,
                     SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
                     AVG(response_time_ms) as avg_time,
                     AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
@@ -280,6 +281,7 @@ pub(super) async fn get_stats(
     let stats = QueryStats {
         queries_total: total,
         queries_blocked: row.get::<i64, _>("blocked") as u64,
+        queries_rate_limited: row.get::<i64, _>("rate_limited") as u64,
         unique_clients: 0,
         uptime_seconds: get_uptime(),
         cache_hit_rate,

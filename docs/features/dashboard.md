@@ -25,8 +25,9 @@ The landing page shows a real-time overview of your DNS server:
 - **Query rate** — live queries per second with color-coded indicator
 - **Total queries** — cumulative count since last restart
 - **Blocked queries** — total blocked with percentage
+- **Rate limited queries** — count of queries throttled by the rate limiter
 - **Block rate** — ratio of blocked to total queries
-- **Query timeline** — visual graph of query volume over time
+- **Query timeline** — visual graph of query volume over time (allowed, blocked, and rate-limited)
 - **Top queried domains** — most popular DNS lookups
 - **Top blocked domains** — most frequently blocked domains
 - **Top clients** — most active clients by query count
@@ -38,8 +39,9 @@ Live query log with:
 
 - Domain name, query type (A, AAAA, CNAME, MX, etc.)
 - Client IP and hostname
-- Response status (allowed, blocked, cached)
+- Response status (allowed, blocked, cached, rate-limited)
 - Response time
+- Filter by category: allowed, blocked, rate-limited
 - **Quick actions**: Block or Allow a domain with one click
 
 ### Clients
@@ -84,6 +86,7 @@ Multi-tab filtering management:
 - **Upstream Health** — per-pool and per-server health status with latency metrics
 - **Cache Overview** — entries, hit rate, evictions, compactions, optimistic refreshes
 - **DNS Configuration** — upstream pools, strategies, DNSSEC, cache settings
+- **Rate Limiting** — enable/disable rate limiting, configure QPS, burst, whitelist, slip ratio, dry-run mode, TCP/DoT connection limits
 - **DNS Settings** — non-FQDN blocking, private PTR blocking, local domain
 - **API Key** — generate, save, or remove the API key
 - **Dashboard Session Key** — authenticate the dashboard for API key-protected servers

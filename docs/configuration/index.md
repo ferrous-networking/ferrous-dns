@@ -89,6 +89,18 @@ timeout           = 3000
 failure_threshold = 3
 success_threshold = 2
 
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+
+[dns.rate_limit]
+enabled                = true
+queries_per_second     = 200     # conservative — RPi has limited CPU
+burst_size             = 100
+nxdomain_per_second    = 20
+slip_ratio             = 2
+whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+tcp_max_connections_per_ip = 16
+dot_max_connections_per_ip = 8
+
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
 [blocking]
@@ -210,6 +222,18 @@ interval          = 30
 timeout           = 2000
 failure_threshold = 3
 success_threshold = 2
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+
+[dns.rate_limit]
+enabled                = true
+queries_per_second     = 1000    # ~10 QPS/device, covers heavy browsing + IoT
+burst_size             = 500     # absorbs page loads (50+ queries/page)
+nxdomain_per_second    = 50
+slip_ratio             = 2       # 50% TC=1 for rate-limited traffic
+whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+tcp_max_connections_per_ip = 30
+dot_max_connections_per_ip = 15
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
@@ -335,6 +359,20 @@ interval          = 15            # more frequent monitoring
 timeout           = 1000
 failure_threshold = 2             # fail fast
 success_threshold = 1             # restore fast
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+
+[dns.rate_limit]
+enabled                = true
+queries_per_second     = 50      # strict per-subnet limits for public-facing
+burst_size             = 100
+nxdomain_per_second    = 10      # aggressive NX budget against DGA/random subdomain
+slip_ratio             = 2
+ipv4_prefix_len        = 24
+ipv6_prefix_len        = 48
+whitelist              = []      # no exemptions on public resolvers
+tcp_max_connections_per_ip = 30
+dot_max_connections_per_ip = 15
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
@@ -474,6 +512,28 @@ timeout           = 2000
 failure_threshold = 3
 success_threshold = 2
 
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+
+[dns.rate_limit]
+enabled                    = false      # master switch
+queries_per_second         = 1000       # sustained QPS per subnet
+burst_size                 = 500        # token bucket capacity
+ipv4_prefix_len            = 24         # /24 = class C network
+ipv6_prefix_len            = 48         # /48 = standard home delegation
+whitelist                  = [          # bypass rate limiting
+    "127.0.0.0/8",
+    "::1/128",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+]
+nxdomain_per_second        = 50         # stricter NXDOMAIN budget
+slip_ratio                 = 0          # TC=1 slip frequency (0 = disabled)
+dry_run                    = false      # true = log only, don't enforce
+stale_entry_ttl_secs       = 300        # idle bucket eviction
+tcp_max_connections_per_ip = 30         # TCP connection limit per IP
+dot_max_connections_per_ip = 15         # DoT connection limit per IP
+
 # ── Local DNS Records ─────────────────────────────────────────────────────────
 
 [[dns.local_records]]
@@ -537,6 +597,7 @@ sqlite_mmap_size_mb          = 64
 | [`[dns]`](dns.md) | Upstream resolution, DNSSEC, local records |
 | [`[[dns.pools]]`](dns.md#upstream-pools) | Upstream server groups and strategies |
 | [`[dns.health_check]`](dns.md#health-checks) | Upstream health monitoring |
+| [`[dns.rate_limit]`](rate-limiting.md) | Token bucket rate limiting, NXDOMAIN budget, TC=1 slip, connection limits |
 | [`[dns]` local_dns_server](dns.md#local-dns-server) | PTR lookups, DHCP, upstream hostname resolution |
 | [`cache_*`](cache.md) | L1/L2 cache tuning, eviction, refresh |
 | [`[blocking]`](blocking.md) | Ad-blocking, allowlist, custom rules |

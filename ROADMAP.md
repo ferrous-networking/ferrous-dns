@@ -68,8 +68,8 @@
 - [x] HTTPS for Web UI
 - [x] API Key / token
 - [ ] TOTP / 2FA
-- [ ] Rate limiting DNS
-- [ ] DoS protection
+- [x] Rate limiting DNS (token bucket per-subnet, slip TC=1, dry-run, NXDOMAIN budget)
+- [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
 - [ ] DNS Tunneling
 - [ ] Entropy analysis (DGA detection)2
 - [ ] Read-only / lockdown mode (disable config changes via flag)

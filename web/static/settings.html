@@ -102,6 +102,8 @@
                 :class="currentTab==='dnsbasic'?'tab-btn active':'tab-btn'">DNS Settings</button>
         <button @click="currentTab='dnsadvanced';scheduleLucide()"
                 :class="currentTab==='dnsadvanced'?'tab-btn active':'tab-btn'">DNS Advanced</button>
+        <button @click="currentTab='ratelimit';scheduleLucide()"
+                :class="currentTab==='ratelimit'?'tab-btn active':'tab-btn'">Rate Limiting</button>
         <button @click="currentTab='cache';scheduleLucide()"
                 :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
         <button @click="currentTab='appearance';scheduleLucide()"
@@ -763,6 +765,178 @@
 
         <button @click="saveConfig()" class="btn btn-success">
             <i data-lucide="save" style="width:16px;height:16px"></i> Save Advanced Settings
+        </button>
+    </div>
+
+    <!-- RATE LIMITING TAB -->
+    <div x-show="currentTab==='ratelimit'&&!loading" x-cloak>
+        <div class="card">
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Rate Limiting</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Protect your DNS server from query floods and DoS attacks</p>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="shield-alert" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Enable Rate Limiting</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Limit queries per second per client subnet. Uses token bucket algorithm for precise, fair throttling.</p>
+                </div>
+                <div @click="config.dns.rate_limit.enabled=!config.dns.rate_limit.enabled"
+                     :class="config.dns.rate_limit.enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <div x-show="config.dns.rate_limit.enabled">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="test-tubes" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Dry Run (Log Only)</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Log rate limit events without actually refusing queries. Useful for testing thresholds before enforcing.</p>
+                    </div>
+                    <div @click="config.dns.rate_limit.dry_run=!config.dns.rate_limit.dry_run"
+                         :class="config.dns.rate_limit.dry_run?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="gauge" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Queries per Second</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum sustained queries per subnet per second.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.queries_per_second" min="1" placeholder="1000" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">per sec</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="zap" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Burst Size</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Token bucket capacity — allows short bursts above the sustained rate.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.burst_size" min="1" placeholder="500" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">tokens</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="x-circle" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">NXDOMAIN per Second</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Separate, stricter budget for non-existent domain responses.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.nxdomain_per_second" min="1" placeholder="50" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">per sec</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="repeat" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Slip Ratio (TC=1)</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Every Nth rate-limited response becomes a truncated response (TC=1) forcing TCP retry. 0 = disabled, 2 = every 2nd.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.slip_ratio" min="0" placeholder="2" style="width:100%;text-align:right">
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="network" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">IPv4 Prefix Length</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Subnet grouping for IPv4 clients. /24 groups clients in the same class C network.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.ipv4_prefix_len" min="8" max="32" placeholder="24" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">/24</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="network" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">IPv6 Prefix Length</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Subnet grouping for IPv6 clients.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.ipv6_prefix_len" min="16" max="128" placeholder="48" style="width:100%;text-align:right">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right">/48</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="plug" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">TCP Max Connections per IP</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum concurrent TCP DNS connections per IP address.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.tcp_max_connections_per_ip" min="0" placeholder="30" style="width:100%;text-align:right">
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="lock" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">DoT Max Connections per IP</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum concurrent DNS-over-TLS connections per IP address.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.dot_max_connections_per_ip" min="0" placeholder="15" style="width:100%;text-align:right">
+                    </div>
+                </div>
+
+                <div style="padding:16px 0">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                        <i data-lucide="list-checks" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Whitelist (Bypass Rate Limiting)</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">IPs or CIDRs that bypass rate limiting entirely.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                        <template x-for="(entry, idx) in config.dns.rate_limit.whitelist" :key="idx">
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <input type="text" x-model="config.dns.rate_limit.whitelist[idx]" placeholder="10.0.0.0/8"
+                                       style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                                <button @click="config.dns.rate_limit.whitelist.splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
+                                    <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                </button>
+                            </div>
+                        </template>
+                        <button @click="config.dns.rate_limit.whitelist.push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
+                            <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button @click="saveConfig()" class="btn btn-success" style="margin-top:16px">
+            <i data-lucide="save" style="width:16px;height:16px"></i> Save Rate Limiting Settings
         </button>
     </div>
 

@@ -134,6 +134,8 @@ async fn async_main() -> anyhow::Result<()> {
 
     let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
     let handler_use_case = dns_services.handler_use_case;
+    let tcp_conn_limiter = dns_services.tcp_conn_limiter;
+    let dot_conn_limiter = dns_services.dot_conn_limiter;
     let dns_handler = DnsServerHandler::new(handler_use_case.clone());
     let core_ids_for_dns = core_affinity::get_core_ids().unwrap_or_default();
     let num_dns_workers = core_ids_for_dns.len().max(1);
@@ -146,6 +148,7 @@ async fn async_main() -> anyhow::Result<()> {
             num_dns_workers,
             proxy_protocol_enabled,
             core_ids_for_dns,
+            tcp_conn_limiter,
         )
         .await
         {
@@ -178,6 +181,7 @@ async fn async_main() -> anyhow::Result<()> {
                     tls_cfg,
                     num_dns_workers,
                     proxy_protocol_enabled,
+                    dot_conn_limiter,
                 )
                 .await
                 {

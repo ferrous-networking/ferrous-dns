@@ -1,3 +1,4 @@
+use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
 use super::rebinding_guard::RebindingGuard;
 use super::tsc_timer;
 use crate::ports::{
@@ -50,6 +51,7 @@ pub struct HandleDnsQueryUseCase {
     client_repo: Option<Arc<dyn ClientRepository>>,
     client_tracking_interval: Duration,
     rebinding_guard: RebindingGuard,
+    rate_limiter: Arc<DnsRateLimiter>,
 }
 
 impl HandleDnsQueryUseCase {
@@ -66,6 +68,7 @@ impl HandleDnsQueryUseCase {
             client_repo: None,
             client_tracking_interval: Duration::from_secs(60),
             rebinding_guard: RebindingGuard::disabled(),
+            rate_limiter: Arc::new(DnsRateLimiter::disabled()),
         }
     }
 
@@ -94,6 +97,12 @@ impl HandleDnsQueryUseCase {
         allowlist: &[String],
     ) -> Self {
         self.rebinding_guard = RebindingGuard::new(enabled, local_domain, allowlist);
+        self
+    }
+
+    /// Injects the DNS rate limiter for per-subnet query throttling.
+    pub fn with_rate_limiter(mut self, rate_limiter: Arc<DnsRateLimiter>) -> Self {
+        self.rate_limiter = rate_limiter;
         self
     }
 
@@ -180,6 +189,10 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
+        if !self.rate_limiter.is_allowed(client_ip) {
+            return None;
+        }
+
         let domain_arc: Arc<str> = Arc::from(domain);
         let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
@@ -197,6 +210,10 @@ impl HandleDnsQueryUseCase {
         let group_id = self.block_filter.resolve_group(client_ip);
 
         if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
+            return None;
+        }
+
+        if !self.rate_limiter.is_allowed(client_ip) {
             return None;
         }
 
@@ -237,6 +254,31 @@ impl HandleDnsQueryUseCase {
         let elapsed_us = || tsc_timer::elapsed_us_since(tsc_start);
 
         self.maybe_track_client(request.client_ip);
+
+        match self.rate_limiter.check(request.client_ip, false) {
+            RateLimitDecision::Allow => {}
+            RateLimitDecision::DryRunWouldRefuse => {
+                tracing::debug!(client = %request.client_ip, "[dry-run] would rate-limit");
+            }
+            RateLimitDecision::Refuse => {
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some("RATE_LIMITED"),
+                    block_source: Some(BlockSource::RateLimit),
+                    ..Self::base_query_log(request, elapsed_us(), 0)
+                });
+                return Err(DomainError::DnsRateLimited);
+            }
+            RateLimitDecision::Slip => {
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some("RATE_LIMITED_TC"),
+                    block_source: Some(BlockSource::RateLimit),
+                    ..Self::base_query_log(request, elapsed_us(), 0)
+                });
+                return Err(DomainError::DnsRateLimitedSlip);
+            }
+        }
 
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
         let group_id = self.block_filter.resolve_group(request.client_ip);

@@ -84,7 +84,7 @@
                 this._ctrl.dashboard = new AbortController();
                 try {
                     const url = `${API_BASE}/dashboard?period=24h&include_timeline=${!!includeTimeline}`;
-                    const res = await fetch(url, {signal: this._ctrl.dashboard.signal});
+                    const res = await apiFetch(url, {signal: this._ctrl.dashboard.signal});
                     if (res.ok) {
                         const data = await res.json();
                         this.stats = data.stats;
@@ -122,6 +122,7 @@
                 const timeLabels = [];
                 const blockedCounts = [];
                 const unblockedCounts = [];
+                const rateLimitedCounts = [];
 
                 const dataMap = new Map();
                 timeline.buckets.forEach(b => {
@@ -131,7 +132,8 @@
                     dataMap.set(timeKey, {
                         total: b.total,
                         blocked: b.blocked,
-                        unblocked: b.unblocked
+                        unblocked: b.unblocked,
+                        rate_limited: b.rate_limited || 0
                     });
                 });
 
@@ -144,9 +146,10 @@
                     const minute = bucketTime.getMinutes();
                     timeLabels.push(minute === 0 ? `${hour}:00` : '');
 
-                    const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0};
+                    const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0, rate_limited: 0};
                     blockedCounts.push(data.blocked);
                     unblockedCounts.push(data.unblocked);
+                    rateLimitedCounts.push(data.rate_limited);
                 }
 
                 if (appCharts.timeline && appCharts.timeline.data &&
@@ -154,6 +157,9 @@
                     appCharts.timeline.data.labels = timeLabels;
                     appCharts.timeline.data.datasets[0].data = blockedCounts;
                     appCharts.timeline.data.datasets[1].data = unblockedCounts;
+                    if (appCharts.timeline.data.datasets[2]) {
+                        appCharts.timeline.data.datasets[2].data = rateLimitedCounts;
+                    }
                     appCharts.timeline.update('none');
                 }
             },
@@ -284,7 +290,7 @@
             },
             async loadBlockFilterStats() {
                 try {
-                    const res = await fetch(`${API_BASE}/block-filter/stats`);
+                    const res = await apiFetch(`${API_BASE}/block-filter/stats`);
                     if (res.ok) this.blockFilterStats = await res.json()
                 } catch (e) {
                     console.error(e)
@@ -328,6 +334,15 @@
                                     data: Array(96).fill(0),
                                     borderColor: '#3B82F6',
                                     backgroundColor: 'rgba(59,130,246,0.5)',
+                                    fill: true,
+                                    tension: 0.4,
+                                    pointRadius: 1,
+                                    pointHoverRadius: 3
+                                }, {
+                                    label: 'Rate Limited',
+                                    data: Array(96).fill(0),
+                                    borderColor: '#F59E0B',
+                                    backgroundColor: 'rgba(245,158,11,0.5)',
                                     fill: true,
                                     tension: 0.4,
                                     pointRadius: 1,

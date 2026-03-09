@@ -1,3 +1,4 @@
+use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use ferrous_dns_infrastructure::dns::proxy_protocol::{
     read_proxy_v2_client_ip, ProxyProtocolError,
 };
@@ -32,6 +33,7 @@ pub async fn start_dot_server(
     tls_config: Arc<rustls::ServerConfig>,
     num_workers: usize,
     proxy_protocol_enabled: bool,
+    dot_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let addr: SocketAddr = bind_addr.parse()?;
     let domain = if addr.is_ipv4() {
@@ -52,6 +54,7 @@ pub async fn start_dot_server(
             acceptor.clone(),
             handler.clone(),
             proxy_protocol_enabled,
+            dot_conn_limiter.clone(),
         )));
     }
 
@@ -67,16 +70,26 @@ async fn run_dot_accept_loop(
     acceptor: TlsAcceptor,
     handler: Arc<DnsServerHandler>,
     proxy_protocol_enabled: bool,
+    conn_limiter: ConnectionLimiter,
 ) {
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                let guard = match conn_limiter.try_acquire(peer_addr.ip()) {
+                    Some(g) => g,
+                    None => {
+                        debug!(client = %peer_addr, "DoT connection rejected: per-IP limit");
+                        drop(stream);
+                        continue;
+                    }
+                };
                 tokio::spawn(handle_dot_connection(
                     stream,
                     peer_addr,
                     acceptor.clone(),
                     handler.clone(),
                     proxy_protocol_enabled,
+                    guard,
                 ));
             }
             Err(e) => {
@@ -92,6 +105,7 @@ async fn handle_dot_connection(
     acceptor: TlsAcceptor,
     handler: Arc<DnsServerHandler>,
     proxy_protocol_enabled: bool,
+    _guard: ConnectionGuard,
 ) {
     debug!(client = %peer_addr, "DoT connection accepted");
 

@@ -104,6 +104,7 @@
                     <option value="blocked">Blocked</option>
                     <option value="cache">Cache Hits</option>
                     <option value="upstream">Upstream</option>
+                    <option value="rate-limited">Rate Limited</option>
                 </select>
             </div>
             <div style="margin-left:auto">
@@ -130,7 +131,7 @@
             </thead>
             <tbody>
             <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                <tr :class="query.blocked ? 'row-blocked' : 'row-allowed'">
+                <tr :class="(query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
                     <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
                     <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">

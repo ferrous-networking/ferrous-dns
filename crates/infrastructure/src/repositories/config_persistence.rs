@@ -298,6 +298,68 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
     }
 
+    // ── [dns.rate_limit] ───────────────────────────────────────────────
+    {
+        let dns = ensure_table(&mut doc, "dns")?;
+        let rl = ensure_subtable(dns, "rate_limit")?;
+        set_val(
+            rl,
+            "enabled",
+            toml_edit::Value::from(config.dns.rate_limit.enabled),
+        );
+        set_val(
+            rl,
+            "queries_per_second",
+            toml_edit::Value::from(config.dns.rate_limit.queries_per_second as i64),
+        );
+        set_val(
+            rl,
+            "burst_size",
+            toml_edit::Value::from(config.dns.rate_limit.burst_size as i64),
+        );
+        set_val(
+            rl,
+            "ipv4_prefix_len",
+            toml_edit::Value::from(config.dns.rate_limit.ipv4_prefix_len as i64),
+        );
+        set_val(
+            rl,
+            "ipv6_prefix_len",
+            toml_edit::Value::from(config.dns.rate_limit.ipv6_prefix_len as i64),
+        );
+        set_val(
+            rl,
+            "nxdomain_per_second",
+            toml_edit::Value::from(config.dns.rate_limit.nxdomain_per_second as i64),
+        );
+        set_val(
+            rl,
+            "slip_ratio",
+            toml_edit::Value::from(config.dns.rate_limit.slip_ratio as i64),
+        );
+        set_val(
+            rl,
+            "dry_run",
+            toml_edit::Value::from(config.dns.rate_limit.dry_run),
+        );
+        set_val(
+            rl,
+            "stale_entry_ttl_secs",
+            toml_edit::Value::from(config.dns.rate_limit.stale_entry_ttl_secs as i64),
+        );
+        set_val(
+            rl,
+            "tcp_max_connections_per_ip",
+            toml_edit::Value::from(config.dns.rate_limit.tcp_max_connections_per_ip as i64),
+        );
+        set_val(
+            rl,
+            "dot_max_connections_per_ip",
+            toml_edit::Value::from(config.dns.rate_limit.dot_max_connections_per_ip as i64),
+        );
+        set_val(rl, "whitelist", str_array(&config.dns.rate_limit.whitelist));
+    }
+
     // ── [blocking] ──────────────────────────────────────────────────────
     {
         let t = ensure_table(&mut doc, "blocking")?;

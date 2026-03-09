@@ -81,6 +81,7 @@ nav:
     - Overview: configuration/index.md
     - Server: configuration/server.md
     - DNS & Upstreams: configuration/dns.md
+    - Rate Limiting: configuration/rate-limiting.md
     - Cache: configuration/cache.md
     - Blocking: configuration/blocking.md
     - Database: configuration/database.md

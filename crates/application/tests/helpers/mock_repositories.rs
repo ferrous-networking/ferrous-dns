@@ -352,6 +352,7 @@ impl QueryLogRepository for MockQueryLogRepository {
         Ok(QueryStats {
             queries_total,
             queries_blocked,
+            queries_rate_limited: 0,
             unique_clients: 0,
             uptime_seconds: 0,
             cache_hit_rate: 0.0,

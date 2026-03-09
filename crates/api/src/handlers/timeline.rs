@@ -51,6 +51,7 @@ pub async fn get_timeline(
             total: b.total,
             blocked: b.blocked,
             unblocked: b.unblocked,
+            rate_limited: b.rate_limited,
         })
         .collect();
 

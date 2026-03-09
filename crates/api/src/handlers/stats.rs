@@ -53,6 +53,7 @@ pub async fn get_stats(
     Ok(Json(StatsResponse {
         queries_total: stats.queries_total,
         queries_blocked: stats.queries_blocked,
+        queries_rate_limited: stats.queries_rate_limited,
         clients: stats.unique_clients,
         uptime: stats.uptime_seconds,
         cache_hit_rate: stats.cache_hit_rate,

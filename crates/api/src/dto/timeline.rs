@@ -6,6 +6,7 @@ pub struct TimelineBucket {
     pub total: u64,
     pub blocked: u64,
     pub unblocked: u64,
+    pub rate_limited: u64,
 }
 
 #[derive(Serialize, Debug)]

@@ -1,16 +1,26 @@
 use serde::{Deserialize, Serialize};
 
+/// Source that caused a DNS query to be blocked.
+///
+/// Numeric values from [`as_u8`]/[`from_u8`] are persisted in the database.
+/// **Never reorder or reuse values** — doing so would corrupt historical records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockSource {
+    /// Matched a domain in a downloaded blocklist.
     Blocklist,
+    /// Matched a manually managed (custom) blocked domain.
     ManagedDomain,
+    /// Matched a user-defined regex filter.
     RegexFilter,
+    /// Blocked because a CNAME chain pointed to a blocked domain.
     CnameCloaking,
     /// Blocked by a time-based schedule rule (ScheduleAction::BlockAll slot active).
     Schedule,
     /// Blocked because a public domain resolved to a private/RFC1918 IP address.
     DnsRebinding,
+    /// Blocked by DNS query rate limiting.
+    RateLimit,
 }
 
 impl BlockSource {
@@ -22,6 +32,7 @@ impl BlockSource {
             BlockSource::CnameCloaking => "cname_cloaking",
             BlockSource::Schedule => "schedule",
             BlockSource::DnsRebinding => "dns_rebinding",
+            BlockSource::RateLimit => "rate_limit",
         }
     }
 
@@ -33,6 +44,7 @@ impl BlockSource {
             3 => Some(BlockSource::CnameCloaking),
             4 => Some(BlockSource::Schedule),
             5 => Some(BlockSource::DnsRebinding),
+            6 => Some(BlockSource::RateLimit),
             _ => None,
         }
     }
@@ -45,6 +57,7 @@ impl BlockSource {
             BlockSource::CnameCloaking => 3,
             BlockSource::Schedule => 4,
             BlockSource::DnsRebinding => 5,
+            BlockSource::RateLimit => 6,
         }
     }
 }

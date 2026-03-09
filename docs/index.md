@@ -56,6 +56,8 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
     - First-run setup wizard for password configuration
     - Self-signed certificate generation from the UI
     - Login rate limiting and session management
+    - **DNS rate limiting** — token bucket per subnet with NXDOMAIN budget, TC=1 slip, and dry-run mode
+    - **TCP/DoT connection limiting** — per-IP RAII guards prevent connection exhaustion
     - DNSSEC validation
     - DNS rebinding protection
     - PROXY Protocol v2 support

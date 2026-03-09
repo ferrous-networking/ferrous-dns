@@ -38,6 +38,12 @@ pub enum DomainError {
     #[error("Query timeout")]
     QueryTimeout,
 
+    #[error("DNS query rate limited")]
+    DnsRateLimited,
+
+    #[error("DNS query rate limited (truncated, retry via TCP)")]
+    DnsRateLimitedSlip,
+
     #[error("Query filtered: {0}")]
     FilteredQuery(String),
 

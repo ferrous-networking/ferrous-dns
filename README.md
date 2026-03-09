@@ -71,6 +71,8 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 - [Named API tokens](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) (SHA-256 hashed, `X-Api-Key` header)
 - [First-run setup wizard](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) for password configuration
 - [Self-signed certificate generation](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) from the UI
+- [DNS rate limiting](https://ferrous-networking.github.io/Ferrous-DNS/configuration/rate-limiting/) — token bucket per subnet with NXDOMAIN budget, TC=1 slip, and dry-run mode
+- [TCP/DoT connection limiting](https://ferrous-networking.github.io/Ferrous-DNS/configuration/rate-limiting/) — per-IP RAII guards prevent connection exhaustion
 - [DNSSEC validation](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) (RFC 4035)
 - [DNS rebinding protection](https://ferrous-networking.github.io/Ferrous-DNS/features/security/)
 - [PROXY Protocol v2](https://ferrous-networking.github.io/Ferrous-DNS/features/security/) support
