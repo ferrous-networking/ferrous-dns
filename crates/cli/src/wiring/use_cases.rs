@@ -149,12 +149,19 @@ impl UseCases {
                 repos.client_subnet.clone(),
                 repos.block_filter_engine.clone(),
             )),
-            create_manual_client: Arc::new(CreateManualClientUseCase::new(
-                repos.client.clone(),
-                repos.group.clone(),
-            )),
-            update_client: Arc::new(UpdateClientUseCase::new(repos.client.clone())),
-            delete_client: Arc::new(DeleteClientUseCase::new(repos.client.clone())),
+            create_manual_client: Arc::new(
+                CreateManualClientUseCase::new(repos.client.clone(), repos.group.clone())
+                    .with_block_filter(repos.block_filter_engine.clone()),
+            ),
+            update_client: Arc::new(
+                UpdateClientUseCase::new(repos.client.clone())
+                    .with_group_repo(repos.group.clone())
+                    .with_block_filter(repos.block_filter_engine.clone()),
+            ),
+            delete_client: Arc::new(
+                DeleteClientUseCase::new(repos.client.clone())
+                    .with_block_filter(repos.block_filter_engine.clone()),
+            ),
             get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(
                 repos.blocklist_source.clone(),
             )),

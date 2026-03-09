@@ -7,10 +7,15 @@ use rustc_hash::FxBuildHasher;
 use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 pub const TTL_SECS: u64 = 60;
 const L0_CAPACITY: usize = 256;
+
+/// Monotonic counter bumped when decision caches should be invalidated.
+/// Thread-local L0 entries written under an older epoch are treated as stale.
+static DECISION_EPOCH: AtomicU64 = AtomicU64::new(0);
 const L1_CAPACITY: usize = 100_000;
 const EVICTION_BATCH_SIZE: usize = 64;
 
@@ -53,7 +58,8 @@ pub fn decision_key(domain: &str, group_id: i64) -> u64 {
     h.finish()
 }
 
-type BlockL0Cache = LruCache<u64, (u8, u64), FxBuildHasher>;
+/// Cached entry: (encoded_source, inserted_at_secs, epoch_at_insert).
+type BlockL0Cache = LruCache<u64, (u8, u64, u64), FxBuildHasher>;
 
 thread_local! {
     static BLOCK_L0: RefCell<BlockL0Cache> =
@@ -65,10 +71,11 @@ thread_local! {
 
 #[inline]
 pub fn decision_l0_get_by_key(key: u64) -> Option<Option<BlockSource>> {
+    let current_epoch = DECISION_EPOCH.load(Ordering::Acquire);
     BLOCK_L0.with(|c| {
         let mut c = c.borrow_mut();
-        if let Some(&(encoded, inserted_at)) = c.get(&key) {
-            if coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
+        if let Some(&(encoded, inserted_at, epoch)) = c.get(&key) {
+            if epoch == current_epoch && coarse_now_secs().saturating_sub(inserted_at) < TTL_SECS {
                 return Some(decode_source(encoded));
             }
             c.pop(&key);
@@ -79,14 +86,17 @@ pub fn decision_l0_get_by_key(key: u64) -> Option<Option<BlockSource>> {
 
 #[inline]
 pub fn decision_l0_set_by_key(key: u64, source: Option<BlockSource>) {
+    let current_epoch = DECISION_EPOCH.load(Ordering::Acquire);
     BLOCK_L0.with(|c| {
-        c.borrow_mut()
-            .put(key, (encode_source(source), coarse_now_secs()));
+        c.borrow_mut().put(
+            key,
+            (encode_source(source), coarse_now_secs(), current_epoch),
+        );
     });
 }
 
 pub fn decision_l0_clear() {
-    BLOCK_L0.with(|c| c.borrow_mut().clear());
+    DECISION_EPOCH.fetch_add(1, Ordering::Release);
 }
 
 pub struct BlockDecisionCache {

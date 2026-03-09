@@ -16,13 +16,18 @@ use sqlx::{Row, SqlitePool};
 use std::cell::RefCell;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-type GroupL0Cache = LruCache<IpAddr, (i64, u64), FxBuildHasher>;
+/// Cached entry: (group_id, expiry_secs, epoch_at_insert).
+type GroupL0Cache = LruCache<IpAddr, (i64, u64, u64), FxBuildHasher>;
 
 const GROUP_L0_CAPACITY: usize = 256;
+
+/// Monotonic counter bumped when client-to-group mappings change.
+/// Entries written under an older epoch are treated as stale.
+static GROUP_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     static GROUP_L0: RefCell<GroupL0Cache> =
@@ -61,7 +66,7 @@ impl BlockFilterEngine {
             .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;
 
         let engine = Arc::new(Self {
-            index: ArcSwap::from_pointee(BlockIndex::empty(default_group_id)),
+            index: ArcSwap::from_pointee(BlockIndex::empty()),
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             subnet_matcher: ArcSwap::from_pointee(None),
@@ -166,10 +171,12 @@ impl BlockFilterEngine {
 impl BlockFilterEnginePort for BlockFilterEngine {
     #[inline]
     fn resolve_group(&self, ip: IpAddr) -> i64 {
+        let current_epoch = GROUP_EPOCH.load(Ordering::Acquire);
+
         if let Some(gid) = GROUP_L0.with(|c| {
             let mut cache = c.borrow_mut();
-            if let Some(&(gid, expires)) = cache.get(&ip) {
-                if coarse_now_secs() < expires {
+            if let Some(&(gid, expires, epoch)) = cache.get(&ip) {
+                if epoch == current_epoch && coarse_now_secs() < expires {
                     return Some(gid);
                 }
                 cache.pop(&ip);
@@ -181,7 +188,8 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
         let gid = self.resolve_group_uncached(ip);
         GROUP_L0.with(|c| {
-            c.borrow_mut().put(ip, (gid, coarse_now_secs() + 60));
+            c.borrow_mut()
+                .put(ip, (gid, coarse_now_secs() + 60, current_epoch));
         });
         gid
     }
@@ -278,7 +286,12 @@ impl BlockFilterEnginePort for BlockFilterEngine {
     }
 
     async fn load_client_groups(&self) -> Result<(), DomainError> {
-        self.load_client_groups_inner().await
+        self.load_client_groups_inner().await?;
+        // Client-to-group mappings changed — invalidate all cached lookups.
+        GROUP_EPOCH.fetch_add(1, Ordering::Release);
+        self.decision_cache.clear();
+        decision_l0_clear();
+        Ok(())
     }
 
     fn compiled_domain_count(&self) -> usize {

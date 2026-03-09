@@ -65,7 +65,6 @@ impl Default for AllowlistIndex {
 
 pub struct BlockIndex {
     pub group_masks: HashMap<i64, SourceBitSet>,
-    pub default_group_id: i64,
     pub total_blocked_domains: usize,
     pub exact: DashMap<CompactString, SourceBitSet, FxBuildHasher>,
     pub bloom: AtomicBloom,
@@ -80,10 +79,9 @@ pub struct BlockIndex {
 }
 
 impl BlockIndex {
-    pub fn empty(default_group_id: i64) -> Self {
+    pub fn empty() -> Self {
         Self {
             group_masks: HashMap::new(),
-            default_group_id,
             total_blocked_domains: 0,
             exact: DashMap::with_hasher(FxBuildHasher),
             bloom: AtomicBloom::new(1000, 0.001),
@@ -98,14 +96,14 @@ impl BlockIndex {
         }
     }
 
+    /// Returns the bitmask for a group. Groups not in the map get only the
+    /// manual-blocklist bit — they are NOT promoted to the default group.
     #[inline]
     pub fn group_mask(&self, group_id: i64) -> SourceBitSet {
-        self.group_masks.get(&group_id).copied().unwrap_or_else(|| {
-            self.group_masks
-                .get(&self.default_group_id)
-                .copied()
-                .unwrap_or(u64::MAX)
-        })
+        self.group_masks
+            .get(&group_id)
+            .copied()
+            .unwrap_or(MANUAL_SOURCE_BIT)
     }
 
     #[inline]

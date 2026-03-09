@@ -1,13 +1,14 @@
 use ferrous_dns_domain::{Client, DomainError};
 use std::net::IpAddr;
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
-use crate::ports::{ClientRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, ClientRepository, GroupRepository};
 
 pub struct CreateManualClientUseCase {
     client_repo: Arc<dyn ClientRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Option<Arc<dyn BlockFilterEnginePort>>,
 }
 
 impl CreateManualClientUseCase {
@@ -18,7 +19,13 @@ impl CreateManualClientUseCase {
         Self {
             client_repo,
             group_repo,
+            block_filter_engine: None,
         }
+    }
+
+    pub fn with_block_filter(mut self, engine: Arc<dyn BlockFilterEnginePort>) -> Self {
+        self.block_filter_engine = Some(engine);
+        self
     }
 
     #[instrument(skip(self))]
@@ -48,6 +55,7 @@ impl CreateManualClientUseCase {
             self.client_repo.update_mac_address(ip_address, mac).await?;
         }
 
+        let group_assigned = group_id.is_some();
         if let (Some(client_id), Some(gid)) = (initial.id, group_id) {
             self.client_repo.assign_group(client_id, gid).await?;
         }
@@ -59,6 +67,14 @@ impl CreateManualClientUseCase {
             group_id = ?group_id,
             "Manual client created successfully"
         );
+
+        if group_assigned {
+            if let Some(ref engine) = self.block_filter_engine {
+                if let Err(e) = engine.load_client_groups().await {
+                    error!(error = %e, "Failed to reload client groups after manual client creation");
+                }
+            }
+        }
 
         Ok(client)
     }

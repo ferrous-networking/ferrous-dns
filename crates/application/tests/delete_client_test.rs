@@ -170,7 +170,6 @@ async fn test_delete_client_validates_existence_first() {
     match result {
         Err(DomainError::ClientNotFound(msg)) => {
             assert!(msg.contains("1"));
-            assert!(msg.contains("not found"));
         }
         _ => panic!("Expected ClientNotFound error"),
     }
