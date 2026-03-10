@@ -86,7 +86,7 @@
                 if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
                 if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
                 if (this.category === 'rate-limited') filtered = filtered.filter(q => q.response_status === 'RATE_LIMITED' || q.response_status === 'RATE_LIMITED_TC');
-                if (this.category === 'malware') filtered = filtered.filter(q => q.block_source === 'dns_tunneling' || q.block_source === 'dns_rebinding' || q.block_source === 'nxdomain_hijack');
+                if (this.category === 'malware') filtered = filtered.filter(q => q.block_source === 'dns_tunneling' || q.block_source === 'dns_rebinding' || q.block_source === 'nxdomain_hijack' || q.block_source === 'response_ip_filter');
                 return filtered;
             },
 

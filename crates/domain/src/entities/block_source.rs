@@ -25,6 +25,8 @@ pub enum BlockSource {
     DnsTunneling,
     /// Blocked by NXDomain hijack detection (ISP intercepting NXDOMAIN responses).
     NxdomainHijack,
+    /// Blocked by response IP filtering (known C2 IP in DNS response).
+    ResponseIpFilter,
 }
 
 impl BlockSource {
@@ -39,6 +41,7 @@ impl BlockSource {
             BlockSource::RateLimit => "rate_limit",
             BlockSource::DnsTunneling => "dns_tunneling",
             BlockSource::NxdomainHijack => "nxdomain_hijack",
+            BlockSource::ResponseIpFilter => "response_ip_filter",
         }
     }
 
@@ -53,6 +56,7 @@ impl BlockSource {
             6 => Some(BlockSource::RateLimit),
             7 => Some(BlockSource::DnsTunneling),
             8 => Some(BlockSource::NxdomainHijack),
+            9 => Some(BlockSource::ResponseIpFilter),
             _ => None,
         }
     }
@@ -68,6 +72,7 @@ impl BlockSource {
             BlockSource::RateLimit => 6,
             BlockSource::DnsTunneling => 7,
             BlockSource::NxdomainHijack => 8,
+            BlockSource::ResponseIpFilter => 9,
         }
     }
 }

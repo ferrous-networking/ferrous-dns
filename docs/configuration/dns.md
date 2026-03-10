@@ -358,3 +358,23 @@ stale_entry_ttl_secs       = 300
 domain_whitelist           = []
 client_whitelist           = []
 ```
+
+---
+
+## Response IP Filtering
+
+Response IP filtering downloads C2 IP threat feeds and blocks DNS responses that resolve to known command-and-control server IPs. It is **disabled by default** because it requires configuring external feed URLs.
+
+For full documentation including real-world examples, recommended feeds, and edge cases, see the [Malware Detection](../features/malware-detection.md#response-ip-filtering) page.
+
+```toml title="ferrous-dns.toml"
+[dns.response_ip_filter]
+enabled                = false      # opt-in (requires feed URLs)
+action                 = "block"    # "alert" | "block"
+ip_list_urls = [
+    # "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+    # "https://sslbl.abuse.ch/blacklist/sslipblacklist.txt",
+]
+refresh_interval_secs  = 86400      # 24 hours
+ip_ttl_secs            = 604800     # 7 days
+```

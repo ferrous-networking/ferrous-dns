@@ -3,6 +3,7 @@ pub mod handle_dns_query;
 mod nxdomain_hijack_guard;
 pub mod rate_limiter;
 mod rebinding_guard;
+mod response_ip_filter_guard;
 pub mod tsc_timer;
 mod tunneling_guard;
 pub use handle_dns_query::HandleDnsQueryUseCase;

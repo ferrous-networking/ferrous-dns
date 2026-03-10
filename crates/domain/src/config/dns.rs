@@ -4,6 +4,7 @@ use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
 use super::nxdomain_hijack::NxdomainHijackConfig;
 use super::rate_limit::RateLimitConfig;
+use super::response_ip_filter::ResponseIpFilterConfig;
 use super::tunneling::TunnelingDetectionConfig;
 use super::upstream::UpstreamPool;
 use super::upstream::UpstreamStrategy;
@@ -110,6 +111,10 @@ pub struct DnsConfig {
     /// NXDomain hijack detection configuration.
     #[serde(default)]
     pub nxdomain_hijack: NxdomainHijackConfig,
+
+    /// Response IP filtering (block known C2 IPs in DNS responses).
+    #[serde(default)]
+    pub response_ip_filter: ResponseIpFilterConfig,
 }
 
 impl Default for DnsConfig {
@@ -149,6 +154,7 @@ impl Default for DnsConfig {
             rate_limit: RateLimitConfig::default(),
             tunneling_detection: TunnelingDetectionConfig::default(),
             nxdomain_hijack: NxdomainHijackConfig::default(),
+            response_ip_filter: ResponseIpFilterConfig::default(),
         }
     }
 }

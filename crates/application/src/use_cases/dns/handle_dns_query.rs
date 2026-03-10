@@ -2,15 +2,18 @@ use super::coarse_timer::coarse_now_ns;
 use super::nxdomain_hijack_guard::NxdomainHijackGuard;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
 use super::rebinding_guard::RebindingGuard;
+use super::response_ip_filter_guard::ResponseIpFilterGuard;
 use super::tsc_timer;
 use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
-    NxdomainHijackIpStore, QueryLogRepository, SafeSearchEnginePort, TunnelingFlagStore,
+    NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore, SafeSearchEnginePort,
+    TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
     BlockSource, DnsQuery, DnsRequest, DomainError, NxdomainHijackAction, NxdomainHijackConfig,
-    QueryLog, QuerySource, RecordType, TunnelingAction, TunnelingDetectionConfig,
+    QueryLog, QuerySource, RecordType, ResponseIpFilterAction, ResponseIpFilterConfig,
+    TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
@@ -39,6 +42,7 @@ pub struct HandleDnsQueryUseCase {
     tunneling_event_tx: Option<tokio::sync::mpsc::Sender<TunnelingAnalysisEvent>>,
     tunneling_flag_store: Option<Arc<dyn TunnelingFlagStore>>,
     nxdomain_hijack_guard: NxdomainHijackGuard,
+    response_ip_filter_guard: ResponseIpFilterGuard,
 }
 
 impl HandleDnsQueryUseCase {
@@ -60,6 +64,7 @@ impl HandleDnsQueryUseCase {
             tunneling_event_tx: None,
             tunneling_flag_store: None,
             nxdomain_hijack_guard: NxdomainHijackGuard::disabled(),
+            response_ip_filter_guard: ResponseIpFilterGuard::disabled(),
         }
     }
 
@@ -125,6 +130,16 @@ impl HandleDnsQueryUseCase {
         store: Arc<dyn NxdomainHijackIpStore>,
     ) -> Self {
         self.nxdomain_hijack_guard = NxdomainHijackGuard::new(config.action, store);
+        self
+    }
+
+    /// Enables response IP filtering (C2 IP blocking) on the hot path.
+    pub fn with_response_ip_filter(
+        mut self,
+        config: &ResponseIpFilterConfig,
+        store: Arc<dyn ResponseIpFilterStore>,
+    ) -> Self {
+        self.response_ip_filter_guard = ResponseIpFilterGuard::new(config.action, store);
         self
     }
 
@@ -307,7 +322,10 @@ impl HandleDnsQueryUseCase {
             return None;
         }
         if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
-            return None;
+            return None; // fall through to execute() for logging
+        }
+        if self.response_ip_filter_guard.has_blocked_ip(&resolution) {
+            return None; // fall through to execute() for logging
         }
 
         let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
@@ -423,7 +441,9 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if cached.has_response_data() {
-                if self.nxdomain_hijack_guard.is_hijacked_response(&cached) {
+                if self.nxdomain_hijack_guard.is_hijacked_response(&cached)
+                    || self.response_ip_filter_guard.has_blocked_ip(&cached)
+                {
                     // Fall through to full resolve path for logging and action.
                 } else {
                     self.log(&QueryLog {
@@ -484,6 +504,25 @@ impl HandleDnsQueryUseCase {
                             tracing::info!(
                                 domain = %request.domain,
                                 "NXDomain hijack detected (alert mode)"
+                            );
+                        }
+                    }
+                }
+                if self.response_ip_filter_guard.has_blocked_ip(&resolution) {
+                    match self.response_ip_filter_guard.action() {
+                        ResponseIpFilterAction::Block => {
+                            self.log(&QueryLog {
+                                blocked: true,
+                                response_status: Some("RESPONSE_IP_BLOCKED"),
+                                block_source: Some(BlockSource::ResponseIpFilter),
+                                ..Self::base_query_log(request, elapsed_us(), group_id)
+                            });
+                            return Err(DomainError::Blocked);
+                        }
+                        ResponseIpFilterAction::Alert => {
+                            tracing::info!(
+                                domain = %request.domain,
+                                "Response IP filter: C2 IP detected (alert mode)"
                             );
                         }
                     }

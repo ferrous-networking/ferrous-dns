@@ -819,6 +819,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "mimalloc",
+ "reqwest",
  "rustc-hash",
  "rustls",
  "rustls-pemfile",

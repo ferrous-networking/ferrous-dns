@@ -60,6 +60,7 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
     - **TCP/DoT connection limiting** — per-IP limits prevent connection exhaustion
     - DNSSEC validation
     - DNS rebinding protection
+    - **Malware detection** — DNS tunneling detection, NXDomain hijack detection, response IP filtering (C2 blocking)
     - PROXY Protocol v2 support
     - Pi-hole API compatibility
 

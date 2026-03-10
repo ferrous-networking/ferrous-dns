@@ -5,7 +5,8 @@ mod resolver;
 use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{
     CacheMaintenancePort, NxdomainHijackIpStore, NxdomainHijackProbeTarget, PtrRecordRegistry,
-    TunnelingEvictionTarget, TunnelingFlagStore,
+    ResponseIpFilterEvictionTarget, ResponseIpFilterStore, TunnelingEvictionTarget,
+    TunnelingFlagStore,
 };
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
@@ -14,9 +15,11 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
     resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, NxdomainHijackDetector,
-    PoolManager, TunnelingDetector,
+    PoolManager, ResponseIpFilterDetector, TunnelingDetector,
 };
-use ferrous_dns_jobs::{NxdomainHijackEvictionJob, TunnelingEvictionJob};
+use ferrous_dns_jobs::{
+    NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
+};
 use std::sync::Arc;
 use tracing::info;
 
@@ -33,6 +36,7 @@ pub struct DnsServices {
     pub dot_conn_limiter: ConnectionLimiter,
     pub tunneling_eviction_job: Option<TunnelingEvictionJob>,
     pub nxdomain_hijack_eviction_job: Option<NxdomainHijackEvictionJob>,
+    pub response_ip_filter_eviction_job: Option<ResponseIpFilterEvictionJob>,
 }
 
 impl DnsServices {
@@ -207,6 +211,57 @@ impl DnsServices {
             );
         }
 
+        // Response IP Filtering (C2 IP blocking)
+        let (response_ip_filter_detector, response_ip_filter_eviction_job) = if config
+            .dns
+            .response_ip_filter
+            .enabled
+            && !config.dns.response_ip_filter.ip_list_urls.is_empty()
+        {
+            let detector = Arc::new(ResponseIpFilterDetector::new(
+                &config.dns.response_ip_filter,
+            ));
+            let http_client = reqwest::Client::builder()
+                .user_agent(format!(
+                    "ferrous-dns/{} (response-ip-filter)",
+                    env!("CARGO_PKG_VERSION")
+                ))
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {e}"))?;
+            let detector_clone = Arc::clone(&detector);
+            tokio::spawn(async move {
+                detector_clone.run_fetch_loop(http_client).await;
+            });
+            let eviction_job = ResponseIpFilterEvictionJob::new(
+                Arc::clone(&detector) as Arc<dyn ResponseIpFilterEvictionTarget>,
+                config.dns.response_ip_filter.ip_ttl_secs / 2,
+            );
+            if config.dns.response_ip_filter.ip_ttl_secs
+                < config.dns.response_ip_filter.refresh_interval_secs
+            {
+                tracing::warn!(
+                        ip_ttl_secs = config.dns.response_ip_filter.ip_ttl_secs,
+                        refresh_interval_secs = config.dns.response_ip_filter.refresh_interval_secs,
+                        "ip_ttl_secs < refresh_interval_secs — IPs will be evicted before the next feed refresh"
+                    );
+            }
+            info!(
+                action = ?config.dns.response_ip_filter.action,
+                "Response IP filtering enabled"
+            );
+            (Some(detector), Some(eviction_job))
+        } else {
+            (None, None)
+        };
+
+        if let Some(ref detector) = response_ip_filter_detector {
+            handler = handler.with_response_ip_filter(
+                &config.dns.response_ip_filter,
+                Arc::clone(detector) as Arc<dyn ResponseIpFilterStore>,
+            );
+        }
+
         let handler_use_case = Arc::new(handler);
 
         let tcp_conn_limiter =
@@ -227,6 +282,7 @@ impl DnsServices {
             dot_conn_limiter,
             tunneling_eviction_job,
             nxdomain_hijack_eviction_job,
+            response_ip_filter_eviction_job,
         })
     }
 

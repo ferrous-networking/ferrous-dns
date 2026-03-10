@@ -157,6 +157,24 @@ probes_per_round = 3                    # Probe queries per upstream per round
 hijack_ip_ttl_secs = 3600              # Eviction TTL for unconfirmed hijack IPs (1 hour)
 
 
+# ── Response IP Filtering (C2 IP Blocking) ──────────────────────────────────
+# Blocks DNS responses that resolve to known C2 server IPs.
+# Downloads IP threat feeds (abuse.ch, Feodo Tracker, etc.) and checks
+# every DNS response against the feed. Opt-in — requires feed URLs.
+
+[dns.response_ip_filter]
+enabled = false                                              # opt-in
+action = "block"                                             # "alert" | "block"
+ip_list_urls = []                                            # add C2 feed URLs
+# Example feeds:
+# ip_list_urls = [
+#   "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+#   "https://sslbl.abuse.ch/blacklist/sslipblacklist.txt",
+# ]
+refresh_interval_secs = 86400                                # 24 hours
+ip_ttl_secs = 604800                                         # 7 days
+
+
 # ── Upstream Health Checks ────────────────────────────────────────────────────
 
 [dns.health_check]

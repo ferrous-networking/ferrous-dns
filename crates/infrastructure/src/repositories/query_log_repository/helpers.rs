@@ -95,6 +95,7 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
                 "rate_limit" => Some(BlockSource::RateLimit),
                 "dns_tunneling" => Some(BlockSource::DnsTunneling),
                 "nxdomain_hijack" => Some(BlockSource::NxdomainHijack),
+                "response_ip_filter" => Some(BlockSource::ResponseIpFilter),
                 _ => None,
             });
 

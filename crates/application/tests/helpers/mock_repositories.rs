@@ -1700,3 +1700,35 @@ impl NxdomainHijackIpStore for MockNxdomainHijackIpStore {
         self.hijack_ips.read().unwrap().contains(ip)
     }
 }
+
+// ── MockResponseIpFilterStore ─────────────────────────────────────────────────
+
+use ferrous_dns_application::ports::ResponseIpFilterStore;
+
+pub struct MockResponseIpFilterStore {
+    blocked_ips: std::sync::RwLock<HashSet<IpAddr>>,
+}
+
+impl MockResponseIpFilterStore {
+    pub fn new() -> Self {
+        Self {
+            blocked_ips: std::sync::RwLock::new(HashSet::new()),
+        }
+    }
+
+    pub fn add_blocked_ip(&self, ip: IpAddr) {
+        self.blocked_ips.write().unwrap().insert(ip);
+    }
+}
+
+impl Default for MockResponseIpFilterStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ResponseIpFilterStore for MockResponseIpFilterStore {
+    fn is_blocked_ip(&self, ip: &IpAddr) -> bool {
+        self.blocked_ips.read().unwrap().contains(ip)
+    }
+}

@@ -82,8 +82,8 @@
 - [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — IoC ingestion)
 - [ ] Suspicious TLD blocking (high-risk TLDs: .tk, .top, .xyz, .buzz, .gq)
 - [ ] Newly Registered Domain (NRD) blocking (< 30 days, feed-based)
-- [ ] Response IP filtering (block known C2 IPs in DNS responses)
-- [ ] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
+- [x] Response IP filtering (block known C2 IPs in DNS responses)
+- [x] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
 - [ ] Read-only / lockdown mode (disable config changes via flag)
 - [x] Separate DoH and Admin UI ports
 

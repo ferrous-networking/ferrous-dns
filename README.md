@@ -80,6 +80,7 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 - [DNS tunneling detection](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — two-phase detection (hot path O(1) + background statistical analysis) catches C2 beaconing, data exfiltration, and DGA malware via entropy, query rate, unique subdomains, TXT proportion, and NXDOMAIN ratio
 - [DNS rebinding protection](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — blocks public domains resolving to private IPs (RFC-1918), preventing browser-based attacks on routers, NAS, and IoT devices
 - [NXDomain hijack detection](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — automatically detects and neutralizes ISP NXDOMAIN interception by probing upstreams with `.invalid` domains (RFC 6761) and converting hijacked responses back to proper NXDOMAIN
+- [Response IP filtering](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — downloads C2 IP threat feeds (abuse.ch, Feodo Tracker) and blocks DNS responses that resolve to known command-and-control server IPs, stopping malware before it connects
 
 **Compatibility & Deployment**
 - [Pi-hole v6 API compatibility](https://ferrous-networking.github.io/ferrous-dns/features/pihole-compat/) — drop-in replacement for existing integrations and third-party apps

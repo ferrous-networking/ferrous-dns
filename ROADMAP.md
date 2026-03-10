@@ -71,7 +71,7 @@
 - [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
 - [x] DNS Tunneling Detection (two-phase: hot-path O(1) guard + background statistical analysis)
 - [x] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
-- [ ] Response IP filtering (block known C2 IPs in DNS responses)
+- [x] Response IP filtering (block known C2 IPs in DNS responses)
 - [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
 - [x] Separate listening ports for DoH and Admin UI
 

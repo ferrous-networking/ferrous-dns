@@ -2,14 +2,15 @@ use ferrous_dns_application::ports::CacheMaintenancePort;
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, NxdomainHijackEvictionJob,
-    QueryLogRetentionJob, RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob,
-    TunnelingEvictionJob, WalCheckpointJob,
+    QueryLogRetentionJob, ResponseIpFilterEvictionJob, RetentionJob, ScheduleEvaluatorJob,
+    SessionCleanupJob, TunnelingEvictionJob, WalCheckpointJob,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::wiring::{Repositories, UseCases};
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_job_runner(
     use_cases: &UseCases,
     repos: &Repositories,
@@ -18,6 +19,7 @@ pub fn build_job_runner(
     cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     tunneling_eviction: Option<TunnelingEvictionJob>,
     nxdomain_hijack_eviction: Option<NxdomainHijackEvictionJob>,
+    response_ip_filter_eviction: Option<ResponseIpFilterEvictionJob>,
 ) -> JobRunner {
     let mut runner = JobRunner::new()
         .with_client_sync(ClientSyncJob::new(
@@ -53,6 +55,10 @@ pub fn build_job_runner(
 
     if let Some(eviction) = nxdomain_hijack_eviction {
         runner = runner.with_nxdomain_hijack_eviction(eviction);
+    }
+
+    if let Some(eviction) = response_ip_filter_eviction {
+        runner = runner.with_response_ip_filter_eviction(eviction);
     }
 
     runner

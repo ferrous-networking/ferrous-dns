@@ -19,6 +19,7 @@ mod nxdomain_hijack_store;
 mod ptr_record_registry;
 mod query_log_repository;
 mod regex_filter_repository;
+mod response_ip_filter_store;
 mod safe_search_config_repository;
 mod safe_search_engine_port;
 mod schedule_profile_repository;
@@ -55,6 +56,7 @@ pub use nxdomain_hijack_store::{NxdomainHijackIpStore, NxdomainHijackProbeTarget
 pub use ptr_record_registry::PtrRecordRegistry;
 pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket};
 pub use regex_filter_repository::RegexFilterRepository;
+pub use response_ip_filter_store::{ResponseIpFilterEvictionTarget, ResponseIpFilterStore};
 pub use safe_search_config_repository::SafeSearchConfigRepository;
 pub use safe_search_engine_port::SafeSearchEnginePort;
 pub use schedule_profile_repository::ScheduleProfileRepository;

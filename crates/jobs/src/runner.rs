@@ -1,7 +1,7 @@
 use crate::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, NxdomainHijackEvictionJob,
-    QueryLogRetentionJob, RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob,
-    TunnelingEvictionJob, WalCheckpointJob,
+    QueryLogRetentionJob, ResponseIpFilterEvictionJob, RetentionJob, ScheduleEvaluatorJob,
+    SessionCleanupJob, TunnelingEvictionJob, WalCheckpointJob,
 };
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -36,6 +36,7 @@ impl_spawnable_job!(ScheduleEvaluatorJob);
 impl_spawnable_job!(SessionCleanupJob);
 impl_spawnable_job!(TunnelingEvictionJob);
 impl_spawnable_job!(NxdomainHijackEvictionJob);
+impl_spawnable_job!(ResponseIpFilterEvictionJob);
 
 fn spawn_job<J: SpawnableJob>(job: Option<J>, shutdown: &Option<CancellationToken>) {
     if let Some(job) = job {
@@ -58,6 +59,7 @@ pub struct JobRunner {
     session_cleanup: Option<SessionCleanupJob>,
     tunneling_eviction: Option<TunnelingEvictionJob>,
     nxdomain_hijack_eviction: Option<NxdomainHijackEvictionJob>,
+    response_ip_filter_eviction: Option<ResponseIpFilterEvictionJob>,
     shutdown: Option<CancellationToken>,
 }
 
@@ -74,6 +76,7 @@ impl JobRunner {
             session_cleanup: None,
             tunneling_eviction: None,
             nxdomain_hijack_eviction: None,
+            response_ip_filter_eviction: None,
             shutdown: None,
         }
     }
@@ -128,6 +131,11 @@ impl JobRunner {
         self
     }
 
+    pub fn with_response_ip_filter_eviction(mut self, job: ResponseIpFilterEvictionJob) -> Self {
+        self.response_ip_filter_eviction = Some(job);
+        self
+    }
+
     pub fn with_shutdown_token(mut self, token: CancellationToken) -> Self {
         self.shutdown = Some(token);
         self
@@ -146,6 +154,7 @@ impl JobRunner {
         spawn_job(self.session_cleanup, &self.shutdown);
         spawn_job(self.tunneling_eviction, &self.shutdown);
         spawn_job(self.nxdomain_hijack_eviction, &self.shutdown);
+        spawn_job(self.response_ip_filter_eviction, &self.shutdown);
 
         info!("All background jobs started");
     }
