@@ -302,6 +302,7 @@ impl QueryLogRepository for MockQueryLogRepository {
         period_hours: f32,
         _cursor: Option<i64>,
         _domain: Option<&str>,
+        _category: Option<ferrous_dns_domain::QueryCategory>,
     ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
         let all = self.get_recent(limit + offset, period_hours).await?;
         let total = all.len() as u64;

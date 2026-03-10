@@ -29,7 +29,7 @@ pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
 pub use entities::custom_service::CustomService;
 pub use entities::group::{Group, GroupStats};
 pub use entities::managed_domain::{DomainAction, ManagedDomain};
-pub use entities::query_log::{CacheStats, QueryLog, QuerySource, QueryStats};
+pub use entities::query_log::{CacheStats, QueryCategory, QueryLog, QuerySource, QueryStats};
 pub use entities::regex_filter::RegexFilter;
 pub use entities::safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};
 pub use entities::schedule::{

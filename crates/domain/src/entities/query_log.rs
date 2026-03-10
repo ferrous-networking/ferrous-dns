@@ -5,6 +5,33 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
+/// Category filter for query log pagination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryCategory {
+    Allowed,
+    Blocked,
+    Cache,
+    Upstream,
+    RateLimited,
+    Malware,
+}
+
+impl FromStr for QueryCategory {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "allowed" => Ok(Self::Allowed),
+            "blocked" => Ok(Self::Blocked),
+            "cache" => Ok(Self::Cache),
+            "upstream" => Ok(Self::Upstream),
+            "rate-limited" => Ok(Self::RateLimited),
+            "malware" => Ok(Self::Malware),
+            other => Err(format!("invalid query category: '{other}'")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QuerySource {
     #[default]

@@ -5,6 +5,7 @@ mod writer;
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity, TimelineBucket};
+use ferrous_dns_domain::query_log::QueryCategory;
 use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QueryStats};
 use sqlx::SqlitePool;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,8 +102,9 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         period_hours: f32,
         cursor: Option<i64>,
         domain: Option<&str>,
+        category: Option<QueryCategory>,
     ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
-        reader::get_recent_paged(&self.read_pool, limit, offset, period_hours, cursor, domain).await
+        reader::get_recent_paged(&self.read_pool, limit, offset, period_hours, cursor, domain, category).await
     }
 
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError> {

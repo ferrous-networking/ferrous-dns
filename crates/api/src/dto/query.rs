@@ -11,6 +11,7 @@ pub struct QueryParams {
     #[serde(default = "default_period")]
     pub period: String,
     pub domain: Option<String>,
+    pub category: Option<String>,
 }
 
 fn default_limit() -> u32 {

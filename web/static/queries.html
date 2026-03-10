@@ -97,7 +97,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
-                <select x-model="category" @change="currentPage=1"
+                <select x-model="category" @change="currentPage=1;_cursors={};loadQueries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="">All Queries</option>
                     <option value="allowed">Allowed</option>

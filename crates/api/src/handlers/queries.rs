@@ -21,6 +21,7 @@ pub async fn get_queries(
         offset = params.offset,
         cursor = params.cursor,
         domain = ?params.domain,
+        category = ?params.category,
         "Fetching recent queries"
     );
 
@@ -37,6 +38,7 @@ pub async fn get_queries(
             period_hours,
             params.cursor,
             params.domain.as_deref(),
+            params.category.as_deref(),
         )
         .await?;
 

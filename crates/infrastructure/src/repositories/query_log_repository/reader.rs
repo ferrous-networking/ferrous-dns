@@ -1,6 +1,7 @@
 use super::helpers::{
     days_ago_cutoff, get_uptime, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff,
 };
+use ferrous_dns_domain::query_log::QueryCategory;
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
@@ -52,6 +53,7 @@ pub(super) async fn get_recent_paged(
     period_hours: f32,
     cursor: Option<i64>,
     domain: Option<&str>,
+    category: Option<QueryCategory>,
 ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
     debug!(
         limit,
@@ -59,6 +61,7 @@ pub(super) async fn get_recent_paged(
         period_hours,
         cursor,
         ?domain,
+        ?category,
         "Fetching paginated queries"
     );
 
@@ -69,10 +72,21 @@ pub(super) async fn get_recent_paged(
         .map(|d| format!("%{d}%"))
         .unwrap_or_else(|| "%".to_string());
 
+    // Each arm is a static SQL fragment — no user input is interpolated.
+    let category_clause = match category {
+        Some(QueryCategory::Allowed) => " AND q.blocked = 0",
+        Some(QueryCategory::Blocked) => " AND q.blocked = 1",
+        Some(QueryCategory::Cache) => " AND q.cache_hit = 1",
+        Some(QueryCategory::Upstream) => " AND q.cache_hit = 0 AND q.blocked = 0 AND (q.response_status IS NULL OR q.response_status NOT IN ('LOCAL_DNS', 'RATE_LIMITED', 'RATE_LIMITED_TC'))",
+        Some(QueryCategory::RateLimited) => " AND q.response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC')",
+        Some(QueryCategory::Malware) => " AND q.block_source IN ('dns_tunneling', 'dns_rebinding', 'nxdomain_hijack', 'response_ip_filter', 'dga_detection')",
+        None => "",
+    };
+
     let (rows_result, count_result) = tokio::join!(
         async {
             if let Some(cursor_id) = cursor {
-                sqlx::query(
+                let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                             q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
@@ -83,9 +97,11 @@ pub(super) async fn get_recent_paged(
                        AND q.query_source = 'client'
                        AND q.created_at >= ?
                        AND q.domain LIKE ?
+                       {category_clause}
                      ORDER BY q.id DESC
-                     LIMIT ?",
-                )
+                     LIMIT ?"
+                );
+                sqlx::query(&sql)
                 .bind(cursor_id)
                 .bind(&cutoff)
                 .bind(&domain_pattern)
@@ -93,7 +109,7 @@ pub(super) async fn get_recent_paged(
                 .fetch_all(pool)
                 .await
             } else {
-                sqlx::query(
+                let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                             q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
@@ -103,9 +119,11 @@ pub(super) async fn get_recent_paged(
                      WHERE q.created_at >= ?
                        AND q.query_source = 'client'
                        AND q.domain LIKE ?
+                       {category_clause}
                      ORDER BY q.created_at DESC
-                     LIMIT ? OFFSET ?",
-                )
+                     LIMIT ? OFFSET ?"
+                );
+                sqlx::query(&sql)
                 .bind(&cutoff)
                 .bind(&domain_pattern)
                 .bind(fetch_limit)
@@ -114,13 +132,17 @@ pub(super) async fn get_recent_paged(
                 .await
             }
         },
-        sqlx::query(
-            "SELECT COUNT(*) as cnt FROM query_log
-             WHERE query_source = 'client' AND created_at >= ? AND domain LIKE ?",
-        )
-        .bind(&cutoff)
-        .bind(&domain_pattern)
-        .fetch_one(pool)
+        async {
+            let count_sql = format!(
+                "SELECT COUNT(*) as cnt FROM query_log q
+                 WHERE q.query_source = 'client' AND q.created_at >= ? AND q.domain LIKE ?{category_clause}"
+            );
+            sqlx::query(&count_sql)
+            .bind(&cutoff)
+            .bind(&domain_pattern)
+            .fetch_one(pool)
+            .await
+        }
     );
 
     let rows = rows_result.map_err(|e| {

@@ -40,6 +40,7 @@ pub async fn get_queries(
             STATS_PERIOD_HOURS,
             params.cursor,
             params.domain.as_deref(),
+            None,
         )
         .await?;
 

@@ -48,8 +48,11 @@
                     const domainParam = this.searchDomain
                         ? `&domain=${encodeURIComponent(this.searchDomain)}`
                         : '';
+                    const categoryParam = this.category
+                        ? `&category=${encodeURIComponent(this.category)}`
+                        : '';
                     const res = await fetch(
-                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}`,
+                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${categoryParam}`,
                         {signal: this._ctrl.queries.signal}
                     );
                     if (res.ok) {
@@ -79,19 +82,8 @@
                 this.stats.upstream = this.queries.filter(q => !q.cache_hit && !q.blocked).length;
             },
 
-            get filteredQueries() {
-                let filtered = this.queries;
-                if (this.category === 'allowed') filtered = filtered.filter(q => !q.blocked);
-                if (this.category === 'blocked') filtered = filtered.filter(q => q.blocked);
-                if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
-                if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
-                if (this.category === 'rate-limited') filtered = filtered.filter(q => q.response_status === 'RATE_LIMITED' || q.response_status === 'RATE_LIMITED_TC');
-                if (this.category === 'malware') filtered = filtered.filter(q => q.block_source === 'dns_tunneling' || q.block_source === 'dns_rebinding' || q.block_source === 'nxdomain_hijack' || q.block_source === 'response_ip_filter' || q.block_source === 'dga_detection');
-                return filtered;
-            },
-
             get paginatedQueries() {
-                return this.filteredQueries;
+                return this.queries;
             },
 
             get totalPages() {
