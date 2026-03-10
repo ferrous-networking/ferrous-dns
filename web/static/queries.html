@@ -105,6 +105,7 @@
                     <option value="cache">Cache Hits</option>
                     <option value="upstream">Upstream</option>
                     <option value="rate-limited">Rate Limited</option>
+                    <option value="malware">Malware Detection</option>
                 </select>
             </div>
             <div style="margin-left:auto">
@@ -131,7 +132,7 @@
             </thead>
             <tbody>
             <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                <tr :class="(query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
+                <tr :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
                     <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
                     <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
@@ -161,15 +162,17 @@
                         <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                               :style="query.cache_hit
                                 ? 'background:rgba(168,85,247,0.1);color:#A855F7'
-                                : query.block_source === 'blocklist'
-                                  ? 'background:rgba(239,68,68,0.1);color:#ef4444'
-                                  : query.block_source === 'managed_domain'
-                                    ? 'background:rgba(249,115,22,0.1);color:#f97316'
-                                    : query.block_source === 'regex_filter'
-                                      ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
-                                      : query.response_status === 'LOCAL_DNS'
-                                        ? 'background:rgba(34,197,94,0.1);color:#22C55E'
-                                        : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
+                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding')
+                                  ? 'background:rgba(245,158,11,0.1);color:#F59E0B'
+                                  : query.block_source === 'blocklist'
+                                    ? 'background:rgba(239,68,68,0.1);color:#ef4444'
+                                    : query.block_source === 'managed_domain'
+                                      ? 'background:rgba(249,115,22,0.1);color:#f97316'
+                                      : query.block_source === 'regex_filter'
+                                        ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
+                                        : query.response_status === 'LOCAL_DNS'
+                                          ? 'background:rgba(34,197,94,0.1);color:#22C55E'
+                                          : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
                               x-html="formatSource(query)"
                               :title="query.upstream_pool && query.upstream_server
                                 ? query.upstream_pool + ':' + query.upstream_server

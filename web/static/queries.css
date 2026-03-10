@@ -55,7 +55,20 @@
             background: rgba(245, 158, 11, 0.08)
         }
 
+        tr.row-malware {
+            background: rgba(245, 158, 11, 0.08)
+        }
+
         .badge-rate-limited {
+            background: rgba(245, 158, 11, 0.1);
+            color: #F59E0B;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-malware {
             background: rgba(245, 158, 11, 0.1);
             color: #F59E0B;
             padding: 2px 8px;

@@ -353,6 +353,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_total,
             queries_blocked,
             queries_rate_limited: 0,
+            queries_malware_detected: 0,
             unique_clients: 0,
             uptime_seconds: 0,
             cache_hit_rate: 0.0,
@@ -1634,4 +1635,36 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     }
 
     fn set_blocking_enabled(&self, _enabled: bool) {}
+}
+
+// ── MockTunnelingFlagStore ─────────────────────────────────────────────────────
+
+use ferrous_dns_application::ports::TunnelingFlagStore;
+
+pub struct MockTunnelingFlagStore {
+    flagged: std::sync::RwLock<HashSet<String>>,
+}
+
+impl MockTunnelingFlagStore {
+    pub fn new() -> Self {
+        Self {
+            flagged: std::sync::RwLock::new(HashSet::new()),
+        }
+    }
+
+    pub fn flag_domain(&self, domain: &str) {
+        self.flagged.write().unwrap().insert(domain.to_string());
+    }
+}
+
+impl Default for MockTunnelingFlagStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TunnelingFlagStore for MockTunnelingFlagStore {
+    fn is_flagged(&self, domain: &str) -> bool {
+        self.flagged.read().unwrap().contains(domain)
+    }
 }

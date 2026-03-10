@@ -149,6 +149,7 @@ pub async fn get_dashboard(
                 queries_total: stats.queries_total,
                 queries_blocked: stats.queries_blocked,
                 queries_rate_limited: stats.queries_rate_limited,
+                queries_malware_detected: stats.queries_malware_detected,
                 clients: stats.unique_clients,
                 uptime: stats.uptime_seconds,
                 cache_hit_rate: stats.cache_hit_rate,

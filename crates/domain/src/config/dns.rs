@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
 use super::rate_limit::RateLimitConfig;
+use super::tunneling::TunnelingDetectionConfig;
 use super::upstream::UpstreamPool;
 use super::upstream::UpstreamStrategy;
 
@@ -100,6 +101,10 @@ pub struct DnsConfig {
     /// DNS query rate limiting and DoS protection configuration.
     #[serde(default)]
     pub rate_limit: RateLimitConfig,
+
+    /// DNS tunneling detection configuration.
+    #[serde(default)]
+    pub tunneling_detection: TunnelingDetectionConfig,
 }
 
 impl Default for DnsConfig {
@@ -137,6 +142,7 @@ impl Default for DnsConfig {
             rebinding_protection_enabled: true,
             rebinding_allowlist: vec![],
             rate_limit: RateLimitConfig::default(),
+            tunneling_detection: TunnelingDetectionConfig::default(),
         }
     }
 }

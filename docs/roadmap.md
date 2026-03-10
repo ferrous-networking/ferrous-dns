@@ -62,24 +62,29 @@
 - [x] Performance benchmarks vs. competitors (438K QPS)
 - [x] Dashboard settings: system status, DNS pool status, cache overview, system info
 - [x] In-flight coalescing (cache stampede prevention)
-- [x] TSC timer (~1–5ns) for hot path timing
+- [x] TSC timer (~1-5ns) for hot path timing
 - [x] Separate listening ports for DoH and Admin UI
 
 ---
 
 ## In Progress
 
-### v0.7.0 — Security
+### v0.7.0 — Security & Malware Detection
 
 - [x] Login / authentication
 - [x] HTTPS for Web UI
 - [x] API Key / token system
 - [ ] TOTP / 2FA
-- [ ] Per-client DNS rate limiting
-- [ ] DoS protection
-- [ ] DNS tunneling detection
-- [ ] Entropy analysis (DGA malware detection)
-- [ ] Read-only / lockdown mode
+- [x] Rate limiting DNS (token bucket per-subnet, slip TC=1, dry-run, NXDOMAIN budget)
+- [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
+- [x] DNS Tunneling Detection (two-phase: hot-path O(1) guard + background statistical analysis)
+- [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
+- [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — IoC ingestion)
+- [ ] Suspicious TLD blocking (high-risk TLDs: .tk, .top, .xyz, .buzz, .gq)
+- [ ] Newly Registered Domain (NRD) blocking (< 30 days, feed-based)
+- [ ] Response IP filtering (block known C2 IPs in DNS responses)
+- [ ] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
+- [ ] Read-only / lockdown mode (disable config changes via flag)
 - [x] Separate DoH and Admin UI ports
 
 ---
@@ -99,7 +104,7 @@
 - [ ] Comprehensive test coverage (> 80%)
 - [ ] Production deployment guide
 - [ ] API v1 stable (no breaking changes)
-- [ ] Full documentation
+- [x] Full documentation
 
 ### v1.1.0 — Advanced Features
 
@@ -115,6 +120,7 @@
 - [ ] Audit log for configuration changes
 - [ ] WebSocket dashboard for real-time monitoring
 - [ ] Query anomaly detection
+- [ ] DoH bypass detection (detect malware using direct DoH to public resolvers)
 
 ---
 
@@ -145,7 +151,7 @@
 | v0.4.0 | Parental Controls + Scheduling | Done |
 | v0.5.0 | DoH/DoT server, PROXY Protocol v2, PTR auto-gen, Rebinding | Done |
 | v0.6.x | Performance & Scale | Done |
-| v0.7.0 | Security — Auth, API Tokens, HTTPS, TOTP, Rate limiting | In Progress |
+| v0.7.0 | Security & Malware Detection — Auth, Rate Limiting, Tunneling Detection | In Progress |
 | v0.8.0 | Observability — Prometheus, OpenAPI, Config export | Planned |
 | v1.0.0 | Production Ready — Security audit, > 80% coverage | Planned |
-| v1.1.0 | Advanced — Split-horizon, Tunneling detection, Webhooks | Planned |
+| v1.1.0 | Advanced — Split-horizon, Webhooks, DoH bypass detection | Planned |

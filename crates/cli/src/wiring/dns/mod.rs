@@ -3,15 +3,18 @@ mod pool;
 mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
-use ferrous_dns_application::ports::{CacheMaintenancePort, PtrRecordRegistry};
+use ferrous_dns_application::ports::{
+    CacheMaintenancePort, PtrRecordRegistry, TunnelingEvictionTarget, TunnelingFlagStore,
+};
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
-    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, PoolManager,
+    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, PoolManager, TunnelingDetector,
 };
+use ferrous_dns_jobs::TunnelingEvictionJob;
 use std::sync::Arc;
 use tracing::info;
 
@@ -26,6 +29,7 @@ pub struct DnsServices {
     pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
     pub tcp_conn_limiter: ConnectionLimiter,
     pub dot_conn_limiter: ConnectionLimiter,
+    pub tunneling_eviction_job: Option<TunnelingEvictionJob>,
 }
 
 impl DnsServices {
@@ -117,24 +121,58 @@ impl DnsServices {
             );
         }
 
-        let handler_use_case = Arc::new(
-            HandleDnsQueryUseCase::new(
-                resolver.clone(),
-                repos.block_filter_engine.clone(),
-                repos.query_log.clone(),
-            )
-            .with_safe_search(repos.safe_search_engine.clone())
-            .with_client_tracking(
-                repos.client.clone(),
-                config.database.client_tracking_interval,
-            )
-            .with_rebinding_protection(
-                config.dns.rebinding_protection_enabled,
-                config.dns.local_domain.as_deref(),
-                &config.dns.rebinding_allowlist,
-            )
-            .with_rate_limiter(rate_limiter),
-        );
+        // DNS Tunneling Detection
+        let (tunneling_detector, tunneling_eviction_job) = if config.dns.tunneling_detection.enabled
+        {
+            let (detector, tx, rx) = TunnelingDetector::new(&config.dns.tunneling_detection);
+            let detector = Arc::new(detector);
+            let detector_clone = Arc::clone(&detector);
+            tokio::spawn(async move { detector_clone.run_analysis_loop(rx).await });
+            let eviction_job = TunnelingEvictionJob::new(
+                Arc::clone(&detector) as Arc<dyn TunnelingEvictionTarget>,
+                detector.stale_entry_ttl_secs(),
+            );
+            info!(
+                action = ?config.dns.tunneling_detection.action,
+                "DNS tunneling detection enabled"
+            );
+            if config.dns.tunneling_detection.action
+                == ferrous_dns_domain::TunnelingAction::Throttle
+            {
+                tracing::warn!(
+                    "Tunneling action 'throttle' is not yet implemented — treating as 'alert'"
+                );
+            }
+            (Some((detector, tx)), Some(eviction_job))
+        } else {
+            (None, None)
+        };
+
+        let mut handler = HandleDnsQueryUseCase::new(
+            resolver.clone(),
+            repos.block_filter_engine.clone(),
+            repos.query_log.clone(),
+        )
+        .with_safe_search(repos.safe_search_engine.clone())
+        .with_client_tracking(
+            repos.client.clone(),
+            config.database.client_tracking_interval,
+        )
+        .with_rebinding_protection(
+            config.dns.rebinding_protection_enabled,
+            config.dns.local_domain.as_deref(),
+            &config.dns.rebinding_allowlist,
+        )
+        .with_rate_limiter(rate_limiter);
+
+        if let Some((ref detector, ref tx)) = tunneling_detector {
+            handler = handler
+                .with_tunneling_detection(&config.dns.tunneling_detection)
+                .with_tunneling_event_sender(tx.clone())
+                .with_tunneling_flag_store(Arc::clone(detector) as Arc<dyn TunnelingFlagStore>);
+        }
+
+        let handler_use_case = Arc::new(handler);
 
         let tcp_conn_limiter =
             ConnectionLimiter::new(config.dns.rate_limit.tcp_max_connections_per_ip);
@@ -152,6 +190,7 @@ impl DnsServices {
             ptr_registry,
             tcp_conn_limiter,
             dot_conn_limiter,
+            tunneling_eviction_job,
         })
     }
 

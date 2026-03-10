@@ -500,6 +500,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_total: logs.len() as u64,
             queries_blocked: logs.iter().filter(|(l, _)| l.blocked).count() as u64,
             queries_rate_limited: 0,
+            queries_malware_detected: 0,
             unique_clients: 0,
             uptime_seconds: 0,
             cache_hit_rate: 0.0,

@@ -92,6 +92,7 @@ nav:
     - Blocking & Filtering: features/blocking-filtering.md
     - Block Services & Schedules: features/block-services.md
     - Client Management: features/client-management.md
+    - Malware Detection: features/malware-detection.md
     - Pi-hole Compatibility: features/pihole-compat.md
     - Security: features/security.md
   - API Reference: api.md

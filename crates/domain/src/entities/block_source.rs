@@ -21,6 +21,8 @@ pub enum BlockSource {
     DnsRebinding,
     /// Blocked by DNS query rate limiting.
     RateLimit,
+    /// Blocked by DNS tunneling detection.
+    DnsTunneling,
 }
 
 impl BlockSource {
@@ -33,6 +35,7 @@ impl BlockSource {
             BlockSource::Schedule => "schedule",
             BlockSource::DnsRebinding => "dns_rebinding",
             BlockSource::RateLimit => "rate_limit",
+            BlockSource::DnsTunneling => "dns_tunneling",
         }
     }
 
@@ -45,6 +48,7 @@ impl BlockSource {
             4 => Some(BlockSource::Schedule),
             5 => Some(BlockSource::DnsRebinding),
             6 => Some(BlockSource::RateLimit),
+            7 => Some(BlockSource::DnsTunneling),
             _ => None,
         }
     }
@@ -58,6 +62,7 @@ impl BlockSource {
             BlockSource::Schedule => 4,
             BlockSource::DnsRebinding => 5,
             BlockSource::RateLimit => 6,
+            BlockSource::DnsTunneling => 7,
         }
     }
 }

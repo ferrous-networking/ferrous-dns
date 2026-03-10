@@ -110,13 +110,36 @@ queries_per_second = 1000               # ~2.5 QPS/device × 100 devices, covers
 burst_size = 500                        # 2× QPS — absorbs page loads (50+ queries/page) and IoT bursts
 ipv4_prefix_len = 24                    # /24 groups the entire home LAN as one subnet
 ipv6_prefix_len = 48                    # /48 is the standard home delegation (more generous than /56)
-whitelist = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+whitelist = []
 nxdomain_per_second = 50                # 20% of QPS — IoT devices probe many subdomains legitimately
 slip_ratio = 2                          # 50% of rate-limited responses send TC=1 (forces TCP retry)
 dry_run = false                         # Enforce limits in production (set true to test first)
 tcp_max_connections_per_ip = 30         # Browsers + DoH clients pool TCP; 100 devices behind NAT need room
 dot_max_connections_per_ip = 15         # Android Private DNS keeps 2-4 persistent conns per device
 stale_entry_ttl_secs = 300              # Evict idle subnet buckets after 5 minutes
+
+
+# ── DNS Tunneling Detection ──────────────────────────────────────────────────
+# Detects and blocks DNS tunneling attempts (data exfiltration, C2 via DNS).
+# Phase 1: O(1) checks on the hot path (FQDN/label length, NULL record type).
+# Phase 2: statistical analysis in background (entropy, query rate, unique subdomains).
+# Configuration is TOML-only — no UI settings page for this feature.
+
+[dns.tunneling_detection]
+enabled = true                          # Master switch — enabled by default
+action = "block"                        # "alert" | "block" | "throttle"
+max_fqdn_length = 120                   # Phase 1: block FQDNs longer than 120 bytes
+max_label_length = 50                   # Phase 1: block labels longer than 50 bytes
+block_null_queries = true               # Phase 1: block NULL (type 10) record queries
+entropy_threshold = 3.8                 # Phase 2: Shannon entropy threshold (bits/char)
+query_rate_per_apex = 50                # Phase 2: queries/min per client+apex pair
+unique_subdomain_threshold = 30         # Phase 2: unique subdomains/min per client+apex pair
+txt_proportion_threshold = 0.05         # Phase 2: TXT > 5% of client traffic
+nxdomain_ratio_threshold = 0.20         # Phase 2: NXDOMAIN > 20% for a client+apex pair
+confidence_threshold = 0.7              # Phase 2: minimum score to flag (0.0-1.0)
+stale_entry_ttl_secs = 300              # Eviction of idle tracking entries (seconds)
+domain_whitelist = []                   # Domains exempt from detection
+client_whitelist = []                   # Client CIDRs exempt from detection
 
 
 # ── Upstream Health Checks ────────────────────────────────────────────────────

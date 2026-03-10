@@ -278,10 +278,14 @@ pub(super) async fn get_stats(
         }
     }
 
+    let malware_detected = source_stats.get("dns_tunneling").copied().unwrap_or(0)
+        + source_stats.get("dns_rebinding").copied().unwrap_or(0);
+
     let stats = QueryStats {
         queries_total: total,
         queries_blocked: row.get::<i64, _>("blocked") as u64,
         queries_rate_limited: row.get::<i64, _>("rate_limited") as u64,
+        queries_malware_detected: malware_detected,
         unique_clients: 0,
         uptime_seconds: get_uptime(),
         cache_hit_rate,

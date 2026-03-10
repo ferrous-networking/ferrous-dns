@@ -86,6 +86,7 @@
                 if (this.category === 'cache') filtered = filtered.filter(q => q.cache_hit);
                 if (this.category === 'upstream') filtered = filtered.filter(q => !q.cache_hit && !q.blocked);
                 if (this.category === 'rate-limited') filtered = filtered.filter(q => q.response_status === 'RATE_LIMITED' || q.response_status === 'RATE_LIMITED_TC');
+                if (this.category === 'malware') filtered = filtered.filter(q => q.block_source === 'dns_tunneling' || q.block_source === 'dns_rebinding');
                 return filtered;
             },
 
@@ -143,6 +144,8 @@
             },
 
             formatSource(query) {
+                if (query.block_source === 'dns_tunneling') return '<span class="badge-malware">DNS Tunneling</span>';
+                if (query.block_source === 'dns_rebinding') return '<span class="badge-malware">DNS Rebinding</span>';
                 if (query.response_status === 'RATE_LIMITED') return '<span class="badge-rate-limited">Rate Limited</span>';
                 if (query.response_status === 'RATE_LIMITED_TC') return '<span class="badge-rate-limited">Rate Limited (TC)</span>';
                 if (query.cache_hit) return 'Cache';

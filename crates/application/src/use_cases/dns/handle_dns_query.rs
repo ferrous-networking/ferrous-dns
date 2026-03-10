@@ -1,12 +1,15 @@
+use super::coarse_timer::coarse_now_ns;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
 use super::rebinding_guard::RebindingGuard;
 use super::tsc_timer;
+use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
-    QueryLogRepository, SafeSearchEnginePort,
+    QueryLogRepository, SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
     BlockSource, DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType,
+    TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
@@ -22,27 +25,6 @@ thread_local! {
         RefCell::new(LruCache::new(NonZeroUsize::new(LAST_SEEN_CAPACITY).unwrap()));
 }
 
-#[cfg(target_os = "linux")]
-#[inline]
-fn coarse_now_ns() -> u64 {
-    let mut ts = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: ts is stack-allocated and valid; clock_gettime only writes into the provided pointer.
-    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC_COARSE, &mut ts) };
-    ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
-}
-
-#[cfg(not(target_os = "linux"))]
-#[inline]
-fn coarse_now_ns() -> u64 {
-    use std::sync::LazyLock;
-    use std::time::Instant;
-    static START: LazyLock<Instant> = LazyLock::new(Instant::now);
-    START.elapsed().as_nanos() as u64
-}
-
 pub struct HandleDnsQueryUseCase {
     resolver: Arc<dyn DnsResolver>,
     block_filter: Arc<dyn BlockFilterEnginePort>,
@@ -52,6 +34,9 @@ pub struct HandleDnsQueryUseCase {
     client_tracking_interval: Duration,
     rebinding_guard: RebindingGuard,
     rate_limiter: Arc<DnsRateLimiter>,
+    tunneling_guard: TunnelingGuard,
+    tunneling_event_tx: Option<tokio::sync::mpsc::Sender<TunnelingAnalysisEvent>>,
+    tunneling_flag_store: Option<Arc<dyn TunnelingFlagStore>>,
 }
 
 impl HandleDnsQueryUseCase {
@@ -69,6 +54,9 @@ impl HandleDnsQueryUseCase {
             client_tracking_interval: Duration::from_secs(60),
             rebinding_guard: RebindingGuard::disabled(),
             rate_limiter: Arc::new(DnsRateLimiter::disabled()),
+            tunneling_guard: TunnelingGuard::disabled(),
+            tunneling_event_tx: None,
+            tunneling_flag_store: None,
         }
     }
 
@@ -104,6 +92,75 @@ impl HandleDnsQueryUseCase {
     pub fn with_rate_limiter(mut self, rate_limiter: Arc<DnsRateLimiter>) -> Self {
         self.rate_limiter = rate_limiter;
         self
+    }
+
+    /// Enables phase-1 DNS tunneling detection on the hot path.
+    pub fn with_tunneling_detection(mut self, config: &TunnelingDetectionConfig) -> Self {
+        self.tunneling_guard = TunnelingGuard::from_config(config);
+        self
+    }
+
+    /// Injects the sender for emitting analysis events to the background task.
+    pub fn with_tunneling_event_sender(
+        mut self,
+        tx: tokio::sync::mpsc::Sender<TunnelingAnalysisEvent>,
+    ) -> Self {
+        self.tunneling_event_tx = Some(tx);
+        self
+    }
+
+    /// Injects the flag store for checking background-flagged domains.
+    pub fn with_tunneling_flag_store(mut self, store: Arc<dyn TunnelingFlagStore>) -> Self {
+        self.tunneling_flag_store = Some(store);
+        self
+    }
+
+    /// Applies the configured tunneling action, returning an error if blocked.
+    fn apply_tunneling_action(
+        &self,
+        request: &DnsRequest,
+        context: &str,
+        elapsed_us: u64,
+    ) -> Result<(), DomainError> {
+        match self.tunneling_guard.action() {
+            TunnelingAction::Block => {
+                tracing::debug!(domain = %request.domain, context, "DNS tunneling blocked");
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some("TUNNELING_BLOCKED"),
+                    block_source: Some(BlockSource::DnsTunneling),
+                    ..Self::base_query_log(request, elapsed_us, 0)
+                });
+                Err(DomainError::DnsTunnelingDetected)
+            }
+            TunnelingAction::Alert => {
+                tracing::info!(domain = %request.domain, context, "DNS tunneling alert");
+                Ok(())
+            }
+            TunnelingAction::Throttle => {
+                tracing::info!(domain = %request.domain, context, "DNS tunneling alert (throttle mode)");
+                Ok(())
+            }
+        }
+    }
+
+    /// Emits a tunneling analysis event to the background task (non-blocking).
+    /// Skips emission for whitelisted clients.
+    fn emit_tunneling_event(&self, request: &DnsRequest, was_nxdomain: bool) {
+        if let Some(ref tx) = self.tunneling_event_tx {
+            if self
+                .tunneling_guard
+                .is_client_whitelisted(request.client_ip)
+            {
+                return;
+            }
+            let _ = tx.try_send(TunnelingAnalysisEvent {
+                domain: Arc::clone(&request.domain),
+                record_type: request.record_type,
+                client_ip: request.client_ip,
+                was_nxdomain,
+            });
+        }
     }
 
     fn log(&self, query_log: &QueryLog) {
@@ -193,6 +250,12 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
+        if let Some(ref store) = self.tunneling_flag_store {
+            if store.is_flagged(domain) {
+                return None;
+            }
+        }
+
         let domain_arc: Arc<str> = Arc::from(domain);
         let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
@@ -215,6 +278,12 @@ impl HandleDnsQueryUseCase {
 
         if !self.rate_limiter.is_allowed(client_ip) {
             return None;
+        }
+
+        if let Some(ref store) = self.tunneling_flag_store {
+            if store.is_flagged(domain) {
+                return None;
+            }
         }
 
         let tsc_start = tsc_timer::now();
@@ -277,6 +346,30 @@ impl HandleDnsQueryUseCase {
                     ..Self::base_query_log(request, elapsed_us(), 0)
                 });
                 return Err(DomainError::DnsRateLimitedSlip);
+            }
+        }
+
+        if let TunnelingVerdict::Detected {
+            signal,
+            measured,
+            threshold,
+        } = self
+            .tunneling_guard
+            .check(&request.domain, request.record_type, request.client_ip)
+        {
+            tracing::debug!(
+                domain = %request.domain,
+                signal,
+                measured,
+                threshold,
+                "Tunneling phase-1 signal"
+            );
+            self.apply_tunneling_action(request, signal, elapsed_us())?;
+        }
+
+        if let Some(ref store) = self.tunneling_flag_store {
+            if store.is_flagged(&request.domain) {
+                self.apply_tunneling_action(request, "flagged_domain", elapsed_us())?;
             }
         }
 
@@ -361,6 +454,7 @@ impl HandleDnsQueryUseCase {
                 } else {
                     Some("NOERROR")
                 };
+                self.emit_tunneling_event(request, false);
                 self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
@@ -380,7 +474,10 @@ impl HandleDnsQueryUseCase {
             }
             Err(e) => {
                 let response_status = match &e {
-                    DomainError::NxDomain => "NXDOMAIN",
+                    DomainError::NxDomain => {
+                        self.emit_tunneling_event(request, true);
+                        "NXDOMAIN"
+                    }
                     DomainError::QueryTimeout => "TIMEOUT",
                     _ => "SERVFAIL",
                 };

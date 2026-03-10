@@ -80,19 +80,21 @@ async fn async_main() -> anyhow::Result<()> {
         config.blocking.enabled,
     )
     .await?;
-    let dns_services = wiring::DnsServices::new(&config, &repos).await?;
+    let mut dns_services = wiring::DnsServices::new(&config, &repos).await?;
     let use_cases = wiring::UseCases::new(
         &repos,
         dns_services.pool_manager.clone(),
         config.dns.local_dns_server.clone(),
     );
 
+    let tunneling_eviction_job = dns_services.tunneling_eviction_job.take();
     let runner = bootstrap::build_job_runner(
         &use_cases,
         &repos,
         &config,
         wal_pool,
         dns_services.cache_maintenance.clone(),
+        tunneling_eviction_job,
     );
 
     runner.start().await;

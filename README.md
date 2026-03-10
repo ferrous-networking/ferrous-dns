@@ -74,8 +74,11 @@ At **482,506 queries/second** under identical Docker conditions (16 CPUs, cache 
 - [DNS rate limiting](https://ferrous-networking.github.io/ferrous-dns/configuration/rate-limiting/) — token bucket per subnet with NXDOMAIN budget, TC=1 slip, and dry-run mode
 - [TCP/DoT connection limiting](https://ferrous-networking.github.io/ferrous-dns/configuration/rate-limiting/) — per-IP RAII guards prevent connection exhaustion
 - [DNSSEC validation](https://ferrous-networking.github.io/ferrous-dns/features/security/) (RFC 4035)
-- [DNS rebinding protection](https://ferrous-networking.github.io/ferrous-dns/features/security/)
 - [PROXY Protocol v2](https://ferrous-networking.github.io/ferrous-dns/features/security/) support
+
+**Malware Detection** — [Malware Detection docs](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/)
+- [DNS tunneling detection](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — two-phase detection (hot path O(1) + background statistical analysis) catches C2 beaconing, data exfiltration, and DGA malware via entropy, query rate, unique subdomains, TXT proportion, and NXDOMAIN ratio
+- [DNS rebinding protection](https://ferrous-networking.github.io/ferrous-dns/features/malware-detection/) — blocks public domains resolving to private IPs (RFC-1918), preventing browser-based attacks on routers, NAS, and IoT devices
 
 **Compatibility & Deployment**
 - [Pi-hole v6 API compatibility](https://ferrous-networking.github.io/ferrous-dns/features/pihole-compat/) — drop-in replacement for existing integrations and third-party apps

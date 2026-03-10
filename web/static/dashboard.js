@@ -99,7 +99,12 @@
                             this.queryTypes = {...this.stats.queries_by_type};
                         }
                         if (this.stats.source_stats) {
-                            this.sourceStats = {...this.stats.source_stats};
+                            const raw = {...this.stats.source_stats};
+                            const malware = (raw.dns_tunneling || 0) + (raw.dns_rebinding || 0);
+                            delete raw.dns_tunneling;
+                            delete raw.dns_rebinding;
+                            if (malware > 0) raw.malware_detection = malware;
+                            this.sourceStats = raw;
                         }
                         this.topBlockedDomains = data.top_blocked_domains || [];
                         this.topClients = data.top_clients || [];

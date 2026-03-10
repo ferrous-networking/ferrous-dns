@@ -44,6 +44,9 @@ pub enum DomainError {
     #[error("DNS query rate limited (truncated, retry via TCP)")]
     DnsRateLimitedSlip,
 
+    #[error("DNS tunneling detected")]
+    DnsTunnelingDetected,
+
     #[error("Query filtered: {0}")]
     FilteredQuery(String),
 

@@ -25,6 +25,7 @@ mod schedule_state_port;
 mod service_catalog_port;
 mod session_repository;
 mod tls_certificate_port;
+mod tunneling_flag_store;
 mod upstream_health_port;
 mod user_repository;
 mod whitelist_repository;
@@ -59,6 +60,7 @@ pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
 pub use session_repository::SessionRepository;
 pub use tls_certificate_port::{TlsCertificateInfo, TlsCertificatePort};
+pub use tunneling_flag_store::{TunnelingEvictionTarget, TunnelingFlagStore};
 pub use upstream_health_port::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
     UpstreamStatus,

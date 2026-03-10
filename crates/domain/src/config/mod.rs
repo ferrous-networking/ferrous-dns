@@ -10,6 +10,7 @@ pub mod logging;
 pub mod rate_limit;
 pub mod root;
 pub mod server;
+pub mod tunneling;
 pub mod upstream;
 pub mod web_tls;
 
@@ -25,5 +26,6 @@ pub use logging::LoggingConfig;
 pub use rate_limit::RateLimitConfig;
 pub use root::{CliOverrides, Config};
 pub use server::ServerConfig;
+pub use tunneling::{TunnelingAction, TunnelingDetectionConfig};
 pub use upstream::{UpstreamPool, UpstreamStrategy};
 pub use web_tls::WebTlsConfig;

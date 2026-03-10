@@ -70,8 +70,13 @@
 - [ ] TOTP / 2FA
 - [x] Rate limiting DNS (token bucket per-subnet, slip TC=1, dry-run, NXDOMAIN budget)
 - [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
-- [ ] DNS Tunneling
-- [ ] Entropy analysis (DGA detection)2
+- [x] DNS Tunneling Detection (two-phase: hot-path O(1) guard + background statistical analysis)
+- [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
+- [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — IoC ingestion)
+- [ ] Suspicious TLD blocking (high-risk TLDs: .tk, .top, .xyz, .buzz, .gq)
+- [ ] Newly Registered Domain (NRD) blocking (< 30 days, feed-based)
+- [ ] Response IP filtering (block known C2 IPs in DNS responses)
+- [ ] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
 - [ ] Read-only / lockdown mode (disable config changes via flag)
 - [x] Separate listening ports for DoH and Admin UI
 
@@ -104,4 +109,5 @@
 - [ ] Audit log for configuration changes
 - [ ] WebSocket dashboard for slow query monitoring
 - [ ] Query anomaly detection
+- [ ] DoH bypass detection (detect malware using direct DoH to public resolvers)
 ---

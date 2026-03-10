@@ -152,23 +152,9 @@ When enabled, Ferrous DNS validates DNSSEC signatures on all upstream responses.
 
 ---
 
-## DNS Rebinding Protection
+## Malware Detection
 
-DNS rebinding attacks trick browsers into making requests to internal network resources by returning private IP addresses for public domain names.
-
-Ferrous DNS detects and blocks responses that would return RFC-1918 private addresses for publicly-registered domains.
-
-!!! info "No configuration required"
-    DNS rebinding protection is built-in and always active when blocking is enabled. There is no TOML option to configure — it engages automatically.
-
-**Protected ranges**:
-- `10.0.0.0/8`
-- `172.16.0.0/12`
-- `192.168.0.0/16`
-- `169.254.0.0/16` (link-local)
-- `127.0.0.0/8` (loopback)
-
-When a rebinding attempt is detected, the response is blocked and logged.
+Ferrous DNS includes built-in DNS tunneling detection and DNS rebinding protection. See the dedicated [Malware Detection](malware-detection.md) page for full details, real-world attack examples, configuration reference, and comparison with other DNS servers.
 
 ---
 
@@ -366,8 +352,6 @@ The following are planned for future releases:
 | Feature | Description |
 |:--------|:------------|
 | **TOTP / 2FA** | Time-based one-time passwords for login |
-| **DNS Tunneling Detection** | Detect DNS used as a covert data channel |
-| **Entropy Analysis** | Detect DGA (Domain Generation Algorithm) malware |
 | **Read-Only Mode** | Disable config changes via a flag |
 
 ---
@@ -377,6 +361,7 @@ The following are planned for future releases:
 | Mechanism | Status |
 |:----------|:-------|
 | DNSSEC validation | :white_check_mark: Active |
+| DNS tunneling detection | :white_check_mark: Active |
 | DNS rebinding protection | :white_check_mark: Active |
 | Encrypted upstream (DoH/DoT/DoQ) | :white_check_mark: Active |
 | Server-side DoT/DoH | :white_check_mark: Active |

@@ -44,6 +44,10 @@ impl IntoResponse for ApiError {
 
             DomainError::Blocked => (StatusCode::FORBIDDEN, "blocked".to_string()),
 
+            DomainError::DnsTunnelingDetected => {
+                (StatusCode::FORBIDDEN, "DNS tunneling detected".to_string())
+            }
+
             DomainError::RateLimited
             | DomainError::DnsRateLimited
             | DomainError::DnsRateLimitedSlip => {

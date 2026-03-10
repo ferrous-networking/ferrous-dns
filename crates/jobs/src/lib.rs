@@ -6,6 +6,7 @@ pub mod retention;
 pub mod runner;
 pub mod schedule_evaluator;
 pub mod session_cleanup;
+pub mod tunneling_eviction;
 pub mod wal_checkpoint;
 
 pub use blocklist_sync::BlocklistSyncJob;
@@ -16,4 +17,5 @@ pub use retention::RetentionJob;
 pub use runner::JobRunner;
 pub use schedule_evaluator::ScheduleEvaluatorJob;
 pub use session_cleanup::SessionCleanupJob;
+pub use tunneling_eviction::TunnelingEvictionJob;
 pub use wal_checkpoint::WalCheckpointJob;

@@ -333,3 +333,28 @@ local_dns_server = "192.168.1.1:53"  # your router's IP
 | Upstream URL `doq://dns.adguard-dns.com:853` | Hostname resolved via router at startup |
 | New device joins the network | Hostname pulled from router's DHCP table |
 
+---
+
+## DNS Tunneling Detection
+
+DNS tunneling detection is configured under `[dns.tunneling_detection]`. It is enabled by default and requires no additional setup.
+
+For full documentation including real-world attack examples, configuration reference, confidence scoring, and whitelisting, see the [Malware Detection](../features/malware-detection.md) page.
+
+```toml title="ferrous-dns.toml"
+[dns.tunneling_detection]
+enabled                    = true
+action                     = "block"
+max_fqdn_length            = 120
+max_label_length           = 50
+block_null_queries         = true
+entropy_threshold          = 3.8
+query_rate_per_apex        = 50
+unique_subdomain_threshold = 30
+txt_proportion_threshold   = 0.05
+nxdomain_ratio_threshold   = 0.20
+confidence_threshold       = 0.7
+stale_entry_ttl_secs       = 300
+domain_whitelist           = []
+client_whitelist           = []
+```

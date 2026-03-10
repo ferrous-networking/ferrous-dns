@@ -71,6 +71,9 @@ impl DnsServerHandler {
             Err(DomainError::Blocked) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
             }
+            Err(DomainError::DnsTunnelingDetected) => {
+                return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
+            }
             Err(DomainError::DnsRateLimited) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
             }
@@ -159,6 +162,11 @@ impl RequestHandler for DnsServerHandler {
             Ok(res) => res,
             Err(DomainError::Blocked) => {
                 warn!(domain = %domain_ref, "Domain blocked");
+                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
+                    .await;
+            }
+            Err(DomainError::DnsTunnelingDetected) => {
+                debug!(domain = %domain_ref, client = %client_ip, "DNS tunneling detected");
                 return send_error_response(request, &mut response_handle, ResponseCode::Refused)
                     .await;
             }
