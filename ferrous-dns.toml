@@ -142,6 +142,21 @@ domain_whitelist = []                   # Domains exempt from detection
 client_whitelist = []                   # Client CIDRs exempt from detection
 
 
+# ── NXDomain Hijack Detection ───────────────────────────────────────────────
+# Detects ISPs that intercept NXDOMAIN responses with advertising server IPs.
+# Background probes test each upstream with random .invalid domains (RFC 6761).
+# If an upstream returns A/AAAA instead of NXDOMAIN, the hijack IPs are recorded
+# and hot-path responses containing those IPs are converted back to NXDOMAIN.
+
+[dns.nxdomain_hijack]
+enabled = true                          # Master switch — enabled by default
+action = "block"                        # "alert" | "block" (block converts to NXDOMAIN)
+probe_interval_secs = 300               # Seconds between probe rounds (5 min)
+probe_timeout_ms = 5000                 # Milliseconds to wait for probe response
+probes_per_round = 3                    # Probe queries per upstream per round
+hijack_ip_ttl_secs = 3600              # Eviction TTL for unconfirmed hijack IPs (1 hour)
+
+
 # ── Upstream Health Checks ────────────────────────────────────────────────────
 
 [dns.health_check]

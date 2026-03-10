@@ -1,15 +1,16 @@
 use super::coarse_timer::coarse_now_ns;
+use super::nxdomain_hijack_guard::NxdomainHijackGuard;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
 use super::rebinding_guard::RebindingGuard;
 use super::tsc_timer;
 use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
-    QueryLogRepository, SafeSearchEnginePort, TunnelingFlagStore,
+    NxdomainHijackIpStore, QueryLogRepository, SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, DnsQuery, DnsRequest, DomainError, QueryLog, QuerySource, RecordType,
-    TunnelingAction, TunnelingDetectionConfig,
+    BlockSource, DnsQuery, DnsRequest, DomainError, NxdomainHijackAction, NxdomainHijackConfig,
+    QueryLog, QuerySource, RecordType, TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
@@ -37,6 +38,7 @@ pub struct HandleDnsQueryUseCase {
     tunneling_guard: TunnelingGuard,
     tunneling_event_tx: Option<tokio::sync::mpsc::Sender<TunnelingAnalysisEvent>>,
     tunneling_flag_store: Option<Arc<dyn TunnelingFlagStore>>,
+    nxdomain_hijack_guard: NxdomainHijackGuard,
 }
 
 impl HandleDnsQueryUseCase {
@@ -57,6 +59,7 @@ impl HandleDnsQueryUseCase {
             tunneling_guard: TunnelingGuard::disabled(),
             tunneling_event_tx: None,
             tunneling_flag_store: None,
+            nxdomain_hijack_guard: NxdomainHijackGuard::disabled(),
         }
     }
 
@@ -112,6 +115,16 @@ impl HandleDnsQueryUseCase {
     /// Injects the flag store for checking background-flagged domains.
     pub fn with_tunneling_flag_store(mut self, store: Arc<dyn TunnelingFlagStore>) -> Self {
         self.tunneling_flag_store = Some(store);
+        self
+    }
+
+    /// Enables NXDomain hijack detection on the hot path.
+    pub fn with_nxdomain_hijack_detection(
+        mut self,
+        config: &NxdomainHijackConfig,
+        store: Arc<dyn NxdomainHijackIpStore>,
+    ) -> Self {
+        self.nxdomain_hijack_guard = NxdomainHijackGuard::new(config.action, store);
         self
     }
 
@@ -293,6 +306,9 @@ impl HandleDnsQueryUseCase {
         if resolution.addresses.is_empty() {
             return None;
         }
+        if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
+            return None;
+        }
 
         let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
         self.log(&QueryLog {
@@ -407,12 +423,16 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if cached.has_response_data() {
-                self.log(&QueryLog {
-                    cache_hit: true,
-                    dnssec_status: cached.dnssec_status,
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
-                });
-                return Ok(cached);
+                if self.nxdomain_hijack_guard.is_hijacked_response(&cached) {
+                    // Fall through to full resolve path for logging and action.
+                } else {
+                    self.log(&QueryLog {
+                        cache_hit: true,
+                        dnssec_status: cached.dnssec_status,
+                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                    });
+                    return Ok(cached);
+                }
             } else if cached.cache_hit {
                 self.log(&QueryLog {
                     cache_hit: true,
@@ -448,6 +468,25 @@ impl HandleDnsQueryUseCase {
                         ..Self::base_query_log(request, elapsed_us(), group_id)
                     });
                     return Err(DomainError::Blocked);
+                }
+                if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
+                    match self.nxdomain_hijack_guard.action() {
+                        NxdomainHijackAction::Block => {
+                            self.log(&QueryLog {
+                                blocked: true,
+                                response_status: Some("NXDOMAIN_HIJACK"),
+                                block_source: Some(BlockSource::NxdomainHijack),
+                                ..Self::base_query_log(request, elapsed_us(), group_id)
+                            });
+                            return Err(DomainError::NxDomain);
+                        }
+                        NxdomainHijackAction::Alert => {
+                            tracing::info!(
+                                domain = %request.domain,
+                                "NXDomain hijack detected (alert mode)"
+                            );
+                        }
+                    }
                 }
                 let response_status = if resolution.local_dns {
                     Some("LOCAL_DNS")

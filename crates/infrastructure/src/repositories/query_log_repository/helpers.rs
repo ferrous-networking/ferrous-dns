@@ -93,6 +93,8 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
                 "schedule" => Some(BlockSource::Schedule),
                 "dns_rebinding" => Some(BlockSource::DnsRebinding),
                 "rate_limit" => Some(BlockSource::RateLimit),
+                "dns_tunneling" => Some(BlockSource::DnsTunneling),
+                "nxdomain_hijack" => Some(BlockSource::NxdomainHijack),
                 _ => None,
             });
 

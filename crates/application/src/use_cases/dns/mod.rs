@@ -1,5 +1,6 @@
 pub mod coarse_timer;
 pub mod handle_dns_query;
+mod nxdomain_hijack_guard;
 pub mod rate_limiter;
 mod rebinding_guard;
 pub mod tsc_timer;

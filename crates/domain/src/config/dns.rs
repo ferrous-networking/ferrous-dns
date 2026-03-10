@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
+use super::nxdomain_hijack::NxdomainHijackConfig;
 use super::rate_limit::RateLimitConfig;
 use super::tunneling::TunnelingDetectionConfig;
 use super::upstream::UpstreamPool;
@@ -105,6 +106,10 @@ pub struct DnsConfig {
     /// DNS tunneling detection configuration.
     #[serde(default)]
     pub tunneling_detection: TunnelingDetectionConfig,
+
+    /// NXDomain hijack detection configuration.
+    #[serde(default)]
+    pub nxdomain_hijack: NxdomainHijackConfig,
 }
 
 impl Default for DnsConfig {
@@ -143,6 +148,7 @@ impl Default for DnsConfig {
             rebinding_allowlist: vec![],
             rate_limit: RateLimitConfig::default(),
             tunneling_detection: TunnelingDetectionConfig::default(),
+            nxdomain_hijack: NxdomainHijackConfig::default(),
         }
     }
 }

@@ -62,6 +62,7 @@ pub fn map_query_status(blocked: bool, cache_hit: bool, block_source: Option<&Bl
             Some(BlockSource::DnsRebinding) => 1,
             Some(BlockSource::RateLimit) => 1,
             Some(BlockSource::DnsTunneling) => 1,
+            Some(BlockSource::NxdomainHijack) => 1,
             None => 1,
         }
     } else if cache_hit {

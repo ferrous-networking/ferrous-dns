@@ -23,6 +23,8 @@ pub enum BlockSource {
     RateLimit,
     /// Blocked by DNS tunneling detection.
     DnsTunneling,
+    /// Blocked by NXDomain hijack detection (ISP intercepting NXDOMAIN responses).
+    NxdomainHijack,
 }
 
 impl BlockSource {
@@ -36,6 +38,7 @@ impl BlockSource {
             BlockSource::DnsRebinding => "dns_rebinding",
             BlockSource::RateLimit => "rate_limit",
             BlockSource::DnsTunneling => "dns_tunneling",
+            BlockSource::NxdomainHijack => "nxdomain_hijack",
         }
     }
 
@@ -49,6 +52,7 @@ impl BlockSource {
             5 => Some(BlockSource::DnsRebinding),
             6 => Some(BlockSource::RateLimit),
             7 => Some(BlockSource::DnsTunneling),
+            8 => Some(BlockSource::NxdomainHijack),
             _ => None,
         }
     }
@@ -63,6 +67,7 @@ impl BlockSource {
             BlockSource::DnsRebinding => 5,
             BlockSource::RateLimit => 6,
             BlockSource::DnsTunneling => 7,
+            BlockSource::NxdomainHijack => 8,
         }
     }
 }

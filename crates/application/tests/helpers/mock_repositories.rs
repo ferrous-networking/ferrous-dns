@@ -1668,3 +1668,35 @@ impl TunnelingFlagStore for MockTunnelingFlagStore {
         self.flagged.read().unwrap().contains(domain)
     }
 }
+
+// ── MockNxdomainHijackIpStore ─────────────────────────────────────────────────
+
+use ferrous_dns_application::ports::NxdomainHijackIpStore;
+
+pub struct MockNxdomainHijackIpStore {
+    hijack_ips: std::sync::RwLock<HashSet<IpAddr>>,
+}
+
+impl MockNxdomainHijackIpStore {
+    pub fn new() -> Self {
+        Self {
+            hijack_ips: std::sync::RwLock::new(HashSet::new()),
+        }
+    }
+
+    pub fn add_hijack_ip(&self, ip: IpAddr) {
+        self.hijack_ips.write().unwrap().insert(ip);
+    }
+}
+
+impl Default for MockNxdomainHijackIpStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NxdomainHijackIpStore for MockNxdomainHijackIpStore {
+    fn is_hijack_ip(&self, ip: &IpAddr) -> bool {
+        self.hijack_ips.read().unwrap().contains(ip)
+    }
+}

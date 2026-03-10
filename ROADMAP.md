@@ -67,17 +67,12 @@
 - [x] Login / Auth
 - [x] HTTPS for Web UI
 - [x] API Key / token
-- [ ] TOTP / 2FA
 - [x] Rate limiting DNS (token bucket per-subnet, slip TC=1, dry-run, NXDOMAIN budget)
 - [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
 - [x] DNS Tunneling Detection (two-phase: hot-path O(1) guard + background statistical analysis)
-- [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
-- [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — IoC ingestion)
-- [ ] Suspicious TLD blocking (high-risk TLDs: .tk, .top, .xyz, .buzz, .gq)
-- [ ] Newly Registered Domain (NRD) blocking (< 30 days, feed-based)
+- [x] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
 - [ ] Response IP filtering (block known C2 IPs in DNS responses)
-- [ ] NXDomain hijack detection (detect ISP/upstream NXDOMAIN redirection)
-- [ ] Read-only / lockdown mode (disable config changes via flag)
+- [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
 - [x] Separate listening ports for DoH and Admin UI
 
 ### 🎯 v0.8.0 - Export & Observability
@@ -89,6 +84,7 @@
 
 ### 🌟 v1.0.0 - Production Ready
 
+- [ ] TOTP / 2FA
 - [ ] Security audit
 - [ ] Comprehensive test coverage (>80%)
 - [ ] Production deployment guide
@@ -97,6 +93,9 @@
 
 ### 🎯 v1.1.0 - Next Features
 
+- [ ] Suspicious TLD blocking (high-risk TLDs with dedicated UI — .tk, .top, .xyz, .buzz, .gq)
+- [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — native CSV/JSON ingestion + fast refresh)
+- [ ] Newly Registered Domain (NRD) blocking (< 30 days, dedicated UI + configurable quarantine window)
 - [ ] Time-based Blocking (per blocklist and per domain)
 - [ ] Blocklist Dry-Run / Simulation Mode
 - [ ] Blocklist Impact Analysis

@@ -12,8 +12,8 @@ pub use entities::whitelist;
 
 pub use config::{
     AdminConfig, AuthConfig, CliOverrides, Config, ConfigError, DnsConfig, EncryptedDnsConfig,
-    HealthCheckConfig, LocalDnsRecord, RateLimitConfig, TunnelingAction, TunnelingDetectionConfig,
-    UpstreamPool, UpstreamStrategy,
+    HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction, NxdomainHijackConfig, RateLimitConfig,
+    TunnelingAction, TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use entities::api_token::ApiToken;

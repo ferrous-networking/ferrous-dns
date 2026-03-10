@@ -6,6 +6,7 @@ pub mod events;
 pub mod fast_path;
 pub mod forwarding;
 pub mod load_balancer;
+pub mod nxdomain_hijack;
 pub mod prefetch;
 pub mod proxy_protocol;
 pub mod query_logger;
@@ -27,6 +28,7 @@ pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,
     ServerStatus, UpstreamHealthAdapter,
 };
+pub use nxdomain_hijack::NxdomainHijackDetector;
 pub use prefetch::PrefetchPredictor;
 pub use proxy_protocol::read_proxy_v2_client_ip;
 pub use query_logger::QueryEventLogger;

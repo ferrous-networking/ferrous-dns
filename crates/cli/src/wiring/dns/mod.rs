@@ -4,7 +4,8 @@ mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{
-    CacheMaintenancePort, PtrRecordRegistry, TunnelingEvictionTarget, TunnelingFlagStore,
+    CacheMaintenancePort, NxdomainHijackIpStore, NxdomainHijackProbeTarget, PtrRecordRegistry,
+    TunnelingEvictionTarget, TunnelingFlagStore,
 };
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
@@ -12,9 +13,10 @@ use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
-    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, PoolManager, TunnelingDetector,
+    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, NxdomainHijackDetector,
+    PoolManager, TunnelingDetector,
 };
-use ferrous_dns_jobs::TunnelingEvictionJob;
+use ferrous_dns_jobs::{NxdomainHijackEvictionJob, TunnelingEvictionJob};
 use std::sync::Arc;
 use tracing::info;
 
@@ -30,6 +32,7 @@ pub struct DnsServices {
     pub tcp_conn_limiter: ConnectionLimiter,
     pub dot_conn_limiter: ConnectionLimiter,
     pub tunneling_eviction_job: Option<TunnelingEvictionJob>,
+    pub nxdomain_hijack_eviction_job: Option<NxdomainHijackEvictionJob>,
 }
 
 impl DnsServices {
@@ -148,6 +151,31 @@ impl DnsServices {
             (None, None)
         };
 
+        // NXDomain Hijack Detection
+        let (nxdomain_hijack_detector, nxdomain_hijack_eviction_job) =
+            if config.dns.nxdomain_hijack.enabled {
+                let detector = Arc::new(NxdomainHijackDetector::new(&config.dns.nxdomain_hijack));
+                let protocols = pool_manager_clone.get_all_arc_protocols();
+                let detector_clone = Arc::clone(&detector);
+                tokio::spawn(async move {
+                    detector_clone.run_probe_loop(protocols).await;
+                });
+                // Evict at twice the probe frequency so stale IPs are cleaned
+                // before the TTL fully expires.
+                let eviction_interval = config.dns.nxdomain_hijack.hijack_ip_ttl_secs / 2;
+                let eviction_job = NxdomainHijackEvictionJob::new(
+                    Arc::clone(&detector) as Arc<dyn NxdomainHijackProbeTarget>,
+                    eviction_interval,
+                );
+                info!(
+                    action = ?config.dns.nxdomain_hijack.action,
+                    "NXDomain hijack detection enabled"
+                );
+                (Some(detector), Some(eviction_job))
+            } else {
+                (None, None)
+            };
+
         let mut handler = HandleDnsQueryUseCase::new(
             resolver.clone(),
             repos.block_filter_engine.clone(),
@@ -172,6 +200,13 @@ impl DnsServices {
                 .with_tunneling_flag_store(Arc::clone(detector) as Arc<dyn TunnelingFlagStore>);
         }
 
+        if let Some(ref detector) = nxdomain_hijack_detector {
+            handler = handler.with_nxdomain_hijack_detection(
+                &config.dns.nxdomain_hijack,
+                Arc::clone(detector) as Arc<dyn NxdomainHijackIpStore>,
+            );
+        }
+
         let handler_use_case = Arc::new(handler);
 
         let tcp_conn_limiter =
@@ -191,6 +226,7 @@ impl DnsServices {
             tcp_conn_limiter,
             dot_conn_limiter,
             tunneling_eviction_job,
+            nxdomain_hijack_eviction_job,
         })
     }
 

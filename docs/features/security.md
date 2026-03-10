@@ -154,7 +154,7 @@ When enabled, Ferrous DNS validates DNSSEC signatures on all upstream responses.
 
 ## Malware Detection
 
-Ferrous DNS includes built-in DNS tunneling detection and DNS rebinding protection. See the dedicated [Malware Detection](malware-detection.md) page for full details, real-world attack examples, configuration reference, and comparison with other DNS servers.
+Ferrous DNS includes built-in DNS tunneling detection, DNS rebinding protection, and NXDomain hijack detection. See the dedicated [Malware Detection](malware-detection.md) page for full details, real-world attack examples, configuration reference, and comparison with other DNS servers.
 
 ---
 
@@ -363,6 +363,7 @@ The following are planned for future releases:
 | DNSSEC validation | :white_check_mark: Active |
 | DNS tunneling detection | :white_check_mark: Active |
 | DNS rebinding protection | :white_check_mark: Active |
+| NXDomain hijack detection | :white_check_mark: Active |
 | Encrypted upstream (DoH/DoT/DoQ) | :white_check_mark: Active |
 | Server-side DoT/DoH | :white_check_mark: Active |
 | PROXY Protocol v2 | :white_check_mark: Active |

@@ -1,8 +1,9 @@
 use ferrous_dns_application::ports::CacheMaintenancePort;
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
-    BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, QueryLogRetentionJob,
-    RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob, TunnelingEvictionJob, WalCheckpointJob,
+    BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, JobRunner, NxdomainHijackEvictionJob,
+    QueryLogRetentionJob, RetentionJob, ScheduleEvaluatorJob, SessionCleanupJob,
+    TunnelingEvictionJob, WalCheckpointJob,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ pub fn build_job_runner(
     wal_pool: SqlitePool,
     cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     tunneling_eviction: Option<TunnelingEvictionJob>,
+    nxdomain_hijack_eviction: Option<NxdomainHijackEvictionJob>,
 ) -> JobRunner {
     let mut runner = JobRunner::new()
         .with_client_sync(ClientSyncJob::new(
@@ -47,6 +49,10 @@ pub fn build_job_runner(
 
     if let Some(eviction) = tunneling_eviction {
         runner = runner.with_tunneling_eviction(eviction);
+    }
+
+    if let Some(eviction) = nxdomain_hijack_eviction {
+        runner = runner.with_nxdomain_hijack_eviction(eviction);
     }
 
     runner
