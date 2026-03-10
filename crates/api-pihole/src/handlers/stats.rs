@@ -1,6 +1,5 @@
 use axum::extract::{Query, State};
 use axum::Json;
-use chrono::DateTime;
 use ferrous_dns_application::ports::TimeGranularity;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -8,16 +7,19 @@ use std::collections::HashMap;
 use crate::{
     dto::stats::{
         ClientSummary, GravitySummary, HistoryBucket, HistoryResponse, QuerySummary,
-        QueryTypesResponse, RecentBlockedResponse, SummaryResponse, TopBlockedResponse,
-        TopClientsResponse, TopDomainsResponse,
+        QueryTypesResponse, RecentBlockedResponse, SummaryResponse, TopClientEntry,
+        TopClientsResponse, TopDomainEntry, TopDomainsResponse,
     },
     dto::upstreams::UpstreamsResponse,
     errors::PiholeApiError,
     state::PiholeAppState,
+    timestamp::parse_unix_epoch,
 };
 
 pub const STATS_PERIOD_HOURS: f32 = 24.0;
 pub const TOP_ITEMS_LIMIT: u32 = 25;
+
+const RECENT_BLOCKED_SCAN_LIMIT: u32 = 200;
 
 /// Known internal source_stats keys that are not upstream servers.
 const INTERNAL_SOURCE_KEYS: &[&str] = &["cache", "local_dns", "blocked", "safe_search"];
@@ -25,18 +27,17 @@ const INTERNAL_SOURCE_KEYS: &[&str] = &["cache", "local_dns", "blocked", "safe_s
 /// Query parameters for database endpoints (`/stats/database/*`).
 #[derive(Debug, Deserialize)]
 pub struct DatabaseQueryParams {
-    /// Period in hours (default 24).
-    pub from: Option<f32>,
-    /// Limit for top-N queries (default 25).
-    pub limit: Option<u32>,
+    pub(crate) from: Option<f32>,
+    pub(crate) limit: Option<u32>,
+    pub(crate) blocked: Option<bool>,
 }
 
 impl DatabaseQueryParams {
-    fn period(&self) -> f32 {
+    pub(crate) fn period(&self) -> f32 {
         self.from.unwrap_or(STATS_PERIOD_HOURS)
     }
 
-    fn limit(&self) -> u32 {
+    pub(crate) fn limit(&self) -> u32 {
         self.limit.unwrap_or(TOP_ITEMS_LIMIT)
     }
 }
@@ -63,7 +64,7 @@ pub async fn get_summary(
     let query_types: HashMap<String, u64> = stats
         .queries_by_type
         .into_iter()
-        .map(|(record_type, count)| (format!("{record_type:?}"), count))
+        .map(|(record_type, count)| (record_type.to_string(), count))
         .collect();
 
     let domains_being_blocked = state.blocking.block_filter_engine.compiled_domain_count() as u64;
@@ -73,18 +74,23 @@ pub async fn get_summary(
             total,
             blocked,
             percent_blocked,
+            // TODO: implement unique domain count via dedicated query
             unique_domains: 0,
             forwarded,
             cached: cache_hits,
+            // TODO: compute queries-per-second from uptime + total
             frequency: 0.0,
             types: query_types,
         },
         clients: ClientSummary {
             active: stats.unique_clients,
+            // TODO: distinguish total (all-time) from active (period) clients
             total: stats.unique_clients,
         },
         gravity: GravitySummary {
             domains_being_blocked,
+            // TODO: populate from blocklist last-sync timestamp
+            last_update: 0,
         },
         status: if state.blocking.block_filter_engine.is_blocking_enabled() {
             "enabled"
@@ -110,18 +116,14 @@ pub async fn get_history(
     let history: Vec<HistoryBucket> = buckets
         .into_iter()
         .filter_map(|b| {
-            let timestamp_str = if b.timestamp.ends_with('Z') {
-                b.timestamp.clone()
-            } else {
-                format!("{}Z", b.timestamp.replace(' ', "T"))
-            };
-            let ts = DateTime::parse_from_rfc3339(&timestamp_str)
-                .ok()?
-                .timestamp();
+            let ts = parse_unix_epoch(&b.timestamp)?;
             Some(HistoryBucket {
                 timestamp: ts,
                 total: b.total,
                 blocked: b.blocked,
+                // TODO: TimelineBucket does not break down cache vs forwarded yet
+                cached: 0,
+                forwarded: b.unblocked,
             })
         })
         .collect();
@@ -133,19 +135,26 @@ pub async fn get_history(
 pub async fn get_top_blocked(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
-) -> Result<Json<TopBlockedResponse>, PiholeApiError> {
+) -> Result<Json<TopDomainsResponse>, PiholeApiError> {
     let period = params.period();
     let limit = params.limit();
 
-    let domains = state
-        .query
-        .get_top_blocked_domains
-        .execute(limit, period)
-        .await?;
+    let (domains_raw, stats) = tokio::join!(
+        state.query.get_top_blocked_domains.execute(limit, period),
+        state.query.get_stats.execute(period),
+    );
 
-    let top_blocked: HashMap<String, u64> = domains.into_iter().collect();
+    let domains = domains_raw?
+        .into_iter()
+        .map(|(domain, count)| TopDomainEntry { domain, count })
+        .collect();
+    let stats = stats?;
 
-    Ok(Json(TopBlockedResponse { top_blocked }))
+    Ok(Json(TopDomainsResponse {
+        domains,
+        total_queries: stats.queries_total,
+        blocked_queries: stats.queries_blocked,
+    }))
 }
 
 /// Pi-hole v6 GET /api/stats/top_clients
@@ -156,17 +165,26 @@ pub async fn get_top_clients(
     let period = params.period();
     let limit = params.limit();
 
-    let clients = state.query.get_top_clients.execute(limit, period).await?;
+    let (clients_raw, stats) = tokio::join!(
+        state.query.get_top_clients.execute(limit, period),
+        state.query.get_stats.execute(period),
+    );
 
-    let top_sources: HashMap<String, u64> = clients
+    let clients = clients_raw?
         .into_iter()
-        .map(|(ip, hostname, count)| {
-            let key = format!("{}|{}", ip, hostname.unwrap_or_default());
-            (key, count)
+        .map(|(ip, hostname, count)| TopClientEntry {
+            ip,
+            name: hostname.unwrap_or_default(),
+            count,
         })
         .collect();
+    let stats = stats?;
 
-    Ok(Json(TopClientsResponse { top_sources }))
+    Ok(Json(TopClientsResponse {
+        clients,
+        total_queries: stats.queries_total,
+        blocked_queries: stats.queries_blocked,
+    }))
 }
 
 /// Pi-hole v6 GET /api/stats/query_types
@@ -188,7 +206,7 @@ pub async fn get_query_types(
             } else {
                 0.0
             };
-            (format!("{record_type:?}"), pct)
+            (record_type.to_string(), pct)
         })
         .collect();
 
@@ -197,22 +215,44 @@ pub async fn get_query_types(
 
 /// Pi-hole v6 GET /api/stats/top_domains
 ///
-/// Returns top allowed + top blocked domains in a single response.
+/// Returns top allowed domains by default, or top blocked domains when `?blocked=true`.
 pub async fn get_top_domains(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<TopDomainsResponse>, PiholeApiError> {
     let period = params.period();
     let limit = params.limit();
+    let is_blocked = params.blocked.unwrap_or(false);
 
-    let (allowed, blocked) = tokio::join!(
-        state.query.get_top_allowed_domains.execute(limit, period),
-        state.query.get_top_blocked_domains.execute(limit, period),
+    let (domain_list, stats) = tokio::join!(
+        async {
+            if is_blocked {
+                state
+                    .query
+                    .get_top_blocked_domains
+                    .execute(limit, period)
+                    .await
+            } else {
+                state
+                    .query
+                    .get_top_allowed_domains
+                    .execute(limit, period)
+                    .await
+            }
+        },
+        state.query.get_stats.execute(period),
     );
 
+    let domains = domain_list?
+        .into_iter()
+        .map(|(domain, count)| TopDomainEntry { domain, count })
+        .collect();
+    let stats = stats?;
+
     Ok(Json(TopDomainsResponse {
-        top_domains: allowed?.into_iter().collect(),
-        top_blocked: blocked?.into_iter().collect(),
+        domains,
+        total_queries: stats.queries_total,
+        blocked_queries: stats.queries_blocked,
     }))
 }
 
@@ -245,13 +285,15 @@ pub async fn get_upstreams(
 /// Pi-hole v6 GET /api/stats/recent_blocked
 ///
 /// Returns the most recently blocked domain.
+// TODO: replace with a dedicated use case (GetMostRecentBlockedUseCase)
+// using `WHERE blocked = 1 ORDER BY timestamp DESC LIMIT 1` in the repository
 pub async fn get_recent_blocked(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<RecentBlockedResponse>, PiholeApiError> {
     let queries = state
         .query
         .get_recent_queries
-        .execute(200, STATS_PERIOD_HOURS)
+        .execute(RECENT_BLOCKED_SCAN_LIMIT, STATS_PERIOD_HOURS)
         .await?;
 
     let domain = queries

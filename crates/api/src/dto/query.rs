@@ -12,6 +12,10 @@ pub struct QueryParams {
     pub period: String,
     pub domain: Option<String>,
     pub category: Option<String>,
+    pub client: Option<String>,
+    #[serde(rename = "type")]
+    pub record_type: Option<String>,
+    pub upstream: Option<String>,
 }
 
 fn default_limit() -> u32 {
@@ -21,7 +25,10 @@ fn default_limit() -> u32 {
 #[derive(Serialize, Debug)]
 pub struct PaginatedQueries {
     pub data: Vec<QueryResponse>,
+    /// Total records matching the applied filters.
     pub total: u64,
+    /// Total records in the period (without filters).
+    pub records_total: u64,
     pub limit: u32,
     pub offset: u32,
     pub next_cursor: Option<i64>,

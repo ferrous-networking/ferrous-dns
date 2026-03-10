@@ -301,9 +301,8 @@ impl QueryLogRepository for MockQueryLogRepository {
         offset: u32,
         period_hours: f32,
         _cursor: Option<i64>,
-        _domain: Option<&str>,
-        _category: Option<ferrous_dns_domain::QueryCategory>,
-    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
+        _filter: &ferrous_dns_domain::QueryLogFilter,
+    ) -> Result<ferrous_dns_application::ports::PagedQueryResult, DomainError> {
         let all = self.get_recent(limit + offset, period_hours).await?;
         let total = all.len() as u64;
         let start = (offset as usize).min(all.len());
@@ -314,7 +313,12 @@ impl QueryLogRepository for MockQueryLogRepository {
         } else {
             None
         };
-        Ok((page, total, next_cursor))
+        Ok(ferrous_dns_application::ports::PagedQueryResult {
+            queries: page,
+            records_total: total,
+            records_filtered: total,
+            next_cursor,
+        })
     }
 
     async fn get_stats(&self, _period_hours: f32) -> Result<QueryStats, DomainError> {

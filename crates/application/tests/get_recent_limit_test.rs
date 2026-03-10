@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket,
+    CacheStats, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };
-use ferrous_dns_application::use_cases::GetRecentQueriesUseCase;
-use ferrous_dns_domain::{query_log::QueryLog, DomainError, QueryStats};
+use ferrous_dns_application::use_cases::{GetRecentQueriesUseCase, PagedQueryInput};
+use ferrous_dns_domain::{query_log::QueryLog, DomainError, QueryLogFilter, QueryStats};
 use std::sync::{Arc, Mutex};
 
 struct CaptureLimitRepository {
@@ -27,11 +27,15 @@ impl QueryLogRepository for CaptureLimitRepository {
         _: u32,
         _: f32,
         _: Option<i64>,
-        _: Option<&str>,
-        _: Option<ferrous_dns_domain::QueryCategory>,
-    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
+        _: &QueryLogFilter,
+    ) -> Result<PagedQueryResult, DomainError> {
         *self.last_limit.lock().unwrap() = limit;
-        Ok((vec![], 0, None))
+        Ok(PagedQueryResult {
+            queries: vec![],
+            records_total: 0,
+            records_filtered: 0,
+            next_cursor: None,
+        })
     }
 
     async fn get_stats(&self, _: f32) -> Result<QueryStats, DomainError> {
@@ -117,10 +121,72 @@ async fn test_paged_limit_above_max_is_capped() {
     });
     let use_case = GetRecentQueriesUseCase::new(repo);
 
-    use_case
-        .execute_paged(5_000, 0, 24.0, None, None, None)
-        .await
-        .unwrap();
+    let input = PagedQueryInput {
+        limit: 5_000,
+        period_hours: 24.0,
+        ..Default::default()
+    };
+    use_case.execute_paged(&input).await.unwrap();
 
     assert_eq!(*captured.lock().unwrap(), 1_000);
+}
+
+#[tokio::test]
+async fn test_invalid_record_type_returns_error() {
+    let captured = Arc::new(Mutex::new(0u32));
+    let repo = Arc::new(CaptureLimitRepository {
+        last_limit: captured.clone(),
+    });
+    let use_case = GetRecentQueriesUseCase::new(repo);
+
+    let input = PagedQueryInput {
+        limit: 100,
+        period_hours: 24.0,
+        record_type: Some("INVALID"),
+        ..Default::default()
+    };
+    let result = use_case.execute_paged(&input).await;
+
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), DomainError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn test_invalid_client_ip_returns_error() {
+    let captured = Arc::new(Mutex::new(0u32));
+    let repo = Arc::new(CaptureLimitRepository {
+        last_limit: captured.clone(),
+    });
+    let use_case = GetRecentQueriesUseCase::new(repo);
+
+    let input = PagedQueryInput {
+        limit: 100,
+        period_hours: 24.0,
+        client_ip: Some("not-an-ip"),
+        ..Default::default()
+    };
+    let result = use_case.execute_paged(&input).await;
+
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), DomainError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn test_invalid_category_returns_error() {
+    let captured = Arc::new(Mutex::new(0u32));
+    let repo = Arc::new(CaptureLimitRepository {
+        last_limit: captured.clone(),
+    });
+    let use_case = GetRecentQueriesUseCase::new(repo);
+
+    let input = PagedQueryInput {
+        limit: 100,
+        period_hours: 24.0,
+        category: Some("NONSENSE"),
+        ..Default::default()
+    };
+    let result = use_case.execute_paged(&input).await;
+
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), DomainError::InvalidInput(_)));
 }

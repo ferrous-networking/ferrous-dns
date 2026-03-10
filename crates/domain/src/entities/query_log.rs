@@ -5,6 +5,24 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
+/// Filter criteria for paginated query log queries.
+///
+/// All fields are optional — `None` means no filter for that dimension.
+/// Multiple active filters are combined with AND logic.
+#[derive(Debug, Clone, Default)]
+pub struct QueryLogFilter {
+    /// Substring match on domain (SQL `LIKE %domain%`).
+    pub domain: Option<String>,
+    /// Query category (allowed, blocked, cache, upstream, etc.).
+    pub category: Option<QueryCategory>,
+    /// Exact match on client IP (canonical `IpAddr` form).
+    pub client_ip: Option<IpAddr>,
+    /// Exact match on DNS record type.
+    pub record_type: Option<RecordType>,
+    /// Exact match on upstream server address.
+    pub upstream: Option<String>,
+}
+
 /// Category filter for query log pagination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryCategory {

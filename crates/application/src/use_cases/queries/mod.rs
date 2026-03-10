@@ -9,7 +9,7 @@ pub mod get_top_clients;
 
 pub use cleanup_old_query_logs::CleanupOldQueryLogsUseCase;
 pub use get_rate::{GetQueryRateUseCase, QueryRate, RateUnit};
-pub use get_recent::GetRecentQueriesUseCase;
+pub use get_recent::{GetRecentQueriesUseCase, PagedQueryInput};
 pub use get_stats::GetQueryStatsUseCase;
 pub use get_timeline::GetTimelineUseCase;
 pub use get_top_allowed_domains::GetTopAllowedDomainsUseCase;

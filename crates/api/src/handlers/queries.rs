@@ -8,6 +8,7 @@ use axum::{
     extract::{Query, State},
     Json,
 };
+use ferrous_dns_application::use_cases::PagedQueryInput;
 use tracing::{debug, instrument};
 
 #[instrument(skip(state), name = "api_get_queries")]
@@ -22,6 +23,9 @@ pub async fn get_queries(
         cursor = params.cursor,
         domain = ?params.domain,
         category = ?params.category,
+        client = ?params.client,
+        record_type = ?params.record_type,
+        upstream = ?params.upstream,
         "Fetching recent queries"
     );
 
@@ -29,20 +33,22 @@ pub async fn get_queries(
         .map(validate_period)
         .unwrap_or(24.0);
 
-    let (queries, total, next_cursor) = state
-        .query
-        .get_queries
-        .execute_paged(
-            params.limit,
-            params.offset,
-            period_hours,
-            params.cursor,
-            params.domain.as_deref(),
-            params.category.as_deref(),
-        )
-        .await?;
+    let input = PagedQueryInput {
+        limit: params.limit,
+        offset: params.offset,
+        period_hours,
+        cursor: params.cursor,
+        domain: params.domain.as_deref(),
+        category: params.category.as_deref(),
+        client_ip: params.client.as_deref(),
+        record_type: params.record_type.as_deref(),
+        upstream: params.upstream.as_deref(),
+    };
 
-    let data: Vec<QueryResponse> = queries
+    let result = state.query.get_queries.execute_paged(&input).await?;
+
+    let data: Vec<QueryResponse> = result
+        .queries
         .into_iter()
         .map(|q| QueryResponse {
             timestamp: q.timestamp.unwrap_or_default(),
@@ -65,16 +71,18 @@ pub async fn get_queries(
 
     debug!(
         count = data.len(),
-        total = total,
-        next_cursor = next_cursor,
+        records_total = result.records_total,
+        records_filtered = result.records_filtered,
+        next_cursor = result.next_cursor,
         "Queries retrieved successfully"
     );
 
     Ok(Json(PaginatedQueries {
         data,
-        total,
+        total: result.records_filtered,
+        records_total: result.records_total,
         limit: params.limit,
         offset: params.offset,
-        next_cursor,
+        next_cursor: result.next_cursor,
     }))
 }

@@ -375,8 +375,16 @@ async fn top_blocked_returns_object_under_top_blocked_key() {
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
     assert!(
-        json["top_blocked"].is_object(),
-        "response must have a 'top_blocked' object field"
+        json["domains"].is_array(),
+        "response must have a 'domains' array field"
+    );
+    assert!(
+        json["total_queries"].is_number(),
+        "response must have 'total_queries'"
+    );
+    assert!(
+        json["blocked_queries"].is_number(),
+        "response must have 'blocked_queries'"
     );
 }
 
@@ -433,14 +441,21 @@ async fn top_blocked_includes_blocked_domains_with_their_hit_counts() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    let top = &json["top_blocked"];
+    let domains = json["domains"].as_array().expect("domains must be array");
+    let ads_entry = domains.iter().find(|d| d["domain"] == "ads.example.com");
     assert_eq!(
-        top["ads.example.com"], 2,
+        ads_entry.unwrap()["count"],
+        2,
         "ads.example.com should have count 2"
     );
-    assert_eq!(top["tracker.io"], 1, "tracker.io should have count 1");
+    let tracker_entry = domains.iter().find(|d| d["domain"] == "tracker.io");
+    assert_eq!(
+        tracker_entry.unwrap()["count"],
+        1,
+        "tracker.io should have count 1"
+    );
     assert!(
-        top["example.com"].is_null(),
+        domains.iter().all(|d| d["domain"] != "example.com"),
         "allowed domain must not appear in top_blocked"
     );
 }
@@ -475,13 +490,21 @@ async fn top_clients_returns_object_under_top_sources_key() {
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
     assert!(
-        json["top_sources"].is_object(),
-        "response must have a 'top_sources' object field"
+        json["clients"].is_array(),
+        "response must have a 'clients' array field"
+    );
+    assert!(
+        json["total_queries"].is_number(),
+        "response must have 'total_queries'"
+    );
+    assert!(
+        json["blocked_queries"].is_number(),
+        "response must have 'blocked_queries'"
     );
 }
 
 #[tokio::test]
-async fn top_clients_uses_ip_pipe_hostname_key_format() {
+async fn top_clients_entries_have_ip_and_count_fields() {
     let pool = helpers::create_test_db().await;
 
     helpers::insert_query(&pool, "a.com", "192.168.1.100", false, false, None).await;
@@ -506,21 +529,25 @@ async fn top_clients_uses_ip_pipe_hostname_key_format() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    let sources = json["top_sources"]
-        .as_object()
-        .expect("top_sources must be object");
+    let clients = json["clients"].as_array().expect("clients must be array");
     assert!(
-        !sources.is_empty(),
-        "top_sources must not be empty after inserting queries"
+        !clients.is_empty(),
+        "clients must not be empty after inserting queries"
     );
 
-    // All keys must match the "ip|hostname" pattern
-    for key in sources.keys() {
-        assert!(
-            key.contains('|'),
-            "key '{key}' must use 'ip|hostname' format required by Pi-hole v6"
-        );
-    }
+    let entry = &clients[0];
+    assert!(
+        entry["ip"].is_string(),
+        "client entry must have 'ip' string"
+    );
+    assert!(
+        entry["name"].is_string(),
+        "client entry must have 'name' string (empty string when unknown)"
+    );
+    assert!(
+        entry["count"].is_number(),
+        "client entry must have 'count' number"
+    );
 }
 
 #[tokio::test]
@@ -552,17 +579,15 @@ async fn top_clients_counts_are_per_source_ip() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    let sources = json["top_sources"]
-        .as_object()
-        .expect("top_sources must be object");
-    let entry_100 = sources
+    let clients = json["clients"].as_array().expect("clients must be array");
+    let entry_100 = clients
         .iter()
-        .find(|(k, _)| k.starts_with("10.0.0.100"))
-        .map(|(_, v)| v.as_u64().unwrap_or(0));
-    let entry_200 = sources
+        .find(|c| c["ip"] == "10.0.0.100")
+        .map(|c| c["count"].as_u64().unwrap_or(0));
+    let entry_200 = clients
         .iter()
-        .find(|(k, _)| k.starts_with("10.0.0.200"))
-        .map(|(_, v)| v.as_u64().unwrap_or(0));
+        .find(|c| c["ip"] == "10.0.0.200")
+        .map(|c| c["count"].as_u64().unwrap_or(0));
 
     assert_eq!(entry_100, Some(3), "10.0.0.100 should have count 3");
     assert_eq!(entry_200, Some(1), "10.0.0.200 should have count 1");
@@ -709,17 +734,21 @@ async fn top_domains_returns_both_top_domains_and_top_blocked_keys() {
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
     assert!(
-        json["top_domains"].is_object(),
-        "response must have a 'top_domains' object field"
+        json["domains"].is_array(),
+        "response must have a 'domains' array field"
     );
     assert!(
-        json["top_blocked"].is_object(),
-        "response must have a 'top_blocked' object field"
+        json["total_queries"].is_number(),
+        "response must have 'total_queries'"
+    );
+    assert!(
+        json["blocked_queries"].is_number(),
+        "response must have 'blocked_queries'"
     );
 }
 
 #[tokio::test]
-async fn top_domains_separates_allowed_and_blocked_domains() {
+async fn top_domains_returns_allowed_domains_by_default() {
     let pool = helpers::create_test_db().await;
 
     // 3 allowed queries for "example.com"
@@ -752,25 +781,22 @@ async fn top_domains_separates_allowed_and_blocked_domains() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    let top_domains = &json["top_domains"];
-    let top_blocked = &json["top_blocked"];
+    let domains = json["domains"].as_array().expect("domains must be array");
 
-    assert_eq!(
-        top_domains["example.com"], 3,
-        "example.com should appear in top_domains with count 3"
-    );
+    let example_entry = domains.iter().find(|d| d["domain"] == "example.com");
     assert!(
-        top_domains["ads.com"].is_null(),
-        "blocked domain must not appear in top_domains"
+        example_entry.is_some(),
+        "example.com should appear in allowed top_domains"
+    );
+    assert_eq!(
+        example_entry.unwrap()["count"],
+        3,
+        "example.com should have count 3"
     );
 
-    assert_eq!(
-        top_blocked["ads.com"], 2,
-        "ads.com should appear in top_blocked with count 2"
-    );
     assert!(
-        top_blocked["example.com"].is_null(),
-        "allowed domain must not appear in top_blocked"
+        domains.iter().all(|d| d["domain"] != "ads.com"),
+        "blocked domain must not appear in default (allowed) top_domains"
     );
 }
 
@@ -928,5 +954,132 @@ async fn recent_blocked_returns_most_recently_blocked_domain() {
     assert_eq!(
         json["domain"], "ads.evil.com",
         "most recently blocked domain must be ads.evil.com"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/top_domains?blocked=true — v6 blocked filter
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn top_domains_blocked_true_returns_only_blocked_domains() {
+    let pool = helpers::create_test_db().await;
+
+    for _ in 0..3 {
+        helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
+    }
+    for _ in 0..2 {
+        helpers::insert_query(&pool, "ads.com", "10.0.0.1", true, false, Some("blocklist")).await;
+    }
+
+    let app = helpers::create_pihole_test_app(pool, None).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/top_domains?blocked=true")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    let domains = json["domains"].as_array().expect("domains must be array");
+
+    let ads_entry = domains.iter().find(|d| d["domain"] == "ads.com");
+    assert!(
+        ads_entry.is_some(),
+        "ads.com should appear when ?blocked=true"
+    );
+    assert_eq!(ads_entry.unwrap()["count"], 2);
+
+    assert!(
+        domains.iter().all(|d| d["domain"] != "example.com"),
+        "allowed domain must not appear when ?blocked=true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/history — cached and forwarded fields
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn history_buckets_include_cached_and_forwarded_fields() {
+    let pool = helpers::create_test_db().await;
+
+    helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
+
+    let app = helpers::create_pihole_test_app(pool, None).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/history")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    let history = json["history"].as_array().expect("history must be array");
+    assert!(!history.is_empty(), "expected at least one bucket");
+
+    let bucket = &history[0];
+    assert!(
+        bucket["cached"].is_number(),
+        "bucket.cached must be a number"
+    );
+    assert!(
+        bucket["forwarded"].is_number(),
+        "bucket.forwarded must be a number"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GET /stats/summary — gravity.last_update present
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn summary_gravity_includes_last_update_field() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool, None).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/stats/summary")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+
+    assert!(
+        json["gravity"]["last_update"].is_number(),
+        "gravity.last_update must be a number"
     );
 }

@@ -1,6 +1,6 @@
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::config::DatabaseConfig;
-use ferrous_dns_domain::QueryCategory;
+use ferrous_dns_domain::{QueryCategory, QueryLogFilter};
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -75,35 +75,30 @@ async fn insert_log(
         (None, None)
     };
 
-    if let Some(ts) = created_at {
-        sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, upstream_server, upstream_pool, created_at)
-             VALUES ('example.com', 'A', '192.168.1.1', ?, 100, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(if blocked { 1i64 } else { 0 })
-        .bind(if cache_hit { 1i64 } else { 0 })
-        .bind(query_source)
-        .bind(block_source)
-        .bind(up_server)
-        .bind(up_pool)
-        .bind(ts)
-        .execute(pool)
-        .await
-        .unwrap();
-    } else {
-        sqlx::query(
-            "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, upstream_server, upstream_pool)
-             VALUES ('example.com', 'A', '192.168.1.1', ?, 100, ?, ?, ?, ?, ?)",
-        )
-        .bind(if blocked { 1i64 } else { 0 })
-        .bind(if cache_hit { 1i64 } else { 0 })
-        .bind(query_source)
-        .bind(block_source)
-        .bind(up_server)
-        .bind(up_pool)
-        .execute(pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, upstream_server, upstream_pool, created_at)
+         VALUES ('example.com', 'A', '192.168.1.1', ?, 100, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))",
+    )
+    .bind(if blocked { 1i64 } else { 0 })
+    .bind(if cache_hit { 1i64 } else { 0 })
+    .bind(query_source)
+    .bind(block_source)
+    .bind(up_server)
+    .bind(up_pool)
+    .bind(created_at)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+fn no_filter() -> QueryLogFilter {
+    QueryLogFilter::default()
+}
+
+fn category_filter(category: QueryCategory) -> QueryLogFilter {
+    QueryLogFilter {
+        category: Some(category),
+        ..Default::default()
     }
 }
 
@@ -467,15 +462,44 @@ async fn insert_query(
     block_source: Option<&str>,
     response_status: Option<&str>,
 ) {
+    insert_query_full(
+        pool,
+        domain,
+        "192.168.1.1",
+        "A",
+        blocked,
+        cache_hit,
+        block_source,
+        response_status,
+        None,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn insert_query_full(
+    pool: &sqlx::SqlitePool,
+    domain: &str,
+    client_ip: &str,
+    record_type: &str,
+    blocked: bool,
+    cache_hit: bool,
+    block_source: Option<&str>,
+    response_status: Option<&str>,
+    upstream_server: Option<&str>,
+) {
     sqlx::query(
-        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, response_status)
-         VALUES (?, 'A', '192.168.1.1', ?, 100, ?, 'client', ?, ?)",
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, response_status, upstream_server)
+         VALUES (?, ?, ?, ?, 100, ?, 'client', ?, ?, ?)",
     )
     .bind(domain)
+    .bind(record_type)
+    .bind(client_ip)
     .bind(if blocked { 1i64 } else { 0i64 })
     .bind(if cache_hit { 1i64 } else { 0i64 })
     .bind(block_source)
     .bind(response_status)
+    .bind(upstream_server)
     .execute(pool)
     .await
     .unwrap();
@@ -553,12 +577,13 @@ async fn test_category_filter_all_returns_everything() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, None)
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &no_filter())
         .await
         .unwrap();
-    assert_eq!(total, 10);
-    assert_eq!(queries.len(), 10);
+    assert_eq!(result.records_filtered, 10);
+    assert_eq!(result.records_total, 10);
+    assert_eq!(result.queries.len(), 10);
 }
 
 #[tokio::test]
@@ -573,14 +598,14 @@ async fn test_category_filter_allowed() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Allowed))
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &category_filter(QueryCategory::Allowed))
         .await
         .unwrap();
     // allowed = not blocked: google, github, cached, cached2, rate, local = 6
-    assert_eq!(total, 6);
-    assert_eq!(queries.len(), 6);
-    assert!(queries.iter().all(|q| !q.blocked));
+    assert_eq!(result.records_filtered, 6);
+    assert_eq!(result.queries.len(), 6);
+    assert!(result.queries.iter().all(|q| !q.blocked));
 }
 
 #[tokio::test]
@@ -595,14 +620,14 @@ async fn test_category_filter_blocked() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Blocked))
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &category_filter(QueryCategory::Blocked))
         .await
         .unwrap();
     // blocked: ads, tracker, tunnel, dga = 4
-    assert_eq!(total, 4);
-    assert_eq!(queries.len(), 4);
-    assert!(queries.iter().all(|q| q.blocked));
+    assert_eq!(result.records_filtered, 4);
+    assert_eq!(result.queries.len(), 4);
+    assert!(result.queries.iter().all(|q| q.blocked));
 }
 
 #[tokio::test]
@@ -617,13 +642,13 @@ async fn test_category_filter_cache() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Cache))
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &category_filter(QueryCategory::Cache))
         .await
         .unwrap();
-    assert_eq!(total, 2);
-    assert_eq!(queries.len(), 2);
-    assert!(queries.iter().all(|q| q.cache_hit));
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+    assert!(result.queries.iter().all(|q| q.cache_hit));
 }
 
 #[tokio::test]
@@ -638,14 +663,20 @@ async fn test_category_filter_upstream() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Upstream))
+    let result = repo
+        .get_recent_paged(
+            100,
+            0,
+            24.0,
+            None,
+            &category_filter(QueryCategory::Upstream),
+        )
         .await
         .unwrap();
     // upstream = not blocked, not cache, not rate_limited, not local_dns: google, github = 2
-    assert_eq!(total, 2);
-    assert_eq!(queries.len(), 2);
-    assert!(queries.iter().all(|q| !q.blocked && !q.cache_hit));
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+    assert!(result.queries.iter().all(|q| !q.blocked && !q.cache_hit));
 }
 
 #[tokio::test]
@@ -660,12 +691,18 @@ async fn test_category_filter_rate_limited() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::RateLimited))
+    let result = repo
+        .get_recent_paged(
+            100,
+            0,
+            24.0,
+            None,
+            &category_filter(QueryCategory::RateLimited),
+        )
         .await
         .unwrap();
-    assert_eq!(total, 1);
-    assert_eq!(queries.len(), 1);
+    assert_eq!(result.records_filtered, 1);
+    assert_eq!(result.queries.len(), 1);
 }
 
 #[tokio::test]
@@ -680,13 +717,13 @@ async fn test_category_filter_malware() {
         &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo
-        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Malware))
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &category_filter(QueryCategory::Malware))
         .await
         .unwrap();
     // malware: tunnel + dga = 2
-    assert_eq!(total, 2);
-    assert_eq!(queries.len(), 2);
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
 }
 
 #[tokio::test]
@@ -702,21 +739,19 @@ async fn test_category_filter_combined_with_domain_search() {
     );
 
     // Search for "example" domain within blocked category
-    let (queries, total, _) = repo
-        .get_recent_paged(
-            100,
-            0,
-            24.0,
-            None,
-            Some("example"),
-            Some(QueryCategory::Blocked),
-        )
+    let filter = QueryLogFilter {
+        domain: Some("example".to_string()),
+        category: Some(QueryCategory::Blocked),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
         .await
         .unwrap();
     // blocked + "example": ads.example.com, tracker.example.com, tunnel.example.com = 3
-    assert_eq!(total, 3);
-    assert_eq!(queries.len(), 3);
-    assert!(queries.iter().all(|q| q.blocked));
+    assert_eq!(result.records_filtered, 3);
+    assert_eq!(result.queries.len(), 3);
+    assert!(result.queries.iter().all(|q| q.blocked));
 }
 
 #[tokio::test]
@@ -731,29 +766,428 @@ async fn test_category_filter_respects_pagination() {
         &DatabaseConfig::default(),
     );
 
+    let blocked_filter = category_filter(QueryCategory::Blocked);
+
     // Get first page of blocked with limit=2 (there are 4 blocked total)
-    let (page1, total, _) = repo
-        .get_recent_paged(2, 0, 24.0, None, None, Some(QueryCategory::Blocked))
+    let page1 = repo
+        .get_recent_paged(2, 0, 24.0, None, &blocked_filter)
         .await
         .unwrap();
-    assert_eq!(total, 4);
-    assert_eq!(page1.len(), 2);
-    assert!(page1.iter().all(|q| q.blocked));
+    assert_eq!(page1.records_filtered, 4);
+    assert_eq!(page1.queries.len(), 2);
+    assert!(page1.queries.iter().all(|q| q.blocked));
 
     // Get second page via offset
-    let (page2, total2, _) = repo
-        .get_recent_paged(2, 2, 24.0, None, None, Some(QueryCategory::Blocked))
+    let page2 = repo
+        .get_recent_paged(2, 2, 24.0, None, &blocked_filter)
         .await
         .unwrap();
-    assert_eq!(total2, 4);
-    assert_eq!(page2.len(), 2);
-    assert!(page2.iter().all(|q| q.blocked));
+    assert_eq!(page2.records_filtered, 4);
+    assert_eq!(page2.queries.len(), 2);
+    assert!(page2.queries.iter().all(|q| q.blocked));
 
     // Pages should not overlap
-    let ids1: Vec<_> = page1.iter().filter_map(|q| q.id).collect();
-    let ids2: Vec<_> = page2.iter().filter_map(|q| q.id).collect();
+    let ids1: Vec<_> = page1.queries.iter().filter_map(|q| q.id).collect();
+    let ids2: Vec<_> = page2.queries.iter().filter_map(|q| q.id).collect();
     assert!(
         ids1.iter().all(|id| !ids2.contains(id)),
         "Pages should not overlap"
     );
+}
+
+// --- New filter tests ---
+
+#[tokio::test]
+async fn test_client_ip_filter() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool, "a.com", "10.0.0.1", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "b.com", "10.0.0.1", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "c.com", "10.0.0.2", "A", false, false, None, None, None,
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        client_ip: Some("10.0.0.1".parse().unwrap()),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+    assert!(result
+        .queries
+        .iter()
+        .all(|q| q.client_ip.to_string() == "10.0.0.1"));
+}
+
+#[tokio::test]
+async fn test_record_type_filter() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool, "a.com", "10.0.0.1", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "b.com", "10.0.0.1", "AAAA", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "c.com", "10.0.0.1", "AAAA", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "d.com", "10.0.0.1", "MX", false, false, None, None, None,
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        record_type: Some(ferrous_dns_domain::RecordType::AAAA),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+    assert!(result
+        .queries
+        .iter()
+        .all(|q| q.record_type == ferrous_dns_domain::RecordType::AAAA));
+}
+
+#[tokio::test]
+async fn test_upstream_filter() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool,
+        "a.com",
+        "10.0.0.1",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        Some("8.8.8.8"),
+    )
+    .await;
+    insert_query_full(
+        &pool,
+        "b.com",
+        "10.0.0.1",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        Some("8.8.8.8"),
+    )
+    .await;
+    insert_query_full(
+        &pool,
+        "c.com",
+        "10.0.0.1",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        Some("1.1.1.1"),
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        upstream: Some("8.8.8.8".to_string()),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+}
+
+#[tokio::test]
+async fn test_records_total_vs_filtered() {
+    let pool = create_test_db().await;
+    seed_mixed_queries(&pool).await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &category_filter(QueryCategory::Blocked))
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_total, 10);
+    assert_eq!(result.records_filtered, 4);
+    assert!(result.records_total > result.records_filtered);
+}
+
+#[tokio::test]
+async fn test_combined_client_and_category() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool,
+        "a.com",
+        "10.0.0.1",
+        "A",
+        true,
+        false,
+        Some("blocklist"),
+        None,
+        None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "b.com", "10.0.0.1", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool,
+        "c.com",
+        "10.0.0.2",
+        "A",
+        true,
+        false,
+        Some("blocklist"),
+        None,
+        None,
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        category: Some(QueryCategory::Blocked),
+        client_ip: Some("10.0.0.1".parse().unwrap()),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 1);
+    assert_eq!(result.queries.len(), 1);
+    assert!(result.queries[0].blocked);
+    assert_eq!(result.queries[0].client_ip.to_string(), "10.0.0.1");
+}
+
+#[tokio::test]
+async fn test_combined_all_filters() {
+    let pool = create_test_db().await;
+
+    let inserts = [
+        // This one matches all filters
+        (
+            "match.example.com",
+            "10.0.0.1",
+            "AAAA",
+            true,
+            Some("blocklist"),
+            Some("8.8.8.8"),
+        ),
+        // Wrong client
+        (
+            "match.example.com",
+            "10.0.0.2",
+            "AAAA",
+            true,
+            Some("blocklist"),
+            Some("8.8.8.8"),
+        ),
+        // Wrong type
+        (
+            "match.example.com",
+            "10.0.0.1",
+            "A",
+            true,
+            Some("blocklist"),
+            Some("8.8.8.8"),
+        ),
+        // Wrong upstream
+        (
+            "match.example.com",
+            "10.0.0.1",
+            "AAAA",
+            true,
+            Some("blocklist"),
+            Some("1.1.1.1"),
+        ),
+        // Wrong category
+        (
+            "match.example.com",
+            "10.0.0.1",
+            "AAAA",
+            false,
+            None,
+            Some("8.8.8.8"),
+        ),
+        // Wrong domain
+        (
+            "other.com",
+            "10.0.0.1",
+            "AAAA",
+            true,
+            Some("blocklist"),
+            Some("8.8.8.8"),
+        ),
+    ];
+    let total_inserted = inserts.len() as u64;
+
+    for (domain, ip, rtype, blocked, bsrc, upstream) in &inserts {
+        insert_query_full(
+            &pool, domain, ip, rtype, *blocked, false, *bsrc, None, *upstream,
+        )
+        .await;
+    }
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        domain: Some("example".to_string()),
+        category: Some(QueryCategory::Blocked),
+        client_ip: Some("10.0.0.1".parse().unwrap()),
+        record_type: Some(ferrous_dns_domain::RecordType::AAAA),
+        upstream: Some("8.8.8.8".to_string()),
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 1);
+    assert_eq!(result.queries.len(), 1);
+    assert_eq!(result.records_total, total_inserted);
+}
+
+#[tokio::test]
+async fn test_cursor_pagination_with_client_filter() {
+    let pool = create_test_db().await;
+
+    // Insert 5 queries from 10.0.0.1 and 2 from 10.0.0.2
+    for i in 0..5 {
+        insert_query_full(
+            &pool,
+            &format!("q{i}.com"),
+            "10.0.0.1",
+            "A",
+            false,
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
+    }
+    for i in 0..2 {
+        insert_query_full(
+            &pool,
+            &format!("other{i}.com"),
+            "10.0.0.2",
+            "A",
+            false,
+            false,
+            None,
+            None,
+            None,
+        )
+        .await;
+    }
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let filter = QueryLogFilter {
+        client_ip: Some("10.0.0.1".parse().unwrap()),
+        ..Default::default()
+    };
+
+    // First page: use a high cursor to start cursor-based pagination from the top
+    let page1 = repo
+        .get_recent_paged(3, 0, 24.0, Some(i64::MAX), &filter)
+        .await
+        .unwrap();
+    assert_eq!(page1.queries.len(), 3);
+    assert_eq!(page1.records_filtered, 5);
+    assert!(page1.next_cursor.is_some());
+
+    // Second page via cursor
+    let page2 = repo
+        .get_recent_paged(3, 0, 24.0, page1.next_cursor, &filter)
+        .await
+        .unwrap();
+    assert_eq!(page2.queries.len(), 2);
+    assert!(page2.next_cursor.is_none());
+
+    // All results should be from 10.0.0.1
+    let all_from_correct_ip = page1
+        .queries
+        .iter()
+        .chain(page2.queries.iter())
+        .all(|q| q.client_ip.to_string() == "10.0.0.1");
+    assert!(all_from_correct_ip);
+
+    // No overlap between pages (both use id-based cursor ordering)
+    let ids1: Vec<_> = page1.queries.iter().filter_map(|q| q.id).collect();
+    let ids2: Vec<_> = page2.queries.iter().filter_map(|q| q.id).collect();
+    assert!(ids1.iter().all(|id| !ids2.contains(id)));
 }

@@ -56,7 +56,9 @@ pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;
 pub use nxdomain_hijack_store::{NxdomainHijackIpStore, NxdomainHijackProbeTarget};
 pub use ptr_record_registry::PtrRecordRegistry;
-pub use query_log_repository::{CacheStats, QueryLogRepository, TimeGranularity, TimelineBucket};
+pub use query_log_repository::{
+    CacheStats, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
+};
 pub use regex_filter_repository::RegexFilterRepository;
 pub use response_ip_filter_store::{ResponseIpFilterEvictionTarget, ResponseIpFilterStore};
 pub use safe_search_config_repository::SafeSearchConfigRepository;

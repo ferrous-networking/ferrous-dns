@@ -1,8 +1,19 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{
-    query_log::{QueryCategory, QueryLog, QueryStats},
+    query_log::{QueryLog, QueryLogFilter, QueryStats},
     DomainError,
 };
+
+/// Result of a paginated query log fetch.
+#[derive(Debug)]
+pub struct PagedQueryResult {
+    pub queries: Vec<QueryLog>,
+    /// Total records in the period (without domain/category/client/type/upstream filters).
+    pub records_total: u64,
+    /// Total records matching the applied filters.
+    pub records_filtered: u64,
+    pub next_cursor: Option<i64>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeGranularity {
@@ -32,15 +43,21 @@ pub trait QueryLogRepository: Send + Sync {
 
     async fn get_recent(&self, limit: u32, period_hours: f32)
         -> Result<Vec<QueryLog>, DomainError>;
+
+    /// Fetches paginated query logs with optional filters.
+    ///
+    /// Pagination modes are **mutually exclusive**: when `cursor` is `Some`, the
+    /// `offset` parameter is ignored and results are keyed by descending row id.
+    /// When `cursor` is `None`, standard `LIMIT`/`OFFSET` pagination applies with
+    /// results ordered by `created_at DESC`.
     async fn get_recent_paged(
         &self,
         limit: u32,
         offset: u32,
         period_hours: f32,
         cursor: Option<i64>,
-        domain: Option<&str>,
-        category: Option<QueryCategory>,
-    ) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError>;
+        filter: &QueryLogFilter,
+    ) -> Result<PagedQueryResult, DomainError>;
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError>;
     async fn get_timeline(
         &self,

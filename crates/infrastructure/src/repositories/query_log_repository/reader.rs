@@ -1,7 +1,8 @@
 use super::helpers::{
     days_ago_cutoff, get_uptime, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff,
 };
-use ferrous_dns_domain::query_log::QueryCategory;
+use ferrous_dns_application::ports::PagedQueryResult;
+use ferrous_dns_domain::query_log::{QueryCategory, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
@@ -52,28 +53,27 @@ pub(super) async fn get_recent_paged(
     offset: u32,
     period_hours: f32,
     cursor: Option<i64>,
-    domain: Option<&str>,
-    category: Option<QueryCategory>,
-) -> Result<(Vec<QueryLog>, u64, Option<i64>), DomainError> {
+    filter: &QueryLogFilter,
+) -> Result<PagedQueryResult, DomainError> {
     debug!(
         limit,
         offset,
         period_hours,
         cursor,
-        ?domain,
-        ?category,
+        ?filter,
         "Fetching paginated queries"
     );
 
     let fetch_limit = limit as i64 + 1;
     let cutoff = hours_ago_cutoff(period_hours);
-    let domain_pattern = domain
+    let domain_pattern = filter
+        .domain
+        .as_deref()
         .filter(|d| !d.is_empty())
-        .map(|d| format!("%{d}%"))
-        .unwrap_or_else(|| "%".to_string());
+        .map(|d| format!("%{d}%"));
 
     // Each arm is a static SQL fragment — no user input is interpolated.
-    let category_clause = match category {
+    let category_clause = match filter.category {
         Some(QueryCategory::Allowed) => " AND q.blocked = 0",
         Some(QueryCategory::Blocked) => " AND q.blocked = 1",
         Some(QueryCategory::Cache) => " AND q.cache_hit = 1",
@@ -83,7 +83,48 @@ pub(super) async fn get_recent_paged(
         None => "",
     };
 
-    let (rows_result, count_result) = tokio::join!(
+    let domain_clause = if domain_pattern.is_some() {
+        " AND q.domain LIKE ?"
+    } else {
+        ""
+    };
+    let client_clause = if filter.client_ip.is_some() {
+        " AND q.client_ip = ?"
+    } else {
+        ""
+    };
+    let type_clause = if filter.record_type.is_some() {
+        " AND q.record_type = ?"
+    } else {
+        ""
+    };
+    let upstream_clause = if filter.upstream.is_some() {
+        " AND q.upstream_server = ?"
+    } else {
+        ""
+    };
+
+    // Binds the conditional filter parameters in a fixed order.
+    macro_rules! bind_filters {
+        ($query:expr, $filter:expr) => {{
+            let mut q = $query;
+            if let Some(ref pat) = domain_pattern {
+                q = q.bind(pat);
+            }
+            if let Some(ref ip) = $filter.client_ip {
+                q = q.bind(ip.to_string());
+            }
+            if let Some(ref rt) = $filter.record_type {
+                q = q.bind(rt.as_str());
+            }
+            if let Some(ref up) = $filter.upstream {
+                q = q.bind(up);
+            }
+            q
+        }};
+    }
+
+    let (rows_result, filtered_count_result, total_count_result) = tokio::join!(
         async {
             if let Some(cursor_id) = cursor {
                 let sql = format!(
@@ -96,18 +137,13 @@ pub(super) async fn get_recent_paged(
                      WHERE q.id < ?
                        AND q.query_source = 'client'
                        AND q.created_at >= ?
-                       AND q.domain LIKE ?
-                       {category_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}
                      ORDER BY q.id DESC
                      LIMIT ?"
                 );
-                sqlx::query(&sql)
-                    .bind(cursor_id)
-                    .bind(&cutoff)
-                    .bind(&domain_pattern)
-                    .bind(fetch_limit)
-                    .fetch_all(pool)
-                    .await
+                let q = sqlx::query(&sql).bind(cursor_id).bind(&cutoff);
+                let q = bind_filters!(q, filter);
+                q.bind(fetch_limit).fetch_all(pool).await
             } else {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
@@ -118,15 +154,13 @@ pub(super) async fn get_recent_paged(
                      LEFT JOIN clients c ON q.client_ip = c.ip_address
                      WHERE q.created_at >= ?
                        AND q.query_source = 'client'
-                       AND q.domain LIKE ?
-                       {category_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}
                      ORDER BY q.created_at DESC
                      LIMIT ? OFFSET ?"
                 );
-                sqlx::query(&sql)
-                    .bind(&cutoff)
-                    .bind(&domain_pattern)
-                    .bind(fetch_limit)
+                let q = sqlx::query(&sql).bind(&cutoff);
+                let q = bind_filters!(q, filter);
+                q.bind(fetch_limit)
                     .bind(offset as i64)
                     .fetch_all(pool)
                     .await
@@ -135,13 +169,20 @@ pub(super) async fn get_recent_paged(
         async {
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
-                 WHERE q.query_source = 'client' AND q.created_at >= ? AND q.domain LIKE ?{category_clause}"
+                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}"
             );
-            sqlx::query(&count_sql)
-                .bind(&cutoff)
-                .bind(&domain_pattern)
-                .fetch_one(pool)
-                .await
+            let q = sqlx::query(&count_sql).bind(&cutoff);
+            let q = bind_filters!(q, filter);
+            q.fetch_one(pool).await
+        },
+        async {
+            sqlx::query(
+                "SELECT COUNT(*) as cnt FROM query_log q
+                 WHERE q.query_source = 'client' AND q.created_at >= ?",
+            )
+            .bind(&cutoff)
+            .fetch_one(pool)
+            .await
         }
     );
 
@@ -150,10 +191,17 @@ pub(super) async fn get_recent_paged(
         DomainError::DatabaseError(e.to_string())
     })?;
 
-    let total = count_result
+    let records_filtered = filtered_count_result
         .map(|r| r.get::<i64, _>("cnt") as u64)
         .map_err(|e| {
-            error!(error = %e, "Failed to count queries");
+            error!(error = %e, "Failed to count filtered queries");
+            DomainError::DatabaseError(e.to_string())
+        })?;
+
+    let records_total = total_count_result
+        .map(|r| r.get::<i64, _>("cnt") as u64)
+        .map_err(|e| {
+            error!(error = %e, "Failed to count total queries");
             DomainError::DatabaseError(e.to_string())
         })?;
 
@@ -173,9 +221,14 @@ pub(super) async fn get_recent_paged(
 
     debug!(
         count = entries.len(),
-        total, next_cursor, "Paginated queries fetched"
+        records_total, records_filtered, next_cursor, "Paginated queries fetched"
     );
-    Ok((entries, total, next_cursor))
+    Ok(PagedQueryResult {
+        queries: entries,
+        records_total,
+        records_filtered,
+        next_cursor,
+    })
 }
 
 #[instrument(skip(pool))]
