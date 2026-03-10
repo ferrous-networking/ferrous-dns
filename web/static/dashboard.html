@@ -15,6 +15,14 @@
     <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body x-data="app()" x-init="init()">
+<div class="mobile-header">
+    <button onclick="toggleSidebar()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <img src="/static/logo.svg" alt="Ferrous DNS">
+    <span>Ferrous DNS</span>
+</div>
+<div class="sidebar-overlay" onclick="closeSidebar()"></div>
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
@@ -164,9 +172,11 @@
     </div>
     <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Queries over Time</h2>
     <div class="card" style="padding:24px;margin-bottom:24px">
-        <canvas id="timelineChart" style="max-height:300px"></canvas>
+        <div class="timeline-chart-container">
+            <canvas id="timelineChart"></canvas>
+        </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(450px,1fr));gap:24px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px">
         <div class="card" style="padding:24px"><h3
                 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Types</h3>
             <canvas id="queryTypesChart" style="max-height:300px"></canvas>
@@ -176,7 +186,7 @@
             <canvas id="cacheSourceChart" style="max-height:300px"></canvas>
         </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(450px,1fr));gap:24px;margin-top:24px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
         <div class="card" style="padding:24px">
             <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Blocked Domains</h3>
             <table style="width:100%;border-collapse:collapse">

@@ -1,3 +1,4 @@
+use ferrous_dns_application::ports;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Debug, Clone)]
@@ -6,7 +7,19 @@ pub struct TimelineBucket {
     pub total: u64,
     pub blocked: u64,
     pub unblocked: u64,
-    pub rate_limited: u64,
+    pub malware_detected: u64,
+}
+
+impl From<ports::TimelineBucket> for TimelineBucket {
+    fn from(b: ports::TimelineBucket) -> Self {
+        Self {
+            timestamp: b.timestamp,
+            total: b.total,
+            blocked: b.blocked,
+            unblocked: b.unblocked,
+            malware_detected: b.malware_detected,
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]

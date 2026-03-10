@@ -130,7 +130,7 @@
                 const timeLabels = [];
                 const blockedCounts = [];
                 const unblockedCounts = [];
-                const rateLimitedCounts = [];
+                const malwareDetectedCounts = [];
 
                 const dataMap = new Map();
                 timeline.buckets.forEach(b => {
@@ -141,7 +141,7 @@
                         total: b.total,
                         blocked: b.blocked,
                         unblocked: b.unblocked,
-                        rate_limited: b.rate_limited || 0
+                        malware_detected: b.malware_detected || 0
                     });
                 });
 
@@ -154,10 +154,10 @@
                     const minute = bucketTime.getMinutes();
                     timeLabels.push(minute === 0 ? `${hour}:00` : '');
 
-                    const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0, rate_limited: 0};
+                    const data = dataMap.get(timeKey) || {total: 0, blocked: 0, unblocked: 0, malware_detected: 0};
                     blockedCounts.push(data.blocked);
                     unblockedCounts.push(data.unblocked);
-                    rateLimitedCounts.push(data.rate_limited);
+                    malwareDetectedCounts.push(data.malware_detected);
                 }
 
                 if (appCharts.timeline && appCharts.timeline.data &&
@@ -166,7 +166,7 @@
                     appCharts.timeline.data.datasets[0].data = blockedCounts;
                     appCharts.timeline.data.datasets[1].data = unblockedCounts;
                     if (appCharts.timeline.data.datasets[2]) {
-                        appCharts.timeline.data.datasets[2].data = rateLimitedCounts;
+                        appCharts.timeline.data.datasets[2].data = malwareDetectedCounts;
                     }
                     appCharts.timeline.update('none');
                 }
@@ -347,7 +347,7 @@
                                     pointRadius: 1,
                                     pointHoverRadius: 3
                                 }, {
-                                    label: 'Rate Limited',
+                                    label: 'Malware Detection',
                                     data: Array(96).fill(0),
                                     borderColor: '#F59E0B',
                                     backgroundColor: 'rgba(245,158,11,0.5)',
@@ -359,8 +359,7 @@
                             },
                             options: {
                                 responsive: true,
-                                maintainAspectRatio: true,
-                                aspectRatio: 3,
+                                maintainAspectRatio: false,
                                 plugins: {
                                     legend: {position: 'top'},
                                     tooltip: {
@@ -385,8 +384,7 @@
                                         stacked: true,  
                                         ticks: {
                                             maxRotation: 0,
-                                            autoSkip: false,  
-                                            maxTicksLimit: 48  
+                                            autoSkip: false
                                         },
                                         grid: {
                                             display: true

@@ -14,6 +14,14 @@
     <link rel="stylesheet" href="/static/block-services.css">
 </head>
 <body x-data="app()" x-init="init()">
+<div class="mobile-header">
+    <button onclick="toggleSidebar()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <img src="/static/logo.svg" alt="Ferrous DNS">
+    <span>Ferrous DNS</span>
+</div>
+<div class="sidebar-overlay" onclick="closeSidebar()"></div>
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">

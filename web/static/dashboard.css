@@ -10,3 +10,14 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transform: translateY(-2px)
         }
+
+        .timeline-chart-container {
+            position: relative;
+            height: 300px
+        }
+
+        @media (max-width: 1024px) {
+            .timeline-chart-container {
+                height: 220px
+            }
+        }

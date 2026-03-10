@@ -24,9 +24,9 @@ fn build_timeline_sql(bucket_expr: &'static str) -> String {
     format!(
         "SELECT {bucket_expr} as time_bucket, \
          COUNT(*) as total, \
-         SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked, \
-         SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END) as unblocked, \
-         SUM(CASE WHEN response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC') THEN 1 ELSE 0 END) as rate_limited \
+         COALESCE(SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END), 0) as blocked, \
+         COALESCE(SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END), 0) as unblocked, \
+         COALESCE(SUM(CASE WHEN response_status IN ('TUNNELING_BLOCKED', 'DGA_BLOCKED', 'NXDOMAIN_HIJACK', 'RESPONSE_IP_BLOCKED') THEN 1 ELSE 0 END), 0) as malware_detected \
          FROM query_log \
          WHERE created_at >= ? \
            AND query_source = 'client' \
@@ -85,7 +85,7 @@ pub(super) async fn get_timeline(
             total: row.get::<i64, _>("total") as u64,
             blocked: row.get::<i64, _>("blocked") as u64,
             unblocked: row.get::<i64, _>("unblocked") as u64,
-            rate_limited: row.get::<i64, _>("rate_limited") as u64,
+            malware_detected: row.get::<i64, _>("malware_detected") as u64,
         })
         .collect();
 

@@ -195,3 +195,79 @@ body {
 [x-cloak] {
     display: none !important
 }
+
+@media (max-width: 1024px) {
+    body {
+        padding-left: 0
+    }
+
+    .sidebar {
+        position: fixed;
+        left: -260px;
+        z-index: 50;
+        transition: left .3s ease
+    }
+
+    .sidebar.open {
+        left: 0
+    }
+
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 40
+    }
+
+    .sidebar-overlay.active {
+        display: block
+    }
+
+    .mobile-header {
+        display: flex
+    }
+}
+
+@media (min-width: 1025px) {
+    .mobile-header {
+        display: none
+    }
+
+    .sidebar-overlay {
+        display: none
+    }
+}
+
+.mobile-header {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 30
+}
+
+.mobile-header button {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center
+}
+
+.mobile-header img {
+    width: 28px;
+    height: 28px
+}
+
+.mobile-header span {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary)
+}

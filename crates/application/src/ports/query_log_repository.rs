@@ -23,13 +23,14 @@ pub enum TimeGranularity {
     Day,
 }
 
+/// Aggregated query counts for a single time window in the timeline chart.
 #[derive(Debug, Clone)]
 pub struct TimelineBucket {
     pub timestamp: String,
     pub total: u64,
     pub blocked: u64,
     pub unblocked: u64,
-    pub rate_limited: u64,
+    pub malware_detected: u64,
 }
 
 #[async_trait]

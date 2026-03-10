@@ -44,16 +44,7 @@ pub async fn get_timeline(
         .await?;
     debug!(buckets = buckets.len(), "Timeline retrieved successfully");
 
-    let buckets_dto: Vec<TimelineBucket> = buckets
-        .into_iter()
-        .map(|b| TimelineBucket {
-            timestamp: b.timestamp,
-            total: b.total,
-            blocked: b.blocked,
-            unblocked: b.unblocked,
-            rate_limited: b.rate_limited,
-        })
-        .collect();
+    let buckets_dto: Vec<TimelineBucket> = buckets.into_iter().map(TimelineBucket::from).collect();
 
     Ok(Json(TimelineResponse {
         total_buckets: buckets_dto.len(),

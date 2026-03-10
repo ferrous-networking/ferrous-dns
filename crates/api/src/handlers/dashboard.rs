@@ -83,16 +83,8 @@ pub async fn get_dashboard(
             );
             let timeline_resp = match t {
                 Ok(buckets) => {
-                    let buckets_dto: Vec<TimelineBucket> = buckets
-                        .into_iter()
-                        .map(|b| TimelineBucket {
-                            timestamp: b.timestamp,
-                            total: b.total,
-                            blocked: b.blocked,
-                            unblocked: b.unblocked,
-                            rate_limited: b.rate_limited,
-                        })
-                        .collect();
+                    let buckets_dto: Vec<TimelineBucket> =
+                        buckets.into_iter().map(TimelineBucket::from).collect();
                     Some(TimelineResponse {
                         total_buckets: buckets_dto.len(),
                         period: params.period.clone(),

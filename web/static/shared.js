@@ -163,6 +163,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (isRestartRequired()) showRestartBanner();
 });
 
+// --- Mobile sidebar toggle ---
+
+function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('open');
+    document.querySelector('.sidebar-overlay').classList.toggle('active');
+}
+
+function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('open');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
+}
+
 // --- Rate color using CSS custom properties ---
 
 function getRateColor(queryRate) {
