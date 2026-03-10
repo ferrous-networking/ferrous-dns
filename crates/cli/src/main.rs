@@ -90,6 +90,7 @@ async fn async_main() -> anyhow::Result<()> {
     let tunneling_eviction_job = dns_services.tunneling_eviction_job.take();
     let nxdomain_hijack_job = dns_services.nxdomain_hijack_eviction_job.take();
     let response_ip_filter_job = dns_services.response_ip_filter_eviction_job.take();
+    let dga_eviction_job = dns_services.dga_eviction_job.take();
     let runner = bootstrap::build_job_runner(
         &use_cases,
         &repos,
@@ -99,6 +100,7 @@ async fn async_main() -> anyhow::Result<()> {
         tunneling_eviction_job,
         nxdomain_hijack_job,
         response_ip_filter_job,
+        dga_eviction_job,
     );
 
     runner.start().await;

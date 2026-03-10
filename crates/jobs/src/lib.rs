@@ -1,6 +1,7 @@
 pub mod blocklist_sync;
 pub mod cache_maintenance;
 pub mod client_sync;
+pub mod dga_eviction;
 pub mod nxdomain_hijack_eviction;
 pub mod query_log_retention;
 pub mod response_ip_filter_eviction;
@@ -14,6 +15,7 @@ pub mod wal_checkpoint;
 pub use blocklist_sync::BlocklistSyncJob;
 pub use cache_maintenance::CacheMaintenanceJob;
 pub use client_sync::ClientSyncJob;
+pub use dga_eviction::DgaEvictionJob;
 pub use nxdomain_hijack_eviction::NxdomainHijackEvictionJob;
 pub use query_log_retention::QueryLogRetentionJob;
 pub use response_ip_filter_eviction::ResponseIpFilterEvictionJob;

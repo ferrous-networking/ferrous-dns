@@ -96,6 +96,7 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
                 "dns_tunneling" => Some(BlockSource::DnsTunneling),
                 "nxdomain_hijack" => Some(BlockSource::NxdomainHijack),
                 "response_ip_filter" => Some(BlockSource::ResponseIpFilter),
+                "dga_detection" => Some(BlockSource::DgaDetection),
                 _ => None,
             });
 

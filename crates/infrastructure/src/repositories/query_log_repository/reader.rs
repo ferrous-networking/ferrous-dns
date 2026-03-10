@@ -281,7 +281,8 @@ pub(super) async fn get_stats(
     let malware_detected = source_stats.get("dns_tunneling").copied().unwrap_or(0)
         + source_stats.get("dns_rebinding").copied().unwrap_or(0)
         + source_stats.get("nxdomain_hijack").copied().unwrap_or(0)
-        + source_stats.get("response_ip_filter").copied().unwrap_or(0);
+        + source_stats.get("response_ip_filter").copied().unwrap_or(0)
+        + source_stats.get("dga_detection").copied().unwrap_or(0);
 
     let stats = QueryStats {
         queries_total: total,

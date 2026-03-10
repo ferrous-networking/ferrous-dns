@@ -1732,3 +1732,35 @@ impl ResponseIpFilterStore for MockResponseIpFilterStore {
         self.blocked_ips.read().unwrap().contains(ip)
     }
 }
+
+// ── MockDgaFlagStore ──────────────────────────────────────────────────────────
+
+use ferrous_dns_application::ports::DgaFlagStore;
+
+pub struct MockDgaFlagStore {
+    flagged: std::sync::RwLock<HashSet<String>>,
+}
+
+impl MockDgaFlagStore {
+    pub fn new() -> Self {
+        Self {
+            flagged: std::sync::RwLock::new(HashSet::new()),
+        }
+    }
+
+    pub fn flag_domain(&self, domain: &str) {
+        self.flagged.write().unwrap().insert(domain.to_string());
+    }
+}
+
+impl Default for MockDgaFlagStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DgaFlagStore for MockDgaFlagStore {
+    fn is_flagged(&self, domain: &str) -> bool {
+        self.flagged.read().unwrap().contains(domain)
+    }
+}

@@ -1,4 +1,5 @@
 use super::coarse_timer::coarse_now_ns;
+use super::dga_guard::{DgaAnalysisEvent, DgaGuard, DgaVerdict};
 use super::nxdomain_hijack_guard::NxdomainHijackGuard;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
 use super::rebinding_guard::RebindingGuard;
@@ -6,14 +7,14 @@ use super::response_ip_filter_guard::ResponseIpFilterGuard;
 use super::tsc_timer;
 use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
 use crate::ports::{
-    BlockFilterEnginePort, ClientRepository, DnsResolution, DnsResolver, FilterDecision,
-    NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore, SafeSearchEnginePort,
-    TunnelingFlagStore,
+    BlockFilterEnginePort, ClientRepository, DgaFlagStore, DnsResolution, DnsResolver,
+    FilterDecision, NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore,
+    SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, DnsQuery, DnsRequest, DomainError, NxdomainHijackAction, NxdomainHijackConfig,
-    QueryLog, QuerySource, RecordType, ResponseIpFilterAction, ResponseIpFilterConfig,
-    TunnelingAction, TunnelingDetectionConfig,
+    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DomainError,
+    NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
+    ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
@@ -43,6 +44,9 @@ pub struct HandleDnsQueryUseCase {
     tunneling_flag_store: Option<Arc<dyn TunnelingFlagStore>>,
     nxdomain_hijack_guard: NxdomainHijackGuard,
     response_ip_filter_guard: ResponseIpFilterGuard,
+    dga_guard: DgaGuard,
+    dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
+    dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
 }
 
 impl HandleDnsQueryUseCase {
@@ -65,6 +69,9 @@ impl HandleDnsQueryUseCase {
             tunneling_flag_store: None,
             nxdomain_hijack_guard: NxdomainHijackGuard::disabled(),
             response_ip_filter_guard: ResponseIpFilterGuard::disabled(),
+            dga_guard: DgaGuard::disabled(),
+            dga_event_tx: None,
+            dga_flag_store: None,
         }
     }
 
@@ -143,6 +150,27 @@ impl HandleDnsQueryUseCase {
         self
     }
 
+    /// Enables phase-1 DGA detection on the hot path.
+    pub fn with_dga_detection(mut self, config: &DgaDetectionConfig) -> Self {
+        self.dga_guard = DgaGuard::from_config(config);
+        self
+    }
+
+    /// Injects the sender for emitting DGA analysis events to the background task.
+    pub fn with_dga_event_sender(
+        mut self,
+        tx: tokio::sync::mpsc::Sender<DgaAnalysisEvent>,
+    ) -> Self {
+        self.dga_event_tx = Some(tx);
+        self
+    }
+
+    /// Injects the flag store for checking background-flagged DGA domains.
+    pub fn with_dga_flag_store(mut self, store: Arc<dyn DgaFlagStore>) -> Self {
+        self.dga_flag_store = Some(store);
+        self
+    }
+
     /// Applies the configured tunneling action, returning an error if blocked.
     fn apply_tunneling_action(
         &self,
@@ -187,6 +215,45 @@ impl HandleDnsQueryUseCase {
                 record_type: request.record_type,
                 client_ip: request.client_ip,
                 was_nxdomain,
+            });
+        }
+    }
+
+    /// Applies the configured DGA action, returning an error if blocked.
+    fn apply_dga_action(
+        &self,
+        request: &DnsRequest,
+        context: &str,
+        elapsed_us: u64,
+    ) -> Result<(), DomainError> {
+        match self.dga_guard.action() {
+            DgaDetectionAction::Block => {
+                tracing::debug!(domain = %request.domain, context, "DGA domain blocked");
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some("DGA_BLOCKED"),
+                    block_source: Some(BlockSource::DgaDetection),
+                    ..Self::base_query_log(request, elapsed_us, 0)
+                });
+                Err(DomainError::DgaDomainDetected)
+            }
+            DgaDetectionAction::Alert => {
+                tracing::info!(domain = %request.domain, context, "DGA domain alert");
+                Ok(())
+            }
+        }
+    }
+
+    /// Emits a DGA analysis event to the background task (non-blocking).
+    /// Skips emission for whitelisted clients.
+    fn emit_dga_event(&self, request: &DnsRequest) {
+        if let Some(ref tx) = self.dga_event_tx {
+            if self.dga_guard.is_client_whitelisted(request.client_ip) {
+                return;
+            }
+            let _ = tx.try_send(DgaAnalysisEvent {
+                domain: Arc::clone(&request.domain),
+                client_ip: request.client_ip,
             });
         }
     }
@@ -284,6 +351,12 @@ impl HandleDnsQueryUseCase {
             }
         }
 
+        if let Some(ref store) = self.dga_flag_store {
+            if store.is_flagged(domain) {
+                return None;
+            }
+        }
+
         let domain_arc: Arc<str> = Arc::from(domain);
         let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
         let resolution = self.resolver.try_cache(&query)?;
@@ -309,6 +382,12 @@ impl HandleDnsQueryUseCase {
         }
 
         if let Some(ref store) = self.tunneling_flag_store {
+            if store.is_flagged(domain) {
+                return None;
+            }
+        }
+
+        if let Some(ref store) = self.dga_flag_store {
             if store.is_flagged(domain) {
                 return None;
             }
@@ -404,6 +483,30 @@ impl HandleDnsQueryUseCase {
         if let Some(ref store) = self.tunneling_flag_store {
             if store.is_flagged(&request.domain) {
                 self.apply_tunneling_action(request, "flagged_domain", elapsed_us())?;
+            }
+        }
+
+        // DGA Detection — Phase 1 (hot-path guard)
+        if let DgaVerdict::Detected {
+            signal,
+            measured,
+            threshold,
+        } = self.dga_guard.check(&request.domain, request.client_ip)
+        {
+            tracing::debug!(
+                domain = %request.domain,
+                signal,
+                measured,
+                threshold,
+                "DGA phase-1 signal"
+            );
+            self.apply_dga_action(request, signal, elapsed_us())?;
+        }
+
+        // DGA Detection — Phase 2 (flagged check)
+        if let Some(ref store) = self.dga_flag_store {
+            if store.is_flagged(&request.domain) {
+                self.apply_dga_action(request, "flagged_domain", elapsed_us())?;
             }
         }
 
@@ -533,6 +636,7 @@ impl HandleDnsQueryUseCase {
                     Some("NOERROR")
                 };
                 self.emit_tunneling_event(request, false);
+                self.emit_dga_event(request);
                 self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
@@ -554,6 +658,7 @@ impl HandleDnsQueryUseCase {
                 let response_status = match &e {
                     DomainError::NxDomain => {
                         self.emit_tunneling_event(request, true);
+                        self.emit_dga_event(request);
                         "NXDOMAIN"
                     }
                     DomainError::QueryTimeout => "TIMEOUT",

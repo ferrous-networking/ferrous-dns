@@ -361,6 +361,47 @@ client_whitelist           = []
 
 ---
 
+## DGA Detection
+
+DGA (Domain Generation Algorithm) detection analyzes second-level domain names for statistical properties associated with algorithmically generated names. It is **enabled by default** and requires no external feeds.
+
+For full documentation including signal descriptions, malware family examples, and whitelisting, see the [Malware Detection](../features/malware-detection.md#dga-detection) page.
+
+```toml title="ferrous-dns.toml"
+[dns.dga_detection]
+enabled                    = true
+action                     = "block"
+entropy_threshold          = 3.5
+consonant_ratio_threshold  = 0.70
+digit_ratio_threshold      = 0.30
+min_sld_length             = 8
+max_sld_length             = 20
+bigram_score_threshold     = 0.25
+nxdomain_rate_threshold    = 0.15
+confidence_threshold       = 0.65
+stale_entry_ttl_secs       = 600
+domain_whitelist           = []
+client_whitelist           = []
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `enabled` | `true` | Master switch for DGA detection |
+| `action` | `block` | Action when a DGA domain is detected: `block` (REFUSED) or `alert` (log only) |
+| `entropy_threshold` | `3.5` | Shannon entropy of the SLD in bits/char — above this indicates a random-looking name |
+| `consonant_ratio_threshold` | `0.70` | Fraction of consonant characters — DGA names often lack vowels |
+| `digit_ratio_threshold` | `0.30` | Fraction of digit characters — DGA algorithms frequently embed numbers |
+| `min_sld_length` | `8` | Minimum SLD length to evaluate (shorter names are excluded) |
+| `max_sld_length` | `20` | Maximum SLD length to evaluate (longer names fall under tunneling detection) |
+| `bigram_score_threshold` | `0.25` | N-gram bigram score below this indicates non-human-readable character sequences |
+| `nxdomain_rate_threshold` | `0.15` | Fraction of NXDOMAIN responses per client per minute indicating active DGA scanning |
+| `confidence_threshold` | `0.65` | Minimum combined weighted score to flag an SLD (0.0–1.0) |
+| `stale_entry_ttl_secs` | `600` | Seconds before an idle flagged SLD entry is evicted from memory |
+| `domain_whitelist` | `[]` | SLDs that bypass DGA detection entirely |
+| `client_whitelist` | `[]` | Client CIDRs (e.g. `10.0.0.0/8`) that bypass DGA detection |
+
+---
+
 ## Response IP Filtering
 
 Response IP filtering downloads C2 IP threat feeds and blocks DNS responses that resolve to known command-and-control server IPs. It is **disabled by default** because it requires configuring external feed URLs.

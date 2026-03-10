@@ -12,7 +12,7 @@ The full changelog is published with each release on GitHub:
 
 | Version | Highlights | Status |
 |:--------|:-----------|:------:|
-| v0.7.x | HTTPS, auth, API tokens, rate limiting, DNS tunneling detection, NXDomain hijack detection, response IP filtering (C2 blocking) | Current |
+| v0.7.x | HTTPS, auth, API tokens, rate limiting, DNS tunneling detection, DGA detection, NXDomain hijack detection, response IP filtering (C2 blocking) | Current |
 | v0.6.x | In-flight coalescing, TSC timer, Pi-hole API compat, benchmark suite | Released |
 | v0.5.0 | DoH/DoT server-side, PROXY Protocol v2, auto PTR, DNS rebinding protection | Released |
 | v0.4.0 | Parental controls, per-group time-based scheduling | Released |

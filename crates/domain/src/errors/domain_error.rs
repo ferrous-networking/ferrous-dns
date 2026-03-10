@@ -47,6 +47,9 @@ pub enum DomainError {
     #[error("DNS tunneling detected")]
     DnsTunnelingDetected,
 
+    #[error("DGA domain detected")]
+    DgaDomainDetected,
+
     #[error("Query filtered: {0}")]
     FilteredQuery(String),
 

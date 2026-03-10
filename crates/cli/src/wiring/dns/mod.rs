@@ -4,9 +4,9 @@ mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{
-    CacheMaintenancePort, NxdomainHijackIpStore, NxdomainHijackProbeTarget, PtrRecordRegistry,
-    ResponseIpFilterEvictionTarget, ResponseIpFilterStore, TunnelingEvictionTarget,
-    TunnelingFlagStore,
+    CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, NxdomainHijackIpStore,
+    NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
+    ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore,
 };
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
@@ -14,11 +14,11 @@ use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
-    resolver::LocalPtrResolver, HealthChecker, HickoryDnsResolver, NxdomainHijackDetector,
-    PoolManager, ResponseIpFilterDetector, TunnelingDetector,
+    resolver::LocalPtrResolver, DgaDetector, HealthChecker, HickoryDnsResolver,
+    NxdomainHijackDetector, PoolManager, ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
-    NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
+    DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -37,6 +37,7 @@ pub struct DnsServices {
     pub tunneling_eviction_job: Option<TunnelingEvictionJob>,
     pub nxdomain_hijack_eviction_job: Option<NxdomainHijackEvictionJob>,
     pub response_ip_filter_eviction_job: Option<ResponseIpFilterEvictionJob>,
+    pub dga_eviction_job: Option<DgaEvictionJob>,
 }
 
 impl DnsServices {
@@ -262,6 +263,32 @@ impl DnsServices {
             );
         }
 
+        // DGA Detection
+        let (dga_detector, dga_eviction_job) = if config.dns.dga_detection.enabled {
+            let (detector, tx, rx) = DgaDetector::new(&config.dns.dga_detection);
+            let detector = Arc::new(detector);
+            let detector_clone = Arc::clone(&detector);
+            tokio::spawn(async move { detector_clone.run_analysis_loop(rx).await });
+            let eviction_job = DgaEvictionJob::new(
+                Arc::clone(&detector) as Arc<dyn DgaEvictionTarget>,
+                detector.stale_entry_ttl_secs(),
+            );
+            info!(
+                action = ?config.dns.dga_detection.action,
+                "DGA detection enabled"
+            );
+            (Some((detector, tx)), Some(eviction_job))
+        } else {
+            (None, None)
+        };
+
+        if let Some((ref detector, ref tx)) = dga_detector {
+            handler = handler
+                .with_dga_detection(&config.dns.dga_detection)
+                .with_dga_event_sender(tx.clone())
+                .with_dga_flag_store(Arc::clone(detector) as Arc<dyn DgaFlagStore>);
+        }
+
         let handler_use_case = Arc::new(handler);
 
         let tcp_conn_limiter =
@@ -283,6 +310,7 @@ impl DnsServices {
             tunneling_eviction_job,
             nxdomain_hijack_eviction_job,
             response_ip_filter_eviction_job,
+            dga_eviction_job,
         })
     }
 

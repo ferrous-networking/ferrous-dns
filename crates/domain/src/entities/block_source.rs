@@ -27,6 +27,8 @@ pub enum BlockSource {
     NxdomainHijack,
     /// Blocked by response IP filtering (known C2 IP in DNS response).
     ResponseIpFilter,
+    /// Blocked by DGA (Domain Generation Algorithm) detection.
+    DgaDetection,
 }
 
 impl BlockSource {
@@ -42,6 +44,7 @@ impl BlockSource {
             BlockSource::DnsTunneling => "dns_tunneling",
             BlockSource::NxdomainHijack => "nxdomain_hijack",
             BlockSource::ResponseIpFilter => "response_ip_filter",
+            BlockSource::DgaDetection => "dga_detection",
         }
     }
 
@@ -57,6 +60,7 @@ impl BlockSource {
             7 => Some(BlockSource::DnsTunneling),
             8 => Some(BlockSource::NxdomainHijack),
             9 => Some(BlockSource::ResponseIpFilter),
+            10 => Some(BlockSource::DgaDetection),
             _ => None,
         }
     }
@@ -73,6 +77,7 @@ impl BlockSource {
             BlockSource::DnsTunneling => 7,
             BlockSource::NxdomainHijack => 8,
             BlockSource::ResponseIpFilter => 9,
+            BlockSource::DgaDetection => 10,
         }
     }
 }

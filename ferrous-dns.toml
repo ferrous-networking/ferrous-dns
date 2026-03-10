@@ -142,6 +142,27 @@ domain_whitelist = []                   # Domains exempt from detection
 client_whitelist = []                   # Client CIDRs exempt from detection
 
 
+# ── DGA Detection (Domain Generation Algorithm) ────────────────────────────
+# Detects and blocks DGA-generated domain names used by malware (Conficker,
+# Mirai, Emotet, CryptoLocker, etc.) to contact C2 servers.
+# Phase 1: O(1) checks on the hot path (SLD entropy, consonant/digit ratio, length).
+# Phase 2: statistical analysis in background (n-gram scoring, per-client DGA rate).
+
+[dns.dga_detection]
+enabled                    = true
+action                     = "block"
+sld_entropy_threshold      = 3.5
+sld_max_length             = 24
+consonant_ratio_threshold  = 0.75
+digit_ratio_threshold      = 0.3
+ngram_score_threshold      = 0.6
+dga_rate_per_client        = 10
+confidence_threshold       = 0.65
+stale_entry_ttl_secs       = 300
+domain_whitelist           = []
+client_whitelist           = []
+
+
 # ── NXDomain Hijack Detection ───────────────────────────────────────────────
 # Detects ISPs that intercept NXDOMAIN responses with advertising server IPs.
 # Background probes test each upstream with random .invalid domains (RFC 6761).

@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod blocking;
 pub mod database;
+pub mod dga_detection;
 pub mod dns;
 pub mod encrypted_dns;
 pub mod errors;
@@ -19,6 +20,7 @@ pub mod web_tls;
 pub use auth::{AdminConfig, AuthConfig};
 pub use blocking::BlockingConfig;
 pub use database::DatabaseConfig;
+pub use dga_detection::{DgaDetectionAction, DgaDetectionConfig};
 pub use dns::DnsConfig;
 pub use encrypted_dns::EncryptedDnsConfig;
 pub use errors::ConfigError;

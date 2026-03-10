@@ -1,6 +1,7 @@
 pub mod block_filter;
 pub mod cache;
 pub mod cache_maintenance;
+pub mod dga_detection;
 pub mod dnssec;
 pub mod events;
 pub mod fast_path;
@@ -24,6 +25,7 @@ pub use cache::{
     DnsCacheConfig, DnssecStatus, EvictionStrategy, NegativeQueryTracker,
 };
 pub use cache_maintenance::DnsCacheMaintenance;
+pub use dga_detection::DgaDetector;
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,

@@ -78,7 +78,7 @@
 - [x] Rate limiting DNS (token bucket per-subnet, slip TC=1, dry-run, NXDOMAIN budget)
 - [x] DoS protection (TCP/DoT per-IP connection limiting, RAII guards)
 - [x] DNS Tunneling Detection (two-phase: hot-path O(1) guard + background statistical analysis)
-- [ ] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
+- [x] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
 - [ ] Threat Intelligence feeds (abuse.ch, OpenPhish, PhishTank — IoC ingestion)
 - [ ] Suspicious TLD blocking (high-risk TLDs: .tk, .top, .xyz, .buzz, .gq)
 - [ ] Newly Registered Domain (NRD) blocking (< 30 days, feed-based)

@@ -100,11 +100,12 @@
                         }
                         if (this.stats.source_stats) {
                             const raw = {...this.stats.source_stats};
-                            const malware = (raw.dns_tunneling || 0) + (raw.dns_rebinding || 0) + (raw.nxdomain_hijack || 0) + (raw.response_ip_filter || 0);
+                            const malware = (raw.dns_tunneling || 0) + (raw.dns_rebinding || 0) + (raw.nxdomain_hijack || 0) + (raw.response_ip_filter || 0) + (raw.dga_detection || 0);
                             delete raw.dns_tunneling;
                             delete raw.dns_rebinding;
                             delete raw.nxdomain_hijack;
                             delete raw.response_ip_filter;
+                            delete raw.dga_detection;
                             if (malware > 0) raw.malware_detection = malware;
                             this.sourceStats = raw;
                         }

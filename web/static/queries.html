@@ -132,7 +132,7 @@
             </thead>
             <tbody>
             <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                <tr :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
+                <tr :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
                     <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
                     <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
@@ -162,7 +162,7 @@
                         <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                               :style="query.cache_hit
                                 ? 'background:rgba(168,85,247,0.1);color:#A855F7'
-                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter')
+                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection')
                                   ? 'background:rgba(245,158,11,0.1);color:#F59E0B'
                                   : query.block_source === 'blocklist'
                                     ? 'background:rgba(239,68,68,0.1);color:#ef4444'

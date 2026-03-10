@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::dga_detection::DgaDetectionConfig;
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
 use super::nxdomain_hijack::NxdomainHijackConfig;
@@ -115,6 +116,10 @@ pub struct DnsConfig {
     /// Response IP filtering (block known C2 IPs in DNS responses).
     #[serde(default)]
     pub response_ip_filter: ResponseIpFilterConfig,
+
+    /// DGA (Domain Generation Algorithm) detection configuration.
+    #[serde(default)]
+    pub dga_detection: DgaDetectionConfig,
 }
 
 impl Default for DnsConfig {
@@ -155,6 +160,7 @@ impl Default for DnsConfig {
             tunneling_detection: TunnelingDetectionConfig::default(),
             nxdomain_hijack: NxdomainHijackConfig::default(),
             response_ip_filter: ResponseIpFilterConfig::default(),
+            dga_detection: DgaDetectionConfig::default(),
         }
     }
 }
