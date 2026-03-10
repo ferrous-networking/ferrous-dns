@@ -102,12 +102,12 @@ pub(super) async fn get_recent_paged(
                      LIMIT ?"
                 );
                 sqlx::query(&sql)
-                .bind(cursor_id)
-                .bind(&cutoff)
-                .bind(&domain_pattern)
-                .bind(fetch_limit)
-                .fetch_all(pool)
-                .await
+                    .bind(cursor_id)
+                    .bind(&cutoff)
+                    .bind(&domain_pattern)
+                    .bind(fetch_limit)
+                    .fetch_all(pool)
+                    .await
             } else {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
@@ -124,12 +124,12 @@ pub(super) async fn get_recent_paged(
                      LIMIT ? OFFSET ?"
                 );
                 sqlx::query(&sql)
-                .bind(&cutoff)
-                .bind(&domain_pattern)
-                .bind(fetch_limit)
-                .bind(offset as i64)
-                .fetch_all(pool)
-                .await
+                    .bind(&cutoff)
+                    .bind(&domain_pattern)
+                    .bind(fetch_limit)
+                    .bind(offset as i64)
+                    .fetch_all(pool)
+                    .await
             }
         },
         async {
@@ -138,10 +138,10 @@ pub(super) async fn get_recent_paged(
                  WHERE q.query_source = 'client' AND q.created_at >= ? AND q.domain LIKE ?{category_clause}"
             );
             sqlx::query(&count_sql)
-            .bind(&cutoff)
-            .bind(&domain_pattern)
-            .fetch_one(pool)
-            .await
+                .bind(&cutoff)
+                .bind(&domain_pattern)
+                .fetch_one(pool)
+                .await
         }
     );
 

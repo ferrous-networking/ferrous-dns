@@ -486,17 +486,57 @@ async fn seed_mixed_queries(pool: &sqlx::SqlitePool) {
     insert_query(pool, "google.com", false, false, None, None).await;
     insert_query(pool, "github.com", false, false, None, None).await;
     // 2 blocked
-    insert_query(pool, "ads.example.com", true, false, Some("blocklist"), None).await;
-    insert_query(pool, "tracker.example.com", true, false, Some("managed_domain"), None).await;
+    insert_query(
+        pool,
+        "ads.example.com",
+        true,
+        false,
+        Some("blocklist"),
+        None,
+    )
+    .await;
+    insert_query(
+        pool,
+        "tracker.example.com",
+        true,
+        false,
+        Some("managed_domain"),
+        None,
+    )
+    .await;
     // 2 cache hits
     insert_query(pool, "cached.example.com", false, true, None, None).await;
     insert_query(pool, "cached2.example.com", false, true, None, None).await;
     // 1 rate limited
-    insert_query(pool, "rate.example.com", false, false, None, Some("RATE_LIMITED")).await;
+    insert_query(
+        pool,
+        "rate.example.com",
+        false,
+        false,
+        None,
+        Some("RATE_LIMITED"),
+    )
+    .await;
     // 1 malware (tunneling)
-    insert_query(pool, "tunnel.example.com", true, false, Some("dns_tunneling"), None).await;
+    insert_query(
+        pool,
+        "tunnel.example.com",
+        true,
+        false,
+        Some("dns_tunneling"),
+        None,
+    )
+    .await;
     // 1 malware (dga)
-    insert_query(pool, "xjk4f9a2h.com", true, false, Some("dga_detection"), None).await;
+    insert_query(
+        pool,
+        "xjk4f9a2h.com",
+        true,
+        false,
+        Some("dga_detection"),
+        None,
+    )
+    .await;
     // 1 local DNS
     insert_query(pool, "local.home", false, false, None, Some("LOCAL_DNS")).await;
 }
@@ -507,10 +547,16 @@ async fn test_category_filter_all_returns_everything() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, None).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(total, 10);
     assert_eq!(queries.len(), 10);
 }
@@ -521,10 +567,16 @@ async fn test_category_filter_allowed() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Allowed)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Allowed))
+        .await
+        .unwrap();
     // allowed = not blocked: google, github, cached, cached2, rate, local = 6
     assert_eq!(total, 6);
     assert_eq!(queries.len(), 6);
@@ -537,10 +589,16 @@ async fn test_category_filter_blocked() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Blocked)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Blocked))
+        .await
+        .unwrap();
     // blocked: ads, tracker, tunnel, dga = 4
     assert_eq!(total, 4);
     assert_eq!(queries.len(), 4);
@@ -553,10 +611,16 @@ async fn test_category_filter_cache() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Cache)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Cache))
+        .await
+        .unwrap();
     assert_eq!(total, 2);
     assert_eq!(queries.len(), 2);
     assert!(queries.iter().all(|q| q.cache_hit));
@@ -568,10 +632,16 @@ async fn test_category_filter_upstream() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Upstream)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Upstream))
+        .await
+        .unwrap();
     // upstream = not blocked, not cache, not rate_limited, not local_dns: google, github = 2
     assert_eq!(total, 2);
     assert_eq!(queries.len(), 2);
@@ -584,10 +654,16 @@ async fn test_category_filter_rate_limited() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::RateLimited)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::RateLimited))
+        .await
+        .unwrap();
     assert_eq!(total, 1);
     assert_eq!(queries.len(), 1);
 }
@@ -598,10 +674,16 @@ async fn test_category_filter_malware() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Malware)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(100, 0, 24.0, None, None, Some(QueryCategory::Malware))
+        .await
+        .unwrap();
     // malware: tunnel + dga = 2
     assert_eq!(total, 2);
     assert_eq!(queries.len(), 2);
@@ -613,11 +695,24 @@ async fn test_category_filter_combined_with_domain_search() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
     // Search for "example" domain within blocked category
-    let (queries, total, _) = repo.get_recent_paged(100, 0, 24.0, None, Some("example"), Some(QueryCategory::Blocked)).await.unwrap();
+    let (queries, total, _) = repo
+        .get_recent_paged(
+            100,
+            0,
+            24.0,
+            None,
+            Some("example"),
+            Some(QueryCategory::Blocked),
+        )
+        .await
+        .unwrap();
     // blocked + "example": ads.example.com, tracker.example.com, tunnel.example.com = 3
     assert_eq!(total, 3);
     assert_eq!(queries.len(), 3);
@@ -630,17 +725,26 @@ async fn test_category_filter_respects_pagination() {
     seed_mixed_queries(&pool).await;
 
     let repo = SqliteQueryLogRepository::new(
-        pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default(),
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
     );
 
     // Get first page of blocked with limit=2 (there are 4 blocked total)
-    let (page1, total, _) = repo.get_recent_paged(2, 0, 24.0, None, None, Some(QueryCategory::Blocked)).await.unwrap();
+    let (page1, total, _) = repo
+        .get_recent_paged(2, 0, 24.0, None, None, Some(QueryCategory::Blocked))
+        .await
+        .unwrap();
     assert_eq!(total, 4);
     assert_eq!(page1.len(), 2);
     assert!(page1.iter().all(|q| q.blocked));
 
     // Get second page via offset
-    let (page2, total2, _) = repo.get_recent_paged(2, 2, 24.0, None, None, Some(QueryCategory::Blocked)).await.unwrap();
+    let (page2, total2, _) = repo
+        .get_recent_paged(2, 2, 24.0, None, None, Some(QueryCategory::Blocked))
+        .await
+        .unwrap();
     assert_eq!(total2, 4);
     assert_eq!(page2.len(), 2);
     assert!(page2.iter().all(|q| q.blocked));
@@ -648,5 +752,8 @@ async fn test_category_filter_respects_pagination() {
     // Pages should not overlap
     let ids1: Vec<_> = page1.iter().filter_map(|q| q.id).collect();
     let ids2: Vec<_> = page2.iter().filter_map(|q| q.id).collect();
-    assert!(ids1.iter().all(|id| !ids2.contains(id)), "Pages should not overlap");
+    assert!(
+        ids1.iter().all(|id| !ids2.contains(id)),
+        "Pages should not overlap"
+    );
 }

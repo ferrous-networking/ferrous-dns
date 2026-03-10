@@ -44,7 +44,14 @@ impl GetRecentQueriesUseCase {
             .map_err(DomainError::InvalidInput)?;
 
         self.repository
-            .get_recent_paged(limit.min(MAX_LIMIT), offset, period_hours, cursor, domain, parsed_category)
+            .get_recent_paged(
+                limit.min(MAX_LIMIT),
+                offset,
+                period_hours,
+                cursor,
+                domain,
+                parsed_category,
+            )
             .await
     }
 }
