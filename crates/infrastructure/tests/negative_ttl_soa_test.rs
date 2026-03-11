@@ -89,6 +89,7 @@ async fn test_soa_ttl_used_when_present() {
         Arc::clone(&cache) as Arc<dyn DnsCacheAccess>,
         3600,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     );
 
     let query = DnsQuery {
@@ -119,6 +120,7 @@ async fn test_soa_ttl_below_min_clamped_to_30() {
         Arc::clone(&cache) as Arc<dyn DnsCacheAccess>,
         3600,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     );
 
     let query = DnsQuery {
@@ -147,6 +149,7 @@ async fn test_soa_ttl_above_max_clamped_to_3600() {
         Arc::clone(&cache) as Arc<dyn DnsCacheAccess>,
         3600,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     );
 
     let query = DnsQuery {
@@ -176,6 +179,7 @@ async fn test_fallback_to_tracker_when_no_soa() {
         Arc::clone(&cache) as Arc<dyn DnsCacheAccess>,
         3600,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     );
 
     let query = DnsQuery {

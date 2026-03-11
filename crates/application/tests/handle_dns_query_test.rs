@@ -485,6 +485,106 @@ async fn test_try_cache_direct_returns_none_when_domain_blocked() {
     assert_eq!(log.sync_log_count(), 0);
 }
 
+// ── try_cache_wire_direct ──────────────────────────────────────────────────
+
+#[test]
+fn try_cache_wire_direct_returns_none_on_cache_miss() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    let use_case = make_use_case(resolver, filter, log);
+
+    let result = use_case.try_cache_wire_direct("example.com", RecordType::MX, CLIENT_IP);
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn try_cache_wire_direct_returns_wire_bytes_on_cache_hit() {
+    use bytes::Bytes;
+    use ferrous_dns_application::ports::EMPTY_CNAME_CHAIN;
+
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    let wire_bytes = Bytes::from_static(b"\x00\x01\x02\x03");
+    let resolution = DnsResolution {
+        addresses: Arc::new(vec![]),
+        cache_hit: true,
+        local_dns: false,
+        dnssec_status: None,
+        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
+        upstream_server: None,
+        upstream_pool: None,
+        min_ttl: Some(300),
+        negative_soa_ttl: None,
+        upstream_wire_data: Some(wire_bytes.clone()),
+    };
+    resolver.set_cached_response("mail.example.com", resolution);
+
+    let use_case = make_use_case(resolver, filter, log);
+
+    let result = use_case.try_cache_wire_direct("mail.example.com", RecordType::MX, CLIENT_IP);
+
+    assert!(result.is_some());
+    let (bytes, ttl) = result.unwrap();
+    assert_eq!(bytes, wire_bytes);
+    assert_eq!(ttl, 300);
+}
+
+#[test]
+fn try_cache_wire_direct_returns_none_when_cached_resolution_has_no_wire_data() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    let resolution = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .cache_hit()
+        .build();
+    resolver.set_cached_response("example.com", resolution);
+
+    let use_case = make_use_case(resolver, filter, log);
+
+    let result = use_case.try_cache_wire_direct("example.com", RecordType::MX, CLIENT_IP);
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn try_cache_wire_direct_returns_none_when_domain_blocked() {
+    use bytes::Bytes;
+    use ferrous_dns_application::ports::EMPTY_CNAME_CHAIN;
+
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    filter.block_domain("blocked.example.com");
+
+    let resolution = DnsResolution {
+        addresses: Arc::new(vec![]),
+        cache_hit: true,
+        local_dns: false,
+        dnssec_status: None,
+        cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
+        upstream_server: None,
+        upstream_pool: None,
+        min_ttl: Some(60),
+        negative_soa_ttl: None,
+        upstream_wire_data: Some(Bytes::from_static(b"\xde\xad\xbe\xef")),
+    };
+    resolver.set_cached_response("blocked.example.com", resolution);
+
+    let use_case = make_use_case(resolver, filter, log);
+
+    let result = use_case.try_cache_wire_direct("blocked.example.com", RecordType::MX, CLIENT_IP);
+
+    assert!(result.is_none());
+}
+
 // ── log metadata ───────────────────────────────────────────────────────────
 
 #[tokio::test]

@@ -115,7 +115,7 @@ run_dnsperf() {
     -l "$DURATION" \
     -c "$CLIENTS" \
     -T "$CLIENTS" \
-    -q 10000 \
+    -q 1000 \
     2>&1) || true
 
   rm -f "$tmp_queries"

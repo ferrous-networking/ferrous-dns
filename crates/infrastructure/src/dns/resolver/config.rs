@@ -2,6 +2,8 @@
 pub struct ResolverConfig {
     pub cache_ttl: u32,
 
+    pub inflight_shards: usize,
+
     pub query_timeout_ms: u64,
 
     pub dnssec_enabled: bool,
@@ -31,6 +33,7 @@ impl Default for ResolverConfig {
 
         Self {
             cache_ttl: 3600,
+            inflight_shards: 64,
             query_timeout_ms: 2000,
             dnssec_enabled: false,
             server_hostname,
@@ -73,6 +76,11 @@ impl ResolverConfig {
 
     pub fn with_prefetch(mut self) -> Self {
         self.prefetch_enabled = true;
+        self
+    }
+
+    pub fn with_inflight_shards(mut self, shards: usize) -> Self {
+        self.inflight_shards = shards;
         self
     }
 }

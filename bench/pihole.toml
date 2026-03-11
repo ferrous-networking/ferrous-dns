@@ -4,6 +4,16 @@
   rateLimit.interval = 0
   upstreams = ["8.8.8.8", "1.1.1.1"]
   dnssec = false
+  # Disable SQLite query logging — critical for sustained load benchmarks;
+  # FTL v6 writes every query to DB which saturates I/O under high QPS.
+  queryLogging = false
+  # Listen on all interfaces (DNSMASQ_LISTENING env var is Pi-hole v5 only,
+  # ignored by FTL v6).
+  listeningMode = "ALL"
+  # Reduce unnecessary overhead for benchmark conditions
+  CNAMEdeepInspect = false
+  blockESNI = false
+  cache.size = 10000
 
 [misc]
   # Suppress startup checks that slow down container init

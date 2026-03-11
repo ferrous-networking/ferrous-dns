@@ -1,11 +1,10 @@
 use super::data::{CachedData, DnssecStatus};
 use ferrous_dns_domain::RecordType;
-use std::sync::Arc;
 
 pub trait DnsCacheAccess: Send + Sync {
     fn get(
         &self,
-        domain: &Arc<str>,
+        domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)>;
 

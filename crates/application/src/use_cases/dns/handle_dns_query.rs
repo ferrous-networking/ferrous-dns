@@ -357,9 +357,7 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        let domain_arc: Arc<str> = Arc::from(domain);
-        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
-        let resolution = self.resolver.try_cache(&query)?;
+        let resolution = self.resolver.try_cache_str(domain, record_type)?;
         let wire = resolution.upstream_wire_data?;
         let ttl = resolution.min_ttl.unwrap_or(0);
         Some((wire, ttl))
@@ -371,6 +369,7 @@ impl HandleDnsQueryUseCase {
         record_type: RecordType,
         client_ip: IpAddr,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
+        let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
 
         if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
@@ -393,10 +392,7 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        let tsc_start = tsc_timer::now();
-        let domain_arc: Arc<str> = Arc::from(domain);
-        let query = DnsQuery::new(Arc::clone(&domain_arc), record_type);
-        let resolution = self.resolver.try_cache(&query)?;
+        let resolution = self.resolver.try_cache_str(domain, record_type)?;
         if resolution.addresses.is_empty() {
             return None;
         }
@@ -408,6 +404,7 @@ impl HandleDnsQueryUseCase {
         }
 
         let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
+        let domain_arc: Arc<str> = Arc::from(domain);
         self.log(&QueryLog {
             id: None,
             domain: domain_arc,

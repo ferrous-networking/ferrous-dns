@@ -1,4 +1,5 @@
 use ferrous_dns_domain::{DnsQuery, DomainError, FqdnFilter, PrivateIpFilter};
+use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::debug;
 
@@ -55,6 +56,30 @@ impl QueryFilters {
         }
 
         Ok(query)
+    }
+
+    /// Applies filters to a raw `&str` domain, returning the (possibly rewritten)
+    /// domain as a `Cow<str>`. Returns `None` if the query should be dropped.
+    /// Avoids `Arc::from` allocation on the fast-path cache lookup.
+    pub fn apply_str<'a>(&self, domain: &'a str) -> Option<Cow<'a, str>> {
+        if self.block_private_ptr
+            && !self.has_local_dns_server
+            && PrivateIpFilter::is_private_ptr_query(domain)
+        {
+            return None;
+        }
+
+        if self.block_non_fqdn {
+            if FqdnFilter::is_local_hostname(domain) {
+                return None;
+            }
+        } else if let Some(ref local_domain) = self.local_domain {
+            if !domain.contains('.') {
+                return Some(Cow::Owned(format!("{}.{}", domain, local_domain)));
+            }
+        }
+
+        Some(Cow::Borrowed(domain))
     }
 
     pub fn is_enabled(&self) -> bool {

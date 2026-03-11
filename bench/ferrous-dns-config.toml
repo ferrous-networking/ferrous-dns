@@ -70,6 +70,7 @@ cache_adaptive_thresholds = false       # Automatically tune eviction thresholds
 # When omitted, auto-detected as 4x CPU cores rounded up to the next power of 2
 # (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
 cache_shard_amount = 512
+cache_inflight_shards = 64
 
 
 # ── Cache: Optimistic Refresh ─────────────────────────────────────────────────
@@ -88,6 +89,86 @@ cache_access_window_secs = 43200
 
 cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for eviction candidates
 cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for scoring
+
+
+# ── DNS Rate Limiting ────────────────────────────────────────────────────────
+# Disabled for benchmark — isolates pure resolution performance
+
+[dns.rate_limit]
+enabled = false                         # Disabled for benchmark
+queries_per_second = 1000
+burst_size = 500
+ipv4_prefix_len = 24
+ipv6_prefix_len = 48
+whitelist = []
+nxdomain_per_second = 50
+slip_ratio = 2
+dry_run = false
+tcp_max_connections_per_ip = 30
+dot_max_connections_per_ip = 15
+stale_entry_ttl_secs = 300
+
+
+# ── DNS Tunneling Detection ──────────────────────────────────────────────────
+# Disabled for benchmark — no overhead from statistical analysis
+
+[dns.tunneling_detection]
+enabled = false                         # Disabled for benchmark
+action = "block"
+max_fqdn_length = 120
+max_label_length = 50
+block_null_queries = true
+entropy_threshold = 3.8
+query_rate_per_apex = 50
+unique_subdomain_threshold = 30
+txt_proportion_threshold = 0.05
+nxdomain_ratio_threshold = 0.20
+confidence_threshold = 0.7
+stale_entry_ttl_secs = 300
+domain_whitelist = []
+client_whitelist = []
+
+
+# ── DGA Detection (Domain Generation Algorithm) ────────────────────────────
+# Disabled for benchmark — no overhead from hot-path scoring
+
+[dns.dga_detection]
+enabled                         = false  # Disabled for benchmark
+action                          = "block"
+hot_path_confidence_threshold   = 0.40
+sld_entropy_threshold           = 3.5
+sld_max_length                  = 24
+consonant_ratio_threshold       = 0.75
+digit_ratio_threshold           = 0.3
+ngram_score_threshold           = 0.6
+dga_rate_per_client             = 10
+confidence_threshold            = 0.65
+stale_entry_ttl_secs            = 300
+domain_whitelist                = []
+client_whitelist                = []
+
+
+# ── NXDomain Hijack Detection ───────────────────────────────────────────────
+# Disabled for benchmark — no background probe overhead
+
+[dns.nxdomain_hijack]
+enabled = false                         # Disabled for benchmark
+action = "block"
+probe_interval_secs = 300
+probe_timeout_ms = 5000
+probes_per_round = 3
+hijack_ip_ttl_secs = 3600
+
+
+# ── Response IP Filtering (C2 IP Blocking) ──────────────────────────────────
+# Disabled for benchmark — no feed download or response scanning
+
+[dns.response_ip_filter]
+enabled = false                         # Disabled for benchmark
+action = "block"
+ip_list_urls = []
+refresh_interval_secs = 86400
+ip_ttl_secs = 604800
 
 
 # ── Upstream Pools ────────────────────────────────────────────────────────────

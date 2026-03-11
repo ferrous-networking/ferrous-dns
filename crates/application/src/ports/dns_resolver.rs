@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use std::net::IpAddr;
 use std::sync::{Arc, LazyLock};
 
@@ -75,5 +75,13 @@ pub trait DnsResolver: Send + Sync {
 
     fn try_cache(&self, _query: &DnsQuery) -> Option<DnsResolution> {
         None
+    }
+
+    /// Cache-only lookup by raw `&str` domain, avoiding an `Arc::from` heap allocation
+    /// on cache misses. The default impl creates a `DnsQuery` and delegates to
+    /// `try_cache`; hot-path resolvers (e.g. `CachedResolver`) override this.
+    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+        let query = DnsQuery::new(Arc::from(domain), record_type);
+        self.try_cache(&query)
     }
 }

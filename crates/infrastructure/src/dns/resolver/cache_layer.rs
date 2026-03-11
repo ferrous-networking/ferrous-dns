@@ -11,7 +11,7 @@ use std::cell::Cell;
 use std::sync::LazyLock;
 
 static EMPTY_ADDRESSES: LazyLock<Arc<Vec<IpAddr>>> = LazyLock::new(|| Arc::new(vec![]));
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use rustc_hash::FxBuildHasher;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -64,6 +64,7 @@ impl CachedResolver {
         cache: Arc<dyn DnsCacheAccess>,
         cache_ttl: u32,
         negative_ttl_tracker: Arc<NegativeQueryTracker>,
+        inflight_shards: usize,
     ) -> Self {
         Self {
             inner,
@@ -71,7 +72,13 @@ impl CachedResolver {
             cache_ttl,
             negative_ttl_tracker,
             prefetch_predictor: None,
-            inflight: Arc::new(DashMap::with_hasher(FxBuildHasher)),
+            // In-flight entries are transient — use caller-configured shard count
+            // (default = cache_inflight_shards from TOML, typically cpus*2 next_power_of_two).
+            inflight: Arc::new(DashMap::with_capacity_and_hasher_and_shard_amount(
+                0,
+                FxBuildHasher,
+                inflight_shards,
+            )),
         }
     }
 
@@ -80,11 +87,11 @@ impl CachedResolver {
         self
     }
 
-    fn check_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
-        self.cache.get(&query.domain, &query.record_type).map(
-            |(data, dnssec_status, remaining_ttl)| {
+    fn check_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+        self.cache
+            .get(domain, &record_type)
+            .map(|(data, dnssec_status, remaining_ttl)| {
                 let dnssec_str = dnssec_status.map(|s| s.as_str());
-
                 match data {
                     CachedData::IpAddresses(entry) => DnsResolution {
                         addresses: Arc::clone(&entry.addresses),
@@ -135,8 +142,11 @@ impl CachedResolver {
                         upstream_wire_data: None,
                     },
                 }
-            },
-        )
+            })
+    }
+
+    fn check_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        self.check_cache_str(query.domain.as_ref(), query.record_type)
     }
 
     fn insert_negative(&self, query: &DnsQuery) {
@@ -313,6 +323,10 @@ impl CachedResolver {
 impl DnsResolver for CachedResolver {
     fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
         self.check_cache(query)
+    }
+
+    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+        self.check_cache_str(domain, record_type)
     }
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {

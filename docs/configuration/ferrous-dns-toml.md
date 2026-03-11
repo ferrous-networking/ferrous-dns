@@ -283,6 +283,7 @@ cache_compaction_interval        = 600
 cache_batch_eviction_percentage  = 0.1
 cache_adaptive_thresholds        = false
 # cache_shard_amount             = 512
+# cache_inflight_shards          = 64
 ```
 
 | Option | Type | Default | Description |
@@ -297,6 +298,7 @@ cache_adaptive_thresholds        = false
 | `cache_batch_eviction_percentage` | `float` | `0.1` | Fraction of the cache evicted in one pass when full (0.1 = 10%) |
 | `cache_adaptive_thresholds` | `bool` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | `int` | auto | L2 cache shard count; auto = 4 x CPU cores rounded up to next power of 2 |
+| `cache_inflight_shards` | `int` | auto | In-flight coalescing map shard count; auto = 2 x CPU cores, rounded to power of 2 (min 8, max 128) |
 
 ### Optimistic refresh
 

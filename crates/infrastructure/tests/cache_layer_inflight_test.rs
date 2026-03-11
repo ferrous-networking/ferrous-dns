@@ -70,6 +70,7 @@ async fn test_inflight_map_empty_after_leader_error() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let tasks: Vec<_> = (0..4)
@@ -97,6 +98,7 @@ async fn test_follower_receives_error_on_leader_failure_without_hanging() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let r1 = Arc::clone(&resolver);
@@ -141,6 +143,7 @@ async fn test_leader_cancellation_cleans_inflight_and_unblocks_next_query() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let r = Arc::clone(&resolver);

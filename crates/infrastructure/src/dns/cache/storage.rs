@@ -162,14 +162,14 @@ impl DnsCache {
 
     pub fn get(
         &self,
-        domain: &Arc<str>,
+        domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
-        let borrowed = BorrowedKey::new(domain.as_ref(), *record_type);
+        let borrowed = BorrowedKey::new(domain, *record_type);
 
-        if let Some((arc_data, remaining_ttl)) = l1_get(domain.as_ref(), record_type) {
+        if let Some((arc_data, remaining_ttl)) = l1_get(domain, record_type) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
-            self.bloom.set(&borrowed);
+            self.bloom.refresh(&borrowed);
             return Some((
                 CachedData::IpAddresses(super::data::CachedAddresses {
                     addresses: arc_data,
@@ -182,7 +182,7 @@ impl DnsCache {
         let in_bloom = self.bloom.check(&borrowed);
 
         if !in_bloom {
-            if let Some(remaining_ttl) = self.negative.get(domain.as_ref(), record_type) {
+            if let Some(remaining_ttl) = self.negative.get(domain, record_type) {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 return Some((CachedData::NegativeResponse, None, Some(remaining_ttl)));
             }
@@ -190,7 +190,7 @@ impl DnsCache {
             return None;
         }
 
-        let key = CacheKey::new(domain.as_ref(), *record_type);
+        let key = CacheKey::new(domain, *record_type);
 
         if let Some(entry) = self.cache.get(&key) {
             let record = entry.value();
@@ -203,10 +203,10 @@ impl DnsCache {
                     .stale_hits
                     .fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
-                self.bloom.set(&borrowed);
+                self.bloom.refresh(&borrowed);
                 if let Some(tx) = self.stale_refresh_tx.get() {
                     if record.try_set_refreshing()
-                        && tx.try_send((Arc::clone(domain), key.record_type)).is_err()
+                        && tx.try_send((Arc::from(domain), key.record_type)).is_err()
                     {
                         record.clear_refreshing();
                     }
@@ -227,9 +227,9 @@ impl DnsCache {
             } else {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
-                self.bloom.set(&borrowed);
+                self.bloom.refresh(&borrowed);
                 let remaining_ttl = record.expires_at_secs.saturating_sub(now_secs) as u32;
-                self.promote_to_l1(domain.as_ref(), record_type, record, now_secs);
+                self.promote_to_l1(domain, record_type, record, now_secs);
                 return Some((
                     record.data.clone(),
                     Some(record.dnssec_status),
@@ -238,7 +238,7 @@ impl DnsCache {
             }
         }
 
-        if let Some(remaining_ttl) = self.negative.get(domain.as_ref(), record_type) {
+        if let Some(remaining_ttl) = self.negative.get(domain, record_type) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some((CachedData::NegativeResponse, None, Some(remaining_ttl)));
         }
@@ -646,7 +646,7 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
 impl DnsCacheAccess for DnsCache {
     fn get(
         &self,
-        domain: &Arc<str>,
+        domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
         DnsCache::get(self, domain, record_type)

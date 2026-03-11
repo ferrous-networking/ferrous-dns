@@ -183,18 +183,16 @@ async fn run_udp_worker_batch(
                 );
             }
 
-            // Process cache misses inline — parallel within the batch, no scheduler pressure.
-            if !pending_misses.is_empty() {
-                let futs = pending_misses.drain(..).map(|(buf, from, cip, dst_ip)| {
-                    let h = handler.clone();
-                    let s = socket.clone();
-                    async move {
-                        if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip).await {
-                            let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
-                        }
+            // Spawn each cache miss as an independent task — a single slow upstream query
+            // no longer blocks the remaining misses in the batch from being processed.
+            for (buf, from, cip, dst_ip) in pending_misses.drain(..) {
+                let h = handler.clone();
+                let s = socket.clone();
+                tokio::spawn(async move {
+                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip).await {
+                        let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
                     }
                 });
-                futures::future::join_all(futs).await;
             }
         }
     }

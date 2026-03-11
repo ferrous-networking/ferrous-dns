@@ -86,6 +86,45 @@ impl AtomicBloom {
         }
     }
 
+    /// Sets bits in the active slot only if the key is not already fully present there.
+    /// Avoids 5 RMW atomics (fetch_or) per hit when the entry is already warm —
+    /// replacing them with 5 cheaper read-only loads instead.
+    #[inline]
+    pub fn refresh<K: Hash>(&self, key: &K) {
+        let a = self.active.load(AtomicOrdering::Acquire);
+        let (h1, h2) = Self::double_hash(key);
+        let num_hashes = self.num_hashes;
+        let mask = self.mask;
+
+        if num_hashes == 5 {
+            let in_active = |i: u64| -> bool {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                self.slots[a][idx / 64].load(AtomicOrdering::Relaxed) & (1u64 << (idx % 64)) != 0
+            };
+            if in_active(0) && in_active(1) && in_active(2) && in_active(3) && in_active(4) {
+                return;
+            }
+            let set = |i: u64| {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                self.slots[a][idx / 64].fetch_or(1u64 << (idx % 64), AtomicOrdering::Relaxed);
+            };
+            set(0);
+            set(1);
+            set(2);
+            set(3);
+            set(4);
+        } else {
+            for i in 0..num_hashes as u64 {
+                let idx = Self::nth_hash(h1, h2, i, mask);
+                let bit = 1u64 << (idx % 64);
+                let word = idx / 64;
+                if self.slots[a][word].load(AtomicOrdering::Relaxed) & bit == 0 {
+                    self.slots[a][word].fetch_or(bit, AtomicOrdering::Relaxed);
+                }
+            }
+        }
+    }
+
     pub fn rotate(&self) {
         let old_active = self.active.load(AtomicOrdering::Relaxed);
         let new_active = 1 - old_active;

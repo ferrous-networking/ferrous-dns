@@ -87,6 +87,7 @@ async fn test_coalescing_deduplicates_concurrent_queries() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -117,6 +118,7 @@ async fn test_coalescing_cache_hit_flag_for_waiters() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -157,6 +159,7 @@ async fn test_coalescing_error_propagation_to_waiters() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let tasks: Vec<_> = (0..6)
@@ -194,6 +197,7 @@ async fn test_no_coalescing_for_different_record_types() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let r1 = Arc::clone(&resolver);
@@ -220,6 +224,7 @@ async fn test_no_coalescing_for_different_domains() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let r1 = Arc::clone(&resolver);
@@ -249,6 +254,7 @@ async fn test_result_cached_after_coalescing() {
         make_cache(),
         300,
         Arc::new(NegativeQueryTracker::new()),
+        4,
     ));
 
     let tasks: Vec<_> = (0..4)

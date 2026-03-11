@@ -79,6 +79,11 @@ cache_adaptive_thresholds = false       # Automatically tune eviction thresholds
 # (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
 # cache_shard_amount = 512
 
+# Number of DashMap shards for the in-flight coalescing map (cache stampede prevention).
+# In-flight entries are transient — fewer shards than the main cache is appropriate.
+# When omitted, auto-detected as 2x CPU cores rounded up to the next power of 2 (min 8, max 128).
+cache_inflight_shards = 64
+
 
 # ── Cache: Optimistic Refresh ─────────────────────────────────────────────────
 # Background refresh renews popular entries before they expire, keeping cache hit rate high.

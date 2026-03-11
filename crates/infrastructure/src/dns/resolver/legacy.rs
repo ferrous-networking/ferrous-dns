@@ -80,6 +80,11 @@ impl HickoryDnsResolver {
         self
     }
 
+    pub fn with_inflight_shards(mut self, shards: usize) -> Self {
+        self.builder_state.config.inflight_shards = shards;
+        self
+    }
+
     pub fn with_query_filters(
         mut self,
         block_private_ptr: bool,

@@ -62,6 +62,9 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_shard_amount")]
     pub cache_shard_amount: usize,
 
+    #[serde(default = "default_cache_inflight_shards")]
+    pub cache_inflight_shards: usize,
+
     #[serde(default = "default_cache_access_window_secs")]
     pub cache_access_window_secs: u64,
 
@@ -145,6 +148,7 @@ impl Default for DnsConfig {
             cache_compaction_interval: default_cache_compaction_interval(),
             cache_adaptive_thresholds: default_cache_adaptive_thresholds(),
             cache_shard_amount: default_cache_shard_amount(),
+            cache_inflight_shards: default_cache_inflight_shards(),
             cache_access_window_secs: default_cache_access_window_secs(),
             cache_eviction_sample_size: default_cache_eviction_sample_size(),
             cache_min_ttl: default_cache_min_ttl(),
@@ -246,4 +250,12 @@ fn default_cache_shard_amount() -> usize {
         .map(|n| n.get())
         .unwrap_or(4);
     (cpus * 4).next_power_of_two().clamp(8, 256)
+}
+
+fn default_cache_inflight_shards() -> usize {
+    let cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    // In-flight entries are transient: use 1/4 of cache shards, clamped to 8..=128.
+    (cpus * 2).next_power_of_two().clamp(8, 128)
 }

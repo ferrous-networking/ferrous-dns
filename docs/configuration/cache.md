@@ -49,6 +49,7 @@ cache_compaction_interval = 600
 cache_batch_eviction_percentage = 0.1
 cache_adaptive_thresholds = false
 # cache_shard_amount = 512
+# cache_inflight_shards = 64
 ```
 
 | Option | Default | Description |
@@ -62,14 +63,17 @@ cache_adaptive_thresholds = false
 | `cache_compaction_interval` | `600` | Seconds between full compaction runs (removes expired entries) |
 | `cache_batch_eviction_percentage` | `0.1` | Fraction of cache evicted in one pass when full (0.1 = 10%) |
 | `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
-| `cache_shard_amount` | auto | Cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
+| `cache_shard_amount` | auto | L2 cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
+| `cache_inflight_shards` | auto | In-flight coalescing map shard count; auto-detected as 2x CPU cores, rounded to power of 2 (min 8, max 128) |
 
 !!! tip "Shard tuning"
     The default auto-detection works well for most cases. Override only if you have a specific reason:
-    - Raspberry Pi 4 (4 cores): 16 shards
-    - 8-core server: 32 shards
-    - 16-core server: 64 shards
-    - High-concurrency (32+ cores): 128–512 shards
+    - Raspberry Pi 4 (4 cores): 16 shards (`cache_shard_amount`), 8 shards (`cache_inflight_shards`)
+    - 8-core server: 32 shards / 16 in-flight
+    - 16-core server: 64 shards / 32 in-flight
+    - High-concurrency (32+ cores): 128–512 shards / 64–128 in-flight
+
+    `cache_inflight_shards` controls the in-flight coalescing map — the structure that deduplicates concurrent upstream requests for the same domain (cache stampede prevention). In-flight entries are transient, so it needs far fewer shards than the main L2 cache.
 
 ---
 

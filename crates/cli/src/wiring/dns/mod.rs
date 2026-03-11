@@ -75,7 +75,9 @@ impl DnsServices {
         let dns_cache = cache::build_cache(config);
 
         if config.dns.cache_enabled {
-            dns_resolver = dns_resolver.with_cache(dns_cache.clone(), config.dns.cache_ttl);
+            dns_resolver = dns_resolver
+                .with_inflight_shards(config.dns.cache_inflight_shards)
+                .with_cache(dns_cache.clone(), config.dns.cache_ttl);
         }
 
         let cache_maintenance = Self::setup_cache_maintenance(

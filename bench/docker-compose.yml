@@ -31,6 +31,9 @@ services:
   #   - Log level: info
   # ---------------------------------------------------------------------------
   ferrous-dns:
+    build:
+      context: ..
+      dockerfile: bench/Dockerfile.ferrous
     image: ferrousnetworking/ferrous-dns:latest
     container_name: bench-ferrous-dns
     network_mode: host
@@ -73,13 +76,8 @@ services:
     environment:
       TZ: UTC
       WEBPASSWORD: bench123
-      PIHOLE_DNS_1: 8.8.8.8
-      PIHOLE_DNS_2: 1.1.1.1
-      DNSSEC: "false"
-      DNSMASQ_LISTENING: all
-      DNSMASQ_OPTS: "--cache-size=10000 --port=5354"
-      # FTL rate limiting disabled (Pi-hole v6 format)
-      FTLCONF_dns_rateLimit_count: "0"
+      # Pi-hole v6 (FTL) — all configuration via pihole.toml (mounted below).
+      # DNSMASQ_LISTENING / DNSMASQ_OPTS are v5-only env vars, ignored by FTL v6.
       FTLCONF_dns_port: "5354"
     volumes:
       - pihole_data:/etc/pihole
