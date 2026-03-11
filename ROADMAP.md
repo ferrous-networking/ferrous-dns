@@ -60,9 +60,9 @@
 
 - [x] Pi-hole compatible API
 - [x] Performance benchmarks vs. competitors
-- [x] Dashbodar Setting system status, pools dns status, cache ouverview, system information, kernel, uptime, load etc..
+- [x] dashboard Setting system status, pools dns status, cache ouverview, system information, kernel, uptime, load etc..
 
-### 🎯 v0.7.0 - Security (Current)
+### ✅ v0.7.0 - Security
 
 - [x] Login / Auth
 - [x] HTTPS for Web UI
@@ -75,7 +75,7 @@
 - [x] DGA Detection (Domain Generation Algorithm — entropy + n-gram + lexical analysis)
 - [x] Separate listening ports for DoH and Admin UI
 
-### 🎯 v0.8.0 - Export & Observability
+### 🎯 v0.8.0 - Export & Observability (Current)
 
 - [ ] Config export/import (backup and restore)
 - [ ] Query log export (CSV / JSON)
