@@ -196,49 +196,6 @@ body {
     display: none !important
 }
 
-@media (max-width: 1024px) {
-    body {
-        padding-left: 0
-    }
-
-    .sidebar {
-        position: fixed;
-        left: -260px;
-        z-index: 50;
-        transition: left .3s ease
-    }
-
-    .sidebar.open {
-        left: 0
-    }
-
-    .sidebar-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 40
-    }
-
-    .sidebar-overlay.active {
-        display: block
-    }
-
-    .mobile-header {
-        display: flex
-    }
-}
-
-@media (min-width: 1025px) {
-    .mobile-header {
-        display: none
-    }
-
-    .sidebar-overlay {
-        display: none
-    }
-}
-
 .mobile-header {
     display: none;
     align-items: center;
@@ -270,4 +227,51 @@ body {
     font-size: 16px;
     font-weight: 700;
     color: var(--text-primary)
+}
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 40
+}
+
+@media (max-width: 1024px) {
+    body {
+        padding-left: 0
+    }
+
+    main {
+        padding: 16px !important
+    }
+
+    .sidebar {
+        position: fixed;
+        left: -260px;
+        z-index: 50;
+        transition: left .3s ease
+    }
+
+    .sidebar.open {
+        left: 0
+    }
+
+    .sidebar-overlay.active {
+        display: block
+    }
+
+    .mobile-header {
+        display: flex
+    }
+}
+
+@media (min-width: 1025px) {
+    .mobile-header {
+        display: none
+    }
+
+    .sidebar-overlay {
+        display: none
+    }
 }

@@ -151,9 +151,9 @@ client_whitelist = []                   # Client CIDRs exempt from detection
 [dns.dga_detection]
 enabled                    = true
 action                     = "block"
-sld_entropy_threshold      = 3.5
+sld_entropy_threshold      = 3.8
 sld_max_length             = 24
-consonant_ratio_threshold  = 0.75
+consonant_ratio_threshold  = 0.85
 digit_ratio_threshold      = 0.3
 ngram_score_threshold      = 0.6
 dga_rate_per_client        = 10

@@ -175,6 +175,12 @@ function closeSidebar() {
     document.querySelector('.sidebar-overlay').classList.remove('active');
 }
 
+// Close sidebar when a nav link is clicked (mobile)
+document.addEventListener('click', function(e) {
+    var link = e.target.closest('.sidebar .nav-item');
+    if (link && window.innerWidth <= 1024) closeSidebar();
+});
+
 // --- Rate color using CSS custom properties ---
 
 function getRateColor(queryRate) {
