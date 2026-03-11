@@ -16,6 +16,12 @@ pub struct DgaDetectionConfig {
     pub action: DgaDetectionAction,
 
     // --- Phase 1 (hot path, O(1)) ---
+    /// Minimum weighted score (0.0–1.0) across hot-path signals to trigger detection.
+    /// Requires multiple signals to fire simultaneously, reducing false positives
+    /// on legitimate domains that only appear suspicious in a single dimension.
+    #[serde(default = "default_hot_path_confidence_threshold")]
+    pub hot_path_confidence_threshold: f32,
+
     /// Shannon entropy threshold (bits/char) for the second-level domain.
     #[serde(default = "default_sld_entropy_threshold")]
     pub sld_entropy_threshold: f32,
@@ -73,6 +79,7 @@ impl Default for DgaDetectionConfig {
         Self {
             enabled: default_enabled(),
             action: default_action(),
+            hot_path_confidence_threshold: default_hot_path_confidence_threshold(),
             sld_entropy_threshold: default_sld_entropy_threshold(),
             sld_max_length: default_sld_max_length(),
             consonant_ratio_threshold: default_consonant_ratio_threshold(),
@@ -93,6 +100,10 @@ fn default_enabled() -> bool {
 
 fn default_action() -> DgaDetectionAction {
     DgaDetectionAction::Block
+}
+
+fn default_hot_path_confidence_threshold() -> f32 {
+    0.40
 }
 
 fn default_sld_entropy_threshold() -> f32 {
@@ -136,6 +147,7 @@ mod tests {
         let config = DgaDetectionConfig::default();
         assert!(config.enabled);
         assert_eq!(config.action, DgaDetectionAction::Block);
+        assert!((config.hot_path_confidence_threshold - 0.40).abs() < f32::EPSILON);
         assert!((config.sld_entropy_threshold - 3.5).abs() < f32::EPSILON);
         assert_eq!(config.sld_max_length, 24);
         assert!((config.consonant_ratio_threshold - 0.75).abs() < f32::EPSILON);
@@ -174,6 +186,7 @@ mod tests {
         let original = DgaDetectionConfig {
             enabled: true,
             action: DgaDetectionAction::Alert,
+            hot_path_confidence_threshold: 0.40,
             sld_entropy_threshold: 4.0,
             sld_max_length: 30,
             consonant_ratio_threshold: 0.80,

@@ -70,13 +70,22 @@ impl CidrRange {
     }
 }
 
+/// Signal weights for phase-1 hot-path mini-scoring.
+const HP_WEIGHT_SLD_ENTROPY: f32 = 0.30;
+const HP_WEIGHT_CONSONANT_RATIO: f32 = 0.25;
+const HP_WEIGHT_DIGIT_RATIO: f32 = 0.20;
+const HP_WEIGHT_SLD_LENGTH: f32 = 0.25;
+
 /// Guards DNS queries against DGA domains on the hot path.
 ///
 /// Performs O(1) checks: SLD entropy, consonant ratio, digit ratio, SLD length.
+/// Uses weighted mini-scoring: only triggers when multiple signals exceed their
+/// thresholds simultaneously, reducing false positives on legitimate domains.
 /// N-gram analysis runs in a separate background task.
 pub(super) struct DgaGuard {
     enabled: bool,
     action: DgaDetectionAction,
+    hot_path_confidence_threshold: f32,
     sld_entropy_threshold: f32,
     sld_max_length: usize,
     consonant_ratio_threshold: f32,
@@ -91,6 +100,7 @@ impl DgaGuard {
         Self {
             enabled: config.enabled,
             action: config.action,
+            hot_path_confidence_threshold: config.hot_path_confidence_threshold,
             sld_entropy_threshold: config.sld_entropy_threshold,
             sld_max_length: config.sld_max_length,
             consonant_ratio_threshold: config.consonant_ratio_threshold,
@@ -110,16 +120,9 @@ impl DgaGuard {
 
     /// Creates a disabled guard that never triggers.
     pub(super) fn disabled() -> Self {
-        Self {
-            enabled: false,
-            action: DgaDetectionAction::Block,
-            sld_entropy_threshold: 3.5,
-            sld_max_length: 24,
-            consonant_ratio_threshold: 0.75,
-            digit_ratio_threshold: 0.3,
-            domain_whitelist: HashSet::new(),
-            client_whitelist: Vec::new(),
-        }
+        let mut guard = Self::from_config(&DgaDetectionConfig::default());
+        guard.enabled = false;
+        guard
     }
 
     /// Returns the configured action for detected DGA domains.
@@ -134,7 +137,12 @@ impl DgaGuard {
             .any(|cidr| cidr.contains(client_ip))
     }
 
-    /// Performs O(1) DGA checks on the hot path.
+    /// Performs O(1) DGA checks on the hot path using weighted mini-scoring.
+    ///
+    /// Accumulates weights from all triggered signals and only returns `Detected`
+    /// when the combined score exceeds `hot_path_confidence_threshold`. This prevents
+    /// false positives on legitimate domains that appear suspicious in only one dimension
+    /// (e.g., CDN domains with high entropy but normal consonant ratio).
     ///
     /// Zero heap allocations: `domain` is `&str`, SLD is a slice.
     pub(super) fn check(&self, domain: &str, client_ip: IpAddr) -> DgaVerdict {
@@ -166,21 +174,36 @@ impl DgaGuard {
             _ => return DgaVerdict::Clean,
         };
 
-        if sld.len() > self.sld_max_length {
-            return DgaVerdict::Detected {
-                signal: "sld_length",
-                measured: sld.len() as f32,
-                threshold: self.sld_max_length as f32,
+        let mut confidence: f32 = 0.0;
+        let mut top_signal: &'static str = "none";
+        let mut top_measured: f32 = 0.0;
+        let mut top_threshold: f32 = 0.0;
+        let mut top_excess: f32 = 0.0;
+
+        // Tracks the signal with the highest relative excess over its threshold,
+        // so logs reflect the most diagnostically useful signal — not just the
+        // heaviest weight.
+        macro_rules! track_signal {
+            ($name:expr, $measured:expr, $threshold:expr) => {
+                let excess = $measured / $threshold;
+                if excess > top_excess {
+                    top_excess = excess;
+                    top_signal = $name;
+                    top_measured = $measured;
+                    top_threshold = $threshold;
+                }
             };
+        }
+
+        if sld.len() > self.sld_max_length {
+            confidence += HP_WEIGHT_SLD_LENGTH;
+            track_signal!("sld_length", sld.len() as f32, self.sld_max_length as f32);
         }
 
         let entropy = shannon_entropy(sld.as_bytes());
         if entropy > self.sld_entropy_threshold {
-            return DgaVerdict::Detected {
-                signal: "sld_entropy",
-                measured: entropy,
-                threshold: self.sld_entropy_threshold,
-            };
+            confidence += HP_WEIGHT_SLD_ENTROPY;
+            track_signal!("sld_entropy", entropy, self.sld_entropy_threshold);
         }
 
         let (consonants, vowels, digits, total) = char_ratios(sld);
@@ -189,22 +212,30 @@ impl DgaGuard {
             if alpha > 0 {
                 let consonant_ratio = consonants as f32 / alpha as f32;
                 if consonant_ratio > self.consonant_ratio_threshold {
-                    return DgaVerdict::Detected {
-                        signal: "consonant_ratio",
-                        measured: consonant_ratio,
-                        threshold: self.consonant_ratio_threshold,
-                    };
+                    confidence += HP_WEIGHT_CONSONANT_RATIO;
+                    track_signal!(
+                        "consonant_ratio",
+                        consonant_ratio,
+                        self.consonant_ratio_threshold
+                    );
                 }
             }
 
             let digit_ratio = digits as f32 / total as f32;
             if digit_ratio > self.digit_ratio_threshold {
-                return DgaVerdict::Detected {
-                    signal: "digit_ratio",
-                    measured: digit_ratio,
-                    threshold: self.digit_ratio_threshold,
-                };
+                confidence += HP_WEIGHT_DIGIT_RATIO;
+                track_signal!("digit_ratio", digit_ratio, self.digit_ratio_threshold);
             }
+        }
+
+        let _ = top_excess;
+
+        if confidence >= self.hot_path_confidence_threshold {
+            return DgaVerdict::Detected {
+                signal: top_signal,
+                measured: top_measured,
+                threshold: top_threshold,
+            };
         }
 
         DgaVerdict::Clean
@@ -360,69 +391,111 @@ mod tests {
     }
 
     #[test]
-    fn high_entropy_sld_triggers_detection() {
+    fn multi_signal_dga_domain_triggers_detection_with_correct_top_signal() {
         let guard = guard_with_defaults();
-        // Random-looking domain with high entropy
+        // Random-looking domain: high entropy + high consonant ratio + digits
         let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(
-            result,
+        match result {
             DgaVerdict::Detected {
-                signal: "sld_entropy",
-                ..
+                signal,
+                measured,
+                threshold,
+            } => {
+                assert!(
+                    [
+                        "sld_entropy",
+                        "consonant_ratio",
+                        "digit_ratio",
+                        "sld_length"
+                    ]
+                    .contains(&signal),
+                    "unexpected signal: {signal}"
+                );
+                assert!(
+                    measured > threshold,
+                    "measured ({measured}) should exceed threshold ({threshold})"
+                );
             }
-        ));
+            DgaVerdict::Clean => panic!("DGA domain should be detected"),
+        }
     }
 
     #[test]
-    fn long_sld_triggers_detection() {
+    fn single_high_entropy_domain_not_blocked() {
+        // SLD "aeioubcdf" has high entropy (3.17) but normal consonant ratio (5/9 = 0.56)
+        // and zero digits — only entropy can fire, which alone (0.30) < threshold (0.40)
+        let guard = DgaGuard::from_config(&DgaDetectionConfig {
+            enabled: true,
+            sld_entropy_threshold: 3.0,
+            ..Default::default()
+        });
+        let result = guard.check("aeioubcdf.com", TEST_IP);
+        assert!(
+            matches!(result, DgaVerdict::Clean),
+            "Single-signal domain should NOT be blocked"
+        );
+    }
+
+    #[test]
+    fn legitimate_cdn_domains_pass() {
+        let guard = guard_with_defaults();
+        for domain in &[
+            "cloudflare.com",
+            "fastly.net",
+            "gstatic.com",
+            "fbcdn.net",
+            "twimg.com",
+            "githubusercontent.com",
+            "akamaized.net",
+        ] {
+            let result = guard.check(domain, TEST_IP);
+            assert!(
+                matches!(result, DgaVerdict::Clean),
+                "{domain} should NOT be blocked"
+            );
+        }
+    }
+
+    #[test]
+    fn long_sld_alone_does_not_trigger() {
+        // Long but repetitive SLD — only sld_length fires (0.25 < 0.40)
         let guard = guard_with_defaults();
         let domain = format!("{}.com", "a".repeat(25));
         let result = guard.check(&domain, TEST_IP);
-        assert!(matches!(
-            result,
-            DgaVerdict::Detected {
-                signal: "sld_length",
-                ..
-            }
-        ));
+        assert!(
+            matches!(result, DgaVerdict::Clean),
+            "Single sld_length signal should not trigger"
+        );
     }
 
     #[test]
-    fn high_consonant_ratio_triggers_detection() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            sld_entropy_threshold: 5.0, // raise so entropy doesn't fire first
-            consonant_ratio_threshold: 0.75,
-            ..Default::default()
-        });
-        // All consonants except one vowel
+    fn long_random_sld_triggers_detection() {
+        let guard = guard_with_defaults();
+        // Long + high entropy + consonant-heavy → multiple signals
+        let domain = format!("{}xbkrwtplmqzncdf.com", "r".repeat(10));
+        let result = guard.check(&domain, TEST_IP);
+        assert!(
+            matches!(result, DgaVerdict::Detected { .. }),
+            "Long random SLD should be detected via multiple signals"
+        );
+    }
+
+    #[test]
+    fn two_signals_trigger_detection_at_default_threshold() {
+        let guard = guard_with_defaults();
+        // All consonants → high entropy (3.9) + consonant ratio 1.0 → 0.30 + 0.25 = 0.55 >= 0.40
         let result = guard.check("bcdfghjklmnpqrst.com", TEST_IP);
-        assert!(matches!(
-            result,
-            DgaVerdict::Detected {
-                signal: "consonant_ratio",
-                ..
-            }
-        ));
+        assert!(matches!(result, DgaVerdict::Detected { .. }));
     }
 
     #[test]
-    fn high_digit_ratio_triggers_detection() {
+    fn from_config_disabled_never_triggers() {
         let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            sld_entropy_threshold: 5.0,
-            consonant_ratio_threshold: 0.99,
-            digit_ratio_threshold: 0.3,
+            enabled: false,
             ..Default::default()
         });
-        let result = guard.check("a123456789.com", TEST_IP);
-        assert!(matches!(
-            result,
-            DgaVerdict::Detected {
-                signal: "digit_ratio",
-                ..
-            }
-        ));
+        let result = guard.check("xjk4f9a2h3b5c7d8e.com", TEST_IP);
+        assert!(matches!(result, DgaVerdict::Clean));
     }
 
     #[test]
