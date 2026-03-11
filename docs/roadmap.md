@@ -59,7 +59,7 @@
 ### v0.6.0 — Performance & Scale
 
 - [x] Pi-hole compatible API
-- [x] Performance benchmarks vs. competitors (438K QPS)
+- [x] Performance benchmarks vs. competitors (482K QPS)
 - [x] Dashboard settings: system status, DNS pool status, cache overview, system info
 - [x] In-flight coalescing (cache stampede prevention)
 - [x] TSC timer (~1-5ns) for hot path timing

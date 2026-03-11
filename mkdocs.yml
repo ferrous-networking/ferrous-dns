@@ -79,6 +79,7 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - Configuration:
     - Overview: configuration/index.md
+    - ferrous-dns.toml Reference: configuration/ferrous-dns-toml.md
     - Server: configuration/server.md
     - DNS & Upstreams: configuration/dns.md
     - Rate Limiting: configuration/rate-limiting.md

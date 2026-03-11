@@ -592,14 +592,19 @@ sqlite_mmap_size_mb          = 64
 | Section | Description |
 |:--------|:------------|
 | [`[server]`](server.md) | Ports, bind address, Pi-hole compat |
+| [`[server.web_tls]`](server.md#web-tls) | TLS certificate for the dashboard and REST API |
 | [`[auth]`](server.md#authentication) | Authentication, sessions, API tokens, rate limiting |
 | [`[server.encrypted_dns]`](server.md#encrypted-dns) | DoT and DoH server-side listeners |
 | [`[dns]`](dns.md) | Upstream resolution, DNSSEC, local records |
 | [`[[dns.pools]]`](dns.md#upstream-pools) | Upstream server groups and strategies |
 | [`[dns.health_check]`](dns.md#health-checks) | Upstream health monitoring |
 | [`[dns.rate_limit]`](rate-limiting.md) | Token bucket rate limiting, NXDOMAIN budget, TC=1 slip, connection limits |
+| [`[dns.tunneling_detection]`](ferrous-dns-toml.md#tunneling-detection) | DNS tunneling detection (two-phase: hot-path + statistical) |
+| [`[dns.dga_detection]`](ferrous-dns-toml.md#dga-detection) | DGA domain detection (entropy, n-gram, lexical analysis) |
+| [`[dns.nxdomain_hijack]`](ferrous-dns-toml.md#nxdomain-hijack) | ISP NXDOMAIN hijack detection and correction |
+| [`[dns.response_ip_filter]`](ferrous-dns-toml.md#response-ip-filter) | Block DNS responses resolving to known C2 IPs |
 | [`[dns]` local_dns_server](dns.md#local-dns-server) | PTR lookups, DHCP, upstream hostname resolution |
 | [`cache_*`](cache.md) | DNS cache tuning, eviction, refresh |
 | [`[blocking]`](blocking.md) | Ad-blocking, allowlist, custom rules |
-| [`[logging]`](database.md) | Log verbosity |
+| [`[logging]`](ferrous-dns-toml.md#logging) | Log verbosity |
 | [`[database]`](database.md) | SQLite path, query log, write pipeline, tuning |
