@@ -18,6 +18,7 @@ pub struct PagedQueryResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeGranularity {
     Minute,
+    TenMinutes,
     QuarterHour,
     Hour,
     Day,

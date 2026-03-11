@@ -1,5 +1,6 @@
 use axum::extract::{Query, State};
 use axum::Json;
+use chrono::{Timelike, Utc};
 use ferrous_dns_application::ports::TimeGranularity;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -13,7 +14,6 @@ use crate::{
     dto::upstreams::UpstreamsResponse,
     errors::PiholeApiError,
     state::PiholeAppState,
-    timestamp::parse_unix_epoch,
 };
 
 pub const STATS_PERIOD_HOURS: f32 = 24.0;
@@ -102,29 +102,57 @@ pub async fn get_summary(
     Ok(Json(response))
 }
 
-/// Pi-hole v6 GET /api/stats/history
+/// Pi-hole v6 GET /api/stats/history and GET /api/history
+///
+/// Glance pihole-v6 expects exactly 145 buckets of 10-minute intervals (24h + 1).
+/// Buckets with no queries are padded with zeros to guarantee the exact count.
 pub async fn get_history(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
 ) -> Result<Json<HistoryResponse>, PiholeApiError> {
+    // Glance requires exactly 145 ten-minute buckets covering ~24h of data.
+    const BUCKET_COUNT: usize = 145;
+    const BUCKET_MINUTES: i64 = 10;
+
+    // Fetch slightly more than 24h to cover all 145 buckets regardless of alignment.
+    let period_hours = params.from.unwrap_or(25.0) as u32;
     let buckets = state
         .query
         .get_timeline
-        .execute(params.period() as u32, TimeGranularity::QuarterHour)
+        .execute(period_hours, TimeGranularity::TenMinutes)
         .await?;
 
-    let history: Vec<HistoryBucket> = buckets
+    // Build lookup: "YYYY-MM-DD HH:MM:00" → (total, blocked, unblocked)
+    let bucket_map: HashMap<String, (u64, u64, u64)> = buckets
         .into_iter()
-        .filter_map(|b| {
-            let ts = parse_unix_epoch(&b.timestamp)?;
-            Some(HistoryBucket {
-                timestamp: ts,
-                total: b.total,
-                blocked: b.blocked,
-                // TODO: TimelineBucket does not break down cache vs forwarded yet
+        .map(|b| (b.timestamp, (b.total, b.blocked, b.unblocked)))
+        .collect();
+
+    // Generate the grid of 145 timestamps aligned to 10-minute boundaries.
+    // The grid ends at the current 10-minute boundary (exclusive of partial bucket).
+    let now = Utc::now();
+    let current_minute = (now.minute() / BUCKET_MINUTES as u32) * BUCKET_MINUTES as u32;
+    let grid_end = now
+        .with_minute(current_minute)
+        .unwrap_or(now)
+        .with_second(0)
+        .unwrap_or(now)
+        .with_nanosecond(0)
+        .unwrap_or(now);
+
+    let history: Vec<HistoryBucket> = (0..BUCKET_COUNT)
+        .map(|i| {
+            let offset_minutes = BUCKET_MINUTES * (BUCKET_COUNT as i64 - 1 - i as i64);
+            let bucket_time = grid_end - chrono::Duration::minutes(offset_minutes);
+            let key = bucket_time.format("%Y-%m-%d %H:%M:%S").to_string();
+            let (total, blocked, forwarded) = bucket_map.get(&key).copied().unwrap_or((0, 0, 0));
+            HistoryBucket {
+                timestamp: bucket_time.timestamp(),
+                total,
+                blocked,
                 cached: 0,
-                forwarded: b.unblocked,
-            })
+                forwarded,
+            }
         })
         .collect();
 

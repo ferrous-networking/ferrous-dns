@@ -10,6 +10,11 @@ use std::time::SystemTime;
 pub fn granularity_to_sql(g: TimeGranularity) -> &'static str {
     match g {
         TimeGranularity::Minute => "strftime('%Y-%m-%d %H:%M:00', created_at)",
+        TimeGranularity::TenMinutes => {
+            "strftime('%Y-%m-%d %H:', created_at) || \
+            printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 10) * 10) || \
+            ':00'"
+        }
         TimeGranularity::QuarterHour => {
             "strftime('%Y-%m-%d %H:', created_at) || \
             printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
