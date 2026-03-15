@@ -115,6 +115,9 @@ cache_access_window_secs = 43200
 !!! note
     `cache_min_ttl` should be >= 240 seconds so the refresh job has time to act before expiry.
 
+!!! info "Entries outside the access window are not renewed"
+    If a cached entry has not been accessed within `cache_access_window_secs` (default 12 hours), the refresh job ignores it — regardless of how many hits it accumulated in the past. The entry is left to expire naturally and is eventually removed by compaction or eviction. This prevents the cache from wasting upstream queries renewing domains that were popular in the past but are no longer being visited (e.g. a travel site accessed once and never again).
+
 ---
 
 ## LFU-K Eviction Parameters
