@@ -358,6 +358,7 @@ impl DnsServices {
             cache.clone(),
             resolver_for_maintenance,
             Some(repos.query_log.clone()),
+            60,
         )) as Arc<dyn CacheMaintenancePort>))
     }
 }

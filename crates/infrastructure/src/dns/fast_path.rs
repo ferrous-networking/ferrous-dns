@@ -7,8 +7,9 @@ const MAX_DOMAIN_LEN: usize = 253;
 pub enum FastPathKind {
     /// A (1) or AAAA (28) — address records, served inline without heap alloc.
     IpAddress,
-    /// NS (2), CNAME (5), SOA (6), PTR (12), MX (15), TXT (16) — cached as
-    /// `CachedData::WireData`; served by patching the query ID in the raw bytes.
+    /// NS (2), CNAME (5), SOA (6), PTR (12), MX (15), TXT (16), HTTPS (65),
+    /// SRV (33), SVCB (64) — cached as `CachedData::WireData`; served by
+    /// patching the query ID in the raw bytes.
     WireData,
 }
 
@@ -110,6 +111,9 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         15 => (RecordType::MX, FastPathKind::WireData),
         16 => (RecordType::TXT, FastPathKind::WireData),
         28 => (RecordType::AAAA, FastPathKind::IpAddress),
+        33 => (RecordType::SRV, FastPathKind::WireData),
+        64 => (RecordType::SVCB, FastPathKind::WireData),
+        65 => (RecordType::HTTPS, FastPathKind::WireData),
         _ => return None,
     };
 

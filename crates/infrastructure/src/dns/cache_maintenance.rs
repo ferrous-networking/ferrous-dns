@@ -7,6 +7,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_domain::{DnsQuery, DomainError, QueryLog, QuerySource, RecordType};
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -15,11 +16,19 @@ use tracing::{debug, info};
 
 const BACKPRESSURE_MS_PER_CANDIDATE: u64 = 2;
 
+/// Minimum bloom rotation interval in refresh cycles.
+/// Ensures bloom entries survive long enough to match cache min_ttl.
+const MIN_BLOOM_ROTATION_CYCLES: u64 = 3;
+
 /// Infrastructure adapter implementing `CacheMaintenancePort`.
 pub struct DnsCacheMaintenance {
     cache: Arc<DnsCache>,
     resolver: Arc<dyn DnsResolver>,
     query_log: Option<Arc<dyn QueryLogRepository>>,
+    /// Counts refresh cycles to throttle bloom rotation.
+    bloom_cycle_counter: AtomicU64,
+    /// Number of refresh cycles between bloom rotations.
+    bloom_rotation_cycles: u64,
 }
 
 impl DnsCacheMaintenance {
@@ -27,11 +36,30 @@ impl DnsCacheMaintenance {
         cache: Arc<DnsCache>,
         resolver: Arc<dyn DnsResolver>,
         query_log: Option<Arc<dyn QueryLogRepository>>,
+        refresh_interval_secs: u64,
     ) -> Self {
+        // Bloom rotation throttled so entries survive ≥ min_ttl seconds.
+        // The 2-slot aging bloom survives 1–2 rotations, so entries live
+        // N*interval to 2*N*interval seconds.
+        let min_ttl = cache.min_ttl() as u64;
+        let interval = refresh_interval_secs.max(1);
+        let bloom_rotation_cycles = (min_ttl / interval).max(MIN_BLOOM_ROTATION_CYCLES);
+
+        info!(
+            bloom_rotation_cycles,
+            min_ttl,
+            refresh_interval_secs,
+            "Bloom rotation throttled to every {} refresh cycles (~{} seconds)",
+            bloom_rotation_cycles,
+            bloom_rotation_cycles * interval,
+        );
+
         Self {
             cache,
             resolver,
             query_log,
+            bloom_cycle_counter: AtomicU64::new(0),
+            bloom_rotation_cycles,
         }
     }
 
@@ -207,7 +235,13 @@ impl CacheMaintenancePort for DnsCacheMaintenance {
             }
         }
 
-        self.cache.rotate_bloom();
+        let cycle = self
+            .bloom_cycle_counter
+            .fetch_add(1, AtomicOrdering::Relaxed)
+            + 1;
+        if cycle.is_multiple_of(self.bloom_rotation_cycles) {
+            self.cache.rotate_bloom();
+        }
 
         let cache_for_scan = Arc::clone(&self.cache);
         let candidates =

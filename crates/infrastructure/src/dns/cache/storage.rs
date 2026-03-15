@@ -387,6 +387,10 @@ impl DnsCache {
         }
     }
 
+    pub fn min_ttl(&self) -> u32 {
+        self.min_ttl
+    }
+
     pub fn access_window_secs(&self) -> u64 {
         self.access_window_secs
     }

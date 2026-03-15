@@ -177,6 +177,7 @@ impl HandleDnsQueryUseCase {
         request: &DnsRequest,
         context: &str,
         elapsed_us: u64,
+        group_id: i64,
     ) -> Result<(), DomainError> {
         match self.tunneling_guard.action() {
             TunnelingAction::Block => {
@@ -185,7 +186,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("TUNNELING_BLOCKED"),
                     block_source: Some(BlockSource::DnsTunneling),
-                    ..Self::base_query_log(request, elapsed_us, 0)
+                    ..Self::base_query_log(request, elapsed_us, group_id)
                 });
                 Err(DomainError::DnsTunnelingDetected)
             }
@@ -225,6 +226,7 @@ impl HandleDnsQueryUseCase {
         request: &DnsRequest,
         context: &str,
         elapsed_us: u64,
+        group_id: i64,
     ) -> Result<(), DomainError> {
         match self.dga_guard.action() {
             DgaDetectionAction::Block => {
@@ -233,7 +235,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("DGA_BLOCKED"),
                     block_source: Some(BlockSource::DgaDetection),
-                    ..Self::base_query_log(request, elapsed_us, 0)
+                    ..Self::base_query_log(request, elapsed_us, group_id)
                 });
                 Err(DomainError::DgaDomainDetected)
             }
@@ -326,15 +328,16 @@ impl HandleDnsQueryUseCase {
             .map(|_| BlockSource::CnameCloaking)
     }
 
-    /// Checks the cache for a non-IP record type (NS, CNAME, SOA, PTR, MX, TXT)
-    /// and returns the raw wire bytes if there is a hit. The caller is
-    /// responsible for patching the query ID before sending the response.
+    /// Checks the cache for a non-IP record type (NS, CNAME, SOA, PTR, MX, TXT,
+    /// HTTPS, SRV, SVCB) and returns the raw wire bytes if there is a hit.
+    /// The caller is responsible for patching the query ID before sending.
     pub fn try_cache_wire_direct(
         &self,
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
     ) -> Option<(bytes::Bytes, u32)> {
+        let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
 
         if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
@@ -360,6 +363,29 @@ impl HandleDnsQueryUseCase {
         let resolution = self.resolver.try_cache_str(domain, record_type)?;
         let wire = resolution.upstream_wire_data?;
         let ttl = resolution.min_ttl.unwrap_or(0);
+
+        let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
+        let domain_arc: Arc<str> = Arc::from(domain);
+        self.log(&QueryLog {
+            id: None,
+            domain: domain_arc,
+            record_type,
+            client_ip,
+            client_hostname: None,
+            blocked: false,
+            response_time_us: Some(elapsed_us),
+            cache_hit: true,
+            cache_refresh: false,
+            dnssec_status: resolution.dnssec_status,
+            upstream_server: None,
+            upstream_pool: None,
+            response_status: Some("NOERROR"),
+            timestamp: None,
+            query_source: QuerySource::Client,
+            group_id: Some(group_id),
+            block_source: None,
+        });
+
         Some((wire, ttl))
     }
 
@@ -434,6 +460,8 @@ impl HandleDnsQueryUseCase {
 
         self.maybe_track_client(request.client_ip);
 
+        let group_id = self.block_filter.resolve_group(request.client_ip);
+
         match self.rate_limiter.check(request.client_ip, false) {
             RateLimitDecision::Allow => {}
             RateLimitDecision::DryRunWouldRefuse => {
@@ -444,7 +472,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("RATE_LIMITED"),
                     block_source: Some(BlockSource::RateLimit),
-                    ..Self::base_query_log(request, elapsed_us(), 0)
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
                 });
                 return Err(DomainError::DnsRateLimited);
             }
@@ -453,7 +481,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("RATE_LIMITED_TC"),
                     block_source: Some(BlockSource::RateLimit),
-                    ..Self::base_query_log(request, elapsed_us(), 0)
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
                 });
                 return Err(DomainError::DnsRateLimitedSlip);
             }
@@ -474,12 +502,12 @@ impl HandleDnsQueryUseCase {
                 threshold,
                 "Tunneling phase-1 signal"
             );
-            self.apply_tunneling_action(request, signal, elapsed_us())?;
+            self.apply_tunneling_action(request, signal, elapsed_us(), group_id)?;
         }
 
         if let Some(ref store) = self.tunneling_flag_store {
             if store.is_flagged(&request.domain) {
-                self.apply_tunneling_action(request, "flagged_domain", elapsed_us())?;
+                self.apply_tunneling_action(request, "flagged_domain", elapsed_us(), group_id)?;
             }
         }
 
@@ -497,18 +525,17 @@ impl HandleDnsQueryUseCase {
                 threshold,
                 "DGA phase-1 signal"
             );
-            self.apply_dga_action(request, signal, elapsed_us())?;
+            self.apply_dga_action(request, signal, elapsed_us(), group_id)?;
         }
 
         // DGA Detection — Phase 2 (flagged check)
         if let Some(ref store) = self.dga_flag_store {
             if store.is_flagged(&request.domain) {
-                self.apply_dga_action(request, "flagged_domain", elapsed_us())?;
+                self.apply_dga_action(request, "flagged_domain", elapsed_us(), group_id)?;
             }
         }
 
         let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
-        let group_id = self.block_filter.resolve_group(request.client_ip);
 
         if let FilterDecision::Block(block_source) =
             self.block_filter.check(&request.domain, group_id)
