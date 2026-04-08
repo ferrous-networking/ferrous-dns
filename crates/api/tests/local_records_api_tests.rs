@@ -157,12 +157,6 @@ impl ServiceCatalogPort for NullServiceCatalog {
 struct NullConfigRepository;
 #[async_trait::async_trait]
 impl ConfigRepository for NullConfigRepository {
-    async fn get_config(&self) -> Result<Config, ferrous_dns_domain::DomainError> {
-        Ok(Config::default())
-    }
-    async fn save_config(&self, _config: &Config) -> Result<(), ferrous_dns_domain::DomainError> {
-        Ok(())
-    }
     async fn save_local_records(
         &self,
         _config: &Config,

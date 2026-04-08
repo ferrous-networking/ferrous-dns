@@ -26,7 +26,7 @@ pub use blocklist_source_repository::SqliteBlocklistSourceRepository;
 pub use client_repository::SqliteClientRepository;
 pub use client_subnet_repository::SqliteClientSubnetRepository;
 pub use config_persistence::TomlConfigFilePersistence;
-pub use config_repository::SqliteConfigRepository;
+pub use config_repository::TomlConfigRepository;
 pub use custom_service_repository::SqliteCustomServiceRepository;
 pub use group_repository::SqliteGroupRepository;
 pub use managed_domain_repository::SqliteManagedDomainRepository;

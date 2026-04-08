@@ -46,7 +46,7 @@ pub use clients::{
     CleanupOldClientsUseCase, CreateManualClientUseCase, DeleteClientUseCase, GetClientsUseCase,
     SyncArpCacheUseCase, SyncHostnamesUseCase, TrackClientUseCase, UpdateClientUseCase,
 };
-pub use config::{GetConfigUseCase, ReloadConfigUseCase, UpdateConfigUseCase};
+pub use config::ReloadConfigUseCase;
 pub use custom_services::{
     CreateCustomServiceUseCase, DeleteCustomServiceUseCase, GetCustomServicesUseCase,
     UpdateCustomServiceUseCase,

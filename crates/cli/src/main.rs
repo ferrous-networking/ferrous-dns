@@ -70,7 +70,6 @@ async fn async_main() -> anyhow::Result<()> {
 
     let config_arc = Arc::new(RwLock::new(config.clone()));
     let wal_pool = write_pool.clone();
-    let config_repo_pool = wal_pool.clone();
 
     let repos = wiring::Repositories::new(
         write_pool,
@@ -135,7 +134,6 @@ async fn async_main() -> anyhow::Result<()> {
         &repos,
         &dns_services,
         config_arc,
-        config_repo_pool,
         effective_config_path,
     )
     .await;

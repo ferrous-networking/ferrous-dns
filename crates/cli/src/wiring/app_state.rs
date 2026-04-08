@@ -15,9 +15,8 @@ use ferrous_dns_infrastructure::auth::{
     Argon2PasswordHasher, CompositeUserProvider, TomlAdminProvider,
 };
 use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
-use ferrous_dns_infrastructure::repositories::{SqliteConfigRepository, TomlConfigFilePersistence};
+use ferrous_dns_infrastructure::repositories::{TomlConfigFilePersistence, TomlConfigRepository};
 use ferrous_dns_infrastructure::tls::TlsCertificateService;
-use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -28,11 +27,16 @@ pub async fn build_app_state(
     repos: &Repositories,
     dns_services: &DnsServices,
     config: Arc<RwLock<Config>>,
-    config_repo_pool: SqlitePool,
     config_path: Option<Arc<str>>,
 ) -> AppState {
+    let effective_path = config_path
+        .as_deref()
+        .map(String::from)
+        .or_else(Config::get_config_path)
+        .unwrap_or_else(|| "ferrous-dns.toml".to_string());
+
     let config_repo: Arc<dyn ferrous_dns_application::ports::ConfigRepository> =
-        Arc::new(SqliteConfigRepository::new(config_repo_pool));
+        Arc::new(TomlConfigRepository::new(effective_path.clone()));
 
     let auth_config = {
         let cfg = config.read().await;
@@ -50,10 +54,7 @@ pub async fn build_app_state(
         toml_admin,
         repos.user.clone(),
         config.clone(),
-        config_path
-            .as_deref()
-            .map(String::from)
-            .or_else(Config::get_config_path),
+        Some(effective_path),
         config_persistence.clone(),
     ));
 

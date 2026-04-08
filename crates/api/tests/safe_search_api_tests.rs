@@ -141,17 +141,6 @@ struct NullConfigRepository;
 
 #[async_trait::async_trait]
 impl ConfigRepository for NullConfigRepository {
-    async fn get_config(
-        &self,
-    ) -> Result<ferrous_dns_domain::Config, ferrous_dns_domain::DomainError> {
-        Ok(ferrous_dns_domain::Config::default())
-    }
-    async fn save_config(
-        &self,
-        _config: &ferrous_dns_domain::Config,
-    ) -> Result<(), ferrous_dns_domain::DomainError> {
-        Ok(())
-    }
     async fn save_local_records(
         &self,
         _config: &ferrous_dns_domain::Config,

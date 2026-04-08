@@ -26,14 +26,6 @@ impl MockConfigRepository {
 
 #[async_trait]
 impl ConfigRepository for MockConfigRepository {
-    async fn get_config(&self) -> Result<Config, DomainError> {
-        Ok(Config::default())
-    }
-
-    async fn save_config(&self, _config: &Config) -> Result<(), DomainError> {
-        Ok(())
-    }
-
     async fn save_local_records(&self, _config: &Config) -> Result<(), DomainError> {
         if self.should_fail {
             Err(DomainError::IoError("disk full".to_string()))
