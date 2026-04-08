@@ -1,12 +1,15 @@
-use super::storage::DnsCache;
+use super::{coarse_clock::coarse_now_secs, storage::DnsCache};
 use std::sync::atomic::Ordering as AtomicOrdering;
 use tracing::debug;
 
 impl DnsCache {
     pub fn compact(&self) -> usize {
         let before = self.cache.len();
-        self.cache
-            .retain(|_, record| !record.is_marked_for_deletion());
+        let now = coarse_now_secs();
+        self.cache.retain(|_, record| {
+            !record.is_marked_for_deletion()
+                && (!record.is_expired_at_secs(now) || record.is_stale_usable_at_secs(now))
+        });
         let removed = before.saturating_sub(self.cache.len());
 
         if removed > 0 {

@@ -947,7 +947,7 @@ fn test_lfuk_new_entries_evicted_in_order_not_urgently() {
 // ─── Testes de compaction ─────────────────────────────────────────────────────
 
 #[test]
-fn test_compact_retains_expired_entries() {
+fn test_compact_removes_expired_entries_past_stale_window() {
     let cache = create_refresh_cache(7200);
     coarse_clock::tick();
 
@@ -959,15 +959,45 @@ fn test_compact_retains_expired_entries() {
         None,
     );
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // TTL=1s, stale grace = 2×TTL = 2s → wait 3s to be fully past stale window
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    coarse_clock::tick();
+
+    let removed = cache.compact();
+    assert_eq!(
+        removed, 1,
+        "compact() deve remover entradas expiradas e fora da stale window"
+    );
+    assert_eq!(cache.len(), 0, "Cache deve estar vazio após compaction");
+}
+
+#[test]
+fn test_compact_retains_entries_within_stale_window() {
+    let cache = create_refresh_cache(7200);
+    coarse_clock::tick();
+
+    // TTL=3s, stale grace = 2×TTL = 6s → after 4s entry is expired but still stale-usable
+    cache.insert(
+        "stale.test",
+        RecordType::CNAME,
+        make_cname_data("alias"),
+        3,
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_secs(4));
     coarse_clock::tick();
 
     let removed = cache.compact();
     assert_eq!(
         removed, 0,
-        "compact() não deve remover entradas expiradas (apenas marked_for_deletion)"
+        "compact() não deve remover entradas ainda dentro da stale window"
     );
-    assert_eq!(cache.len(), 1, "Entrada expirada deve permanecer no cache");
+    assert_eq!(
+        cache.len(),
+        1,
+        "Entrada na stale window deve ser preservada"
+    );
 }
 
 #[test]
