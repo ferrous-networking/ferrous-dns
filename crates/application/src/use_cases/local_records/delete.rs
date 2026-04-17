@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord};
+use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord, RecordType};
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::ports::{ConfigRepository, PtrRecordRegistry};
+use crate::ports::{ConfigRepository, DnsCachePort, PtrRecordRegistry};
 
 pub struct DeleteLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
     config_repo: Arc<dyn ConfigRepository>,
     ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
+    dns_cache: Option<Arc<dyn DnsCachePort>>,
 }
 
 impl DeleteLocalRecordUseCase {
@@ -18,6 +19,7 @@ impl DeleteLocalRecordUseCase {
             config,
             config_repo,
             ptr_registry: None,
+            dns_cache: None,
         }
     }
 
@@ -25,6 +27,13 @@ impl DeleteLocalRecordUseCase {
     /// removes the IP → FQDN mapping without requiring a server restart.
     pub fn with_ptr_registry(mut self, registry: Option<Arc<dyn PtrRecordRegistry>>) -> Self {
         self.ptr_registry = registry;
+        self
+    }
+
+    /// Attaches a live DNS cache so that a successful record deletion immediately
+    /// removes the forward record (A/AAAA) from the cache without requiring a server restart.
+    pub fn with_dns_cache(mut self, cache: Option<Arc<dyn DnsCachePort>>) -> Self {
+        self.dns_cache = cache;
         self
     }
 
@@ -55,6 +64,18 @@ impl DeleteLocalRecordUseCase {
                 Err(_) => {
                     warn!(ip = %removed_record.ip, "PTR registry: failed to parse IP after delete");
                 }
+            }
+        }
+
+        if let Some(ref cache) = self.dns_cache {
+            let fqdn = removed_record.fqdn(&config.dns.local_domain);
+            if let Ok(record_type) = removed_record.record_type.parse::<RecordType>() {
+                cache.remove_record(&fqdn, &record_type);
+            } else {
+                warn!(
+                    record_type = %removed_record.record_type,
+                    "DNS cache: unrecognised record type on removed record, skipping eviction"
+                );
             }
         }
 

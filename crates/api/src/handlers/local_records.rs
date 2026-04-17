@@ -5,8 +5,7 @@ use axum::{
     routing::{get, post, put},
     Router,
 };
-use ferrous_dns_domain::LocalDnsRecord;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::{dto::local_record::*, errors::ApiError, state::AppState};
 
@@ -48,7 +47,6 @@ async fn create_record(
         .await?;
 
     let local_domain = state.config.read().await.dns.local_domain.clone();
-    reload_cache_with_record(&state, &new_record, &local_domain).await;
 
     info!(
         hostname = %new_record.hostname,
@@ -66,7 +64,7 @@ async fn update_record(
     Path(id): Path<i64>,
     Json(req): Json<UpdateLocalRecordRequest>,
 ) -> Result<Json<LocalRecordDto>, ApiError> {
-    let (updated_record, old_record) = state
+    let (updated_record, _old_record) = state
         .dns
         .update_local_record
         .execute(
@@ -80,8 +78,6 @@ async fn update_record(
         .await?;
 
     let local_domain = state.config.read().await.dns.local_domain.clone();
-    clear_cache_record(&state, &old_record, &local_domain).await;
-    reload_cache_with_record(&state, &updated_record, &local_domain).await;
 
     info!(
         hostname = %updated_record.hostname,
@@ -100,9 +96,6 @@ async fn delete_record(
 ) -> Result<StatusCode, ApiError> {
     let removed_record = state.dns.delete_local_record.execute(id).await?;
 
-    let local_domain = state.config.read().await.dns.local_domain.clone();
-    clear_cache_record(&state, &removed_record, &local_domain).await;
-
     info!(
         hostname = %removed_record.hostname,
         ip = %removed_record.ip,
@@ -111,86 +104,4 @@ async fn delete_record(
     );
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-async fn reload_cache_with_record(
-    state: &AppState,
-    record: &LocalDnsRecord,
-    default_domain: &Option<String>,
-) {
-    let fqdn = record.fqdn(default_domain);
-
-    let ip: std::net::IpAddr = match record.ip.parse() {
-        Ok(ip) => ip,
-        Err(_) => {
-            warn!(
-                hostname = %record.hostname,
-                ip = %record.ip,
-                "Invalid IP address, cannot add to cache"
-            );
-            return;
-        }
-    };
-
-    let record_type = match record.record_type.to_uppercase().as_str() {
-        "A" => ferrous_dns_domain::RecordType::A,
-        "AAAA" => ferrous_dns_domain::RecordType::AAAA,
-        _ => {
-            warn!(
-                hostname = %record.hostname,
-                record_type = %record.record_type,
-                "Invalid record type, cannot add to cache"
-            );
-            return;
-        }
-    };
-
-    state
-        .dns
-        .cache
-        .insert_permanent_record(&fqdn, record_type, vec![ip]);
-
-    info!(
-        fqdn = %fqdn,
-        ip = %ip,
-        record_type = %record_type,
-        "Added local DNS record to permanent cache"
-    );
-}
-
-async fn clear_cache_record(
-    state: &AppState,
-    record: &LocalDnsRecord,
-    default_domain: &Option<String>,
-) {
-    let fqdn = record.fqdn(default_domain);
-
-    let record_type = match record.record_type.to_uppercase().as_str() {
-        "A" => ferrous_dns_domain::RecordType::A,
-        "AAAA" => ferrous_dns_domain::RecordType::AAAA,
-        _ => {
-            warn!(
-                hostname = %record.hostname,
-                record_type = %record.record_type,
-                "Invalid record type, cannot remove from cache"
-            );
-            return;
-        }
-    };
-
-    let removed = state.dns.cache.remove_record(&fqdn, &record_type);
-
-    if removed {
-        info!(
-            fqdn = %fqdn,
-            record_type = %record_type,
-            "Removed local DNS record from cache"
-        );
-    } else {
-        warn!(
-            fqdn = %fqdn,
-            record_type = %record_type,
-            "Local DNS record not found in cache (may have already been removed)"
-        );
-    }
 }
