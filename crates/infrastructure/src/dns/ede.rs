@@ -21,21 +21,37 @@ pub struct ExtendedDnsError {
 }
 
 pub fn from_domain_error(err: &DomainError) -> Option<ExtendedDnsError> {
-    let code = match err {
-        DomainError::Blocked | DomainError::DgaDomainDetected => codes::BLOCKED,
-        DomainError::DnsTunnelingDetected | DomainError::DnsRateLimited => codes::PROHIBITED,
-        DomainError::DnssecValidationFailed(_) => codes::DNSSEC_BOGUS,
-        DomainError::InsecureDelegation => codes::DNSKEY_MISSING,
-        DomainError::QueryTimeout
-        | DomainError::TransportNoHealthyServers
-        | DomainError::TransportAllServersUnreachable => codes::NO_REACHABLE_AUTHORITY,
-        DomainError::TransportTimeout { .. }
-        | DomainError::TransportConnectionRefused { .. }
-        | DomainError::TransportConnectionReset { .. } => codes::NETWORK_ERROR,
+    let (code, text) = match err {
+        DomainError::Blocked => (codes::BLOCKED, "domain is in blocklist"),
+        DomainError::DgaDomainDetected => (codes::BLOCKED, "DGA domain detected"),
+        DomainError::FilteredQuery(_) => (codes::BLOCKED, "query filtered by policy"),
+        DomainError::DnsTunnelingDetected => (codes::PROHIBITED, "DNS tunneling detected"),
+        DomainError::DnsRateLimited => (codes::PROHIBITED, "rate limit exceeded"),
+        DomainError::DnssecValidationFailed(_) => {
+            (codes::DNSSEC_BOGUS, "DNSSEC signature validation failed")
+        }
+        DomainError::InsecureDelegation => (codes::DNSKEY_MISSING, "insecure delegation"),
+        DomainError::QueryTimeout => (codes::NO_REACHABLE_AUTHORITY, "upstream query timed out"),
+        DomainError::TransportNoHealthyServers => {
+            (codes::NO_REACHABLE_AUTHORITY, "no healthy upstream servers")
+        }
+        DomainError::TransportAllServersUnreachable => (
+            codes::NO_REACHABLE_AUTHORITY,
+            "all upstream servers unreachable",
+        ),
+        DomainError::TransportTimeout { .. } => {
+            (codes::NETWORK_ERROR, "upstream connection timed out")
+        }
+        DomainError::TransportConnectionRefused { .. } => {
+            (codes::NETWORK_ERROR, "upstream connection refused")
+        }
+        DomainError::TransportConnectionReset { .. } => {
+            (codes::NETWORK_ERROR, "upstream connection reset")
+        }
         _ => return None,
     };
     Some(ExtendedDnsError {
         info_code: code,
-        extra_text: None,
+        extra_text: Some(text),
     })
 }

@@ -94,8 +94,33 @@ fn should_return_none_when_unrelated_error() {
 }
 
 #[test]
-fn should_return_none_when_filtered_query() {
-    assert!(ede::from_domain_error(&DomainError::FilteredQuery("private PTR".into())).is_none());
+fn should_return_blocked_when_filtered_query() {
+    let ede = ede::from_domain_error(&DomainError::FilteredQuery("private PTR".into())).unwrap();
+    assert_eq!(ede.info_code, codes::BLOCKED);
+}
+
+#[test]
+fn should_return_extra_text_when_blocked() {
+    let ede = ede::from_domain_error(&DomainError::Blocked).unwrap();
+    assert_eq!(ede.extra_text, Some("domain is in blocklist"));
+}
+
+#[test]
+fn should_return_extra_text_when_tunneling_detected() {
+    let ede = ede::from_domain_error(&DomainError::DnsTunnelingDetected).unwrap();
+    assert_eq!(ede.extra_text, Some("DNS tunneling detected"));
+}
+
+#[test]
+fn should_return_extra_text_when_rate_limited() {
+    let ede = ede::from_domain_error(&DomainError::DnsRateLimited).unwrap();
+    assert_eq!(ede.extra_text, Some("rate limit exceeded"));
+}
+
+#[test]
+fn should_return_extra_text_when_query_timeout() {
+    let ede = ede::from_domain_error(&DomainError::QueryTimeout).unwrap();
+    assert_eq!(ede.extra_text, Some("upstream query timed out"));
 }
 
 #[test]

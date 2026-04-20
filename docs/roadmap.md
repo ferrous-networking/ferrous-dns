@@ -84,7 +84,7 @@
 
 ### v0.8.0 — Config & Backup
 
-- [ ] RFC 8914 — Extended DNS Errors (EDE)
+- [x] RFC 8914 — Extended DNS Errors (EDE)
 - [ ] RFC 7873 — DNS Cookies
 - [ ] RFC 7871 — EDNS Client Subnet
 - [ ] Config export/import (backup and restore)

@@ -66,24 +66,48 @@ impl DnsServerHandler {
 
         let query_id = query_msg.id();
         let rd = query_msg.recursion_desired();
+        let has_edns = query_msg.extensions().is_some();
         drop(query_msg);
 
         let resolution = match self.use_case.execute(&dns_request).await {
             Ok(res) => res,
-            Err(DomainError::Blocked)
-            | Err(DomainError::DgaDomainDetected)
-            | Err(DomainError::DnsTunnelingDetected)
-            | Err(DomainError::DnsRateLimited)
-            | Err(DomainError::FilteredQuery(_)) => {
-                return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
+            Err(ref e @ DomainError::Blocked)
+            | Err(ref e @ DomainError::DgaDomainDetected)
+            | Err(ref e @ DomainError::DnsTunnelingDetected)
+            | Err(ref e @ DomainError::DnsRateLimited)
+            | Err(ref e @ DomainError::FilteredQuery(_)) => {
+                return build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::Refused,
+                    has_edns,
+                    ede::from_domain_error(e),
+                )
             }
             Err(DomainError::DnsRateLimitedSlip) => {
                 return build_truncated_wire(query_id, rd, &queries)
             }
             Err(DomainError::NxDomain) | Err(DomainError::LocalNxDomain) => {
-                return build_error_wire(query_id, rd, &queries, ResponseCode::NXDomain)
+                return build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::NXDomain,
+                    has_edns,
+                    None,
+                )
             }
-            Err(_) => return build_error_wire(query_id, rd, &queries, ResponseCode::ServFail),
+            Err(ref e) => {
+                return build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::ServFail,
+                    has_edns,
+                    ede::from_domain_error(e),
+                )
+            }
         };
 
         let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
@@ -210,13 +234,13 @@ impl RequestHandler for DnsServerHandler {
                 )
                 .await;
             }
-            Err(DomainError::FilteredQuery(ref reason)) => {
+            Err(ref e @ DomainError::FilteredQuery(ref reason)) => {
                 debug!(domain = %domain_ref, reason = %reason, "Query filtered by policy");
                 return send_error_response(
                     request,
                     &mut response_handle,
                     ResponseCode::Refused,
-                    None,
+                    ede::from_domain_error(e),
                 )
                 .await;
             }
@@ -328,6 +352,8 @@ fn build_error_wire(
     rd: bool,
     queries: &[hickory_proto::op::Query],
     code: ResponseCode,
+    has_edns: bool,
+    ede: Option<ExtendedDnsError>,
 ) -> Option<Vec<u8>> {
     let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
     resp.set_recursion_desired(rd);
@@ -335,6 +361,21 @@ fn build_error_wire(
     resp.set_response_code(code);
     for q in queries {
         resp.add_query(q.clone());
+    }
+    if has_edns {
+        let mut edns = Edns::new();
+        edns.set_max_payload(4096);
+        edns.set_version(0);
+        if let Some(ede) = ede {
+            let mut data = Vec::with_capacity(2);
+            data.extend_from_slice(&ede.info_code.to_be_bytes());
+            if let Some(text) = ede.extra_text {
+                data.extend_from_slice(text.as_bytes());
+            }
+            edns.options_mut()
+                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
+        }
+        resp.set_edns(edns);
     }
     encode_message(&resp)
 }

@@ -345,6 +345,56 @@ Connections that exceed the limit are immediately closed. The connection counter
 
 ---
 
+## Extended DNS Errors (RFC 8914) {#ede}
+
+Extended DNS Errors (EDE) is a DNS protocol extension defined in [RFC 8914](https://www.rfc-editor.org/rfc/rfc8914) that attaches a structured error code and an optional human-readable description to DNS error responses. This gives DNS clients and resolvers precise, machine-readable information about *why* a query failed — instead of a bare `SERVFAIL`, `REFUSED`, or `NXDOMAIN`.
+
+### How It Works
+
+When Ferrous DNS rejects or fails to resolve a query, it appends an EDE option to the OPT record of the DNS response. The option contains two fields:
+
+- **`info_code`** — a standardised 16-bit code defined by the RFC (e.g. `15` for `BLOCKED`, `6` for `DNSSEC_BOGUS`)
+- **`extra_text`** — a short human-readable string describing the specific reason (e.g. `"DGA domain detected"`, `"upstream connection timed out"`)
+
+EDE is encoded as EDNS option code **15** inside the OPT record and is fully transparent to clients that do not understand it — they simply ignore the unknown option.
+
+!!! note "EDNS requirement"
+    Ferrous DNS only includes an EDE option when the **client itself advertised EDNS support** by including an OPT record in its query. Clients that do not send EDNS queries receive the same error response as before, without the EDE option.
+
+No configuration is required. EDE is always active.
+
+### Error Code Reference
+
+| EDE Name | Code | Triggered by |
+|:---------|:----:|:-------------|
+| `DNSSEC_BOGUS` | 6 | `DnssecValidationFailed` — DNSSEC signature validation failed |
+| `DNSKEY_MISSING` | 9 | `InsecureDelegation` — insecure DNSSEC delegation |
+| `BLOCKED` | 15 | `Blocked` — domain matched the blocklist |
+| `BLOCKED` | 15 | `DgaDomainDetected` — DGA domain identified by statistical analysis |
+| `BLOCKED` | 15 | `FilteredQuery` — query filtered by group policy or schedule |
+| `PROHIBITED` | 18 | `DnsTunnelingDetected` — DNS tunneling activity detected |
+| `PROHIBITED` | 18 | `DnsRateLimited` — client subnet exceeded the rate limit budget |
+| `NO_REACHABLE_AUTHORITY` | 22 | `QueryTimeout` — upstream query timed out before responding |
+| `NO_REACHABLE_AUTHORITY` | 22 | `TransportNoHealthyServers` — no upstream server is currently healthy |
+| `NO_REACHABLE_AUTHORITY` | 22 | `TransportAllServersUnreachable` — all configured upstream servers are unreachable |
+| `NETWORK_ERROR` | 23 | `TransportTimeout` — upstream TCP/TLS connection timed out |
+| `NETWORK_ERROR` | 23 | `TransportConnectionRefused` — upstream server actively refused the connection |
+| `NETWORK_ERROR` | 23 | `TransportConnectionReset` — upstream server reset the TCP/TLS connection |
+
+!!! tip "Debugging with EDE"
+    DNS clients like `dig` display EDE data automatically. Use `dig +edns=0 example.com @your-server` to confirm EDNS support, then inspect the `OPT PSEUDOSECTION` in the response for the EDE info code and extra text.
+
+### Scope
+
+EDE is applied in both DNS code paths:
+
+- **Standard path** — the Hickory `handle_request` handler that processes TCP, DoT, DoH, DoQ, and H3 queries
+- **Raw UDP fallback path** — the `handle_raw_udp_fallback` handler for high-throughput UDP resolution
+
+This ensures consistent error reporting regardless of the transport protocol used by the client.
+
+---
+
 ## Upcoming Security Features
 
 The following are planned for future releases:
@@ -364,6 +414,7 @@ The following are planned for future releases:
 | DNS tunneling detection | :white_check_mark: Active |
 | DNS rebinding protection | :white_check_mark: Active |
 | NXDomain hijack detection | :white_check_mark: Active |
+| Extended DNS Errors (RFC 8914) | :white_check_mark: Active |
 | Encrypted upstream (DoH/DoT/DoQ) | :white_check_mark: Active |
 | Server-side DoT/DoH | :white_check_mark: Active |
 | PROXY Protocol v2 | :white_check_mark: Active |
