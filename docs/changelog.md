@@ -13,6 +13,12 @@ The full changelog is published with each release on GitHub:
 | Version | Highlights | Status |
 |:--------|:-----------|:------:|
 | v0.8.0 | Config export/import, query log export, Prometheus metrics, OpenAPI docs | In Progress |
+
+### v0.8.2 — DNS Cookies
+
+#### Added
+
+- RFC 7873 DNS Cookies (EDNS option 10) — server-side anti-spoofing and amplification protection with HMAC-SHA256 server cookies, secret rotation, and permissive/strict enforcement modes.
 | v0.7.x | HTTPS, auth, API tokens, rate limiting, DNS tunneling detection, DGA detection, NXDomain hijack detection, response IP filtering (C2 blocking) | Released |
 | v0.6.x | In-flight coalescing, TSC timer, Pi-hole API compat, benchmark suite | Released |
 | v0.5.0 | DoH/DoT server-side, PROXY Protocol v2, auto PTR, DNS rebinding protection | Released |

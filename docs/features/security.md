@@ -395,6 +395,72 @@ This ensures consistent error reporting regardless of the transport protocol use
 
 ---
 
+## DNS Cookies (RFC 7873) {#dns-cookies}
+
+DNS Cookies (RFC 7873) are a lightweight, stateless anti-spoofing mechanism for UDP DNS. Because UDP has no handshake, a resolver cannot normally verify that a query's source IP is genuine. An attacker can forge queries from a victim's address, causing the server to flood the victim with large responses (**amplification attack**) or inject a forged answer before the real upstream replies (**cache poisoning via spoofing**). DNS Cookies solve this by binding each client–server pair with a cryptographic token that cannot be forged without knowledge of the server's secret key.
+
+### How It Works
+
+The handshake proceeds in three stages:
+
+```
+Stage 1 — Bootstrap (first query from this client)
+
+  Client → Server:  query  [EDNS OPT: client_cookie=<8-byte random>]
+  Server → Client:  answer [EDNS OPT: client_cookie=<echo> | server_cookie=<HMAC>]
+
+  The server computes:
+      server_cookie = HMAC-SHA256(secret, client_ip ‖ client_cookie)[0..8]
+  The client stores this server_cookie for future queries.
+
+Stage 2 — Valid cookie (subsequent queries)
+
+  Client → Server:  query  [EDNS OPT: client_cookie=<same> | server_cookie=<cached>]
+  Server validates:  recomputes HMAC and compares → match → trusted client
+  Server → Client:  answer [EDNS OPT: refreshed server_cookie]
+
+Stage 3 — Secret rotation
+
+  After secret_rotation_secs, the server starts signing with a new secret.
+  The previous secret remains accepted for one full rotation window so that
+  in-flight clients are not abruptly rejected — they receive a new cookie in
+  the response and update their cache silently.
+```
+
+### Protection Against UDP Spoofing
+
+When a client has negotiated a valid server cookie, the server can confirm with high confidence that subsequent queries originate from the same IP. An attacker spoofing the victim's source address does not know the server's HMAC secret and cannot reproduce the correct server cookie, so:
+
+- **Amplification attacks** — spoofed queries without a valid cookie are refused in permissive mode (no resolution, minimal response) or rejected with `REFUSED` in strict mode, preventing the server from being used as a reflector.
+- **Cache poisoning** — an attacker cannot inject a forged response without matching the cookie the client presented, dramatically narrowing the race window.
+
+### Integration with EDE Code 25
+
+In strict mode (`require_valid_cookie = true`), queries with an absent or invalid server cookie are rejected with:
+
+- **RCODE** `REFUSED`
+- **EDE info_code** `25` — *Bad or Missing EDNS Cookie* (RFC 8914 § 4.25)
+
+This gives RFC-aware clients a precise machine-readable reason for the rejection, enabling automatic retry with a freshly bootstrapped cookie.
+
+### Fast Path Behaviour
+
+Cache hits bypass the DNS Cookie guard entirely — a query served from L1 or L2 cache does not incur any cookie verification overhead. Cookie validation runs only on cache misses, keeping the hot path at zero additional cost.
+
+### Configuration
+
+```toml
+[dns_cookies]
+enabled               = true    # on by default
+server_secret         = ""      # empty = ephemeral secret (not for production)
+secret_rotation_secs  = 3600    # rotate every hour
+require_valid_cookie  = false   # permissive mode (recommended default)
+```
+
+See [DNS Cookies configuration](../configuration/dns.md#dns-cookies-rfc-7873) for the full option reference and strict-mode setup.
+
+---
+
 ## Upcoming Security Features
 
 The following are planned for future releases:
@@ -414,6 +480,7 @@ The following are planned for future releases:
 | DNS tunneling detection | :white_check_mark: Active |
 | DNS rebinding protection | :white_check_mark: Active |
 | NXDomain hijack detection | :white_check_mark: Active |
+| DNS Cookies (RFC 7873) | :white_check_mark: Active |
 | Extended DNS Errors (RFC 8914) | :white_check_mark: Active |
 | Encrypted upstream (DoH/DoT/DoQ) | :white_check_mark: Active |
 | Server-side DoT/DoH | :white_check_mark: Active |

@@ -10,6 +10,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
+use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
@@ -291,6 +292,17 @@ impl DnsServices {
                 .with_dga_flag_store(Arc::clone(detector) as Arc<dyn DgaFlagStore>);
         }
 
+        // DNS Cookies (RFC 7873)
+        if config.dns.dns_cookies.enabled {
+            let secret = resolve_cookie_secret(&config.dns.dns_cookies);
+            let cookie_guard = DnsCookieGuard::from_config(&config.dns.dns_cookies, secret);
+            handler = handler.with_dns_cookies(cookie_guard);
+            info!(
+                require_valid = config.dns.dns_cookies.require_valid_cookie,
+                "DNS Cookies (RFC 7873) enabled"
+            );
+        }
+
         let handler_use_case = Arc::new(handler);
 
         let tcp_conn_limiter =
@@ -360,5 +372,36 @@ impl DnsServices {
             Some(repos.query_log.clone()),
             60,
         )) as Arc<dyn CacheMaintenancePort>))
+    }
+}
+
+fn resolve_cookie_secret(config: &ferrous_dns_domain::DnsCookiesConfig) -> [u8; 32] {
+    if config.server_secret.is_empty() {
+        use ring::rand::SecureRandom;
+        let rng = ring::rand::SystemRandom::new();
+        let mut bytes = [0u8; 32];
+        rng.fill(&mut bytes)
+            .expect("system RNG failure while generating DNS cookie secret");
+        tracing::warn!(
+            "dns_cookies.server_secret is not set — using ephemeral secret \
+             (will not survive restart; set a 64-hex-char value in config)"
+        );
+        bytes
+    } else {
+        let hex = config.server_secret.trim();
+        assert!(
+            hex.len() == 64,
+            "dns_cookies.server_secret must be exactly 64 hex characters (32 bytes), got {}",
+            hex.len()
+        );
+        let mut bytes = [0u8; 32];
+        for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+            bytes[i] = u8::from_str_radix(
+                std::str::from_utf8(chunk).expect("server_secret contains non-UTF8"),
+                16,
+            )
+            .expect("dns_cookies.server_secret contains invalid hex characters");
+        }
+        bytes
     }
 }

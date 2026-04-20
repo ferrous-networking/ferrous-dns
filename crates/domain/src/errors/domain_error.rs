@@ -50,6 +50,9 @@ pub enum DomainError {
     #[error("DGA domain detected")]
     DgaDomainDetected,
 
+    #[error("DNS cookie validation failed")]
+    DnsCookieInvalid,
+
     #[error("Query filtered: {0}")]
     FilteredQuery(String),
 

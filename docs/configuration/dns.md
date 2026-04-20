@@ -419,3 +419,48 @@ ip_list_urls = [
 refresh_interval_secs  = 86400      # 24 hours
 ip_ttl_secs            = 604800     # 7 days
 ```
+
+---
+
+## DNS Cookies (RFC 7873)
+
+DNS Cookies (RFC 7873) protect UDP-based DNS against two classes of attack: **source-IP spoofing** (an attacker forging queries from a victim's address) and **amplification** (an attacker using open resolvers to flood a target with large DNS responses). By exchanging a cryptographically verified token on every query/response pair, the server can distinguish legitimate clients from forged traffic before spending resources on resolution.
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `true` | Master switch — enables DNS Cookie processing |
+| `server_secret` | `str` | `""` | Hex-encoded 32-byte HMAC secret (64 hex chars). Empty = auto-generate an ephemeral secret on startup (not suitable for production) |
+| `secret_rotation_secs` | `int` | `3600` | Seconds between secret rotations. The previous secret is still accepted for one full rotation window to allow in-flight clients to re-negotiate without errors |
+| `require_valid_cookie` | `bool` | `false` | Strict mode — reject queries with an absent or invalid server cookie with `REFUSED` + EDE 25. Default `false` = permissive mode (always respond, but echo a fresh server cookie) |
+
+### Permissive mode (default)
+
+All queries are answered regardless of cookie status. The server always echoes a fresh HMAC-SHA256 server cookie in every response, so RFC-7873-capable clients learn and cache the cookie automatically.
+
+```toml
+[dns_cookies]
+enabled               = true
+server_secret         = ""
+secret_rotation_secs  = 3600
+require_valid_cookie  = false
+```
+
+### Strict mode
+
+Queries that arrive without a valid server cookie are rejected immediately, before any upstream lookup is performed.
+
+```toml
+[dns_cookies]
+enabled               = true
+server_secret         = "a1b2c3d4e5f6..."   # 64 hex chars (32 bytes)
+secret_rotation_secs  = 3600
+require_valid_cookie  = true
+```
+
+!!! warning "Strict mode may break legacy clients"
+    Setting `require_valid_cookie = true` will reject queries from DNS clients that do not implement RFC 7873 (older resolvers, some embedded devices, and certain monitoring tools). Enable strict mode only after verifying that all clients on your network support DNS Cookies, or use permissive mode (`require_valid_cookie = false`) as a safe default.
+
+!!! tip "Persistent secret across restarts"
+    When `server_secret` is empty, Ferrous DNS generates an ephemeral secret at startup. Clients that cached a server cookie during the previous run will need to re-negotiate on restart. For stable production deployments, set a fixed 64-character hex secret.
+
+See [Security > DNS Cookies](../features/security.md#dns-cookies) for a full explanation of the handshake and threat model.

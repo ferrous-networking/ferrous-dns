@@ -352,3 +352,20 @@ sqlite_cache_size_kb = 16384
 # the OS page cache, bypassing SQLite's own page cache for large sequential scans.
 # Recommended: 32 for RPi, 64 for servers, 0 to disable.
 sqlite_mmap_size_mb = 64
+
+# ── DNS Cookies (RFC 7873) ────────────────────────────────────────────────────
+# Enabled by default. The server echoes a server cookie (HMAC-SHA256) on every
+# response so clients can verify they are talking to the same server, protecting
+# against UDP spoofing and amplification attacks.
+#
+# Set server_secret to a stable 64-char hex string (32 bytes) so cookies survive
+# restarts. Leave empty to use an ephemeral secret (clients re-negotiate on restart).
+#
+# Set require_valid_cookie = true for strict mode: queries without a valid cookie
+# are refused (REFUSED + EDE 25). Only enable on servers where all clients
+# support RFC 7873 (dig, modern resolvers). Default is permissive.
+[dns_cookies]
+# enabled = true                                                                   # default: true
+server_secret = "b552a5c0a9e055c9d220da606301419406f6aabf8f750d54ee6374f74eb6688f" # replace with: openssl rand -hex 32
+# secret_rotation_secs = 3600                                                      # default: 3600
+# require_valid_cookie = false                                                      # default: false (permissive)

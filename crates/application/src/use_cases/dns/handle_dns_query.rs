@@ -1,4 +1,5 @@
 use super::coarse_timer::coarse_now_ns;
+use super::cookie_guard::{CookieVerdict, DnsCookieGuard};
 use super::dga_guard::{DgaAnalysisEvent, DgaGuard, DgaVerdict};
 use super::nxdomain_hijack_guard::NxdomainHijackGuard;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
@@ -47,6 +48,7 @@ pub struct HandleDnsQueryUseCase {
     dga_guard: DgaGuard,
     dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
     dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
+    cookie_guard: DnsCookieGuard,
 }
 
 impl HandleDnsQueryUseCase {
@@ -72,6 +74,7 @@ impl HandleDnsQueryUseCase {
             dga_guard: DgaGuard::disabled(),
             dga_event_tx: None,
             dga_flag_store: None,
+            cookie_guard: DnsCookieGuard::disabled(),
         }
     }
 
@@ -169,6 +172,18 @@ impl HandleDnsQueryUseCase {
     pub fn with_dga_flag_store(mut self, store: Arc<dyn DgaFlagStore>) -> Self {
         self.dga_flag_store = Some(store);
         self
+    }
+
+    /// Enables RFC 7873 DNS Cookie validation on the hot path.
+    pub fn with_dns_cookies(mut self, guard: DnsCookieGuard) -> Self {
+        self.cookie_guard = guard;
+        self
+    }
+
+    /// Exposes the cookie guard so the server handler can generate server
+    /// cookies for inclusion in responses.
+    pub fn cookie_guard(&self) -> &DnsCookieGuard {
+        &self.cookie_guard
     }
 
     /// Applies the configured tunneling action, returning an error if blocked.
@@ -484,6 +499,28 @@ impl HandleDnsQueryUseCase {
                     ..Self::base_query_log(request, elapsed_us(), group_id)
                 });
                 return Err(DomainError::DnsRateLimitedSlip);
+            }
+        }
+
+        if self.cookie_guard.is_enabled() && self.cookie_guard.requires_valid_cookie() {
+            let opt = request
+                .edns_cookie
+                .as_ref()
+                .map(|c| c.as_bytes())
+                .unwrap_or(&[]);
+            // RFC 7873 §5.2.3: in strict mode both an absent/malformed cookie
+            // (Invalid) AND a bootstrapping-only client cookie (NoCookie) must
+            // be refused — the client must supply a valid server cookie.
+            match self.cookie_guard.check(request.client_ip, opt) {
+                CookieVerdict::Valid => {}
+                CookieVerdict::Invalid | CookieVerdict::NoCookie => {
+                    tracing::debug!(
+                        domain = %request.domain,
+                        client = %request.client_ip,
+                        "DNS cookie validation failed (strict mode)"
+                    );
+                    return Err(DomainError::DnsCookieInvalid);
+                }
             }
         }
 

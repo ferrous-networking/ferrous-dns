@@ -85,7 +85,7 @@
 ### v0.8.0 — Config & Backup
 
 - [x] RFC 8914 — Extended DNS Errors (EDE)
-- [ ] RFC 7873 — DNS Cookies
+- [x] RFC 7873 — DNS Cookies
 - [ ] RFC 7871 — EDNS Client Subnet
 - [ ] Config export/import (backup and restore)
 
@@ -140,8 +140,8 @@
 | [PROXY Protocol v2](https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt) | PROXY Protocol v2 (HAProxy spec) | Done |
 | RFC 7828 | edns-tcp-keepalive | Planned |
 | RFC 7871 | EDNS Client Subnet (ECS) | Planned |
-| RFC 7873 | DNS Cookies | Planned |
-| RFC 8914 | Extended DNS Errors (EDE) | Planned |
+| RFC 7873 | DNS Cookies | Done |
+| RFC 8914 | Extended DNS Errors (EDE) | Done |
 
 ---
 

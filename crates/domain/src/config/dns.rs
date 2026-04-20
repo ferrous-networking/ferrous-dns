@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::dga_detection::DgaDetectionConfig;
+use super::dns_cookies::DnsCookiesConfig;
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
 use super::nxdomain_hijack::NxdomainHijackConfig;
@@ -123,6 +124,10 @@ pub struct DnsConfig {
     /// DGA (Domain Generation Algorithm) detection configuration.
     #[serde(default)]
     pub dga_detection: DgaDetectionConfig,
+
+    /// DNS Cookies anti-spoofing configuration (RFC 7873).
+    #[serde(default)]
+    pub dns_cookies: DnsCookiesConfig,
 }
 
 impl Default for DnsConfig {
@@ -165,6 +170,7 @@ impl Default for DnsConfig {
             nxdomain_hijack: NxdomainHijackConfig::default(),
             response_ip_filter: ResponseIpFilterConfig::default(),
             dga_detection: DgaDetectionConfig::default(),
+            dns_cookies: DnsCookiesConfig::default(),
         }
     }
 }

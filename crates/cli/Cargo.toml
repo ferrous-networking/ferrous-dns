@@ -45,3 +45,4 @@ libc.workspace = true
 dashmap.workspace = true
 rustc-hash.workspace = true
 reqwest.workspace = true
+ring.workspace = true

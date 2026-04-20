@@ -62,12 +62,24 @@ impl DnsServerHandler {
         let hickory_rt = query_info.query_type();
 
         let our_rt = RecordTypeMapper::from_hickory(hickory_rt)?;
-        let dns_request = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip);
 
         let query_id = query_msg.id();
         let rd = query_msg.recursion_desired();
         let has_edns = query_msg.extensions().is_some();
+        let edns_cookie: Option<Vec<u8>> = query_msg
+            .extensions()
+            .as_ref()
+            .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
         drop(query_msg);
+
+        let dns_request = {
+            let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip);
+            if let Some(c) = edns_cookie {
+                base.with_cookie(c)
+            } else {
+                base
+            }
+        };
 
         let resolution = match self.use_case.execute(&dns_request).await {
             Ok(res) => res,
@@ -76,6 +88,16 @@ impl DnsServerHandler {
             | Err(ref e @ DomainError::DnsTunnelingDetected)
             | Err(ref e @ DomainError::DnsRateLimited)
             | Err(ref e @ DomainError::FilteredQuery(_)) => {
+                return build_error_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    ResponseCode::Refused,
+                    has_edns,
+                    ede::from_domain_error(e),
+                )
+            }
+            Err(ref e @ DomainError::DnsCookieInvalid) => {
                 return build_error_wire(
                     query_id,
                     rd,
@@ -122,12 +144,48 @@ impl DnsServerHandler {
 
         if addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
-                let mut response = wire_data.to_vec();
-                if response.len() >= 2 {
-                    response[0] = (query_id >> 8) as u8;
-                    response[1] = query_id as u8;
+                let has_cookie_to_inject = dns_request
+                    .edns_cookie
+                    .as_ref()
+                    .is_some_and(|c| c.len() >= 8);
+
+                if has_cookie_to_inject {
+                    match Message::from_vec(wire_data) {
+                        Ok(upstream_msg) => {
+                            resp.set_response_code(upstream_msg.response_code());
+                            for record in upstream_msg.answers() {
+                                resp.add_answer(record.clone());
+                            }
+                            for record in upstream_msg.name_servers() {
+                                resp.add_name_server(record.clone());
+                            }
+                            for record in upstream_msg.additionals() {
+                                // skip existing OPT — we'll add our own with the server cookie
+                                if record.record_type() != hickory_proto::rr::RecordType::OPT {
+                                    resp.add_additional(record.clone());
+                                }
+                            }
+                            // fall through to cookie injection below
+                        }
+                        Err(_) => {
+                            // parse failed — fallback to raw bytes (no cookie)
+                            let mut response = wire_data.to_vec();
+                            if response.len() >= 2 {
+                                response[0] = (query_id >> 8) as u8;
+                                response[1] = query_id as u8;
+                            }
+                            return Some(response);
+                        }
+                    }
+                } else {
+                    // no cookie to inject — return raw bytes (fast path unchanged)
+                    let mut response = wire_data.to_vec();
+                    if response.len() >= 2 {
+                        response[0] = (query_id >> 8) as u8;
+                        response[1] = query_id as u8;
+                    }
+                    return Some(response);
                 }
-                return Some(response);
             }
         } else {
             let record_name = query_info.name().clone();
@@ -140,7 +198,25 @@ impl DnsServerHandler {
             }
         }
 
-        resp.set_edns(hickory_proto::op::Edns::new());
+        let mut edns_resp = hickory_proto::op::Edns::new();
+        if let Some(ref cookie_data) = dns_request.edns_cookie {
+            let raw = cookie_data.as_bytes();
+            if raw.len() >= 8 {
+                let mut client_cookie = [0u8; 8];
+                client_cookie.copy_from_slice(&raw[..8]);
+                let server_cookie = self
+                    .use_case
+                    .cookie_guard()
+                    .generate_server_cookie(client_ip, &client_cookie);
+                let mut opt_data = Vec::with_capacity(16);
+                opt_data.extend_from_slice(&raw[..8]);
+                opt_data.extend_from_slice(&server_cookie);
+                edns_resp
+                    .options_mut()
+                    .insert(EdnsOption::Unknown(10, opt_data));
+            }
+        }
+        resp.set_edns(edns_resp);
 
         encode_message(&resp)
     }
@@ -189,7 +265,18 @@ impl RequestHandler for DnsServerHandler {
             }
         };
 
-        let dns_request = ferrous_dns_domain::DnsRequest::new(domain, our_record_type, client_ip);
+        let edns_cookie: Option<Vec<u8>> = request
+            .edns()
+            .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
+
+        let dns_request = {
+            let base = ferrous_dns_domain::DnsRequest::new(domain, our_record_type, client_ip);
+            if let Some(c) = edns_cookie {
+                base.with_cookie(c)
+            } else {
+                base
+            }
+        };
         let domain_ref = &dns_request.domain;
 
         let resolution = match self.use_case.execute(&dns_request).await {
@@ -236,6 +323,16 @@ impl RequestHandler for DnsServerHandler {
             }
             Err(ref e @ DomainError::FilteredQuery(ref reason)) => {
                 debug!(domain = %domain_ref, reason = %reason, "Query filtered by policy");
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    ede::from_domain_error(e),
+                )
+                .await;
+            }
+            Err(ref e @ DomainError::DnsCookieInvalid) => {
+                debug!(domain = %domain_ref, client = %client_ip, "DNS cookie invalid");
                 return send_error_response(
                     request,
                     &mut response_handle,
@@ -338,6 +435,20 @@ impl RequestHandler for DnsServerHandler {
             }
         }
     }
+}
+
+/// Extracts the raw EDNS option-10 (DNS Cookie, RFC 7873) bytes from an
+/// iterator over EDNS options. Returns `None` when no cookie option is present.
+fn extract_edns_cookie<'a>(
+    mut options: impl Iterator<Item = &'a (hickory_proto::rr::rdata::opt::EdnsCode, EdnsOption)>,
+) -> Option<Vec<u8>> {
+    options.find_map(|(_, opt)| {
+        if let EdnsOption::Unknown(10, data) = opt {
+            Some(data.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn encode_message(msg: &Message) -> Option<Vec<u8>> {

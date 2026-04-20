@@ -1,4 +1,5 @@
 pub mod coarse_timer;
+mod cookie_guard;
 mod dga_guard;
 pub mod handle_dns_query;
 mod nxdomain_hijack_guard;
@@ -7,6 +8,7 @@ mod rebinding_guard;
 mod response_ip_filter_guard;
 pub mod tsc_timer;
 mod tunneling_guard;
+pub use cookie_guard::DnsCookieGuard;
 pub use dga_guard::DgaAnalysisEvent;
 pub use handle_dns_query::HandleDnsQueryUseCase;
 pub use rate_limiter::{DnsRateLimiter, RateLimitDecision};

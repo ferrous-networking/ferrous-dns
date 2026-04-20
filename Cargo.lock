@@ -820,6 +820,7 @@ dependencies = [
  "libc",
  "mimalloc",
  "reqwest",
+ "ring",
  "rustc-hash",
  "rustls",
  "rustls-pemfile",
