@@ -3,6 +3,7 @@ pub mod cache;
 pub mod cache_maintenance;
 pub mod dga_detection;
 pub mod dnssec;
+pub mod ede;
 pub mod events;
 pub mod fast_path;
 pub mod forwarding;

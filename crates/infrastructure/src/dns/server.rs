@@ -1,8 +1,10 @@
+use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::forwarding::RecordTypeMapper;
 use bytes::Bytes;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{DomainError, RecordType};
-use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
+use hickory_proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
+use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::{RData, Record};
 use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
 use hickory_server::authority::MessageResponseBuilder;
@@ -68,19 +70,17 @@ impl DnsServerHandler {
 
         let resolution = match self.use_case.execute(&dns_request).await {
             Ok(res) => res,
-            Err(DomainError::Blocked) => {
-                return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
-            }
-            Err(DomainError::DnsTunnelingDetected) => {
-                return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
-            }
-            Err(DomainError::DnsRateLimited) => {
+            Err(DomainError::Blocked)
+            | Err(DomainError::DgaDomainDetected)
+            | Err(DomainError::DnsTunnelingDetected)
+            | Err(DomainError::DnsRateLimited)
+            | Err(DomainError::FilteredQuery(_)) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::Refused)
             }
             Err(DomainError::DnsRateLimitedSlip) => {
                 return build_truncated_wire(query_id, rd, &queries)
             }
-            Err(DomainError::NxDomain) => {
+            Err(DomainError::NxDomain) | Err(DomainError::LocalNxDomain) => {
                 return build_error_wire(query_id, rd, &queries, ResponseCode::NXDomain)
             }
             Err(_) => return build_error_wire(query_id, rd, &queries, ResponseCode::ServFail),
@@ -133,8 +133,13 @@ impl RequestHandler for DnsServerHandler {
             Ok(info) => info,
             Err(e) => {
                 error!(error = %e, "Failed to parse request info");
-                return send_error_response(request, &mut response_handle, ResponseCode::FormErr)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::FormErr,
+                    None,
+                )
+                .await;
             }
         };
 
@@ -150,8 +155,13 @@ impl RequestHandler for DnsServerHandler {
             Some(rt) => rt,
             None => {
                 warn!(record_type = ?hickory_record_type, "Unsupported record type");
-                return send_error_response(request, &mut response_handle, ResponseCode::NotImp)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::NotImp,
+                    None,
+                )
+                .await;
             }
         };
 
@@ -160,33 +170,78 @@ impl RequestHandler for DnsServerHandler {
 
         let resolution = match self.use_case.execute(&dns_request).await {
             Ok(res) => res,
-            Err(DomainError::Blocked) => {
+            Err(ref e @ DomainError::Blocked) => {
                 warn!(domain = %domain_ref, "Domain blocked");
-                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    ede::from_domain_error(e),
+                )
+                .await;
             }
-            Err(DomainError::DnsTunnelingDetected) => {
+            Err(ref e @ DomainError::DnsTunnelingDetected) => {
                 debug!(domain = %domain_ref, client = %client_ip, "DNS tunneling detected");
-                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    ede::from_domain_error(e),
+                )
+                .await;
             }
-            Err(DomainError::DnsRateLimited) => {
+            Err(ref e @ DomainError::DnsRateLimited) => {
                 debug!(domain = %domain_ref, client = %client_ip, "Rate limited");
-                return send_error_response(request, &mut response_handle, ResponseCode::Refused)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    ede::from_domain_error(e),
+                )
+                .await;
+            }
+            Err(ref e @ DomainError::DgaDomainDetected) => {
+                debug!(domain = %domain_ref, client = %client_ip, "DGA domain detected");
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    ede::from_domain_error(e),
+                )
+                .await;
+            }
+            Err(DomainError::FilteredQuery(ref reason)) => {
+                debug!(domain = %domain_ref, reason = %reason, "Query filtered by policy");
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::Refused,
+                    None,
+                )
+                .await;
             }
             Err(DomainError::DnsRateLimitedSlip) => {
                 debug!(domain = %domain_ref, client = %client_ip, "Rate limited (TC=1 slip)");
                 return send_truncated_response(request, &mut response_handle).await;
             }
-            Err(DomainError::NxDomain) => {
-                return send_error_response(request, &mut response_handle, ResponseCode::NXDomain)
-                    .await;
+            Err(DomainError::NxDomain) | Err(DomainError::LocalNxDomain) => {
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::NXDomain,
+                    None,
+                )
+                .await;
             }
             Err(e) => {
                 error!(error = %e, "Query resolution failed");
-                return send_error_response(request, &mut response_handle, ResponseCode::ServFail)
-                    .await;
+                return send_error_response(
+                    request,
+                    &mut response_handle,
+                    ResponseCode::ServFail,
+                    ede::from_domain_error(&e),
+                )
+                .await;
             }
         };
 
@@ -324,13 +379,31 @@ async fn send_error_response<R: ResponseHandler>(
     request: &Request,
     response_handle: &mut R,
     code: ResponseCode,
+    ede: Option<ExtendedDnsError>,
 ) -> ResponseInfo {
     debug!(code = ?code, "Sending error response");
-    let builder = MessageResponseBuilder::from_message_request(request);
+    let mut builder = MessageResponseBuilder::from_message_request(request);
     let mut header = *request.header();
     header.set_message_type(MessageType::Response);
     header.set_response_code(code);
     header.set_recursion_available(true);
+
+    if let Some(ede) = ede {
+        if request.edns().is_some() {
+            let mut edns = Edns::new();
+            edns.set_max_payload(4096);
+            edns.set_version(0);
+            let mut data = Vec::with_capacity(2);
+            data.extend_from_slice(&ede.info_code.to_be_bytes());
+            if let Some(text) = ede.extra_text {
+                data.extend_from_slice(text.as_bytes());
+            }
+            edns.options_mut()
+                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
+            builder.edns(edns);
+        }
+    }
+
     let response = builder.build(header, &[], &[], &[], &[]);
     match response_handle.send_response(response).await {
         Ok(info) => info,

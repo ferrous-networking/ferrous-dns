@@ -82,9 +82,15 @@
 
 ## In Progress
 
-### v0.8.0 — Observability
+### v0.8.0 — Config & Backup
 
+- [ ] RFC 8914 — Extended DNS Errors (EDE)
+- [ ] RFC 7873 — DNS Cookies
+- [ ] RFC 7871 — EDNS Client Subnet
 - [ ] Config export/import (backup and restore)
+
+### v0.9.0 — Observability
+
 - [ ] Query log export (CSV / JSON)
 - [ ] Prometheus metrics endpoint
 - [ ] OpenAPI / Swagger documentation
@@ -133,6 +139,9 @@
 | RFC 4035 | DNSSEC validation | Done |
 | [PROXY Protocol v2](https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt) | PROXY Protocol v2 (HAProxy spec) | Done |
 | RFC 7828 | edns-tcp-keepalive | Planned |
+| RFC 7871 | EDNS Client Subnet (ECS) | Planned |
+| RFC 7873 | DNS Cookies | Planned |
+| RFC 8914 | Extended DNS Errors (EDE) | Planned |
 
 ---
 
@@ -147,6 +156,7 @@
 | v0.5.0 | DoH/DoT server, PROXY Protocol v2, PTR auto-gen, Rebinding | Done |
 | v0.6.x | Performance & Scale | Done |
 | v0.7.0 | Security & Malware Detection — Auth, Rate Limiting, Tunneling Detection, DGA, C2 Blocking | Done |
-| v0.8.0 | Observability — Prometheus, OpenAPI, Config export | In Progress |
+| v0.8.0 | Config & Backup — Config export/import | In Progress |
+| v0.9.0 | Observability — Prometheus, OpenAPI, Query log export | Planned |
 | v1.0.0 | Production Ready — Security audit, > 80% coverage | Planned |
 | v1.1.0 | Advanced — Split-horizon, Webhooks, DoH bypass detection | Planned |

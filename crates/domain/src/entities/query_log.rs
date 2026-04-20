@@ -188,7 +188,7 @@ impl QueryStats {
             .map(|(rt, count)| (*rt, *count))
             .collect();
 
-        types.sort_by(|a, b| b.1.cmp(&a.1));
+        types.sort_by_key(|b| std::cmp::Reverse(b.1));
         types.truncate(n);
         types
     }

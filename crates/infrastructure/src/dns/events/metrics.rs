@@ -127,7 +127,7 @@ impl QueryMetrics {
             .map(|entry| (entry.key().to_string(), *entry.value()))
             .collect();
 
-        domains.sort_by(|a, b| b.1.cmp(&a.1));
+        domains.sort_by_key(|b| std::cmp::Reverse(b.1));
         domains.truncate(n);
         domains
     }
@@ -139,7 +139,7 @@ impl QueryMetrics {
             .map(|entry| (*entry.key(), *entry.value()))
             .collect();
 
-        types.sort_by(|a, b| b.1.cmp(&a.1));
+        types.sort_by_key(|b| std::cmp::Reverse(b.1));
         types.truncate(n);
         types
     }
