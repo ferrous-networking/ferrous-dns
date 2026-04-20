@@ -40,7 +40,7 @@ jobs:
           echo "Current version: ${V}"
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
 
       - name: Bump version (non-interactive)
         run: bash scripts/bump-version.sh ${{ inputs.bump_type }}
