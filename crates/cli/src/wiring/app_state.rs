@@ -108,26 +108,20 @@ pub async fn build_app_state(
             create_local_record: Arc::new(
                 CreateLocalRecordUseCase::new(config.clone(), config_repo.clone())
                     .with_ptr_registry(dns_services.ptr_registry.clone())
-                    .with_dns_cache(Some(
-                        dns_services.cache.clone()
-                            as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
-                    )),
+                    .with_dns_cache(Some(dns_services.cache.clone()
+                        as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),
             update_local_record: Arc::new(
                 UpdateLocalRecordUseCase::new(config.clone(), config_repo.clone())
                     .with_ptr_registry(dns_services.ptr_registry.clone())
-                    .with_dns_cache(Some(
-                        dns_services.cache.clone()
-                            as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
-                    )),
+                    .with_dns_cache(Some(dns_services.cache.clone()
+                        as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),
             delete_local_record: Arc::new(
                 DeleteLocalRecordUseCase::new(config.clone(), config_repo)
                     .with_ptr_registry(dns_services.ptr_registry.clone())
-                    .with_dns_cache(Some(
-                        dns_services.cache.clone()
-                            as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
-                    )),
+                    .with_dns_cache(Some(dns_services.cache.clone()
+                        as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),
             upstream_health: Arc::new(UpstreamHealthAdapter::new(
                 dns_services.pool_manager.clone(),
