@@ -41,6 +41,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
 
       - name: Bump version (non-interactive)
         run: bash scripts/bump-version.sh ${{ inputs.bump_type }}
