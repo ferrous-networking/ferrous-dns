@@ -120,6 +120,8 @@
                 :class="currentTab==='api'?'tab-btn active':'tab-btn'">API</button>
         <button @click="currentTab='security';scheduleLucide()"
                 :class="currentTab==='security'?'tab-btn active':'tab-btn'">Security</button>
+        <button @click="currentTab='backup';scheduleLucide()"
+                :class="currentTab==='backup'?'tab-btn active':'tab-btn'">Backup</button>
     </div>
 
     <!-- SYSTEM STATUS TAB -->
@@ -1790,6 +1792,166 @@
                         </template>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- BACKUP TAB -->
+    <div x-show="currentTab==='backup'&&!loading" x-cloak>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+            <!-- Export card -->
+            <div class="card" style="padding:24px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                    <div style="padding:10px;border-radius:8px;background:rgba(59,130,246,0.1)">
+                        <i data-lucide="download" style="width:22px;height:22px;color:var(--color-primary)"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">Export Configuration</h3>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Download a full backup of your Ferrous DNS configuration</p>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:20px">
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px;font-weight:500">The backup includes:</p>
+                    <ul style="margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px">
+                        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+                            <i data-lucide="check" style="width:14px;height:14px;color:var(--color-success);flex-shrink:0"></i>
+                            Configuration settings
+                        </li>
+                        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+                            <i data-lucide="check" style="width:14px;height:14px;color:var(--color-success);flex-shrink:0"></i>
+                            DNS upstream pools
+                        </li>
+                        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+                            <i data-lucide="check" style="width:14px;height:14px;color:var(--color-success);flex-shrink:0"></i>
+                            Client groups
+                        </li>
+                        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+                            <i data-lucide="check" style="width:14px;height:14px;color:var(--color-success);flex-shrink:0"></i>
+                            Blocklist sources
+                        </li>
+                        <li style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+                            <i data-lucide="check" style="width:14px;height:14px;color:var(--color-success);flex-shrink:0"></i>
+                            Local DNS records
+                        </li>
+                    </ul>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;margin-bottom:20px">
+                    <i data-lucide="alert-triangle" style="width:16px;height:16px;color:var(--color-warning);flex-shrink:0;margin-top:1px"></i>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0">Passwords and API tokens are not included in the backup.</p>
+                </div>
+
+                <button @click="exportConfig()" class="btn btn-primary" style="width:100%;justify-content:center">
+                    <i data-lucide="download" style="width:15px;height:15px"></i>
+                    Download Backup
+                </button>
+            </div>
+
+            <!-- Import card -->
+            <div class="card" style="padding:24px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                    <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,0.1)">
+                        <i data-lucide="upload" style="width:22px;height:22px;color:var(--color-success)"></i>
+                    </div>
+                    <div>
+                        <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">Import Configuration</h3>
+                        <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Restore from a previously exported backup file</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;margin-bottom:20px">
+                    <i data-lucide="info" style="width:16px;height:16px;color:var(--color-warning);flex-shrink:0;margin-top:1px"></i>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:0">Importing will merge data. Existing items with the same name will be skipped.</p>
+                </div>
+
+                <div style="margin-bottom:16px">
+                    <label style="display:block;font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:8px">Backup file (.bin)</label>
+                    <input type="file" id="backup-import-input" accept=".bin"
+                           style="font-size:12px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
+                </div>
+
+                <button @click="importConfig()" class="btn btn-primary" :disabled="backupImporting"
+                        style="width:100%;justify-content:center">
+                    <template x-if="!backupImporting">
+                        <span style="display:flex;align-items:center;gap:6px">
+                            <i data-lucide="upload" style="width:15px;height:15px"></i>
+                            Import
+                        </span>
+                    </template>
+                    <template x-if="backupImporting">
+                        <span style="display:flex;align-items:center;gap:8px">
+                            <span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.35);border-top-color:currentColor;border-radius:50%;animation:spin 0.7s linear infinite"></span>
+                            Importing...
+                        </span>
+                    </template>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Import result card -->
+        <div x-show="backupImportResult !== null" x-cloak class="card" style="padding:24px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+                <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,0.1)">
+                    <i data-lucide="check-circle" style="width:22px;height:22px;color:var(--color-success)"></i>
+                </div>
+                <div>
+                    <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--text-primary)">Import Summary</h3>
+                    <p style="font-size:12px;color:var(--text-secondary);margin:4px 0 0">Results from the last import operation</p>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Groups Imported</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-success)" x-text="backupImportResult?.groups_imported ?? 0"></div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Groups Skipped</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-warning)" x-text="backupImportResult?.groups_skipped ?? 0"></div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Config Updated</div>
+                    <div style="font-size:14px;font-weight:700;margin-top:4px">
+                        <span x-show="backupImportResult?.config_updated"
+                              style="display:inline-block;background:rgba(16,185,129,0.15);color:var(--color-success);border-radius:12px;padding:3px 12px;font-size:12px;font-weight:600">Yes</span>
+                        <span x-show="!backupImportResult?.config_updated"
+                              style="display:inline-block;background:var(--bg-secondary);color:var(--text-secondary);border-radius:12px;padding:3px 12px;font-size:12px;font-weight:600;border:1px solid var(--border-color)">No</span>
+                    </div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Blocklist Sources Imported</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-success)" x-text="backupImportResult?.blocklist_sources_imported ?? 0"></div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Blocklist Sources Skipped</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-warning)" x-text="backupImportResult?.blocklist_sources_skipped ?? 0"></div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Local Records Imported</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-success)" x-text="backupImportResult?.local_records_imported ?? 0"></div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Local Records Skipped</div>
+                    <div style="font-size:22px;font-weight:700;color:var(--color-warning)" x-text="backupImportResult?.local_records_skipped ?? 0"></div>
+                </div>
+            </div>
+
+            <div x-show="backupImportErrors && backupImportErrors.length > 0" x-cloak
+                 style="border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:14px;background:rgba(239,68,68,0.05)">
+                <p style="font-size:13px;font-weight:600;color:var(--color-error);margin:0 0 8px;display:flex;align-items:center;gap:6px">
+                    <i data-lucide="alert-circle" style="width:14px;height:14px"></i>
+                    Errors
+                </p>
+                <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px">
+                    <template x-for="err in backupImportErrors" :key="err">
+                        <li style="font-size:12px;color:var(--color-error);font-family:monospace" x-text="err"></li>
+                    </template>
+                </ul>
             </div>
         </div>
 

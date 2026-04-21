@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord, RecordType};
 use tokio::sync::RwLock;
 
-use crate::ports::{ConfigRepository, DnsCachePort, PtrRecordRegistry};
+use crate::ports::{ConfigRepository, DnsCachePort, LocalRecordCreator, PtrRecordRegistry};
 
 pub struct CreateLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
@@ -94,5 +95,21 @@ impl CreateLocalRecordUseCase {
         }
 
         Ok((new_record, new_index))
+    }
+}
+
+#[async_trait]
+impl LocalRecordCreator for CreateLocalRecordUseCase {
+    async fn create_local_record(
+        &self,
+        hostname: String,
+        domain: Option<String>,
+        ip: String,
+        record_type: String,
+        ttl: Option<u32>,
+    ) -> Result<LocalDnsRecord, DomainError> {
+        self.execute(hostname, domain, ip, record_type, ttl)
+            .await
+            .map(|(record, _index)| record)
     }
 }

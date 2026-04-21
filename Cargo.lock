@@ -895,6 +895,8 @@ dependencies = [
  "lru",
  "ring",
  "rustc-hash",
+ "serde",
+ "serde_json",
  "sha2",
  "subtle",
  "tokio",

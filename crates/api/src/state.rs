@@ -12,19 +12,20 @@ use ferrous_dns_application::use_cases::{
     DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase,
     DeleteLocalRecordUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
     DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase, DeleteUserUseCase,
-    DeleteWhitelistSourceUseCase, GetActiveSessionsUseCase, GetApiTokensUseCase,
-    GetAuthStatusUseCase, GetBlockFilterStatsUseCase, GetBlockedServicesUseCase,
-    GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
-    GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
-    GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
-    GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUsersUseCase,
-    GetWhitelistSourcesUseCase, GetWhitelistUseCase, LoginUseCase, LogoutUseCase,
-    ManageTimeSlotsUseCase, SetupPasswordUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
-    UpdateApiTokenUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
-    UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
+    DeleteWhitelistSourceUseCase, ExportConfigUseCase, GetActiveSessionsUseCase,
+    GetApiTokensUseCase, GetAuthStatusUseCase, GetBlockFilterStatsUseCase,
+    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetBlocklistUseCase,
+    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
+    GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase,
+    GetScheduleProfilesUseCase, GetServiceCatalogUseCase, GetTimelineUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUsersUseCase, GetWhitelistSourcesUseCase,
+    GetWhitelistUseCase, ImportConfigUseCase, LoginUseCase, LogoutUseCase, ManageTimeSlotsUseCase,
+    SetupPasswordUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateApiTokenUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    ValidateApiTokenUseCase, ValidateSessionUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -143,6 +144,12 @@ pub struct AuthUseCases {
 }
 
 #[derive(Clone)]
+pub struct BackupUseCases {
+    pub export: Arc<ExportConfigUseCase>,
+    pub import: Arc<ImportConfigUseCase>,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub query: QueryUseCases,
     pub dns: DnsUseCases,
@@ -153,6 +160,7 @@ pub struct AppState {
     pub safe_search: SafeSearchUseCases,
     pub schedule: ScheduleUseCases,
     pub auth: AuthUseCases,
+    pub backup: BackupUseCases,
     pub config: Arc<RwLock<Config>>,
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub config_path: Option<Arc<str>>,

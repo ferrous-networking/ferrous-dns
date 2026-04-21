@@ -1,8 +1,9 @@
+use async_trait::async_trait;
 use ferrous_dns_domain::{BlocklistSource, DomainError};
 use std::sync::Arc;
 use tracing::{info, instrument};
 
-use crate::ports::{BlocklistSourceRepository, GroupRepository};
+use crate::ports::{BlocklistSourceCreator, BlocklistSourceRepository, GroupRepository};
 
 pub struct CreateBlocklistSourceUseCase {
     repo: Arc<dyn BlocklistSourceRepository>,
@@ -54,5 +55,19 @@ impl CreateBlocklistSourceUseCase {
         );
 
         Ok(source)
+    }
+}
+
+#[async_trait]
+impl BlocklistSourceCreator for CreateBlocklistSourceUseCase {
+    async fn create_blocklist_source(
+        &self,
+        name: String,
+        url: Option<String>,
+        group_ids: Vec<i64>,
+        comment: Option<String>,
+        enabled: bool,
+    ) -> Result<BlocklistSource, DomainError> {
+        self.execute(name, url, group_ids, comment, enabled).await
     }
 }

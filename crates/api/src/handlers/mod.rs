@@ -1,5 +1,6 @@
 pub mod api_tokens;
 pub mod auth;
+pub mod backup;
 pub mod block_filter;
 pub mod blocked_services;
 pub mod blocklist;

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ConfigResponse {
     pub server: ServerConfigResponse,
     pub dns: DnsConfigResponse,
@@ -12,7 +12,7 @@ pub struct ConfigResponse {
     pub writable: bool,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AuthConfigResponse {
     pub enabled: bool,
     pub session_ttl_hours: u32,
@@ -21,7 +21,7 @@ pub struct AuthConfigResponse {
     pub login_rate_limit_window_secs: u64,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ServerConfigResponse {
     pub dns_port: u16,
     pub web_port: u16,
@@ -30,14 +30,14 @@ pub struct ServerConfigResponse {
     pub web_tls: WebTlsConfigResponse,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WebTlsConfigResponse {
     pub enabled: bool,
     pub tls_cert_path: String,
     pub tls_key_path: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
     pub pools: Vec<UpstreamPoolResponse>,
@@ -65,7 +65,7 @@ pub struct DnsConfigResponse {
     pub rate_limit: RateLimitConfigResponse,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RateLimitConfigResponse {
     pub enabled: bool,
     pub queries_per_second: u32,
@@ -81,7 +81,7 @@ pub struct RateLimitConfigResponse {
     pub dot_max_connections_per_ip: u32,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UpstreamPoolResponse {
     pub name: String,
     pub strategy: String,
@@ -89,7 +89,7 @@ pub struct UpstreamPoolResponse {
     pub servers: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HealthCheckResponse {
     pub enabled: bool,
     pub interval_seconds: u64,
@@ -98,19 +98,19 @@ pub struct HealthCheckResponse {
     pub success_threshold: u8,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BlockingConfigResponse {
     pub enabled: bool,
     pub custom_blocked: Vec<String>,
     pub whitelist: Vec<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LoggingConfigResponse {
     pub level: String,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DatabaseConfigResponse {
     pub path: String,
     pub log_queries: bool,

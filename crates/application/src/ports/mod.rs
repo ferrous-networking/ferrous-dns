@@ -1,5 +1,6 @@
 mod api_token_repository;
 mod arp_reader;
+mod backup_ports;
 mod block_filter_engine;
 mod blocked_service_repository;
 mod blocklist_repository;
@@ -36,6 +37,7 @@ mod whitelist_source_repository;
 
 pub use api_token_repository::ApiTokenRepository;
 pub use arp_reader::{ArpReader, ArpTable};
+pub use backup_ports::{BlocklistSourceCreator, GroupCreator, LocalRecordCreator};
 pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
 pub use blocked_service_repository::BlockedServiceRepository;
 pub use blocklist_repository::BlocklistRepository;

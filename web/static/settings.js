@@ -75,6 +75,10 @@
             tlsStatus: { cert_exists: false, key_exists: false, cert_valid: false, cert_subject: '', cert_not_after: '' },
             tlsCertFile: null,
             tlsKeyFile: null,
+            // Backup state
+            backupImportResult: null,
+            backupImportErrors: [],
+            backupImporting: false,
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
@@ -84,10 +88,16 @@
                 await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
                 scheduleLucide(100);
                 this.startPolling();
-                document.addEventListener('visibilitychange', () => {
+                this._onVisibility = () => {
                     if (document.hidden) this.stopPolling();
                     else this.startPolling();
-                });
+                };
+                document.addEventListener('visibilitychange', this._onVisibility);
+            },
+            destroy() {
+                this.stopPolling();
+                document.removeEventListener('visibilitychange', this._onVisibility);
+                Object.values(this._ctrl).forEach(c => c?.abort());
             },
             toggleTheme() {
                 this.theme = this.theme === 'light' ? 'dark' : 'light';
@@ -652,6 +662,49 @@
                         this.showAlert('error', data.message || 'Generation failed');
                     }
                 } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+            },
+            // --- Backup methods ---
+            async exportConfig() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/config/export`);
+                    if (!res.ok) { this.showAlert('error', 'Export failed'); return; }
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `ferrous-backup-${new Date().toISOString().slice(0, 10)}.bin`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    this.showAlert('success', 'Backup downloaded successfully');
+                } catch (e) {
+                    this.showAlert('error', 'Export failed: ' + e.message);
+                }
+            },
+            async importConfig() {
+                const input = document.getElementById('backup-import-input');
+                if (!input?.files[0]) { this.showAlert('error', 'Please select a backup file'); return; }
+                this.backupImporting = true;
+                this.backupImportResult = null;
+                this.backupImportErrors = [];
+                const fd = new FormData();
+                fd.append('file', input.files[0]);
+                try {
+                    const res = await apiFetch(`${API_BASE}/config/import`, { method: 'POST', body: fd });
+                    if (res.status === 401) { window.location.href = '/login.html'; return; }
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.success !== false) {
+                        this.backupImportResult = data.summary;
+                        this.backupImportErrors = data.errors || [];
+                        this.showAlert('success', 'Import completed successfully');
+                        scheduleLucide(50);
+                    } else {
+                        this.showAlert('error', data.error || data.message || `Import failed (HTTP ${res.status})`);
+                    }
+                } catch (e) {
+                    this.showAlert('error', 'Import failed: ' + e.message);
+                } finally {
+                    this.backupImporting = false;
+                }
             },
             showAlert(type, msg) {
                 this.alert = {show: true, type, message: msg};

@@ -64,6 +64,7 @@ pub fn create_api_routes(state: AppState) -> Router {
         .merge(handlers::auth::protected_routes())
         .merge(handlers::users::routes())
         .merge(handlers::api_tokens::routes())
+        .merge(handlers::backup::routes())
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

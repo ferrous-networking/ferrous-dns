@@ -1,14 +1,16 @@
 use ferrous_dns_api::{
-    AppState, AuthUseCases, BlockingUseCases, ClientUseCases, DnsUseCases, GroupUseCases,
-    QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
+    AppState, AuthUseCases, BackupUseCases, BlockingUseCases, ClientUseCases, DnsUseCases,
+    GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };
-use ferrous_dns_application::ports::{ConfigFilePersistence, UserProvider};
+use ferrous_dns_application::ports::{
+    BlocklistSourceCreator, ConfigFilePersistence, GroupCreator, LocalRecordCreator, UserProvider,
+};
 use ferrous_dns_application::use_cases::{
     ChangePasswordUseCase, CreateApiTokenUseCase, CreateLocalRecordUseCase, CreateUserUseCase,
-    DeleteApiTokenUseCase, DeleteLocalRecordUseCase, DeleteUserUseCase, GetActiveSessionsUseCase,
-    GetApiTokensUseCase, GetAuthStatusUseCase, GetUsersUseCase, LoginUseCase, LogoutUseCase,
-    SetupPasswordUseCase, UpdateApiTokenUseCase, UpdateLocalRecordUseCase, ValidateApiTokenUseCase,
-    ValidateSessionUseCase,
+    DeleteApiTokenUseCase, DeleteLocalRecordUseCase, DeleteUserUseCase, ExportConfigUseCase,
+    GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase, GetUsersUseCase,
+    ImportConfigUseCase, LoginUseCase, LogoutUseCase, SetupPasswordUseCase, UpdateApiTokenUseCase,
+    UpdateLocalRecordUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::auth::{
@@ -90,6 +92,38 @@ pub async fn build_app_state(
         )),
         get_users: Arc::new(GetUsersUseCase::new(user_provider)),
         delete_user: Arc::new(DeleteUserUseCase::new(repos.user.clone())),
+    };
+
+    let backup = {
+        let group_creator: Arc<dyn GroupCreator> = use_cases.create_group.clone();
+        let blocklist_source_creator: Arc<dyn BlocklistSourceCreator> =
+            use_cases.create_blocklist_source.clone();
+        let local_record_creator_for_import = Arc::new(
+            CreateLocalRecordUseCase::new(config.clone(), config_repo.clone())
+                .with_ptr_registry(dns_services.ptr_registry.clone())
+                .with_dns_cache(Some(dns_services.cache.clone()
+                    as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
+        );
+        let local_record_creator: Arc<dyn LocalRecordCreator> = local_record_creator_for_import;
+        let resolved_path = config_path
+            .as_deref()
+            .map(String::from)
+            .or_else(Config::get_config_path);
+        BackupUseCases {
+            export: Arc::new(ExportConfigUseCase::new(
+                config.clone(),
+                repos.group.clone(),
+                repos.blocklist_source.clone(),
+            )),
+            import: Arc::new(ImportConfigUseCase::new(
+                config.clone(),
+                config_persistence.clone(),
+                resolved_path,
+                group_creator,
+                blocklist_source_creator,
+                local_record_creator,
+            )),
+        }
     };
 
     AppState {
@@ -190,6 +224,7 @@ pub async fn build_app_state(
             assign_profile: use_cases.assign_schedule_profile,
         },
         auth,
+        backup,
         tls_enabled,
         config,
         config_file_persistence: config_persistence,

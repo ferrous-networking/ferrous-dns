@@ -1,8 +1,9 @@
+use async_trait::async_trait;
 use ferrous_dns_domain::{DomainError, Group};
 use std::sync::Arc;
 use tracing::{info, instrument};
 
-use crate::ports::GroupRepository;
+use crate::ports::{GroupCreator, GroupRepository};
 
 pub struct CreateGroupUseCase {
     group_repo: Arc<dyn GroupRepository>,
@@ -32,5 +33,16 @@ impl CreateGroupUseCase {
         );
 
         Ok(group)
+    }
+}
+
+#[async_trait]
+impl GroupCreator for CreateGroupUseCase {
+    async fn create_group(
+        &self,
+        name: String,
+        comment: Option<String>,
+    ) -> Result<Group, DomainError> {
+        self.execute(name, comment).await
     }
 }

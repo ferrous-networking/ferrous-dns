@@ -722,6 +722,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             assign_profile: Arc::new(AssignScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository), group_repo.clone())),
         },
         auth: helpers::build_test_auth_use_cases(),
+        backup: helpers::build_test_backup_use_cases(config.clone()),
         config: config.clone(),
         config_file_persistence: Arc::new(
             ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence,
@@ -1072,6 +1073,7 @@ async fn test_get_all_configs_after_toggle() {
             assign_profile: Arc::new(AssignScheduleProfileUseCase::new(Arc::new(NullScheduleProfileRepository), group_repo.clone())),
         },
         auth: helpers::build_test_auth_use_cases(),
+        backup: helpers::build_test_backup_use_cases(config.clone()),
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         config_path: None,

@@ -1,5 +1,6 @@
 pub mod api_tokens;
 pub mod auth;
+pub mod backup;
 pub mod block_filter;
 pub mod blocked_services;
 pub mod blocklist;
@@ -29,6 +30,7 @@ pub use auth::{
     AuthStatus, ChangePasswordUseCase, GetActiveSessionsUseCase, GetAuthStatusUseCase,
     LoginUseCase, LogoutUseCase, SetupPasswordUseCase, ValidateSessionUseCase,
 };
+pub use backup::{BackupSnapshot, ExportConfigUseCase, ImportConfigUseCase, ImportSummary};
 pub use block_filter::GetBlockFilterStatsUseCase;
 pub use blocked_services::{
     BlockServiceUseCase, GetBlockedServicesUseCase, GetServiceCatalogUseCase, UnblockServiceUseCase,
