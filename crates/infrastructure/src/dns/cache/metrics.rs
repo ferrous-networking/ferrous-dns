@@ -15,6 +15,13 @@ pub struct CacheMetrics {
     pub compactions: AtomicU64,
     pub batch_evictions: AtomicU64,
     pub adaptive_adjustments: AtomicU64,
+
+    /// Phase 6: counts upstream resolution failures that were NOT cached as
+    /// NXDOMAIN — timeouts, connection refused/reset, no healthy servers,
+    /// invalid responses, etc. Caching these would poison the negative cache
+    /// during transient upstream instability and hand clients fake NXDOMAIN
+    /// answers for legitimate domains.
+    pub transient_upstream_errors: AtomicU64,
 }
 
 impl CacheMetrics {

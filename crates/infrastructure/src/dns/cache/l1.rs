@@ -35,6 +35,10 @@ thread_local! {
 }
 
 /// Looks up a domain in the thread-local L1 cache, returning addresses and remaining TTL.
+///
+/// The composite key `"Type:domain"` is built byte-by-byte with ASCII-lowercasing
+/// applied to the domain portion (RFC 1035 §2.3.3: DNS is case-insensitive).
+/// All lowercasing happens in the stack buffer — zero heap allocation.
 #[inline]
 pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
     let type_str = record_type.as_str();
@@ -46,15 +50,19 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
     if total <= buf.len() {
         buf[..type_len].copy_from_slice(type_str.as_bytes());
         buf[type_len] = b':';
-        buf[type_len + 1..total].copy_from_slice(domain.as_bytes());
-        // SAFETY: composed from valid UTF-8 slices (type_str, ':', domain)
+        for (i, &b) in domain.as_bytes().iter().enumerate() {
+            buf[type_len + 1 + i] = b.to_ascii_lowercase();
+        }
+        // SAFETY: composed from valid UTF-8 (type_str + ':' + ASCII-lowercased domain)
         let key_str = unsafe { std::str::from_utf8_unchecked(&buf[..total]) };
         lookup_l1(key_str)
     } else {
         let mut key = CompactString::with_capacity(total);
         key.push_str(type_str);
         key.push(':');
-        key.push_str(domain);
+        for &b in domain.as_bytes() {
+            key.push(b.to_ascii_lowercase() as char);
+        }
         lookup_l1(&key)
     }
 }
@@ -82,6 +90,10 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
 }
 
 /// Inserts a resolved entry into the thread-local L1 cache with an expiration timestamp.
+///
+/// The composite key `"Type:domain"` is built byte-by-byte with ASCII-lowercasing
+/// applied to the domain portion so lookups from any case variant hit the same
+/// entry (RFC 1035 §2.3.3). Lowercasing happens in-place in the stack buffer.
 #[inline]
 pub fn l1_insert(
     domain: &str,
@@ -98,14 +110,18 @@ pub fn l1_insert(
     let key = if total <= buf.len() {
         buf[..type_len].copy_from_slice(type_str.as_bytes());
         buf[type_len] = b':';
-        buf[type_len + 1..total].copy_from_slice(domain.as_bytes());
-        // SAFETY: composed from valid UTF-8 slices (type_str, ':', domain)
+        for (i, &b) in domain.as_bytes().iter().enumerate() {
+            buf[type_len + 1 + i] = b.to_ascii_lowercase();
+        }
+        // SAFETY: composed from valid UTF-8 (type_str + ':' + ASCII-lowercased domain)
         CompactString::from(unsafe { std::str::from_utf8_unchecked(&buf[..total]) })
     } else {
         let mut key = CompactString::with_capacity(total);
         key.push_str(type_str);
         key.push(':');
-        key.push_str(domain);
+        for &b in domain.as_bytes() {
+            key.push(b.to_ascii_lowercase() as char);
+        }
         key
     };
 

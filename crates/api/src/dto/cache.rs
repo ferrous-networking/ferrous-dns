@@ -28,8 +28,10 @@ pub struct CacheMetricsResponse {
     pub insertions: u64,
     pub evictions: u64,
     pub optimistic_refreshes: u64,
+    pub stale_hits: u64,
     pub lazy_deletions: u64,
     pub compactions: u64,
     pub batch_evictions: u64,
     pub hit_rate: f64,
+    pub transient_upstream_errors: u64,
 }

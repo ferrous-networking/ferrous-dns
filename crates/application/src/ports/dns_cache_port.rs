@@ -15,6 +15,10 @@ pub struct CacheMetricsSnapshot {
     pub compactions: u64,
     pub batch_evictions: u64,
     pub hit_rate: f64,
+    /// Phase 6: upstream failures classified as transient (timeout, refused,
+    /// reset, no healthy servers, invalid response, etc.) and therefore NOT
+    /// cached as NXDOMAIN. Helps operators diagnose upstream instability.
+    pub transient_upstream_errors: u64,
 }
 
 /// Port for DNS cache operations exposed to the API layer.

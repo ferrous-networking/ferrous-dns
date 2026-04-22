@@ -110,7 +110,7 @@ async fn test_soa_ttl_used_when_present() {
 }
 
 #[tokio::test]
-async fn test_soa_ttl_below_min_clamped_to_30() {
+async fn test_soa_ttl_below_min_clamped_to_300() {
     let soa = make_soa_record("example.com", 10, 10);
     let inner: Arc<dyn DnsResolver> = Arc::new(MockNegativeResolver::from_authority(&[soa]));
 
@@ -133,8 +133,8 @@ async fn test_soa_ttl_below_min_clamped_to_30() {
     let (_, _, remaining_ttl) = cached.expect("Should be cached");
     let ttl = remaining_ttl.unwrap_or(0);
     assert!(
-        (29..=30).contains(&ttl),
-        "SOA TTL 10 should be clamped to min 30, got {ttl}"
+        (290..=300).contains(&ttl),
+        "SOA TTL 10 should be clamped to negative-cache floor of 300s, got {ttl}"
     );
 }
 

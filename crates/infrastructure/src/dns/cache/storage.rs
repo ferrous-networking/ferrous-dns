@@ -9,11 +9,25 @@ use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
 use dashmap::{DashMap, DashSet};
 use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
+use std::borrow::Cow;
 use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::mpsc;
 use tracing::{debug, info};
+
+/// Normalizes a domain to ASCII-lowercase for cache key lookups. DNS is
+/// case-insensitive (RFC 1035 §2.3.3), so queries for `Example.COM` and
+/// `example.com` must hit the same cache entry. Returns `Cow::Borrowed`
+/// when the input is already lowercase (zero-alloc fast path).
+#[inline]
+fn normalize_domain(domain: &str) -> Cow<'_, str> {
+    if domain.bytes().all(|b| !b.is_ascii_uppercase()) {
+        Cow::Borrowed(domain)
+    } else {
+        Cow::Owned(domain.to_ascii_lowercase())
+    }
+}
 
 struct EvictionCandidate {
     score: f64,
@@ -165,6 +179,8 @@ impl DnsCache {
         domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+        let domain = normalize_domain(domain);
+        let domain = domain.as_ref();
         let borrowed = BorrowedKey::new(domain, *record_type);
 
         if let Some((arc_data, remaining_ttl)) = l1_get(domain, record_type) {
@@ -255,13 +271,22 @@ impl DnsCache {
         ttl: u32,
         dnssec_status: Option<DnssecStatus>,
     ) {
-        let ttl = self.clamp_ttl(ttl);
+        let domain = normalize_domain(domain);
+        let domain = domain.as_ref();
 
         if data.is_negative() {
+            // Negative cache enforces its own `[MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL]`
+            // window (see `negative_cache::clamp_negative_ttl`). Do NOT apply
+            // `clamp_ttl` here: the general `cache_min_ttl`/`cache_max_ttl` from
+            // config is meant for positive records; inflating positives would
+            // break the refresh/access-window cycle, while deflating negatives
+            // would defeat the 300s floor that keeps NXDOMAINs from escaping
+            // to upstream on every repeated miss.
             self.negative.insert(domain, record_type, ttl);
             return;
         }
 
+        let ttl = self.clamp_ttl(ttl);
         let key = CacheKey::new(domain, record_type);
 
         if self.cache.len() >= self.max_entries {
@@ -309,6 +334,8 @@ impl DnsCache {
         data: CachedData,
         _dnssec_status: Option<DnssecStatus>,
     ) {
+        let domain = normalize_domain(domain);
+        let domain = domain.as_ref();
         let key = CacheKey::new(domain, record_type);
         self.bloom.set(&key);
         self.permanent_keys.insert(key.clone());
@@ -332,6 +359,8 @@ impl DnsCache {
     }
 
     pub fn remove(&self, domain: &str, record_type: &RecordType) -> bool {
+        let domain = normalize_domain(domain);
+        let domain = domain.as_ref();
         let key = CacheKey::new(domain, *record_type);
 
         if self.cache.remove(&key).is_some() {
@@ -409,6 +438,8 @@ impl DnsCache {
         new_data: CachedData,
         dnssec_status: Option<DnssecStatus>,
     ) -> bool {
+        let domain = normalize_domain(domain);
+        let domain = domain.as_ref();
         let key = CacheKey::new(domain, *record_type);
         let now = coarse_now_secs();
 
@@ -627,6 +658,9 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
             compactions: metrics.compactions.load(AtomicOrdering::Relaxed),
             batch_evictions: metrics.batch_evictions.load(AtomicOrdering::Relaxed),
             hit_rate: metrics.hit_rate(),
+            transient_upstream_errors: metrics
+                .transient_upstream_errors
+                .load(AtomicOrdering::Relaxed),
         }
     }
 
@@ -665,5 +699,12 @@ impl DnsCacheAccess for DnsCache {
         dnssec_status: Option<DnssecStatus>,
     ) {
         DnsCache::insert(self, domain, record_type, data, ttl, dnssec_status);
+    }
+
+    #[inline]
+    fn record_transient_upstream_error(&self) {
+        self.metrics
+            .transient_upstream_errors
+            .fetch_add(1, AtomicOrdering::Relaxed);
     }
 }

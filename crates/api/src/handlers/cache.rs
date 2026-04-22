@@ -67,9 +67,11 @@ pub async fn get_cache_metrics(State(state): State<AppState>) -> Json<CacheMetri
         insertions: snapshot.insertions,
         evictions: snapshot.evictions,
         optimistic_refreshes: snapshot.optimistic_refreshes,
+        stale_hits: snapshot.stale_hits,
         lazy_deletions: snapshot.lazy_deletions,
         compactions: snapshot.compactions,
         batch_evictions: snapshot.batch_evictions,
         hit_rate: snapshot.hit_rate,
+        transient_upstream_errors: snapshot.transient_upstream_errors,
     })
 }

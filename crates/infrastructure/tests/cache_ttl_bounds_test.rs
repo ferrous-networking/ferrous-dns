@@ -111,6 +111,9 @@ fn test_negative_response_ttl_clamped() {
         "Negative response with valid TTL should be retrievable"
     );
     if let Some((_, _, Some(remaining))) = result {
-        assert!(remaining >= 1, "Remaining TTL should be at least 1");
+        assert!(
+            remaining >= 300,
+            "Negative cache must enforce 300s floor regardless of upstream TTL (got {remaining})"
+        );
     }
 }

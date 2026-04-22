@@ -9,6 +9,7 @@ use hickory_proto::rr::{RData, Record};
 use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
+use std::borrow::Cow;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tracing::{debug, error, warn};
@@ -25,8 +26,18 @@ impl DnsServerHandler {
         Self { use_case }
     }
 
-    fn normalize_domain(domain: &str) -> &str {
-        domain.trim_end_matches('.')
+    /// Normalizes a domain received from Hickory for downstream use: strips the
+    /// trailing root dot and lowercases ASCII bytes (RFC 1035 §2.3.3 — DNS is
+    /// case-insensitive). Returns `Cow::Borrowed` when the trimmed slice is
+    /// already lowercase (zero-alloc fast path); otherwise owns a lowercased
+    /// copy.
+    fn normalize_domain(domain: &str) -> Cow<'_, str> {
+        let trimmed = domain.trim_end_matches('.');
+        if trimmed.bytes().all(|b| !b.is_ascii_uppercase()) {
+            Cow::Borrowed(trimmed)
+        } else {
+            Cow::Owned(trimmed.to_ascii_lowercase())
+        }
     }
 
     pub fn try_fast_path(
@@ -58,7 +69,8 @@ impl DnsServerHandler {
         let query_info = queries.first()?;
 
         let domain_name = query_info.name().to_utf8();
-        let domain = domain_name.trim_end_matches('.');
+        let domain_cow = Self::normalize_domain(&domain_name);
+        let domain: &str = domain_cow.as_ref();
         let hickory_rt = query_info.query_type();
 
         let our_rt = RecordTypeMapper::from_hickory(hickory_rt)?;
@@ -245,7 +257,8 @@ impl RequestHandler for DnsServerHandler {
 
         let query = &request_info.query;
         let raw_domain = query.name().to_utf8();
-        let domain = Self::normalize_domain(&raw_domain);
+        let domain_cow = Self::normalize_domain(&raw_domain);
+        let domain: &str = domain_cow.as_ref();
         let hickory_record_type = query.query_type();
         let client_ip = request.src().ip();
 
