@@ -56,6 +56,9 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Setup mold linker
+        uses: rui314/setup-mold@v1
+
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
@@ -93,6 +96,9 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
+
+      - name: Setup mold linker
+        uses: rui314/setup-mold@v1
 
       - name: Cache cargo
         uses: actions/cache@v4
