@@ -57,6 +57,24 @@ fn pihole_status_to_category(status: &str) -> Option<&'static str> {
 }
 
 /// Pi-hole v6 GET /api/queries
+#[utoipa::path(
+    get,
+    path = "/queries",
+    tag = "pihole:queries",
+    params(
+        ("length" = Option<u32>, Query, description = "Page size"),
+        ("start" = Option<u32>, Query, description = "Offset"),
+        ("cursor" = Option<i64>, Query, description = "Cursor for pagination"),
+        ("domain" = Option<String>, Query, description = "Filter by domain"),
+        ("client" = Option<String>, Query, description = "Filter by client IP"),
+        ("status" = Option<String>, Query, description = "Filter by Pi-hole status"),
+        ("draw" = Option<u32>, Query, description = "DataTables draw counter")
+    ),
+    responses(
+        (status = 200, description = "Paginated query log", body = QueriesResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_queries(
     State(state): State<PiholeAppState>,
     Query(params): Query<QueryParams>,
@@ -138,6 +156,15 @@ pub async fn get_queries(
 ///
 // TODO: extract aggregation into a dedicated use case (GetQuerySuggestionsUseCase)
 // with DISTINCT SQL queries instead of in-memory dedup
+#[utoipa::path(
+    get,
+    path = "/queries/suggestions",
+    tag = "pihole:queries",
+    responses(
+        (status = 200, description = "Filter suggestions for queries UI", body = SuggestionsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_suggestions(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<SuggestionsResponse>, PiholeApiError> {

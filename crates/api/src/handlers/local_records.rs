@@ -2,23 +2,27 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post, put},
-    Router,
 };
 use tracing::info;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{dto::local_record::*, errors::ApiError, state::AppState};
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/local-records", get(get_all_records))
-        .route("/local-records", post(create_record))
-        .route(
-            "/local-records/{id}",
-            put(update_record).delete(delete_record),
-        )
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_records, create_record))
+        .routes(routes!(update_record, delete_record))
 }
 
+#[utoipa::path(
+    get,
+    path = "/local-records",
+    tag = "local_records",
+    responses(
+        (status = 200, description = "All local DNS records", body = [LocalRecordDto]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_records(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<LocalRecordDto>>, ApiError> {
@@ -36,6 +40,17 @@ async fn get_all_records(
     Ok(Json(dtos))
 }
 
+#[utoipa::path(
+    post,
+    path = "/local-records",
+    tag = "local_records",
+    request_body = CreateLocalRecordRequest,
+    responses(
+        (status = 201, description = "Local DNS record created", body = LocalRecordDto),
+        (status = 400, description = "Invalid input"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_record(
     State(state): State<AppState>,
     Json(req): Json<CreateLocalRecordRequest>,
@@ -59,6 +74,18 @@ async fn create_record(
     Ok((StatusCode::CREATED, Json(dto)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/local-records/{id}",
+    tag = "local_records",
+    params(("id" = i64, Path, description = "Local record ID (index)")),
+    request_body = UpdateLocalRecordRequest,
+    responses(
+        (status = 200, description = "Local DNS record updated", body = LocalRecordDto),
+        (status = 404, description = "Record not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_record(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -90,6 +117,17 @@ async fn update_record(
     Ok(Json(dto))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/local-records/{id}",
+    tag = "local_records",
+    params(("id" = i64, Path, description = "Local record ID (index)")),
+    responses(
+        (status = 204, description = "Local DNS record deleted"),
+        (status = 404, description = "Record not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_record(
     State(state): State<AppState>,
     Path(id): Path<i64>,

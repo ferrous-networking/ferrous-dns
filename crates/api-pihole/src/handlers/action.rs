@@ -6,6 +6,16 @@ use tracing::info;
 use crate::{dto::action::ActionResponse, errors::PiholeApiError, state::PiholeAppState};
 
 /// Pi-hole v6 POST /api/action/gravity — trigger blocklist reload.
+#[utoipa::path(
+    post,
+    path = "/action/gravity",
+    tag = "pihole:action",
+    responses(
+        (status = 200, description = "Blocklist reload triggered", body = ActionResponse),
+        (status = 500, description = "Reload failed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn gravity(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ActionResponse>, PiholeApiError> {
@@ -20,6 +30,16 @@ pub async fn gravity(
 ///
 /// Re-reads the config file from disk and updates the shared config.
 /// No process restart is needed — Ferrous DNS applies changes in-memory.
+#[utoipa::path(
+    post,
+    path = "/action/restartdns",
+    tag = "pihole:action",
+    responses(
+        (status = 200, description = "Configuration reloaded", body = ActionResponse),
+        (status = 500, description = "Reload failed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn restartdns(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ActionResponse>, PiholeApiError> {
@@ -38,6 +58,16 @@ pub async fn restartdns(
 }
 
 /// Pi-hole v6 POST /api/action/flush/logs — cleanup old query logs.
+#[utoipa::path(
+    post,
+    path = "/action/flush/logs",
+    tag = "pihole:action",
+    responses(
+        (status = 200, description = "Query logs flushed", body = ActionResponse),
+        (status = 500, description = "Flush failed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn flush_logs(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ActionResponse>, PiholeApiError> {

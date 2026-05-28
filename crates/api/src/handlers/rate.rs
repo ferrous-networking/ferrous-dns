@@ -10,6 +10,17 @@ use axum::{
 use ferrous_dns_application::use_cases::RateUnit;
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/stats/rate",
+    tag = "stats",
+    params(RateQuery),
+    responses(
+        (status = 200, description = "Current query rate", body = QueryRateResponse),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_query_rate")]
 pub async fn get_query_rate(
     State(state): State<AppState>,

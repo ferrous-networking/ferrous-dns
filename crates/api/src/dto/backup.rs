@@ -1,7 +1,8 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// HTTP response returned after a successful import operation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ImportSummaryResponse {
     pub success: bool,
     pub summary: ImportSummaryDto,
@@ -9,7 +10,7 @@ pub struct ImportSummaryResponse {
 }
 
 /// Serializable summary of what was created or skipped during import.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ImportSummaryDto {
     pub config_updated: bool,
     pub groups_imported: usize,

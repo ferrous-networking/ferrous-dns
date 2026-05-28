@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct CacheStatsQuery {
     #[serde(default = "default_period")]
     pub period: String,
@@ -10,7 +11,7 @@ fn default_period() -> String {
     "24h".to_string()
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct CacheStatsResponse {
     pub total_entries: usize,
     pub total_hits: u64,
@@ -20,7 +21,7 @@ pub struct CacheStatsResponse {
     pub refresh_rate: f64,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct CacheMetricsResponse {
     pub total_entries: usize,
     pub hits: u64,

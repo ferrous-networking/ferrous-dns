@@ -1,134 +1,134 @@
-use axum::{
-    routing::{get, post, put},
-    Router,
-};
+use axum::Router;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
-use crate::{handlers, state::PiholeAppState};
+use crate::{handlers, openapi::PiholeApiDoc, state::PiholeAppState};
 
 /// Builds the Axum router for all Pi-hole v6 compatible endpoints.
 ///
 /// Mount this at `/api` when `pihole_compat = true` so third-party Pi-hole
 /// dashboards, plugins, and automations work without modification.
 pub fn create_pihole_routes(state: PiholeAppState) -> Router {
-    Router::new()
+    create_pihole_router_with_openapi(state).0
+}
+
+/// Builds the Axum router together with its OpenAPI document.
+///
+/// Returns a tuple `(Router, OpenApi)` so the caller can mount the router and
+/// expose the spec under the same `nest` prefix (e.g. `/openapi.json` + `/docs`).
+pub fn create_pihole_router_with_openapi(
+    state: PiholeAppState,
+) -> (Router, utoipa::openapi::OpenApi) {
+    use utoipa::OpenApi;
+
+    let (router, api) = OpenApiRouter::with_openapi(PiholeApiDoc::openapi())
         // Auth
-        .route(
-            "/auth",
-            get(handlers::auth::get_session)
-                .post(handlers::auth::login)
-                .delete(handlers::auth::logout),
-        )
+        .routes(routes!(
+            handlers::auth::get_session,
+            handlers::auth::login,
+            handlers::auth::logout
+        ))
         // Stats — Phase 1
-        .route("/stats/summary", get(handlers::stats::get_summary))
-        .route("/stats/history", get(handlers::stats::get_history))
-        .route("/stats/top_blocked", get(handlers::stats::get_top_blocked))
-        .route("/stats/top_clients", get(handlers::stats::get_top_clients))
-        .route("/stats/query_types", get(handlers::stats::get_query_types))
-        .route("/stats/top_domains", get(handlers::stats::get_top_domains))
-        .route("/stats/upstreams", get(handlers::stats::get_upstreams))
+        .routes(routes!(handlers::stats::get_summary))
+        .routes(routes!(handlers::stats::get_history))
+        .routes(routes!(handlers::stats::get_top_blocked))
+        .routes(routes!(handlers::stats::get_top_clients))
+        .routes(routes!(handlers::stats::get_query_types))
+        .routes(routes!(handlers::stats::get_top_domains))
+        .routes(routes!(handlers::stats::get_upstreams))
+        .routes(routes!(handlers::stats::get_recent_blocked))
+        // Stats — database aliases (same handlers, different paths — keep but
+        // outside the spec to avoid duplicate operation ids).
         .route(
-            "/stats/recent_blocked",
-            get(handlers::stats::get_recent_blocked),
+            "/stats/database/summary",
+            axum::routing::get(handlers::stats::get_summary),
         )
-        // Stats — database aliases (same handlers, query params for period)
-        .route("/stats/database/summary", get(handlers::stats::get_summary))
         .route(
             "/stats/database/top_domains",
-            get(handlers::stats::get_top_domains),
+            axum::routing::get(handlers::stats::get_top_domains),
         )
         .route(
             "/stats/database/top_clients",
-            get(handlers::stats::get_top_clients),
+            axum::routing::get(handlers::stats::get_top_clients),
         )
         .route(
             "/stats/database/upstreams",
-            get(handlers::stats::get_upstreams),
+            axum::routing::get(handlers::stats::get_upstreams),
         )
         .route(
             "/stats/database/query_types",
-            get(handlers::stats::get_query_types),
+            axum::routing::get(handlers::stats::get_query_types),
         )
         // History — Phase 1
-        .route("/history", get(handlers::stats::get_history))
-        .route(
-            "/history/clients",
-            get(handlers::history::get_history_clients),
-        )
+        .route("/history", axum::routing::get(handlers::stats::get_history))
+        .routes(routes!(handlers::history::get_history_clients))
         // Queries — Phase 2
-        .route("/queries", get(handlers::queries::get_queries))
-        .route(
-            "/queries/suggestions",
-            get(handlers::queries::get_suggestions),
-        )
+        .routes(routes!(handlers::queries::get_queries))
+        .routes(routes!(handlers::queries::get_suggestions))
         // Search — Phase 2
-        .route("/search/{domain}", get(handlers::search::search_domain))
+        .routes(routes!(handlers::search::search_domain))
         // DNS blocking — Phase 3
-        .route(
-            "/dns/blocking",
-            get(handlers::dns::get_blocking).post(handlers::dns::set_blocking),
-        )
+        .routes(routes!(
+            handlers::dns::get_blocking,
+            handlers::dns::set_blocking
+        ))
         // Domains — Phase 4
-        .route("/domains", get(handlers::domains::list_all))
-        .route("/domains/{type}", get(handlers::domains::list_by_type))
-        .route(
-            "/domains/{type}/{kind}",
-            get(handlers::domains::list_by_type_kind).post(handlers::domains::create_domain),
-        )
-        .route(
-            "/domains/{type}/{kind}/{domain}",
-            put(handlers::domains::update_domain).delete(handlers::domains::delete_domain),
-        )
-        .route(
-            "/domains:batchDelete",
-            post(handlers::domains::batch_delete),
-        )
+        .routes(routes!(handlers::domains::list_all))
+        .routes(routes!(handlers::domains::list_by_type))
+        .routes(routes!(
+            handlers::domains::list_by_type_kind,
+            handlers::domains::create_domain
+        ))
+        .routes(routes!(
+            handlers::domains::update_domain,
+            handlers::domains::delete_domain
+        ))
+        .routes(routes!(handlers::domains::batch_delete))
         // Lists — Phase 5
-        .route(
-            "/lists",
-            get(handlers::lists::list_all).post(handlers::lists::create_list),
-        )
-        .route(
-            "/lists/{id}",
-            get(handlers::lists::get_by_id)
-                .put(handlers::lists::update_list)
-                .delete(handlers::lists::delete_list),
-        )
-        .route("/lists:batchDelete", post(handlers::lists::batch_delete))
+        .routes(routes!(
+            handlers::lists::list_all,
+            handlers::lists::create_list
+        ))
+        .routes(routes!(
+            handlers::lists::get_by_id,
+            handlers::lists::update_list,
+            handlers::lists::delete_list
+        ))
+        .routes(routes!(handlers::lists::batch_delete))
         // Groups — Phase 6
-        .route(
-            "/groups",
-            get(handlers::groups::list_all).post(handlers::groups::create_group),
-        )
-        .route(
-            "/groups/{name}",
-            get(handlers::groups::get_by_name)
-                .put(handlers::groups::update_group)
-                .delete(handlers::groups::delete_group),
-        )
-        .route("/groups:batchDelete", post(handlers::groups::batch_delete))
+        .routes(routes!(
+            handlers::groups::list_all,
+            handlers::groups::create_group
+        ))
+        .routes(routes!(
+            handlers::groups::get_by_name,
+            handlers::groups::update_group,
+            handlers::groups::delete_group
+        ))
+        .routes(routes!(handlers::groups::batch_delete))
         // Clients — Phase 6
-        .route(
-            "/clients",
-            get(handlers::clients::list_all).post(handlers::clients::create_client),
-        )
-        .route("/clients/_suggestions", get(handlers::clients::suggestions))
-        .route(
-            "/clients/{client}",
-            put(handlers::clients::update_client).delete(handlers::clients::delete_client),
-        )
-        .route(
-            "/clients:batchDelete",
-            post(handlers::clients::batch_delete),
-        )
+        .routes(routes!(
+            handlers::clients::list_all,
+            handlers::clients::create_client
+        ))
+        .routes(routes!(handlers::clients::suggestions))
+        .routes(routes!(
+            handlers::clients::update_client,
+            handlers::clients::delete_client
+        ))
+        .routes(routes!(handlers::clients::batch_delete))
         // Info — Phase 7
-        .route("/info/version", get(handlers::info::get_version))
-        .route("/info/ftl", get(handlers::info::get_ftl_info))
-        .route("/info/system", get(handlers::info::get_system_info))
-        .route("/info/host", get(handlers::info::get_host_info))
-        .route("/info/database", get(handlers::info::get_database_info))
+        .routes(routes!(handlers::info::get_version))
+        .routes(routes!(handlers::info::get_ftl_info))
+        .routes(routes!(handlers::info::get_system_info))
+        .routes(routes!(handlers::info::get_host_info))
+        .routes(routes!(handlers::info::get_database_info))
         // Actions — Phase 7
-        .route("/action/gravity", post(handlers::action::gravity))
-        .route("/action/restartdns", post(handlers::action::restartdns))
-        .route("/action/flush/logs", post(handlers::action::flush_logs))
+        .routes(routes!(handlers::action::gravity))
+        .routes(routes!(handlers::action::restartdns))
+        .routes(routes!(handlers::action::flush_logs))
         .with_state(state)
+        .split_for_parts();
+
+    (router, api)
 }

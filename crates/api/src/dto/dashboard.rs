@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
 use super::{CacheStatsResponse, QueryRateResponse, StatsResponse, TimelineResponse};
 
@@ -6,7 +7,7 @@ fn default_period() -> String {
     "24h".to_string()
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct DashboardQuery {
     #[serde(default = "default_period")]
     pub period: String,
@@ -14,20 +15,20 @@ pub struct DashboardQuery {
     pub include_timeline: bool,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct TopBlockedDomain {
     pub domain: String,
     pub count: u64,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct TopClient {
     pub ip: String,
     pub hostname: Option<String>,
     pub count: u64,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct DashboardResponse {
     pub stats: StatsResponse,
     pub rate: QueryRateResponse,

@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Pi-hole v6 domain entry (covers both exact and regex).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeDomainEntry {
     pub id: i64,
     pub domain: String,
+    #[schema(value_type = String)]
     pub r#type: &'static str,
+    #[schema(value_type = String)]
     pub kind: &'static str,
     pub enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -18,7 +21,7 @@ pub struct PiholeDomainEntry {
 }
 
 /// Pi-hole v6 POST/PUT domain request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateDomainRequest {
     pub domain: String,
     pub comment: Option<String>,
@@ -27,13 +30,13 @@ pub struct CreateDomainRequest {
 }
 
 /// Pi-hole v6 batch delete request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchDeleteRequest {
     pub items: Vec<String>,
 }
 
 /// Pi-hole v6 domain list response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DomainsListResponse {
     pub domains: Vec<PiholeDomainEntry>,
 }

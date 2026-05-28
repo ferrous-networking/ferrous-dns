@@ -40,6 +40,19 @@ fn client_to_entry(c: &ferrous_dns_domain::Client) -> Result<PiholeClientEntry, 
 }
 
 /// Pi-hole v6 GET /api/clients — list all clients.
+#[utoipa::path(
+    get,
+    path = "/clients",
+    tag = "pihole:clients",
+    params(
+        ("limit" = Option<u32>, Query, description = "Page size (default 1000)"),
+        ("offset" = Option<u32>, Query, description = "Offset")
+    ),
+    responses(
+        (status = 200, description = "All clients", body = ClientsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_all(
     State(state): State<PiholeAppState>,
     Query(params): Query<ClientQueryParams>,
@@ -55,6 +68,17 @@ pub async fn list_all(
 }
 
 /// Pi-hole v6 POST /api/clients — create client.
+#[utoipa::path(
+    post,
+    path = "/clients",
+    tag = "pihole:clients",
+    request_body = CreateClientRequest,
+    responses(
+        (status = 201, description = "Client created", body = PiholeClientEntry),
+        (status = 422, description = "Invalid IP address")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn create_client(
     State(state): State<PiholeAppState>,
     Json(body): Json<CreateClientRequest>,
@@ -74,6 +98,20 @@ pub async fn create_client(
 }
 
 /// Pi-hole v6 PUT /api/clients/:client — update client.
+#[utoipa::path(
+    put,
+    path = "/clients/{client}",
+    tag = "pihole:clients",
+    params(
+        ("client" = String, Path, description = "Client IP address")
+    ),
+    request_body = UpdateClientRequest,
+    responses(
+        (status = 200, description = "Client updated", body = PiholeClientEntry),
+        (status = 404, description = "Client not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn update_client(
     State(state): State<PiholeAppState>,
     Path(client_ip): Path<String>,
@@ -103,6 +141,19 @@ pub async fn update_client(
 }
 
 /// Pi-hole v6 DELETE /api/clients/:client — delete client.
+#[utoipa::path(
+    delete,
+    path = "/clients/{client}",
+    tag = "pihole:clients",
+    params(
+        ("client" = String, Path, description = "Client IP address")
+    ),
+    responses(
+        (status = 204, description = "Client deleted"),
+        (status = 404, description = "Client not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn delete_client(
     State(state): State<PiholeAppState>,
     Path(client_ip): Path<String>,
@@ -126,6 +177,15 @@ pub async fn delete_client(
 }
 
 /// Pi-hole v6 GET /api/clients/_suggestions — IP/hostname suggestions.
+#[utoipa::path(
+    get,
+    path = "/clients/_suggestions",
+    tag = "pihole:clients",
+    responses(
+        (status = 200, description = "Client suggestions", body = ClientSuggestionsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn suggestions(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ClientSuggestionsResponse>, PiholeApiError> {
@@ -144,6 +204,16 @@ pub async fn suggestions(
 }
 
 /// Pi-hole v6 POST /api/clients:batchDelete — batch delete clients.
+#[utoipa::path(
+    post,
+    path = "/clients:batchDelete",
+    tag = "pihole:clients",
+    request_body = BatchDeleteRequest,
+    responses(
+        (status = 204, description = "Batch delete completed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
     Json(body): Json<BatchDeleteRequest>,

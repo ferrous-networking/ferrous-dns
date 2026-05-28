@@ -1,7 +1,8 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// System information snapshot: kernel version, CPU load averages, and memory usage.
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize, Default, ToSchema)]
 pub struct SystemInfoResponse {
     pub kernel: String,
     pub load_avg_1m: f32,

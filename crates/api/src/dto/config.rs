@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct ConfigResponse {
     pub server: ServerConfigResponse,
     pub dns: DnsConfigResponse,
@@ -12,7 +13,7 @@ pub struct ConfigResponse {
     pub writable: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct AuthConfigResponse {
     pub enabled: bool,
     pub session_ttl_hours: u32,
@@ -21,7 +22,7 @@ pub struct AuthConfigResponse {
     pub login_rate_limit_window_secs: u64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct ServerConfigResponse {
     pub dns_port: u16,
     pub web_port: u16,
@@ -30,14 +31,14 @@ pub struct ServerConfigResponse {
     pub web_tls: WebTlsConfigResponse,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct WebTlsConfigResponse {
     pub enabled: bool,
     pub tls_cert_path: String,
     pub tls_key_path: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct DnsConfigResponse {
     pub upstream_servers: Vec<String>,
     pub pools: Vec<UpstreamPoolResponse>,
@@ -65,7 +66,7 @@ pub struct DnsConfigResponse {
     pub rate_limit: RateLimitConfigResponse,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct RateLimitConfigResponse {
     pub enabled: bool,
     pub queries_per_second: u32,
@@ -81,7 +82,7 @@ pub struct RateLimitConfigResponse {
     pub dot_max_connections_per_ip: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct UpstreamPoolResponse {
     pub name: String,
     pub strategy: String,
@@ -89,7 +90,7 @@ pub struct UpstreamPoolResponse {
     pub servers: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct HealthCheckResponse {
     pub enabled: bool,
     pub interval_seconds: u64,
@@ -98,25 +99,25 @@ pub struct HealthCheckResponse {
     pub success_threshold: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct BlockingConfigResponse {
     pub enabled: bool,
     pub custom_blocked: Vec<String>,
     pub whitelist: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct LoggingConfigResponse {
     pub level: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct DatabaseConfigResponse {
     pub path: String,
     pub log_queries: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct UpdateConfigRequest {
     pub server: Option<ServerConfigUpdate>,
     pub dns: Option<DnsConfigUpdate>,
@@ -124,7 +125,7 @@ pub struct UpdateConfigRequest {
     pub auth: Option<AuthConfigUpdate>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct AuthConfigUpdate {
     pub enabled: Option<bool>,
     pub session_ttl_hours: Option<u32>,
@@ -133,20 +134,20 @@ pub struct AuthConfigUpdate {
     pub login_rate_limit_window_secs: Option<u64>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct ServerConfigUpdate {
     pub pihole_compat: Option<bool>,
     pub web_tls: Option<WebTlsConfigUpdate>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct WebTlsConfigUpdate {
     pub enabled: Option<bool>,
     pub tls_cert_path: Option<String>,
     pub tls_key_path: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct PoolUpdate {
     pub name: String,
     pub strategy: String,
@@ -154,7 +155,7 @@ pub struct PoolUpdate {
     pub servers: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct DnsConfigUpdate {
     pub pools: Option<Vec<PoolUpdate>>,
     pub upstream_servers: Option<Vec<String>>,
@@ -179,7 +180,7 @@ pub struct DnsConfigUpdate {
     pub rate_limit: Option<RateLimitConfigUpdate>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct RateLimitConfigUpdate {
     pub enabled: Option<bool>,
     pub queries_per_second: Option<u32>,
@@ -195,14 +196,14 @@ pub struct RateLimitConfigUpdate {
     pub dot_max_connections_per_ip: Option<u32>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct BlockingConfigUpdate {
     pub enabled: Option<bool>,
     pub custom_blocked: Option<Vec<String>>,
     pub whitelist: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SettingsDto {
     pub never_forward_non_fqdn: bool,
 
@@ -215,7 +216,7 @@ pub struct SettingsDto {
     pub local_dns_server: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SettingsUpdateResponse {
     pub success: bool,
     pub message: String,

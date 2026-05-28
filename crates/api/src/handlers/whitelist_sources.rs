@@ -2,11 +2,10 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
-    Router,
 };
 use ferrous_dns_domain::DomainError;
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{CreateWhitelistSourceRequest, UpdateWhitelistSourceRequest, WhitelistSourceResponse},
@@ -14,15 +13,25 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/whitelist-sources", get(get_all_whitelist_sources))
-        .route("/whitelist-sources", post(create_whitelist_source))
-        .route("/whitelist-sources/{id}", get(get_whitelist_source_by_id))
-        .route("/whitelist-sources/{id}", put(update_whitelist_source))
-        .route("/whitelist-sources/{id}", delete(delete_whitelist_source))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_whitelist_sources, create_whitelist_source))
+        .routes(routes!(
+            get_whitelist_source_by_id,
+            update_whitelist_source,
+            delete_whitelist_source
+        ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/whitelist-sources",
+    tag = "whitelist_sources",
+    responses(
+        (status = 200, description = "All whitelist sources", body = [WhitelistSourceResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_whitelist_sources(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<WhitelistSourceResponse>>, ApiError> {
@@ -39,6 +48,17 @@ async fn get_all_whitelist_sources(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/whitelist-sources/{id}",
+    tag = "whitelist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    responses(
+        (status = 200, description = "Source detail", body = WhitelistSourceResponse),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_whitelist_source_by_id(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -57,6 +77,17 @@ async fn get_whitelist_source_by_id(
     Ok(Json(WhitelistSourceResponse::from_source(source)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/whitelist-sources",
+    tag = "whitelist_sources",
+    request_body = CreateWhitelistSourceRequest,
+    responses(
+        (status = 201, description = "Source created", body = WhitelistSourceResponse),
+        (status = 409, description = "Conflict"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_whitelist_source(
     State(state): State<AppState>,
     Json(req): Json<CreateWhitelistSourceRequest>,
@@ -76,6 +107,18 @@ async fn create_whitelist_source(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/whitelist-sources/{id}",
+    tag = "whitelist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    request_body = UpdateWhitelistSourceRequest,
+    responses(
+        (status = 200, description = "Source updated", body = WhitelistSourceResponse),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_whitelist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -90,6 +133,17 @@ async fn update_whitelist_source(
     Ok(Json(WhitelistSourceResponse::from_source(source)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/whitelist-sources/{id}",
+    tag = "whitelist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    responses(
+        (status = 204, description = "Source deleted"),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_whitelist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,

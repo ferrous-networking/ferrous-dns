@@ -2,10 +2,9 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
-    Router,
 };
 use ferrous_dns_domain::ScheduleAction;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::schedule::{
@@ -17,23 +16,28 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/schedule-profiles", get(list_profiles))
-        .route("/schedule-profiles", post(create_profile))
-        .route("/schedule-profiles/{id}", get(get_profile))
-        .route("/schedule-profiles/{id}", put(update_profile))
-        .route("/schedule-profiles/{id}", delete(delete_profile))
-        .route("/schedule-profiles/{id}/slots", post(add_slot))
-        .route(
-            "/schedule-profiles/{id}/slots/{slot_id}",
-            delete(delete_slot),
-        )
-        .route("/groups/{id}/schedule", get(get_group_schedule))
-        .route("/groups/{id}/schedule", put(assign_schedule))
-        .route("/groups/{id}/schedule", delete(unassign_schedule))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list_profiles, create_profile))
+        .routes(routes!(get_profile, update_profile, delete_profile))
+        .routes(routes!(add_slot))
+        .routes(routes!(delete_slot))
+        .routes(routes!(
+            get_group_schedule,
+            assign_schedule,
+            unassign_schedule
+        ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/schedule-profiles",
+    tag = "schedules",
+    responses(
+        (status = 200, description = "All schedule profiles", body = [ScheduleProfileResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn list_profiles(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ScheduleProfileResponse>>, ApiError> {
@@ -46,6 +50,17 @@ async fn list_profiles(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/schedule-profiles",
+    tag = "schedules",
+    request_body = CreateScheduleProfileRequest,
+    responses(
+        (status = 201, description = "Profile created", body = ScheduleProfileResponse),
+        (status = 409, description = "Duplicate profile name"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_profile(
     State(state): State<AppState>,
     Json(req): Json<CreateScheduleProfileRequest>,
@@ -61,6 +76,17 @@ async fn create_profile(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/schedule-profiles/{id}",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Profile ID")),
+    responses(
+        (status = 200, description = "Profile with time slots", body = ScheduleProfileWithSlotsResponse),
+        (status = 404, description = "Profile not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_profile(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -78,6 +104,18 @@ async fn get_profile(
     }))
 }
 
+#[utoipa::path(
+    put,
+    path = "/schedule-profiles/{id}",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Profile ID")),
+    request_body = UpdateScheduleProfileRequest,
+    responses(
+        (status = 200, description = "Profile updated", body = ScheduleProfileResponse),
+        (status = 404, description = "Profile not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_profile(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -91,6 +129,17 @@ async fn update_profile(
     Ok(Json(ScheduleProfileResponse::from_entity(profile)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/schedule-profiles/{id}",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Profile ID")),
+    responses(
+        (status = 204, description = "Profile deleted"),
+        (status = 404, description = "Profile not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_profile(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -99,6 +148,18 @@ async fn delete_profile(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    post,
+    path = "/schedule-profiles/{id}/slots",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Profile ID")),
+    request_body = AddTimeSlotRequest,
+    responses(
+        (status = 201, description = "Time slot added", body = TimeSlotResponse),
+        (status = 400, description = "Invalid time slot"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn add_slot(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -121,6 +182,20 @@ async fn add_slot(
     ))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/schedule-profiles/{id}/slots/{slot_id}",
+    tag = "schedules",
+    params(
+        ("id" = i64, Path, description = "Profile ID"),
+        ("slot_id" = i64, Path, description = "Time slot ID"),
+    ),
+    responses(
+        (status = 204, description = "Time slot deleted"),
+        (status = 404, description = "Time slot not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_slot(
     State(state): State<AppState>,
     Path((_id, slot_id)): Path<(i64, i64)>,
@@ -129,6 +204,17 @@ async fn delete_slot(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    get,
+    path = "/groups/{id}/schedule",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Group ID")),
+    responses(
+        (status = 200, description = "Group's schedule assignment", body = GroupScheduleResponse),
+        (status = 404, description = "Group has no schedule"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_group_schedule(
     State(state): State<AppState>,
     Path(group_id): Path<i64>,
@@ -147,6 +233,17 @@ async fn get_group_schedule(
     }))
 }
 
+#[utoipa::path(
+    put,
+    path = "/groups/{id}/schedule",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Group ID")),
+    request_body = AssignProfileRequest,
+    responses(
+        (status = 200, description = "Schedule assigned to group", body = GroupScheduleResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn assign_schedule(
     State(state): State<AppState>,
     Path(group_id): Path<i64>,
@@ -163,6 +260,16 @@ async fn assign_schedule(
     }))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/groups/{id}/schedule",
+    tag = "schedules",
+    params(("id" = i64, Path, description = "Group ID")),
+    responses(
+        (status = 204, description = "Schedule unassigned"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn unassign_schedule(
     State(state): State<AppState>,
     Path(group_id): Path<i64>,

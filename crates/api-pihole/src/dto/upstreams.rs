@@ -1,8 +1,9 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
 /// Pi-hole v6 GET /api/stats/upstreams response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UpstreamsResponse {
     pub upstreams: HashMap<String, u64>,
     pub forwarded_queries: u64,

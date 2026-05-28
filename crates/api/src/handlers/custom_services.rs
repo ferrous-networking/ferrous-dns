@@ -2,11 +2,10 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, patch, post},
-    Router,
 };
 use ferrous_dns_domain::DomainError;
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{CreateCustomServiceRequest, CustomServiceResponse, UpdateCustomServiceRequest},
@@ -14,21 +13,25 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/custom-services", get(list_custom_services))
-        .route("/custom-services", post(create_custom_service))
-        .route("/custom-services/{service_id}", get(get_custom_service))
-        .route(
-            "/custom-services/{service_id}",
-            patch(update_custom_service),
-        )
-        .route(
-            "/custom-services/{service_id}",
-            delete(delete_custom_service),
-        )
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(list_custom_services, create_custom_service))
+        .routes(routes!(
+            get_custom_service,
+            update_custom_service,
+            delete_custom_service
+        ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/custom-services",
+    tag = "custom_services",
+    responses(
+        (status = 200, description = "All custom services", body = [CustomServiceResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn list_custom_services(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<CustomServiceResponse>>, ApiError> {
@@ -42,6 +45,17 @@ async fn list_custom_services(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/custom-services/{service_id}",
+    tag = "custom_services",
+    params(("service_id" = String, Path, description = "Custom service ID")),
+    responses(
+        (status = 200, description = "Custom service detail", body = CustomServiceResponse),
+        (status = 404, description = "Custom service not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_custom_service(
     State(state): State<AppState>,
     Path(service_id): Path<String>,
@@ -60,6 +74,17 @@ async fn get_custom_service(
     Ok(Json(CustomServiceResponse::from_entity(cs)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/custom-services",
+    tag = "custom_services",
+    request_body = CreateCustomServiceRequest,
+    responses(
+        (status = 201, description = "Custom service created", body = CustomServiceResponse),
+        (status = 409, description = "Custom service already exists"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_custom_service(
     State(state): State<AppState>,
     Json(req): Json<CreateCustomServiceRequest>,
@@ -78,6 +103,18 @@ async fn create_custom_service(
     ))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/custom-services/{service_id}",
+    tag = "custom_services",
+    params(("service_id" = String, Path, description = "Custom service ID")),
+    request_body = UpdateCustomServiceRequest,
+    responses(
+        (status = 200, description = "Custom service updated", body = CustomServiceResponse),
+        (status = 404, description = "Custom service not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_custom_service(
     State(state): State<AppState>,
     Path(service_id): Path<String>,
@@ -91,6 +128,17 @@ async fn update_custom_service(
     Ok(Json(CustomServiceResponse::from_entity(cs)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/custom-services/{service_id}",
+    tag = "custom_services",
+    params(("service_id" = String, Path, description = "Custom service ID")),
+    responses(
+        (status = 204, description = "Custom service deleted"),
+        (status = 404, description = "Custom service not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_custom_service(
     State(state): State<AppState>,
     Path(service_id): Path<String>,

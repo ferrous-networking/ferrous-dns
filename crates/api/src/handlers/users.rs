@@ -3,10 +3,10 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post},
-    Json, Router,
+    Json,
 };
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::dto::user::{CreateUserRequest, UserResponse};
 use crate::errors::ApiError;
@@ -14,19 +14,39 @@ use crate::state::AppState;
 use ferrous_dns_application::ports::CreateUserInput;
 use ferrous_dns_domain::User;
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/users", get(get_all_users))
-        .route("/users", post(create_user))
-        .route("/users/{id}", delete(delete_user))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_users, create_user))
+        .routes(routes!(delete_user))
 }
 
+#[utoipa::path(
+    get,
+    path = "/users",
+    tag = "users",
+    responses(
+        (status = 200, description = "All users", body = [UserResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_users(State(state): State<AppState>) -> Result<Json<Vec<UserResponse>>, ApiError> {
     let users = state.auth.get_users.execute().await?;
     debug!(count = users.len(), "Users retrieved");
     Ok(Json(users.into_iter().map(user_to_response).collect()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/users",
+    tag = "users",
+    request_body = CreateUserRequest,
+    responses(
+        (status = 201, description = "User created", body = UserResponse),
+        (status = 409, description = "Username already taken"),
+        (status = 400, description = "Invalid input"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_user(
     State(state): State<AppState>,
     Json(req): Json<CreateUserRequest>,
@@ -43,6 +63,18 @@ async fn create_user(
     Ok((StatusCode::CREATED, Json(user_to_response(user))))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/users/{id}",
+    tag = "users",
+    params(("id" = i64, Path, description = "User ID")),
+    responses(
+        (status = 204, description = "User deleted"),
+        (status = 404, description = "User not found"),
+        (status = 403, description = "Cannot delete protected user"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_user(
     State(state): State<AppState>,
     Path(id): Path<i64>,

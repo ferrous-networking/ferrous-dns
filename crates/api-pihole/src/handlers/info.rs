@@ -13,6 +13,15 @@ use crate::{
 use super::stats::STATS_PERIOD_HOURS;
 
 /// Pi-hole v6 GET /api/info/version
+#[utoipa::path(
+    get,
+    path = "/info/version",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Version info", body = VersionResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_version() -> Json<VersionResponse> {
     Json(VersionResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -22,6 +31,15 @@ pub async fn get_version() -> Json<VersionResponse> {
 }
 
 /// Pi-hole v6 GET /api/info/ftl
+#[utoipa::path(
+    get,
+    path = "/info/ftl",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "FTL daemon info", body = FtlInfoResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_ftl_info(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<FtlInfoResponse>, PiholeApiError> {
@@ -43,6 +61,15 @@ pub async fn get_ftl_info(
 }
 
 /// Pi-hole v6 GET /api/info/system
+#[utoipa::path(
+    get,
+    path = "/info/system",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Host system info (load, memory, disk)", body = SystemInfoResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_system_info() -> Json<SystemInfoResponse> {
     let (load, mem, disk) = tokio::task::spawn_blocking(|| {
         let load = read_loadavg();
@@ -83,6 +110,15 @@ pub async fn get_system_info() -> Json<SystemInfoResponse> {
 }
 
 /// Pi-hole v6 GET /api/info/host
+#[utoipa::path(
+    get,
+    path = "/info/host",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Host hostname", body = HostInfoResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_host_info() -> Json<HostInfoResponse> {
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().into_owned())
@@ -91,6 +127,15 @@ pub async fn get_host_info() -> Json<HostInfoResponse> {
 }
 
 /// Pi-hole v6 GET /api/info/database
+#[utoipa::path(
+    get,
+    path = "/info/database",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Query database info", body = DatabaseInfoResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_database_info(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<DatabaseInfoResponse>, PiholeApiError> {

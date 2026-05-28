@@ -9,6 +9,18 @@ use crate::{
     state::AppState,
 };
 
+#[utoipa::path(
+    put,
+    path = "/clients/{id}/group",
+    tag = "clients",
+    params(("id" = i64, Path, description = "Client ID")),
+    request_body = AssignGroupRequest,
+    responses(
+        (status = 200, description = "Client assigned to group", body = ClientResponse),
+        (status = 404, description = "Client or group not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn assign_client_to_group(
     State(state): State<AppState>,
     Path(client_id): Path<i64>,

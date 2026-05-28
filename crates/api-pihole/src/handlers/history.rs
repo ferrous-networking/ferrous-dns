@@ -11,6 +11,15 @@ use crate::{
 /// Pi-hole v6 GET /api/history/clients
 ///
 /// Returns per-client query totals for the last 24 hours.
+#[utoipa::path(
+    get,
+    path = "/history/clients",
+    tag = "pihole:history",
+    responses(
+        (status = 200, description = "Per-client query totals", body = HistoryClientsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_history_clients(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<HistoryClientsResponse>, PiholeApiError> {

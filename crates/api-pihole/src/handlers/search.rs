@@ -18,6 +18,19 @@ pub struct SearchParams {
 /// Pi-hole v6 GET /api/search/:domain
 ///
 /// Checks whether a domain would be blocked by the current filter configuration.
+#[utoipa::path(
+    get,
+    path = "/search/{domain}",
+    tag = "pihole:search",
+    params(
+        ("domain" = String, Path, description = "Domain to evaluate against the filter index"),
+        ("client" = Option<String>, Query, description = "Client IP context for group resolution")
+    ),
+    responses(
+        (status = 200, description = "Filter evaluation result", body = SearchResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn search_domain(
     State(state): State<PiholeAppState>,
     Path(domain): Path<String>,

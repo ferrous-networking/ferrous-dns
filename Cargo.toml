@@ -81,6 +81,11 @@ mimalloc = { version = "0.1", default-features = false }
 core_affinity = "0.8"
 libc = "0.2.183"
 
+# OpenAPI documentation
+utoipa = { version = "5", features = ["axum_extras", "chrono"] }
+utoipa-axum = "0.2"
+utoipa-scalar = { version = "0.3", features = ["axum"] }
+
 # ============================================================================
 # PERFORMANCE OPTIMIZATION PROFILES
 # ============================================================================

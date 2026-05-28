@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Pi-hole v6 adlist/list entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeListEntry {
     pub id: i64,
     pub address: String,
@@ -19,7 +20,7 @@ pub struct PiholeListEntry {
 }
 
 /// Pi-hole v6 POST /api/lists request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateListRequest {
     pub address: String,
     pub comment: Option<String>,
@@ -29,7 +30,7 @@ pub struct CreateListRequest {
 }
 
 /// Pi-hole v6 list response envelope.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListsResponse {
     pub lists: Vec<PiholeListEntry>,
 }

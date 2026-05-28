@@ -26,6 +26,15 @@ fn group_to_entry(g: &ferrous_dns_domain::Group) -> Result<PiholeGroupEntry, Pih
 }
 
 /// Pi-hole v6 GET /api/groups — list all groups.
+#[utoipa::path(
+    get,
+    path = "/groups",
+    tag = "pihole:groups",
+    responses(
+        (status = 200, description = "All groups", body = GroupsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_all(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<GroupsResponse>, PiholeApiError> {
@@ -38,6 +47,16 @@ pub async fn list_all(
 }
 
 /// Pi-hole v6 POST /api/groups — create group.
+#[utoipa::path(
+    post,
+    path = "/groups",
+    tag = "pihole:groups",
+    request_body = CreateGroupRequest,
+    responses(
+        (status = 201, description = "Group created", body = PiholeGroupEntry)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn create_group(
     State(state): State<PiholeAppState>,
     Json(body): Json<CreateGroupRequest>,
@@ -51,6 +70,19 @@ pub async fn create_group(
 }
 
 /// Pi-hole v6 GET /api/groups/:name — get group by name.
+#[utoipa::path(
+    get,
+    path = "/groups/{name}",
+    tag = "pihole:groups",
+    params(
+        ("name" = String, Path, description = "Group name")
+    ),
+    responses(
+        (status = 200, description = "Group entry", body = PiholeGroupEntry),
+        (status = 404, description = "Group not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_by_name(
     State(state): State<PiholeAppState>,
     Path(name): Path<String>,
@@ -68,6 +100,20 @@ pub async fn get_by_name(
 }
 
 /// Pi-hole v6 PUT /api/groups/:name — update group.
+#[utoipa::path(
+    put,
+    path = "/groups/{name}",
+    tag = "pihole:groups",
+    params(
+        ("name" = String, Path, description = "Group name")
+    ),
+    request_body = UpdateGroupRequest,
+    responses(
+        (status = 200, description = "Group updated", body = PiholeGroupEntry),
+        (status = 404, description = "Group not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn update_group(
     State(state): State<PiholeAppState>,
     Path(name): Path<String>,
@@ -96,6 +142,19 @@ pub async fn update_group(
 }
 
 /// Pi-hole v6 DELETE /api/groups/:name — delete group.
+#[utoipa::path(
+    delete,
+    path = "/groups/{name}",
+    tag = "pihole:groups",
+    params(
+        ("name" = String, Path, description = "Group name")
+    ),
+    responses(
+        (status = 204, description = "Group deleted"),
+        (status = 404, description = "Group not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn delete_group(
     State(state): State<PiholeAppState>,
     Path(name): Path<String>,
@@ -119,6 +178,16 @@ pub async fn delete_group(
 }
 
 /// Pi-hole v6 POST /api/groups:batchDelete — batch delete groups.
+#[utoipa::path(
+    post,
+    path = "/groups:batchDelete",
+    tag = "pihole:groups",
+    request_body = BatchDeleteRequest,
+    responses(
+        (status = 204, description = "Batch delete completed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
     Json(body): Json<BatchDeleteRequest>,

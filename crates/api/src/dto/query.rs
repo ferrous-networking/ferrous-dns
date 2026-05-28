@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct QueryParams {
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -22,7 +23,7 @@ fn default_limit() -> u32 {
     100
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct PaginatedQueries {
     pub data: Vec<QueryResponse>,
     /// Total records matching the applied filters.
@@ -38,22 +39,31 @@ fn default_period() -> String {
     "24h".to_string()
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct QueryResponse {
     pub timestamp: String,
+    #[schema(value_type = String)]
     pub domain: Arc<str>,
     pub client: String,
+    #[schema(value_type = Option<String>)]
     pub client_hostname: Option<Arc<str>>,
     #[serde(rename = "type")]
+    #[schema(value_type = String)]
     pub record_type: &'static str,
     pub blocked: bool,
     pub response_time_us: Option<u64>,
     pub cache_hit: bool,
     pub cache_refresh: bool,
+    #[schema(value_type = Option<String>)]
     pub dnssec_status: Option<&'static str>,
+    #[schema(value_type = Option<String>)]
     pub upstream_server: Option<Arc<str>>,
+    #[schema(value_type = Option<String>)]
     pub upstream_pool: Option<Arc<str>>,
+    #[schema(value_type = String)]
     pub query_source: &'static str,
+    #[schema(value_type = Option<String>)]
     pub block_source: Option<&'static str>,
+    #[schema(value_type = Option<String>)]
     pub response_status: Option<&'static str>,
 }

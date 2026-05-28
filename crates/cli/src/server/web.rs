@@ -3,16 +3,17 @@ use axum::{
     http::{header, HeaderValue, Method},
     response::{Html, IntoResponse},
     routing::get,
-    Router,
+    Json, Router,
 };
-use ferrous_dns_api::{create_api_routes, AppState};
-use ferrous_dns_api_pihole::{create_pihole_routes, PiholeAppState};
+use ferrous_dns_api::{create_api_router_with_openapi, AppState};
+use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tracing::info;
+use utoipa_scalar::{Scalar, Servable};
 
 use super::web_tls;
 
@@ -119,12 +120,41 @@ fn create_app(
     pihole_compat: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
 ) -> Router {
+    let (ferrous_router, ferrous_openapi) = create_api_router_with_openapi(ferrous_state);
+    let ferrous_branch = Router::new()
+        .route(
+            "/openapi.json",
+            get({
+                let spec = ferrous_openapi.clone();
+                move || {
+                    let spec = spec.clone();
+                    async move { Json(spec) }
+                }
+            }),
+        )
+        .merge(Router::from(Scalar::with_url("/docs", ferrous_openapi)))
+        .merge(ferrous_router);
+
     let router = if pihole_compat {
+        let (pihole_router, pihole_openapi) = create_pihole_router_with_openapi(pihole_state);
+        let pihole_branch = Router::new()
+            .route(
+                "/openapi.json",
+                get({
+                    let spec = pihole_openapi.clone();
+                    move || {
+                        let spec = spec.clone();
+                        async move { Json(spec) }
+                    }
+                }),
+            )
+            .merge(Router::from(Scalar::with_url("/docs", pihole_openapi)))
+            .merge(pihole_router);
         Router::new()
-            .nest("/api", create_pihole_routes(pihole_state))
-            .nest("/ferrous/api", create_api_routes(ferrous_state))
+            .nest("/api", pihole_branch)
+            .nest("/ferrous/api", ferrous_branch)
     } else {
-        Router::new().nest("/api", create_api_routes(ferrous_state))
+        Router::new().nest("/api", ferrous_branch)
     };
 
     let mut app = router

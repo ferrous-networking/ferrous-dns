@@ -1,7 +1,8 @@
 use ferrous_dns_domain::Group;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GroupResponse {
     pub id: i64,
     pub name: String,
@@ -28,21 +29,21 @@ impl GroupResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateGroupRequest {
     pub name: String,
     pub enabled: Option<bool>,
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateGroupRequest {
     pub name: Option<String>,
     pub enabled: Option<bool>,
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct AssignGroupRequest {
     pub group_id: i64,
 }

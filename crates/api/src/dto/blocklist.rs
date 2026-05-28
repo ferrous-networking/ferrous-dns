@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct BlocklistQuery {
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -12,7 +13,7 @@ fn default_limit() -> u32 {
     100
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct PaginatedBlocklist {
     pub data: Vec<BlocklistResponse>,
     pub total: u64,
@@ -20,7 +21,7 @@ pub struct PaginatedBlocklist {
     pub offset: u32,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct BlocklistResponse {
     pub domain: String,
     pub added_at: String,
