@@ -2,6 +2,16 @@ use crate::{dto::WhitelistResponse, errors::ApiError, state::AppState};
 use axum::{extract::State, Json};
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/whitelist",
+    tag = "blocking",
+    responses(
+        (status = 200, description = "All whitelisted domains", body = [WhitelistResponse]),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_whitelist")]
 pub async fn get_whitelist(
     State(state): State<AppState>,

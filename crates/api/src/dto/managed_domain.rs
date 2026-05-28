@@ -1,7 +1,8 @@
 use ferrous_dns_domain::ManagedDomain;
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct ManagedDomainQuery {
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -13,7 +14,7 @@ fn default_limit() -> u32 {
     100
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct PaginatedManagedDomains {
     pub data: Vec<ManagedDomainResponse>,
     pub total: u64,
@@ -21,7 +22,7 @@ pub struct PaginatedManagedDomains {
     pub offset: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ManagedDomainResponse {
     pub id: i64,
     pub name: String,
@@ -52,7 +53,7 @@ impl ManagedDomainResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateManagedDomainRequest {
     pub name: String,
     pub domain: String,
@@ -62,7 +63,7 @@ pub struct CreateManagedDomainRequest {
     pub enabled: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateManagedDomainRequest {
     pub name: Option<String>,
     pub domain: Option<String>,

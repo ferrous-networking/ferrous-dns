@@ -1,7 +1,8 @@
 use ferrous_dns_domain::RegexFilter;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegexFilterResponse {
     pub id: i64,
     pub name: String,
@@ -30,7 +31,7 @@ impl RegexFilterResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateRegexFilterRequest {
     pub name: String,
     pub pattern: String,
@@ -40,7 +41,7 @@ pub struct CreateRegexFilterRequest {
     pub enabled: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateRegexFilterRequest {
     pub name: Option<String>,
     pub pattern: Option<String>,

@@ -1,7 +1,8 @@
 use ferrous_dns_domain::CustomService;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CustomServiceResponse {
     pub id: i64,
     pub service_id: String,
@@ -26,14 +27,14 @@ impl CustomServiceResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateCustomServiceRequest {
     pub name: String,
     pub domains: Vec<String>,
     pub category_name: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateCustomServiceRequest {
     pub name: Option<String>,
     pub category_name: Option<String>,

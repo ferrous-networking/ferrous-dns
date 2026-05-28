@@ -19,6 +19,8 @@ tokio.workspace = true
 hostname = "0.4"
 ring.workspace = true
 libc = "0.2"
+utoipa.workspace = true
+utoipa-axum.workspace = true
 
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true

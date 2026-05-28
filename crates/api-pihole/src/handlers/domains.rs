@@ -61,6 +61,15 @@ fn regex_to_entry(
 }
 
 /// Pi-hole v6 GET /api/domains — list all domains.
+#[utoipa::path(
+    get,
+    path = "/domains",
+    tag = "pihole:domains",
+    responses(
+        (status = 200, description = "All managed and regex domains", body = DomainsListResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_all(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<DomainsListResponse>, PiholeApiError> {
@@ -81,6 +90,19 @@ pub async fn list_all(
 }
 
 /// Pi-hole v6 GET /api/domains/:type — list by allow/deny.
+#[utoipa::path(
+    get,
+    path = "/domains/{type}",
+    tag = "pihole:domains",
+    params(
+        ("type" = String, Path, description = "Action type (allow|deny)")
+    ),
+    responses(
+        (status = 200, description = "Domains filtered by action", body = DomainsListResponse),
+        (status = 422, description = "Unknown type")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_by_type(
     State(state): State<PiholeAppState>,
     Path(domain_type): Path<String>,
@@ -108,6 +130,19 @@ pub async fn list_by_type(
 }
 
 /// Pi-hole v6 GET /api/domains/:type/:kind — list by type+kind.
+#[utoipa::path(
+    get,
+    path = "/domains/{type}/{kind}",
+    tag = "pihole:domains",
+    params(
+        ("type" = String, Path, description = "Action type (allow|deny)"),
+        ("kind" = String, Path, description = "Match kind (exact|regex)")
+    ),
+    responses(
+        (status = 200, description = "Domains filtered by type and kind", body = DomainsListResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_by_type_kind(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind)): Path<(String, String)>,
@@ -142,6 +177,21 @@ pub async fn list_by_type_kind(
 }
 
 /// Pi-hole v6 POST /api/domains/:type/:kind — create domain.
+#[utoipa::path(
+    post,
+    path = "/domains/{type}/{kind}",
+    tag = "pihole:domains",
+    params(
+        ("type" = String, Path, description = "Action type (allow|deny)"),
+        ("kind" = String, Path, description = "Match kind (exact|regex)")
+    ),
+    request_body = CreateDomainRequest,
+    responses(
+        (status = 201, description = "Domain created", body = PiholeDomainEntry),
+        (status = 422, description = "Invalid type or kind")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn create_domain(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind)): Path<(String, String)>,
@@ -187,6 +237,22 @@ pub async fn create_domain(
 }
 
 /// Pi-hole v6 PUT /api/domains/:type/:kind/:domain — update domain.
+#[utoipa::path(
+    put,
+    path = "/domains/{type}/{kind}/{domain}",
+    tag = "pihole:domains",
+    params(
+        ("type" = String, Path, description = "Action type"),
+        ("kind" = String, Path, description = "Match kind"),
+        ("domain" = String, Path, description = "Domain or regex pattern")
+    ),
+    request_body = CreateDomainRequest,
+    responses(
+        (status = 200, description = "Domain updated", body = PiholeDomainEntry),
+        (status = 404, description = "Domain not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn update_domain(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind, domain_name)): Path<(String, String, String)>,
@@ -263,6 +329,21 @@ pub async fn update_domain(
 }
 
 /// Pi-hole v6 DELETE /api/domains/:type/:kind/:domain — delete domain.
+#[utoipa::path(
+    delete,
+    path = "/domains/{type}/{kind}/{domain}",
+    tag = "pihole:domains",
+    params(
+        ("type" = String, Path, description = "Action type"),
+        ("kind" = String, Path, description = "Match kind"),
+        ("domain" = String, Path, description = "Domain or regex pattern")
+    ),
+    responses(
+        (status = 204, description = "Domain deleted"),
+        (status = 404, description = "Domain not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn delete_domain(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind, domain_name)): Path<(String, String, String)>,
@@ -324,6 +405,16 @@ pub async fn delete_domain(
 /// batch delete URL path (`/domains:batchDelete`) has no type context.
 /// Items are matched by exact domain/pattern across both managed and regex
 /// entries regardless of their action.
+#[utoipa::path(
+    post,
+    path = "/domains:batchDelete",
+    tag = "pihole:domains",
+    request_body = BatchDeleteRequest,
+    responses(
+        (status = 204, description = "Batch delete completed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
     Json(body): Json<BatchDeleteRequest>,

@@ -13,6 +13,17 @@ use tracing::instrument;
 const DEFAULT_PERIOD_HOURS: f32 = 24.0;
 const TOP_TYPES_LIMIT: usize = 10;
 
+#[utoipa::path(
+    get,
+    path = "/stats",
+    tag = "stats",
+    params(StatsQuery),
+    responses(
+        (status = 200, description = "Aggregated query statistics", body = StatsResponse),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_stats")]
 pub async fn get_stats(
     State(state): State<AppState>,

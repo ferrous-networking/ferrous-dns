@@ -2,11 +2,10 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
-    Router,
 };
 use ferrous_dns_domain::DomainError;
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{BlocklistSourceResponse, CreateBlocklistSourceRequest, UpdateBlocklistSourceRequest},
@@ -14,15 +13,25 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/blocklist-sources", get(get_all_blocklist_sources))
-        .route("/blocklist-sources", post(create_blocklist_source))
-        .route("/blocklist-sources/{id}", get(get_blocklist_source_by_id))
-        .route("/blocklist-sources/{id}", put(update_blocklist_source))
-        .route("/blocklist-sources/{id}", delete(delete_blocklist_source))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_blocklist_sources, create_blocklist_source))
+        .routes(routes!(
+            get_blocklist_source_by_id,
+            update_blocklist_source,
+            delete_blocklist_source
+        ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/blocklist-sources",
+    tag = "blocklist_sources",
+    responses(
+        (status = 200, description = "All blocklist sources", body = [BlocklistSourceResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_blocklist_sources(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<BlocklistSourceResponse>>, ApiError> {
@@ -39,6 +48,17 @@ async fn get_all_blocklist_sources(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/blocklist-sources/{id}",
+    tag = "blocklist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    responses(
+        (status = 200, description = "Source detail", body = BlocklistSourceResponse),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_blocklist_source_by_id(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -57,6 +77,17 @@ async fn get_blocklist_source_by_id(
     Ok(Json(BlocklistSourceResponse::from_source(source)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/blocklist-sources",
+    tag = "blocklist_sources",
+    request_body = CreateBlocklistSourceRequest,
+    responses(
+        (status = 201, description = "Source created", body = BlocklistSourceResponse),
+        (status = 409, description = "Conflict"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_blocklist_source(
     State(state): State<AppState>,
     Json(req): Json<CreateBlocklistSourceRequest>,
@@ -76,6 +107,18 @@ async fn create_blocklist_source(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/blocklist-sources/{id}",
+    tag = "blocklist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    request_body = UpdateBlocklistSourceRequest,
+    responses(
+        (status = 200, description = "Source updated", body = BlocklistSourceResponse),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_blocklist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -90,6 +133,17 @@ async fn update_blocklist_source(
     Ok(Json(BlocklistSourceResponse::from_source(source)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/blocklist-sources/{id}",
+    tag = "blocklist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
+    responses(
+        (status = 204, description = "Source deleted"),
+        (status = 404, description = "Source not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_blocklist_source(
     State(state): State<AppState>,
     Path(id): Path<i64>,

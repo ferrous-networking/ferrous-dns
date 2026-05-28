@@ -6,6 +6,15 @@ const PROC_VERSION: &str = "/proc/version";
 const PROC_LOADAVG: &str = "/proc/loadavg";
 const PROC_MEMINFO: &str = "/proc/meminfo";
 
+#[utoipa::path(
+    get,
+    path = "/system/info",
+    tag = "system",
+    responses(
+        (status = 200, description = "Host system information", body = SystemInfoResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip_all, name = "api_get_system_info")]
 pub async fn get_system_info() -> Json<SystemInfoResponse> {
     let (version_raw, loadavg_raw, meminfo_raw) = tokio::join!(

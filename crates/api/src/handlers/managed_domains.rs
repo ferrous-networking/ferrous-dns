@@ -2,11 +2,10 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post, put},
-    Router,
 };
 use ferrous_dns_domain::{DomainAction, DomainError};
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{
@@ -17,15 +16,26 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/managed-domains", get(get_all_managed_domains))
-        .route("/managed-domains", post(create_managed_domain))
-        .route("/managed-domains/{id}", get(get_managed_domain_by_id))
-        .route("/managed-domains/{id}", put(update_managed_domain))
-        .route("/managed-domains/{id}", delete(delete_managed_domain))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_managed_domains, create_managed_domain))
+        .routes(routes!(
+            get_managed_domain_by_id,
+            update_managed_domain,
+            delete_managed_domain
+        ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/managed-domains",
+    tag = "blocking",
+    params(ManagedDomainQuery),
+    responses(
+        (status = 200, description = "Paginated managed domains", body = PaginatedManagedDomains),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_managed_domains(
     State(state): State<AppState>,
     Query(params): Query<ManagedDomainQuery>,
@@ -50,6 +60,17 @@ async fn get_all_managed_domains(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/managed-domains/{id}",
+    tag = "blocking",
+    params(("id" = i64, Path, description = "Managed domain ID")),
+    responses(
+        (status = 200, description = "Managed domain detail", body = ManagedDomainResponse),
+        (status = 404, description = "Managed domain not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_managed_domain_by_id(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -68,6 +89,17 @@ async fn get_managed_domain_by_id(
     Ok(Json(ManagedDomainResponse::from_domain(domain)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/managed-domains",
+    tag = "blocking",
+    request_body = CreateManagedDomainRequest,
+    responses(
+        (status = 201, description = "Managed domain created", body = ManagedDomainResponse),
+        (status = 400, description = "Invalid input"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_managed_domain(
     State(state): State<AppState>,
     Json(req): Json<CreateManagedDomainRequest>,
@@ -94,6 +126,18 @@ async fn create_managed_domain(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/managed-domains/{id}",
+    tag = "blocking",
+    params(("id" = i64, Path, description = "Managed domain ID")),
+    request_body = UpdateManagedDomainRequest,
+    responses(
+        (status = 200, description = "Managed domain updated", body = ManagedDomainResponse),
+        (status = 404, description = "Managed domain not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_managed_domain(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -126,6 +170,17 @@ async fn update_managed_domain(
     Ok(Json(ManagedDomainResponse::from_domain(domain)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/managed-domains/{id}",
+    tag = "blocking",
+    params(("id" = i64, Path, description = "Managed domain ID")),
+    responses(
+        (status = 204, description = "Managed domain deleted"),
+        (status = 404, description = "Managed domain not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_managed_domain(
     State(state): State<AppState>,
     Path(id): Path<i64>,

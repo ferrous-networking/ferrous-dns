@@ -2,12 +2,12 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post},
-    Router,
 };
 use ferrous_dns_domain::DomainError;
 use serde::Deserialize;
 use tracing::debug;
+use utoipa::IntoParams;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::{BlockServiceRequest, BlockedServiceResponse, ServiceDefinitionResponse},
@@ -15,18 +15,23 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/services/catalog", get(get_catalog))
-        .route("/services/catalog/{id}", get(get_catalog_entry))
-        .route("/services", get(get_blocked_services))
-        .route("/services", post(block_service))
-        .route(
-            "/services/{service_id}/groups/{group_id}",
-            delete(unblock_service),
-        )
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_catalog))
+        .routes(routes!(get_catalog_entry))
+        .routes(routes!(get_blocked_services, block_service))
+        .routes(routes!(unblock_service))
 }
 
+#[utoipa::path(
+    get,
+    path = "/services/catalog",
+    tag = "services",
+    responses(
+        (status = 200, description = "Service catalog", body = [ServiceDefinitionResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_catalog(State(state): State<AppState>) -> Json<Vec<ServiceDefinitionResponse>> {
     let services = state.services.get_service_catalog.get_all();
     Json(
@@ -37,6 +42,17 @@ async fn get_catalog(State(state): State<AppState>) -> Json<Vec<ServiceDefinitio
     )
 }
 
+#[utoipa::path(
+    get,
+    path = "/services/catalog/{id}",
+    tag = "services",
+    params(("id" = String, Path, description = "Service ID")),
+    responses(
+        (status = 200, description = "Service definition", body = ServiceDefinitionResponse),
+        (status = 404, description = "Service not found in catalog"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_catalog_entry(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -54,11 +70,21 @@ async fn get_catalog_entry(
     Ok(Json(ServiceDefinitionResponse::from_definition(&def)))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct BlockedServicesQuery {
     group_id: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/services",
+    tag = "services",
+    params(("group_id" = Option<i64>, Query, description = "Optional group filter")),
+    responses(
+        (status = 200, description = "Blocked services", body = [BlockedServiceResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_blocked_services(
     State(state): State<AppState>,
     Query(params): Query<BlockedServicesQuery>,
@@ -82,6 +108,17 @@ async fn get_blocked_services(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/services",
+    tag = "services",
+    request_body = BlockServiceRequest,
+    responses(
+        (status = 201, description = "Service blocked for group", body = BlockedServiceResponse),
+        (status = 409, description = "Service already blocked for this group"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn block_service(
     State(state): State<AppState>,
     Json(req): Json<BlockServiceRequest>,
@@ -98,6 +135,20 @@ async fn block_service(
     ))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/services/{service_id}/groups/{group_id}",
+    tag = "services",
+    params(
+        ("service_id" = String, Path, description = "Service ID"),
+        ("group_id" = i64, Path, description = "Group ID"),
+    ),
+    responses(
+        (status = 204, description = "Service unblocked"),
+        (status = 404, description = "Blocked service not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn unblock_service(
     State(state): State<AppState>,
     Path((service_id, group_id)): Path<(String, i64)>,

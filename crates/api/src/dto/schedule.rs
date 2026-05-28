@@ -1,7 +1,8 @@
 use ferrous_dns_domain::{ScheduleProfile, TimeSlot};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateScheduleProfileRequest {
     pub name: String,
     #[serde(default = "default_timezone")]
@@ -13,14 +14,14 @@ fn default_timezone() -> String {
     "UTC".to_string()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateScheduleProfileRequest {
     pub name: Option<String>,
     pub timezone: Option<String>,
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddTimeSlotRequest {
     pub days: u8,
     pub start_time: String,
@@ -28,12 +29,12 @@ pub struct AddTimeSlotRequest {
     pub action: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AssignProfileRequest {
     pub profile_id: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleProfileResponse {
     pub id: i64,
     pub name: String,
@@ -56,7 +57,7 @@ impl ScheduleProfileResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TimeSlotResponse {
     pub id: i64,
     pub profile_id: i64,
@@ -81,14 +82,14 @@ impl TimeSlotResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleProfileWithSlotsResponse {
     #[serde(flatten)]
     pub profile: ScheduleProfileResponse,
     pub slots: Vec<TimeSlotResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct GroupScheduleResponse {
     pub group_id: i64,
     pub profile_id: i64,

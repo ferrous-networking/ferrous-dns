@@ -20,6 +20,17 @@ fn parse_granularity(s: &str) -> TimeGranularity {
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/queries/timeline",
+    tag = "queries",
+    params(TimelineQuery),
+    responses(
+        (status = 200, description = "Time-bucketed query counts", body = TimelineResponse),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_timeline")]
 pub async fn get_timeline(
     State(state): State<AppState>,

@@ -1,7 +1,8 @@
 use ferrous_dns_domain::BlocklistSource;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BlocklistSourceResponse {
     pub id: i64,
     pub name: String,
@@ -28,7 +29,7 @@ impl BlocklistSourceResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateBlocklistSourceRequest {
     pub name: String,
     pub url: Option<String>,
@@ -55,7 +56,7 @@ impl CreateBlocklistSourceRequest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateBlocklistSourceRequest {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_nullable_string")]

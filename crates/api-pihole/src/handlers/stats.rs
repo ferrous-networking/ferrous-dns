@@ -43,6 +43,20 @@ impl DatabaseQueryParams {
 }
 
 /// Pi-hole v6 GET /api/stats/summary
+#[utoipa::path(
+    get,
+    path = "/stats/summary",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours (default 24)"),
+        ("limit" = Option<u32>, Query, description = "Max items returned"),
+        ("blocked" = Option<bool>, Query, description = "Filter only blocked")
+    ),
+    responses(
+        (status = 200, description = "Summary statistics", body = SummaryResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_summary(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -106,6 +120,18 @@ pub async fn get_summary(
 ///
 /// Glance pihole-v6 expects exactly 145 buckets of 10-minute intervals (24h + 1).
 /// Buckets with no queries are padded with zeros to guarantee the exact count.
+#[utoipa::path(
+    get,
+    path = "/stats/history",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours (default 25)")
+    ),
+    responses(
+        (status = 200, description = "Time-series history of queries", body = HistoryResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_history(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -160,6 +186,19 @@ pub async fn get_history(
 }
 
 /// Pi-hole v6 GET /api/stats/top_blocked
+#[utoipa::path(
+    get,
+    path = "/stats/top_blocked",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours"),
+        ("limit" = Option<u32>, Query, description = "Max items")
+    ),
+    responses(
+        (status = 200, description = "Top blocked domains", body = TopDomainsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_top_blocked(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -186,6 +225,19 @@ pub async fn get_top_blocked(
 }
 
 /// Pi-hole v6 GET /api/stats/top_clients
+#[utoipa::path(
+    get,
+    path = "/stats/top_clients",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours"),
+        ("limit" = Option<u32>, Query, description = "Max items")
+    ),
+    responses(
+        (status = 200, description = "Top clients", body = TopClientsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_top_clients(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -216,6 +268,18 @@ pub async fn get_top_clients(
 }
 
 /// Pi-hole v6 GET /api/stats/query_types
+#[utoipa::path(
+    get,
+    path = "/stats/query_types",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours")
+    ),
+    responses(
+        (status = 200, description = "Query type distribution", body = QueryTypesResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_query_types(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -244,6 +308,20 @@ pub async fn get_query_types(
 /// Pi-hole v6 GET /api/stats/top_domains
 ///
 /// Returns top allowed domains by default, or top blocked domains when `?blocked=true`.
+#[utoipa::path(
+    get,
+    path = "/stats/top_domains",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours"),
+        ("limit" = Option<u32>, Query, description = "Max items"),
+        ("blocked" = Option<bool>, Query, description = "Return top blocked instead of top allowed")
+    ),
+    responses(
+        (status = 200, description = "Top domains", body = TopDomainsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_top_domains(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -288,6 +366,18 @@ pub async fn get_top_domains(
 ///
 /// Returns upstream DNS server usage statistics.
 /// Upstream keys are identified by exclusion of known internal source names.
+#[utoipa::path(
+    get,
+    path = "/stats/upstreams",
+    tag = "pihole:stats",
+    params(
+        ("from" = Option<f32>, Query, description = "Period in hours")
+    ),
+    responses(
+        (status = 200, description = "Upstream usage statistics", body = UpstreamsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_upstreams(
     State(state): State<PiholeAppState>,
     Query(params): Query<DatabaseQueryParams>,
@@ -315,6 +405,15 @@ pub async fn get_upstreams(
 /// Returns the most recently blocked domain.
 // TODO: replace with a dedicated use case (GetMostRecentBlockedUseCase)
 // using `WHERE blocked = 1 ORDER BY timestamp DESC LIMIT 1` in the repository
+#[utoipa::path(
+    get,
+    path = "/stats/recent_blocked",
+    tag = "pihole:stats",
+    responses(
+        (status = 200, description = "Most recently blocked domain", body = RecentBlockedResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_recent_blocked(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<RecentBlockedResponse>, PiholeApiError> {

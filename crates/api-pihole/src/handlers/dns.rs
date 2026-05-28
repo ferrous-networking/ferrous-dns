@@ -9,6 +9,15 @@ use crate::{
 };
 
 /// Pi-hole v6 GET /api/dns/blocking
+#[utoipa::path(
+    get,
+    path = "/dns/blocking",
+    tag = "pihole:dns",
+    responses(
+        (status = 200, description = "Current blocking status", body = BlockingStatusResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_blocking(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<BlockingStatusResponse>, PiholeApiError> {
@@ -23,6 +32,16 @@ pub async fn get_blocking(
 ///
 /// Sets blocking state. Optionally accepts a `timer` field (seconds) that
 /// automatically re-enables blocking after the timer expires.
+#[utoipa::path(
+    post,
+    path = "/dns/blocking",
+    tag = "pihole:dns",
+    request_body = SetBlockingRequest,
+    responses(
+        (status = 200, description = "Blocking state updated", body = BlockingStatusResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn set_blocking(
     State(state): State<PiholeAppState>,
     Json(body): Json<SetBlockingRequest>,

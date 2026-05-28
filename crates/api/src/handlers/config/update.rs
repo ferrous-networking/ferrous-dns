@@ -28,6 +28,16 @@ async fn get_writable_config_path(
     Ok(path)
 }
 
+#[utoipa::path(
+    post,
+    path = "/config",
+    tag = "config",
+    request_body = UpdateConfigRequest,
+    responses(
+        (status = 200, description = "Configuration updated"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_update_config")]
 pub async fn update_config(
     State(state): State<AppState>,
@@ -249,6 +259,16 @@ pub async fn update_config(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/settings",
+    tag = "config",
+    request_body = SettingsDto,
+    responses(
+        (status = 200, description = "Settings updated"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_update_settings")]
 pub async fn update_settings(
     State(state): State<AppState>,
@@ -295,6 +315,15 @@ pub async fn update_settings(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/config/reload",
+    tag = "config",
+    responses(
+        (status = 200, description = "Configuration reloaded"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_reload_config")]
 pub async fn reload_config(State(state): State<AppState>) -> Json<serde_json::Value> {
     info!("Config reload requested");

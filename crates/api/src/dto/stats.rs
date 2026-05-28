@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct StatsQuery {
     #[serde(default = "default_period")]
     pub period: String,
@@ -13,7 +14,7 @@ fn default_period() -> String {
 
 pub type QuerySourceStats = HashMap<String, u64>;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct StatsResponse {
     pub queries_total: u64,
     pub queries_blocked: u64,
@@ -33,13 +34,13 @@ pub struct StatsResponse {
     pub source_stats: QuerySourceStats,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TypeDistribution {
     pub record_type: String,
     pub percentage: f64,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TopType {
     pub record_type: String,
     pub count: u64,

@@ -3,12 +3,12 @@ use axum::{
     extract::{Multipart, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
-    Json, Router,
+    Json,
 };
 use chrono::Utc;
 use ferrous_dns_application::use_cases::{BackupSnapshot, ImportSummary};
 use tracing::{error, info, instrument};
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     dto::backup::{ImportSummaryDto, ImportSummaryResponse},
@@ -16,12 +16,21 @@ use crate::{
     state::AppState,
 };
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/config/export", get(export_config))
-        .route("/config/import", post(import_config))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(export_config))
+        .routes(routes!(import_config))
 }
 
+#[utoipa::path(
+    get,
+    path = "/config/export",
+    tag = "backup",
+    responses(
+        (status = 200, description = "Backup JSON download", content_type = "application/json"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_export_config")]
 async fn export_config(State(state): State<AppState>) -> Result<Response, ApiError> {
     let bytes = state.backup.export.execute().await?;
@@ -46,6 +55,17 @@ async fn export_config(State(state): State<AppState>) -> Result<Response, ApiErr
     Ok(response)
 }
 
+#[utoipa::path(
+    post,
+    path = "/config/import",
+    tag = "backup",
+    request_body(content_type = "multipart/form-data", content = String),
+    responses(
+        (status = 200, description = "Import summary", body = ImportSummaryResponse),
+        (status = 400, description = "Invalid backup file"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state, multipart), name = "api_import_config")]
 async fn import_config(
     State(state): State<AppState>,

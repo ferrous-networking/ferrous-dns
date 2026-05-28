@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LocalRecordDto {
     pub id: i64,
     pub hostname: String,
@@ -33,7 +34,7 @@ impl LocalRecordDto {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateLocalRecordRequest {
     pub hostname: String,
     pub domain: Option<String>,
@@ -42,7 +43,7 @@ pub struct CreateLocalRecordRequest {
     pub ttl: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateLocalRecordRequest {
     pub hostname: String,
     pub domain: Option<String>,

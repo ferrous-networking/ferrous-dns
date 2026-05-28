@@ -1,7 +1,8 @@
 use ferrous_dns_domain::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SafeSearchConfigResponse {
     pub id: Option<i64>,
     pub group_id: i64,
@@ -26,7 +27,7 @@ impl SafeSearchConfigResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ToggleSafeSearchRequest {
     pub engine: String,
     pub enabled: bool,

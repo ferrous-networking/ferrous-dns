@@ -15,6 +15,20 @@ When `pihole_compat = true`, the Ferrous API moves to `/ferrous/api/*` and the P
 
 ---
 
+## Interactive Documentation (OpenAPI / Scalar)
+
+Both APIs publish an OpenAPI 3.x specification and ship a built-in [Scalar](https://scalar.com) UI for interactive exploration. The endpoints are public — no authentication is required to read the spec or open the UI.
+
+| Mode | OpenAPI spec | Interactive docs |
+|:-----|:-------------|:-----------------|
+| Normal | `GET /api/openapi.json` | `GET /api/docs` |
+| Pi-hole compat (native API) | `GET /ferrous/api/openapi.json` | `GET /ferrous/api/docs` |
+| Pi-hole compat (Pi-hole API) | `GET /api/openapi.json` | `GET /api/docs` |
+
+The spec describes every handler, request/response schema, parameter and security scheme (`session_cookie` + `X-Api-Key` for the native API, `X-FTL-SID` for the Pi-hole layer). It can be fed into any OpenAPI-aware tool (Postman, openapi-generator, schemathesis, …) to produce clients or contract tests.
+
+---
+
 ## Authentication
 
 When authentication is enabled (`[auth]` section in config), all API endpoints require either a valid session cookie or an API token — except the public auth endpoints listed below.

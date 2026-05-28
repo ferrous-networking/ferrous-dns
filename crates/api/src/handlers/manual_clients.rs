@@ -11,6 +11,19 @@ use crate::{
     state::AppState,
 };
 
+#[utoipa::path(
+    post,
+    path = "/clients",
+    tag = "clients",
+    request_body = CreateManualClientRequest,
+    responses(
+        (status = 201, description = "Client created", body = ClientResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Authentication required"),
+        (status = 409, description = "Conflict"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn create_manual_client(
     State(state): State<AppState>,
     Json(req): Json<CreateManualClientRequest>,
@@ -42,6 +55,19 @@ pub async fn create_manual_client(
     ))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/clients/{id}",
+    tag = "clients",
+    params(("id" = i64, Path, description = "Client ID")),
+    request_body = UpdateClientRequest,
+    responses(
+        (status = 200, description = "Client updated", body = ClientResponse),
+        (status = 404, description = "Client not found"),
+        (status = 400, description = "Invalid input"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn update_manual_client(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -65,6 +91,17 @@ pub async fn update_manual_client(
     }))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/clients/{id}",
+    tag = "clients",
+    params(("id" = i64, Path, description = "Client ID")),
+    responses(
+        (status = 204, description = "Client deleted"),
+        (status = 404, description = "Client not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn delete_manual_client(
     State(state): State<AppState>,
     Path(id): Path<i64>,

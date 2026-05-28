@@ -53,6 +53,15 @@ fn whitelist_to_entry(
 }
 
 /// Pi-hole v6 GET /api/lists — list all adlists.
+#[utoipa::path(
+    get,
+    path = "/lists",
+    tag = "pihole:lists",
+    responses(
+        (status = 200, description = "All adlists (blocklists and whitelists)", body = ListsResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn list_all(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ListsResponse>, PiholeApiError> {
@@ -73,6 +82,16 @@ pub async fn list_all(
 }
 
 /// Pi-hole v6 POST /api/lists — create adlist.
+#[utoipa::path(
+    post,
+    path = "/lists",
+    tag = "pihole:lists",
+    request_body = CreateListRequest,
+    responses(
+        (status = 201, description = "List created", body = PiholeListEntry)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn create_list(
     State(state): State<PiholeAppState>,
     Json(body): Json<CreateListRequest>,
@@ -111,6 +130,19 @@ pub async fn create_list(
 }
 
 /// Pi-hole v6 GET /api/lists/:id — get by id.
+#[utoipa::path(
+    get,
+    path = "/lists/{id}",
+    tag = "pihole:lists",
+    params(
+        ("id" = i64, Path, description = "List ID")
+    ),
+    responses(
+        (status = 200, description = "List entry", body = PiholeListEntry),
+        (status = 404, description = "List not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_by_id(
     State(state): State<PiholeAppState>,
     Path(id): Path<i64>,
@@ -127,6 +159,20 @@ pub async fn get_by_id(
 }
 
 /// Pi-hole v6 PUT /api/lists/:id — update adlist.
+#[utoipa::path(
+    put,
+    path = "/lists/{id}",
+    tag = "pihole:lists",
+    params(
+        ("id" = i64, Path, description = "List ID")
+    ),
+    request_body = CreateListRequest,
+    responses(
+        (status = 200, description = "List updated", body = PiholeListEntry),
+        (status = 404, description = "List not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn update_list(
     State(state): State<PiholeAppState>,
     Path(id): Path<i64>,
@@ -173,6 +219,19 @@ pub async fn update_list(
 }
 
 /// Pi-hole v6 DELETE /api/lists/:id — delete adlist.
+#[utoipa::path(
+    delete,
+    path = "/lists/{id}",
+    tag = "pihole:lists",
+    params(
+        ("id" = i64, Path, description = "List ID")
+    ),
+    responses(
+        (status = 204, description = "List deleted"),
+        (status = 404, description = "List not found")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn delete_list(
     State(state): State<PiholeAppState>,
     Path(id): Path<i64>,
@@ -203,6 +262,16 @@ pub async fn delete_list(
 }
 
 /// Pi-hole v6 POST /api/lists:batchDelete — batch delete.
+#[utoipa::path(
+    post,
+    path = "/lists:batchDelete",
+    tag = "pihole:lists",
+    request_body = BatchDeleteRequest,
+    responses(
+        (status = 204, description = "Batch delete completed")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
     Json(body): Json<BatchDeleteRequest>,

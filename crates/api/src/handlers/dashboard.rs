@@ -16,6 +16,16 @@ use tracing::{error, instrument};
 const DEFAULT_PERIOD_HOURS: f32 = 24.0;
 const TOP_TYPES_LIMIT: usize = 10;
 
+#[utoipa::path(
+    get,
+    path = "/dashboard",
+    tag = "dashboard",
+    params(DashboardQuery),
+    responses(
+        (status = 200, description = "Aggregated dashboard payload", body = DashboardResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_dashboard")]
 pub async fn get_dashboard(
     State(state): State<AppState>,

@@ -46,3 +46,5 @@ dashmap.workspace = true
 rustc-hash.workspace = true
 reqwest.workspace = true
 ring.workspace = true
+utoipa.workspace = true
+utoipa-scalar.workspace = true

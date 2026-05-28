@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct ClientResponse {
     pub id: i64,
     pub ip_address: String,
@@ -12,7 +13,7 @@ pub struct ClientResponse {
     pub group_id: Option<i64>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct ClientStatsResponse {
     pub total_clients: u64,
     pub active_24h: u64,
@@ -21,7 +22,7 @@ pub struct ClientStatsResponse {
     pub with_hostname: u64,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct ClientsQuery {
     #[serde(default = "default_limit")]
     pub limit: u32,
@@ -35,7 +36,7 @@ fn default_limit() -> u32 {
     100
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
 pub struct UpdateClientRequest {
     pub hostname: Option<String>,
     pub group_id: Option<i64>,

@@ -1,7 +1,8 @@
 use ferrous_dns_domain::{BlockedService, ServiceDefinition};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ServiceDefinitionResponse {
     pub id: String,
     pub name: String,
@@ -26,7 +27,7 @@ impl ServiceDefinitionResponse {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct BlockedServiceResponse {
     pub id: i64,
     pub service_id: String,
@@ -45,7 +46,7 @@ impl BlockedServiceResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct BlockServiceRequest {
     pub service_id: String,
     pub group_id: i64,

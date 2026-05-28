@@ -1,7 +1,8 @@
 use ferrous_dns_domain::ClientSubnet;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ClientSubnetResponse {
     pub id: i64,
     pub subnet_cidr: String,
@@ -24,14 +25,14 @@ impl ClientSubnetResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateClientSubnetRequest {
     pub subnet_cidr: String,
     pub group_id: i64,
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateManualClientRequest {
     pub ip_address: String,
     pub group_id: Option<i64>,
