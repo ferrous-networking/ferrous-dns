@@ -1,8 +1,9 @@
 use ferrous_dns_domain::BlockSource;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// Pi-hole v6 GET /api/queries response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct QueriesResponse {
     pub queries: Vec<PiholeQueryEntry>,
     pub cursor: Option<i64>,
@@ -15,34 +16,35 @@ pub struct QueriesResponse {
 }
 
 /// Client reference returned inside a query entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeClientRef {
     pub ip: String,
     pub name: Option<String>,
 }
 
 /// Reply object in Pi-hole v6 format.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeReply {
     pub r#type: String,
     pub time: f64,
 }
 
 /// Extended DNS Error info.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeEde {
     pub code: i32,
     pub text: Option<String>,
 }
 
 /// Single query entry in Pi-hole v6 format.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeQueryEntry {
     pub id: i64,
     pub time: f64,
     pub r#type: String,
     pub domain: String,
     pub client: PiholeClientRef,
+    #[schema(value_type = String)]
     pub status: &'static str,
     pub dnssec: String,
     pub reply: PiholeReply,
@@ -59,7 +61,7 @@ pub struct PiholeQueryEntry {
 /// Pi-hole v6 GET /api/queries/suggestions response.
 ///
 /// Categories are returned flat at root level (no wrapper object).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SuggestionsResponse {
     pub domain: Vec<String>,
     pub client_ip: Vec<String>,

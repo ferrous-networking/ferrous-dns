@@ -10,6 +10,17 @@ use axum::{
 };
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/cache/stats",
+    tag = "cache",
+    params(CacheStatsQuery),
+    responses(
+        (status = 200, description = "Cache statistics for the period", body = CacheStatsResponse),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_cache_stats")]
 pub async fn get_cache_stats(
     State(state): State<AppState>,
@@ -45,6 +56,15 @@ pub async fn get_cache_stats(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/cache/metrics",
+    tag = "cache",
+    responses(
+        (status = 200, description = "Live cache metrics snapshot", body = CacheMetricsResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_cache_metrics")]
 pub async fn get_cache_metrics(State(state): State<AppState>) -> Json<CacheMetricsResponse> {
     debug!("Fetching cache metrics directly from cache");

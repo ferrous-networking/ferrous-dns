@@ -11,6 +11,15 @@ use crate::{
 };
 
 /// Pi-hole v6 GET /api/auth — returns current session state.
+#[utoipa::path(
+    get,
+    path = "/auth",
+    tag = "pihole:auth",
+    responses(
+        (status = 200, description = "Current session state", body = AuthResponse)
+    ),
+    security(("session_id" = []))
+)]
 pub async fn get_session() -> Json<AuthResponse> {
     Json(AuthResponse {
         session: unauthenticated_session("Use POST /api/auth with your password"),
@@ -21,6 +30,17 @@ pub async fn get_session() -> Json<AuthResponse> {
 ///
 /// Uses `LoginUseCase` to create a real Ferrous DNS session.
 /// If no `LoginUseCase` is wired, allows unauthenticated access.
+#[utoipa::path(
+    post,
+    path = "/auth",
+    tag = "pihole:auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = AuthResponse),
+        (status = 401, description = "Incorrect password", body = AuthResponse)
+    ),
+    security()
+)]
 pub async fn login(
     State(state): State<PiholeAppState>,
     Json(body): Json<LoginRequest>,
@@ -83,6 +103,15 @@ pub async fn login(
 }
 
 /// Pi-hole v6 DELETE /api/auth — session logout.
+#[utoipa::path(
+    delete,
+    path = "/auth",
+    tag = "pihole:auth",
+    responses(
+        (status = 204, description = "Session terminated")
+    ),
+    security(("session_id" = []))
+)]
 pub async fn logout() -> StatusCode {
     StatusCode::NO_CONTENT
 }

@@ -12,6 +12,15 @@ use std::path::Path;
 use tracing::info;
 
 /// GET /tls/status — returns certificate status information.
+#[utoipa::path(
+    get,
+    path = "/tls/status",
+    tag = "tls",
+    responses(
+        (status = 200, description = "TLS certificate status", body = TlsStatusResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn get_tls_status(State(state): State<AppState>) -> Json<TlsStatusResponse> {
     let config = state.config.read().await;
     let web_tls = &config.server.web_tls;
@@ -32,6 +41,17 @@ pub async fn get_tls_status(State(state): State<AppState>) -> Json<TlsStatusResp
 }
 
 /// POST /tls/upload — receives multipart with `cert` and `key` PEM files.
+#[utoipa::path(
+    post,
+    path = "/tls/upload",
+    tag = "tls",
+    request_body(content_type = "multipart/form-data", content = String),
+    responses(
+        (status = 200, description = "Certificates uploaded", body = TlsUploadResponse),
+        (status = 400, description = "Missing or invalid files"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn upload_tls_certs(
     State(state): State<AppState>,
     mut multipart: Multipart,
@@ -88,6 +108,17 @@ pub async fn upload_tls_certs(
 }
 
 /// POST /tls/generate — generates a self-signed certificate.
+#[utoipa::path(
+    post,
+    path = "/tls/generate",
+    tag = "tls",
+    params(GenerateQuery),
+    responses(
+        (status = 200, description = "Self-signed certificate generated", body = TlsUploadResponse),
+        (status = 400, description = "Files already exist (use ?force=true)"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn generate_self_signed(
     State(state): State<AppState>,
     Query(query): Query<GenerateQuery>,

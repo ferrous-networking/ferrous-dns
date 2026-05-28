@@ -9,6 +9,15 @@ use crate::{
 use axum::{extract::State, Json};
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/config",
+    tag = "config",
+    responses(
+        (status = 200, description = "Current configuration", body = ConfigResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_config")]
 pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     debug!("Fetching current configuration");
@@ -116,6 +125,15 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/settings",
+    tag = "config",
+    responses(
+        (status = 200, description = "Current DNS settings", body = crate::dto::SettingsDto),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_settings")]
 pub async fn get_settings(State(state): State<AppState>) -> Json<crate::dto::SettingsDto> {
     debug!("Fetching settings");

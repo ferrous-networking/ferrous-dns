@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateUserRequest {
     pub username: String,
     pub display_name: Option<String>,
@@ -13,7 +14,7 @@ fn default_role() -> String {
     "viewer".to_string()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: Option<i64>,
     pub username: String,

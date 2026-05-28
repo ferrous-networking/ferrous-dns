@@ -1,7 +1,8 @@
 use ferrous_dns_application::ports;
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TimelineBucket {
     pub timestamp: String,
     pub total: u64,
@@ -22,7 +23,7 @@ impl From<ports::TimelineBucket> for TimelineBucket {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, ToSchema)]
 pub struct TimelineResponse {
     pub buckets: Vec<TimelineBucket>,
     pub period: String,
@@ -30,7 +31,7 @@ pub struct TimelineResponse {
     pub total_buckets: usize,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, IntoParams)]
 pub struct TimelineQuery {
     #[serde(default = "default_period")]
     pub period: String,

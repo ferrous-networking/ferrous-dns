@@ -1,7 +1,8 @@
 use serde::Serialize;
+use utoipa::ToSchema;
 
 /// Pi-hole v6 GET /api/info/version response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VersionResponse {
     pub version: String,
     pub branch: String,
@@ -9,7 +10,7 @@ pub struct VersionResponse {
 }
 
 /// Pi-hole v6 GET /api/info/ftl response (FTL daemon info).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FtlInfoResponse {
     pub pid: u32,
     pub uptime: u64,
@@ -20,28 +21,28 @@ pub struct FtlInfoResponse {
     pub database: FtlDatabaseInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FtlDatabaseInfo {
     pub gravity: u64,
     pub queries: u64,
 }
 
 /// Pi-hole v6 GET /api/info/system response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SystemInfoResponse {
     pub load: [f64; 3],
     pub memory: MemoryInfo,
     pub disk: DiskInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MemoryInfo {
     pub total: u64,
     pub used: u64,
     pub percent: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DiskInfo {
     pub total: u64,
     pub used: u64,
@@ -49,13 +50,13 @@ pub struct DiskInfo {
 }
 
 /// Pi-hole v6 GET /api/info/host response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HostInfoResponse {
     pub hostname: String,
 }
 
 /// Pi-hole v6 GET /api/info/database response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DatabaseInfoResponse {
     pub queries: u64,
     pub filesize: u64,

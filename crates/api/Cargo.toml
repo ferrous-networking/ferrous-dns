@@ -17,6 +17,8 @@ chrono = "0.4"
 hostname = "0.4"
 ring.workspace = true
 subtle = "2"
+utoipa.workspace = true
+utoipa-axum.workspace = true
 
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true

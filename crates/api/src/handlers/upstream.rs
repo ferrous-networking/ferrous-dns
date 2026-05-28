@@ -12,6 +12,15 @@ pub struct UpstreamHealthResponse {
     pub servers: HashMap<String, String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/upstream/health",
+    tag = "system",
+    responses(
+        (status = 200, description = "Per-upstream health status map"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn get_upstream_health(State(state): State<AppState>) -> Json<HashMap<String, String>> {
     let mut health_map = HashMap::new();
 
@@ -48,6 +57,15 @@ pub struct UpstreamGroupResponse {
     pub strategy: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/upstream/health/detail",
+    tag = "system",
+    responses(
+        (status = 200, description = "Detailed upstream health grouped per endpoint"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 pub async fn get_upstream_health_detail(
     State(state): State<AppState>,
 ) -> Json<Vec<UpstreamGroupResponse>> {

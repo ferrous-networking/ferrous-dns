@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiTokenRequest {
     pub name: String,
     /// Optional custom token value (e.g. import an existing Pi-hole API key).
@@ -8,7 +9,7 @@ pub struct CreateApiTokenRequest {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateApiTokenRequest {
     pub name: String,
     /// Optional new token value. When provided, replaces the existing key.
@@ -16,7 +17,7 @@ pub struct UpdateApiTokenRequest {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreatedApiTokenResponse {
     pub id: i64,
     pub name: String,
@@ -25,7 +26,7 @@ pub struct CreatedApiTokenResponse {
     pub created_at: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ApiTokenResponse {
     pub id: i64,
     pub name: String,

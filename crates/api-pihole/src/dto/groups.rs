@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Pi-hole v6 group entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeGroupEntry {
     pub id: i64,
     pub name: String,
@@ -15,7 +16,7 @@ pub struct PiholeGroupEntry {
 }
 
 /// Pi-hole v6 POST /api/groups request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateGroupRequest {
     pub name: String,
     pub comment: Option<String>,
@@ -23,7 +24,7 @@ pub struct CreateGroupRequest {
 }
 
 /// Pi-hole v6 PUT /api/groups/:name request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateGroupRequest {
     pub name: Option<String>,
     pub comment: Option<String>,
@@ -31,7 +32,7 @@ pub struct UpdateGroupRequest {
 }
 
 /// Pi-hole v6 groups list response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct GroupsResponse {
     pub groups: Vec<PiholeGroupEntry>,
 }

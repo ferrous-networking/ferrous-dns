@@ -1,10 +1,10 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post, put},
-    Json, Router,
+    Json,
 };
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::dto::api_token::{
     ApiTokenResponse, CreateApiTokenRequest, CreatedApiTokenResponse, UpdateApiTokenRequest,
@@ -12,14 +12,21 @@ use crate::dto::api_token::{
 use crate::errors::ApiError;
 use crate::state::AppState;
 
-pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api-tokens", get(get_all_api_tokens))
-        .route("/api-tokens", post(create_api_token))
-        .route("/api-tokens/{id}", put(update_api_token))
-        .route("/api-tokens/{id}", delete(delete_api_token))
+pub fn routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_all_api_tokens, create_api_token))
+        .routes(routes!(update_api_token, delete_api_token))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api-tokens",
+    tag = "api_tokens",
+    responses(
+        (status = 200, description = "All API tokens (without secrets)", body = [ApiTokenResponse]),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_all_api_tokens(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ApiTokenResponse>>, ApiError> {
@@ -40,6 +47,17 @@ async fn get_all_api_tokens(
     ))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api-tokens",
+    tag = "api_tokens",
+    request_body = CreateApiTokenRequest,
+    responses(
+        (status = 201, description = "Token created (raw token returned only here)", body = CreatedApiTokenResponse),
+        (status = 409, description = "Duplicate token name"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn create_api_token(
     State(state): State<AppState>,
     Json(req): Json<CreateApiTokenRequest>,
@@ -63,6 +81,18 @@ async fn create_api_token(
     ))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api-tokens/{id}",
+    tag = "api_tokens",
+    params(("id" = i64, Path, description = "Token ID")),
+    request_body = UpdateApiTokenRequest,
+    responses(
+        (status = 200, description = "Token updated", body = ApiTokenResponse),
+        (status = 404, description = "Token not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn update_api_token(
     State(state): State<AppState>,
     Path(id): Path<i64>,
@@ -85,6 +115,17 @@ async fn update_api_token(
     }))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api-tokens/{id}",
+    tag = "api_tokens",
+    params(("id" = i64, Path, description = "Token ID")),
+    responses(
+        (status = 204, description = "Token deleted"),
+        (status = 404, description = "Token not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_api_token(
     State(state): State<AppState>,
     Path(id): Path<i64>,

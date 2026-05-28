@@ -11,6 +11,17 @@ use axum::{
 use ferrous_dns_application::use_cases::PagedQueryInput;
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/queries",
+    tag = "queries",
+    params(QueryParams),
+    responses(
+        (status = 200, description = "Paginated DNS query log", body = PaginatedQueries),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_queries")]
 pub async fn get_queries(
     State(state): State<AppState>,

@@ -9,6 +9,17 @@ use axum::{
 };
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/blocklist",
+    tag = "blocking",
+    params(BlocklistQuery),
+    responses(
+        (status = 200, description = "Paginated blocklist", body = PaginatedBlocklist),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_blocklist")]
 pub async fn get_blocklist(
     State(state): State<AppState>,

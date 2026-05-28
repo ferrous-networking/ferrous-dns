@@ -1,11 +1,11 @@
-use axum::routing::{delete, get, post};
 use axum::{
     extract::{Path, Request, State},
     http::{header, StatusCode},
     response::IntoResponse,
-    Json, Router,
+    Json,
 };
 use tracing::debug;
+use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::dto::auth::{
     AuthStatusResponse, ChangePasswordRequest, LoginRequest, LoginResponse, SessionResponse,
@@ -17,14 +17,23 @@ use crate::state::AppState;
 pub const SESSION_COOKIE_NAME: &str = "ferrous_session";
 
 /// Routes that require authentication (behind require_auth middleware).
-pub fn protected_routes() -> Router<AppState> {
-    Router::new()
-        .route("/auth/password", post(change_password))
-        .route("/auth/sessions", get(get_active_sessions))
-        .route("/auth/sessions/{id}", delete(delete_session))
+pub fn protected_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(change_password))
+        .routes(routes!(get_active_sessions))
+        .routes(routes!(delete_session))
 }
 
 /// Public: returns auth status (no auth required).
+#[utoipa::path(
+    get,
+    path = "/auth/status",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Authentication status", body = AuthStatusResponse),
+    ),
+    security(),
+)]
 pub async fn get_auth_status_public(
     State(state): State<AppState>,
 ) -> Result<Json<AuthStatusResponse>, ApiError> {
@@ -41,6 +50,18 @@ pub async fn get_auth_status_public(
 }
 
 /// Public: first-run password setup (no auth required).
+#[utoipa::path(
+    post,
+    path = "/auth/setup",
+    tag = "auth",
+    request_body = SetupPasswordRequest,
+    responses(
+        (status = 204, description = "Password configured"),
+        (status = 409, description = "Password already configured"),
+        (status = 400, description = "Invalid password"),
+    ),
+    security(),
+)]
 pub async fn setup_password_public(
     State(state): State<AppState>,
     Json(req): Json<SetupPasswordRequest>,
@@ -51,6 +72,18 @@ pub async fn setup_password_public(
 }
 
 /// Public: login and create session (no auth required).
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful, session cookie issued", body = LoginResponse),
+        (status = 401, description = "Invalid credentials"),
+        (status = 429, description = "Too many login attempts"),
+    ),
+    security(),
+)]
 pub async fn login_public(
     State(state): State<AppState>,
     request: Request,
@@ -108,6 +141,15 @@ pub async fn login_public(
 }
 
 /// Public: logout and clear session cookie (no auth required).
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    tag = "auth",
+    responses(
+        (status = 204, description = "Session cleared"),
+    ),
+    security(),
+)]
 pub async fn logout_public(State(state): State<AppState>, request: Request) -> impl IntoResponse {
     if let Some(session_id) = extract_session_cookie(&request) {
         let _ = state.auth.logout.execute(&session_id).await;
@@ -121,6 +163,18 @@ pub async fn logout_public(State(state): State<AppState>, request: Request) -> i
     (StatusCode::NO_CONTENT, [(header::SET_COOKIE, clear_cookie)])
 }
 
+#[utoipa::path(
+    post,
+    path = "/auth/password",
+    tag = "auth",
+    request_body = ChangePasswordRequest,
+    responses(
+        (status = 204, description = "Password changed"),
+        (status = 401, description = "Authentication required or current password invalid"),
+        (status = 400, description = "Invalid new password"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn change_password(
     State(state): State<AppState>,
     request: Request,
@@ -159,6 +213,16 @@ async fn change_password(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    get,
+    path = "/auth/sessions",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Active sessions", body = [SessionResponse]),
+        (status = 401, description = "Authentication required"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn get_active_sessions(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<SessionResponse>>, ApiError> {
@@ -182,6 +246,18 @@ async fn get_active_sessions(
     ))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/auth/sessions/{id}",
+    tag = "auth",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 204, description = "Session deleted"),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Session not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 async fn delete_session(
     State(state): State<AppState>,
     Path(id): Path<String>,

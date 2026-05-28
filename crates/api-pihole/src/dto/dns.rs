@@ -1,14 +1,15 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Pi-hole v6 GET /api/dns/blocking response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BlockingStatusResponse {
     pub blocking: bool,
     pub timer: Option<u64>,
 }
 
 /// Pi-hole v6 POST /api/dns/blocking request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SetBlockingRequest {
     pub blocking: bool,
     /// Optional timer in seconds — re-enables blocking after this period.

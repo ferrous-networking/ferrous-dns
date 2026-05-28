@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Pi-hole v6 client entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeClientEntry {
     pub id: i64,
     pub ip: String,
@@ -16,7 +17,7 @@ pub struct PiholeClientEntry {
 }
 
 /// Pi-hole v6 POST /api/clients request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateClientRequest {
     pub ip: String,
     pub comment: Option<String>,
@@ -24,20 +25,20 @@ pub struct CreateClientRequest {
 }
 
 /// Pi-hole v6 PUT /api/clients/:client request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateClientRequest {
     pub comment: Option<String>,
     pub groups: Option<Vec<i64>>,
 }
 
 /// Pi-hole v6 clients list response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ClientsResponse {
     pub clients: Vec<PiholeClientEntry>,
 }
 
 /// Pi-hole v6 GET /api/clients/_suggestions response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ClientSuggestionsResponse {
     pub suggestions: Vec<String>,
 }

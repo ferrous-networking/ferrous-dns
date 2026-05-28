@@ -7,6 +7,17 @@ use axum::{
 };
 use tracing::{debug, instrument};
 
+#[utoipa::path(
+    get,
+    path = "/clients",
+    tag = "clients",
+    params(ClientsQuery),
+    responses(
+        (status = 200, description = "Client list", body = [ClientResponse]),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_clients")]
 pub async fn get_clients(
     State(state): State<AppState>,
@@ -51,6 +62,16 @@ pub async fn get_clients(
     Ok(Json(response))
 }
 
+#[utoipa::path(
+    get,
+    path = "/clients/stats",
+    tag = "clients",
+    responses(
+        (status = 200, description = "Aggregated client statistics", body = ClientStatsResponse),
+        (status = 500, description = "Internal error"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
 #[instrument(skip(state), name = "api_get_client_stats")]
 pub async fn get_client_stats(
     State(state): State<AppState>,

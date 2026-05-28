@@ -1,7 +1,8 @@
 use ferrous_dns_domain::WhitelistSource;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WhitelistSourceResponse {
     pub id: i64,
     pub name: String,
@@ -28,7 +29,7 @@ impl WhitelistSourceResponse {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateWhitelistSourceRequest {
     pub name: String,
     pub url: Option<String>,
@@ -54,7 +55,7 @@ impl CreateWhitelistSourceRequest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateWhitelistSourceRequest {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_nullable_string")]
