@@ -262,6 +262,9 @@ password_hash = "$argon2id$v=19$m=19456,t=2,p=1$9pNep2fexSNQtaie80I/Mg$T9qgw7GKO
 enabled = true                          # Enable DNS-based ad/malware blocking
 custom_blocked = []                     # Additional domains to block (beyond downloaded blocklists)
 whitelist = []                          # Domains to always allow, even if present in a blocklist
+block_mode = "null_ip"                  # How blocked domains are answered: "null_ip" (NOERROR + 0.0.0.0/::,
+                                        #   cacheable — recommended), "nxdomain", "nodata", or "refused" (legacy)
+block_ttl = 60                          # TTL (seconds) clients cache the null-IP block answer
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────

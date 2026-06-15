@@ -210,6 +210,12 @@ pub async fn update_config(
         if let Some(whitelist) = blocking_update.whitelist {
             new_config.blocking.whitelist = whitelist;
         }
+        if let Some(block_mode) = blocking_update.block_mode {
+            new_config.blocking.block_mode = crate::dto::config::block_mode_from_str(&block_mode);
+        }
+        if let Some(block_ttl) = blocking_update.block_ttl {
+            new_config.blocking.block_ttl = block_ttl;
+        }
     }
 
     if let Some(auth_update) = request.auth {
@@ -292,6 +298,8 @@ pub async fn update_settings(
     } else {
         Some(request.local_dns_server)
     };
+    new_config.blocking.block_mode = crate::dto::config::block_mode_from_str(&request.block_mode);
+    new_config.blocking.block_ttl = request.block_ttl;
 
     match state
         .config_file_persistence

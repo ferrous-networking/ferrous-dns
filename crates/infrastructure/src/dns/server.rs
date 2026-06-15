@@ -2,7 +2,7 @@ use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::forwarding::RecordTypeMapper;
 use bytes::Bytes;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{DomainError, RecordType};
+use ferrous_dns_domain::{BlockResponseMode, DomainError, RecordType};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::{RData, Record};
@@ -10,20 +10,35 @@ use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
 use hickory_server::authority::MessageResponseBuilder;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use std::borrow::Cow;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 use tracing::{debug, error, warn};
 
 const DEFAULT_TTL: u32 = 60;
 
+/// How domain-verdict blocks (blocklist, DGA, tunneling, C2 filter) are answered.
+///
+/// Snapshotted from `[blocking]` config at boot; applied to the wire response so
+/// blocked answers become cacheable (default `NullIp`) instead of the legacy,
+/// non-cacheable `REFUSED` that caused clients to retry aggressively.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockPolicy {
+    pub mode: BlockResponseMode,
+    pub ttl: u32,
+}
+
 #[derive(Clone)]
 pub struct DnsServerHandler {
     use_case: Arc<HandleDnsQueryUseCase>,
+    block_policy: BlockPolicy,
 }
 
 impl DnsServerHandler {
-    pub fn new(use_case: Arc<HandleDnsQueryUseCase>) -> Self {
-        Self { use_case }
+    pub fn new(use_case: Arc<HandleDnsQueryUseCase>, block_policy: BlockPolicy) -> Self {
+        Self {
+            use_case,
+            block_policy,
+        }
     }
 
     /// Normalizes a domain received from Hickory for downstream use: strips the
@@ -98,8 +113,17 @@ impl DnsServerHandler {
             Err(ref e @ DomainError::Blocked)
             | Err(ref e @ DomainError::DgaDomainDetected)
             | Err(ref e @ DomainError::DnsTunnelingDetected)
-            | Err(ref e @ DomainError::DnsRateLimited)
             | Err(ref e @ DomainError::FilteredQuery(_)) => {
+                return build_blocked_wire(
+                    query_id,
+                    rd,
+                    &queries,
+                    self.block_policy,
+                    has_edns,
+                    ede::from_domain_error(e),
+                )
+            }
+            Err(ref e @ DomainError::DnsRateLimited) => {
                 return build_error_wire(
                     query_id,
                     rd,
@@ -296,20 +320,24 @@ impl RequestHandler for DnsServerHandler {
             Ok(res) => res,
             Err(ref e @ DomainError::Blocked) => {
                 warn!(domain = %domain_ref, "Domain blocked");
-                return send_error_response(
+                return send_blocked_response(
                     request,
                     &mut response_handle,
-                    ResponseCode::Refused,
+                    query.name().clone().into(),
+                    hickory_record_type,
+                    self.block_policy,
                     ede::from_domain_error(e),
                 )
                 .await;
             }
             Err(ref e @ DomainError::DnsTunnelingDetected) => {
                 debug!(domain = %domain_ref, client = %client_ip, "DNS tunneling detected");
-                return send_error_response(
+                return send_blocked_response(
                     request,
                     &mut response_handle,
-                    ResponseCode::Refused,
+                    query.name().clone().into(),
+                    hickory_record_type,
+                    self.block_policy,
                     ede::from_domain_error(e),
                 )
                 .await;
@@ -326,20 +354,24 @@ impl RequestHandler for DnsServerHandler {
             }
             Err(ref e @ DomainError::DgaDomainDetected) => {
                 debug!(domain = %domain_ref, client = %client_ip, "DGA domain detected");
-                return send_error_response(
+                return send_blocked_response(
                     request,
                     &mut response_handle,
-                    ResponseCode::Refused,
+                    query.name().clone().into(),
+                    hickory_record_type,
+                    self.block_policy,
                     ede::from_domain_error(e),
                 )
                 .await;
             }
             Err(ref e @ DomainError::FilteredQuery(ref reason)) => {
                 debug!(domain = %domain_ref, reason = %reason, "Query filtered by policy");
-                return send_error_response(
+                return send_blocked_response(
                     request,
                     &mut response_handle,
-                    ResponseCode::Refused,
+                    query.name().clone().into(),
+                    hickory_record_type,
+                    self.block_policy,
                     ede::from_domain_error(e),
                 )
                 .await;
@@ -504,6 +536,114 @@ fn build_error_wire(
     encode_message(&resp)
 }
 
+/// Synthesizes a minimal SOA record for the authority section of a negative
+/// block answer (NXDOMAIN / NODATA), so resolvers can negatively cache it per
+/// RFC 2308. The record TTL and the SOA `minimum` field are both set to the
+/// block TTL, which bounds how long the negative answer is cached. `owner` is
+/// the queried name; resolvers key the negative cache off the SOA `minimum`, so
+/// an exact zone apex is not required for the synthetic answer.
+fn synthetic_block_soa(owner: hickory_proto::rr::Name, ttl: u32) -> Record {
+    use hickory_proto::rr::rdata::SOA;
+    let rname = hickory_proto::rr::Name::from_ascii("hostmaster.ferrous-dns.invalid.")
+        .unwrap_or_else(|_| hickory_proto::rr::Name::root());
+    let soa = SOA::new(
+        owner.clone(), // mname
+        rname,         // rname
+        1,             // serial
+        3600,          // refresh
+        600,           // retry
+        604800,        // expire
+        ttl,           // minimum — bounds the negative-cache TTL (RFC 2308)
+    );
+    Record::from_rdata(owner, ttl, RData::SOA(soa))
+}
+
+/// Builds the wire response for a domain-verdict block (raw UDP fast path),
+/// honouring the configured [`BlockPolicy`]. `NullIp` synthesizes a cacheable
+/// `0.0.0.0`/`::` answer (NODATA for non-A/AAAA queries); other modes set the
+/// matching response code with an empty answer section. Negative answers
+/// (NXDOMAIN / NODATA) carry a synthetic SOA so they can be negatively cached.
+/// `Refused` delegates to [`build_error_wire`] for the legacy behaviour.
+pub fn build_blocked_wire(
+    id: u16,
+    rd: bool,
+    queries: &[hickory_proto::op::Query],
+    policy: BlockPolicy,
+    has_edns: bool,
+    ede: Option<ExtendedDnsError>,
+) -> Option<Vec<u8>> {
+    use hickory_proto::rr::RecordType;
+
+    if let BlockResponseMode::Refused = policy.mode {
+        return build_error_wire(id, rd, queries, ResponseCode::Refused, has_edns, ede);
+    }
+
+    let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
+    resp.set_recursion_desired(rd);
+    resp.set_recursion_available(true);
+    for q in queries {
+        resp.add_query(q.clone());
+    }
+
+    // True once we've emitted a positive answer; otherwise the response is a
+    // negative answer (NXDOMAIN / NODATA) that should carry a synthetic SOA.
+    let mut answered = false;
+
+    match policy.mode {
+        BlockResponseMode::NxDomain => {
+            resp.set_response_code(ResponseCode::NXDomain);
+        }
+        BlockResponseMode::NoData => {
+            resp.set_response_code(ResponseCode::NoError);
+        }
+        BlockResponseMode::NullIp => {
+            resp.set_response_code(ResponseCode::NoError);
+            if let Some(q) = queries.first() {
+                let rdata = match q.query_type() {
+                    RecordType::A => {
+                        Some(RData::A(hickory_proto::rr::rdata::A(Ipv4Addr::UNSPECIFIED)))
+                    }
+                    RecordType::AAAA => Some(RData::AAAA(hickory_proto::rr::rdata::AAAA(
+                        Ipv6Addr::UNSPECIFIED,
+                    ))),
+                    // Other record types: NODATA (NOERROR, empty answer).
+                    _ => None,
+                };
+                if let Some(rdata) = rdata {
+                    resp.add_answer(Record::from_rdata(q.name().clone(), policy.ttl, rdata));
+                    answered = true;
+                }
+            }
+        }
+        // Handled above.
+        BlockResponseMode::Refused => unreachable!(),
+    }
+
+    if !answered {
+        if let Some(q) = queries.first() {
+            resp.add_name_server(synthetic_block_soa(q.name().clone(), policy.ttl));
+        }
+    }
+
+    if has_edns {
+        let mut edns = Edns::new();
+        edns.set_max_payload(4096);
+        edns.set_version(0);
+        if let Some(ede) = ede {
+            let mut data = Vec::with_capacity(2);
+            data.extend_from_slice(&ede.info_code.to_be_bytes());
+            if let Some(text) = ede.extra_text {
+                data.extend_from_slice(text.as_bytes());
+            }
+            edns.options_mut()
+                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
+        }
+        resp.set_edns(edns);
+    }
+
+    encode_message(&resp)
+}
+
 fn build_truncated_wire(
     id: u16,
     rd: bool,
@@ -518,6 +658,87 @@ fn build_truncated_wire(
         resp.add_query(q.clone());
     }
     encode_message(&resp)
+}
+
+/// Sends the response for a domain-verdict block (hickory `RequestHandler`
+/// path), honouring the configured [`BlockPolicy`]. Mirrors [`build_blocked_wire`]:
+/// `NullIp` emits a cacheable `0.0.0.0`/`::` answer (NODATA for non-A/AAAA),
+/// other modes set the response code with an empty answer; negative answers
+/// (NXDOMAIN / NODATA) carry a synthetic SOA for negative caching. `Refused`
+/// delegates to [`send_error_response`].
+pub async fn send_blocked_response<R: ResponseHandler>(
+    request: &Request,
+    response_handle: &mut R,
+    record_name: hickory_proto::rr::Name,
+    query_type: hickory_proto::rr::RecordType,
+    policy: BlockPolicy,
+    ede: Option<ExtendedDnsError>,
+) -> ResponseInfo {
+    use hickory_proto::rr::RecordType;
+
+    let (code, answers): (ResponseCode, Vec<Record>) = match policy.mode {
+        BlockResponseMode::Refused => {
+            return send_error_response(request, response_handle, ResponseCode::Refused, ede).await;
+        }
+        BlockResponseMode::NxDomain => (ResponseCode::NXDomain, Vec::new()),
+        BlockResponseMode::NoData => (ResponseCode::NoError, Vec::new()),
+        BlockResponseMode::NullIp => {
+            let rdata = match query_type {
+                RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(Ipv4Addr::UNSPECIFIED))),
+                RecordType::AAAA => Some(RData::AAAA(hickory_proto::rr::rdata::AAAA(
+                    Ipv6Addr::UNSPECIFIED,
+                ))),
+                // Other record types: NODATA (NOERROR, empty answer).
+                _ => None,
+            };
+            let answers = rdata
+                .map(|rdata| vec![Record::from_rdata(record_name.clone(), policy.ttl, rdata)])
+                .unwrap_or_default();
+            (ResponseCode::NoError, answers)
+        }
+    };
+
+    // Negative answer (no positive record) carries a synthetic SOA so the
+    // verdict can be negatively cached (RFC 2308).
+    let authority: Vec<Record> = if answers.is_empty() {
+        vec![synthetic_block_soa(record_name, policy.ttl)]
+    } else {
+        Vec::new()
+    };
+
+    debug!(code = ?code, answers = answers.len(), "Sending blocked response");
+    let mut builder = MessageResponseBuilder::from_message_request(request);
+    let mut header = *request.header();
+    header.set_message_type(MessageType::Response);
+    header.set_response_code(code);
+    header.set_recursion_available(true);
+
+    // Echo an EDNS OPT whenever the query carried one (matches build_blocked_wire),
+    // attaching the EDE option when present.
+    if request.edns().is_some() {
+        let mut edns = Edns::new();
+        edns.set_max_payload(4096);
+        edns.set_version(0);
+        if let Some(ede) = ede {
+            let mut data = Vec::with_capacity(2);
+            data.extend_from_slice(&ede.info_code.to_be_bytes());
+            if let Some(text) = ede.extra_text {
+                data.extend_from_slice(text.as_bytes());
+            }
+            edns.options_mut()
+                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
+        }
+        builder.edns(edns);
+    }
+
+    let response = builder.build(header, answers.iter(), &[], authority.iter(), &[]);
+    match response_handle.send_response(response).await {
+        Ok(info) => info,
+        Err(e) => {
+            error!(error = %e, "Failed to send blocked response");
+            ResponseInfo::from(*request.header())
+        }
+    }
 }
 
 async fn send_truncated_response<R: ResponseHandler>(

@@ -352,4 +352,6 @@ CLAUDE.md
 .crushignore
 AGENTS.md
 AGENT-*.md
+# Keep the repo-root AGENTS.md (team-shared Claude Code / agent instructions)
+!/AGENTS.md
 

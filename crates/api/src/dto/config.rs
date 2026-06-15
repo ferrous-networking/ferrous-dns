@@ -104,6 +104,25 @@ pub struct BlockingConfigResponse {
     pub enabled: bool,
     pub custom_blocked: Vec<String>,
     pub whitelist: Vec<String>,
+    pub block_mode: String,
+    pub block_ttl: u32,
+}
+
+/// Converts the domain `BlockResponseMode` to its snake_case API string.
+pub fn block_mode_to_string(mode: ferrous_dns_domain::BlockResponseMode) -> String {
+    mode.as_str().to_string()
+}
+
+/// Parses an API block-mode string; unknown values fall back to the default
+/// (`NullIp`) rather than erroring, so a bad UI value can't break saving.
+pub fn block_mode_from_str(value: &str) -> ferrous_dns_domain::BlockResponseMode {
+    use ferrous_dns_domain::BlockResponseMode;
+    match value {
+        "nxdomain" => BlockResponseMode::NxDomain,
+        "nodata" => BlockResponseMode::NoData,
+        "refused" => BlockResponseMode::Refused,
+        _ => BlockResponseMode::NullIp,
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -201,6 +220,18 @@ pub struct BlockingConfigUpdate {
     pub enabled: Option<bool>,
     pub custom_blocked: Option<Vec<String>>,
     pub whitelist: Option<Vec<String>>,
+    pub block_mode: Option<String>,
+    pub block_ttl: Option<u32>,
+}
+
+fn default_block_mode() -> String {
+    ferrous_dns_domain::BlockResponseMode::default()
+        .as_str()
+        .to_string()
+}
+
+fn default_block_ttl() -> u32 {
+    ferrous_dns_domain::DEFAULT_BLOCK_TTL
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -214,6 +245,12 @@ pub struct SettingsDto {
 
     #[serde(default)]
     pub local_dns_server: String,
+
+    #[serde(default = "default_block_mode")]
+    pub block_mode: String,
+
+    #[serde(default = "default_block_ttl")]
+    pub block_ttl: u32,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -230,6 +267,8 @@ impl From<ConfigResponse> for SettingsDto {
             never_forward_reverse_lookups: config.dns.block_private_ptr,
             local_domain: config.dns.local_domain.unwrap_or_default(),
             local_dns_server: config.dns.local_dns_server.unwrap_or_default(),
+            block_mode: config.blocking.block_mode,
+            block_ttl: config.blocking.block_ttl,
         }
     }
 }

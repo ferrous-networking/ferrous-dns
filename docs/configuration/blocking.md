@@ -11,6 +11,8 @@ The `[blocking]` section controls the base blocking settings. Blocklists, client
 enabled = true
 custom_blocked = []
 whitelist = []
+block_mode = "null_ip"
+block_ttl = 60
 ```
 
 | Option | Default | Description |
@@ -18,6 +20,8 @@ whitelist = []
 | `enabled` | `true` | Enable DNS-based blocking globally |
 | `custom_blocked` | `[]` | Additional domains to block beyond downloaded blocklists |
 | `whitelist` | `[]` | Domains to always allow, even if present in a blocklist |
+| `block_mode` | `"null_ip"` | How blocked domains are answered on the wire — see [Block Response Mode](#block-response-mode) |
+| `block_ttl` | `60` | TTL (seconds) clients cache a blocked answer; also bounds the negative-cache lifetime for `nxdomain`/`nodata` |
 
 ### Example
 
@@ -33,6 +37,33 @@ whitelist = [
     "cdn.trusted.net",
 ]
 ```
+
+---
+
+## Block Response Mode
+
+`block_mode` controls **how** a blocked domain is answered — this applies to every domain-verdict block (blocklist match, DGA detection, DNS tunneling, and the C2/threat filter). The choice affects how clients behave after a block: a cacheable answer makes them stop re-querying, while a non-cacheable rejection makes them retry aggressively.
+
+| Mode | Response | Cacheable | Notes |
+|:-----|:---------|:----------|:------|
+| `null_ip` | `NOERROR` + `0.0.0.0` (A) / `::` (AAAA); `NODATA` for other types | Yes | **Default, recommended.** Clients connect to the null address and fail fast. |
+| `nxdomain` | `NXDOMAIN` with a synthetic SOA | Yes | The domain appears not to exist. Some clients log noisy errors. |
+| `nodata` | `NOERROR`, empty answer, with a synthetic SOA | Yes | The name exists but has no records of the requested type. |
+| `refused` | `REFUSED` | No | Legacy behaviour. Clients retry aggressively — avoid unless required. |
+
+For the negative modes (`nxdomain`, `nodata`, and `null_ip` answering a non-address query), Ferrous DNS attaches a synthetic `SOA` record to the authority section. Its `minimum` field is set to `block_ttl`, which lets downstream resolvers negatively cache the block per [RFC 2308](https://www.rfc-editor.org/rfc/rfc2308).
+
+```toml
+[blocking]
+block_mode = "null_ip"   # null_ip | nxdomain | nodata | refused
+block_ttl  = 60          # seconds clients/resolvers cache the blocked answer
+```
+
+!!! tip "Why `null_ip` is the default"
+    A cacheable `0.0.0.0` answer is the gentlest on both the client and the resolver: the client gets an immediate connection failure and caches it for `block_ttl`, so it stops hammering the resolver. `refused` is non-cacheable (RFC 2308 §7), so clients re-query on every attempt.
+
+!!! warning "Requires a restart"
+    `block_mode` and `block_ttl` are read once at startup. Changing them in the config file or via the dashboard takes effect only after the server is restarted. Blocklist contents (the domains themselves) still update live without a restart.
 
 ---
 

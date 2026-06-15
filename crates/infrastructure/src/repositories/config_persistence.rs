@@ -374,6 +374,16 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             str_array(&config.blocking.custom_blocked),
         );
         set_val(t, "whitelist", str_array(&config.blocking.whitelist));
+        set_val(
+            t,
+            "block_mode",
+            toml_edit::Value::from(config.blocking.block_mode.as_str()),
+        );
+        set_val(
+            t,
+            "block_ttl",
+            toml_edit::Value::from(config.blocking.block_ttl as i64),
+        );
     }
 
     // ── [logging] ───────────────────────────────────────────────────────

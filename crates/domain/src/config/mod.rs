@@ -19,7 +19,7 @@ pub mod upstream;
 pub mod web_tls;
 
 pub use auth::{AdminConfig, AuthConfig};
-pub use blocking::BlockingConfig;
+pub use blocking::{BlockResponseMode, BlockingConfig, DEFAULT_BLOCK_TTL};
 pub use database::DatabaseConfig;
 pub use dga_detection::{DgaDetectionAction, DgaDetectionConfig};
 pub use dns::DnsConfig;

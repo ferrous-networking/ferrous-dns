@@ -105,6 +105,8 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             enabled: config.blocking.enabled,
             custom_blocked: config.blocking.custom_blocked.clone(),
             whitelist: config.blocking.whitelist.clone(),
+            block_mode: crate::dto::config::block_mode_to_string(config.blocking.block_mode),
+            block_ttl: config.blocking.block_ttl,
         },
         logging: LoggingConfigResponse {
             level: config.logging.level.clone(),
