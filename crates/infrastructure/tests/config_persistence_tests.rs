@@ -440,6 +440,35 @@ fn test_save_preserves_inline_comments() {
     );
 }
 
+// ── Block response mode roundtrip ────────────────────────────────────────
+
+#[test]
+fn test_save_and_reload_preserves_block_mode_and_ttl() {
+    use ferrous_dns_domain::BlockResponseMode;
+
+    // Original file has no block_mode/block_ttl keys at all — they must be
+    // written on save and survive a reload.
+    let mut config = load_config(default_config_toml());
+    config.blocking.block_mode = BlockResponseMode::NxDomain;
+    config.blocking.block_ttl = 300;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("block_mode_roundtrip.toml");
+    std::fs::write(&path, default_config_toml()).unwrap();
+
+    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("block_mode = \"nxdomain\""),
+        "block_mode should be written to the TOML, got:\n{written}"
+    );
+
+    let reloaded = Config::load(Some(path.to_str().unwrap()), Default::default()).unwrap();
+    assert_eq!(reloaded.blocking.block_mode, BlockResponseMode::NxDomain);
+    assert_eq!(reloaded.blocking.block_ttl, 300);
+}
+
 // ── Error handling ───────────────────────────────────────────────────────
 
 #[test]

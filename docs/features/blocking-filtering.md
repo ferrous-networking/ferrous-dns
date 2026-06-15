@@ -18,7 +18,7 @@ Query: ads.doubleclick.net
   2. Quick pre-check ──────► definitely not blocked? → skip lookup
          │ possible match
          ▼
-  3. Exact domain match ─► in blocklist? → BLOCK (NXDOMAIN)
+  3. Exact domain match ─► in blocklist? → BLOCK
          │ no
          ▼
   4. Wildcard match ────► matches *.ads.com? → BLOCK
@@ -197,8 +197,13 @@ Changes take effect immediately without a restart.
 
 ## Blocking Response
 
-When a query is blocked, Ferrous DNS returns:
+How a blocked query is answered is controlled by the `block_mode` setting (dashboard: **Settings > DNS > Blocked query response**, or the `[blocking]` config section). The default is **Null IP**, which returns a cacheable `0.0.0.0`/`::` answer so clients fail fast and stop re-querying.
 
-- `NXDOMAIN` — domain does not exist (standard behavior, compatible with all clients)
+| Mode | Response |
+|:-----|:---------|
+| `null_ip` *(default)* | `NOERROR` + `0.0.0.0` (A) / `::` (AAAA); `NODATA` for other types |
+| `nxdomain` | `NXDOMAIN` (domain appears not to exist) |
+| `nodata` | `NOERROR` with an empty answer |
+| `refused` | `REFUSED` (legacy, non-cacheable) |
 
-Some deployments prefer returning `0.0.0.0` (A record) to prevent connection timeouts. This can be configured in the dashboard under **Settings > Blocking Response**.
+Negative responses include a synthetic `SOA` so resolvers can negatively cache the block for `block_ttl` seconds. See [Block Response Mode](../configuration/blocking.md#block-response-mode) for the full reference and the restart caveat.

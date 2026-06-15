@@ -562,6 +562,8 @@ DNS-based ad and malware blocking using downloaded blocklists. Blocklists are ma
 enabled        = true
 custom_blocked = []
 whitelist      = []
+block_mode     = "null_ip"
+block_ttl      = 60
 ```
 
 | Option | Type | Default | Description |
@@ -569,6 +571,11 @@ whitelist      = []
 | `enabled` | `bool` | `true` | Enable DNS blocking globally |
 | `custom_blocked` | `list` | `[]` | Additional domains to block beyond any active blocklists |
 | `whitelist` | `list` | `[]` | Domains that are always allowed, even if present in a blocklist |
+| `block_mode` | `string` | `"null_ip"` | How blocked domains are answered: `null_ip` (cacheable `0.0.0.0`/`::`, recommended), `nxdomain`, `nodata`, or `refused` (legacy, non-cacheable) |
+| `block_ttl` | `int` | `60` | TTL in seconds clients/resolvers cache a blocked answer; also drives the synthetic SOA `minimum` for `nxdomain`/`nodata` |
+
+!!! note "Restart required"
+    `block_mode` and `block_ttl` are applied at startup; changing them needs a server restart. See [Block Response Mode](blocking.md#block-response-mode) for what each mode returns.
 
 See [Blocking & Filtering](../features/blocking-filtering.md).
 
