@@ -16,7 +16,7 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::auth::{
     Argon2PasswordHasher, CompositeUserProvider, TomlAdminProvider,
 };
-use ferrous_dns_infrastructure::dns::UpstreamHealthAdapter;
+use ferrous_dns_infrastructure::dns::{UpstreamHealthAdapter, UpstreamReloadAdapter};
 use ferrous_dns_infrastructure::repositories::{TomlConfigFilePersistence, TomlConfigRepository};
 use ferrous_dns_infrastructure::tls::TlsCertificateService;
 use std::sync::Arc;
@@ -161,6 +161,16 @@ pub async fn build_app_state(
                 dns_services.pool_manager.clone(),
                 dns_services.health_checker.clone(),
             )),
+            reload_upstream: Arc::new(UpstreamReloadAdapter::new({
+                let mut managers = vec![
+                    dns_services.pool_manager.clone(),
+                    dns_services.dnssec_pool_manager.clone(),
+                ];
+                if let Some(maintenance) = dns_services.maintenance_pool_manager.clone() {
+                    managers.push(maintenance);
+                }
+                managers
+            })),
         },
         groups: GroupUseCases {
             get_groups: use_cases.get_groups,

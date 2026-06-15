@@ -194,6 +194,10 @@
                                 servers: [...data.dns.upstream_servers]
                             }]
                         }
+                        // Snapshot the loaded pools so a later save can tell whether the
+                        // user actually changed them — if not, we omit `pools` from the
+                        // payload and skip a needless upstream rebuild + DNS re-resolution.
+                        this._savedPoolsJson = this.normalizedPools(this.config.dns.pools);
                         if (data.server?.web_tls) {
                             this.webTls = {
                                 enabled: data.server.web_tls.enabled ?? false,
@@ -267,18 +271,55 @@
                     this.config.dns.pools[0].strategy = s
                 }
             },
+            normalizedPools(pools) {
+                // Canonical JSON of just the fields the backend consumes, so pool
+                // comparisons ignore key ordering and fields the form never edits.
+                return JSON.stringify((pools || []).map(p => ({
+                    name: p.name,
+                    strategy: p.strategy,
+                    priority: p.priority,
+                    servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0),
+                    weight: p.weight ?? null
+                })));
+            },
             async saveConfig() {
+                // Strip blank server inputs and drop empty pools before saving — an empty
+                // or malformed upstream would otherwise break the server on its next boot.
+                const cleanedPools = (this.config.dns.pools || [])
+                    .map(p => ({...p, servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0)}))
+                    .filter(p => p.servers.length > 0);
+                if ((this.config.dns.pools || []).length > 0 && cleanedPools.length === 0) {
+                    this.showAlert('error', 'Each pool needs at least one server. Add a server or remove the empty pool.');
+                    return;
+                }
+                // Only send `pools` when they actually changed since load/last save —
+                // including them makes the backend rebuild and re-resolve every upstream,
+                // so an unrelated edit (cache, rate-limit) shouldn't pay for that.
+                const poolsChanged = this.normalizedPools(cleanedPools) !== this._savedPoolsJson;
+                const dnsPayload = {...this.config.dns};
+                if (poolsChanged) {
+                    dnsPayload.pools = cleanedPools;
+                } else {
+                    delete dnsPayload.pools;
+                }
                 try {
                     const res = await apiFetch(`${API_BASE}/config`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({dns: this.config.dns, blocking: this.config.blocking})
+                        body: JSON.stringify({dns: dnsPayload, blocking: this.config.blocking})
                     });
                     const data = await res.json();
                     if (res.ok && data.success !== false) {
-                        this.restartRequired = true;
-                        markRestartRequired();
-                        this.showAlert('success', 'Configuration saved. Restart the server to apply changes.');
+                        // Reflect the cleaned pools back into the form and re-baseline
+                        // the snapshot so the next unrelated save won't resend them.
+                        this.config.dns.pools = cleanedPools;
+                        this._savedPoolsJson = this.normalizedPools(cleanedPools);
+                        // Only upstream pools are hot-applied; honor the backend flag for everything else.
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            markRestartRequired();
+                        }
+                        this.showAlert('success', data.message || 'Configuration saved.');
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', 'Failed to save: ' + (data.error || data.message || 'Unknown error'))

@@ -88,6 +88,8 @@ pub struct UpstreamPoolResponse {
     pub strategy: String,
     pub priority: u8,
     pub servers: Vec<String>,
+    #[serde(default)]
+    pub weight: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -172,6 +174,10 @@ pub struct PoolUpdate {
     pub strategy: String,
     pub priority: u8,
     pub servers: Vec<String>,
+    /// Optional per-pool weight. Carried through so editing other pool fields
+    /// doesn't silently drop a weight set in the config file.
+    #[serde(default)]
+    pub weight: Option<u32>,
 }
 
 #[derive(Deserialize, Debug, ToSchema)]
