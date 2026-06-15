@@ -49,12 +49,25 @@ pub(super) fn start_health_checker_task(
     config: &Config,
 ) {
     if let Some(checker) = health_checker {
-        let all_protocols = pool_manager.get_all_arc_protocols();
+        // Weak ref so the probe loop reads the live pool set each tick (picking up
+        // hot reloads) without forming an Arc cycle with the PoolManager.
+        let pm_weak = Arc::downgrade(pool_manager);
         let checker_clone = checker.clone();
         let interval = config.dns.health_check.interval;
         let timeout = config.dns.health_check.timeout;
         tokio::spawn(async move {
-            checker_clone.run(all_protocols, interval, timeout).await;
+            checker_clone
+                .run(
+                    move || {
+                        pm_weak
+                            .upgrade()
+                            .map(|pm| pm.get_all_arc_protocols())
+                            .unwrap_or_default()
+                    },
+                    interval,
+                    timeout,
+                )
+                .await;
         });
         info!("Health checker background task started");
     }

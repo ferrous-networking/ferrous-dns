@@ -12,26 +12,25 @@ use ferrous_dns_application::{
         BlockFilterEnginePort, BlockedServiceRepository, ConfigRepository, FilterDecision,
         SafeSearchConfigRepository, SafeSearchEnginePort, ServiceCatalogPort,
     },
-    services::SubnetMatcherService,
     use_cases::{
-        AssignScheduleProfileUseCase, CreateScheduleProfileUseCase, DeleteScheduleProfileUseCase,
-        GetBlockFilterStatsUseCase, GetScheduleProfilesUseCase, ManageTimeSlotsUseCase,
-        UpdateScheduleProfileUseCase, *,
+        AssignScheduleProfileUseCase, CreateLocalRecordUseCase, CreateScheduleProfileUseCase,
+        DeleteLocalRecordUseCase, DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase,
+        GetBlockFilterStatsUseCase, GetBlocklistUseCase, GetClientsUseCase, GetQueryStatsUseCase,
+        GetRecentQueriesUseCase, GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase,
+        ManageTimeSlotsUseCase, ToggleSafeSearchUseCase, UpdateLocalRecordUseCase,
+        UpdateScheduleProfileUseCase,
     },
 };
-use ferrous_dns_domain::{config::DatabaseConfig, Config, LocalDnsRecord};
+use ferrous_dns_domain::{config::DatabaseConfig, Config};
 use ferrous_dns_infrastructure::{
     dns::cache::DnsCache,
     repositories::{
-        client_repository::SqliteClientRepository,
-        client_subnet_repository::SqliteClientSubnetRepository,
-        group_repository::SqliteGroupRepository,
-        managed_domain_repository::SqliteManagedDomainRepository,
+        client_repository::SqliteClientRepository, query_log_repository::SqliteQueryLogRepository,
         regex_filter_repository::SqliteRegexFilterRepository,
     },
 };
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -308,7 +307,10 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .unwrap();
 
     sqlx::query(
-        "INSERT INTO groups (id, name, is_default) VALUES (1, 'Protected', 1), (2, 'Office', 0)",
+        r#"
+        INSERT INTO groups (id, name, enabled, comment, is_default)
+        VALUES (1, 'Protected', 1, 'Default group', 1)
+        "#,
     )
     .execute(&pool)
     .await
@@ -338,43 +340,6 @@ async fn create_test_db() -> sqlx::SqlitePool {
 
     sqlx::query(
         r#"
-        CREATE TABLE client_subnets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subnet_cidr TEXT NOT NULL UNIQUE,
-            group_id INTEGER NOT NULL,
-            comment TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        CREATE TABLE managed_domains (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            domain TEXT NOT NULL,
-            action TEXT NOT NULL CHECK(action IN ('allow', 'deny')),
-            group_id INTEGER NOT NULL DEFAULT 1 REFERENCES groups(id),
-            comment TEXT,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            service_id TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
         CREATE TABLE regex_filters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -392,21 +357,61 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::query(
+        r#"
+        CREATE TABLE query_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT NOT NULL,
+            record_type TEXT NOT NULL DEFAULT 'A',
+            client_ip TEXT NOT NULL DEFAULT '127.0.0.1',
+            blocked INTEGER NOT NULL DEFAULT 0,
+            response_time_ms INTEGER,
+            cache_hit INTEGER NOT NULL DEFAULT 0,
+            cache_refresh INTEGER NOT NULL DEFAULT 0,
+            dnssec_status TEXT,
+            upstream_server TEXT,
+            upstream_pool TEXT,
+            response_status TEXT,
+            query_source TEXT NOT NULL DEFAULT 'client',
+            group_id INTEGER,
+            block_source TEXT,
+            created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+        )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
 }
 
-async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
-    let pool = create_test_db().await;
-
+/// Builds the API router plus a handle to the live `PoolManager` (to assert hot
+/// reloads) and a writable temp config path (the update handler refuses to run
+/// without one). The temp file is created empty and is overwritten on save.
+async fn create_test_app(
+    pool: sqlx::SqlitePool,
+) -> (
+    Router,
+    Arc<ferrous_dns_infrastructure::dns::PoolManager>,
+    String,
+) {
     let client_repo = Arc::new(SqliteClientRepository::new(
         pool.clone(),
         &DatabaseConfig::default(),
     ));
-    let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
-    let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
-    let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
+    let group_repo = Arc::new(
+        ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository::new(
+            pool.clone(),
+        ),
+    );
     let regex_filter_repo = Arc::new(SqliteRegexFilterRepository::new(pool.clone()));
-    let null_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
+    let query_log_repo = Arc::new(SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    ));
 
     let config = Arc::new(RwLock::new(Config::default()));
     let cache = Arc::new(DnsCache::new(
@@ -440,36 +445,37 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
         servers: vec!["8.8.8.8:53".to_string()],
         weight: None,
     };
-
     let pool_manager = Arc::new(
         PoolManager::new(vec![test_pool], None, event_emitter)
             .await
             .expect("Failed to create PoolManager"),
     );
+    let pool_manager_handle = pool_manager.clone();
+
+    // The update handler resolves a config path up front and refuses to run
+    // without one, so point it at a unique writable temp file.
+    let config_path = std::env::temp_dir()
+        .join(format!(
+            "ferrous_cfg_update_test_{}_{}.toml",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    std::fs::write(&config_path, "").unwrap();
 
     let state = AppState {
         query: QueryUseCases {
-            get_stats: Arc::new(GetQueryStatsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ), client_repo.clone())),
-            get_queries: Arc::new(GetRecentQueriesUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
-            get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
-            get_query_rate: Arc::new(ferrous_dns_application::use_cases::GetQueryRateUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
-            get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
-            get_top_blocked_domains: Arc::new(ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
-            get_top_clients: Arc::new(ferrous_dns_application::use_cases::GetTopClientsUseCase::new(Arc::new(
-                ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &DatabaseConfig::default()),
-            ))),
+            get_stats: Arc::new(GetQueryStatsUseCase::new(query_log_repo.clone(), client_repo.clone())),
+            get_queries: Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone())),
+            get_timeline: Arc::new(ferrous_dns_application::use_cases::GetTimelineUseCase::new(query_log_repo.clone())),
+            get_query_rate: Arc::new(ferrous_dns_application::use_cases::GetQueryRateUseCase::new(query_log_repo.clone())),
+            get_cache_stats: Arc::new(ferrous_dns_application::use_cases::GetCacheStatsUseCase::new(query_log_repo.clone())),
+            get_top_blocked_domains: Arc::new(ferrous_dns_application::use_cases::GetTopBlockedDomainsUseCase::new(query_log_repo.clone())),
+            get_top_clients: Arc::new(ferrous_dns_application::use_cases::GetTopClientsUseCase::new(query_log_repo.clone())),
         },
         dns: DnsUseCases {
             cache: cache as Arc<dyn ferrous_dns_application::ports::DnsCachePort>,
@@ -483,38 +489,56 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
             reload_upstream: Arc::new(ferrous_dns_infrastructure::dns::UpstreamReloadAdapter::new(vec![pool_manager.clone(), pool_manager])),
         },
         groups: GroupUseCases {
-            get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
-            create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
-            update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
-            delete_group: Arc::new(DeleteGroupUseCase::new(group_repo.clone())),
-            assign_client_group: Arc::new(AssignClientGroupUseCase::new(client_repo.clone(), group_repo.clone(), Arc::new(NullBlockFilterEngine))),
+            get_groups: Arc::new(ferrous_dns_application::use_cases::GetGroupsUseCase::new(group_repo.clone())),
+            create_group: Arc::new(ferrous_dns_application::use_cases::CreateGroupUseCase::new(group_repo.clone())),
+            update_group: Arc::new(ferrous_dns_application::use_cases::UpdateGroupUseCase::new(group_repo.clone())),
+            delete_group: Arc::new(ferrous_dns_application::use_cases::DeleteGroupUseCase::new(group_repo.clone())),
+            assign_client_group: Arc::new(ferrous_dns_application::use_cases::AssignClientGroupUseCase::new(
+                client_repo.clone(),
+                group_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+            )),
         },
         clients: ClientUseCases {
             get_clients: Arc::new(GetClientsUseCase::new(client_repo.clone())),
-            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
-            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(subnet_repo.clone(), group_repo.clone(), Arc::new(NullBlockFilterEngine))),
-            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(subnet_repo.clone(), Arc::new(NullBlockFilterEngine))),
-            create_manual_client: Arc::new(CreateManualClientUseCase::new(client_repo.clone(), group_repo.clone())),
-            update_client: Arc::new(UpdateClientUseCase::new(client_repo.clone())),
-            delete_client: Arc::new(DeleteClientUseCase::new(client_repo.clone())),
-            subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
+            get_client_subnets: Arc::new(ferrous_dns_application::use_cases::GetClientSubnetsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
+            ))),
+            create_client_subnet: Arc::new(ferrous_dns_application::use_cases::CreateClientSubnetUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone())),
+                group_repo.clone(),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            delete_client_subnet: Arc::new(ferrous_dns_application::use_cases::DeleteClientSubnetUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
+            )),
+            create_manual_client: Arc::new(ferrous_dns_application::use_cases::CreateManualClientUseCase::new(
+                client_repo.clone(),
+                group_repo.clone(),
+            )),
+            update_client: Arc::new(ferrous_dns_application::use_cases::UpdateClientUseCase::new(client_repo.clone())),
+            delete_client: Arc::new(ferrous_dns_application::use_cases::DeleteClientUseCase::new(client_repo.clone())),
+            subnet_matcher: Arc::new(ferrous_dns_application::services::SubnetMatcherService::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository::new(pool.clone()),
+            ))),
         },
         blocking: BlockingUseCases {
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
             ))),
-            get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(Arc::new(
+            get_blocklist_sources: Arc::new(ferrous_dns_application::use_cases::GetBlocklistSourcesUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),
             ))),
-            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
+            create_blocklist_source: Arc::new(ferrous_dns_application::use_cases::CreateBlocklistSourceUseCase::new(
                 Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())),
                 group_repo.clone(),
             )),
-            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
+            update_blocklist_source: Arc::new(ferrous_dns_application::use_cases::UpdateBlocklistSourceUseCase::new(
                 Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())),
                 group_repo.clone(),
             )),
-            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(Arc::new(
+            delete_blocklist_source: Arc::new(ferrous_dns_application::use_cases::DeleteBlocklistSourceUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone()),
             ))),
             get_whitelist: Arc::new(ferrous_dns_application::use_cases::GetWhitelistUseCase::new(Arc::new(
@@ -534,20 +558,22 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
             delete_whitelist_source: Arc::new(ferrous_dns_application::use_cases::DeleteWhitelistSourceUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository::new(pool.clone()),
             ))),
-            get_managed_domains: Arc::new(GetManagedDomainsUseCase::new(managed_domain_repo.clone())),
-            create_managed_domain: Arc::new(CreateManagedDomainUseCase::new(
-                managed_domain_repo.clone(),
+            get_managed_domains: Arc::new(ferrous_dns_application::use_cases::GetManagedDomainsUseCase::new(Arc::new(
+                ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone()),
+            ))),
+            create_managed_domain: Arc::new(ferrous_dns_application::use_cases::CreateManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
                 group_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
             )),
-            update_managed_domain: Arc::new(UpdateManagedDomainUseCase::new(
-                managed_domain_repo.clone(),
+            update_managed_domain: Arc::new(ferrous_dns_application::use_cases::UpdateManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
                 group_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
             )),
-            delete_managed_domain: Arc::new(DeleteManagedDomainUseCase::new(
-                managed_domain_repo.clone(),
-                null_engine.clone(),
+            delete_managed_domain: Arc::new(ferrous_dns_application::use_cases::DeleteManagedDomainUseCase::new(
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
             )),
             get_regex_filters: Arc::new(ferrous_dns_application::use_cases::GetRegexFiltersUseCase::new(
                 regex_filter_repo.clone(),
@@ -555,38 +581,38 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
             create_regex_filter: Arc::new(ferrous_dns_application::use_cases::CreateRegexFilterUseCase::new(
                 regex_filter_repo.clone(),
                 group_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
             )),
             update_regex_filter: Arc::new(ferrous_dns_application::use_cases::UpdateRegexFilterUseCase::new(
                 regex_filter_repo.clone(),
                 group_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
             )),
             delete_regex_filter: Arc::new(ferrous_dns_application::use_cases::DeleteRegexFilterUseCase::new(
                 regex_filter_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
             )),
             get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
         },
         services: ServiceUseCases {
-            get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
-            get_blocked_services: Arc::new(GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
-            block_service: Arc::new(BlockServiceUseCase::new(
+            get_service_catalog: Arc::new(ferrous_dns_application::use_cases::GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
+            get_blocked_services: Arc::new(ferrous_dns_application::use_cases::GetBlockedServicesUseCase::new(Arc::new(NullBlockedServiceRepository))),
+            block_service: Arc::new(ferrous_dns_application::use_cases::BlockServiceUseCase::new(
                 Arc::new(NullBlockedServiceRepository),
-                managed_domain_repo.clone(),
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
                 group_repo.clone(),
-                null_engine.clone(),
+                Arc::new(NullBlockFilterEngine),
                 Arc::new(NullServiceCatalog),
             )),
-            unblock_service: Arc::new(UnblockServiceUseCase::new(
+            unblock_service: Arc::new(ferrous_dns_application::use_cases::UnblockServiceUseCase::new(
                 Arc::new(NullBlockedServiceRepository),
-                managed_domain_repo.clone(),
-                null_engine.clone(),
+                Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())),
+                Arc::new(NullBlockFilterEngine),
             )),
             create_custom_service: Arc::new(ferrous_dns_application::use_cases::CreateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog))),
             get_custom_services: Arc::new(ferrous_dns_application::use_cases::GetCustomServicesUseCase::new(Arc::new(NullCustomServiceRepository))),
-            update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), managed_domain_repo.clone(), Arc::new(NullBlockedServiceRepository), null_engine.clone())),
-            delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), managed_domain_repo.clone(), null_engine.clone())),
+            update_custom_service: Arc::new(ferrous_dns_application::use_cases::UpdateCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockedServiceRepository), Arc::new(NullBlockFilterEngine))),
+            delete_custom_service: Arc::new(ferrous_dns_application::use_cases::DeleteCustomServiceUseCase::new(Arc::new(NullCustomServiceRepository), Arc::new(NullServiceCatalog), Arc::new(NullBlockedServiceRepository), Arc::new(ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteManagedDomainRepository::new(pool.clone())), Arc::new(NullBlockFilterEngine))),
         },
         safe_search: SafeSearchUseCases {
             get_configs: Arc::new(GetSafeSearchConfigsUseCase::new(
@@ -616,260 +642,143 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>) {
         backup: helpers::build_test_backup_use_cases(config.clone()),
         config: config.clone(),
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
-        config_path: None,
+        config_path: Some(Arc::from(config_path.as_str())),
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
         tls_enabled: false,
     };
 
-    let app = create_api_routes(state);
-    (app, config)
+    (create_api_routes(state), pool_manager_handle, config_path)
 }
 
-#[tokio::test]
-async fn test_list_local_records_returns_empty_list() {
-    let (app, _config) = create_test_app().await;
-
+async fn post_config(app: Router, body: serde_json::Value) -> (StatusCode, Value) {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/local-records")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(json.is_array());
-    assert_eq!(json.as_array().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn test_list_local_records_returns_preloaded_records() {
-    let (app, config) = create_test_app().await;
-
-    {
-        let mut cfg = config.write().await;
-        cfg.dns.local_records.push(LocalDnsRecord {
-            hostname: "server".to_string(),
-            domain: Some("local".to_string()),
-            ip: "192.168.1.10".to_string(),
-            record_type: "A".to_string(),
-            ttl: Some(300),
-        });
-        cfg.dns.local_records.push(LocalDnsRecord {
-            hostname: "ipv6host".to_string(),
-            domain: None,
-            ip: "::1".to_string(),
-            record_type: "AAAA".to_string(),
-            ttl: None,
-        });
-    }
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(json.is_array());
-    assert_eq!(json.as_array().unwrap().len(), 2);
-    assert_eq!(json[0]["hostname"], "server");
-    assert_eq!(json[0]["ip"], "192.168.1.10");
-    assert_eq!(json[0]["record_type"], "A");
-    assert_eq!(json[0]["ttl"], 300);
-    assert_eq!(json[0]["fqdn"], "server.local");
-    assert_eq!(json[1]["hostname"], "ipv6host");
-    assert_eq!(json[1]["record_type"], "AAAA");
-    assert_eq!(json[1]["ttl"], 300);
-}
-
-#[tokio::test]
-async fn test_create_local_record_with_invalid_ip_returns_bad_request() {
-    let (app, _config) = create_test_app().await;
-
-    let payload = json!({
-        "hostname": "myserver",
-        "ip": "not-an-ip-address",
-        "record_type": "A"
-    });
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records")
                 .method("POST")
+                .uri("/config")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .body(Body::from(body.to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+fn live_servers(pm: &ferrous_dns_infrastructure::dns::PoolManager) -> Vec<String> {
+    pm.get_all_servers().iter().map(|a| a.to_string()).collect()
 }
 
 #[tokio::test]
-async fn test_create_local_record_with_invalid_record_type_returns_bad_request() {
-    let (app, _config) = create_test_app().await;
+async fn test_update_config_rejects_invalid_server() {
+    let pool = create_test_db().await;
+    let (app, pm, _path) = create_test_app(pool).await;
 
-    let payload = json!({
-        "hostname": "myserver",
-        "ip": "10.0.0.1",
-        "record_type": "MX"
-    });
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({
+            "dns": { "pools": [
+                { "name": "p1", "strategy": "parallel", "priority": 1,
+                  "servers": ["not-a-valid-endpoint"] }
+            ] }
+        }),
+    )
+    .await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records")
-                .method("POST")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], false);
+    assert!(
+        json["error"].as_str().unwrap().contains("Invalid server"),
+        "error should name the bad server, got: {}",
+        json["error"]
+    );
+    // A rejected save must not touch the live pools.
+    assert!(live_servers(&pm).iter().any(|s| s == "8.8.8.8:53"));
 }
 
 #[tokio::test]
-async fn test_update_local_record_with_invalid_ip_returns_bad_request() {
-    let (app, _config) = create_test_app().await;
+async fn test_update_config_rejects_pool_with_only_blank_servers() {
+    let pool = create_test_db().await;
+    let (app, pm, _path) = create_test_app(pool).await;
 
-    let payload = json!({
-        "hostname": "myserver",
-        "ip": "bad-ip",
-        "record_type": "A"
-    });
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({
+            "dns": { "pools": [
+                { "name": "p1", "strategy": "parallel", "priority": 1,
+                  "servers": ["", "   "] }
+            ] }
+        }),
+    )
+    .await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records/0")
-                .method("PUT")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], false);
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("At least one pool"),
+        "blank-only servers should leave zero valid pools, got: {}",
+        json["error"]
+    );
+    assert!(live_servers(&pm).iter().any(|s| s == "8.8.8.8:53"));
 }
 
 #[tokio::test]
-async fn test_update_local_record_with_invalid_record_type_returns_bad_request() {
-    let (app, _config) = create_test_app().await;
+async fn test_update_config_hot_applies_valid_pools_without_restart() {
+    let pool = create_test_db().await;
+    let (app, pm, _path) = create_test_app(pool).await;
 
-    let payload = json!({
-        "hostname": "myserver",
-        "ip": "10.0.0.1",
-        "record_type": "CNAME"
-    });
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({
+            "dns": { "pools": [
+                { "name": "p1", "strategy": "parallel", "priority": 1,
+                  "servers": ["udp://9.9.9.9:53"] }
+            ] }
+        }),
+    )
+    .await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records/0")
-                .method("PUT")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    // Pool-only changes are hot-applied; no restart banner.
+    assert_eq!(json["restart_required"], false);
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // The live pool manager must already serve the new upstream.
+    let servers = live_servers(&pm);
+    assert!(
+        servers.iter().any(|s| s == "9.9.9.9:53"),
+        "new upstream should be live after save: {servers:?}"
+    );
+    assert!(
+        !servers.iter().any(|s| s == "8.8.8.8:53"),
+        "old upstream should be gone after hot reload: {servers:?}"
+    );
 }
 
 #[tokio::test]
-async fn test_update_local_record_not_found_returns_not_found() {
-    let (app, _config) = create_test_app().await;
+async fn test_update_config_non_pool_change_requires_restart() {
+    let pool = create_test_db().await;
+    let (app, pm, _path) = create_test_app(pool).await;
 
-    let payload = json!({
-        "hostname": "myserver",
-        "ip": "10.0.0.1",
-        "record_type": "A"
-    });
+    // pihole_compat defaults to false; flipping it is a non-hot-applied change.
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({ "server": { "pihole_compat": true } }),
+    )
+    .await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records/999")
-                .method("PUT")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_string(&payload).unwrap()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_delete_local_record_not_found_returns_not_found() {
-    let (app, _config) = create_test_app().await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records/999")
-                .method("DELETE")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_list_local_records_fqdn_without_domain_uses_hostname() {
-    let (app, config) = create_test_app().await;
-
-    {
-        let mut cfg = config.write().await;
-        cfg.dns.local_records.push(LocalDnsRecord {
-            hostname: "standalone".to_string(),
-            domain: None,
-            ip: "10.10.10.1".to_string(),
-            record_type: "A".to_string(),
-            ttl: Some(60),
-        });
-    }
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/local-records")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&body).unwrap();
-
-    assert_eq!(json[0]["fqdn"], "standalone");
-    assert_eq!(json[0]["ttl"], 60);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    assert_eq!(
+        json["restart_required"], true,
+        "a non-pool field change must ask for a restart"
+    );
+    // No pools were sent, so the live pool set is untouched.
+    assert!(live_servers(&pm).iter().any(|s| s == "8.8.8.8:53"));
 }

@@ -2,6 +2,7 @@ use crate::dns::forwarding::{MessageBuilder, ResponseParser};
 use crate::dns::transport;
 use dashmap::DashMap;
 use ferrous_dns_domain::{DnsProtocol, RecordType};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -50,29 +51,50 @@ impl HealthChecker {
         }
     }
 
-    pub async fn run(
+    /// Runs the periodic probe loop. `protocols_provider` is called once per tick
+    /// to obtain the current set of servers, so upstreams added through a live pool
+    /// reload start getting health-checked without a restart.
+    pub async fn run<F>(
         self: Arc<Self>,
-        protocols: Vec<Arc<DnsProtocol>>,
+        protocols_provider: F,
         interval_seconds: u64,
         timeout_ms: u64,
-    ) {
+    ) where
+        F: Fn() -> Vec<Arc<DnsProtocol>> + Send + 'static,
+    {
+        let initial = protocols_provider();
         info!(
-            servers = protocols.len(),
+            servers = initial.len(),
             interval_seconds, "Health checker running"
         );
 
         let self_clone = Arc::clone(&self);
-        let protocols_clone = protocols.clone();
         tokio::spawn(async move {
-            self_clone.check_all(&protocols_clone, timeout_ms).await;
+            self_clone.check_all(&initial, timeout_ms).await;
         });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         let mut check_interval = interval(Duration::from_secs(interval_seconds));
         loop {
             check_interval.tick().await;
+            // Re-fetch the live protocol set each tick so servers added via a hot
+            // pool reload are probed, and removed servers stop being probed.
+            let protocols = protocols_provider();
+            // Drop health entries for servers no longer in the live set, so removed
+            // upstreams stop being reported as healthy/unhealthy and rotating
+            // hostname IPs don't accumulate stale entries across reloads.
+            self.retain_live(&protocols);
             self.check_all(&protocols, timeout_ms).await;
         }
+    }
+
+    /// Removes health entries whose server is no longer in `protocols`. Called once
+    /// per tick with the live pool set so a hot reload that drops a server — or
+    /// re-resolves a hostname to fresh addresses — doesn't leave its status lingering
+    /// in the map nor let the map grow unbounded across reloads.
+    fn retain_live(&self, protocols: &[Arc<DnsProtocol>]) {
+        let live: HashSet<Arc<DnsProtocol>> = protocols.iter().cloned().collect();
+        self.health_map.retain(|k, _| live.contains(k));
     }
 
     async fn check_all(&self, protocols: &[Arc<DnsProtocol>], timeout_ms: u64) {

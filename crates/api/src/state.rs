@@ -1,5 +1,5 @@
 use ferrous_dns_application::ports::{
-    ConfigFilePersistence, DnsCachePort, TlsCertificatePort, UpstreamHealthPort,
+    ConfigFilePersistence, DnsCachePort, TlsCertificatePort, UpstreamHealthPort, UpstreamReloadPort,
 };
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
@@ -49,6 +49,7 @@ pub struct DnsUseCases {
     pub update_local_record: Arc<UpdateLocalRecordUseCase>,
     pub delete_local_record: Arc<DeleteLocalRecordUseCase>,
     pub upstream_health: Arc<dyn UpstreamHealthPort>,
+    pub reload_upstream: Arc<dyn UpstreamReloadPort>,
 }
 
 #[derive(Clone)]

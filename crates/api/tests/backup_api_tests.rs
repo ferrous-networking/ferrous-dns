@@ -626,7 +626,8 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>, sqlx::SqlitePool) {
             create_local_record: Arc::new(CreateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
             update_local_record: Arc::new(UpdateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
             delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
-            upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(pool_manager, None)),
+            upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(pool_manager.clone(), None)),
+            reload_upstream: Arc::new(ferrous_dns_infrastructure::dns::UpstreamReloadAdapter::new(vec![pool_manager.clone(), pool_manager])),
         },
         groups: GroupUseCases {
             get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
