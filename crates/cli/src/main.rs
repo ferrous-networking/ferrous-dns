@@ -6,7 +6,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use anyhow::Context;
 use clap::Parser;
 use ferrous_dns_domain::CliOverrides;
-use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
+use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -142,7 +142,11 @@ async fn async_main() -> anyhow::Result<()> {
     let handler_use_case = dns_services.handler_use_case;
     let tcp_conn_limiter = dns_services.tcp_conn_limiter;
     let dot_conn_limiter = dns_services.dot_conn_limiter;
-    let dns_handler = DnsServerHandler::new(handler_use_case.clone());
+    let block_policy = BlockPolicy {
+        mode: config.blocking.block_mode,
+        ttl: config.blocking.block_ttl,
+    };
+    let dns_handler = DnsServerHandler::new(handler_use_case.clone(), block_policy);
     let core_ids_for_dns = core_affinity::get_core_ids().unwrap_or_default();
     let num_dns_workers = core_ids_for_dns.len().max(1);
 
@@ -179,7 +183,10 @@ async fn async_main() -> anyhow::Result<()> {
                 "{}:{}",
                 config.server.bind_address, config.server.encrypted_dns.dot_port
             );
-            let dot_handler = Arc::new(DnsServerHandler::new(handler_use_case.clone()));
+            let dot_handler = Arc::new(DnsServerHandler::new(
+                handler_use_case.clone(),
+                block_policy,
+            ));
             tokio::spawn(async move {
                 if let Err(e) = server::start_dot_server(
                     dot_addr,
@@ -203,8 +210,10 @@ async fn async_main() -> anyhow::Result<()> {
                 let doh_addr: SocketAddr = format!("{}:{}", config.server.bind_address, doh_port)
                     .parse()
                     .context("Invalid DoH bind address")?;
-                let dedicated_doh_handler =
-                    Arc::new(DnsServerHandler::new(handler_use_case.clone()));
+                let dedicated_doh_handler = Arc::new(DnsServerHandler::new(
+                    handler_use_case.clone(),
+                    block_policy,
+                ));
                 tokio::spawn(async move {
                     if let Err(e) = server::start_doh_server(doh_addr, dedicated_doh_handler).await
                     {
@@ -214,7 +223,7 @@ async fn async_main() -> anyhow::Result<()> {
             }
             None
         } else {
-            tls_config.map(|_| Arc::new(DnsServerHandler::new(handler_use_case)))
+            tls_config.map(|_| Arc::new(DnsServerHandler::new(handler_use_case, block_policy)))
         }
     } else {
         None

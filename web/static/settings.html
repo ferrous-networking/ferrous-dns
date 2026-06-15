@@ -454,6 +454,31 @@
                     </div>
                 </div>
             </div>
+
+            <div style="padding:16px 0;border-top:1px solid var(--border-color)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <i data-lucide="shield-x" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <h4 style="font-size:16px;font-weight:600;margin:0">Blocked query response</h4>
+                </div>
+                <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px">How blocked domains (blocklist, DGA, tunneling, C2) are answered. <b>Null IP</b> returns a cacheable <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">0.0.0.0</code>/<code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">::</code> so clients stop re-querying — recommended. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">REFUSED</code> is the legacy mode and makes clients retry aggressively.</p>
+                <div style="display:flex;gap:24px;flex-wrap:wrap">
+                    <div class="form-group" style="margin-bottom:0">
+                        <label class="form-label">Response mode</label>
+                        <select x-model="settings.block_mode" style="width:360px;max-width:100%">
+                            <option value="null_ip">Null IP (0.0.0.0 / ::) — recommended</option>
+                            <option value="nxdomain">NXDOMAIN</option>
+                            <option value="nodata">NODATA</option>
+                            <option value="refused">REFUSED (legacy)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                        <label class="form-label">Block TTL (seconds)</label>
+                        <input type="number" min="1" x-model.number="settings.block_ttl" placeholder="60"
+                               style="max-width:160px;font-family:monospace">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">How long clients cache the Null IP answer.</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <button @click="saveDnsSettings()" class="btn btn-success">

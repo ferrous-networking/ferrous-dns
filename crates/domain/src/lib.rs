@@ -11,11 +11,11 @@ pub use entities::schedule;
 pub use entities::whitelist;
 
 pub use config::{
-    AdminConfig, AuthConfig, CliOverrides, Config, ConfigError, DgaDetectionAction,
-    DgaDetectionConfig, DnsConfig, DnsCookiesConfig, EncryptedDnsConfig, HealthCheckConfig,
-    LocalDnsRecord, NxdomainHijackAction, NxdomainHijackConfig, RateLimitConfig,
+    AdminConfig, AuthConfig, BlockResponseMode, CliOverrides, Config, ConfigError,
+    DgaDetectionAction, DgaDetectionConfig, DnsConfig, DnsCookiesConfig, EncryptedDnsConfig,
+    HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction, NxdomainHijackConfig, RateLimitConfig,
     ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
-    UpstreamPool, UpstreamStrategy,
+    UpstreamPool, UpstreamStrategy, DEFAULT_BLOCK_TTL,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use entities::api_token::ApiToken;
