@@ -30,6 +30,10 @@ pub struct DnsServices {
     pub cache: Arc<DnsCache>,
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
     pub pool_manager: Arc<PoolManager>,
+    pub dnssec_pool_manager: Arc<PoolManager>,
+    /// Pool manager backing the cache optimistic-refresh resolver, when that
+    /// path is enabled. Kept so hot upstream reloads also reach it.
+    pub maintenance_pool_manager: Option<Arc<PoolManager>>,
     pub health_checker: Option<Arc<HealthChecker>>,
     pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
@@ -65,6 +69,7 @@ impl DnsServices {
             )
             .await?,
         );
+        let dnssec_pool_manager_clone = Arc::clone(&pool_manager_for_dnssec);
 
         let mut dns_resolver = resolver::build_resolver(
             pool_manager,
@@ -81,7 +86,7 @@ impl DnsServices {
                 .with_cache(dns_cache.clone(), config.dns.cache_ttl);
         }
 
-        let cache_maintenance = Self::setup_cache_maintenance(
+        let (cache_maintenance, maintenance_pool_manager) = Self::setup_cache_maintenance(
             config,
             &dns_cache,
             stored_health_checker.clone(),
@@ -316,6 +321,8 @@ impl DnsServices {
             cache: dns_cache,
             handler_use_case,
             pool_manager: pool_manager_clone,
+            dnssec_pool_manager: dnssec_pool_manager_clone,
+            maintenance_pool_manager,
             health_checker: stored_health_checker,
             cache_maintenance,
             ptr_registry,
@@ -334,9 +341,12 @@ impl DnsServices {
         health_checker: Option<Arc<HealthChecker>>,
         timeout_ms: u64,
         repos: &Repositories,
-    ) -> anyhow::Result<Option<Arc<dyn CacheMaintenancePort>>> {
+    ) -> anyhow::Result<(
+        Option<Arc<dyn CacheMaintenancePort>>,
+        Option<Arc<PoolManager>>,
+    )> {
         if !config.dns.cache_enabled || !config.dns.cache_optimistic_refresh {
-            return Ok(None);
+            return Ok((None, None));
         }
 
         let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(256);
@@ -350,6 +360,8 @@ impl DnsServices {
             )
             .await?,
         );
+        // Keep a handle so hot upstream reloads also reach this resolver.
+        let maintenance_pool_manager = Arc::clone(&pool_manager_for_maintenance);
 
         let resolver_for_maintenance: Arc<dyn ferrous_dns_application::ports::DnsResolver> =
             Arc::new(HickoryDnsResolver::new_with_pools(
@@ -366,12 +378,15 @@ impl DnsServices {
             stale_rx,
         );
 
-        Ok(Some(Arc::new(DnsCacheMaintenance::new(
-            cache.clone(),
-            resolver_for_maintenance,
-            Some(repos.query_log.clone()),
-            60,
-        )) as Arc<dyn CacheMaintenancePort>))
+        Ok((
+            Some(Arc::new(DnsCacheMaintenance::new(
+                cache.clone(),
+                resolver_for_maintenance,
+                Some(repos.query_log.clone()),
+                60,
+            )) as Arc<dyn CacheMaintenancePort>),
+            Some(maintenance_pool_manager),
+        ))
     }
 }
 

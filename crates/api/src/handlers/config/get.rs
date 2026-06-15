@@ -57,6 +57,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                     strategy: format!("{:?}", p.strategy).to_lowercase(),
                     priority: p.priority,
                     servers: p.servers.clone(),
+                    weight: p.weight,
                 })
                 .collect(),
             health_check: HealthCheckResponse {

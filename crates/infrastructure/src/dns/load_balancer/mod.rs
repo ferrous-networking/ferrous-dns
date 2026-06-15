@@ -6,6 +6,7 @@ pub mod pool;
 pub mod query;
 pub mod strategy;
 pub mod upstream_health_adapter;
+pub mod upstream_reload_adapter;
 
 pub use balanced::BalancedStrategy;
 pub use failover::FailoverStrategy;
@@ -14,3 +15,4 @@ pub use parallel::ParallelStrategy;
 pub use pool::{PoolGroupEntry, PoolManager};
 pub use strategy::{Strategy, UpstreamResult};
 pub use upstream_health_adapter::UpstreamHealthAdapter;
+pub use upstream_reload_adapter::UpstreamReloadAdapter;

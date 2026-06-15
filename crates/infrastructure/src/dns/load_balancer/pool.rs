@@ -6,6 +6,7 @@ use super::strategy::{QueryContext, Strategy, UpstreamResult};
 use crate::dns::events::QueryEventEmitter;
 use crate::dns::forwarding::{MessageBuilder, ResponseParser};
 use crate::dns::transport::resolver;
+use arc_swap::ArcSwap;
 use ferrous_dns_domain::{
     Config, DnsProtocol, DomainError, RecordType, UpstreamPool, UpstreamStrategy,
 };
@@ -17,7 +18,8 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 pub struct PoolManager {
-    pools: Vec<PoolWithStrategy>,
+    /// Live set of pools, swappable at runtime so upstream changes apply without a restart.
+    pools: ArcSwap<Vec<PoolWithStrategy>>,
     health_checker: Option<Arc<HealthChecker>>,
     emitter: QueryEventEmitter,
 }
@@ -37,12 +39,52 @@ struct PoolWithStrategy {
     server_displays: Arc<HashMap<Arc<DnsProtocol>, Arc<str>>>,
 }
 
+/// An opaque, fully-rebuilt pool set produced by [`PoolManager::prepare`] and ready
+/// to be committed with [`PoolManager::apply`].
+pub struct PreparedPools(Vec<PoolWithStrategy>);
+
 impl PoolManager {
     pub async fn new(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
         emitter: QueryEventEmitter,
     ) -> Result<Self, DomainError> {
+        let pools_with_strategy = Self::build_pools(pools).await?;
+
+        Ok(Self {
+            pools: ArcSwap::from_pointee(pools_with_strategy),
+            health_checker,
+            emitter,
+        })
+    }
+
+    /// Rebuilds the pool set from `pools` and atomically swaps it into the live
+    /// query path. New servers are usable immediately; the health-check probe loop
+    /// reads the live set each tick, so they also start being probed without a restart.
+    pub async fn reload(&self, pools: Vec<UpstreamPool>) -> Result<(), DomainError> {
+        let prepared = self.prepare(pools).await?;
+        self.apply(prepared);
+        Ok(())
+    }
+
+    /// Rebuilds the pool set without touching the live query path. Pair with
+    /// [`PoolManager::apply`] to stage a fallible rebuild before committing it, so
+    /// several managers can be swapped together only once all rebuilds succeed.
+    pub async fn prepare(&self, pools: Vec<UpstreamPool>) -> Result<PreparedPools, DomainError> {
+        Ok(PreparedPools(Self::build_pools(pools).await?))
+    }
+
+    /// Atomically swaps a previously [`prepared`](PoolManager::prepare) pool set into
+    /// the live query path. Infallible — the fallible work happened in `prepare`.
+    pub fn apply(&self, prepared: PreparedPools) {
+        self.pools.store(Arc::new(prepared.0));
+        info!(
+            "Upstream pools reloaded ({} pools)",
+            self.pools.load().len()
+        );
+    }
+
+    async fn build_pools(pools: Vec<UpstreamPool>) -> Result<Vec<PoolWithStrategy>, DomainError> {
         if pools.is_empty() {
             return Err(DomainError::InvalidDomainName(
                 "At least one pool must be configured".into(),
@@ -97,11 +139,7 @@ impl PoolManager {
         }
         pools_with_strategy.sort_by_key(|p| p.config.priority);
 
-        Ok(Self {
-            pools: pools_with_strategy,
-            health_checker,
-            emitter,
-        })
+        Ok(pools_with_strategy)
     }
 
     async fn expand_hostnames(entries: Vec<(Arc<str>, DnsProtocol)>) -> Vec<ServerGroup> {
@@ -244,15 +282,18 @@ impl PoolManager {
         timeout_ms: u64,
         dnssec_ok: bool,
     ) -> Result<UpstreamResult, DomainError> {
+        // Own the snapshot (load_full) rather than holding a Guard across the
+        // upstream await — a long-lived Guard pins an arc_swap slot and slows reloads.
+        let pools = self.pools.load_full();
         debug!(
-            total_pools = self.pools.len(),
+            total_pools = pools.len(),
             %domain, "Starting load balancer query"
         );
 
         let query_bytes: Arc<[u8]> =
             Arc::from(MessageBuilder::build_query(domain, record_type, dnssec_ok)?);
 
-        for pool in &self.pools {
+        for pool in pools.iter() {
             let healthy_refs: SmallVec<[&Arc<DnsProtocol>; 16]> =
                 if let Some(ref checker) = self.health_checker {
                     pool.server_protocols
@@ -300,6 +341,7 @@ impl PoolManager {
 
     pub fn get_all_servers(&self) -> Vec<std::net::SocketAddr> {
         self.pools
+            .load()
             .iter()
             .flat_map(|p| p.server_protocols.iter().filter_map(|p| p.socket_addr()))
             .collect()
@@ -307,6 +349,7 @@ impl PoolManager {
 
     pub fn get_all_arc_protocols(&self) -> Vec<Arc<DnsProtocol>> {
         self.pools
+            .load()
             .iter()
             .flat_map(|p| p.server_protocols.iter().cloned())
             .collect()
@@ -314,6 +357,7 @@ impl PoolManager {
 
     pub fn get_all_protocols(&self) -> Vec<DnsProtocol> {
         self.pools
+            .load()
             .iter()
             .flat_map(|p| p.server_protocols.iter().map(|p| (**p).clone()))
             .collect()
@@ -323,6 +367,7 @@ impl PoolManager {
     /// their pool name and strategy for health display purposes.
     pub fn get_pool_groups(&self) -> Vec<PoolGroupEntry> {
         self.pools
+            .load()
             .iter()
             .flat_map(|p| {
                 let pool_name = Arc::clone(&p.name_arc);

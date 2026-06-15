@@ -31,6 +31,7 @@ mod session_repository;
 mod tls_certificate_port;
 mod tunneling_flag_store;
 mod upstream_health_port;
+mod upstream_reload_port;
 mod user_repository;
 mod whitelist_repository;
 mod whitelist_source_repository;
@@ -75,6 +76,7 @@ pub use upstream_health_port::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
     UpstreamStatus,
 };
+pub use upstream_reload_port::UpstreamReloadPort;
 pub use user_repository::{CreateUserInput, PasswordHasher, UserProvider, UserRepository};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;

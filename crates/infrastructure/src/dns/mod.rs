@@ -30,7 +30,7 @@ pub use dga_detection::DgaDetector;
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
     BalancedStrategy, FailoverStrategy, HealthChecker, ParallelStrategy, PoolManager, ServerHealth,
-    ServerStatus, UpstreamHealthAdapter,
+    ServerStatus, UpstreamHealthAdapter, UpstreamReloadAdapter,
 };
 pub use nxdomain_hijack::NxdomainHijackDetector;
 pub use prefetch::PrefetchPredictor;
