@@ -21,3 +21,68 @@
                 height: 220px
             }
         }
+
+        /* Doughnut card: chart on the left, HTML legend on the right.
+           The legend is real DOM, so the card grows vertically to fit every
+           entry instead of clipping/stacking. Grid `align-items:stretch`
+           keeps the two cards the same height when one legend is taller. */
+        .chart-card {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-row {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .chart-canvas-wrap {
+            flex: 1 1 0;
+            min-width: 0;
+            max-width: 260px;
+        }
+
+        .chart-legend {
+            flex: 0 0 auto;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chart-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .chart-legend-swatch {
+            flex: 0 0 auto;
+            width: 28px;
+            height: 14px;
+            border-radius: 3px;
+        }
+
+        .chart-legend-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        @media (max-width: 560px) {
+            .chart-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .chart-canvas-wrap {
+                max-width: none;
+                align-self: center;
+                width: 220px;
+            }
+        }
