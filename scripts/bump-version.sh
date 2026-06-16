@@ -95,13 +95,16 @@ update_cargo_toml() {
         return 1
     fi
     
-    # Update version in file
+    # Update version in file.
+    # Anchor to start-of-line so only the package `version = "X"` line is
+    # rewritten, never a dependency's inline `version = "X"` (e.g. sqlx),
+    # which would otherwise be bumped to a non-existent crates.io version.
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/version = \"$old_version\"/version = \"$new_version\"/g" "$file"
+        sed -i '' "s/^version = \"$old_version\"/version = \"$new_version\"/" "$file"
     else
         # Linux
-        sed -i "s/version = \"$old_version\"/version = \"$new_version\"/g" "$file"
+        sed -i "s/^version = \"$old_version\"/version = \"$new_version\"/" "$file"
     fi
     
     log_success "Updated: $file"
