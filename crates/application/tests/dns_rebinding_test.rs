@@ -196,6 +196,76 @@ async fn test_public_domain_resolves_to_ipv6_loopback_is_blocked() {
 }
 
 #[tokio::test]
+async fn test_public_domain_resolves_to_ipv4_mapped_private_is_blocked() {
+    let resolver = MockDnsResolver::new();
+    // `::ffff:192.168.1.1` — a private IPv4 delivered as an IPv4-mapped AAAA.
+    resolver
+        .set_response(
+            "evil.com",
+            resolution_with_ip(IpAddr::V6(Ipv4Addr::new(192, 168, 1, 1).to_ipv6_mapped())),
+        )
+        .await;
+
+    let use_case = make_use_case(resolver, None, &[]);
+    let result = use_case.execute(&dns_request("evil.com")).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+}
+
+#[tokio::test]
+async fn test_public_domain_resolves_to_ipv6_unique_local_is_blocked() {
+    let resolver = MockDnsResolver::new();
+    // `fd12:3456::1` — a typical RFC 4193 ULA with a non-zero global ID.
+    resolver
+        .set_response(
+            "evil.com",
+            resolution_with_ip(IpAddr::V6(Ipv6Addr::new(0xfd12, 0x3456, 0, 0, 0, 0, 0, 1))),
+        )
+        .await;
+
+    let use_case = make_use_case(resolver, None, &[]);
+    let result = use_case.execute(&dns_request("evil.com")).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+}
+
+#[tokio::test]
+async fn test_public_domain_resolves_to_ipv6_link_local_is_blocked() {
+    let resolver = MockDnsResolver::new();
+    // `fea0::1` — link-local outside the literal `fe80:` prefix.
+    resolver
+        .set_response(
+            "evil.com",
+            resolution_with_ip(IpAddr::V6(Ipv6Addr::new(0xfea0, 0, 0, 0, 0, 0, 0, 1))),
+        )
+        .await;
+
+    let use_case = make_use_case(resolver, None, &[]);
+    let result = use_case.execute(&dns_request("evil.com")).await;
+
+    assert!(matches!(result, Err(DomainError::Blocked)));
+}
+
+#[tokio::test]
+async fn test_public_domain_resolves_to_ipv6_public_is_allowed() {
+    let resolver = MockDnsResolver::new();
+    // `2606:4700:4700::1111` — Cloudflare public resolver.
+    resolver
+        .set_response(
+            "cloudflare.com",
+            resolution_with_ip(IpAddr::V6(Ipv6Addr::new(
+                0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111,
+            ))),
+        )
+        .await;
+
+    let use_case = make_use_case(resolver, None, &[]);
+    let result = use_case.execute(&dns_request("cloudflare.com")).await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
 async fn test_local_domain_suffix_match_is_case_insensitive() {
     let resolver = MockDnsResolver::new();
     resolver
