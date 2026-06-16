@@ -26,7 +26,7 @@ servers = [
 ]
 ```
 
-By default Ferrous DNS uses the system resolver for this. If you set `local_dns_server` in `[dns]`, that resolver is used instead — which avoids circular dependency issues and works correctly in containers with no `/etc/resolv.conf`. See [Local DNS Server](../configuration/dns.md#local-dns-server) for details.
+Ferrous DNS resolves these hostnames once at startup using the **system resolver** (the host's `/etc/resolv.conf` / OS resolver), then caches the IPs internally. The `local_dns_server` setting in `[dns]` is used for reverse (PTR) lookups of private clients and for split-DNS local-TLD queries — it is **not** used to resolve upstream URL hostnames.
 
 ---
 
@@ -61,6 +61,7 @@ servers  = [
 | `strategy` | How queries are distributed across servers in this pool |
 | `priority` | Lower number = higher priority. The highest-priority pool with at least one healthy server is always used |
 | `servers` | List of upstream server URLs |
+| `weight` | Optional relative weight for the pool (`int`, default unset). Accepted, persisted, and exposed via the API, but **not yet consumed** by the load balancer — the `Balanced` strategy is plain round-robin. Reserved for future weighted distribution |
 
 ### Pool Routing
 

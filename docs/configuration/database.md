@@ -16,7 +16,7 @@ client_tracking_interval = 60
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `path` | `/var/lib/ferrous-dns/ferrous.db` | Path to the SQLite database file |
+| `path` | `./ferrous-dns.db` | Path to the SQLite database file |
 | `log_queries` | `true` | Store every DNS query for analytics and the query log dashboard |
 | `queries_log_stored` | `30` | Days to retain query log entries before automatic cleanup |
 | `client_tracking_interval` | `60` | Minimum seconds between consecutive last-seen DB writes per client IP |
@@ -30,16 +30,16 @@ The query log uses an async write pipeline to avoid blocking the DNS hot path. Q
 ```toml
 [database]
 query_log_channel_capacity = 10000
-query_log_max_batch_size = 2000
-query_log_flush_interval_ms = 200
+query_log_max_batch_size = 500
+query_log_flush_interval_ms = 100
 query_log_sample_rate = 1
 ```
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `query_log_channel_capacity` | `10000` | Channel buffer size (entries). At 100k q/s with `sample_rate=10`, ~200k is needed for a 2s buffer |
-| `query_log_max_batch_size` | `2000` | Maximum entries per INSERT transaction. Larger = fewer transactions, higher throughput |
-| `query_log_flush_interval_ms` | `200` | Milliseconds between flush cycles |
+| `query_log_max_batch_size` | `500` | Maximum entries per INSERT transaction. Larger = fewer transactions, higher throughput |
+| `query_log_flush_interval_ms` | `100` | Milliseconds between flush cycles |
 | `query_log_sample_rate` | `1` | Log 1 out of every N queries. `1` = log all. `10` = log 10% |
 
 **High-throughput tuning** (100k+ q/s):
@@ -72,8 +72,8 @@ Ferrous DNS uses separate connection pools for writes and reads to avoid content
 
 ```toml
 [database]
-write_pool_max_connections = 3
-read_pool_max_connections = 8
+write_pool_max_connections = 2
+read_pool_max_connections = 4
 query_log_pool_max_connections = 2
 write_busy_timeout_secs = 30
 read_busy_timeout_secs = 15
@@ -82,8 +82,8 @@ read_acquire_timeout_secs = 15
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
-| `write_pool_max_connections` | `3` | Write pool size. SQLite WAL serialises writers; >3 connections add no throughput |
-| `read_pool_max_connections` | `8` | Read pool for dashboard and API endpoints |
+| `write_pool_max_connections` | `2` | Write pool size. SQLite WAL serialises writers; extra connections add no throughput |
+| `read_pool_max_connections` | `4` | Read pool for dashboard and API endpoints |
 | `query_log_pool_max_connections` | `2` | Dedicated read pool for query log endpoint |
 | `write_busy_timeout_secs` | `30` | Seconds to wait for the write lock before `SQLITE_BUSY` |
 | `read_busy_timeout_secs` | `15` | Seconds to wait for a read connection |

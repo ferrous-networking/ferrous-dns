@@ -42,16 +42,10 @@ Query: ads.doubleclick.net
 
 ### Adding Blocklists
 
-Via dashboard: **Blocklists > Add Blocklist**
+Via dashboard: **Blocklists > Add Blocklist** (or the REST API).
 
-Via TOML (simple domains):
-```toml
-[blocking]
-custom_blocked = [
-    "ads.example.com",
-    "tracker.badsite.org",
-]
-```
+!!! warning "Not configured via TOML"
+    Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. The `custom_blocked` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect — use the dashboard or API instead.
 
 ### Supported Formats
 
@@ -97,18 +91,12 @@ malware.example.net
 
 ## Allowlist
 
-Domains in the allowlist bypass all blocking, even if present in a blocklist:
+Domains in the allowlist bypass all blocking, even if present in a blocklist.
 
-```toml
-[blocking]
-whitelist = [
-    "safe.example.com",
-    "cdn.trusted.net",
-    "updates.software.com",
-]
-```
+Manage the allowlist via the dashboard (**DNS Filter > Managed Domains**) or the REST API — entries are stored in the SQLite database. You can also add a domain directly from the query log with one click.
 
-Or add directly from the query log dashboard with one click.
+!!! warning "Not configured via TOML"
+    The `whitelist` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect. Use the dashboard or API to allow-list domains.
 
 ---
 
@@ -136,8 +124,11 @@ Managed via dashboard: **Settings > Safe Search**
 |:---------|:------------------|
 | Google | DNS redirect to `forcesafesearch.google.com` |
 | Bing | DNS redirect to `strict.bing.com` |
-| YouTube | DNS redirect to `restrictmoderate.youtube.com` |
+| YouTube | DNS redirect to the moderate or strict restriction endpoint (selectable per group) |
 | DuckDuckGo | DNS redirect to safe search endpoint |
+| Yandex | DNS redirect to the family search endpoint |
+| Brave | DNS redirect to safe search endpoint |
+| Ecosia | DNS redirect to safe search endpoint |
 
 Safe Search can be enabled globally or per client group (e.g. only on the "Kids" group).
 
