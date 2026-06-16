@@ -13,6 +13,40 @@
         });
     }
 
+    // Renders the chart legend as flowing HTML next to the canvas (instead of
+    // inside it) so the card grows vertically to fit every entry rather than
+    // clipping. The target container id is `<canvasId>Legend`.
+    const htmlLegendPlugin = {
+        id: 'htmlLegend',
+        afterUpdate(chart) {
+            const ul = document.getElementById(chart.canvas.id + 'Legend');
+            if (!ul) return;
+            while (ul.firstChild) ul.firstChild.remove();
+            const colors = chart.data.datasets[0]?.backgroundColor || [];
+            chart.data.labels.forEach((label, i) => {
+                const hidden = !chart.getDataVisibility(i);
+                const li = document.createElement('li');
+                li.className = 'chart-legend-item';
+                li.onclick = () => {
+                    chart.toggleDataVisibility(i);
+                    chart.update();
+                };
+                const box = document.createElement('span');
+                box.className = 'chart-legend-swatch';
+                box.style.background = colors[i];
+                const text = document.createElement('span');
+                text.className = 'chart-legend-label';
+                text.textContent = label;
+                if (hidden) {
+                    text.style.textDecoration = 'line-through';
+                    li.style.opacity = '.4';
+                }
+                li.append(box, text);
+                ul.appendChild(li);
+            });
+        }
+    };
+
     function formatSourceKey(key) {
         if (key.includes(':')) {
             const parts = key.split(':');
@@ -177,12 +211,11 @@
                 }
 
                 try {
-                    const validTypes = {};
-                    Object.entries(this.queryTypes).forEach(([key, value]) => {
-                        if (key !== 'undefined' && key !== 'null' && value > 0) {
-                            validTypes[key] = value;
-                        }
-                    });
+                    const entries = Object.entries(this.queryTypes)
+                        .filter(([key, value]) => key !== 'undefined' && key !== 'null' && value > 0)
+                        .sort((a, b) => a[0].localeCompare(b[0]));
+                    const newLabels = entries.map(e => e[0]);
+                    const newData   = entries.map(e => e[1]);
 
                     const pctTooltip = {
                         callbacks: {
@@ -194,31 +227,30 @@
                             }
                         }
                     };
-                    if (!appCharts.queryTypes && Object.keys(validTypes).length > 0) {
+                    if (!appCharts.queryTypes && newLabels.length > 0) {
 
                         const ctx2 = document.getElementById('queryTypesChart');
                         if (ctx2) {
                             appCharts.queryTypes = new Chart(ctx2.getContext('2d'), {
                                 type: 'doughnut',
                                 data: {
-                                    labels: Object.keys(validTypes),
+                                    labels: newLabels,
                                     datasets: [{
-                                        data: Object.values(validTypes),
-                                        backgroundColor: generateChartColors(Object.keys(validTypes).length)
+                                        data: newData,
+                                        backgroundColor: generateChartColors(newLabels.length)
                                     }]
                                 },
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
-                                    aspectRatio: 2,
-                                    plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
-                                }
+                                    aspectRatio: 1,
+                                    plugins: {legend: {display: false}, tooltip: pctTooltip}
+                                },
+                                plugins: [htmlLegendPlugin]
                             });
                         }
-                    } else if (appCharts.queryTypes && appCharts.queryTypes.data && appCharts.queryTypes.canvas && Object.keys(validTypes).length > 0) {
+                    } else if (appCharts.queryTypes && appCharts.queryTypes.data && appCharts.queryTypes.canvas && newLabels.length > 0) {
 
-                        const newLabels = Object.keys(validTypes);
-                        const newData   = Object.values(validTypes);
                         const curLabels = appCharts.queryTypes.data.labels;
                         const curData   = appCharts.queryTypes.data.datasets[0].data;
                         const labelsChanged = newLabels.length !== curLabels.length ||
@@ -253,7 +285,8 @@
                 try {
                     const active = Object.entries(this.sourceStats)
                         .filter(([, v]) => v > 0)
-                        .map(([key, value]) => ({ label: formatSourceKey(key), value }));
+                        .map(([key, value]) => ({ label: formatSourceKey(key), value }))
+                        .sort((a, b) => a.label.localeCompare(b.label));
 
                     if (active.length === 0) return;
 
@@ -273,9 +306,10 @@
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
-                                    aspectRatio: 2,
-                                    plugins: {legend: {position: 'right'}, tooltip: pctTooltip}
-                                }
+                                    aspectRatio: 1,
+                                    plugins: {legend: {display: false}, tooltip: pctTooltip}
+                                },
+                                plugins: [htmlLegendPlugin]
                             });
                         }
                     } else if (appCharts.cacheSource.data && appCharts.cacheSource.canvas) {
