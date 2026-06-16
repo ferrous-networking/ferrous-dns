@@ -19,12 +19,27 @@
             min-width: 480px
         }
 
+        .col-time { width: 120px }
+        .col-client { width: 130px }
+        .col-source { width: 240px }
+
         @media (max-width: 1100px) {
             .col-rt { display: none }
         }
 
         @media (max-width: 820px) {
             .col-type { display: none }
+        }
+
+        /* Phones: drop the table min-width and the CLIENT column, and shrink
+           TIME/SOURCE so the DOMAIN column keeps enough room to show the
+           queried name instead of collapsing to zero width. */
+        @media (max-width: 640px) {
+            table { min-width: 0 }
+            .col-client { display: none }
+            .col-time { width: 86px }
+            .col-source { width: 116px }
+            th, td { padding: 8px 6px }
         }
 
         th {
