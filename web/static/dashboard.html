@@ -177,14 +177,20 @@
             <canvas id="timelineChart"></canvas>
         </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px">
-        <div class="card" style="padding:24px"><h3
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;align-items:stretch">
+        <div class="card chart-card" style="padding:24px"><h3
                 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Types</h3>
-            <canvas id="queryTypesChart" style="max-height:300px"></canvas>
+            <div class="chart-row">
+                <div class="chart-canvas-wrap"><canvas id="queryTypesChart"></canvas></div>
+                <ul id="queryTypesChartLegend" class="chart-legend"></ul>
+            </div>
         </div>
-        <div class="card" style="padding:24px"><h3
+        <div class="card chart-card" style="padding:24px"><h3
                 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Source</h3>
-            <canvas id="cacheSourceChart" style="max-height:300px"></canvas>
+            <div class="chart-row">
+                <div class="chart-canvas-wrap"><canvas id="cacheSourceChart"></canvas></div>
+                <ul id="cacheSourceChartLegend" class="chart-legend"></ul>
+            </div>
         </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
