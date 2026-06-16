@@ -11,10 +11,10 @@ The `[dns]` section controls upstream resolution, DNSSEC, local records, and ups
 upstream_servers = []
 query_timeout = 3
 default_strategy = "Parallel"
-dnssec_enabled = true
+dnssec_enabled = false
 block_private_ptr = true
-block_non_fqdn = true
-local_domain = "lan"
+block_non_fqdn = false
+# local_domain = "lan"            # optional — no default
 local_dns_server = "10.0.0.1:53"
 ```
 
@@ -23,11 +23,13 @@ local_dns_server = "10.0.0.1:53"
 | `upstream_servers` | `[]` | Fallback upstreams when no pool matches (same URL format as pools) |
 | `query_timeout` | `3` | Seconds to wait for an upstream response |
 | `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"`, `"Balanced"`, or `"Failover"` |
-| `dnssec_enabled` | `true` | Validate DNSSEC signatures on upstream responses |
+| `dnssec_enabled` | `false` | Validate DNSSEC signatures on upstream responses |
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
-| `block_non_fqdn` | `true` | Block queries for non-fully-qualified domain names |
-| `local_domain` | `"lan"` | Local domain suffix appended to short hostnames |
+| `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
+| `local_domain` | — | Local domain suffix appended to short hostnames |
 | `local_dns_server` | — | Router/DHCP server used for PTR lookups and client hostname resolution |
+| `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
+| `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
 
 ---
 

@@ -58,12 +58,18 @@ servers = [
 
 ## Server-Side Encrypted DNS
 
-Ferrous DNS can serve DNS-over-TLS and DNS-over-HTTPS directly to clients on your network, so devices can connect to Ferrous DNS securely.
+Ferrous DNS can serve DNS-over-TLS and DNS-over-HTTPS to clients on your network, so devices can connect to Ferrous DNS securely.
+
+The two protocols terminate TLS differently:
+
+- **DoT** is terminated by Ferrous DNS itself, using the certificate and key in `[server.encrypted_dns]`.
+- **DoH** is served as plain HTTP and expects a **reverse proxy** (nginx, Traefik, Caddy) in front of it to terminate TLS. The DoH endpoint reads `X-Real-IP` / `X-Forwarded-For` for correct client attribution, so it must sit behind a proxy that sets those headers.
 
 ### Requirements
 
-- A TLS certificate and private key in PEM format
-- Open firewall ports (853 for DoT, 443 or custom for DoH)
+- A TLS certificate and private key in PEM format (used by the DoT listener)
+- A reverse proxy terminating HTTPS for DoH
+- Open firewall ports (853 for DoT; on the proxy, 443 or custom for DoH)
 
 ### Configuration
 
@@ -72,10 +78,13 @@ Ferrous DNS can serve DNS-over-TLS and DNS-over-HTTPS directly to clients on you
 dot_enabled   = true
 dot_port      = 853
 doh_enabled   = true
-doh_port      = 443        # optional: omit to co-host on web_port
-tls_cert_path = "/data/cert.pem"
-tls_key_path  = "/data/key.pem"
+doh_port      = 8053       # optional: plain-HTTP port for the proxy to forward to; omit to co-host on web_port
+tls_cert_path = "/data/cert.pem"   # certificate for the DoT listener
+tls_key_path  = "/data/key.pem"    # private key for the DoT listener
 ```
+
+!!! note "DoH TLS termination"
+    `tls_cert_path` / `tls_key_path` apply to the DoT listener. The DoH endpoint (`/dns-query`) is served over plain HTTP — put it behind a reverse proxy that terminates TLS and forwards to `doh_port` (or to `web_port` if `doh_port` is omitted). The cert/key must still load successfully for DoH to start.
 
 ### Self-Signed Certificate
 
@@ -90,7 +99,7 @@ openssl req -x509 -newkey rsa:4096 -nodes \
 Copy to your data directory and reference in config.
 
 !!! warning "Browsers and DoH with self-signed certificates"
-    Browsers will reject DoH requests to a server with a self-signed certificate unless the certificate is explicitly trusted by the OS or browser. For browser-based DoH, use a Let's Encrypt certificate with a public domain. For DoT on Android and iOS, self-signed certificates are generally accepted.
+    For DoH, the certificate is presented by your reverse proxy, not by Ferrous DNS. Browsers will reject DoH requests to a proxy with a self-signed certificate unless the certificate is explicitly trusted by the OS or browser. For browser-based DoH, terminate TLS at the proxy with a Let's Encrypt certificate on a public domain. For DoT on Android and iOS, self-signed certificates are generally accepted.
 
 ### Let's Encrypt Certificate
 

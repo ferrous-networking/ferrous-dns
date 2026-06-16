@@ -12,8 +12,8 @@ Pass the config file path at startup:
 # Binary
 ./ferrous-dns --config /etc/ferrous-dns/ferrous-dns.toml
 
-# Docker (env var)
-FERROUS_CONFIG=/data/config/ferrous-dns.toml
+# Short form
+./ferrous-dns -c /etc/ferrous-dns/ferrous-dns.toml
 ```
 
 If no config file is provided, Ferrous DNS starts with built-in defaults and is fully functional for basic DNS forwarding.

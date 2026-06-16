@@ -71,7 +71,7 @@ Multi-tab filtering management:
 
 - **Service Catalog** — 1-click block/unblock of pre-defined service categories (Social Media, Ads, Tracking, Gambling, Adult Content)
 - **Custom Services** — define your own service categories with domain lists
-- **Safe Search** — enforce safe search per group (Google, Bing, YouTube, DuckDuckGo)
+- **Safe Search** — enforce safe search per group (Google, Bing, YouTube, DuckDuckGo, Yandex, Brave, Ecosia)
 - **Schedule Profiles** — time-based blocking with day/time slot management
 
 ### Local DNS

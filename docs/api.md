@@ -115,6 +115,17 @@ Returns the server hostname.
 
 ## Statistics
 
+### Dashboard
+
+```http
+GET /api/dashboard?period_hours=24
+```
+
+Returns a single aggregated payload for the dashboard view: summary counts, the
+query timeline, top blocked domains, top clients and the query-type breakdown.
+Use the optional `period_hours` parameter to change the look-back window
+(defaults to 24 hours).
+
 ### Summary Stats
 
 ```http
@@ -240,6 +251,72 @@ POST /api/settings
   "local_dns_server": "192.168.1.1:53"
 }
 ```
+
+---
+
+## TLS Certificates
+
+Manage the certificate used for the HTTPS web interface.
+
+### TLS Status
+
+```http
+GET /api/tls/status
+```
+
+Returns the current certificate status: whether TLS is enabled, whether the cert
+and key files exist, the certificate subject, expiry (`cert_not_after`) and
+whether it is currently valid.
+
+### Upload Certificates
+
+```http
+POST /api/tls/upload
+Content-Type: multipart/form-data
+```
+
+Uploads a PEM `cert` and `key` pair via multipart form fields.
+
+**Error codes:** `400 Bad Request` (missing or invalid files), `401 Unauthorized`
+
+### Generate Self-Signed
+
+```http
+POST /api/tls/generate?force=true
+```
+
+Generates a self-signed certificate/key pair. Pass `?force=true` to overwrite
+existing files.
+
+**Error codes:** `400 Bad Request` (files already exist — use `?force=true`), `401 Unauthorized`
+
+---
+
+## Configuration Backup
+
+Export and import the full Ferrous DNS configuration (blocklists, allowlists,
+groups, clients, custom domains, settings) as a JSON snapshot.
+
+### Export Config
+
+```http
+GET /api/config/export
+```
+
+Returns a backup JSON document as a download (`Content-Disposition: attachment`,
+filename `ferrous-backup-YYYY-MM-DD.json`).
+
+### Import Config
+
+```http
+POST /api/config/import
+Content-Type: multipart/form-data
+```
+
+Restores configuration from a previously exported backup file uploaded as a
+multipart field. Returns an import summary describing what was applied.
+
+**Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`
 
 ---
 
@@ -980,17 +1057,111 @@ DELETE /api/groups/{id}/schedule
 
 ## Pi-hole v6 Compatibility API
 
-When `pihole_compat = true`, the following Pi-hole v6 endpoints are available at `/api/*`:
+When `pihole_compat = true`, the Pi-hole v6 endpoints below are available at
+`/api/*` (and the native API moves to `/ferrous/api/*`). The compatibility layer
+is **not read-only** — it implements full CRUD for domains, lists, groups and
+clients, a blocking toggle, and the Pi-hole action endpoints.
+
+**Auth & session**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/auth` | Pi-hole v6 login (session-based, same flow as Pi-hole) |
-| `GET` | `/api/auth` | Pi-hole v6 session status |
-| `DELETE` | `/api/auth` | Pi-hole v6 logout |
+| `POST` | `/api/auth` | Pi-hole v6 login (session-based) |
+| `GET` | `/api/auth` | Session status |
+| `DELETE` | `/api/auth` | Logout |
+
+**Stats & history**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
 | `GET` | `/api/stats/summary` | Dashboard summary stats |
-| `GET` | `/api/stats/history` | Query history timeline |
+| `GET` | `/api/stats/history` | Query history timeline (also at `/api/history`) |
 | `GET` | `/api/stats/top_blocked` | Top blocked domains |
 | `GET` | `/api/stats/top_clients` | Top querying clients |
+| `GET` | `/api/stats/top_domains` | Top allowed domains (`?blocked=true` for blocked) |
 | `GET` | `/api/stats/query_types` | Query type distribution |
+| `GET` | `/api/stats/upstreams` | Upstream usage |
+| `GET` | `/api/stats/recent_blocked` | Most recently blocked domain |
+| `GET` | `/api/history/clients` | Per-client query totals (last 24 h) |
+
+Several of these are mirrored under `/api/stats/database/*` for Pi-hole clients.
+
+**Queries & search**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/queries` | Paginated query log (filters: domain, client, status, …) |
+| `GET` | `/api/queries/suggestions` | Filter suggestions |
+| `GET` | `/api/search/{domain}` | Check if a domain would be blocked |
+
+**DNS blocking toggle**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/dns/blocking` | Current blocking status |
+| `POST` | `/api/dns/blocking` | Enable/disable blocking (optional `timer`) |
+
+**Domains (CRUD)**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/domains` | List all domains |
+| `GET` | `/api/domains/{type}` | List by type (`allow`/`deny`) |
+| `GET` | `/api/domains/{type}/{kind}` | List by type and kind (`exact`/`regex`) |
+| `POST` | `/api/domains/{type}/{kind}` | Create a domain |
+| `PUT` | `/api/domains/{type}/{kind}/{domain}` | Update a domain |
+| `DELETE` | `/api/domains/{type}/{kind}/{domain}` | Delete a domain |
+| `POST` | `/api/domains:batchDelete` | Batch delete |
+
+**Lists / adlists (CRUD)**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/lists` | List adlists |
+| `POST` | `/api/lists` | Create an adlist |
+| `GET` | `/api/lists/{id}` | Get an adlist |
+| `PUT` | `/api/lists/{id}` | Update an adlist |
+| `DELETE` | `/api/lists/{id}` | Delete an adlist |
+| `POST` | `/api/lists:batchDelete` | Batch delete |
+
+**Groups (CRUD)**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/groups` | List groups |
+| `POST` | `/api/groups` | Create a group |
+| `GET` | `/api/groups/{name}` | Get a group |
+| `PUT` | `/api/groups/{name}` | Update a group |
+| `DELETE` | `/api/groups/{name}` | Delete a group |
+| `POST` | `/api/groups:batchDelete` | Batch delete |
+
+**Clients (CRUD)**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/clients` | List clients (`limit`, `offset`) |
+| `POST` | `/api/clients` | Create a client |
+| `GET` | `/api/clients/_suggestions` | IP/hostname suggestions |
+| `PUT` | `/api/clients/{client}` | Update a client (by IP) |
+| `DELETE` | `/api/clients/{client}` | Delete a client (by IP) |
+| `POST` | `/api/clients:batchDelete` | Batch delete |
+
+**Info**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/info/version` | Version info |
+| `GET` | `/api/info/ftl` | FTL daemon info |
+| `GET` | `/api/info/system` | Host system info |
+| `GET` | `/api/info/host` | Host hostname |
+| `GET` | `/api/info/database` | Query database info |
+
+**Actions**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `POST` | `/api/action/gravity` | Trigger a blocklist (gravity) reload |
+| `POST` | `/api/action/restartdns` | Reload configuration in-memory |
+| `POST` | `/api/action/flush/logs` | Clean up old query logs |
 
 See [Pi-hole Compatibility](features/pihole-compat.md) for details.

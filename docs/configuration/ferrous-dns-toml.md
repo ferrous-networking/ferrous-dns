@@ -35,10 +35,10 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 | [`[dns.health_check]`](#health-check) | Probes to detect and evict unhealthy upstreams | [Upstream Management](../features/upstream-management.md) |
 | [`[dns]` cache keys](#cache) | L1/L2 cache, eviction, and optimistic refresh | [Cache configuration](cache.md) |
 | [`[dns.rate_limit]`](#rate-limit) | Token bucket rate limiter per client subnet | [Rate Limiting](rate-limiting.md) |
-| [`[dns.tunneling_detection]`](#tunneling-detection) | Two-phase DNS tunneling detector | [Malware Detection](../features/malware-detection.md#tunneling-detection) |
+| [`[dns.tunneling_detection]`](#tunneling-detection) | Two-phase DNS tunneling detector | [Malware Detection](../features/malware-detection.md#dns-tunneling-detection) |
 | [`[dns.dga_detection]`](#dga-detection) | Domain Generation Algorithm detector | [Malware Detection](../features/malware-detection.md#dga-detection) |
-| [`[dns.nxdomain_hijack]`](#nxdomain-hijack) | ISP NXDOMAIN hijack detection and reversal | [Malware Detection](../features/malware-detection.md#nxdomain-hijack) |
-| [`[dns.response_ip_filter]`](#response-ip-filter) | Block responses resolving to known C2 IPs | [Malware Detection](../features/malware-detection.md#response-ip-filter) |
+| [`[dns.nxdomain_hijack]`](#nxdomain-hijack) | ISP NXDOMAIN hijack detection and reversal | [Malware Detection](../features/malware-detection.md#nxdomain-hijack-detection) |
+| [`[dns.response_ip_filter]`](#response-ip-filter) | Block responses resolving to known C2 IPs | [Malware Detection](../features/malware-detection.md#response-ip-filtering) |
 | [`[[dns.local_records]]`](#local-records) | Static A/AAAA records with auto-PTR | [DNS & Upstreams](dns.md#local-records) |
 | [`[blocking]`](#blocking) | Ad and malware blocking via blocklists | [Blocking & Filtering](../features/blocking-filtering.md) |
 | [`[logging]`](#logging) | Log level | — |
@@ -418,7 +418,7 @@ client_whitelist             = []
 | `domain_whitelist` | `list` | `[]` | Domains exempt from tunneling detection |
 | `client_whitelist` | `list` | `[]` | Client CIDRs exempt from tunneling detection |
 
-See [Malware Detection](../features/malware-detection.md#tunneling-detection).
+See [Malware Detection](../features/malware-detection.md#dns-tunneling-detection).
 
 ---
 
@@ -486,7 +486,7 @@ hijack_ip_ttl_secs   = 3600
 | `probes_per_round` | `int` | `3` | Number of probe queries sent per upstream per round |
 | `hijack_ip_ttl_secs` | `int` | `3600` | Seconds before an unconfirmed hijack IP entry is evicted |
 
-See [Malware Detection](../features/malware-detection.md#nxdomain-hijack).
+See [Malware Detection](../features/malware-detection.md#nxdomain-hijack-detection).
 
 ---
 
@@ -517,7 +517,7 @@ ip_ttl_secs             = 604800
     https://sslbl.abuse.ch/blacklist/sslipblacklist.txt
     ```
 
-See [Malware Detection](../features/malware-detection.md#response-ip-filter).
+See [Malware Detection](../features/malware-detection.md#response-ip-filtering).
 
 ---
 
@@ -623,8 +623,8 @@ client_tracking_interval  = 60
 ```toml title="ferrous-dns.toml"
 [database]
 query_log_channel_capacity  = 10000
-query_log_max_batch_size    = 2000
-query_log_flush_interval_ms = 200
+query_log_max_batch_size    = 500
+query_log_flush_interval_ms = 100
 query_log_sample_rate       = 1
 client_channel_capacity     = 4096
 ```
@@ -632,8 +632,8 @@ client_channel_capacity     = 4096
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `query_log_channel_capacity` | `int` | `10000` | Async channel buffer size in entries |
-| `query_log_max_batch_size` | `int` | `2000` | Maximum entries per INSERT transaction |
-| `query_log_flush_interval_ms` | `int` | `200` | Milliseconds between flush cycles |
+| `query_log_max_batch_size` | `int` | `500` | Maximum entries per INSERT transaction |
+| `query_log_flush_interval_ms` | `int` | `100` | Milliseconds between flush cycles |
 | `query_log_sample_rate` | `int` | `1` | Log 1 out of every N queries; `1` = log all, `10` = log 1 in 10 |
 | `client_channel_capacity` | `int` | `4096` | Async channel buffer size for client last-seen updates |
 
@@ -641,8 +641,8 @@ client_channel_capacity     = 4096
 
 ```toml title="ferrous-dns.toml"
 [database]
-write_pool_max_connections       = 3
-read_pool_max_connections        = 8
+write_pool_max_connections       = 2
+read_pool_max_connections        = 4
 query_log_pool_max_connections   = 2
 write_busy_timeout_secs          = 30
 read_busy_timeout_secs           = 15
@@ -651,8 +651,8 @@ read_acquire_timeout_secs        = 15
 
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
-| `write_pool_max_connections` | `int` | `3` | Maximum connections in the write pool |
-| `read_pool_max_connections` | `int` | `8` | Maximum connections in the read pool |
+| `write_pool_max_connections` | `int` | `2` | Maximum connections in the write pool |
+| `read_pool_max_connections` | `int` | `4` | Maximum connections in the read pool |
 | `query_log_pool_max_connections` | `int` | `2` | Maximum connections in the query-log write pool |
 | `write_busy_timeout_secs` | `int` | `30` | Seconds to wait for the write lock before returning an error |
 | `read_busy_timeout_secs` | `int` | `15` | Seconds to wait for a read connection before returning an error |

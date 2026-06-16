@@ -9,8 +9,6 @@ The `[blocking]` section controls the base blocking settings. Blocklists, client
 ```toml
 [blocking]
 enabled = true
-custom_blocked = []
-whitelist = []
 block_mode = "null_ip"
 block_ttl = 60
 ```
@@ -18,25 +16,11 @@ block_ttl = 60
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `enabled` | `true` | Enable DNS-based blocking globally |
-| `custom_blocked` | `[]` | Additional domains to block beyond downloaded blocklists |
-| `whitelist` | `[]` | Domains to always allow, even if present in a blocklist |
 | `block_mode` | `"null_ip"` | How blocked domains are answered on the wire — see [Block Response Mode](#block-response-mode) |
 | `block_ttl` | `60` | TTL (seconds) clients cache a blocked answer; also bounds the negative-cache lifetime for `nxdomain`/`nodata` |
 
-### Example
-
-```toml
-[blocking]
-enabled = true
-custom_blocked = [
-    "ads.example.com",
-    "tracker.example.org",
-]
-whitelist = [
-    "safe.example.com",
-    "cdn.trusted.net",
-]
-```
+!!! warning "Domains are not configured here"
+    The `[blocking]` section also accepts `custom_blocked` and `whitelist` arrays, but **they are not consulted by the DNS query pipeline** — listing domains there has no effect on what is blocked or allowed. Blocked domains and allow-listed domains are managed via the dashboard or REST API and persisted in the SQLite database, not in this TOML file. See [Blocklist Management](#blocklist-management-dashboard) and [Allow/Block from Query Log](#allowblock-from-query-log) below.
 
 ---
 
@@ -147,8 +131,11 @@ Managed in the dashboard under **Services > Safe Search**.
 |:---------|:-------------|
 | Google | Redirects to `forcesafesearch.google.com` |
 | Bing | Redirects to `strict.bing.com` |
-| YouTube | Restricts to `restrictmoderate.youtube.com` |
+| YouTube | Restricts to the moderate or strict endpoint (selectable per group) |
 | DuckDuckGo | Forces safe search mode |
+| Yandex | Forces family search mode |
+| Brave | Forces safe search mode |
+| Ecosia | Forces safe search mode |
 
 ---
 

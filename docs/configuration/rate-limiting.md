@@ -74,8 +74,8 @@ Subnet 10.0.0.0/24:
 | `enabled` | `bool` | `false` | Master switch. When `false`, all rate limiting is bypassed with zero overhead |
 | `queries_per_second` | `u32` | `1000` | Token refill rate per subnet per second |
 | `burst_size` | `u32` | `500` | Token bucket capacity. Allows short bursts (e.g. page loads generating 50+ queries) |
-| `ipv4_prefix_len` | `u8` | `24` | IPv4 prefix length. `24` groups a `/24` subnet. Range: 8–32 |
-| `ipv6_prefix_len` | `u8` | `48` | IPv6 prefix length. `48` covers a standard home delegation. Range: 16–64 |
+| `ipv4_prefix_len` | `u8` | `24` | IPv4 prefix length used to group clients into subnet buckets. `24` groups a `/24` subnet |
+| `ipv6_prefix_len` | `u8` | `48` | IPv6 prefix length used to group clients into subnet buckets. `48` covers a standard home delegation |
 | `whitelist` | `[str]` | `[]` | List of CIDRs that bypass rate limiting entirely |
 | `nxdomain_per_second` | `u32` | `50` | Separate budget for NXDOMAIN responses. Catches random-subdomain attacks |
 | `slip_ratio` | `u32` | `0` | Every Nth rate-limited response is TC=1 instead of REFUSED. `0` = disabled |

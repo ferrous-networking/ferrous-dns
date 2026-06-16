@@ -14,20 +14,19 @@ docker run -d \
   --restart always \
   --network host \
   --user root \
-  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
-  -e FERROUS_DATABASE=/data/db/ferrous.db \
-  -e FERROUS_DNS_PORT=53 \
-  -e FERROUS_WEB_PORT=8080 \
-  -e FERROUS_BIND_ADDRESS=0.0.0.0 \
-  -e FERROUS_LOG_LEVEL=info \
   -e TZ=America/Sao_Paulo \
+  -v /path/to/ferrous-dns.toml:/data/config/ferrous-dns.toml \
+  -v ferrous-data:/data/ \
   --dns 10.0.0.1 \
   --cap-add NET_ADMIN \
   --cap-add SYS_TIME \
   --cap-add SYS_NICE \
   --cap-add NET_BIND_SERVICE \
-  ferrousnetworking/ferrous-dns:latest
+  ferrousnetworking/ferrous-dns:latest \
+  --config /data/config/ferrous-dns.toml
 ```
+
+Ports, bind address, database path, and log level are all set inside the mounted `ferrous-dns.toml`. The binary does not read `FERROUS_*` environment variables; pass overrides as CLI flags after the image name (e.g. `--dns-port 53`).
 
 Access the dashboard at `http://localhost:8080`
 
@@ -48,13 +47,8 @@ services:
     restart: always
     network_mode: host
     user: root
+    command: ["--config", "/data/config/ferrous-dns.toml"]
     environment:
-      - FERROUS_CONFIG=/data/config/ferrous-dns.toml
-      - FERROUS_DATABASE=/data/db/ferrous.db
-      - FERROUS_DNS_PORT=53
-      - FERROUS_WEB_PORT=8080
-      - FERROUS_BIND_ADDRESS=0.0.0.0
-      - FERROUS_LOG_LEVEL=info
       - TZ=America/Sao_Paulo
     dns:
       - 10.0.0.1
@@ -64,6 +58,7 @@ services:
       - SYS_NICE
       - NET_BIND_SERVICE
     volumes:
+      - ./ferrous-dns.toml:/data/config/ferrous-dns.toml
       - ferrous-data:/data/
 
 volumes:
@@ -119,18 +114,40 @@ The binary is at `./target/release/ferrous-dns`.
 
 ---
 
-## Environment Variables
+## Configuration
 
-All configuration can be provided via environment variables. They take precedence over the TOML config file.
+Ferrous DNS is configured through a TOML config file, with a few settings also exposed as command-line flags. **There are no environment variables** — the binary does not read `FERROUS_*` or `RUST_LOG`.
 
-| Variable               | Default                               | Description                         |
-|:-----------------------|:--------------------------------------|:------------------------------------|
-| `FERROUS_CONFIG`       | —                                     | Path to TOML config file (optional) |
-| `FERROUS_DNS_PORT`     | `53`                                  | DNS server port                     |
-| `FERROUS_WEB_PORT`     | `8080`                                | Web dashboard port                  |
-| `FERROUS_BIND_ADDRESS` | `0.0.0.0`                             | Bind address                        |
-| `FERROUS_DATABASE`     | `/var/lib/ferrous-dns/ferrous.db`     | SQLite database path                |
-| `FERROUS_LOG_LEVEL`    | `info`                                | Log level: `debug`, `info`, `warn`, `error` |
+### Config file
+
+Point the server at a config file with `--config`/`-c`:
+
+```bash
+./target/release/ferrous-dns --config ferrous-dns.toml
+```
+
+If `--config` is omitted, the server looks for a config file in this order:
+
+1. `ferrous-dns.toml` in the current working directory
+2. `/etc/ferrous-dns/config.toml`
+
+If neither exists, built-in defaults are used.
+
+### CLI flags
+
+These flags override the matching values from the config file:
+
+| Flag                  | Short | Description                                   |
+|:----------------------|:------|:----------------------------------------------|
+| `--config <FILE>`     | `-c`  | Path to the TOML config file                  |
+| `--dns-port <PORT>`   | `-d`  | DNS server port (config: `server.dns_port`)   |
+| `--web-port <PORT>`   | `-w`  | Web dashboard port (config: `server.web_port`) |
+| `--bind <ADDR>`       | `-b`  | Bind address (config: `server.bind_address`)  |
+| `--database <PATH>`   |       | SQLite database path (config: `database.path`) |
+| `--log-level <LEVEL>` |       | Log level: `debug`, `info`, `warn`, `error` (config: `logging.level`) |
+
+!!! note "Log level"
+    The log level is set by `logging.level` in the config file (or the `--log-level` flag). `RUST_LOG` is **not** consulted.
 
 ---
 
