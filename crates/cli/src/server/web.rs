@@ -218,7 +218,8 @@ fn create_app(
     app
 }
 
-/// Returns a small JS snippet that sets `window.FERROUS_API_BASE` at runtime.
+/// Returns a small JS snippet that sets `window.FERROUS_API_BASE` and
+/// `window.FERROUS_VERSION` at runtime.
 ///
 /// The HTMLs are compiled into the binary via `include_str!` and cannot be
 /// patched at runtime, so the frontend discovers the correct API prefix here.
@@ -231,7 +232,9 @@ async fn ferrous_config_js_handler(State(pihole_compat): State<bool>) -> impl In
     } else {
         "/api"
     };
-    let body = format!(r#"window.FERROUS_API_BASE = "{api_base}";"#);
+    let version = env!("CARGO_PKG_VERSION");
+    let body =
+        format!(r#"window.FERROUS_API_BASE = "{api_base}";window.FERROUS_VERSION = "{version}";"#);
     (
         [(
             header::CONTENT_TYPE,
