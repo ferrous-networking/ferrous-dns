@@ -94,10 +94,11 @@ nav:
     - Block Services & Schedules: features/block-services.md
     - Client Management: features/client-management.md
     - Malware Detection: features/malware-detection.md
-    - Pi-hole Compatibility: features/pihole-compat.md
     - Security: features/security.md
-  - API Reference: api.md
-  - Integrations: integrations.md
+  - API & Integrations:
+    - API Reference: api.md
+    - Integrations: integrations.md
+    - Pi-hole Compatibility: features/pihole-compat.md
   - Architecture:
     - Overview: architecture/overview.md
     - Crate Structure: architecture/crates.md
