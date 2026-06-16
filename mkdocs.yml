@@ -97,6 +97,7 @@ nav:
     - Pi-hole Compatibility: features/pihole-compat.md
     - Security: features/security.md
   - API Reference: api.md
+  - Integrations: integrations.md
   - Architecture:
     - Overview: architecture/overview.md
     - Crate Structure: architecture/crates.md

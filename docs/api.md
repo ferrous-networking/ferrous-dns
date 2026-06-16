@@ -25,7 +25,7 @@ Both APIs publish an OpenAPI 3.x specification and ship a built-in [Scalar](http
 | Pi-hole compat (native API) | `GET /ferrous/api/openapi.json` | `GET /ferrous/api/docs` |
 | Pi-hole compat (Pi-hole API) | `GET /api/openapi.json` | `GET /api/docs` |
 
-The spec describes every handler, request/response schema, parameter and security scheme (`session_cookie` + `X-Api-Key` for the native API, `X-FTL-SID` for the Pi-hole layer). It can be fed into any OpenAPI-aware tool (Postman, openapi-generator, schemathesis, …) to produce clients or contract tests.
+The spec describes every handler, request/response schema, parameter and security scheme (`session_cookie` + `X-Api-Key` for the native API, `X-FTL-SID` for the Pi-hole layer). It can be fed into any OpenAPI-aware tool (Postman, openapi-generator, schemathesis, …) to produce clients or contract tests — see [Integrations](integrations.md) for examples.
 
 ---
 
