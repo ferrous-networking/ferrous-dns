@@ -158,7 +158,15 @@ function hideRestartBanner() {
     if (banner) banner.remove();
 }
 
+// --- Server version label (sidebar footer) ---
+
+function showServerVersion() {
+    const el = document.getElementById('server-version');
+    if (el && window.FERROUS_VERSION) el.textContent = 'v' + window.FERROUS_VERSION;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    showServerVersion();
     if (document.body.dataset.page === 'settings') return;
     if (isRestartRequired()) showRestartBanner();
 });
