@@ -8,8 +8,6 @@ const PRIVATE_IPV4_RANGES: &[(u8, u8, u8, u8, u8)] = &[
     (127, 0, 0, 0, 8),
 ];
 
-const PRIVATE_IPV6_PREFIXES: &[&str] = &["fc00:", "fd00:", "fe80:", "::1"];
-
 pub struct PrivateIpFilter;
 
 impl PrivateIpFilter {
@@ -28,10 +26,20 @@ impl PrivateIpFilter {
     }
 
     fn is_private_ipv6(ip: &Ipv6Addr) -> bool {
-        let addr_str = ip.to_string();
-        PRIVATE_IPV6_PREFIXES
-            .iter()
-            .any(|prefix| addr_str.starts_with(prefix))
+        // IPv4-mapped addresses (`::ffff:a.b.c.d`) carry an IPv4 payload — unmap
+        // and apply the IPv4 ranges so a private IPv4 delivered as an AAAA record
+        // can't bypass the rebinding check.
+        if let Some(ipv4) = ip.to_ipv4_mapped() {
+            return Self::is_private_ipv4(&ipv4);
+        }
+
+        let segments = ip.segments();
+        // `::1` loopback.
+        ip.is_loopback()
+            // Unique local addresses: fc00::/7 (RFC 4193).
+            || (segments[0] & 0xfe00) == 0xfc00
+            // Link-local unicast: fe80::/10 (RFC 4291).
+            || (segments[0] & 0xffc0) == 0xfe80
     }
 
     fn matches_ipv4_range(ip: [u8; 4], network: (u8, u8, u8, u8), mask: u8) -> bool {
