@@ -249,6 +249,7 @@ async fn async_main() -> anyhow::Result<()> {
         pihole_state,
         &config.server.cors_allowed_origins,
         config.server.pihole_compat,
+        config.server.metrics_enabled,
         doh_handler,
         web_tls_config,
     )
