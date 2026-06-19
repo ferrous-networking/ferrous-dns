@@ -17,7 +17,7 @@ pub struct PagedQueryInput<'a> {
     pub cursor: Option<i64>,
     pub domain: Option<&'a str>,
     pub category: Option<&'a str>,
-    pub client_ip: Option<&'a str>,
+    pub client: Option<&'a str>,
     pub record_type: Option<&'a str>,
     pub upstream: Option<&'a str>,
 }
@@ -45,7 +45,6 @@ impl GetRecentQueriesUseCase {
     ///
     /// String parameters are validated and parsed into typed filter values.
     /// Invalid `category` or `record_type` returns `DomainError::InvalidInput`.
-    /// Invalid `client_ip` format returns `DomainError::InvalidInput`.
     pub async fn execute_paged(
         &self,
         input: &PagedQueryInput<'_>,
@@ -64,19 +63,10 @@ impl GetRecentQueriesUseCase {
             .transpose()
             .map_err(DomainError::InvalidInput)?;
 
-        let parsed_client_ip = input
-            .client_ip
-            .filter(|c| !c.is_empty())
-            .map(|ip| {
-                ip.parse::<std::net::IpAddr>()
-                    .map_err(|e| DomainError::InvalidInput(e.to_string()))
-            })
-            .transpose()?;
-
         let filter = QueryLogFilter {
             domain: input.domain.filter(|d| !d.is_empty()).map(String::from),
             category: parsed_category,
-            client_ip: parsed_client_ip,
+            client: input.client.filter(|c| !c.is_empty()).map(String::from),
             record_type: parsed_record_type,
             upstream: input.upstream.filter(|u| !u.is_empty()).map(String::from),
         };

@@ -152,26 +152,6 @@ async fn test_invalid_record_type_returns_error() {
 }
 
 #[tokio::test]
-async fn test_invalid_client_ip_returns_error() {
-    let captured = Arc::new(Mutex::new(0u32));
-    let repo = Arc::new(CaptureLimitRepository {
-        last_limit: captured.clone(),
-    });
-    let use_case = GetRecentQueriesUseCase::new(repo);
-
-    let input = PagedQueryInput {
-        limit: 100,
-        period_hours: 24.0,
-        client_ip: Some("not-an-ip"),
-        ..Default::default()
-    };
-    let result = use_case.execute_paged(&input).await;
-
-    assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), DomainError::InvalidInput(_)));
-}
-
-#[tokio::test]
 async fn test_invalid_category_returns_error() {
     let captured = Arc::new(Mutex::new(0u32));
     let repo = Arc::new(CaptureLimitRepository {
