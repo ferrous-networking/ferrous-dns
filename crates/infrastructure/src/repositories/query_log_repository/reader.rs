@@ -71,6 +71,11 @@ pub(super) async fn get_recent_paged(
         .as_deref()
         .filter(|d| !d.is_empty())
         .map(|d| format!("%{d}%"));
+    let client_pattern = filter
+        .client
+        .as_deref()
+        .filter(|c| !c.is_empty())
+        .map(|c| format!("%{c}%"));
 
     // Each arm is a static SQL fragment — no user input is interpolated.
     let category_clause = match filter.category {
@@ -88,8 +93,8 @@ pub(super) async fn get_recent_paged(
     } else {
         ""
     };
-    let client_clause = if filter.client_ip.is_some() {
-        " AND q.client_ip = ?"
+    let client_clause = if client_pattern.is_some() {
+        " AND (q.client_ip LIKE ? OR c.hostname LIKE ?)"
     } else {
         ""
     };
@@ -111,8 +116,8 @@ pub(super) async fn get_recent_paged(
             if let Some(ref pat) = domain_pattern {
                 q = q.bind(pat);
             }
-            if let Some(ref ip) = $filter.client_ip {
-                q = q.bind(ip.to_string());
+            if let Some(ref pat) = client_pattern {
+                q = q.bind(pat).bind(pat);
             }
             if let Some(ref rt) = $filter.record_type {
                 q = q.bind(rt.as_str());
@@ -169,6 +174,7 @@ pub(super) async fn get_recent_paged(
         async {
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
+                 LEFT JOIN clients c ON q.client_ip = c.ip_address
                  WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}"
             );
             let q = sqlx::query(&count_sql).bind(&cutoff);

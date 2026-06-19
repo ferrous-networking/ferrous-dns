@@ -51,7 +51,7 @@ pub async fn get_queries(
         cursor: params.cursor,
         domain: params.domain.as_deref(),
         category: params.category.as_deref(),
-        client_ip: params.client.as_deref(),
+        client: params.client.as_deref(),
         record_type: params.record_type.as_deref(),
         upstream: params.upstream.as_deref(),
     };

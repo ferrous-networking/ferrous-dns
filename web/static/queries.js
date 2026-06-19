@@ -8,6 +8,7 @@
             currentPage: 1,
             category: '',
             searchDomain: '',
+            searchClient: '',
             autoRefresh: false,
             _hasMore: false,
             stats: {allowed: 0, blocked: 0, cacheHits: 0, upstream: 0, queries_total: 0},
@@ -48,11 +49,14 @@
                     const domainParam = this.searchDomain
                         ? `&domain=${encodeURIComponent(this.searchDomain)}`
                         : '';
+                    const clientParam = this.searchClient
+                        ? `&client=${encodeURIComponent(this.searchClient)}`
+                        : '';
                     const categoryParam = this.category
                         ? `&category=${encodeURIComponent(this.category)}`
                         : '';
                     const res = await fetch(
-                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${categoryParam}`,
+                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${clientParam}${categoryParam}`,
                         {signal: this._ctrl.queries.signal}
                     );
                     if (res.ok) {
