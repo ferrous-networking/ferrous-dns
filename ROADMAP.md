@@ -77,10 +77,10 @@
 
 ### 🎯 v0.8.0 - Export & Observability (Current)
 
-- [ ] Config export/import (backup and restore)
+- [x] Config export/import (backup and restore)
 - [ ] Query log export (CSV / JSON)
 - [ ] Prometheus metrics
-- [ ] OpenAPI / Swagger docs
+- [x] OpenAPI / Swagger docs
 
 ### 🌟 v1.0.0 - Production Ready
 
