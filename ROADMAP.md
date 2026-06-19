@@ -81,6 +81,7 @@
 - [ ] Query log export (CSV / JSON)
 - [x] Prometheus metrics
 - [x] OpenAPI / Swagger docs
+- [ ] Predictive prefetch (sequence-based cache warming — wire the existing `PrefetchPredictor` behind a config flag; complements `cache_optimistic_refresh`)
 
 ### 🌟 v1.0.0 - Production Ready
 
