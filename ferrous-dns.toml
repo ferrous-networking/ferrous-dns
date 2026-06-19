@@ -22,6 +22,10 @@ pihole_compat = true
 # WARNING: enabling this without a load balancer will reject all TCP connections.
 # proxy_protocol_enabled = true
 
+# Serve a Prometheus text-exposition endpoint at /metrics on the web port,
+# unauthenticated (the standard scrape convention). Opt-in; disabled by default.
+# metrics_enabled = true
+
 
 # ── Web HTTPS (TLS for Dashboard / API) ──────────────────────────────────────
 # When enabled, the web dashboard and REST API are served over HTTPS on the

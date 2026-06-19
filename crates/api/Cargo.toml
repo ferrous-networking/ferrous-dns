@@ -19,6 +19,7 @@ ring.workspace = true
 subtle = "2"
 utoipa.workspace = true
 utoipa-axum.workspace = true
+prometheus-client = "0.25"
 
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true
