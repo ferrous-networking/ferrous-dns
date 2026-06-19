@@ -822,7 +822,7 @@ async fn test_client_ip_filter() {
     );
 
     let filter = QueryLogFilter {
-        client_ip: Some("10.0.0.1".parse().unwrap()),
+        client: Some("10.0.0.1".to_string()),
         ..Default::default()
     };
     let result = repo
@@ -836,6 +836,119 @@ async fn test_client_ip_filter() {
         .queries
         .iter()
         .all(|q| q.client_ip.to_string() == "10.0.0.1"));
+}
+
+#[tokio::test]
+async fn test_client_filter_partial_ip() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool, "a.com", "10.0.0.1", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool, "b.com", "10.0.0.2", "A", false, false, None, None, None,
+    )
+    .await;
+    insert_query_full(
+        &pool,
+        "c.com",
+        "10.0.10.5",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        None,
+    )
+    .await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    // Substring "10.0.0." matches the two 10.0.0.x clients but not 10.0.10.5.
+    let filter = QueryLogFilter {
+        client: Some("10.0.0.".to_string()),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 2);
+    assert_eq!(result.queries.len(), 2);
+    assert!(result
+        .queries
+        .iter()
+        .all(|q| q.client_ip.to_string().starts_with("10.0.0.")));
+}
+
+#[tokio::test]
+async fn test_client_filter_hostname() {
+    let pool = create_test_db().await;
+
+    insert_query_full(
+        &pool,
+        "a.com",
+        "10.0.10.1",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        None,
+    )
+    .await;
+    insert_query_full(
+        &pool,
+        "b.com",
+        "10.0.10.2",
+        "A",
+        false,
+        false,
+        None,
+        None,
+        None,
+    )
+    .await;
+
+    // Map 10.0.10.1 to a hostname; 10.0.10.2 has no clients row.
+    sqlx::query("INSERT INTO clients (ip_address, hostname) VALUES (?, ?)")
+        .bind("10.0.10.1")
+        .bind("Win_viudes.lan.")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    // Case-insensitive substring match on the joined hostname.
+    let filter = QueryLogFilter {
+        client: Some("win_viudes".to_string()),
+        ..Default::default()
+    };
+    let result = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.records_filtered, 1);
+    assert_eq!(result.queries.len(), 1);
+    assert_eq!(result.queries[0].client_ip.to_string(), "10.0.10.1");
+    assert_eq!(
+        result.queries[0].client_hostname.as_deref(),
+        Some("Win_viudes.lan.")
+    );
 }
 
 #[tokio::test]
@@ -1008,7 +1121,7 @@ async fn test_combined_client_and_category() {
 
     let filter = QueryLogFilter {
         category: Some(QueryCategory::Blocked),
-        client_ip: Some("10.0.0.1".parse().unwrap()),
+        client: Some("10.0.0.1".to_string()),
         ..Default::default()
     };
     let result = repo
@@ -1101,7 +1214,7 @@ async fn test_combined_all_filters() {
     let filter = QueryLogFilter {
         domain: Some("example".to_string()),
         category: Some(QueryCategory::Blocked),
-        client_ip: Some("10.0.0.1".parse().unwrap()),
+        client: Some("10.0.0.1".to_string()),
         record_type: Some(ferrous_dns_domain::RecordType::AAAA),
         upstream: Some("8.8.8.8".to_string()),
     };
@@ -1157,7 +1270,7 @@ async fn test_cursor_pagination_with_client_filter() {
     );
 
     let filter = QueryLogFilter {
-        client_ip: Some("10.0.0.1".parse().unwrap()),
+        client: Some("10.0.0.1".to_string()),
         ..Default::default()
     };
 

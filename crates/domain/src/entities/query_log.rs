@@ -15,8 +15,8 @@ pub struct QueryLogFilter {
     pub domain: Option<String>,
     /// Query category (allowed, blocked, cache, upstream, etc.).
     pub category: Option<QueryCategory>,
-    /// Exact match on client IP (canonical `IpAddr` form).
-    pub client_ip: Option<IpAddr>,
+    /// Substring match on client IP or hostname (SQL `LIKE`).
+    pub client: Option<String>,
     /// Exact match on DNS record type.
     pub record_type: Option<RecordType>,
     /// Exact match on upstream server address.

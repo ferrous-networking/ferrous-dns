@@ -91,7 +91,7 @@ pub async fn get_queries(
         cursor: params.cursor,
         domain: params.domain.as_deref(),
         category,
-        client_ip: params.client.as_deref(),
+        client: params.client.as_deref(),
         ..Default::default()
     };
 
