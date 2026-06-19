@@ -1,6 +1,5 @@
 use super::super::cache::DnsCache;
 use super::super::load_balancer::PoolManager;
-use super::super::prefetch::PrefetchPredictor;
 use super::builder::ResolverBuilder;
 use super::config::ResolverConfig;
 use super::filters::QueryFilters;
@@ -25,7 +24,6 @@ struct BuilderState {
     cache_ttl: u32,
     local_domain: Option<String>,
     local_dns_server: Option<String>,
-    prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
 }
@@ -51,7 +49,6 @@ impl HickoryDnsResolver {
             cache_ttl: DEFAULT_CACHE_TTL,
             local_domain: None,
             local_dns_server: None,
-            prefetch_predictor: None,
             filters: None,
             local_ptr_map: None,
         };
@@ -109,12 +106,6 @@ impl HickoryDnsResolver {
         self
     }
 
-    pub fn with_prefetch_predictor(mut self, predictor: Arc<PrefetchPredictor>) -> Self {
-        self.builder_state.prefetch_predictor = Some(predictor);
-        self.rebuild();
-        self
-    }
-
     /// Attaches a live PTR map so that PTR queries for local records are answered
     /// without upstream forwarding.
     pub fn with_local_ptr_map(mut self, map: Arc<PtrMap>) -> Self {
@@ -135,10 +126,6 @@ impl HickoryDnsResolver {
 
         if let Some(cache) = &self.builder_state.cache {
             builder = builder.with_cache(cache.clone());
-        }
-
-        if let Some(predictor) = &self.builder_state.prefetch_predictor {
-            builder = builder.with_prefetch(predictor.clone());
         }
 
         if let Some(filters) = &self.builder_state.filters {

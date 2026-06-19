@@ -49,7 +49,7 @@ The resolver is a layered decorator chain. Each layer wraps the previous one and
 
 ```
 FilteredResolver          ← safe search enforcement, query filters
-  └── CachedResolver      ← L1/L2 cache + in-flight coalescing + prefetch
+  └── CachedResolver      ← L1/L2 cache + in-flight coalescing
         └── DnssecResolver ← DNSSEC signature validation
               └── LocalPtrResolver ← auto PTR for local A records
                     └── CoreResolver ← upstream forwarding (UDP/DoH/DoT/DoQ/H3)
@@ -139,7 +139,7 @@ Each resolver layer wraps the previous one. Adding caching, DNSSEC, or rate limi
 
 ### Builder (Complex Object Construction)
 
-Objects with multiple optional parameters are assembled step-by-step. The resolver pipeline, for example, is built by chaining optional layers (cache, DNSSEC, filters, prefetch) onto a base resolver.
+Objects with multiple optional parameters are assembled step-by-step. The resolver pipeline, for example, is built by chaining optional layers (cache, DNSSEC, filters) onto a base resolver.
 
 ### Strategy (Algorithms)
 
