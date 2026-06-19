@@ -8,6 +8,7 @@ pub mod state;
 pub mod utils;
 
 pub use errors::ApiError;
+pub use handlers::{metrics_routes, render_metrics};
 pub use openapi::ApiDoc;
 pub use routes::{create_api_router_with_openapi, create_api_routes};
 pub use state::{

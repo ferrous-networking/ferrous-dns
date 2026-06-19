@@ -5,7 +5,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use ferrous_dns_api::{create_api_router_with_openapi, AppState};
+use ferrous_dns_api::{create_api_router_with_openapi, metrics_routes, AppState};
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use std::net::SocketAddr;
@@ -43,12 +43,14 @@ pub async fn start_doh_server(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_web_server(
     bind_addr: SocketAddr,
     ferrous_state: AppState,
     pihole_state: PiholeAppState,
     cors_allowed_origins: &[String],
     pihole_compat: bool,
+    metrics_enabled: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
     tls_config: Option<Arc<rustls::ServerConfig>>,
 ) -> anyhow::Result<()> {
@@ -80,6 +82,7 @@ pub async fn start_web_server(
         pihole_state,
         cors_allowed_origins,
         pihole_compat,
+        metrics_enabled,
         doh_handler,
     );
 
@@ -118,8 +121,12 @@ fn create_app(
     pihole_state: PiholeAppState,
     cors_allowed_origins: &[String],
     pihole_compat: bool,
+    metrics_enabled: bool,
     doh_handler: Option<Arc<DnsServerHandler>>,
 ) -> Router {
+    // Clone before the state is moved into the API router so the bare
+    // `/metrics` route can carry its own copy.
+    let metrics_state = metrics_enabled.then(|| ferrous_state.clone());
     let (ferrous_router, ferrous_openapi) = create_api_router_with_openapi(ferrous_state);
     let ferrous_branch = Router::new()
         .route(
@@ -204,6 +211,12 @@ fn create_app(
         .route("/block-services.html", get(block_services_handler))
         .layer(CompressionLayer::new().gzip(true))
         .layer(build_cors_layer(cors_allowed_origins));
+
+    // Bare unauthenticated `/metrics`, mounted outside the `/api` nest (and thus
+    // outside the auth layer) per the Prometheus scrape convention.
+    if let Some(state) = metrics_state {
+        app = app.merge(metrics_routes(state));
+    }
 
     if let Some(handler) = doh_handler {
         app = app

@@ -29,6 +29,11 @@ pub struct ServerConfig {
 
     #[serde(default)]
     pub web_tls: WebTlsConfig,
+
+    /// When `true`, serves a Prometheus text-exposition endpoint at `/metrics`
+    /// on the web port, unauthenticated. Opt-in; defaults to `false`.
+    #[serde(default)]
+    pub metrics_enabled: bool,
 }
 
 fn default_cors_origins() -> Vec<String> {
@@ -46,6 +51,7 @@ impl Default for ServerConfig {
             proxy_protocol_enabled: false,
             pihole_compat: false,
             web_tls: WebTlsConfig::default(),
+            metrics_enabled: false,
         }
     }
 }

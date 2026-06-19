@@ -79,7 +79,7 @@
 
 - [x] Config export/import (backup and restore)
 - [ ] Query log export (CSV / JSON)
-- [ ] Prometheus metrics
+- [x] Prometheus metrics
 - [x] OpenAPI / Swagger docs
 
 ### 🌟 v1.0.0 - Production Ready
