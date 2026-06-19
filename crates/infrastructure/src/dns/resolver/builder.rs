@@ -1,6 +1,5 @@
 use super::super::cache::{DnsCache, NegativeQueryTracker};
 use super::super::load_balancer::PoolManager;
-use super::super::prefetch::PrefetchPredictor;
 use super::cache_layer::CachedResolver;
 use super::config::ResolverConfig;
 use super::core::CoreResolver;
@@ -19,7 +18,6 @@ pub struct ResolverBuilder {
     cache: Option<Arc<DnsCache>>,
     local_domain: Option<String>,
     local_dns_server: Option<String>,
-    prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
 }
@@ -33,7 +31,6 @@ impl ResolverBuilder {
             cache: None,
             local_domain: None,
             local_dns_server: None,
-            prefetch_predictor: None,
             filters: None,
             local_ptr_map: None,
         }
@@ -66,11 +63,6 @@ impl ResolverBuilder {
 
     pub fn with_local_dns_server(mut self, server: Option<String>) -> Self {
         self.local_dns_server = server;
-        self
-    }
-
-    pub fn with_prefetch(mut self, predictor: Arc<PrefetchPredictor>) -> Self {
-        self.prefetch_predictor = Some(predictor);
         self
     }
 
@@ -120,17 +112,13 @@ impl ResolverBuilder {
         if let Some(cache) = self.cache {
             let tracker = Arc::new(NegativeQueryTracker::new());
             tracker.start_cleanup_task();
-            let mut cached = CachedResolver::new(
+            let cached = CachedResolver::new(
                 resolver,
                 cache,
                 self.config.cache_ttl,
                 tracker,
                 self.config.inflight_shards,
             );
-
-            if let Some(predictor) = self.prefetch_predictor {
-                cached = cached.with_prefetch(predictor);
-            }
 
             resolver = Arc::new(cached);
         }

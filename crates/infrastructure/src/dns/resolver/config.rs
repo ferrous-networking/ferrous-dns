@@ -11,8 +11,6 @@ pub struct ResolverConfig {
     pub server_hostname: String,
 
     pub filters: QueryFiltersConfig,
-
-    pub prefetch_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -38,7 +36,6 @@ impl Default for ResolverConfig {
             dnssec_enabled: false,
             server_hostname,
             filters: QueryFiltersConfig::default(),
-            prefetch_enabled: false,
         }
     }
 }
@@ -71,11 +68,6 @@ impl ResolverConfig {
 
     pub fn with_filters(mut self, filters: QueryFiltersConfig) -> Self {
         self.filters = filters;
-        self
-    }
-
-    pub fn with_prefetch(mut self) -> Self {
-        self.prefetch_enabled = true;
         self
     }
 

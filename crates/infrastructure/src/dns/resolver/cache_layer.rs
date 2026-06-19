@@ -3,7 +3,6 @@ use super::super::cache::negative_cache::clamp_negative_ttl;
 use super::super::cache::{
     CachedAddresses, CachedData, DnsCacheAccess, DnssecStatus, NegativeQueryTracker,
 };
-use super::super::prefetch::PrefetchPredictor;
 use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
@@ -55,7 +54,6 @@ pub struct CachedResolver {
     cache: Arc<dyn DnsCacheAccess>,
     cache_ttl: u32,
     negative_ttl_tracker: Arc<NegativeQueryTracker>,
-    prefetch_predictor: Option<Arc<PrefetchPredictor>>,
     inflight: Arc<DashMap<CacheKey, InflightSender, FxBuildHasher>>,
 }
 
@@ -72,7 +70,6 @@ impl CachedResolver {
             cache,
             cache_ttl,
             negative_ttl_tracker,
-            prefetch_predictor: None,
             // In-flight entries are transient — use caller-configured shard count
             // (default = cache_inflight_shards from TOML, typically cpus*2 next_power_of_two).
             inflight: Arc::new(DashMap::with_capacity_and_hasher_and_shard_amount(
@@ -81,11 +78,6 @@ impl CachedResolver {
                 inflight_shards,
             )),
         }
-    }
-
-    pub fn with_prefetch(mut self, predictor: Arc<PrefetchPredictor>) -> Self {
-        self.prefetch_predictor = Some(predictor);
-        self
     }
 
     fn check_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
@@ -239,10 +231,6 @@ impl CachedResolver {
                         Some(dnssec_status),
                     );
                 }
-            }
-
-            if let Some(ref predictor) = self.prefetch_predictor {
-                predictor.on_query(&query.domain);
             }
         }
     }
