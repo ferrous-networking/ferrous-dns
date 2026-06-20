@@ -9,6 +9,7 @@
             category: '',
             searchDomain: '',
             searchClient: '',
+            clients: [],
             autoRefresh: false,
             _hasMore: false,
             stats: {allowed: 0, blocked: 0, cacheHits: 0, upstream: 0, queries_total: 0},
@@ -22,7 +23,7 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadQueries(), this.loadStats()]);
+                await Promise.all([this.loadQueries(), this.loadStats(), this.loadClients()]);
                 scheduleLucide(100);
                 this.startPolling();
                 document.addEventListener('visibilitychange', () => {
@@ -131,6 +132,26 @@
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error('Failed to load stats:', e);
                 }
+            },
+
+            async loadClients() {
+                try {
+                    const res = await fetch(`${API_BASE}/clients?limit=1000`);
+                    if (res.ok) {
+                        const clients = await res.json();
+                        clients.sort((a, b) =>
+                            this.clientLabel(a).localeCompare(this.clientLabel(b)));
+                        this.clients = clients;
+                    }
+                } catch (e) {
+                    console.error('Failed to load clients:', e);
+                }
+            },
+
+            clientLabel(client) {
+                return client.hostname
+                    ? `${client.hostname} (${client.ip_address})`
+                    : client.ip_address;
             },
 
             escapeHtml(str) {

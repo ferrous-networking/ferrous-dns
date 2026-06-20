@@ -106,9 +106,13 @@
             </div>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Client:</label>
-                <input type="text" x-model="searchClient" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
-                       placeholder="Search client..."
-                       style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+                <select x-model="searchClient" @change="currentPage=1;_cursors={};loadQueries()"
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
+                    <option value="">All Clients</option>
+                    <template x-for="client in clients" :key="client.ip_address">
+                        <option :value="client.ip_address" x-text="clientLabel(client)"></option>
+                    </template>
+                </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
