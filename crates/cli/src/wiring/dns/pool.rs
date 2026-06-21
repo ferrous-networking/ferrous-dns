@@ -1,4 +1,5 @@
 use ferrous_dns_domain::Config;
+use ferrous_dns_infrastructure::dns::forwarding::HardeningOpts;
 use ferrous_dns_infrastructure::dns::{
     events::QueryEventEmitter, query_logger::QueryEventLogger, HealthChecker, PoolManager,
 };
@@ -33,13 +34,24 @@ pub(super) fn setup_health_checker(config: &Config) -> Option<Arc<HealthChecker>
     Some(checker)
 }
 
+/// Anti-spoofing hardening for upstream A/AAAA queries. DNS Cookies are always
+/// on (graceful); 0x20 case randomization follows the config flag.
+pub(super) fn hardening_opts(config: &Config) -> HardeningOpts {
+    HardeningOpts {
+        cookie: true,
+        qname_0x20: config.dns.qname_case_randomization,
+    }
+}
+
 pub(super) async fn setup_pool_manager(
     config: &Config,
     health_checker: Option<Arc<HealthChecker>>,
     emitter: QueryEventEmitter,
 ) -> anyhow::Result<Arc<PoolManager>> {
     Ok(Arc::new(
-        PoolManager::new(config.dns.pools.clone(), health_checker, emitter).await?,
+        PoolManager::new(config.dns.pools.clone(), health_checker, emitter)
+            .await?
+            .with_hardening(hardening_opts(config)),
     ))
 }
 

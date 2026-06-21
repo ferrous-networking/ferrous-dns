@@ -127,6 +127,7 @@ impl ResponseParser {
                 | DomainError::TransportConnectionReset { .. }
                 | DomainError::TransportNoHealthyServers
                 | DomainError::TransportAllServersUnreachable
+                | DomainError::SpoofedResponse { .. }
                 | DomainError::IoError(_)
         )
     }

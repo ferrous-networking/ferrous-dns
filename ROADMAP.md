@@ -84,13 +84,13 @@
 
 ### 🎯 v0.9.0 - Protocol Hardening & Privacy
 
-- [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
-- [ ] Upstream anti-spoofing — DNS Cookies to upstream (RFC 7873) + 0x20 QNAME randomization (draft-vixie-dns-0x20) against cache poisoning on plain-UDP upstream
+- [x] Upstream anti-spoofing — off-path forgery validation on every plain-UDP (Do53) upstream response: transaction-ID + question name/type checks always on; DNS Cookies (RFC 7873) always sent and validated gracefully on A/AAAA; opt-in 0x20 QNAME case randomization (draft-vixie-dns-0x20) via `qname_case_randomization`. Encrypted transports (DoT/DoH/DoQ) skip cookie/0x20 *validation* (TLS already authenticates the upstream), tolerating upstreams that normalize QNAME case
 - [ ] EDNS UDP payload size negotiation + correct TC truncation (RFC 6891 §6.2.5 / RFC 7766) — honor client-advertised buffer, set TC=1 on oversized responses
 - [ ] DNSSEC validation enforcement (RFC 4035 / RFC 6840) — SERVFAIL on Bogus, AD bit set/clear from validation, honor client CD bit (upgrade from current advisory `dnssec_status` tagging)
 - [ ] DNS-over-QUIC (DoQ) server listener (RFC 9250) — serve encrypted DNS to clients over QUIC (upstream DoQ already supported)
 - [ ] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `64:ff9b::/96` well-known prefix for IPv6-only clients
 - [ ] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`)
+- [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
 
 ### 🌟 v1.0.0 - Production Ready
 
