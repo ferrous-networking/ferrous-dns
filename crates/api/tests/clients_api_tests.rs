@@ -568,6 +568,11 @@ async fn create_test_app() -> (Router, Arc<SqliteClientRepository>, sqlx::Sqlite
                 Arc::new(NullBlockFilterEngine),
             )),
             get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+            test_domain: Arc::new(ferrous_dns_application::use_cases::TestDomainUseCase::new(Arc::new(NullBlockFilterEngine))),
+            backtest: Arc::new(ferrous_dns_application::use_cases::BacktestBlocklistsUseCase::new(
+                Arc::new(NullBlockFilterEngine),
+                Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &Default::default())),
+            )),
         },
         services: ServiceUseCases {
             get_service_catalog: Arc::new(ferrous_dns_application::use_cases::GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),

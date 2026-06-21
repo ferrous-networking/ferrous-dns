@@ -1,5 +1,5 @@
 use super::block_index::BlockIndex;
-use super::compiler::compile_block_index;
+use super::compiler::{compile_block_index, parse_list_text, ParsedEntry};
 use super::decision_cache::{
     decision_key, decision_l0_clear, decision_l0_get_by_key, decision_l0_set_by_key,
     BlockDecisionCache,
@@ -8,12 +8,16 @@ use crate::dns::cache::coarse_clock::coarse_now_secs;
 use arc_swap::ArcSwap;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use fancy_regex::Regex;
 use ferrous_dns_application::ports::{BlockFilterEnginePort, FilterDecision, ScheduleStatePort};
-use ferrous_dns_domain::{BlockSource, ClientSubnet, DomainError, GroupOverride, SubnetMatcher};
+use ferrous_dns_domain::{
+    BlockSource, ClientSubnet, DomainError, FilterExplanation, GroupOverride, SubnetMatcher,
+};
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 use sqlx::{Row, SqlitePool};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -255,6 +259,74 @@ impl BlockFilterEnginePort for BlockFilterEngine {
             Some(source) => FilterDecision::Block(source),
             None => FilterDecision::Allow,
         }
+    }
+
+    fn explain(&self, domain: &str, group_id: i64) -> FilterExplanation {
+        self.index.load().explain(domain, group_id)
+    }
+
+    fn explain_batch(&self, domains: &[String], group_id: i64) -> Vec<FilterExplanation> {
+        let guard = self.index.load();
+        domains.iter().map(|d| guard.explain(d, group_id)).collect()
+    }
+
+    fn match_candidate(
+        &self,
+        domains: &[String],
+        list_lines: &[String],
+        regexes: &[String],
+    ) -> Result<Vec<bool>, DomainError> {
+        // Parse the candidate list with the same parser used for real blocklists,
+        // so a pasted hosts/adblock/wildcard list behaves exactly as it would if
+        // it were added to ferrous.
+        let mut exact: HashSet<String> = HashSet::new();
+        let mut wildcards: Vec<(String, String)> = Vec::new();
+        let mut patterns: Vec<String> = Vec::new();
+        for entry in parse_list_text(&list_lines.join("\n")) {
+            match entry {
+                ParsedEntry::Exact(d) => {
+                    exact.insert(d);
+                }
+                ParsedEntry::Wildcard(w) => {
+                    let base = w.strip_prefix("*.").unwrap_or(&w).to_string();
+                    if !base.is_empty() {
+                        let dotted = format!(".{base}");
+                        wildcards.push((base, dotted));
+                    }
+                }
+                ParsedEntry::Pattern(p) => {
+                    if !p.is_empty() {
+                        patterns.push(p);
+                    }
+                }
+            }
+        }
+
+        let compiled: Vec<Regex> = regexes
+            .iter()
+            .map(|p| {
+                Regex::new(p).map_err(|e| {
+                    DomainError::InvalidDomainName(format!("invalid regex '{p}': {e}"))
+                })
+            })
+            .collect::<Result<_, _>>()?;
+
+        let result = domains
+            .iter()
+            .map(|d| {
+                let domain = d.to_ascii_lowercase();
+                exact.contains(&domain)
+                    || wildcards
+                        .iter()
+                        .any(|(base, dotted)| domain == *base || domain.ends_with(dotted.as_str()))
+                    || patterns.iter().any(|p| domain.contains(p.as_str()))
+                    || compiled
+                        .iter()
+                        .any(|re| re.is_match(&domain).unwrap_or(false))
+            })
+            .collect();
+
+        Ok(result)
     }
 
     #[inline]

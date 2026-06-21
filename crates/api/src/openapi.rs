@@ -96,6 +96,12 @@ impl Modify for SecurityAddon {
         dto::backup::ImportSummaryDto,
         // block filter
         dto::block_filter::BlockFilterStatsResponse,
+        dto::block_filter::FilterTestRequest,
+        dto::block_filter::FilterTestResponse,
+        dto::block_filter::FilterMatchDto,
+        dto::block_filter::BacktestRequestDto,
+        dto::block_filter::BacktestResponse,
+        dto::block_filter::AffectedDomainDto,
         // services
         dto::ServiceDefinitionResponse,
         dto::BlockedServiceResponse,

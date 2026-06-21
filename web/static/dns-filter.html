@@ -96,6 +96,8 @@
         <button class="tab-btn" :class="activeTab === 'allowlist' ? 'active' : ''" @click="switchTab('allowlist')">DNS Allowlist</button>
         <button class="tab-btn" :class="activeTab === 'managed' ? 'active' : ''" @click="switchTab('managed')">Managed Domains</button>
         <button class="tab-btn" :class="activeTab === 'regex' ? 'active' : ''" @click="switchTab('regex')">Regex Filters</button>
+        <button class="tab-btn" :class="activeTab === 'test' ? 'active' : ''" @click="switchTab('test')">Test</button>
+        <button class="tab-btn" :class="activeTab === 'backtest' ? 'active' : ''" @click="switchTab('backtest')">Backtest</button>
     </div>
 
     <!-- BLOCKLIST TAB -->
@@ -699,6 +701,194 @@
             </table>
         </div>
     </div><!-- end regex filters tab -->
+
+    <!-- TEST TAB -->
+    <div x-show="activeTab === 'test'">
+        <div style="margin-bottom:24px">
+            <div class="card" style="padding:24px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Test a Domain</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+                    Evaluates a domain against the current filter index — downloaded blocklists, the manual list,
+                    managed domains, regex filters and allowlists — and shows exactly which rules match. Dynamic
+                    runtime rules (schedule, CNAME cloaking, DNS rebinding, rate-limit, tunneling) are not evaluated here.
+                </p>
+                <form @submit.prevent="runTest()">
+                    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Domain <span style="color:var(--color-error)">*</span></label>
+                            <input type="text" class="input" x-model="testForm.domain"
+                                   placeholder="e.g. ads.example.com" required style="font-family:monospace">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Group</label>
+                            <select class="input" x-model="testForm.group_id">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id" x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:12px">
+                        <button type="submit" class="btn btn-primary" :disabled="testLoading"
+                                x-text="testLoading ? 'Checking...' : 'Check Domain'"></button>
+                    </div>
+                    <div x-show="testError" x-text="testError"
+                         style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card" style="padding:24px" x-show="testResult">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+                <span class="badge"
+                      :style="testResult && testResult.blocked ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
+                      x-text="testResult ? (testResult.blocked ? 'Blocked' : 'Allowed') : ''"></span>
+                <span style="font-family:monospace;font-weight:600;color:var(--text-primary)" x-text="testResult ? testResult.domain : ''"></span>
+                <span style="color:var(--text-secondary);font-size:13px" x-text="testResult ? ('group ' + testResult.group_id) : ''"></span>
+            </div>
+
+            <div x-show="testResult && testResult.allow_reasons.length > 0" style="margin-bottom:20px">
+                <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Allow rules (override blocking)</h3>
+                <table class="table">
+                    <thead><tr><th>Rule</th><th>Kind</th><th>Match</th></tr></thead>
+                    <tbody>
+                    <template x-for="(m, i) in (testResult ? testResult.allow_reasons : [])" :key="'allow-' + i">
+                        <tr>
+                            <td x-text="m.name"></td>
+                            <td><span class="badge badge-success" x-text="m.kind"></span></td>
+                            <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div>
+                <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">
+                    Blocking rules
+                    <span x-show="testResult && testResult.block_matches.length === 0"
+                          style="font-weight:400;color:var(--text-secondary)">— none matched</span>
+                </h3>
+                <table class="table" x-show="testResult && testResult.block_matches.length > 0">
+                    <thead><tr><th>Source</th><th>Kind</th><th>Match</th></tr></thead>
+                    <tbody>
+                    <template x-for="(m, i) in (testResult ? testResult.block_matches : [])" :key="'block-' + i">
+                        <tr>
+                            <td style="font-weight:500;color:var(--text-primary)" x-text="m.name"></td>
+                            <td><span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444" x-text="m.kind"></span></td>
+                            <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div><!-- end test tab -->
+
+    <!-- BACKTEST TAB -->
+    <div x-show="activeTab === 'backtest'">
+        <div style="margin-bottom:24px">
+            <div class="card" style="padding:24px">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Backtest a list (what-if)</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+                    Test an allow- or deny- list that is <strong>not applied yet</strong> against the domains seen in
+                    your recent traffic, and see how many queries it would <strong>newly block</strong> (deny) or
+                    <strong>free</strong> (allow) versus your current rules. The pasted list accepts plain domains,
+                    hosts (<code>0.0.0.0 domain</code>) and adblock (<code>||domain^</code>) formats, so a real list
+                    behaves exactly as it would if added. Evaluated against the static filter index only — dynamic
+                    rules (schedule, CNAME, rebinding, rate-limit, tunneling) are not simulated.
+                </p>
+                <form @submit.prevent="runBacktest()">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                        <div class="form-group">
+                            <label class="form-label">Action</label>
+                            <select class="input" x-model="btForm.action">
+                                <option value="deny">Deny (candidate blocklist)</option>
+                                <option value="allow">Allow (candidate allowlist)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Group</label>
+                            <select class="input" x-model="btForm.group_id">
+                                <template x-for="group in groups" :key="group.id">
+                                    <option :value="group.id" x-text="group.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Window (hours)</label>
+                            <input type="number" class="input" x-model.number="btForm.window_hours" min="1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">List (domains / hosts / adblock — one per line)</label>
+                        <textarea class="textarea" x-model="btForm.list" rows="6"
+                                  placeholder="ads.example.com&#10;0.0.0.0 tracker.test&#10;||doubleclick.net^&#10;*.analytics.example"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Regex patterns (optional, one per line)</label>
+                        <textarea class="textarea" x-model="btForm.regexes" rows="3"
+                                  placeholder="^ads\.&#10;tracking"></textarea>
+                    </div>
+                    <div style="display:flex;gap:12px">
+                        <button type="submit" class="btn btn-primary" :disabled="btLoading"
+                                x-text="btLoading ? 'Running...' : 'Run Backtest'"></button>
+                    </div>
+                    <div x-show="btError" x-text="btError"
+                         style="margin-top:12px;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card" style="padding:24px" x-show="btResult">
+            <div style="margin-bottom:16px;font-size:16px;font-weight:600;color:var(--text-primary)">
+                <template x-if="btResult && btResult.action === 'deny'">
+                    <span>Would newly block
+                        <span style="color:#ef4444" x-text="btResult ? btResult.changed_domains : 0"></span>
+                        domains (<span x-text="btResult ? btResult.changed_queries : 0"></span> queries).</span>
+                </template>
+                <template x-if="btResult && btResult.action === 'allow'">
+                    <span>Would newly free
+                        <span style="color:#16a34a" x-text="btResult ? btResult.changed_domains : 0"></span>
+                        domains (<span x-text="btResult ? btResult.changed_queries : 0"></span> queries).</span>
+                </template>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;font-size:14px;color:var(--text-secondary)">
+                <span>Corpus: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.corpus_size : 0"></strong> domains
+                    / <span x-text="btResult ? btResult.total_queries : 0"></span> queries</span>
+                <span>Currently blocked: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.currently_blocked_domains : 0"></strong></span>
+                <span>Matched by list: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.matched_domains : 0"></strong></span>
+                <span>Already covered: <strong style="color:var(--text-primary)" x-text="btResult ? btResult.redundant_domains : 0"></strong></span>
+                <span x-show="btResult && btResult.action === 'deny' && btResult.overridden_domains > 0">Blocked but allow-listed:
+                    <strong style="color:var(--text-primary)" x-text="btResult ? btResult.overridden_domains : 0"></strong></span>
+            </div>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th x-text="btResult && btResult.action === 'allow' ? 'Freed domain' : 'Newly blocked domain'"></th>
+                    <th>Queries (last window)</th>
+                    <th x-show="btResult && btResult.action === 'allow'">Currently blocked by</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="(d, i) in (btResult ? btResult.sample : [])" :key="'s-' + i">
+                    <tr>
+                        <td style="font-weight:500;color:var(--text-primary)" x-text="d.domain"></td>
+                        <td x-text="d.queries"></td>
+                        <td x-show="btResult && btResult.action === 'allow'" x-text="d.blocked_by || '—'"></td>
+                    </tr>
+                </template>
+                <tr x-show="btResult && btResult.sample.length === 0">
+                    <td colspan="3" style="text-align:center;padding:32px;color:var(--text-secondary)">No domains would change.</td>
+                </tr>
+                </tbody>
+            </table>
+            <p x-show="btResult && btResult.changed_domains > btResult.sample.length"
+               style="margin-top:8px;font-size:12px;color:var(--text-secondary)">
+                Showing top <span x-text="btResult ? btResult.sample.length : 0"></span> by query volume.
+            </p>
+        </div>
+    </div><!-- end backtest tab -->
 </main>
 
 <script src="/static/dns-filter.js"></script>

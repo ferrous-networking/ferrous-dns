@@ -59,12 +59,37 @@
             },
             rgFormError: '',
 
+            // --- TEST ---
+            testForm: {
+                domain: '',
+                group_id: 1
+            },
+            testResult: null,
+            testLoading: false,
+            testError: '',
+
+            // --- BACKTEST (what-if simulator) ---
+            btForm: {
+                action: 'deny',
+                group_id: 1,
+                window_hours: 24,
+                limit: 20000,
+                list: '',
+                regexes: ''
+            },
+            btResult: null,
+            btLoading: false,
+            btError: '',
+
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
                 await Promise.all([this.loadSources(), this.loadWhitelistSources(), this.loadGroups(), this.loadManagedDomains(), this.loadRegexFilters()]);
+                const defGroup = this.defaultGroupId();
+                this.testForm.group_id = defGroup;
+                this.btForm.group_id = defGroup;
                 await this.$nextTick();
                 scheduleLucide(0);
             },
@@ -669,6 +694,69 @@
                 } catch (e) {
                     console.error('Error deleting regex filter:', e);
                     alert('Network error: ' + e.message);
+                }
+            },
+
+            async runTest() {
+                this.testError = '';
+                this.testResult = null;
+                this.testLoading = true;
+                try {
+                    const res = await fetch(`${API_BASE}/block-filter/test`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            domain: this.testForm.domain.trim(),
+                            group_id: parseInt(this.testForm.group_id)
+                        })
+                    });
+                    if (res.ok) {
+                        this.testResult = await res.json();
+                    } else {
+                        this.testError = (await res.text()) || 'Failed to test domain';
+                    }
+                } catch (e) {
+                    console.error('Error testing domain:', e);
+                    this.testError = 'Network error: ' + e.message;
+                } finally {
+                    this.testLoading = false;
+                    this.$nextTick(() => scheduleLucide());
+                }
+            },
+
+            async runBacktest() {
+                this.btError = '';
+                this.btResult = null;
+                this.btLoading = true;
+                try {
+                    const splitLines = s => (s || '')
+                        .split(/\r?\n/)
+                        .map(d => d.trim())
+                        .filter(d => d.length > 0);
+                    const payload = {
+                        action: this.btForm.action,
+                        group_id: parseInt(this.btForm.group_id),
+                        window_hours: Number(this.btForm.window_hours) || 24,
+                        limit: parseInt(this.btForm.limit) || 20000,
+                        list: splitLines(this.btForm.list),
+                        regexes: splitLines(this.btForm.regexes)
+                    };
+                    const res = await fetch(`${API_BASE}/block-filter/backtest`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        this.btResult = await res.json();
+                    } else {
+                        this.btError = (await res.text()) || 'Failed to run backtest';
+                    }
+                } catch (e) {
+                    console.error('Error running backtest:', e);
+                    this.btError = 'Network error: ' + e.message;
+                } finally {
+                    this.btLoading = false;
+                    this.$nextTick(() => scheduleLucide());
                 }
             },
 
