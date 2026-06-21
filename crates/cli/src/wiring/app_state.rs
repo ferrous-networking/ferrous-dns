@@ -209,6 +209,8 @@ pub async fn build_app_state(
             update_regex_filter: use_cases.update_regex_filter,
             delete_regex_filter: use_cases.delete_regex_filter,
             get_block_filter_stats: use_cases.get_block_filter_stats,
+            test_domain: use_cases.test_domain,
+            backtest: use_cases.backtest,
         },
         services: ServiceUseCases {
             get_service_catalog: use_cases.get_service_catalog,

@@ -31,7 +31,11 @@ pub use auth::{
     LoginUseCase, LogoutUseCase, SetupPasswordUseCase, ValidateSessionUseCase,
 };
 pub use backup::{BackupSnapshot, ExportConfigUseCase, ImportConfigUseCase, ImportSummary};
-pub use block_filter::GetBlockFilterStatsUseCase;
+pub use block_filter::{
+    AffectedDomain, BacktestBlocklistsUseCase, BacktestReport, BacktestRequest, CandidateAction,
+    GetBlockFilterStatsUseCase, TestDomainUseCase, DEFAULT_BACKTEST_LIMIT, MAX_BACKTEST_LIMIT,
+    SAMPLE_LIMIT,
+};
 pub use blocked_services::{
     BlockServiceUseCase, GetBlockedServicesUseCase, GetServiceCatalogUseCase, UnblockServiceUseCase,
 };

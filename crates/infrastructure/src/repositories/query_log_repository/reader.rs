@@ -539,6 +539,41 @@ pub(super) async fn get_top_allowed_domains(
 }
 
 #[instrument(skip(pool))]
+pub(super) async fn get_distinct_recent_domains(
+    pool: &SqlitePool,
+    limit: u32,
+    period_hours: f32,
+) -> Result<Vec<(String, u64)>, DomainError> {
+    let cutoff = hours_ago_cutoff(period_hours);
+    let rows = sqlx::query(
+        "SELECT domain, COUNT(*) as count
+         FROM query_log
+         WHERE created_at >= ?
+           AND query_source = 'client'
+         GROUP BY domain
+         ORDER BY count DESC
+         LIMIT ?",
+    )
+    .bind(cutoff)
+    .bind(limit as i64)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "Failed to fetch distinct recent domains");
+        DomainError::DatabaseError(e.to_string())
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let domain: String = r.get("domain");
+            let count = r.get::<i64, _>("count") as u64;
+            (domain, count)
+        })
+        .collect())
+}
+
+#[instrument(skip(pool))]
 pub(super) async fn get_top_clients(
     pool: &SqlitePool,
     limit: u32,

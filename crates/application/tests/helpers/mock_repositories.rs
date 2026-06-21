@@ -438,6 +438,14 @@ impl QueryLogRepository for MockQueryLogRepository {
         Ok(Vec::new())
     }
 
+    async fn get_distinct_recent_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        Ok(Vec::new())
+    }
+
     async fn get_top_clients(
         &self,
         _limit: u32,

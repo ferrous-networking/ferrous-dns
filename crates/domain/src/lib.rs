@@ -27,6 +27,9 @@ pub use entities::blocklist_source::BlocklistSource;
 pub use entities::client::{Client, ClientStats};
 pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
 pub use entities::custom_service::CustomService;
+pub use entities::filter_explanation::{
+    AllowMatch, AllowMatchKind, BlockMatch, BlockMatchKind, FilterExplanation, MatchType,
+};
 pub use entities::group::{Group, GroupStats};
 pub use entities::managed_domain::{DomainAction, ManagedDomain};
 pub use entities::query_log::{

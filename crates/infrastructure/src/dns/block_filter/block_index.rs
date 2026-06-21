@@ -4,7 +4,10 @@ use aho_corasick::AhoCorasick;
 use compact_str::CompactString;
 use dashmap::{DashMap, DashSet};
 use fancy_regex::Regex;
-use ferrous_dns_domain::BlockSource;
+use ferrous_dns_domain::{
+    AllowMatch, AllowMatchKind, BlockMatch, BlockMatchKind, BlockSource, FilterExplanation,
+    MatchType,
+};
 use rustc_hash::FxBuildHasher;
 use std::collections::{HashMap, HashSet};
 
@@ -12,10 +15,28 @@ pub type SourceBitSet = u64;
 
 pub const MANUAL_SOURCE_BIT: u64 = 1u64 << 63;
 
+/// Bit index reserved for the global manual blocklist.
+pub const MANUAL_SOURCE_BIT_INDEX: usize = 63;
+
 #[derive(Debug, Clone)]
 pub struct SourceMeta {
     pub group_id: i64,
     pub bit: u8,
+}
+
+/// Reverse mapping target for a source bit: which blocklist source owns it.
+#[derive(Debug, Clone)]
+pub struct SourceDescriptor {
+    pub id: i64,
+    pub name: String,
+}
+
+/// A compiled regex filter that retains its database identity for attribution.
+#[derive(Debug, Clone)]
+pub struct RegexRule {
+    pub id: i64,
+    pub name: String,
+    pub regex: Regex,
 }
 
 pub struct AllowlistIndex {
@@ -73,9 +94,12 @@ pub struct BlockIndex {
     pub allowlists: AllowlistIndex,
     pub managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>>,
     pub managed_deny_wildcards: HashMap<i64, SuffixTrie>,
-    pub allow_regex_patterns: HashMap<i64, Vec<Regex>>,
-    pub block_regex_patterns: HashMap<i64, Vec<Regex>>,
+    pub allow_regex_patterns: HashMap<i64, Vec<RegexRule>>,
+    pub block_regex_patterns: HashMap<i64, Vec<RegexRule>>,
     pub groups_with_advanced_rules: HashSet<i64>,
+    /// Reverse map from source bit index (0..=63) to the owning source.
+    /// Index 63 (`MANUAL_SOURCE_BIT_INDEX`) describes the manual blocklist.
+    pub bit_to_source: Vec<Option<SourceDescriptor>>,
 }
 
 impl BlockIndex {
@@ -93,6 +117,7 @@ impl BlockIndex {
             allow_regex_patterns: HashMap::new(),
             block_regex_patterns: HashMap::new(),
             groups_with_advanced_rules: HashSet::new(),
+            bit_to_source: Vec::new(),
         }
     }
 
@@ -117,8 +142,8 @@ impl BlockIndex {
 
         if has_advanced {
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
-                for r in regexes {
-                    if r.is_match(domain).unwrap_or(false) {
+                for rule in regexes {
+                    if rule.regex.is_match(domain).unwrap_or(false) {
                         return None;
                     }
                 }
@@ -140,8 +165,8 @@ impl BlockIndex {
         if !self.bloom.check(&domain) {
             if has_advanced {
                 if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                    for r in regexes {
-                        if r.is_match(domain).unwrap_or(false) {
+                    for rule in regexes {
+                        if rule.regex.is_match(domain).unwrap_or(false) {
                             return Some(BlockSource::RegexFilter);
                         }
                     }
@@ -163,8 +188,8 @@ impl BlockIndex {
 
         if has_advanced {
             if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                for r in regexes {
-                    if r.is_match(domain).unwrap_or(false) {
+                for rule in regexes {
+                    if rule.regex.is_match(domain).unwrap_or(false) {
                         return Some(BlockSource::RegexFilter);
                     }
                 }
@@ -188,5 +213,289 @@ impl BlockIndex {
         }
 
         None
+    }
+
+    /// Read-only, exhaustive attribution of how the static filter index evaluates
+    /// `domain` for `group_id`.
+    ///
+    /// Unlike [`BlockIndex::is_blocked`], this collects ALL matching rules (allow
+    /// and block) and resolves them to named sources. It never mutates any cache
+    /// and deliberately skips the bloom short-circuit so the result is exhaustive.
+    /// Dynamic runtime rules (schedule, CNAME, rebinding, …) are out of scope.
+    pub fn explain(&self, domain: &str, group_id: i64) -> FilterExplanation {
+        let mask = self.group_mask(group_id);
+
+        let mut allow_reasons: Vec<AllowMatch> = Vec::new();
+        let mut block_matches: Vec<BlockMatch> = Vec::new();
+
+        self.collect_allow_matches(domain, group_id, &mut allow_reasons);
+
+        // Managed (custom) deny domains.
+        if let Some(set) = self.managed_denies.get(&group_id) {
+            if set.contains(domain) {
+                block_matches.push(BlockMatch {
+                    kind: BlockMatchKind::ManagedDomain,
+                    source_id: None,
+                    name: "Managed domain".to_string(),
+                    match_type: MatchType::Exact,
+                });
+            }
+        }
+        if let Some(trie) = self.managed_deny_wildcards.get(&group_id) {
+            if trie.lookup(domain) != 0 {
+                block_matches.push(BlockMatch {
+                    kind: BlockMatchKind::ManagedDomain,
+                    source_id: None,
+                    name: "Managed domain".to_string(),
+                    match_type: MatchType::Wildcard,
+                });
+            }
+        }
+
+        // Exact blocklist entries.
+        if let Some(entry) = self.exact.get(domain) {
+            let bits = entry.value() & mask;
+            self.collect_bit_matches(bits, MatchType::Exact, &mut block_matches);
+        }
+
+        // Wildcard (suffix) blocklist entries.
+        let wildcard_bits = self.wildcard.lookup(domain) & mask;
+        self.collect_bit_matches(wildcard_bits, MatchType::Wildcard, &mut block_matches);
+
+        // Aho-Corasick substring patterns.
+        for (ac, source_mask) in &self.patterns {
+            let bits = source_mask & mask;
+            if bits != 0 && ac.is_match(domain) {
+                self.collect_bit_matches(bits, MatchType::Pattern, &mut block_matches);
+            }
+        }
+
+        // Deny regex filters.
+        if let Some(rules) = self.block_regex_patterns.get(&group_id) {
+            for rule in rules {
+                if rule.regex.is_match(domain).unwrap_or(false) {
+                    block_matches.push(BlockMatch {
+                        kind: BlockMatchKind::Regex,
+                        source_id: Some(rule.id),
+                        name: rule.name.clone(),
+                        match_type: MatchType::Regex,
+                    });
+                }
+            }
+        }
+
+        let blocked = allow_reasons.is_empty() && !block_matches.is_empty();
+
+        FilterExplanation {
+            domain: domain.to_string(),
+            group_id,
+            blocked,
+            allow_reasons,
+            block_matches,
+        }
+    }
+
+    /// Resolve every set bit in `bits` to a named [`BlockMatch`] and append it.
+    fn collect_bit_matches(
+        &self,
+        bits: SourceBitSet,
+        match_type: MatchType,
+        out: &mut Vec<BlockMatch>,
+    ) {
+        let mut remaining = bits;
+        while remaining != 0 {
+            let idx = remaining.trailing_zeros() as usize;
+            remaining &= remaining - 1;
+            if idx == MANUAL_SOURCE_BIT_INDEX {
+                out.push(BlockMatch {
+                    kind: BlockMatchKind::Manual,
+                    source_id: None,
+                    name: "Manual blocklist".to_string(),
+                    match_type,
+                });
+            } else if let Some(Some(desc)) = self.bit_to_source.get(idx) {
+                out.push(BlockMatch {
+                    kind: BlockMatchKind::Blocklist,
+                    source_id: Some(desc.id),
+                    name: desc.name.clone(),
+                    match_type,
+                });
+            } else {
+                out.push(BlockMatch {
+                    kind: BlockMatchKind::Blocklist,
+                    source_id: None,
+                    name: format!("source bit {idx}"),
+                    match_type,
+                });
+            }
+        }
+    }
+
+    /// Collect every allow rule (allowlist exact/wildcard, allow regex) matching `domain`.
+    fn collect_allow_matches(&self, domain: &str, group_id: i64, out: &mut Vec<AllowMatch>) {
+        let al = &self.allowlists;
+        if let Some(set) = al.group_exact.get(&group_id) {
+            if set.contains(domain) {
+                out.push(AllowMatch {
+                    kind: AllowMatchKind::Allowlist,
+                    source_id: None,
+                    name: "Group allowlist".to_string(),
+                    match_type: MatchType::Exact,
+                });
+            }
+        }
+        if let Some(trie) = al.group_wildcard.get(&group_id) {
+            if trie.lookup(domain) != 0 {
+                out.push(AllowMatch {
+                    kind: AllowMatchKind::Allowlist,
+                    source_id: None,
+                    name: "Group allowlist".to_string(),
+                    match_type: MatchType::Wildcard,
+                });
+            }
+        }
+        if al.global_exact.contains(domain) {
+            out.push(AllowMatch {
+                kind: AllowMatchKind::Allowlist,
+                source_id: None,
+                name: "Global allowlist".to_string(),
+                match_type: MatchType::Exact,
+            });
+        }
+        if al.global_wildcard.lookup(domain) != 0 {
+            out.push(AllowMatch {
+                kind: AllowMatchKind::Allowlist,
+                source_id: None,
+                name: "Global allowlist".to_string(),
+                match_type: MatchType::Wildcard,
+            });
+        }
+        if let Some(rules) = self.allow_regex_patterns.get(&group_id) {
+            for rule in rules {
+                if rule.regex.is_match(domain).unwrap_or(false) {
+                    out.push(AllowMatch {
+                        kind: AllowMatchKind::Regex,
+                        source_id: Some(rule.id),
+                        name: rule.name.clone(),
+                        match_type: MatchType::Regex,
+                    });
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // `BlockIndex` and its attribution maps are private to this module, so the
+    // explain logic is exercised here rather than as an integration test.
+    use super::*;
+    use ferrous_dns_domain::{AllowMatchKind, BlockMatchKind, MatchType};
+
+    fn idx_with_sources() -> BlockIndex {
+        let mut idx = BlockIndex::empty();
+        idx.bit_to_source = vec![None; 64];
+        idx.bit_to_source[0] = Some(SourceDescriptor {
+            id: 10,
+            name: "EasyList".to_string(),
+        });
+        idx.bit_to_source[1] = Some(SourceDescriptor {
+            id: 20,
+            name: "StevenBlack".to_string(),
+        });
+        // group 1 sees source bits 0 and 1 plus the manual bit
+        idx.group_masks
+            .insert(1, MANUAL_SOURCE_BIT | (1 << 0) | (1 << 1));
+        // group 2 sees only source bit 1
+        idx.group_masks.insert(2, 1 << 1);
+        idx
+    }
+
+    #[test]
+    fn explain_attributes_exact_blocklist_source_by_name() {
+        let idx = idx_with_sources();
+        idx.exact
+            .insert(CompactString::new("ads.example.com"), 1 << 0);
+
+        let exp = idx.explain("ads.example.com", 1);
+        assert!(exp.blocked);
+        assert_eq!(exp.block_matches.len(), 1);
+        let m = &exp.block_matches[0];
+        assert_eq!(m.kind, BlockMatchKind::Blocklist);
+        assert_eq!(m.source_id, Some(10));
+        assert_eq!(m.name, "EasyList");
+        assert_eq!(m.match_type, MatchType::Exact);
+    }
+
+    #[test]
+    fn explain_respects_group_mask() {
+        let idx = idx_with_sources();
+        idx.exact
+            .insert(CompactString::new("ads.example.com"), 1 << 0);
+        // group 2's mask excludes bit 0 → not blocked there
+        let exp = idx.explain("ads.example.com", 2);
+        assert!(!exp.blocked);
+        assert!(exp.block_matches.is_empty());
+    }
+
+    #[test]
+    fn explain_attributes_manual_blocklist() {
+        let idx = idx_with_sources();
+        idx.exact
+            .insert(CompactString::new("manual.test"), MANUAL_SOURCE_BIT);
+        let exp = idx.explain("manual.test", 1);
+        assert!(exp.blocked);
+        assert_eq!(exp.block_matches.len(), 1);
+        assert_eq!(exp.block_matches[0].kind, BlockMatchKind::Manual);
+        assert_eq!(exp.block_matches[0].source_id, None);
+    }
+
+    #[test]
+    fn explain_attributes_wildcard_match() {
+        let mut idx = idx_with_sources();
+        idx.wildcard.insert_wildcard("ads.net", 1 << 1);
+        let exp = idx.explain("tracker.ads.net", 1);
+        assert!(exp.blocked);
+        assert_eq!(exp.block_matches.len(), 1);
+        assert_eq!(exp.block_matches[0].name, "StevenBlack");
+        assert_eq!(exp.block_matches[0].match_type, MatchType::Wildcard);
+    }
+
+    #[test]
+    fn explain_allowlist_overrides_block() {
+        let idx = idx_with_sources();
+        idx.exact
+            .insert(CompactString::new("allowed.example.com"), 1 << 0);
+        idx.allowlists
+            .global_exact
+            .insert(CompactString::new("allowed.example.com"));
+        let exp = idx.explain("allowed.example.com", 1);
+        assert!(!exp.blocked);
+        assert_eq!(exp.allow_reasons.len(), 1);
+        assert_eq!(exp.allow_reasons[0].kind, AllowMatchKind::Allowlist);
+        // the matched block rule is still reported for transparency
+        assert_eq!(exp.block_matches.len(), 1);
+    }
+
+    #[test]
+    fn explain_attributes_deny_regex_by_name() {
+        let mut idx = idx_with_sources();
+        idx.groups_with_advanced_rules.insert(1);
+        idx.block_regex_patterns.insert(
+            1,
+            vec![RegexRule {
+                id: 7,
+                name: "block-ads".to_string(),
+                regex: Regex::new("(?i)^ads\\.").unwrap(),
+            }],
+        );
+        let exp = idx.explain("ads.tracker.io", 1);
+        assert!(exp.blocked);
+        assert!(exp
+            .block_matches
+            .iter()
+            .any(|m| m.kind == BlockMatchKind::Regex
+                && m.name == "block-ads"
+                && m.source_id == Some(7)));
     }
 }
