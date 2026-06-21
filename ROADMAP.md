@@ -78,10 +78,19 @@
 ### 🎯 v0.8.0 - Export & Observability (Current)
 
 - [x] Config export/import (backup and restore)
-- [ ] Query log export (CSV / JSON)
 - [x] Prometheus metrics
 - [x] OpenAPI / Swagger docs
 - [x] Predictive prefetch — delivered via `cache_optimistic_refresh` (popularity/recency-weighted near-expiry refresh + serve-stale); speculative Markov co-occurrence prefetch evaluated and dropped as low-value/privacy-risk for a forwarder
+
+### 🎯 v0.9.0 - Protocol Hardening & Privacy
+
+- [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
+- [ ] Upstream anti-spoofing — DNS Cookies to upstream (RFC 7873) + 0x20 QNAME randomization (draft-vixie-dns-0x20) against cache poisoning on plain-UDP upstream
+- [ ] EDNS UDP payload size negotiation + correct TC truncation (RFC 6891 §6.2.5 / RFC 7766) — honor client-advertised buffer, set TC=1 on oversized responses
+- [ ] DNSSEC validation enforcement (RFC 4035 / RFC 6840) — SERVFAIL on Bogus, AD bit set/clear from validation, honor client CD bit (upgrade from current advisory `dnssec_status` tagging)
+- [ ] DNS-over-QUIC (DoQ) server listener (RFC 9250) — serve encrypted DNS to clients over QUIC (upstream DoQ already supported)
+- [ ] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `64:ff9b::/96` well-known prefix for IPv6-only clients
+- [ ] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`)
 
 ### 🌟 v1.0.0 - Production Ready
 
