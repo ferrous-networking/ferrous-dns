@@ -78,6 +78,14 @@ pub trait QueryLogRepository: Send + Sync {
         limit: u32,
         period_hours: f32,
     ) -> Result<Vec<(String, u64)>, DomainError>;
+    /// Distinct client-queried domains in the period with their query counts,
+    /// regardless of whether they were blocked. Ordered by count descending.
+    /// Used to build the backtest corpus from real traffic.
+    async fn get_distinct_recent_domains(
+        &self,
+        limit: u32,
+        period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError>;
     async fn get_top_clients(
         &self,
         limit: u32,

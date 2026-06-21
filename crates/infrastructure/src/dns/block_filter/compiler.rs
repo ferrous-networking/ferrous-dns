@@ -1,4 +1,7 @@
-use super::block_index::{AllowlistIndex, BlockIndex, SourceBitSet, SourceMeta, MANUAL_SOURCE_BIT};
+use super::block_index::{
+    AllowlistIndex, BlockIndex, RegexRule, SourceBitSet, SourceDescriptor, SourceMeta,
+    MANUAL_SOURCE_BIT,
+};
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::bloom::AtomicBloom;
 use aho_corasick::AhoCorasick;
@@ -123,6 +126,8 @@ struct SourceLoad {
     sources: Vec<SourceMeta>,
     url_tasks: Vec<(u8, String)>,
     all_group_ids: Vec<i64>,
+    /// Reverse map from source bit index (0..=63) to the owning source.
+    bit_to_source: Vec<Option<SourceDescriptor>>,
 }
 
 async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
@@ -135,7 +140,7 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
 
     // Step 1: Load distinct enabled sources for bit assignment (max 63)
     let source_rows =
-        sqlx::query("SELECT id, url FROM blocklist_sources WHERE enabled = 1 ORDER BY id")
+        sqlx::query("SELECT id, name, url FROM blocklist_sources WHERE enabled = 1 ORDER BY id")
             .fetch_all(pool)
             .await
             .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
@@ -154,6 +159,16 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         .enumerate()
         .map(|(idx, row)| (row.get::<i64, _>("id"), idx as u8))
         .collect();
+
+    // Build the reverse bit→source map used for explain/backtest attribution.
+    // Length 64: indices 0..=62 are downloaded sources, index 63 is the manual list.
+    let mut bit_to_source: Vec<Option<SourceDescriptor>> = vec![None; 64];
+    for (idx, row) in source_rows.iter().take(63).enumerate() {
+        bit_to_source[idx] = Some(SourceDescriptor {
+            id: row.get::<i64, _>("id"),
+            name: row.get::<String, _>("name"),
+        });
+    }
 
     // Step 2: Load all (source_id, group_id) assignments from pivot
     let assignment_rows = sqlx::query(
@@ -203,6 +218,7 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         sources,
         url_tasks,
         all_group_ids,
+        bit_to_source,
     })
 }
 
@@ -406,30 +422,39 @@ fn build_exact_and_wildcard(
 }
 
 struct RegexFilterMaps {
-    block_patterns: HashMap<i64, Vec<Regex>>,
-    allow_patterns: HashMap<i64, Vec<Regex>>,
+    block_patterns: HashMap<i64, Vec<RegexRule>>,
+    allow_patterns: HashMap<i64, Vec<RegexRule>>,
 }
 
 async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMaps, DomainError> {
-    let rows = sqlx::query("SELECT pattern, action, group_id FROM regex_filters WHERE enabled = 1")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    let rows = sqlx::query(
+        "SELECT id, name, pattern, action, group_id FROM regex_filters WHERE enabled = 1",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
-    let mut block_patterns: HashMap<i64, Vec<Regex>> = HashMap::new();
-    let mut allow_patterns: HashMap<i64, Vec<Regex>> = HashMap::new();
+    let mut block_patterns: HashMap<i64, Vec<RegexRule>> = HashMap::new();
+    let mut allow_patterns: HashMap<i64, Vec<RegexRule>> = HashMap::new();
 
     for row in &rows {
+        let id: i64 = row.get("id");
+        let name: String = row.get("name");
         let pattern: String = row.get("pattern");
         let action: String = row.get("action");
         let group_id: i64 = row.get("group_id");
 
         match Regex::new(&format!("(?i){}", &pattern)) {
             Ok(re) => {
+                let rule = RegexRule {
+                    id,
+                    name,
+                    regex: re,
+                };
                 if action == "deny" {
-                    block_patterns.entry(group_id).or_default().push(re);
+                    block_patterns.entry(group_id).or_default().push(rule);
                 } else {
-                    allow_patterns.entry(group_id).or_default().push(re);
+                    allow_patterns.entry(group_id).or_default().push(rule);
                 }
             }
             Err(e) => {
@@ -463,6 +488,7 @@ pub async fn compile_block_index(
         sources,
         url_tasks,
         all_group_ids,
+        bit_to_source,
     } = load_sources(pool).await?;
 
     let group_masks = build_group_masks(&sources, &all_group_ids);
@@ -540,6 +566,7 @@ pub async fn compile_block_index(
         allow_regex_patterns: regex_filter_maps.allow_patterns,
         block_regex_patterns: regex_filter_maps.block_patterns,
         groups_with_advanced_rules,
+        bit_to_source,
     })
 }
 

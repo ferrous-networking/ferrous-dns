@@ -7,6 +7,7 @@ pub mod blocklist_source;
 pub mod client;
 pub mod client_subnet;
 pub mod custom_service;
+pub mod filter_explanation;
 pub mod group;
 pub mod managed_domain;
 pub mod query_log;

@@ -648,6 +648,13 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(
                 NullBlockFilterEngine,
             ))),
+            test_domain: Arc::new(ferrous_dns_application::use_cases::TestDomainUseCase::new(
+                Arc::new(NullBlockFilterEngine),
+            )),
+            backtest: Arc::new(ferrous_dns_application::use_cases::BacktestBlocklistsUseCase::new(
+                Arc::new(NullBlockFilterEngine),
+                Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &Default::default())),
+            )),
         },
         services: ServiceUseCases {
             get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(
@@ -1039,6 +1046,11 @@ async fn test_get_all_configs_after_toggle() {
             update_regex_filter: Arc::new(UpdateRegexFilterUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())), group_repo.clone(), null_engine.clone())),
             delete_regex_filter: Arc::new(DeleteRegexFilterUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository::new(pool.clone())), null_engine.clone())),
             get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+            test_domain: Arc::new(ferrous_dns_application::use_cases::TestDomainUseCase::new(Arc::new(NullBlockFilterEngine))),
+            backtest: Arc::new(ferrous_dns_application::use_cases::BacktestBlocklistsUseCase::new(
+                Arc::new(NullBlockFilterEngine),
+                Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &Default::default())),
+            )),
         },
         services: ServiceUseCases {
             get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),

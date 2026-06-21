@@ -680,6 +680,11 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>, sqlx::SqlitePool) {
             update_regex_filter: Arc::new(ferrous_dns_application::use_cases::UpdateRegexFilterUseCase::new(regex_filter_repo.clone(), group_repo.clone(), null_engine.clone())),
             delete_regex_filter: Arc::new(ferrous_dns_application::use_cases::DeleteRegexFilterUseCase::new(regex_filter_repo.clone(), null_engine.clone())),
             get_block_filter_stats: Arc::new(GetBlockFilterStatsUseCase::new(Arc::new(NullBlockFilterEngine))),
+            test_domain: Arc::new(ferrous_dns_application::use_cases::TestDomainUseCase::new(Arc::new(NullBlockFilterEngine))),
+            backtest: Arc::new(ferrous_dns_application::use_cases::BacktestBlocklistsUseCase::new(
+                Arc::new(NullBlockFilterEngine),
+                Arc::new(ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &Default::default())),
+            )),
         },
         services: ServiceUseCases {
             get_service_catalog: Arc::new(GetServiceCatalogUseCase::new(Arc::new(NullServiceCatalog))),
