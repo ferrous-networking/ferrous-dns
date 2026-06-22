@@ -1,3 +1,4 @@
+use super::data::DnssecStatus;
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
@@ -9,10 +10,11 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 
-type L1Hit = (Arc<Vec<IpAddr>>, u32);
+type L1Hit = (Arc<Vec<IpAddr>>, DnssecStatus, u32);
 
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
+    dnssec_status: DnssecStatus,
     expires_secs: u64,
 }
 
@@ -81,7 +83,7 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
             let now = coarse_now_secs();
             if now < entry.expires_secs {
                 let remaining = (entry.expires_secs - now).min(u32::MAX as u64) as u32;
-                return Some((Arc::clone(&entry.addresses), remaining));
+                return Some((Arc::clone(&entry.addresses), entry.dnssec_status, remaining));
             }
             state.cache.pop(key_str);
         }
@@ -99,6 +101,7 @@ pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
     addresses: Arc<Vec<IpAddr>>,
+    dnssec_status: DnssecStatus,
     expires_secs: u64,
 ) {
     let type_str = record_type.as_str();
@@ -130,6 +133,7 @@ pub fn l1_insert(
             key,
             L1Entry {
                 addresses,
+                dnssec_status,
                 expires_secs,
             },
         );

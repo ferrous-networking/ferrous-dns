@@ -112,7 +112,9 @@ async fn run_udp_worker_batch(
                 let msg = batch.get_msg(i);
                 let client_ip = msg.src.ip();
 
-                if let Some(fast_query) = fast_path::parse_query(msg.data) {
+                if let Some(fast_query) =
+                    fast_path::parse_query(msg.data).filter(|q| !q.wants_dnssec)
+                {
                     match fast_query.kind {
                         FastPathKind::IpAddress => {
                             if let Some((addresses, ttl)) = handler.try_fast_path(
@@ -220,7 +222,9 @@ async fn run_udp_worker_single(
                     let query_buf = &recv_buf[..n];
                     let client_ip = from.ip();
 
-                    if let Some(fast_query) = fast_path::parse_query(query_buf) {
+                    if let Some(fast_query) =
+                        fast_path::parse_query(query_buf).filter(|q| !q.wants_dnssec)
+                    {
                         match fast_query.kind {
                             FastPathKind::IpAddress => {
                                 if let Some((addresses, ttl)) = handler.try_fast_path(

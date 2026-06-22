@@ -284,6 +284,48 @@ fn build_edns_query() -> Vec<u8> {
     ]
 }
 
+/// Models a real `dig +dnssec` query: EDNS OPT with the DO bit set and a
+/// COOKIE option in the RDATA (as dig 9.18+ sends).
+fn build_edns_do_query() -> Vec<u8> {
+    vec![
+        0x00, 0x01, // ID
+        0x01, 0x20, // FLAGS: RD + AD
+        0x00, 0x01, // QDCOUNT = 1
+        0x00, 0x00, // ANCOUNT = 0
+        0x00, 0x00, // NSCOUNT = 0
+        0x00, 0x01, // ARCOUNT = 1 (one OPT record)
+        // QNAME: google.com.
+        0x06, b'g', b'o', b'o', b'g', b'l', b'e', 0x03, b'c', b'o', b'm', 0x00,
+        // QTYPE A, QCLASS IN
+        0x00, 0x01, 0x00, 0x01, // OPT RR
+        0x00, // NAME = root
+        0x00, 0x29, // TYPE = OPT (41)
+        0x04, 0xd0, // CLASS = 1232 (client UDP payload size)
+        0x00, 0x00, 0x80, 0x00, // TTL: ext RCODE=0, version=0, DO=1, Z=0
+        0x00, 0x0c, // RDLENGTH = 12
+        0x00, 0x0a, // OPTION-CODE = COOKIE (10)
+        0x00, 0x08, // OPTION-LENGTH = 8
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // 8-byte client cookie
+    ]
+}
+
+#[test]
+fn test_fast_path_detects_do_bit() {
+    let with_do = fast_path::parse_query(&build_edns_do_query())
+        .expect("EDNS+DO query should be fast-path parseable");
+    assert!(
+        with_do.wants_dnssec,
+        "wants_dnssec must be true when the client set the EDNS DO bit"
+    );
+
+    let without_do = fast_path::parse_query(&build_edns_query())
+        .expect("EDNS query should be fast-path parseable");
+    assert!(
+        !without_do.wants_dnssec,
+        "wants_dnssec must be false when the DO bit is clear"
+    );
+}
+
 #[test]
 fn test_fast_path_response_includes_opt_when_client_sent_edns() {
     let query_bytes = build_edns_query();
