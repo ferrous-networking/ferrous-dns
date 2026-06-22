@@ -1,5 +1,5 @@
 use crate::ports::{PagedQueryResult, QueryLogRepository};
-use ferrous_dns_domain::query_log::{QueryCategory, QueryLog, QueryLogFilter};
+use ferrous_dns_domain::query_log::{DnssecStatus, QueryCategory, QueryLog, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::sync::Arc;
 
@@ -27,14 +27,12 @@ pub struct PagedQueryInput<'a> {
 /// in the query log. Accepts the `any` sentinel (any validated row) and the
 /// four outcome statuses, case-insensitively.
 fn normalize_dnssec_status(value: &str) -> Result<String, String> {
-    match value.to_ascii_lowercase().as_str() {
-        "any" => Ok("any".to_string()),
-        "secure" => Ok("Secure".to_string()),
-        "insecure" => Ok("Insecure".to_string()),
-        "bogus" => Ok("Bogus".to_string()),
-        "indeterminate" => Ok("Indeterminate".to_string()),
-        other => Err(format!("invalid dnssec status: '{other}'")),
+    if value.eq_ignore_ascii_case("any") {
+        return Ok("any".to_string());
     }
+    value
+        .parse::<DnssecStatus>()
+        .map(|status| status.as_str().to_string())
 }
 
 pub struct GetRecentQueriesUseCase {

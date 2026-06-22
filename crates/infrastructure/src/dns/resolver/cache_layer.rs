@@ -157,7 +157,7 @@ impl CachedResolver {
         // Never cache a Bogus result. Under Strict enforcement it must SERVFAIL
         // on every query, so the fast cache path must not be able to serve it;
         // under Permissive, re-validating a broken domain each time is fine.
-        if resolution.dnssec_status == Some("Bogus") {
+        if resolution.dnssec_status == Some(DnssecStatus::Bogus.as_str()) {
             return;
         }
         if resolution.addresses.is_empty() {

@@ -19,6 +19,22 @@ pub fn patch_wire_id(wire: &[u8], new_id: u16) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+/// Patches the query ID like [`patch_wire_id`] and additionally clears the
+/// Authenticated Data (AD) bit in the response flags.
+///
+/// The cached-wire fast path is only taken for clients that did **not** set the
+/// EDNS DO bit, so per RFC 6840 §5.8 we must never assert AD to them — yet the
+/// cached upstream bytes may carry AD=1 from the validating resolver. Clearing
+/// it here keeps the fast path compliant without re-parsing the message.
+pub fn patch_wire_id_clear_ad(wire: &[u8], new_id: u16) -> Option<Vec<u8>> {
+    let mut buf = patch_wire_id(wire, new_id)?;
+    // Byte 3 holds RA/Z/AD/CD/RCODE; 0x20 is the AD bit.
+    if buf.len() > 3 {
+        buf[3] &= !0x20;
+    }
+    Some(buf)
+}
+
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],

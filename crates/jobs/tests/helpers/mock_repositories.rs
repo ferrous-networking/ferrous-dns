@@ -6,7 +6,9 @@ use ferrous_dns_application::ports::{
     CacheStats, ClientRepository, HostnameResolver, QueryLogRepository, TimeGranularity,
     TimelineBucket,
 };
-use ferrous_dns_domain::{Client, ClientStats, DomainError, QueryLog, QueryStats, RecordType};
+use ferrous_dns_domain::{
+    Client, ClientStats, DnssecStats, DomainError, QueryLog, QueryStats, RecordType,
+};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -518,6 +520,10 @@ impl QueryLogRepository for MockQueryLogRepository {
             most_queried_type: None,
             record_type_distribution: Vec::new(),
         })
+    }
+
+    async fn get_dnssec_stats(&self, _period_hours: f32) -> Result<DnssecStats, DomainError> {
+        Ok(DnssecStats::default())
     }
 
     async fn get_timeline(

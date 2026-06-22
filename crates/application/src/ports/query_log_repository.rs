@@ -62,11 +62,10 @@ pub trait QueryLogRepository: Send + Sync {
     ) -> Result<PagedQueryResult, DomainError>;
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError>;
     /// Aggregated DNSSEC validation outcome counts over client queries in the
-    /// period. Defaults to all-zero so test doubles need not implement it.
-    async fn get_dnssec_stats(&self, period_hours: f32) -> Result<DnssecStats, DomainError> {
-        let _ = period_hours;
-        Ok(DnssecStats::default())
-    }
+    /// period. Required (no default) so a real repository can never silently
+    /// report all-zero by forgetting to implement it; test doubles return
+    /// `DnssecStats::default()` explicitly.
+    async fn get_dnssec_stats(&self, period_hours: f32) -> Result<DnssecStats, DomainError>;
     async fn get_timeline(
         &self,
         period_hours: u32,

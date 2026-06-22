@@ -2,7 +2,7 @@ use super::super::dnssec::DnssecValidatorPool;
 use super::super::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError};
 use hickory_proto::op::Message;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -99,9 +99,9 @@ impl DnsResolver for DnssecResolver {
                     "DNSSEC validation failed, returning insecure status"
                 );
 
-                // Capitalized to match `DnssecStatus::FromStr`; a validation
-                // error fails open (Insecure, served, AD=0), never SERVFAIL.
-                resolution.dnssec_status = Some("Insecure");
+                // A validation error fails open (Insecure, served, AD=0), never
+                // SERVFAIL.
+                resolution.dnssec_status = Some(DnssecStatus::Insecure.as_str());
                 Ok(resolution)
             }
         }

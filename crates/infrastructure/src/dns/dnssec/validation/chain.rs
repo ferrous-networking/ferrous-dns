@@ -4,7 +4,7 @@ use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
 use crate::dns::dnssec::types::{DnskeyRecord, DsRecord, RrsigRecord};
 use crate::dns::forwarding::record_type_map::RecordTypeMapper;
 use crate::dns::load_balancer::PoolManager;
-use ferrous_dns_domain::{DomainError, RecordType};
+use ferrous_dns_domain::{DnssecStatus, DomainError, RecordType};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::dnssec::PublicKey;
 use hickory_proto::rr::{RData, Record};
@@ -40,12 +40,21 @@ pub enum ValidationResult {
 }
 
 impl ValidationResult {
+    /// Canonical status string, sourced from the domain [`DnssecStatus`] enum so
+    /// the validator's output cannot drift from the strings the rest of the
+    /// system compares against and persists.
     pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Secure => "Secure",
-            Self::Insecure => "Insecure",
-            Self::Bogus => "Bogus",
-            Self::Indeterminate => "Indeterminate",
+        DnssecStatus::from(*self).as_str()
+    }
+}
+
+impl From<ValidationResult> for DnssecStatus {
+    fn from(value: ValidationResult) -> Self {
+        match value {
+            ValidationResult::Secure => DnssecStatus::Secure,
+            ValidationResult::Insecure => DnssecStatus::Insecure,
+            ValidationResult::Bogus => DnssecStatus::Bogus,
+            ValidationResult::Indeterminate => DnssecStatus::Indeterminate,
         }
     }
 }
@@ -54,6 +63,12 @@ struct DnskeyQueryResult {
     keys: Arc<[DnskeyRecord]>,
     rrsigs: Vec<RrsigRecord>,
     raw_records: Vec<Record>,
+    /// True when the keys came from the DNSKEY cache (already validated on the
+    /// original fetch) rather than a fresh upstream response that still needs
+    /// its self-signature checked.
+    from_cache: bool,
+    /// TTL to cache the validated key set under, once validation succeeds.
+    ttl: u32,
 }
 
 pub struct ChainVerifier {
@@ -234,14 +249,33 @@ impl ChainVerifier {
             ));
         }
 
-        let mut rrsig_ok = false;
+        // RFC 4035 §5.2: before *any* key in the DNSKEY RRset is trusted, the RRset
+        // must be validated with a key that a DS RR refers to. A fresh (cache-miss)
+        // response therefore MUST carry a self-signature that verifies against a
+        // DS-matched key; otherwise the zone is Bogus. Trusting every returned key
+        // without this check would let an on-path attacker inject a rogue ZSK (with
+        // the DNSKEY RRSIGs stripped) and have answers it signs accepted as Secure.
+        //
+        // A cache hit is exempt: the DNSKEY cache is only populated *below*, after a
+        // successful self-signature validation, so cached keys are already
+        // authenticated — and the cache does not retain the RRSIGs needed to re-check.
+        if !dnskey_result.from_cache {
+            if dnskey_result.rrsigs.is_empty() || dnskey_result.raw_records.is_empty() {
+                warn!(
+                    domain = %child_domain,
+                    "DNSKEY RRset carried no self-signature; cannot establish trust"
+                );
+                return Err(DomainError::InvalidDnsResponse(
+                    "DNSKEY RRset missing self-signature".into(),
+                ));
+            }
 
-        if !dnskey_result.rrsigs.is_empty() && !dnskey_result.raw_records.is_empty() {
             let now_secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as u32)
                 .unwrap_or(0);
 
+            let mut rrsig_ok = false;
             'outer: for rrsig in &dnskey_result.rrsigs {
                 for key in &validated_keys {
                     match self.crypto_verifier.verify_rrsig(
@@ -277,12 +311,14 @@ impl ChainVerifier {
                     "DNSKEY RRSIG verification failed".into(),
                 ));
             }
-        } else {
-            debug!(
-                domain = %child_domain,
-                rrsigs = dnskey_result.rrsigs.len(),
-                raw_records = dnskey_result.raw_records.len(),
-                "Skipping RRSIG verification (cache hit or no RRSIGs in response)"
+
+            // Self-signature verified by a DS-matched key ⇒ every key in the RRset
+            // (KSK + ZSKs) is now authenticated. Persist only this validated set so
+            // later lookups skip the round trip without re-checking.
+            self.dnssec_cache.cache_dnskey(
+                child_domain,
+                dnskey_result.keys.to_vec(),
+                dnskey_result.ttl,
             );
         }
 
@@ -317,10 +353,21 @@ impl ChainVerifier {
 
                 for record in &upstream_result.response.raw_answers {
                     if let RData::DNSSEC(DNSSECRData::DS(ds)) = record.data() {
+                        let digest_type = u8::from(ds.digest_type());
+                        // RFC 8624: the SHA-1 DS digest (type 1) MUST NOT be used
+                        // for validation. Dropping it here means a delegation that
+                        // publishes only SHA-1 DS records is treated as having no
+                        // usable DS (Insecure, served, AD=0), while a zone that also
+                        // publishes a SHA-256/384 DS validates against the stronger
+                        // digest.
+                        if digest_type == 1 {
+                            debug!(domain = %domain, "Ignoring SHA-1 DS digest (RFC 8624)");
+                            continue;
+                        }
                         records.push(DsRecord {
                             key_tag: ds.key_tag(),
                             algorithm: u8::from(ds.algorithm()),
-                            digest_type: u8::from(ds.digest_type()),
+                            digest_type,
                             digest: ds.digest().to_vec(),
                         });
                     }
@@ -359,6 +406,8 @@ impl ChainVerifier {
                 keys,
                 rrsigs: vec![],
                 raw_records: vec![],
+                from_cache: true,
+                ttl: 0,
             });
         }
 
@@ -417,17 +466,22 @@ impl ChainVerifier {
                     domain = %domain,
                     keys = keys.len(),
                     rrsigs = rrsigs.len(),
-                    "DNSKEY query successful, caching result"
+                    "DNSKEY query successful"
                 );
 
+                // Caching is deferred to validate_delegation, which only caches
+                // the key set *after* its DNSKEY self-signature has been verified
+                // against a DS-matched key. Caching here would let an unvalidated
+                // (potentially attacker-injected) key set poison later lookups.
                 let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-                cache.cache_dnskey(domain, keys.clone(), ttl);
 
                 let keys_arc: Arc<[DnskeyRecord]> = Arc::from(keys);
                 Ok(DnskeyQueryResult {
                     keys: keys_arc,
                     rrsigs,
                     raw_records,
+                    from_cache: false,
+                    ttl,
                 })
             }
             Err(e) => {

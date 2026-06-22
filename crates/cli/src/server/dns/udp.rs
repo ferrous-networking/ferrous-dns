@@ -147,9 +147,10 @@ async fn run_udp_worker_batch(
                                 fast_query.record_type,
                                 client_ip,
                             ) {
-                                if let Some(patched) =
-                                    wire_response::patch_wire_id(&wire_bytes, fast_query.id)
-                                {
+                                if let Some(patched) = wire_response::patch_wire_id_clear_ad(
+                                    &wire_bytes,
+                                    fast_query.id,
+                                ) {
                                     pending_wire.push(pktinfo::PendingWireResponse {
                                         data: patched,
                                         to: msg.src,
@@ -256,9 +257,10 @@ async fn run_udp_worker_single(
                                     fast_query.record_type,
                                     client_ip,
                                 ) {
-                                    if let Some(patched) =
-                                        wire_response::patch_wire_id(&wire_bytes, fast_query.id)
-                                    {
+                                    if let Some(patched) = wire_response::patch_wire_id_clear_ad(
+                                        &wire_bytes,
+                                        fast_query.id,
+                                    ) {
                                         let _ = pktinfo::try_send_with_src_ip(
                                             socket.get_ref(),
                                             &patched,

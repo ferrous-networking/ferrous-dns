@@ -156,6 +156,47 @@ pub struct QueryStats {
     pub record_type_distribution: Vec<(RecordType, f64)>,
 }
 
+/// Canonical DNSSEC validation outcome. This is the single source of truth for
+/// the status strings persisted in the query log (`dnssec_status` column) and
+/// threaded through `DnsResolution`. Control-flow decisions (AD-bit gating,
+/// Strict-mode SERVFAIL, cache suppression) compare against `as_str()` rather
+/// than bare string literals, so a typo becomes a compile error instead of a
+/// silently mis-gated security decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DnssecStatus {
+    Secure,
+    Insecure,
+    Bogus,
+    Indeterminate,
+}
+
+impl DnssecStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Secure => "Secure",
+            Self::Insecure => "Insecure",
+            Self::Bogus => "Bogus",
+            Self::Indeterminate => "Indeterminate",
+        }
+    }
+}
+
+impl FromStr for DnssecStatus {
+    type Err = String;
+
+    /// Case-insensitive parse of a status string (accepts both the canonical
+    /// `Secure` casing used in storage and lowercase HTTP filter values).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "secure" => Ok(Self::Secure),
+            "insecure" => Ok(Self::Insecure),
+            "bogus" => Ok(Self::Bogus),
+            "indeterminate" => Ok(Self::Indeterminate),
+            other => Err(format!("invalid dnssec status: '{other}'")),
+        }
+    }
+}
+
 /// Aggregated DNSSEC validation outcome counts for a period, over client
 /// queries only. `validated` counts queries that received a determination
 /// (any non-NULL status) and equals the sum of `secure`, `insecure`, `bogus`

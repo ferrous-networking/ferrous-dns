@@ -13,8 +13,8 @@ use crate::ports::{
     SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DomainError,
-    NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
+    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DnssecStatus,
+    DomainError, NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
     ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
@@ -708,7 +708,7 @@ impl HandleDnsQueryUseCase {
                 // is enforced; Insecure/Indeterminate/errors fail open.
                 if self.dnssec_enforce
                     && !request.checking_disabled
-                    && resolution.dnssec_status == Some("Bogus")
+                    && resolution.dnssec_status == Some(DnssecStatus::Bogus.as_str())
                 {
                     self.log(&QueryLog {
                         dnssec_status: resolution.dnssec_status,
