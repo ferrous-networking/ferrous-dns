@@ -204,7 +204,8 @@ impl DnsServices {
             config.dns.local_domain.as_deref(),
             &config.dns.rebinding_allowlist,
         )
-        .with_rate_limiter(rate_limiter);
+        .with_rate_limiter(rate_limiter)
+        .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces());
 
         if let Some((ref detector, ref tx)) = tunneling_detector {
             handler = handler

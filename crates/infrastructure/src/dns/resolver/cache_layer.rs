@@ -154,6 +154,12 @@ impl CachedResolver {
     }
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
+        // Never cache a Bogus result. Under Strict enforcement it must SERVFAIL
+        // on every query, so the fast cache path must not be able to serve it;
+        // under Permissive, re-validating a broken domain each time is fine.
+        if resolution.dnssec_status == Some("Bogus") {
+            return;
+        }
         if resolution.addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
                 let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl).max(1);
