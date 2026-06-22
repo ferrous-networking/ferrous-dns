@@ -384,6 +384,20 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "block_ttl",
             toml_edit::Value::from(config.blocking.block_ttl as i64),
         );
+        // Optional custom sinkhole targets: write when set, drop the key when
+        // cleared so the file reflects "no custom target" (falls back to null).
+        match config.blocking.sinkhole_ipv4 {
+            Some(addr) => set_val(t, "sinkhole_ipv4", toml_edit::Value::from(addr.to_string())),
+            None => {
+                t.remove("sinkhole_ipv4");
+            }
+        }
+        match config.blocking.sinkhole_ipv6 {
+            Some(addr) => set_val(t, "sinkhole_ipv6", toml_edit::Value::from(addr.to_string())),
+            None => {
+                t.remove("sinkhole_ipv6");
+            }
+        }
     }
 
     // ── [logging] ───────────────────────────────────────────────────────

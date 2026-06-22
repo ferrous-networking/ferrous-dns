@@ -90,7 +90,7 @@
 - [ ] DNSSEC validation enforcement (RFC 4035 / RFC 6840) — SERVFAIL on Bogus, AD bit set/clear from validation, honor client CD bit (upgrade from current advisory `dnssec_status` tagging)
 - [ ] DNS-over-QUIC (DoQ) server listener (RFC 9250) — serve encrypted DNS to clients over QUIC (upstream DoQ already supported)
 - [ ] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `64:ff9b::/96` well-known prefix for IPv6-only clients
-- [ ] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`)
+- [x] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`) — `[blocking]` `sinkhole_ipv4` / `sinkhole_ipv6`, applied to `null_ip` blocked answers
 
 ### 🌟 v1.0.0 - Production Ready
 

@@ -108,6 +108,8 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             whitelist: config.blocking.whitelist.clone(),
             block_mode: crate::dto::config::block_mode_to_string(config.blocking.block_mode),
             block_ttl: config.blocking.block_ttl,
+            sinkhole_ipv4: crate::dto::config::sinkhole_to_string(config.blocking.sinkhole_ipv4),
+            sinkhole_ipv6: crate::dto::config::sinkhole_to_string(config.blocking.sinkhole_ipv6),
         },
         logging: LoggingConfigResponse {
             level: config.logging.level.clone(),

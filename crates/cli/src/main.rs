@@ -145,6 +145,8 @@ async fn async_main() -> anyhow::Result<()> {
     let block_policy = BlockPolicy {
         mode: config.blocking.block_mode,
         ttl: config.blocking.block_ttl,
+        sinkhole_ipv4: config.blocking.sinkhole_ipv4,
+        sinkhole_ipv6: config.blocking.sinkhole_ipv6,
     };
     let dns_handler = DnsServerHandler::new(handler_use_case.clone(), block_policy);
     let core_ids_for_dns = core_affinity::get_core_ids().unwrap_or_default();
