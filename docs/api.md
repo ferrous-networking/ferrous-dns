@@ -243,14 +243,22 @@ Returns DNS-specific settings (non-FQDN blocking, PTR blocking, local domain).
 POST /api/settings
 ```
 
+**Full replace** — unlike `POST /api/config` (a partial update), this endpoint overwrites the entire DNS settings form. Any field you omit reverts to its default: an omitted `sinkhole_ipv4` clears a previously-set sinkhole, an omitted `block_mode` resets it to `null_ip`. Send the complete object:
+
 ```json
 {
   "never_forward_non_fqdn": true,
   "never_forward_reverse_lookups": true,
   "local_domain": "lan",
-  "local_dns_server": "192.168.1.1:53"
+  "local_dns_server": "192.168.1.1:53",
+  "block_mode": "null_ip",
+  "block_ttl": 60,
+  "sinkhole_ipv4": "192.168.1.2",
+  "sinkhole_ipv6": "fd00::2"
 }
 ```
+
+`sinkhole_ipv4` / `sinkhole_ipv6` set a custom block target for `null_ip` mode (empty string = the null address `0.0.0.0` / `::`). A non-empty value that is not a valid address of the matching family is rejected with `{ "success": false, "error": "Invalid IPv4 sinkhole address: …" }` and nothing is saved. See [Custom Sinkhole IP](configuration/blocking.md#custom-sinkhole-ip).
 
 ---
 

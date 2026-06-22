@@ -478,7 +478,23 @@
                                style="max-width:160px;font-family:monospace">
                         <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">How long clients cache the Null IP answer.</p>
                     </div>
+                    <div class="form-group" style="margin-bottom:0" x-show="settings.block_mode==='null_ip'" x-cloak>
+                        <label class="form-label">Sinkhole IPv4 (A)</label>
+                        <input type="text" x-model="settings.sinkhole_ipv4" placeholder="0.0.0.0"
+                               style="max-width:200px;font-family:monospace">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Custom A target for blocked domains. Leave empty for <code>0.0.0.0</code>.</p>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0" x-show="settings.block_mode==='null_ip'" x-cloak>
+                        <label class="form-label">Sinkhole IPv6 (AAAA)</label>
+                        <input type="text" x-model="settings.sinkhole_ipv6" placeholder="::"
+                               style="max-width:200px;font-family:monospace">
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Custom AAAA target. Leave empty for <code>::</code>.</p>
+                    </div>
                 </div>
+                <p x-show="settings.block_mode==='null_ip'" x-cloak style="font-size:12px;color:var(--text-secondary);margin:12px 0 0;display:flex;align-items:flex-start;gap:6px">
+                    <i data-lucide="alert-triangle" style="width:14px;height:14px;color:#F59E0B;flex-shrink:0;margin-top:2px"></i>
+                    <span>Point the sinkhole at this server's LAN IP if it serves a block page. Avoid loopback (<code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">127.0.0.1</code> / <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">::1</code>) — it resolves to each client's own machine, not this server.</span>
+                </p>
             </div>
         </div>
 

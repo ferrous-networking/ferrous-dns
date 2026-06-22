@@ -25,6 +25,10 @@ const DEFAULT_TTL: u32 = 60;
 pub struct BlockPolicy {
     pub mode: BlockResponseMode,
     pub ttl: u32,
+    /// Custom A target for `NullIp` blocks; `None` falls back to `0.0.0.0`.
+    pub sinkhole_ipv4: Option<Ipv4Addr>,
+    /// Custom AAAA target for `NullIp` blocks; `None` falls back to `::`.
+    pub sinkhole_ipv6: Option<Ipv6Addr>,
 }
 
 #[derive(Clone)]
@@ -600,11 +604,11 @@ pub fn build_blocked_wire(
             resp.set_response_code(ResponseCode::NoError);
             if let Some(q) = queries.first() {
                 let rdata = match q.query_type() {
-                    RecordType::A => {
-                        Some(RData::A(hickory_proto::rr::rdata::A(Ipv4Addr::UNSPECIFIED)))
-                    }
+                    RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(
+                        policy.sinkhole_ipv4.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                    ))),
                     RecordType::AAAA => Some(RData::AAAA(hickory_proto::rr::rdata::AAAA(
-                        Ipv6Addr::UNSPECIFIED,
+                        policy.sinkhole_ipv6.unwrap_or(Ipv6Addr::UNSPECIFIED),
                     ))),
                     // Other record types: NODATA (NOERROR, empty answer).
                     _ => None,
@@ -684,9 +688,11 @@ pub async fn send_blocked_response<R: ResponseHandler>(
         BlockResponseMode::NoData => (ResponseCode::NoError, Vec::new()),
         BlockResponseMode::NullIp => {
             let rdata = match query_type {
-                RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(Ipv4Addr::UNSPECIFIED))),
+                RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(
+                    policy.sinkhole_ipv4.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                ))),
                 RecordType::AAAA => Some(RData::AAAA(hickory_proto::rr::rdata::AAAA(
-                    Ipv6Addr::UNSPECIFIED,
+                    policy.sinkhole_ipv6.unwrap_or(Ipv6Addr::UNSPECIFIED),
                 ))),
                 // Other record types: NODATA (NOERROR, empty answer).
                 _ => None,

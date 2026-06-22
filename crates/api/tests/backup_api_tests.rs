@@ -876,6 +876,24 @@ async fn test_export_includes_local_records_from_config() {
 }
 
 #[tokio::test]
+async fn test_export_includes_block_response_config() {
+    let (app, config, _pool) = create_test_app().await;
+
+    {
+        let mut cfg = config.write().await;
+        cfg.blocking.block_mode = ferrous_dns_domain::BlockResponseMode::NxDomain;
+        cfg.blocking.sinkhole_ipv4 = Some(std::net::Ipv4Addr::new(192, 168, 1, 2));
+        cfg.blocking.sinkhole_ipv6 = Some("fd00::2".parse().unwrap());
+    }
+
+    let (_, json) = do_export(app).await;
+    let blocking = &json["config"]["blocking"];
+    assert_eq!(blocking["block_mode"], "nxdomain");
+    assert_eq!(blocking["sinkhole_ipv4"], "192.168.1.2");
+    assert_eq!(blocking["sinkhole_ipv6"], "fd00::2");
+}
+
+#[tokio::test]
 async fn test_export_includes_groups_from_database() {
     let (app, _config, _pool) = create_test_app().await;
     let (_, json) = do_export(app).await;

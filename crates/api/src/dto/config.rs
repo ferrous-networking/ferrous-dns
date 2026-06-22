@@ -1,3 +1,5 @@
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -108,6 +110,12 @@ pub struct BlockingConfigResponse {
     pub whitelist: Vec<String>,
     pub block_mode: String,
     pub block_ttl: u32,
+    /// Custom A target for `null_ip` blocks; empty string means the null
+    /// address `0.0.0.0`.
+    pub sinkhole_ipv4: String,
+    /// Custom AAAA target for `null_ip` blocks; empty string means the null
+    /// address `::`.
+    pub sinkhole_ipv6: String,
 }
 
 /// Converts the domain `BlockResponseMode` to its snake_case API string.
@@ -125,6 +133,38 @@ pub fn block_mode_from_str(value: &str) -> ferrous_dns_domain::BlockResponseMode
         "refused" => BlockResponseMode::Refused,
         _ => BlockResponseMode::NullIp,
     }
+}
+
+/// Formats an optional sinkhole address as an API string (empty when unset).
+pub fn sinkhole_to_string(addr: Option<impl ToString>) -> String {
+    addr.map(|a| a.to_string()).unwrap_or_default()
+}
+
+/// Parses an API sinkhole IPv4 string. Empty/whitespace clears it (`Ok(None)`);
+/// a non-empty value that isn't a valid IPv4 address is rejected so a typo can't
+/// silently revert the block target to `0.0.0.0`.
+pub fn parse_sinkhole_ipv4(value: &str) -> Result<Option<Ipv4Addr>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<Ipv4Addr>()
+        .map(Some)
+        .map_err(|_| format!("Invalid IPv4 sinkhole address: {trimmed}"))
+}
+
+/// Parses an API sinkhole IPv6 string. Empty/whitespace clears it (`Ok(None)`);
+/// a non-empty non-IPv6 value is rejected.
+pub fn parse_sinkhole_ipv6(value: &str) -> Result<Option<Ipv6Addr>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<Ipv6Addr>()
+        .map(Some)
+        .map_err(|_| format!("Invalid IPv6 sinkhole address: {trimmed}"))
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -228,6 +268,10 @@ pub struct BlockingConfigUpdate {
     pub whitelist: Option<Vec<String>>,
     pub block_mode: Option<String>,
     pub block_ttl: Option<u32>,
+    /// Custom A target for `null_ip` blocks; empty string clears it.
+    pub sinkhole_ipv4: Option<String>,
+    /// Custom AAAA target for `null_ip` blocks; empty string clears it.
+    pub sinkhole_ipv6: Option<String>,
 }
 
 fn default_block_mode() -> String {
@@ -257,6 +301,12 @@ pub struct SettingsDto {
 
     #[serde(default = "default_block_ttl")]
     pub block_ttl: u32,
+
+    #[serde(default)]
+    pub sinkhole_ipv4: String,
+
+    #[serde(default)]
+    pub sinkhole_ipv6: String,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -275,6 +325,8 @@ impl From<ConfigResponse> for SettingsDto {
             local_dns_server: config.dns.local_dns_server.unwrap_or_default(),
             block_mode: config.blocking.block_mode,
             block_ttl: config.blocking.block_ttl,
+            sinkhole_ipv4: config.blocking.sinkhole_ipv4,
+            sinkhole_ipv6: config.blocking.sinkhole_ipv6,
         }
     }
 }

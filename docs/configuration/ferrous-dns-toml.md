@@ -564,6 +564,8 @@ custom_blocked = []
 whitelist      = []
 block_mode     = "null_ip"
 block_ttl      = 60
+# sinkhole_ipv4 = "192.168.1.2"
+# sinkhole_ipv6 = "fd00::2"
 ```
 
 | Option | Type | Default | Description |
@@ -573,9 +575,11 @@ block_ttl      = 60
 | `whitelist` | `list` | `[]` | Domains that are always allowed, even if present in a blocklist |
 | `block_mode` | `string` | `"null_ip"` | How blocked domains are answered: `null_ip` (cacheable `0.0.0.0`/`::`, recommended), `nxdomain`, `nodata`, or `refused` (legacy, non-cacheable) |
 | `block_ttl` | `int` | `60` | TTL in seconds clients/resolvers cache a blocked answer; also drives the synthetic SOA `minimum` for `nxdomain`/`nodata` |
+| `sinkhole_ipv4` | `string` | _(unset)_ | Custom `A` target for `null_ip` blocks (e.g. a LAN block-page server); unset returns `0.0.0.0`. See [Custom Sinkhole IP](blocking.md#custom-sinkhole-ip) |
+| `sinkhole_ipv6` | `string` | _(unset)_ | Custom `AAAA` target for `null_ip` blocks; unset returns `::` |
 
 !!! note "Restart required"
-    `block_mode` and `block_ttl` are applied at startup; changing them needs a server restart. See [Block Response Mode](blocking.md#block-response-mode) for what each mode returns.
+    `block_mode`, `block_ttl`, `sinkhole_ipv4`, and `sinkhole_ipv6` are applied at startup; changing them needs a server restart. See [Block Response Mode](blocking.md#block-response-mode) for what each mode returns.
 
 See [Blocking & Filtering](../features/blocking-filtering.md).
 
