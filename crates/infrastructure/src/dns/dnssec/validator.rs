@@ -280,6 +280,42 @@ impl DnssecValidator {
         None
     }
 
+    /// Distinct signer zones across all non-DNSKEY RRSIGs in `answers`, in order
+    /// of first appearance. A cross-zone CNAME chain is signed by more than one
+    /// zone, each of which must be anchored before its RRset can be trusted.
+    fn extract_signer_zones(answers: &[Record]) -> Vec<String> {
+        let mut zones: Vec<String> = Vec::new();
+        for record in answers {
+            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
+                let input = rrsig.input();
+                if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
+                    continue;
+                }
+                let signer = input.signer_name.to_string();
+                if !zones.contains(&signer) {
+                    zones.push(signer);
+                }
+            }
+        }
+        zones
+    }
+
+    /// Combines per-zone chain-validation outcomes for a multi-signer answer.
+    /// The answer is only `Secure` when every signer zone validates; otherwise
+    /// the most severe outcome wins (Bogus > Indeterminate > Insecure).
+    fn combine_chain_status(a: ValidationResult, b: ValidationResult) -> ValidationResult {
+        match (a, b) {
+            (ValidationResult::Bogus, _) | (_, ValidationResult::Bogus) => ValidationResult::Bogus,
+            (ValidationResult::Indeterminate, _) | (_, ValidationResult::Indeterminate) => {
+                ValidationResult::Indeterminate
+            }
+            (ValidationResult::Insecure, _) | (_, ValidationResult::Insecure) => {
+                ValidationResult::Insecure
+            }
+            _ => ValidationResult::Secure,
+        }
+    }
+
     /// Runs full validation over an already-fetched message: positive answers go
     /// through RRset signature + wildcard-expansion checks; empty answers
     /// (NXDOMAIN / NODATA) go through authenticated denial of existence.
@@ -293,12 +329,20 @@ impl DnssecValidator {
             return self.validate_negative(domain, record_type, message).await;
         }
 
-        let chain_domain =
-            Self::extract_signer_zone(message.answers()).unwrap_or_else(|| domain.to_owned());
-        let mut status = self
-            .chain_verifier
-            .verify_chain(&chain_domain, record_type)
-            .await?;
+        // Establish the chain of trust for *every* signer zone present in the
+        // answer (a cross-zone CNAME chain carries more than one), so each answer
+        // RRset can later be checked against the keys of its own signer zone. If
+        // the answer is unsigned there are no signer zones; fall back to the
+        // queried name so an insecure delegation is still detected.
+        let mut signer_zones = Self::extract_signer_zones(message.answers());
+        if signer_zones.is_empty() {
+            signer_zones.push(domain.to_owned());
+        }
+        let mut status = ValidationResult::Secure;
+        for zone in &signer_zones {
+            let zone_status = self.chain_verifier.verify_chain(zone, record_type).await?;
+            status = Self::combine_chain_status(status, zone_status);
+        }
 
         if status == ValidationResult::Secure {
             let all_answers: Vec<Record> = message.answers().to_vec();
@@ -345,22 +389,22 @@ impl DnssecValidator {
         Name::from_str(&fqdn).ok()
     }
 
-    /// True when `record` (a single-record NSEC/NSEC3 RRset) is covered by a
-    /// valid RRSIG in `authority`, signed by a key already established in the
-    /// chain of trust.
+    /// True when the `rrset` (every record sharing `owner` + `rtype`) is covered
+    /// by a valid RRSIG in `sigs`, signed by a key already established in the
+    /// chain of trust. Used both for single-record NSEC/NSEC3 authority RRsets
+    /// and for multi-record positive-answer RRsets.
     fn rrset_is_authentic(
         &self,
-        record: &Record,
-        authority: &[Record],
+        owner: &Name,
+        rtype: hickory_proto::rr::RecordType,
+        rrset: &[Record],
+        sigs: &[Record],
         crypto: &SignatureVerifier,
         now_secs: u32,
     ) -> bool {
-        let owner = record.name();
-        let rtype = record.record_type();
-        let data_records = [record.clone()];
         let mut outcome = "no-rrsig";
 
-        for sig in authority {
+        for sig in sigs {
             let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = sig.data() else {
                 continue;
             };
@@ -390,14 +434,14 @@ impl DnssecValidator {
                 continue;
             };
             for key in keys.iter() {
-                match crypto.verify_rrsig_with_name(&rr, key, owner, &data_records, now_secs) {
+                match crypto.verify_rrsig_with_name(&rr, key, owner, rrset, now_secs) {
                     Ok(true) => return true,
                     Ok(false) => outcome = "sig-false",
                     Err(_) => outcome = "sig-err",
                 }
             }
         }
-        debug!(owner = %owner, ?rtype, outcome, "denial: rrset not authentic");
+        debug!(owner = %owner, ?rtype, outcome, "rrset not authentic");
         false
     }
 
@@ -415,7 +459,14 @@ impl DnssecValidator {
         for record in authority {
             match record.data() {
                 RData::DNSSEC(DNSSECRData::NSEC3(nsec3))
-                    if self.rrset_is_authentic(record, authority, crypto, now_secs) =>
+                    if self.rrset_is_authentic(
+                        record.name(),
+                        record.record_type(),
+                        std::slice::from_ref(record),
+                        authority,
+                        crypto,
+                        now_secs,
+                    ) =>
                 {
                     if let Some(label) = record
                         .name()
@@ -430,7 +481,14 @@ impl DnssecValidator {
                     }
                 }
                 RData::DNSSEC(DNSSECRData::NSEC(nsec))
-                    if self.rrset_is_authentic(record, authority, crypto, now_secs) =>
+                    if self.rrset_is_authentic(
+                        record.name(),
+                        record.record_type(),
+                        std::slice::from_ref(record),
+                        authority,
+                        crypto,
+                        now_secs,
+                    ) =>
                 {
                     nsecs.push(VerifiedNsec {
                         owner: record.name(),
@@ -530,94 +588,77 @@ impl DnssecValidator {
         domain: &str,
         all_answers: &[Record],
     ) -> ValidationResult {
-        let mut rrsigs: Vec<RrsigRecord> = Vec::new();
-        let mut data_records: Vec<Record> = Vec::new();
-
+        let mut has_data = false;
+        let mut has_rrsig = false;
         for record in all_answers {
             match record.data() {
                 RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) => {
-                    let input = rrsig.input();
-                    if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
-                        continue;
+                    if rrsig.input().type_covered != hickory_proto::rr::RecordType::DNSKEY {
+                        has_rrsig = true;
                     }
-                    let Some(type_covered) = RecordTypeMapper::from_hickory(input.type_covered)
-                    else {
-                        continue;
-                    };
-                    rrsigs.push(RrsigRecord {
-                        type_covered,
-                        algorithm: u8::from(input.algorithm),
-                        labels: input.num_labels,
-                        original_ttl: input.original_ttl,
-                        signature_expiration: input.sig_expiration.get(),
-                        signature_inception: input.sig_inception.get(),
-                        key_tag: input.key_tag,
-                        signer_name: input.signer_name.to_string(),
-                        signature: rrsig.sig().to_vec(),
-                    });
                 }
-                _ => data_records.push(record.clone()),
+                _ => has_data = true,
             }
         }
 
-        if rrsigs.is_empty() {
-            if data_records.is_empty() {
-                // Empty answers are routed to authenticated denial of existence
-                // before reaching here; treat any stray empty RRset as undecided
-                // rather than blindly authentic.
-                debug!(domain = %domain, "No answer RRset to verify");
-                return ValidationResult::Indeterminate;
-            }
+        if !has_data {
+            // Empty answers are routed to authenticated denial of existence
+            // before reaching here; treat any stray empty RRset as undecided
+            // rather than blindly authentic.
+            debug!(domain = %domain, "No answer RRset to verify");
+            return ValidationResult::Indeterminate;
+        }
+        if !has_rrsig {
             debug!(domain = %domain, "No RRSIG for RRset — returning Bogus");
             return ValidationResult::Bogus;
         }
 
         let crypto_verifier = SignatureVerifier;
+        let now = now_secs();
 
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
-            .unwrap_or(0);
-
-        for rrsig in &rrsigs {
-            let zone = &rrsig.signer_name;
-            let Some(zone_keys) = self.chain_verifier.get_zone_keys(zone) else {
-                debug!(zone = %zone, "No trusted keys for signer zone");
+        // Group the answer records into RRsets keyed by (owner, type). EVERY
+        // RRset must be covered by an RRSIG that verifies against a trusted key
+        // (RFC 4035 §5.3.1): verifying just one and returning Secure would let an
+        // attacker append unsigned (or untrusted) RRsets to a response carrying a
+        // single legitimately-signed RRset and still have the whole answer — and
+        // therefore the AD bit — flagged Secure.
+        let mut rrsets: Vec<(&Name, hickory_proto::rr::RecordType, Vec<Record>)> = Vec::new();
+        for record in all_answers {
+            if matches!(record.data(), RData::DNSSEC(DNSSECRData::RRSIG(_))) {
                 continue;
-            };
-
-            let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
-            let owner = data_records
-                .iter()
-                .find(|r| r.record_type() == hickory_type)
-                .map(|r| r.name().to_string())
-                .unwrap_or_else(|| {
-                    if domain.ends_with('.') {
-                        domain.to_string()
-                    } else {
-                        format!("{}.", domain)
-                    }
-                });
-
-            for key in zone_keys.iter() {
-                match crypto_verifier.verify_rrsig(rrsig, key, &owner, &data_records, now_secs) {
-                    Ok(true) => {
-                        debug!(
-                            domain = %domain,
-                            owner = %owner,
-                            key_tag = key.calculate_key_tag(),
-                            "RRset RRSIG verified"
-                        );
-                        return ValidationResult::Secure;
-                    }
-                    Ok(false) => {}
-                    Err(e) => warn!(error = %e, "RRset RRSIG error"),
-                }
+            }
+            let owner = record.name();
+            let rtype = record.record_type();
+            match rrsets
+                .iter_mut()
+                .find(|(o, t, _)| *o == owner && *t == rtype)
+            {
+                Some(entry) => entry.2.push(record.clone()),
+                None => rrsets.push((owner, rtype, vec![record.clone()])),
             }
         }
 
-        warn!(domain = %domain, "RRset RRSIG verification failed");
-        ValidationResult::Bogus
+        for (owner, rtype, records) in &rrsets {
+            if !self.rrset_is_authentic(
+                owner,
+                *rtype,
+                records.as_slice(),
+                all_answers,
+                &crypto_verifier,
+                now,
+            ) {
+                warn!(
+                    domain = %domain,
+                    owner = %owner,
+                    rtype = ?rtype,
+                    "answer RRset not covered by a valid RRSIG — returning Bogus"
+                );
+                return ValidationResult::Bogus;
+            }
+        }
+
+        debug!(domain = %domain, rrsets = rrsets.len(), "all answer RRsets verified");
+        ValidationResult::Secure
     }
 }
 
