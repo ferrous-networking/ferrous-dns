@@ -140,15 +140,23 @@ DNSSEC (DNS Security Extensions) validates that DNS responses are authentic and 
 
 ```toml
 [dns]
-dnssec_enabled = true
+dnssec_mode = "Strict"
 ```
 
-When enabled, Ferrous DNS validates DNSSEC signatures on all upstream responses. Queries that fail validation return `SERVFAIL`, preventing forged responses from reaching clients.
+`dnssec_mode` has three levels:
 
-**Standards**: RFC 4035
+- **`Off`** — no validation; the DNSSEC OK (DO) bit is not requested upstream.
+- **`Permissive`** (default) — every upstream response is validated and tagged (`Secure`/`Insecure`/`Bogus`/`Indeterminate`) in the query log, but the response is delivered unchanged.
+- **`Strict`** — a response that validates as `Bogus` is rejected with `SERVFAIL` (+ Extended DNS Error code 6), preventing forged responses from reaching clients.
+
+The **AD** (Authenticated Data) bit is set only when a response validates as `Secure` and the client did not set the **CD** (Checking Disabled) bit. A client that sets CD opts out of enforcement — Strict mode will not `SERVFAIL` its queries, so it can do its own validation. Enforcement is **fail-open**: only a proven `Bogus` result is rejected; validation errors and timeouts are served.
+
+The `queries_dnssec_bogus` counter (dashboard + Prometheus `ferrousdns_queries_dnssec_bogus`) tracks how many responses failed validation.
+
+**Standards**: RFC 4035, RFC 6840, RFC 8914 (EDE)
 
 !!! note "Performance impact"
-    DNSSEC validation adds a small overhead on cache misses (signature verification). Cache hits have zero DNSSEC overhead. Disable with `dnssec_enabled = false` only for maximum-throughput benchmarking.
+    DNSSEC validation adds a small overhead on cache misses (signature verification + per-zone DNSKEY/DS lookups, cached). Cache hits have zero DNSSEC overhead. Disable with `dnssec_mode = "Off"` only for maximum-throughput benchmarking.
 
 ---
 
