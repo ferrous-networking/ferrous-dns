@@ -68,6 +68,8 @@ sinkhole_ipv6 = "fd00::2"       # AAAA target for blocked domains
 
 The two families are independent: if you set only `sinkhole_ipv4`, blocked `AAAA` queries still return `::` (and vice-versa). The targets apply to **every** domain-verdict block (blocklist, DGA, tunneling, C2), just like `block_mode`. They are ignored in `nxdomain`, `nodata`, and `refused` modes, which carry no address.
 
+A non-empty value must be a valid address of the matching family. A malformed IP is rejected rather than silently ignored: the dashboard and REST API return an error and save nothing, and an invalid value in the config file stops the server from starting (so a typo can't quietly revert the block target to `0.0.0.0` / `::`).
+
 !!! warning "Don't use loopback"
     Point the sinkhole at the **LAN IP** of the host serving the block page, not loopback (`127.0.0.1` / `::1`). A loopback target resolves to each *client's own* machine, not the Ferrous DNS server, so the block page won't load.
 
