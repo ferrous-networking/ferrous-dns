@@ -129,7 +129,16 @@ impl ImportConfigUseCase {
 
         new_config.dns.upstream_servers = sc.dns.upstream_servers.clone();
         new_config.dns.cache_enabled = sc.dns.cache_enabled;
-        new_config.dns.dnssec_enabled = sc.dns.dnssec_enabled;
+        if let Some(ref mode) = sc.dns.dnssec_mode {
+            new_config.dns.dnssec_mode = mode.parse::<ferrous_dns_domain::DnssecMode>().ok();
+        } else if let Some(enabled) = sc.dns.dnssec_enabled {
+            // Back-compat: older snapshots carried a boolean.
+            new_config.dns.dnssec_mode = Some(if enabled {
+                ferrous_dns_domain::DnssecMode::Permissive
+            } else {
+                ferrous_dns_domain::DnssecMode::Off
+            });
+        }
         new_config.dns.cache_eviction_strategy = sc.dns.cache_eviction_strategy.clone();
         new_config.dns.cache_max_entries = sc.dns.cache_max_entries;
         new_config.dns.cache_min_hit_rate = sc.dns.cache_min_hit_rate;

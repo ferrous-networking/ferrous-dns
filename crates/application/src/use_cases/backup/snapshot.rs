@@ -42,7 +42,12 @@ pub struct SnapshotServerConfig {
 pub struct SnapshotDnsConfig {
     pub upstream_servers: Vec<String>,
     pub cache_enabled: bool,
-    pub dnssec_enabled: bool,
+    /// DNSSEC enforcement mode ("off" | "permissive" | "strict"). New field.
+    #[serde(default)]
+    pub dnssec_mode: Option<String>,
+    /// Deprecated: older snapshots stored a boolean. Read for back-compat.
+    #[serde(default)]
+    pub dnssec_enabled: Option<bool>,
     pub cache_eviction_strategy: String,
     pub cache_max_entries: usize,
     pub cache_min_hit_rate: f64,
