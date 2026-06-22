@@ -143,9 +143,10 @@
             opacity: 1;
         }
 
-        .dnssec-icon[data-tooltip="SECURE"]::after    { color: #22C55E; }
-        .dnssec-icon[data-tooltip="INSECURE"]::after  { color: #EAB308; }
-        .dnssec-icon[data-tooltip="BOGUS"]::after     { color: #EF4444; }
+        .dnssec-icon[data-tooltip="SECURE"]::after        { color: #22C55E; }
+        .dnssec-icon[data-tooltip="INSECURE"]::after      { color: #EAB308; }
+        .dnssec-icon[data-tooltip="BOGUS"]::after         { color: #EF4444; }
+        .dnssec-icon[data-tooltip="NOT VALIDATED"]::after { color: #9CA3AF; }
 
         .col-action { text-align: center }
         @media (max-width: 700px) {
