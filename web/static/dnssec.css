@@ -1,0 +1,56 @@
+        .dnssec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .dnssec-stat {
+            padding: 18px 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .dnssec-stat .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dnssec-stat .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-top: 8px;
+            line-height: 1;
+        }
+
+        .dnssec-stat .stat-sub {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 6px;
+        }
+
+        .stat-validated .stat-value { color: var(--text-primary); }
+        .stat-secure .stat-value { color: #22C55E; }
+        .stat-insecure .stat-value { color: #EAB308; }
+        .stat-bogus .stat-value { color: #EF4444; }
+        .stat-indeterminate .stat-value { color: #9CA3AF; }
+
+        .dnssec-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .dnssec-badge.secure { background: rgba(34, 197, 94, 0.12); color: #22C55E; }
+        .dnssec-badge.insecure { background: rgba(234, 179, 8, 0.12); color: #EAB308; }
+        .dnssec-badge.bogus { background: rgba(239, 68, 68, 0.12); color: #EF4444; }
+        .dnssec-badge.indeterminate { background: rgba(156, 163, 175, 0.15); color: #9CA3AF; }

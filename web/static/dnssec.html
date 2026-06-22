@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferrous DNS - DNSSEC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+    <link rel="stylesheet" href="/static/shared.css">
+    <script src="/ferrous-config.js"></script>
+    <script src="/static/shared.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <link rel="stylesheet" href="/static/queries.css">
+    <link rel="stylesheet" href="/static/dnssec.css">
+</head>
+<body x-data="app()" x-init="init()">
+<div class="mobile-header">
+    <button onclick="toggleSidebar()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <img src="/static/logo.svg" alt="Ferrous DNS">
+    <span>Ferrous DNS</span>
+</div>
+<div class="sidebar-overlay" onclick="closeSidebar()"></div>
+<aside class="sidebar">
+    <div class="logo-container">
+        <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+    </div>
+    <div class="status-box">
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        </div>
+        <div class="status-item">
+            <div class="status-indicator"></div>
+            <span>Active</span></div>
+        <div class="status-item">
+            <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
+            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+        </div>
+        <div class="status-item"><i data-lucide="shield-check" style="width:14px;height:14px"></i><span
+                x-text="stats.validated+' validated'">0 validated</span></div>
+    </div>
+    <nav style="flex:1;padding:16px 0">
+        <div class="nav-section">
+            <div class="nav-section-title">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <a href="/dnssec.html" class="nav-item active"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <a href="/clients.html" class="nav-item">
+                <i data-lucide="users" class="nav-icon"></i>
+                <span>Clients</span>
+            </a>
+            <a href="/groups.html" class="nav-item">
+                <i data-lucide="layers" class="nav-icon"></i>
+                <span>Groups</span>
+            </a>
+            <a href="/dns-filter.html" class="nav-item">
+                <i data-lucide="shield" class="nav-icon"></i>
+                <span>DNS Filter</span>
+            </a>
+            <a href="/block-services.html" class="nav-item">
+                <i data-lucide="shield-ban" class="nav-icon"></i>
+                <span>Block Services</span>
+            </a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings"
+                                                         class="nav-icon"></i><span>Settings</span></a>
+        </div>
+    </nav>
+    <div id="server-version" style="font-size:11px;color:var(--text-tertiary);padding:0 24px 4px"></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border-color)">
+        <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
+            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+        </a>
+    </div>
+</aside>
+<main style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div>
+            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">DNSSEC</h2>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Authenticated DNS validation outcomes — last 24h</p>
+        </div>
+    </div>
+
+    <div class="dnssec-grid">
+        <div class="dnssec-stat stat-validated">
+            <div class="stat-label"><i data-lucide="shield-check" style="width:14px;height:14px"></i>Validated</div>
+            <div class="stat-value" x-text="stats.validated.toLocaleString()">0</div>
+            <div class="stat-sub"><span x-text="coverage"></span>% of <span x-text="stats.total.toLocaleString()"></span> queries</div>
+        </div>
+        <div class="dnssec-stat stat-secure">
+            <div class="stat-label"><i data-lucide="lock" style="width:14px;height:14px"></i>Secure</div>
+            <div class="stat-value" x-text="stats.secure.toLocaleString()">0</div>
+            <div class="stat-sub">Signed &amp; verified</div>
+        </div>
+        <div class="dnssec-stat stat-insecure">
+            <div class="stat-label"><i data-lucide="lock-open" style="width:14px;height:14px"></i>Insecure</div>
+            <div class="stat-value" x-text="stats.insecure.toLocaleString()">0</div>
+            <div class="stat-sub">Unsigned zone</div>
+        </div>
+        <div class="dnssec-stat stat-bogus">
+            <div class="stat-label"><i data-lucide="shield-alert" style="width:14px;height:14px"></i>Bogus</div>
+            <div class="stat-value" x-text="stats.bogus.toLocaleString()">0</div>
+            <div class="stat-sub">Validation failed</div>
+        </div>
+        <div class="dnssec-stat stat-indeterminate">
+            <div class="stat-label"><i data-lucide="help-circle" style="width:14px;height:14px"></i>Indeterminate</div>
+            <div class="stat-value" x-text="stats.indeterminate.toLocaleString()">0</div>
+            <div class="stat-sub">Could not determine</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Status:</label>
+                <select x-model="statusFilter" @change="applyFilter()"
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                    <option value="any">All validated</option>
+                    <option value="Secure">Secure</option>
+                    <option value="Insecure">Insecure</option>
+                    <option value="Bogus">Bogus</option>
+                    <option value="Indeterminate">Indeterminate</option>
+                </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
+                <select x-model.number="pageSize" @change="applyFilter()"
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div style="margin-left:auto">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" x-model="autoRefresh"
+                           style="width:16px;height:16px;accent-color:var(--color-primary)">
+                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="overflow-x:auto">
+        <table>
+            <thead>
+            <tr>
+                <th class="col-time">TIME</th>
+                <th>DOMAIN</th>
+                <th class="col-type" style="width:70px">TYPE</th>
+                <th class="col-client">CLIENT</th>
+                <th style="width:140px">DNSSEC</th>
+                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
+            </tr>
+            </thead>
+            <tbody>
+            <template x-for="query in queries" :key="query.id||Math.random()">
+                <tr>
+                    <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
+                    <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
+                        <span x-text="query.domain" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="query.domain"></span>
+                    </td>
+                    <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
+                              x-text="query.type"></span></td>
+                    <td class="col-client" style="font-size:13px" x-text="clientLabel(query)"></td>
+                    <td>
+                        <span class="dnssec-badge" :class="statusClass(query.dnssec_status)" x-text="query.dnssec_status"></span>
+                    </td>
+                    <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                </tr>
+            </template>
+            <template x-if="queries.length === 0">
+                <tr>
+                    <td colspan="6" style="text-align:center;color:var(--text-secondary);padding:32px 0">No DNSSEC-validated queries in this window.</td>
+                </tr>
+            </template>
+            </tbody>
+        </table>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
+            <div style="font-size:14px;color:var(--text-secondary)">
+                Showing <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> to <span
+                    x-text="Math.min(currentPage*pageSize,total)"></span> of <span
+                    x-text="total"></span>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button @click="changePage(-1)" :disabled="currentPage===1"
+                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
+                </button>
+                <button @click="changePage(1)" :disabled="!_hasMore"
+                        style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
+                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''">Next
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
+<script src="/static/dnssec.js"></script>
+</body>
+</html>
