@@ -554,13 +554,14 @@
                         <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--color-primary)"></i>
                         <h4 style="font-size:16px;font-weight:600;margin:0">DNSSEC Validation</h4>
                     </div>
-                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Validates DNSSEC cryptographic signatures on upstream responses to protect against DNS spoofing and cache poisoning attacks. When enabled, Ferrous DNS rejects responses that fail signature verification.</p>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Validates DNSSEC cryptographic signatures on upstream responses to protect against DNS spoofing and cache poisoning. <b>Off</b>: no validation. <b>Permissive</b>: validate and tag every answer without changing it. <b>Strict</b>: reject (SERVFAIL) answers that fail validation (Bogus), unless the client sets the CD bit.</p>
                     <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Requires upstream servers that support DNSSEC. May slightly increase response latency due to signature validation overhead.</p>
                 </div>
-                <div @click="config.dns.dnssec_enabled=!config.dns.dnssec_enabled"
-                     :class="config.dns.dnssec_enabled?'active':''" class="toggle-switch">
-                    <div class="toggle-slider"></div>
-                </div>
+                <select x-model="config.dns.dnssec_mode" style="width:220px;max-width:100%;align-self:center">
+                    <option value="off">Off — no validation</option>
+                    <option value="permissive">Permissive — validate &amp; tag</option>
+                    <option value="strict">Strict — SERVFAIL on Bogus</option>
+                </select>
             </div>
 
             <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
