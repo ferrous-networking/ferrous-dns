@@ -189,7 +189,7 @@ async fn run_udp_worker_batch(
                 let h = handler.clone();
                 let s = socket.clone();
                 tokio::spawn(async move {
-                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip).await {
+                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip, true).await {
                         let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
                     }
                 });
@@ -273,7 +273,7 @@ async fn run_udp_worker_single(
                     let owned_buf: Arc<[u8]> = Arc::from(query_buf);
                     tokio::spawn(async move {
                         if let Some(response) = handler_clone
-                            .handle_raw_udp_fallback(&owned_buf, client_ip)
+                            .handle_raw_udp_fallback(&owned_buf, client_ip, true)
                             .await
                         {
                             let _ = pktinfo::try_send_with_src_ip(

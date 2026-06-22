@@ -81,7 +81,12 @@ impl DnsServerHandler {
             .try_cache_wire_direct(domain, record_type, client_ip)
     }
 
-    pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {
+    pub async fn handle_raw_udp_fallback(
+        &self,
+        raw: &[u8],
+        client_ip: IpAddr,
+        is_udp: bool,
+    ) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
         let queries: Vec<_> = query_msg.queries().to_vec();
@@ -98,11 +103,34 @@ impl DnsServerHandler {
         let rd = query_msg.recursion_desired();
         let cd = query_msg.checking_disabled();
         let has_edns = query_msg.extensions().is_some();
+        // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
+        // the response size; larger answers must be truncated with TC=1 so the
+        // client retries over TCP. Not applicable to TCP/DoT/DoH.
+        let udp_limit: Option<usize> = if is_udp {
+            Some(
+                query_msg
+                    .extensions()
+                    .as_ref()
+                    .map(|edns| edns.max_payload() as usize)
+                    .filter(|&size| size >= 512)
+                    .unwrap_or(512),
+            )
+        } else {
+            None
+        };
         let edns_cookie: Option<Vec<u8>> = query_msg
             .extensions()
             .as_ref()
             .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
         drop(query_msg);
+
+        // Truncates an oversized UDP response down to a header-only TC=1 answer.
+        let maybe_truncate = |bytes: Vec<u8>| -> Option<Vec<u8>> {
+            match udp_limit {
+                Some(limit) if bytes.len() > limit => build_truncated_wire(query_id, rd, &queries),
+                _ => Some(bytes),
+            }
+        };
 
         let dns_request = {
             let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip)
@@ -222,7 +250,7 @@ impl DnsServerHandler {
                                 response[1] = query_id as u8;
                             }
                             set_ad_bit(&mut response, set_ad);
-                            return Some(response);
+                            return maybe_truncate(response);
                         }
                     }
                 } else {
@@ -233,7 +261,7 @@ impl DnsServerHandler {
                         response[1] = query_id as u8;
                     }
                     set_ad_bit(&mut response, set_ad);
-                    return Some(response);
+                    return maybe_truncate(response);
                 }
             }
         } else {
@@ -268,7 +296,7 @@ impl DnsServerHandler {
         resp.set_edns(edns_resp);
         resp.set_authentic_data(set_ad);
 
-        encode_message(&resp)
+        maybe_truncate(encode_message(&resp)?)
     }
 }
 
