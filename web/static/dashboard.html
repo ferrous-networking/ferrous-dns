@@ -126,6 +126,15 @@
         </div>
         <div class="card-stat">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)">
+                    <i data-lucide="lock" style="width:24px;height:24px;color:#EF4444"></i>
+                </div>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">DNSSEC Bogus</p>
+            </div>
+            <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_dnssec_bogus || 0)">0</p>
+        </div>
+        <div class="card-stat">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
                 <div style="padding:12px;border-radius:8px;background:rgba(249,115,22,0.1)">
                     <i data-lucide="shield-check" style="width:24px;height:24px;color:#F97316"></i>
                 </div>
