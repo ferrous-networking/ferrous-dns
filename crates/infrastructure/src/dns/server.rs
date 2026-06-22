@@ -177,6 +177,11 @@ impl DnsServerHandler {
         let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
         let addresses = &resolution.addresses;
 
+        // RFC 6840 §5.8: advertise Authenticated Data only when we validated the
+        // answer as Secure and the client did not set CD (which signals it wants
+        // to do its own validation and not trust our AD bit).
+        let set_ad = !cd && resolution.dnssec_status == Some("Secure");
+
         let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
         resp.set_recursion_desired(rd);
         resp.set_recursion_available(true);
@@ -216,6 +221,7 @@ impl DnsServerHandler {
                                 response[0] = (query_id >> 8) as u8;
                                 response[1] = query_id as u8;
                             }
+                            set_ad_bit(&mut response, set_ad);
                             return Some(response);
                         }
                     }
@@ -226,6 +232,7 @@ impl DnsServerHandler {
                         response[0] = (query_id >> 8) as u8;
                         response[1] = query_id as u8;
                     }
+                    set_ad_bit(&mut response, set_ad);
                     return Some(response);
                 }
             }
@@ -259,8 +266,23 @@ impl DnsServerHandler {
             }
         }
         resp.set_edns(edns_resp);
+        resp.set_authentic_data(set_ad);
 
         encode_message(&resp)
+    }
+}
+
+/// Sets or clears the AD (Authenticated Data, RFC 4035) bit directly in a raw
+/// DNS response buffer. The AD bit is bit 5 (`0x20`) of the second flags octet
+/// (byte index 3). Used on the raw-wire echo path where the upstream response
+/// is forwarded verbatim and we must override its AD bit with our own verdict.
+fn set_ad_bit(buf: &mut [u8], ad: bool) {
+    if buf.len() >= 4 {
+        if ad {
+            buf[3] |= 0x20;
+        } else {
+            buf[3] &= !0x20;
+        }
     }
 }
 
