@@ -21,6 +21,29 @@ impl SignatureVerifier {
         records: &[Record],
         now_secs: u32,
     ) -> Result<bool, DomainError> {
+        let fqdn = if domain.ends_with('.') {
+            domain.to_owned()
+        } else {
+            format!("{}.", domain)
+        };
+        let name =
+            Name::from_str(&fqdn).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+        self.verify_rrsig_with_name(rrsig, dnskey, &name, records, now_secs)
+    }
+
+    /// Like [`verify_rrsig`], but takes the RRset owner as a parsed [`Name`].
+    ///
+    /// Preferred when the owner is already available as a `Name`: it avoids a
+    /// presentation-format round-trip that mangles labels with characters the
+    /// display form escapes (e.g. `!`), which would otherwise fail to re-parse.
+    pub fn verify_rrsig_with_name(
+        &self,
+        rrsig: &RrsigRecord,
+        dnskey: &DnskeyRecord,
+        name: &Name,
+        records: &[Record],
+        now_secs: u32,
+    ) -> Result<bool, DomainError> {
         if !rrsig.is_valid_at(now_secs) {
             return Ok(false);
         }
@@ -34,13 +57,6 @@ impl SignatureVerifier {
             return Ok(false);
         }
 
-        let fqdn = if domain.ends_with('.') {
-            domain.to_owned()
-        } else {
-            format!("{}.", domain)
-        };
-        let name =
-            Name::from_str(&fqdn).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let signer_name = Name::from_str(&rrsig.signer_name)
             .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
@@ -56,7 +72,7 @@ impl SignatureVerifier {
             signer_name,
         };
 
-        let tbs = TBS::from_input(&name, DNSClass::IN, &sig_input, records.iter())
+        let tbs = TBS::from_input(name, DNSClass::IN, &sig_input, records.iter())
             .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let data_to_verify = tbs.as_ref();
 
