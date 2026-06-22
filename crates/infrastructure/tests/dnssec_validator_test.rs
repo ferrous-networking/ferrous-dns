@@ -35,11 +35,14 @@ fn make_a_record(name: &str, ip: Ipv4Addr) -> Record {
 }
 
 #[test]
-fn test_verify_rrset_empty_records_returns_secure() {
+fn test_verify_rrset_empty_records_returns_indeterminate() {
+    // Empty answers (NXDOMAIN / NODATA) are routed to authenticated denial of
+    // existence before reaching the RRset verifier; a stray empty RRset here is
+    // undecided rather than blindly authentic.
     let validator = make_validator();
     assert_eq!(
         validator.verify_rrset_signatures("example.com.", &[]),
-        ValidationResult::Secure
+        ValidationResult::Indeterminate
     );
 }
 

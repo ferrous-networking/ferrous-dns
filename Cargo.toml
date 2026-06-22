@@ -65,6 +65,7 @@ ring = "0.17"
 sha1 = "0.10"
 sha2 = "0.10"
 base64 = "0.22.1"
+data-encoding = "2.10"
 
 # Transport layer
 rustls = "0.23.37"
