@@ -48,6 +48,10 @@ pub struct DnsConfigResponse {
     pub query_timeout: u64,
     pub cache_enabled: bool,
     pub cache_ttl: u32,
+    /// DNSSEC enforcement mode: "off" | "permissive" | "strict". Source of truth.
+    pub dnssec_mode: String,
+    /// Deprecated: derived from `dnssec_mode` (`true` when validating). Kept for
+    /// backward-compatibility with older API clients.
     pub dnssec_enabled: bool,
     pub cache_eviction_strategy: String,
     pub cache_max_entries: usize,
@@ -140,6 +144,13 @@ pub fn sinkhole_to_string(addr: Option<impl ToString>) -> String {
     addr.map(|a| a.to_string()).unwrap_or_default()
 }
 
+/// Parses an API DNSSEC-mode string ("off" | "permissive" | "strict",
+/// case-insensitive). Unknown values are rejected so a bad UI value can't
+/// silently change the enforcement posture.
+pub fn parse_dnssec_mode(value: &str) -> Result<ferrous_dns_domain::DnssecMode, String> {
+    value.parse::<ferrous_dns_domain::DnssecMode>()
+}
+
 /// Parses an API sinkhole IPv4 string. Empty/whitespace clears it (`Ok(None)`);
 /// a non-empty value that isn't a valid IPv4 address is rejected so a typo can't
 /// silently revert the block target to `0.0.0.0`.
@@ -225,6 +236,10 @@ pub struct DnsConfigUpdate {
     pub pools: Option<Vec<PoolUpdate>>,
     pub upstream_servers: Option<Vec<String>>,
     pub cache_enabled: Option<bool>,
+    /// DNSSEC enforcement mode: "off" | "permissive" | "strict".
+    pub dnssec_mode: Option<String>,
+    /// Deprecated: use `dnssec_mode`. Still accepted (`true` → permissive,
+    /// `false` → off) when `dnssec_mode` is absent.
     pub dnssec_enabled: Option<bool>,
     pub cache_eviction_strategy: Option<String>,
     pub cache_max_entries: Option<usize>,
