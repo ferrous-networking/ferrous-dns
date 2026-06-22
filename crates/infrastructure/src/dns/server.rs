@@ -103,6 +103,13 @@ impl DnsServerHandler {
         let rd = query_msg.recursion_desired();
         let cd = query_msg.checking_disabled();
         let has_edns = query_msg.extensions().is_some();
+        // RFC 6840 §5.8: only DNSSEC-aware clients (EDNS DO bit set) are eligible
+        // for the AD bit in the response.
+        let wants_dnssec = query_msg
+            .extensions()
+            .as_ref()
+            .map(|edns| edns.flags().dnssec_ok)
+            .unwrap_or(false);
         // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
         // the response size; larger answers must be truncated with TC=1 so the
         // client retries over TCP. Not applicable to TCP/DoT/DoH.
@@ -205,10 +212,10 @@ impl DnsServerHandler {
         let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
         let addresses = &resolution.addresses;
 
-        // RFC 6840 §5.8: advertise Authenticated Data only when we validated the
-        // answer as Secure and the client did not set CD (which signals it wants
-        // to do its own validation and not trust our AD bit).
-        let set_ad = !cd && resolution.dnssec_status == Some("Secure");
+        // RFC 6840 §5.8: advertise Authenticated Data only to DNSSEC-aware clients
+        // (DO bit), when we validated the answer as Secure, and the client did not
+        // set CD (which signals it wants to do its own validation, not trust ours).
+        let set_ad = wants_dnssec && !cd && resolution.dnssec_status == Some("Secure");
 
         let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
         resp.set_recursion_desired(rd);
