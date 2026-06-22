@@ -1217,6 +1217,7 @@ async fn test_combined_all_filters() {
         client: Some("10.0.0.1".to_string()),
         record_type: Some(ferrous_dns_domain::RecordType::AAAA),
         upstream: Some("8.8.8.8".to_string()),
+        dnssec_status: None,
     };
     let result = repo
         .get_recent_paged(100, 0, 24.0, None, &filter)

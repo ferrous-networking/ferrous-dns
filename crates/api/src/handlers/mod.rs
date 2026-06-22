@@ -12,6 +12,7 @@ pub mod clients;
 pub mod config;
 pub mod custom_services;
 pub mod dashboard;
+pub mod dnssec;
 pub mod groups;
 pub mod health;
 pub mod hostname;

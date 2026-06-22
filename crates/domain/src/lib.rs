@@ -33,7 +33,7 @@ pub use entities::filter_explanation::{
 pub use entities::group::{Group, GroupStats};
 pub use entities::managed_domain::{DomainAction, ManagedDomain};
 pub use entities::query_log::{
-    CacheStats, QueryCategory, QueryLog, QueryLogFilter, QuerySource, QueryStats,
+    CacheStats, DnssecStats, QueryCategory, QueryLog, QueryLogFilter, QuerySource, QueryStats,
 };
 pub use entities::regex_filter::RegexFilter;
 pub use entities::safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};

@@ -1,5 +1,8 @@
 use crate::ports::{ClientRepository, QueryLogRepository};
-use ferrous_dns_domain::{query_log::QueryStats, DomainError};
+use ferrous_dns_domain::{
+    query_log::{DnssecStats, QueryStats},
+    DomainError,
+};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -70,5 +73,11 @@ impl GetQueryStatsUseCase {
         }
 
         Ok(stats)
+    }
+
+    /// Aggregated DNSSEC validation outcome counts for the period. Not cached:
+    /// it is a single cheap aggregation served only by the DNSSEC tab.
+    pub async fn execute_dnssec(&self, period_hours: f32) -> Result<DnssecStats, DomainError> {
+        self.repository.get_dnssec_stats(period_hours).await
     }
 }

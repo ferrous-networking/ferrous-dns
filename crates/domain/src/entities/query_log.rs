@@ -21,6 +21,10 @@ pub struct QueryLogFilter {
     pub record_type: Option<RecordType>,
     /// Exact match on upstream server address.
     pub upstream: Option<String>,
+    /// DNSSEC validation status filter. The sentinel `"any"` matches every
+    /// row that received a determination (non-NULL status); any other value
+    /// is an exact match on the stored status string.
+    pub dnssec_status: Option<String>,
 }
 
 /// Category filter for query log pagination.
@@ -150,6 +154,21 @@ pub struct QueryStats {
     pub queries_by_type: HashMap<RecordType, u64>,
     pub most_queried_type: Option<RecordType>,
     pub record_type_distribution: Vec<(RecordType, f64)>,
+}
+
+/// Aggregated DNSSEC validation outcome counts for a period, over client
+/// queries only. `validated` counts queries that received a determination
+/// (any non-NULL status) and equals the sum of `secure`, `insecure`, `bogus`
+/// and `indeterminate`; `total` counts every client query and is the
+/// denominator for validation coverage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnssecStats {
+    pub total: u64,
+    pub validated: u64,
+    pub secure: u64,
+    pub insecure: u64,
+    pub bogus: u64,
+    pub indeterminate: u64,
 }
 
 impl QueryStats {

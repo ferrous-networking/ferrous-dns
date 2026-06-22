@@ -56,6 +56,7 @@ impl Modify for SecurityAddon {
         (name = "dashboard", description = "Aggregated dashboard payload"),
         (name = "stats", description = "Query statistics and timelines"),
         (name = "queries", description = "Recent DNS query log"),
+        (name = "dnssec", description = "DNSSEC validation statistics"),
         (name = "cache", description = "DNS cache statistics and metrics"),
         (name = "clients", description = "Client inventory and group assignment"),
         (name = "groups", description = "Client groups"),
@@ -177,6 +178,8 @@ impl Modify for SecurityAddon {
         // queries
         dto::QueryResponse,
         dto::PaginatedQueries,
+        // dnssec
+        dto::DnssecStatsResponse,
         // timeline
         dto::TimelineBucket,
         dto::TimelineResponse,

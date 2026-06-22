@@ -37,6 +37,7 @@ pub async fn get_queries(
         client = ?params.client,
         record_type = ?params.record_type,
         upstream = ?params.upstream,
+        dnssec_status = ?params.dnssec_status,
         "Fetching recent queries"
     );
 
@@ -54,6 +55,7 @@ pub async fn get_queries(
         client: params.client.as_deref(),
         record_type: params.record_type.as_deref(),
         upstream: params.upstream.as_deref(),
+        dnssec_status: params.dnssec_status.as_deref(),
     };
 
     let result = state.query.get_queries.execute_paged(&input).await?;

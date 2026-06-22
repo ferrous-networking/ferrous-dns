@@ -20,6 +20,21 @@ pub struct PagedQueryInput<'a> {
     pub client: Option<&'a str>,
     pub record_type: Option<&'a str>,
     pub upstream: Option<&'a str>,
+    pub dnssec_status: Option<&'a str>,
+}
+
+/// Validates and normalises a DNSSEC status filter value to the casing stored
+/// in the query log. Accepts the `any` sentinel (any validated row) and the
+/// four outcome statuses, case-insensitively.
+fn normalize_dnssec_status(value: &str) -> Result<String, String> {
+    match value.to_ascii_lowercase().as_str() {
+        "any" => Ok("any".to_string()),
+        "secure" => Ok("Secure".to_string()),
+        "insecure" => Ok("Insecure".to_string()),
+        "bogus" => Ok("Bogus".to_string()),
+        "indeterminate" => Ok("Indeterminate".to_string()),
+        other => Err(format!("invalid dnssec status: '{other}'")),
+    }
 }
 
 pub struct GetRecentQueriesUseCase {
@@ -63,12 +78,20 @@ impl GetRecentQueriesUseCase {
             .transpose()
             .map_err(DomainError::InvalidInput)?;
 
+        let parsed_dnssec_status = input
+            .dnssec_status
+            .filter(|s| !s.is_empty())
+            .map(normalize_dnssec_status)
+            .transpose()
+            .map_err(DomainError::InvalidInput)?;
+
         let filter = QueryLogFilter {
             domain: input.domain.filter(|d| !d.is_empty()).map(String::from),
             category: parsed_category,
             client: input.client.filter(|c| !c.is_empty()).map(String::from),
             record_type: parsed_record_type,
             upstream: input.upstream.filter(|u| !u.is_empty()).map(String::from),
+            dnssec_status: parsed_dnssec_status,
         };
 
         self.repository
