@@ -59,6 +59,10 @@ pub struct DnsRequest {
     /// does not include option code 10.
     /// Stored inline — zero heap allocation.
     pub edns_cookie: Option<EdnsCookie>,
+    /// The client's CD (Checking Disabled) header bit (RFC 4035). When `true`,
+    /// the client wants to perform its own DNSSEC validation, so the resolver
+    /// must not enforce SERVFAIL on Bogus results for this query.
+    pub checking_disabled: bool,
 }
 
 impl DnsRequest {
@@ -68,12 +72,19 @@ impl DnsRequest {
             record_type,
             client_ip,
             edns_cookie: None,
+            checking_disabled: false,
         }
     }
 
     /// Attaches raw EDNS cookie option data (option code 10) to this request.
     pub fn with_cookie(mut self, data: Vec<u8>) -> Self {
         self.edns_cookie = Some(EdnsCookie::from_bytes(&data));
+        self
+    }
+
+    /// Sets the client's CD (Checking Disabled) bit.
+    pub fn with_checking_disabled(mut self, cd: bool) -> Self {
+        self.checking_disabled = cd;
         self
     }
 }

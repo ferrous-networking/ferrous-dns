@@ -96,6 +96,7 @@ impl DnsServerHandler {
 
         let query_id = query_msg.id();
         let rd = query_msg.recursion_desired();
+        let cd = query_msg.checking_disabled();
         let has_edns = query_msg.extensions().is_some();
         let edns_cookie: Option<Vec<u8>> = query_msg
             .extensions()
@@ -104,7 +105,8 @@ impl DnsServerHandler {
         drop(query_msg);
 
         let dns_request = {
-            let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip);
+            let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip)
+                .with_checking_disabled(cd);
             if let Some(c) = edns_cookie {
                 base.with_cookie(c)
             } else {
