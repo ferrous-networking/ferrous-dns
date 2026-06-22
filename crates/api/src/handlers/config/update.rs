@@ -248,6 +248,18 @@ pub async fn update_config(
         if let Some(block_ttl) = blocking_update.block_ttl {
             new_config.blocking.block_ttl = block_ttl;
         }
+        if let Some(sinkhole_ipv4) = blocking_update.sinkhole_ipv4 {
+            match crate::dto::config::parse_sinkhole_ipv4(&sinkhole_ipv4) {
+                Ok(addr) => new_config.blocking.sinkhole_ipv4 = addr,
+                Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+            }
+        }
+        if let Some(sinkhole_ipv6) = blocking_update.sinkhole_ipv6 {
+            match crate::dto::config::parse_sinkhole_ipv6(&sinkhole_ipv6) {
+                Ok(addr) => new_config.blocking.sinkhole_ipv6 = addr,
+                Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+            }
+        }
     }
 
     if let Some(auth_update) = request.auth {
@@ -379,6 +391,16 @@ pub async fn update_settings(
     };
     new_config.blocking.block_mode = crate::dto::config::block_mode_from_str(&request.block_mode);
     new_config.blocking.block_ttl = request.block_ttl;
+    new_config.blocking.sinkhole_ipv4 =
+        match crate::dto::config::parse_sinkhole_ipv4(&request.sinkhole_ipv4) {
+            Ok(addr) => addr,
+            Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+        };
+    new_config.blocking.sinkhole_ipv6 =
+        match crate::dto::config::parse_sinkhole_ipv6(&request.sinkhole_ipv6) {
+            Ok(addr) => addr,
+            Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+        };
 
     match state
         .config_file_persistence

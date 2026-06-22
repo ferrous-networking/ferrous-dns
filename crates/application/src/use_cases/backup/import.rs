@@ -150,6 +150,10 @@ impl ImportConfigUseCase {
         new_config.blocking.enabled = sc.blocking.enabled;
         new_config.blocking.custom_blocked = sc.blocking.custom_blocked.clone();
         new_config.blocking.whitelist = sc.blocking.whitelist.clone();
+        new_config.blocking.block_mode = sc.blocking.block_mode;
+        new_config.blocking.block_ttl = sc.blocking.block_ttl;
+        new_config.blocking.sinkhole_ipv4 = sc.blocking.sinkhole_ipv4;
+        new_config.blocking.sinkhole_ipv6 = sc.blocking.sinkhole_ipv6;
 
         new_config.logging.level = sc.logging.level.clone();
 

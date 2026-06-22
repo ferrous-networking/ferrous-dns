@@ -66,6 +66,20 @@ pub struct SnapshotBlockingConfig {
     pub enabled: bool,
     pub custom_blocked: Vec<String>,
     pub whitelist: Vec<String>,
+    // The following are absent from pre-0.9 backups; serde defaults keep those
+    // older files importable (block_mode → null_ip, block_ttl → 60, sinkhole → none).
+    #[serde(default)]
+    pub block_mode: ferrous_dns_domain::BlockResponseMode,
+    #[serde(default = "default_block_ttl")]
+    pub block_ttl: u32,
+    #[serde(default)]
+    pub sinkhole_ipv4: Option<std::net::Ipv4Addr>,
+    #[serde(default)]
+    pub sinkhole_ipv6: Option<std::net::Ipv6Addr>,
+}
+
+fn default_block_ttl() -> u32 {
+    ferrous_dns_domain::DEFAULT_BLOCK_TTL
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

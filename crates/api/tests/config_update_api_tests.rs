@@ -787,3 +787,83 @@ async fn test_update_config_non_pool_change_requires_restart() {
     // No pools were sent, so the live pool set is untouched.
     assert!(live_servers(&pm).iter().any(|s| s == "8.8.8.8:53"));
 }
+
+#[tokio::test]
+async fn test_update_config_rejects_invalid_sinkhole_ipv4() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({ "blocking": { "sinkhole_ipv4": "10.0.0.300" } }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], false);
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid IPv4 sinkhole address"),
+        "error should name the bad sinkhole, got: {}",
+        json["error"]
+    );
+}
+
+#[tokio::test]
+async fn test_update_config_rejects_invalid_sinkhole_ipv6() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({ "blocking": { "sinkhole_ipv6": "fd00::zz" } }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], false);
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid IPv6 sinkhole address"),
+        "error should name the bad sinkhole, got: {}",
+        json["error"]
+    );
+}
+
+#[tokio::test]
+async fn test_update_config_persists_then_clears_sinkhole() {
+    let pool = create_test_db().await;
+    let (app, _pm, path) = create_test_app(pool).await;
+
+    // A valid custom sinkhole is accepted and written to the config file.
+    let (status, json) = post_config(
+        app.clone(),
+        serde_json::json!({ "blocking": { "sinkhole_ipv4": "192.168.50.50" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("192.168.50.50"),
+        "config file should carry the custom sinkhole, got:\n{written}"
+    );
+
+    // An empty string clears it: the key must disappear from the file.
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({ "blocking": { "sinkhole_ipv4": "" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    let cleared = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !cleared.contains("sinkhole_ipv4") && !cleared.contains("192.168.50.50"),
+        "cleared sinkhole key must be removed from the file, got:\n{cleared}"
+    );
+}
