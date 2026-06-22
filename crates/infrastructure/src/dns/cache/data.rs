@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DnssecStatus {
+pub enum CachedDnssecStatus {
     Unknown = 0,
     Secure = 1,
     Insecure = 2,
@@ -13,7 +13,7 @@ pub enum DnssecStatus {
     Indeterminate = 4,
 }
 
-impl FromStr for DnssecStatus {
+impl FromStr for CachedDnssecStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -27,7 +27,7 @@ impl FromStr for DnssecStatus {
     }
 }
 
-impl DnssecStatus {
+impl CachedDnssecStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Unknown => "Unknown",

@@ -1,4 +1,4 @@
-use super::data::DnssecStatus;
+use super::data::CachedDnssecStatus;
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
@@ -10,11 +10,11 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 
-type L1Hit = (Arc<Vec<IpAddr>>, DnssecStatus, u32);
+type L1Hit = (Arc<Vec<IpAddr>>, CachedDnssecStatus, u32);
 
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
-    dnssec_status: DnssecStatus,
+    dnssec_status: CachedDnssecStatus,
     expires_secs: u64,
 }
 
@@ -101,7 +101,7 @@ pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
     addresses: Arc<Vec<IpAddr>>,
-    dnssec_status: DnssecStatus,
+    dnssec_status: CachedDnssecStatus,
     expires_secs: u64,
 ) {
     let type_str = record_type.as_str();

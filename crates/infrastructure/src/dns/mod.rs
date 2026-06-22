@@ -21,8 +21,8 @@ pub mod wire_response;
 
 pub use block_filter::BlockFilterEngine;
 pub use cache::{
-    CacheKey, CacheMetrics, CachedAddresses, CachedData, CachedRecord, DnsCache, DnsCacheAccess,
-    DnsCacheConfig, DnssecStatus, EvictionStrategy, NegativeQueryTracker,
+    CacheKey, CacheMetrics, CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord,
+    DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, NegativeQueryTracker,
 };
 pub use cache_maintenance::DnsCacheMaintenance;
 pub use dga_detection::DgaDetector;

@@ -1,5 +1,5 @@
 use super::coarse_clock::coarse_now_secs;
-use super::data::{CachedData, DnssecStatus};
+use super::data::{CachedData, CachedDnssecStatus};
 use ferrous_dns_domain::RecordType;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering as AtomicOrdering};
 
@@ -38,7 +38,7 @@ impl std::fmt::Debug for HotCounters {
 #[derive(Debug)]
 pub struct CachedRecord {
     pub data: CachedData,
-    pub dnssec_status: DnssecStatus,
+    pub dnssec_status: CachedDnssecStatus,
     pub expires_at_secs: u64,
     pub inserted_at_secs: u64,
     pub counters: HotCounters,
@@ -72,13 +72,13 @@ impl CachedRecord {
         data: CachedData,
         ttl: u32,
         record_type: RecordType,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     ) -> Self {
         let now_secs = coarse_now_secs();
 
         Self {
             data,
-            dnssec_status: dnssec_status.unwrap_or(DnssecStatus::Unknown),
+            dnssec_status: dnssec_status.unwrap_or(CachedDnssecStatus::Unknown),
             expires_at_secs: now_secs + ttl as u64,
             inserted_at_secs: now_secs,
             counters: HotCounters::new(now_secs),
@@ -93,7 +93,7 @@ impl CachedRecord {
 
         Self {
             data,
-            dnssec_status: DnssecStatus::Unknown,
+            dnssec_status: CachedDnssecStatus::Unknown,
             expires_at_secs: u64::MAX,
             inserted_at_secs: now_secs,
             counters: HotCounters::new(now_secs),

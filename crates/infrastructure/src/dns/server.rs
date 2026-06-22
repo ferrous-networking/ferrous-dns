@@ -1,6 +1,6 @@
 use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::forwarding::RecordTypeMapper;
-use bytes::Bytes;
+use crate::dns::wire_response;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{BlockResponseMode, DnssecStatus, DomainError, RecordType};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
@@ -66,16 +66,23 @@ impl DnsServerHandler {
             .try_cache_direct(domain, record_type, client_ip)
     }
 
-    /// Returns cached wire bytes for non-IP record types (NS, CNAME, SOA, PTR,
-    /// MX, TXT). The caller must patch the query ID before sending.
+    /// Returns a ready-to-send cached wire response for non-IP record types (NS,
+    /// CNAME, SOA, PTR, MX, TXT): the query ID is patched to `query_id` and the
+    /// AD bit is cleared. Clearing AD here — rather than relying on every caller
+    /// to do it — keeps the cached-wire fast path compliant for non-DO clients
+    /// (RFC 6840 §5.8) by construction.
     pub fn try_fast_path_wire(
         &self,
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
-    ) -> Option<(Bytes, u32)> {
-        self.use_case
-            .try_cache_wire_direct(domain, record_type, client_ip)
+        query_id: u16,
+    ) -> Option<(Vec<u8>, u32)> {
+        let (wire, ttl) = self
+            .use_case
+            .try_cache_wire_direct(domain, record_type, client_ip)?;
+        let patched = wire_response::patch_wire_id_clear_ad(&wire, query_id)?;
+        Some((patched, ttl))
     }
 
     pub async fn handle_raw_udp_fallback(
@@ -254,7 +261,7 @@ impl DnsServerHandler {
                                 response[0] = (query_id >> 8) as u8;
                                 response[1] = query_id as u8;
                             }
-                            set_ad_bit(&mut response, set_ad);
+                            wire_response::set_ad_bit(&mut response, set_ad);
                             return maybe_truncate(response);
                         }
                     }
@@ -265,7 +272,7 @@ impl DnsServerHandler {
                         response[0] = (query_id >> 8) as u8;
                         response[1] = query_id as u8;
                     }
-                    set_ad_bit(&mut response, set_ad);
+                    wire_response::set_ad_bit(&mut response, set_ad);
                     return maybe_truncate(response);
                 }
             }
@@ -302,20 +309,6 @@ impl DnsServerHandler {
         resp.set_authentic_data(set_ad);
 
         maybe_truncate(encode_message(&resp)?)
-    }
-}
-
-/// Sets or clears the AD (Authenticated Data, RFC 4035) bit directly in a raw
-/// DNS response buffer. The AD bit is bit 5 (`0x20`) of the second flags octet
-/// (byte index 3). Used on the raw-wire echo path where the upstream response
-/// is forwarded verbatim and we must override its AD bit with our own verdict.
-fn set_ad_bit(buf: &mut [u8], ad: bool) {
-    if buf.len() >= 4 {
-        if ad {
-            buf[3] |= 0x20;
-        } else {
-            buf[3] &= !0x20;
-        }
     }
 }
 

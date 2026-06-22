@@ -25,7 +25,7 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheAccess, DnsCacheConfig, DnssecStatus,
+    CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, DnsCacheAccess, DnsCacheConfig,
     EvictionStrategy, NegativeQueryTracker,
 };
 use std::net::IpAddr;
@@ -106,7 +106,7 @@ impl DnsCacheAccess for FirstMissOnceCache {
         &self,
         domain: &str,
         record_type: &RecordType,
-    ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+    ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>)> {
         let prev = self.suppressed_calls.load(Ordering::SeqCst);
         if prev < self.force_miss_count {
             self.suppressed_calls.fetch_add(1, Ordering::SeqCst);
@@ -121,7 +121,7 @@ impl DnsCacheAccess for FirstMissOnceCache {
         record_type: RecordType,
         data: CachedData,
         ttl: u32,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     ) {
         self.inner
             .insert(domain, record_type, data, ttl, dnssec_status);
@@ -164,7 +164,7 @@ fn preload(cache: &dyn DnsCacheAccess, domain: &str, record_type: RecordType, ad
             addresses: Arc::new(vec![ip]),
         }),
         300,
-        Some(DnssecStatus::Insecure),
+        Some(CachedDnssecStatus::Insecure),
     );
 }
 
@@ -266,7 +266,7 @@ async fn should_wake_followers_with_cached_result_when_leader_finds_cache_hit() 
             &self,
             domain: &str,
             record_type: &RecordType,
-        ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+        ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>)> {
             let is_target = domain == self.target_domain && *record_type == self.target_type;
             if !is_target {
                 return self.inner.get(domain, record_type);
@@ -308,7 +308,7 @@ async fn should_wake_followers_with_cached_result_when_leader_finds_cache_hit() 
             record_type: RecordType,
             data: CachedData,
             ttl: u32,
-            dnssec_status: Option<DnssecStatus>,
+            dnssec_status: Option<CachedDnssecStatus>,
         ) {
             self.inner
                 .insert(domain, record_type, data, ttl, dnssec_status);

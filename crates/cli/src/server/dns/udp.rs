@@ -142,22 +142,18 @@ async fn run_udp_worker_batch(
                             }
                         }
                         FastPathKind::WireData => {
-                            if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                            if let Some((patched, _ttl)) = handler.try_fast_path_wire(
                                 fast_query.domain(),
                                 fast_query.record_type,
                                 client_ip,
+                                fast_query.id,
                             ) {
-                                if let Some(patched) = wire_response::patch_wire_id_clear_ad(
-                                    &wire_bytes,
-                                    fast_query.id,
-                                ) {
-                                    pending_wire.push(pktinfo::PendingWireResponse {
-                                        data: patched,
-                                        to: msg.src,
-                                        src_ip: msg.dst_ip,
-                                    });
-                                    continue;
-                                }
+                                pending_wire.push(pktinfo::PendingWireResponse {
+                                    data: patched,
+                                    to: msg.src,
+                                    src_ip: msg.dst_ip,
+                                });
+                                continue;
                             }
                         }
                     }
@@ -252,23 +248,19 @@ async fn run_udp_worker_single(
                                 }
                             }
                             FastPathKind::WireData => {
-                                if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                                if let Some((patched, _ttl)) = handler.try_fast_path_wire(
                                     fast_query.domain(),
                                     fast_query.record_type,
                                     client_ip,
+                                    fast_query.id,
                                 ) {
-                                    if let Some(patched) = wire_response::patch_wire_id_clear_ad(
-                                        &wire_bytes,
-                                        fast_query.id,
-                                    ) {
-                                        let _ = pktinfo::try_send_with_src_ip(
-                                            socket.get_ref(),
-                                            &patched,
-                                            from,
-                                            dst_ip,
-                                        );
-                                        continue;
-                                    }
+                                    let _ = pktinfo::try_send_with_src_ip(
+                                        socket.get_ref(),
+                                        &patched,
+                                        from,
+                                        dst_ip,
+                                    );
+                                    continue;
                                 }
                             }
                         }
