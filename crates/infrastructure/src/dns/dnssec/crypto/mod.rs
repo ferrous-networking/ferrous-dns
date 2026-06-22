@@ -133,7 +133,7 @@ impl SignatureVerifier {
             e: exponent,
         };
         match public_key.verify(
-            &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
             data,
             sig,
         ) {
@@ -161,7 +161,15 @@ impl SignatureVerifier {
             e: exponent,
         };
 
-        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, sig) {
+        // 1024-bit RSA ZSKs are still common in deployed DNSSEC zones (RFC 8624
+        // discourages but does not forbid them), so accept the full 1024..=8192
+        // range — the stricter 2048-minimum verifier rejects them and produces
+        // a false Bogus. Matches the behaviour of unbound/bind validators.
+        match public_key.verify(
+            &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            data,
+            sig,
+        ) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -178,7 +186,11 @@ impl SignatureVerifier {
             n: modulus,
             e: exponent,
         };
-        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA512, data, sig) {
+        match public_key.verify(
+            &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            data,
+            sig,
+        ) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
