@@ -12,6 +12,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+/// Whether an error reflects an inability to reach/parse the upstream (so we
+/// could not validate) rather than a genuine validation failure. Transient
+/// errors fail open (Indeterminate); everything else is treated as Bogus.
+fn is_transient_error(e: &DomainError) -> bool {
+    matches!(
+        e,
+        DomainError::TransportAllServersUnreachable
+            | DomainError::TransportNoHealthyServers
+            | DomainError::QueryTimeout
+            | DomainError::TransportTimeout { .. }
+            | DomainError::TransportConnectionRefused { .. }
+            | DomainError::TransportConnectionReset { .. }
+            | DomainError::IoError(_)
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationResult {
     Secure,
@@ -131,6 +147,13 @@ impl ChainVerifier {
                         error = %e,
                         "Delegation validation failed"
                     );
+                    // A transport/network failure means we *couldn't* validate,
+                    // not that the data is forged. Fail open (Indeterminate) so a
+                    // transient upstream issue doesn't SERVFAIL signed domains in
+                    // Strict mode; only genuine crypto/structural failures are Bogus.
+                    if is_transient_error(&e) {
+                        return Ok(ValidationResult::Indeterminate);
+                    }
                     return Ok(ValidationResult::Bogus);
                 }
             }
