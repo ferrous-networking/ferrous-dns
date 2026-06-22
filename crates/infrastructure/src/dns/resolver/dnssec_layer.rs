@@ -95,7 +95,9 @@ impl DnsResolver for DnssecResolver {
                     "DNSSEC validation failed, returning insecure status"
                 );
 
-                resolution.dnssec_status = Some("insecure");
+                // Capitalized to match `DnssecStatus::FromStr`; a validation
+                // error fails open (Insecure, served, AD=0), never SERVFAIL.
+                resolution.dnssec_status = Some("Insecure");
                 Ok(resolution)
             }
         }

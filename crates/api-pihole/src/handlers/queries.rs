@@ -119,7 +119,10 @@ pub async fn get_queries(
                     .filter(|h| !h.is_empty()),
             },
             status: map_query_status(q.blocked, q.cache_hit, q.block_source.as_ref()),
-            dnssec: q.dnssec_status.unwrap_or("UNKNOWN").to_string(),
+            dnssec: q
+                .dnssec_status
+                .map(|s| s.to_uppercase())
+                .unwrap_or_else(|| "UNKNOWN".to_string()),
             reply: PiholeReply {
                 r#type: q
                     .response_status
@@ -205,7 +208,7 @@ pub async fn get_suggestions(
             replies.insert(r.to_string());
         }
         if let Some(d) = q.dnssec_status {
-            dnssecs.insert(d.to_string());
+            dnssecs.insert(d.to_uppercase());
         }
     }
 
