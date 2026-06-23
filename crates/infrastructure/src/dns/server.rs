@@ -82,10 +82,8 @@ impl DnsServerHandler {
         let (wire, ttl) = self
             .use_case
             .try_cache_wire_direct(domain, record_type, client_ip)?;
-        // Over UDP a cached answer larger than the client's advertised EDNS
-        // buffer must be truncated with TC=1; bail to the slow path
-        // (handle_raw_udp_fallback), which already does that, instead of serving
-        // oversized wire verbatim. Mirrors build_cache_hit_response for A/AAAA.
+        // Oversized-for-UDP hits bail to the slow path (handle_raw_udp_fallback),
+        // which sets TC=1 — mirrors build_cache_hit_response for A/AAAA.
         if !wire_response::wire_fits_udp_buffer(wire.len(), client_max_size) {
             return None;
         }
