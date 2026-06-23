@@ -31,6 +31,7 @@ impl BalancedStrategy {
                 ctx.domain,
                 ctx.record_type,
                 ctx.timeout_ms,
+                ctx.validator,
                 ctx.emitter,
                 ctx.pool_name,
                 ctx.server_displays,

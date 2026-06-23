@@ -363,6 +363,12 @@ fn test_transport_error_classification_typed_variants() {
     assert!(ResponseParser::is_transport_error(
         &DomainError::TransportAllServersUnreachable
     ));
+    assert!(ResponseParser::is_transport_error(
+        &DomainError::SpoofedResponse {
+            server: "8.8.8.8:53".into(),
+            reason: "cookie mismatch".into()
+        }
+    ));
 
     assert!(!ResponseParser::is_transport_error(&DomainError::NxDomain));
     assert!(!ResponseParser::is_transport_error(&DomainError::Blocked));

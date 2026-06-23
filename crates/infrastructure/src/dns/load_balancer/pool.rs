@@ -4,7 +4,7 @@ use super::health::HealthChecker;
 use super::parallel::ParallelStrategy;
 use super::strategy::{QueryContext, Strategy, UpstreamResult};
 use crate::dns::events::QueryEventEmitter;
-use crate::dns::forwarding::{MessageBuilder, ResponseParser};
+use crate::dns::forwarding::{HardeningOpts, MessageBuilder, ResponseParser};
 use crate::dns::transport::resolver;
 use arc_swap::ArcSwap;
 use ferrous_dns_domain::{
@@ -22,6 +22,8 @@ pub struct PoolManager {
     pools: ArcSwap<Vec<PoolWithStrategy>>,
     health_checker: Option<Arc<HealthChecker>>,
     emitter: QueryEventEmitter,
+    /// Anti-spoofing hardening applied to A/AAAA upstream queries (DNS Cookies + 0x20).
+    hardening: HardeningOpts,
 }
 
 /// Maps one original configured server string to its resolved protocol entries.
@@ -55,7 +57,20 @@ impl PoolManager {
             pools: ArcSwap::from_pointee(pools_with_strategy),
             health_checker,
             emitter,
+            // Cookie echo validation is always-on (safe + graceful); 0x20 case
+            // randomization is opt-in via `with_hardening`.
+            hardening: HardeningOpts {
+                cookie: true,
+                qname_0x20: false,
+            },
         })
+    }
+
+    /// Overrides the anti-spoofing hardening applied to A/AAAA upstream queries.
+    /// Used by wiring to honor the `qname_case_randomization` config flag.
+    pub fn with_hardening(mut self, hardening: HardeningOpts) -> Self {
+        self.hardening = hardening;
+        self
     }
 
     /// Rebuilds the pool set from `pools` and atomically swaps it into the live
@@ -290,8 +305,10 @@ impl PoolManager {
             %domain, "Starting load balancer query"
         );
 
-        let query_bytes: Arc<[u8]> =
-            Arc::from(MessageBuilder::build_query(domain, record_type, dnssec_ok)?);
+        let (bytes, validator) =
+            MessageBuilder::build_query_hardened(domain, record_type, dnssec_ok, self.hardening)?;
+        let query_bytes: Arc<[u8]> = Arc::from(bytes);
+        let validator = Arc::new(validator);
 
         for pool in pools.iter() {
             let healthy_refs: SmallVec<[&Arc<DnsProtocol>; 16]> =
@@ -315,6 +332,7 @@ impl PoolManager {
                 record_type,
                 timeout_ms,
                 query_bytes: Arc::clone(&query_bytes),
+                validator: &validator,
                 emitter: &self.emitter,
                 pool_name: &pool.name_arc,
                 server_displays: &pool.server_displays,
