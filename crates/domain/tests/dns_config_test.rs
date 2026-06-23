@@ -1,4 +1,5 @@
 use ferrous_dns_domain::config::dns::DnsConfig;
+use ferrous_dns_domain::config::dnssec::DnssecMode;
 
 #[test]
 fn test_config_default_values() {
@@ -7,7 +8,9 @@ fn test_config_default_values() {
     assert_eq!(config.query_timeout, 3);
     assert!(config.cache_enabled);
     assert_eq!(config.cache_ttl, 3600);
-    assert!(!config.dnssec_enabled);
+    assert_eq!(config.dnssec_mode, None);
+    assert_eq!(config.dnssec_enabled, None);
+    assert_eq!(config.effective_dnssec_mode(), DnssecMode::Permissive);
     assert_eq!(config.cache_max_entries, 200_000);
     assert_eq!(config.cache_eviction_strategy, "hit_rate");
     assert!(config.cache_optimistic_refresh);

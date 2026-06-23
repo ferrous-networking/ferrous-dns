@@ -1,4 +1,4 @@
-use super::data::{CachedData, DnssecStatus};
+use super::data::{CachedData, CachedDnssecStatus};
 use ferrous_dns_domain::RecordType;
 
 pub trait DnsCacheAccess: Send + Sync {
@@ -6,7 +6,7 @@ pub trait DnsCacheAccess: Send + Sync {
         &self,
         domain: &str,
         record_type: &RecordType,
-    ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)>;
+    ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>)>;
 
     fn insert(
         &self,
@@ -14,7 +14,7 @@ pub trait DnsCacheAccess: Send + Sync {
         record_type: RecordType,
         data: CachedData,
         ttl: u32,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     );
 
     /// Phase 6: records a transient upstream error that was explicitly NOT

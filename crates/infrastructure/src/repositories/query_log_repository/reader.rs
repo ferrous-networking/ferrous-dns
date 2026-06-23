@@ -2,7 +2,7 @@ use super::helpers::{
     days_ago_cutoff, get_uptime, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff,
 };
 use ferrous_dns_application::ports::PagedQueryResult;
-use ferrous_dns_domain::query_log::{QueryCategory, QueryLogFilter};
+use ferrous_dns_domain::query_log::{DnssecStats, QueryCategory, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
@@ -108,6 +108,13 @@ pub(super) async fn get_recent_paged(
     } else {
         ""
     };
+    // The `"any"` sentinel matches any validated row; otherwise exact match on
+    // the bound status string. Each arm is a static SQL fragment.
+    let dnssec_clause = match filter.dnssec_status.as_deref() {
+        Some("any") => " AND q.dnssec_status IS NOT NULL",
+        Some(_) => " AND q.dnssec_status = ?",
+        None => "",
+    };
 
     // Binds the conditional filter parameters in a fixed order.
     macro_rules! bind_filters {
@@ -124,6 +131,11 @@ pub(super) async fn get_recent_paged(
             }
             if let Some(ref up) = $filter.upstream {
                 q = q.bind(up);
+            }
+            if let Some(ref status) = $filter.dnssec_status {
+                if status != "any" {
+                    q = q.bind(status.as_str());
+                }
             }
             q
         }};
@@ -142,7 +154,7 @@ pub(super) async fn get_recent_paged(
                      WHERE q.id < ?
                        AND q.query_source = 'client'
                        AND q.created_at >= ?
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}
                      ORDER BY q.id DESC
                      LIMIT ?"
                 );
@@ -159,7 +171,7 @@ pub(super) async fn get_recent_paged(
                      LEFT JOIN clients c ON q.client_ip = c.ip_address
                      WHERE q.created_at >= ?
                        AND q.query_source = 'client'
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}
                      ORDER BY q.created_at DESC
                      LIMIT ? OFFSET ?"
                 );
@@ -175,7 +187,7 @@ pub(super) async fn get_recent_paged(
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
-                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}"
+                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}"
             );
             let q = sqlx::query(&count_sql).bind(&cutoff);
             let q = bind_filters!(q, filter);
@@ -253,6 +265,7 @@ pub(super) async fn get_stats(
                     COUNT(*) as total,
                     SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
                     SUM(CASE WHEN response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC') THEN 1 ELSE 0 END) as rate_limited,
+                    SUM(CASE WHEN dnssec_status = 'Bogus' THEN 1 ELSE 0 END) as dnssec_bogus,
                     SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
                     AVG(response_time_ms) as avg_time,
                     AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
@@ -370,6 +383,7 @@ pub(super) async fn get_stats(
         queries_blocked: row.get::<i64, _>("blocked") as u64,
         queries_rate_limited: row.get::<i64, _>("rate_limited") as u64,
         queries_malware_detected: malware_detected,
+        queries_dnssec_bogus: row.get::<i64, _>("dnssec_bogus") as u64,
         unique_clients: 0,
         uptime_seconds: get_uptime(),
         cache_hit_rate,
@@ -391,6 +405,55 @@ pub(super) async fn get_stats(
         queries_blocked = stats.queries_blocked,
         cache_hit_rate = stats.cache_hit_rate,
         "Statistics fetched successfully"
+    );
+    Ok(stats)
+}
+
+#[instrument(skip(pool))]
+pub(super) async fn get_dnssec_stats(
+    pool: &SqlitePool,
+    period_hours: f32,
+) -> Result<DnssecStats, DomainError> {
+    debug!(period_hours, "Fetching DNSSEC statistics");
+
+    let cutoff = hours_ago_cutoff(period_hours);
+
+    let row = sqlx::query(
+        "SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN dnssec_status IS NOT NULL THEN 1 ELSE 0 END) as validated,
+            SUM(CASE WHEN dnssec_status = 'Secure' THEN 1 ELSE 0 END) as secure,
+            SUM(CASE WHEN dnssec_status = 'Insecure' THEN 1 ELSE 0 END) as insecure,
+            SUM(CASE WHEN dnssec_status = 'Bogus' THEN 1 ELSE 0 END) as bogus,
+            SUM(CASE WHEN dnssec_status = 'Indeterminate' THEN 1 ELSE 0 END) as indeterminate
+         FROM query_log
+         WHERE created_at >= ?
+           AND query_source = 'client'",
+    )
+    .bind(&cutoff)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "Failed to fetch DNSSEC statistics");
+        DomainError::DatabaseError(e.to_string())
+    })?;
+
+    // SUM over zero rows is NULL; COALESCE to 0 via Option.
+    let count = |col: &str| row.get::<Option<i64>, _>(col).unwrap_or(0) as u64;
+    let stats = DnssecStats {
+        total: row.get::<i64, _>("total") as u64,
+        validated: count("validated"),
+        secure: count("secure"),
+        insecure: count("insecure"),
+        bogus: count("bogus"),
+        indeterminate: count("indeterminate"),
+    };
+
+    debug!(
+        total = stats.total,
+        validated = stats.validated,
+        bogus = stats.bogus,
+        "DNSSEC statistics fetched successfully"
     );
     Ok(stats)
 }

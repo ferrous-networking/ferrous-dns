@@ -21,6 +21,29 @@ impl SignatureVerifier {
         records: &[Record],
         now_secs: u32,
     ) -> Result<bool, DomainError> {
+        let fqdn = if domain.ends_with('.') {
+            domain.to_owned()
+        } else {
+            format!("{}.", domain)
+        };
+        let name =
+            Name::from_str(&fqdn).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+        self.verify_rrsig_with_name(rrsig, dnskey, &name, records, now_secs)
+    }
+
+    /// Like [`verify_rrsig`], but takes the RRset owner as a parsed [`Name`].
+    ///
+    /// Preferred when the owner is already available as a `Name`: it avoids a
+    /// presentation-format round-trip that mangles labels with characters the
+    /// display form escapes (e.g. `!`), which would otherwise fail to re-parse.
+    pub fn verify_rrsig_with_name(
+        &self,
+        rrsig: &RrsigRecord,
+        dnskey: &DnskeyRecord,
+        name: &Name,
+        records: &[Record],
+        now_secs: u32,
+    ) -> Result<bool, DomainError> {
         if !rrsig.is_valid_at(now_secs) {
             return Ok(false);
         }
@@ -34,13 +57,6 @@ impl SignatureVerifier {
             return Ok(false);
         }
 
-        let fqdn = if domain.ends_with('.') {
-            domain.to_owned()
-        } else {
-            format!("{}.", domain)
-        };
-        let name =
-            Name::from_str(&fqdn).map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let signer_name = Name::from_str(&rrsig.signer_name)
             .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let hickory_type = RecordTypeMapper::to_hickory(&rrsig.type_covered);
@@ -56,7 +72,7 @@ impl SignatureVerifier {
             signer_name,
         };
 
-        let tbs = TBS::from_input(&name, DNSClass::IN, &sig_input, records.iter())
+        let tbs = TBS::from_input(name, DNSClass::IN, &sig_input, records.iter())
             .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
         let data_to_verify = tbs.as_ref();
 
@@ -75,6 +91,14 @@ impl SignatureVerifier {
                 rrsig.algorithm
             ))),
         }
+    }
+
+    /// Whether this build implements the given DNSSEC signature algorithm
+    /// (matches the dispatch arms in [`verify_rrsig_with_name`]). Used to decide,
+    /// per RFC 6840 §5.2, whether a zone whose DS RRset names only algorithms we
+    /// cannot process must be treated as Insecure rather than Bogus.
+    pub fn is_supported_algorithm(algorithm: u8) -> bool {
+        matches!(algorithm, 5 | 7 | 8 | 10 | 13 | 14 | 15)
     }
 
     pub fn verify_ds(
@@ -133,7 +157,7 @@ impl SignatureVerifier {
             e: exponent,
         };
         match public_key.verify(
-            &signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY,
+            &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
             data,
             sig,
         ) {
@@ -161,7 +185,15 @@ impl SignatureVerifier {
             e: exponent,
         };
 
-        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA256, data, sig) {
+        // 1024-bit RSA ZSKs are still common in deployed DNSSEC zones (RFC 8624
+        // discourages but does not forbid them), so accept the full 1024..=8192
+        // range — the stricter 2048-minimum verifier rejects them and produces
+        // a false Bogus. Matches the behaviour of unbound/bind validators.
+        match public_key.verify(
+            &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+            data,
+            sig,
+        ) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -178,7 +210,11 @@ impl SignatureVerifier {
             n: modulus,
             e: exponent,
         };
-        match public_key.verify(&signature::RSA_PKCS1_2048_8192_SHA512, data, sig) {
+        match public_key.verify(
+            &signature::RSA_PKCS1_1024_8192_SHA512_FOR_LEGACY_USE_ONLY,
+            data,
+            sig,
+        ) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }

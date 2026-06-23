@@ -66,6 +66,7 @@ pub async fn get_stats(
         queries_blocked: stats.queries_blocked,
         queries_rate_limited: stats.queries_rate_limited,
         queries_malware_detected: stats.queries_malware_detected,
+        queries_dnssec_bogus: stats.queries_dnssec_bogus,
         clients: stats.unique_clients,
         uptime: stats.uptime_seconds,
         cache_hit_rate: stats.cache_hit_rate,

@@ -206,7 +206,7 @@ async fn should_inherit_dnssec_status_from_qname_entry() {
 
     assert_eq!(
         dnssec,
-        Some(ferrous_dns_infrastructure::dns::DnssecStatus::Secure),
+        Some(ferrous_dns_infrastructure::dns::CachedDnssecStatus::Secure),
         "target entry must inherit the qname entry's DNSSEC status"
     );
 }

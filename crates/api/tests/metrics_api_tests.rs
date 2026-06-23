@@ -53,6 +53,7 @@ fn sample_stats() -> QueryStats {
         queries_blocked: 20,
         queries_rate_limited: 2,
         queries_malware_detected: 1,
+        queries_dnssec_bogus: 7,
         unique_clients: 4,
         uptime_seconds: 3600,
         cache_hit_rate: 50.0,
@@ -104,6 +105,7 @@ fn render_includes_upstream_and_query_series() {
     // Query-log gauges (24h window).
     assert!(body.contains("ferrousdns_queries 100"));
     assert!(body.contains("ferrousdns_queries_blocked 20"));
+    assert!(body.contains("ferrousdns_queries_dnssec_bogus 7"));
     assert!(body.contains("ferrousdns_uptime_seconds 3600"));
     assert!(body.contains("ferrousdns_queries_by_type{record_type=\"A\"} 80"));
     assert!(body.contains("ferrousdns_build_info{version=\"9.9.9\"} 1"));

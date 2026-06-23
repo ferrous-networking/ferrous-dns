@@ -11,7 +11,7 @@ The `[dns]` section controls upstream resolution, DNSSEC, local records, and ups
 upstream_servers = []
 query_timeout = 3
 default_strategy = "Parallel"
-dnssec_enabled = false
+dnssec_mode = "Permissive"
 block_private_ptr = true
 block_non_fqdn = false
 # local_domain = "lan"            # optional — no default
@@ -23,7 +23,7 @@ local_dns_server = "10.0.0.1:53"
 | `upstream_servers` | `[]` | Fallback upstreams when no pool matches (same URL format as pools) |
 | `query_timeout` | `3` | Seconds to wait for an upstream response |
 | `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"`, `"Balanced"`, or `"Failover"` |
-| `dnssec_enabled` | `false` | Validate DNSSEC signatures on upstream responses |
+| `dnssec_mode` | `"Permissive"` | DNSSEC enforcement: `"Off"`, `"Permissive"`, or `"Strict"` (see [DNSSEC](#dnssec)) |
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
 | `local_domain` | — | Local domain suffix appended to short hostnames |
@@ -174,10 +174,28 @@ Example use case: route `corp.internal` to `10.0.0.5:53` (Active Directory) whil
 
 ## DNSSEC
 
-When `dnssec_enabled = true`, Ferrous DNS validates DNSSEC signatures on all upstream responses. Queries that fail DNSSEC validation return `SERVFAIL`.
+Ferrous DNS validates DNSSEC signatures (chain of trust from the root KSK, RSA/ECDSA/Ed25519) on upstream responses. The `dnssec_mode` setting controls how the validation result is applied:
+
+| Mode | DO bit / validation | Bogus result | AD bit |
+|------|---------------------|--------------|--------|
+| `"Off"` | Not requested | — | never set |
+| `"Permissive"` (default) | Requested + validated | served, tagged `Bogus` in the query log | set on `Secure` |
+| `"Strict"` | Requested + validated | rejected with `SERVFAIL` + EDE 6 | set on `Secure` |
+
+- **AD bit** (Authenticated Data, RFC 6840): set only when a response validates as `Secure` and the client did not set the CD bit.
+- **CD bit** (Checking Disabled, RFC 4035): when a client sets CD, enforcement is skipped for that query so the client can perform its own validation — Strict mode will not `SERVFAIL` it.
+- **Fail-open**: only a *proven* `Bogus` result is enforced. Validation errors, timeouts, and `Indeterminate`/`Insecure` results are served (with the AD bit clear), prioritising availability.
+
+```toml title="ferrous-dns.toml"
+[dns]
+dnssec_mode = "Strict"   # SERVFAIL on Bogus; "Permissive" validates without rejecting; "Off" disables
+```
 
 !!! note
-    DNSSEC validation adds a small latency overhead on cache misses. For maximum throughput benchmarking, you can disable it: `dnssec_enabled = false`.
+    DNSSEC validation adds a small latency overhead on cache misses (extra DNSKEY/DS lookups, cached per zone). For maximum throughput benchmarking, you can disable it: `dnssec_mode = "Off"`.
+
+!!! tip "Backward compatibility"
+    The legacy `dnssec_enabled = true/false` flag is still accepted (mapping to `Permissive`/`Off`) when `dnssec_mode` is absent, but `dnssec_mode` is the source of truth.
 
 ---
 

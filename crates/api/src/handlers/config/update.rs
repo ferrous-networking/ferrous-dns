@@ -133,8 +133,18 @@ pub async fn update_config(
         if let Some(cache) = dns_update.cache_enabled {
             new_config.dns.cache_enabled = cache;
         }
-        if let Some(dnssec) = dns_update.dnssec_enabled {
-            new_config.dns.dnssec_enabled = dnssec;
+        if let Some(mode_str) = dns_update.dnssec_mode {
+            match crate::dto::config::parse_dnssec_mode(&mode_str) {
+                Ok(mode) => new_config.dns.dnssec_mode = Some(mode),
+                Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+            }
+        } else if let Some(dnssec) = dns_update.dnssec_enabled {
+            // Deprecated compat: map the old boolean onto the mode (source of truth).
+            new_config.dns.dnssec_mode = Some(if dnssec {
+                ferrous_dns_domain::DnssecMode::Permissive
+            } else {
+                ferrous_dns_domain::DnssecMode::Off
+            });
         }
         if let Some(strategy) = dns_update.cache_eviction_strategy {
             new_config.dns.cache_eviction_strategy = strategy;

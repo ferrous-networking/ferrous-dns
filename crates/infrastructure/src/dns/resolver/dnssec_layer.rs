@@ -2,7 +2,7 @@ use super::super::dnssec::DnssecValidatorPool;
 use super::super::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError};
 use hickory_proto::op::Message;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
@@ -48,7 +48,16 @@ impl DnsResolver for DnssecResolver {
             return Ok(resolution);
         }
 
-        if resolution.addresses.is_empty() {
+        let pre_fetched_message = resolution
+            .upstream_wire_data
+            .as_ref()
+            .and_then(|bytes| Message::from_vec(bytes).ok());
+
+        // A negative answer (no addresses) is still authenticated, via NSEC/NSEC3
+        // denial of existence in the upstream message's authority section. Only
+        // skip when there is nothing to validate at all (e.g. a synthesized or
+        // blocked response that carries no upstream wire data).
+        if resolution.addresses.is_empty() && pre_fetched_message.is_none() {
             return Ok(resolution);
         }
 
@@ -57,11 +66,6 @@ impl DnsResolver for DnssecResolver {
             record_type = %query.record_type,
             "Performing DNSSEC validation"
         );
-
-        let pre_fetched_message = resolution
-            .upstream_wire_data
-            .as_ref()
-            .and_then(|bytes| Message::from_vec(bytes).ok());
 
         let dnssec_result = if let Some(ref message) = pre_fetched_message {
             debug!(
@@ -95,7 +99,9 @@ impl DnsResolver for DnssecResolver {
                     "DNSSEC validation failed, returning insecure status"
                 );
 
-                resolution.dnssec_status = Some("insecure");
+                // A validation error fails open (Insecure, served, AD=0), never
+                // SERVFAIL.
+                resolution.dnssec_status = Some(DnssecStatus::Insecure.as_str());
                 Ok(resolution)
             }
         }

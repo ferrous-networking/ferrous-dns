@@ -1,18 +1,15 @@
 use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::forwarding::RecordTypeMapper;
-use bytes::Bytes;
+use crate::dns::wire_response;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{BlockResponseMode, DomainError, RecordType};
+use ferrous_dns_domain::{BlockResponseMode, DnssecStatus, DomainError, RecordType};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::{RData, Record};
 use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
-use hickory_server::authority::MessageResponseBuilder;
-use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
-use tracing::{debug, error, warn};
 
 const DEFAULT_TTL: u32 = 60;
 
@@ -69,19 +66,31 @@ impl DnsServerHandler {
             .try_cache_direct(domain, record_type, client_ip)
     }
 
-    /// Returns cached wire bytes for non-IP record types (NS, CNAME, SOA, PTR,
-    /// MX, TXT). The caller must patch the query ID before sending.
+    /// Returns a ready-to-send cached wire response for non-IP record types (NS,
+    /// CNAME, SOA, PTR, MX, TXT): the query ID is patched to `query_id` and the
+    /// AD bit is cleared. Clearing AD here — rather than relying on every caller
+    /// to do it — keeps the cached-wire fast path compliant for non-DO clients
+    /// (RFC 6840 §5.8) by construction.
     pub fn try_fast_path_wire(
         &self,
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
-    ) -> Option<(Bytes, u32)> {
-        self.use_case
-            .try_cache_wire_direct(domain, record_type, client_ip)
+        query_id: u16,
+    ) -> Option<(Vec<u8>, u32)> {
+        let (wire, ttl) = self
+            .use_case
+            .try_cache_wire_direct(domain, record_type, client_ip)?;
+        let patched = wire_response::patch_wire_id_clear_ad(&wire, query_id)?;
+        Some((patched, ttl))
     }
 
-    pub async fn handle_raw_udp_fallback(&self, raw: &[u8], client_ip: IpAddr) -> Option<Vec<u8>> {
+    pub async fn handle_raw_udp_fallback(
+        &self,
+        raw: &[u8],
+        client_ip: IpAddr,
+        is_udp: bool,
+    ) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
         let queries: Vec<_> = query_msg.queries().to_vec();
@@ -96,15 +105,47 @@ impl DnsServerHandler {
 
         let query_id = query_msg.id();
         let rd = query_msg.recursion_desired();
+        let cd = query_msg.checking_disabled();
         let has_edns = query_msg.extensions().is_some();
+        // RFC 6840 §5.8: only DNSSEC-aware clients (EDNS DO bit set) are eligible
+        // for the AD bit in the response.
+        let wants_dnssec = query_msg
+            .extensions()
+            .as_ref()
+            .map(|edns| edns.flags().dnssec_ok)
+            .unwrap_or(false);
+        // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
+        // the response size; larger answers must be truncated with TC=1 so the
+        // client retries over TCP. Not applicable to TCP/DoT/DoH.
+        let udp_limit: Option<usize> = if is_udp {
+            Some(
+                query_msg
+                    .extensions()
+                    .as_ref()
+                    .map(|edns| edns.max_payload() as usize)
+                    .filter(|&size| size >= 512)
+                    .unwrap_or(512),
+            )
+        } else {
+            None
+        };
         let edns_cookie: Option<Vec<u8>> = query_msg
             .extensions()
             .as_ref()
             .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
         drop(query_msg);
 
+        // Truncates an oversized UDP response down to a header-only TC=1 answer.
+        let maybe_truncate = |bytes: Vec<u8>| -> Option<Vec<u8>> {
+            match udp_limit {
+                Some(limit) if bytes.len() > limit => build_truncated_wire(query_id, rd, &queries),
+                _ => Some(bytes),
+            }
+        };
+
         let dns_request = {
-            let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip);
+            let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip)
+                .with_checking_disabled(cd);
             if let Some(c) = edns_cookie {
                 base.with_cookie(c)
             } else {
@@ -175,6 +216,12 @@ impl DnsServerHandler {
         let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
         let addresses = &resolution.addresses;
 
+        // RFC 6840 §5.8: advertise Authenticated Data only to DNSSEC-aware clients
+        // (DO bit), when we validated the answer as Secure, and the client did not
+        // set CD (which signals it wants to do its own validation, not trust ours).
+        let set_ad =
+            wants_dnssec && !cd && resolution.dnssec_status == Some(DnssecStatus::Secure.as_str());
+
         let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
         resp.set_recursion_desired(rd);
         resp.set_recursion_available(true);
@@ -234,7 +281,8 @@ impl DnsServerHandler {
                                 response[0] = (query_id >> 8) as u8;
                                 response[1] = query_id as u8;
                             }
-                            return Some(response);
+                            wire_response::set_ad_bit(&mut response, set_ad);
+                            return maybe_truncate(response);
                         }
                     }
                 } else {
@@ -244,7 +292,8 @@ impl DnsServerHandler {
                         response[0] = (query_id >> 8) as u8;
                         response[1] = query_id as u8;
                     }
-                    return Some(response);
+                    wire_response::set_ad_bit(&mut response, set_ad);
+                    return maybe_truncate(response);
                 }
             }
         } else {
@@ -277,232 +326,9 @@ impl DnsServerHandler {
             }
         }
         resp.set_edns(edns_resp);
+        resp.set_authentic_data(set_ad);
 
-        encode_message(&resp)
-    }
-}
-
-#[async_trait::async_trait]
-impl RequestHandler for DnsServerHandler {
-    async fn handle_request<R: ResponseHandler>(
-        &self,
-        request: &Request,
-        mut response_handle: R,
-    ) -> ResponseInfo {
-        let request_info = match request.request_info() {
-            Ok(info) => info,
-            Err(e) => {
-                error!(error = %e, "Failed to parse request info");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::FormErr,
-                    None,
-                )
-                .await;
-            }
-        };
-
-        let query = &request_info.query;
-        let raw_domain = query.name().to_utf8();
-        let domain_cow = Self::normalize_domain(&raw_domain);
-        let domain: &str = domain_cow.as_ref();
-        let hickory_record_type = query.query_type();
-        let client_ip = request.src().ip();
-
-        debug!(domain = %domain, record_type = ?hickory_record_type, client = %client_ip, "DNS query received");
-
-        let our_record_type = match RecordTypeMapper::from_hickory(hickory_record_type) {
-            Some(rt) => rt,
-            None => {
-                warn!(record_type = ?hickory_record_type, "Unsupported record type");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::NotImp,
-                    None,
-                )
-                .await;
-            }
-        };
-
-        let edns_cookie: Option<Vec<u8>> = request
-            .edns()
-            .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
-
-        let dns_request = {
-            let base = ferrous_dns_domain::DnsRequest::new(domain, our_record_type, client_ip);
-            if let Some(c) = edns_cookie {
-                base.with_cookie(c)
-            } else {
-                base
-            }
-        };
-        let domain_ref = &dns_request.domain;
-
-        let resolution = match self.use_case.execute(&dns_request).await {
-            Ok(res) => res,
-            Err(ref e @ DomainError::Blocked) => {
-                warn!(domain = %domain_ref, "Domain blocked");
-                return send_blocked_response(
-                    request,
-                    &mut response_handle,
-                    query.name().clone().into(),
-                    hickory_record_type,
-                    self.block_policy,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(ref e @ DomainError::DnsTunnelingDetected) => {
-                debug!(domain = %domain_ref, client = %client_ip, "DNS tunneling detected");
-                return send_blocked_response(
-                    request,
-                    &mut response_handle,
-                    query.name().clone().into(),
-                    hickory_record_type,
-                    self.block_policy,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(ref e @ DomainError::DnsRateLimited) => {
-                debug!(domain = %domain_ref, client = %client_ip, "Rate limited");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::Refused,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(ref e @ DomainError::DgaDomainDetected) => {
-                debug!(domain = %domain_ref, client = %client_ip, "DGA domain detected");
-                return send_blocked_response(
-                    request,
-                    &mut response_handle,
-                    query.name().clone().into(),
-                    hickory_record_type,
-                    self.block_policy,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(ref e @ DomainError::FilteredQuery(ref reason)) => {
-                debug!(domain = %domain_ref, reason = %reason, "Query filtered by policy");
-                return send_blocked_response(
-                    request,
-                    &mut response_handle,
-                    query.name().clone().into(),
-                    hickory_record_type,
-                    self.block_policy,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(ref e @ DomainError::DnsCookieInvalid) => {
-                debug!(domain = %domain_ref, client = %client_ip, "DNS cookie invalid");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::Refused,
-                    ede::from_domain_error(e),
-                )
-                .await;
-            }
-            Err(DomainError::DnsRateLimitedSlip) => {
-                debug!(domain = %domain_ref, client = %client_ip, "Rate limited (TC=1 slip)");
-                return send_truncated_response(request, &mut response_handle).await;
-            }
-            Err(DomainError::NxDomain) | Err(DomainError::LocalNxDomain) => {
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::NXDomain,
-                    None,
-                )
-                .await;
-            }
-            Err(e) => {
-                error!(error = %e, "Query resolution failed");
-                return send_error_response(
-                    request,
-                    &mut response_handle,
-                    ResponseCode::ServFail,
-                    ede::from_domain_error(&e),
-                )
-                .await;
-            }
-        };
-
-        let ttl = resolution.min_ttl.unwrap_or(DEFAULT_TTL);
-        let addresses = resolution.addresses;
-
-        if addresses.is_empty() {
-            if let Some(ref wire_data) = resolution.upstream_wire_data {
-                if let Ok(message) = Message::from_vec(wire_data) {
-                    let answers: Vec<Record> = message.answers().to_vec();
-                    let authority: Vec<Record> = message.name_servers().to_vec();
-                    let additional: Vec<Record> = message.additionals().to_vec();
-                    let builder = MessageResponseBuilder::from_message_request(request);
-                    let mut header = *request.header();
-                    header.set_message_type(MessageType::Response);
-                    header.set_recursion_available(true);
-                    let response = builder.build(
-                        header,
-                        answers.iter(),
-                        authority.iter(),
-                        &[],
-                        additional.iter(),
-                    );
-                    return match response_handle.send_response(response).await {
-                        Ok(info) => info,
-                        Err(e) => {
-                            error!(error = %e, "Failed to send wire data response");
-                            ResponseInfo::from(*request.header())
-                        }
-                    };
-                }
-            }
-            debug!(domain = %domain_ref, "No records found (NODATA)");
-            let builder = MessageResponseBuilder::from_message_request(request);
-            let mut header = *request.header();
-            header.set_message_type(MessageType::Response);
-            header.set_recursion_available(true);
-            let response = builder.build(header, &[], &[], &[], &[]);
-            return match response_handle.send_response(response).await {
-                Ok(info) => info,
-                Err(e) => {
-                    error!(error = %e, "Failed to send NODATA response");
-                    ResponseInfo::from(*request.header())
-                }
-            };
-        }
-
-        let record_name: hickory_proto::rr::Name = query.name().clone().into();
-
-        let builder = MessageResponseBuilder::from_message_request(request);
-        let mut answers = Vec::with_capacity(addresses.len());
-        for addr in addresses.iter() {
-            let rdata = match *addr {
-                IpAddr::V4(ipv4) => RData::A(hickory_proto::rr::rdata::A(ipv4)),
-                IpAddr::V6(ipv6) => RData::AAAA(hickory_proto::rr::rdata::AAAA(ipv6)),
-            };
-            answers.push(Record::from_rdata(record_name.clone(), ttl, rdata));
-        }
-
-        debug!(domain = %domain_ref, answers = addresses.len(), "Sending response");
-        let mut header = *request.header();
-        header.set_message_type(MessageType::Response);
-        header.set_recursion_available(true);
-        let response = builder.build(header, answers.iter(), &[], &[], &[]);
-        match response_handle.send_response(response).await {
-            Ok(info) => info,
-            Err(e) => {
-                error!(error = %e, "Failed to send response");
-                ResponseInfo::from(*request.header())
-            }
-        }
+        maybe_truncate(encode_message(&resp)?)
     }
 }
 
@@ -682,146 +508,4 @@ fn build_truncated_wire(
         resp.add_query(q.clone());
     }
     encode_message(&resp)
-}
-
-/// Sends the response for a domain-verdict block (hickory `RequestHandler`
-/// path), honouring the configured [`BlockPolicy`]. Mirrors [`build_blocked_wire`]:
-/// `NullIp` emits a cacheable `0.0.0.0`/`::` answer (NODATA for non-A/AAAA),
-/// other modes set the response code with an empty answer; negative answers
-/// (NXDOMAIN / NODATA) carry a synthetic SOA for negative caching. `Refused`
-/// delegates to [`send_error_response`].
-pub async fn send_blocked_response<R: ResponseHandler>(
-    request: &Request,
-    response_handle: &mut R,
-    record_name: hickory_proto::rr::Name,
-    query_type: hickory_proto::rr::RecordType,
-    policy: BlockPolicy,
-    ede: Option<ExtendedDnsError>,
-) -> ResponseInfo {
-    use hickory_proto::rr::RecordType;
-
-    let (code, answers): (ResponseCode, Vec<Record>) = match policy.mode {
-        BlockResponseMode::Refused => {
-            return send_error_response(request, response_handle, ResponseCode::Refused, ede).await;
-        }
-        BlockResponseMode::NxDomain => (ResponseCode::NXDomain, Vec::new()),
-        BlockResponseMode::NoData => (ResponseCode::NoError, Vec::new()),
-        BlockResponseMode::NullIp => {
-            let rdata = match query_type {
-                RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(
-                    policy.sinkhole_ipv4.unwrap_or(Ipv4Addr::UNSPECIFIED),
-                ))),
-                RecordType::AAAA => Some(RData::AAAA(hickory_proto::rr::rdata::AAAA(
-                    policy.sinkhole_ipv6.unwrap_or(Ipv6Addr::UNSPECIFIED),
-                ))),
-                // Other record types: NODATA (NOERROR, empty answer).
-                _ => None,
-            };
-            let answers = rdata
-                .map(|rdata| vec![Record::from_rdata(record_name.clone(), policy.ttl, rdata)])
-                .unwrap_or_default();
-            (ResponseCode::NoError, answers)
-        }
-    };
-
-    // Negative answer (no positive record) carries a synthetic SOA so the
-    // verdict can be negatively cached (RFC 2308).
-    let authority: Vec<Record> = if answers.is_empty() {
-        vec![synthetic_block_soa(record_name, policy.ttl)]
-    } else {
-        Vec::new()
-    };
-
-    debug!(code = ?code, answers = answers.len(), "Sending blocked response");
-    let mut builder = MessageResponseBuilder::from_message_request(request);
-    let mut header = *request.header();
-    header.set_message_type(MessageType::Response);
-    header.set_response_code(code);
-    header.set_recursion_available(true);
-
-    // Echo an EDNS OPT whenever the query carried one (matches build_blocked_wire),
-    // attaching the EDE option when present.
-    if request.edns().is_some() {
-        let mut edns = Edns::new();
-        edns.set_max_payload(4096);
-        edns.set_version(0);
-        if let Some(ede) = ede {
-            let mut data = Vec::with_capacity(2);
-            data.extend_from_slice(&ede.info_code.to_be_bytes());
-            if let Some(text) = ede.extra_text {
-                data.extend_from_slice(text.as_bytes());
-            }
-            edns.options_mut()
-                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
-        }
-        builder.edns(edns);
-    }
-
-    let response = builder.build(header, answers.iter(), &[], authority.iter(), &[]);
-    match response_handle.send_response(response).await {
-        Ok(info) => info,
-        Err(e) => {
-            error!(error = %e, "Failed to send blocked response");
-            ResponseInfo::from(*request.header())
-        }
-    }
-}
-
-async fn send_truncated_response<R: ResponseHandler>(
-    request: &Request,
-    response_handle: &mut R,
-) -> ResponseInfo {
-    debug!("Sending truncated (TC=1) response");
-    let builder = MessageResponseBuilder::from_message_request(request);
-    let mut header = *request.header();
-    header.set_message_type(MessageType::Response);
-    header.set_truncated(true);
-    header.set_recursion_available(true);
-    let response = builder.build(header, &[], &[], &[], &[]);
-    match response_handle.send_response(response).await {
-        Ok(info) => info,
-        Err(e) => {
-            error!(error = %e, "Failed to send truncated response");
-            ResponseInfo::from(*request.header())
-        }
-    }
-}
-
-async fn send_error_response<R: ResponseHandler>(
-    request: &Request,
-    response_handle: &mut R,
-    code: ResponseCode,
-    ede: Option<ExtendedDnsError>,
-) -> ResponseInfo {
-    debug!(code = ?code, "Sending error response");
-    let mut builder = MessageResponseBuilder::from_message_request(request);
-    let mut header = *request.header();
-    header.set_message_type(MessageType::Response);
-    header.set_response_code(code);
-    header.set_recursion_available(true);
-
-    if let Some(ede) = ede {
-        if request.edns().is_some() {
-            let mut edns = Edns::new();
-            edns.set_max_payload(4096);
-            edns.set_version(0);
-            let mut data = Vec::with_capacity(2);
-            data.extend_from_slice(&ede.info_code.to_be_bytes());
-            if let Some(text) = ede.extra_text {
-                data.extend_from_slice(text.as_bytes());
-            }
-            edns.options_mut()
-                .insert(EdnsOption::Unknown(ede::OPTION_CODE, data));
-            builder.edns(edns);
-        }
-    }
-
-    let response = builder.build(header, &[], &[], &[], &[]);
-    match response_handle.send_response(response).await {
-        Ok(info) => info,
-        Err(e) => {
-            error!(error = %e, "Failed to send error response");
-            ResponseInfo::from(*request.header())
-        }
-    }
 }

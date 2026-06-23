@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::net::UdpSocket;
-use tracing::{debug, warn};
+use tracing::debug;
 
 static DEFAULT_UDP_POOL: LazyLock<Arc<UdpSocketPool>> =
     LazyLock::new(|| Arc::new(UdpSocketPool::new(4, 64)));
@@ -25,12 +25,6 @@ pub fn validate_response_id(
     let query_id = u16::from_be_bytes([query_bytes[0], query_bytes[1]]);
     let response_id = u16::from_be_bytes([response_bytes[0], response_bytes[1]]);
     if query_id != response_id {
-        warn!(
-            server = %server,
-            query_id,
-            response_id,
-            "DNS message ID mismatch — discarding response to prevent spoofing"
-        );
         return Err(DomainError::IoError(format!(
             "DNS message ID mismatch from {}: expected {}, got {}",
             server, query_id, response_id
@@ -41,11 +35,6 @@ pub fn validate_response_id(
 
 fn validate_response_source(from: SocketAddr, expected: SocketAddr) -> Result<(), DomainError> {
     if from.ip() != expected.ip() {
-        warn!(
-            expected = %expected.ip(),
-            actual = %from.ip(),
-            "Rejecting UDP response from unexpected source (anti-spoofing)"
-        );
         return Err(DomainError::IoError(format!(
             "UDP response from unexpected source: expected {}, got {}",
             expected.ip(),
@@ -56,6 +45,71 @@ fn validate_response_source(from: SocketAddr, expected: SocketAddr) -> Result<()
 }
 
 const MAX_UDP_RESPONSE_SIZE: usize = 4096;
+
+/// Receive datagrams on `socket` until one arrives from the expected server
+/// with the matching DNS message ID, or `timeout` elapses.
+///
+/// A pooled UDP socket is reused across queries, so it can still hold a late
+/// response from a *previous* query, and an off-path attacker can inject
+/// spoofed datagrams. A datagram from the wrong source or with a non-matching
+/// message ID is therefore not our answer — it is drained and we keep waiting,
+/// rather than failing the in-flight query. This keeps response/request
+/// matching correct under socket reuse (the DNSSEC chain walk fires many
+/// concurrent DS/DNSKEY queries) while preserving the anti-spoofing checks.
+async fn recv_matching(
+    socket: &UdpSocket,
+    query_bytes: &[u8],
+    server_addr: SocketAddr,
+    timeout: Duration,
+) -> Result<bytes::Bytes, DomainError> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
+
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(DomainError::IoError(format!(
+                "Timeout waiting for UDP response from {}",
+                server_addr
+            )));
+        }
+
+        let (bytes_received, from_addr) =
+            match tokio::time::timeout(remaining, socket.recv_from(&mut recv_buf)).await {
+                Err(_) => {
+                    return Err(DomainError::IoError(format!(
+                        "Timeout waiting for UDP response from {}",
+                        server_addr
+                    )))
+                }
+                Ok(Err(e)) => {
+                    return Err(DomainError::IoError(format!(
+                        "Failed to receive UDP response from {}: {}",
+                        server_addr, e
+                    )))
+                }
+                Ok(Ok(v)) => v,
+            };
+
+        if validate_response_source(from_addr, server_addr).is_err() {
+            debug!(
+                server = %server_addr,
+                actual = %from_addr.ip(),
+                "Draining UDP datagram from unexpected source (anti-spoofing)"
+            );
+            continue;
+        }
+        if validate_response_id(query_bytes, &recv_buf[..bytes_received], server_addr).is_err() {
+            debug!(
+                server = %server_addr,
+                "Draining stale/duplicate UDP datagram (message ID mismatch)"
+            );
+            continue;
+        }
+
+        return Ok(bytes::Bytes::copy_from_slice(&recv_buf[..bytes_received]));
+    }
+}
 
 pub struct UdpTransport {
     upstream_addr: UpstreamAddr,
@@ -123,44 +177,26 @@ impl UdpTransport {
                 "UDP query sent"
             );
 
-            let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
-
-            let (bytes_received, from_addr) =
-                tokio::time::timeout(timeout, socket.recv_from(&mut recv_buf))
-                    .await
-                    .map_err(|_| {
-                        DomainError::IoError(format!(
-                            "Timeout waiting for UDP response from {}",
-                            server_addr
-                        ))
-                    })?
-                    .map_err(|e| {
-                        DomainError::IoError(format!(
-                            "Failed to receive UDP response from {}: {}",
-                            server_addr, e
-                        ))
-                    })?;
-
-            if let Err(e) = validate_response_source(from_addr, server_addr) {
-                pooled.poison();
-                return Err(e);
-            }
-            if let Err(e) =
-                validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)
-            {
-                pooled.poison();
-                return Err(e);
-            }
+            // On any failure (incl. timeout) the socket may still have our
+            // response in flight, so poison it rather than returning it to the
+            // pool where it would corrupt the next query.
+            let bytes = match recv_matching(socket, message_bytes, server_addr, timeout).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    pooled.poison();
+                    return Err(e);
+                }
+            };
 
             debug!(
                 server = %server_addr,
-                bytes_received = bytes_received,
+                bytes_received = bytes.len(),
                 pooled = true,
                 "UDP response received"
             );
 
             Ok(TransportResponse {
-                bytes: bytes::Bytes::copy_from_slice(&recv_buf[..bytes_received]),
+                bytes,
                 protocol_used: "UDP",
             })
         } else {
@@ -204,36 +240,17 @@ impl UdpTransport {
             "UDP query sent"
         );
 
-        let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
-
-        let (bytes_received, from_addr) =
-            tokio::time::timeout(timeout, socket.recv_from(&mut recv_buf))
-                .await
-                .map_err(|_| {
-                    DomainError::IoError(format!(
-                        "Timeout waiting for UDP response from {}",
-                        server_addr
-                    ))
-                })?
-                .map_err(|e| {
-                    DomainError::IoError(format!(
-                        "Failed to receive UDP response from {}: {}",
-                        server_addr, e
-                    ))
-                })?;
-
-        validate_response_source(from_addr, server_addr)?;
-        validate_response_id(message_bytes, &recv_buf[..bytes_received], server_addr)?;
+        let bytes = recv_matching(&socket, message_bytes, server_addr, timeout).await?;
 
         debug!(
             server = %server_addr,
-            bytes_received = bytes_received,
+            bytes_received = bytes.len(),
             pooled = false,
             "UDP response received"
         );
 
         Ok(TransportResponse {
-            bytes: bytes::Bytes::copy_from_slice(&recv_buf[..bytes_received]),
+            bytes,
             protocol_used: "UDP",
         })
     }

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::dga_detection::DgaDetectionConfig;
 use super::dns_cookies::DnsCookiesConfig;
+use super::dnssec::DnssecMode;
 use super::health::HealthCheckConfig;
 use super::local_records::LocalDnsRecord;
 use super::nxdomain_hijack::NxdomainHijackConfig;
@@ -25,8 +26,16 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_ttl")]
     pub cache_ttl: u32,
 
-    #[serde(default = "default_false")]
-    pub dnssec_enabled: bool,
+    /// DNSSEC validation enforcement mode (RFC 4035 / 6840). Single source of
+    /// truth. When absent, falls back to the deprecated `dnssec_enabled` flag
+    /// (see `effective_dnssec_mode`).
+    #[serde(default)]
+    pub dnssec_mode: Option<DnssecMode>,
+
+    /// Deprecated: use `dnssec_mode`. Kept only for backward-compatibility with
+    /// older config files; `true` maps to `Permissive`, `false` to `Off`.
+    #[serde(default)]
+    pub dnssec_enabled: Option<bool>,
 
     #[serde(default)]
     pub default_strategy: UpstreamStrategy,
@@ -145,7 +154,8 @@ impl Default for DnsConfig {
             query_timeout: default_query_timeout(),
             cache_enabled: true,
             cache_ttl: default_cache_ttl(),
-            dnssec_enabled: false,
+            dnssec_mode: None,
+            dnssec_enabled: None,
             default_strategy: UpstreamStrategy::Parallel,
             pools: vec![],
             health_check: HealthCheckConfig::default(),
@@ -180,6 +190,23 @@ impl Default for DnsConfig {
             dga_detection: DgaDetectionConfig::default(),
             dns_cookies: DnsCookiesConfig::default(),
             qname_case_randomization: false,
+        }
+    }
+}
+
+impl DnsConfig {
+    /// Resolves the effective DNSSEC mode, applying backward-compatibility
+    /// precedence: an explicit `dnssec_mode` wins; otherwise the deprecated
+    /// `dnssec_enabled` flag is mapped (`true` → Permissive, `false` → Off);
+    /// when neither is set, the default (`Permissive`) applies.
+    pub fn effective_dnssec_mode(&self) -> DnssecMode {
+        if let Some(mode) = self.dnssec_mode {
+            return mode;
+        }
+        match self.dnssec_enabled {
+            Some(true) => DnssecMode::Permissive,
+            Some(false) => DnssecMode::Off,
+            None => DnssecMode::default(),
         }
     }
 }

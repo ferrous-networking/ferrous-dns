@@ -17,6 +17,9 @@ pub struct QueryParams {
     #[serde(rename = "type")]
     pub record_type: Option<String>,
     pub upstream: Option<String>,
+    /// Filter by DNSSEC validation status: `any` (any validated row), `Secure`,
+    /// `Insecure`, `Bogus`, or `Indeterminate` (case-insensitive).
+    pub dnssec_status: Option<String>,
 }
 
 fn default_limit() -> u32 {

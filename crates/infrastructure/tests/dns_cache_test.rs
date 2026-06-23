@@ -4,7 +4,7 @@ use ferrous_dns_infrastructure::dns::cache::eviction::{
     EvictionPolicy, HitRatePolicy, LfuPolicy, LfukPolicy, LruPolicy,
 };
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, CachedRecord, DnsCache, DnsCacheConfig, DnssecStatus,
+    CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, DnsCache, DnsCacheConfig,
     EvictionStrategy,
 };
 use std::net::IpAddr;
@@ -1057,7 +1057,7 @@ fn make_record_with_hits(hits: u64) -> CachedRecord {
         }),
         300,
         RecordType::A,
-        Some(DnssecStatus::Unknown),
+        Some(CachedDnssecStatus::Unknown),
     );
     for _ in 0..hits {
         record.record_hit();

@@ -33,6 +33,7 @@ pub fn from_domain_error(err: &DomainError) -> Option<ExtendedDnsError> {
         DomainError::DnssecValidationFailed(_) => {
             (codes::DNSSEC_BOGUS, "DNSSEC signature validation failed")
         }
+        DomainError::DnssecBogus => (codes::DNSSEC_BOGUS, "DNSSEC validation: bogus"),
         DomainError::InsecureDelegation => (codes::DNSKEY_MISSING, "insecure delegation"),
         DomainError::QueryTimeout => (codes::NO_REACHABLE_AUTHORITY, "upstream query timed out"),
         DomainError::TransportNoHealthyServers => {
