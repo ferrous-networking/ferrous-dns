@@ -53,6 +53,14 @@ pub fn set_ad_bit(buf: &mut [u8], ad: bool) {
     }
 }
 
+/// Over UDP a cached wire answer larger than the client's advertised EDNS
+/// buffer (or 512 without EDNS) must be deferred to the slow path, which
+/// truncates it with TC=1 (RFC 6891 §6.2.5 / RFC 7766). Returns `true` when the
+/// `wire_len` bytes fit and may be served verbatim on the fast path.
+pub fn wire_fits_udp_buffer(wire_len: usize, client_max_size: u16) -> bool {
+    wire_len <= client_max_size as usize
+}
+
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],
