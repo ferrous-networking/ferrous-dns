@@ -88,6 +88,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             block_private_ptr: config.dns.block_private_ptr,
             local_domain: config.dns.local_domain.clone(),
             local_dns_server: config.dns.local_dns_server.clone(),
+            mdns_enabled: config.dns.mdns_enabled,
             rate_limit: crate::dto::config::RateLimitConfigResponse {
                 enabled: config.dns.rate_limit.enabled,
                 queries_per_second: config.dns.rate_limit.queries_per_second,

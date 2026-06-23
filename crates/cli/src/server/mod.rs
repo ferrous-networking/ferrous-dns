@@ -5,6 +5,7 @@ mod web_tls;
 
 pub use dns::dot::start_dot_server;
 pub use dns::start_dns_server;
+pub use dns::start_mdns_listener;
 pub use dns::tls_config::load_server_tls_config;
 pub use web::start_doh_server;
 pub use web::start_web_server;

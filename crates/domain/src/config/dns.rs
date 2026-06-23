@@ -93,6 +93,9 @@ pub struct DnsConfig {
     #[serde(default = "default_false")]
     pub block_non_fqdn: bool,
 
+    #[serde(default = "default_false")]
+    pub mdns_enabled: bool,
+
     #[serde(default)]
     pub local_domain: Option<String>,
 
@@ -178,6 +181,7 @@ impl Default for DnsConfig {
             cache_max_ttl: default_cache_max_ttl(),
             block_private_ptr: true,
             block_non_fqdn: false,
+            mdns_enabled: false,
             local_domain: None,
             local_dns_server: None,
             local_records: vec![],

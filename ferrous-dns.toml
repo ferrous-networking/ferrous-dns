@@ -63,6 +63,7 @@ default_strategy = "Parallel"           # Resolution strategy: "Parallel" (faste
 dnssec_mode = "Permissive"              # DNSSEC enforcement: "Off" (no validation), "Permissive" (validate + tag, no SERVFAIL), "Strict" (SERVFAIL on Bogus). Default: Permissive
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
+mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
 
