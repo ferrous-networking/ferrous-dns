@@ -405,6 +405,17 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         }
     }
 
+    // ── [dns64] ─────────────────────────────────────────────────────────
+    {
+        let t = ensure_table(&mut doc, "dns64")?;
+        set_val(t, "enabled", toml_edit::Value::from(config.dns64.enabled));
+        set_val(
+            t,
+            "prefix",
+            toml_edit::Value::from(config.dns64.prefix.clone()),
+        );
+    }
+
     // ── [logging] ───────────────────────────────────────────────────────
     {
         let t = ensure_table(&mut doc, "logging")?;

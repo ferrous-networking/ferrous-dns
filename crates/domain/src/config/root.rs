@@ -4,6 +4,7 @@ use super::auth::AuthConfig;
 use super::blocking::BlockingConfig;
 use super::database::DatabaseConfig;
 use super::dns::DnsConfig;
+use super::dns64::Dns64Config;
 use super::errors::ConfigError;
 use super::logging::LoggingConfig;
 use super::server::ServerConfig;
@@ -16,6 +17,9 @@ pub struct Config {
     pub dns: DnsConfig,
 
     pub blocking: BlockingConfig,
+
+    #[serde(default)]
+    pub dns64: Dns64Config,
 
     pub logging: LoggingConfig,
 

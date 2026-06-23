@@ -215,6 +215,13 @@ impl DnsServices {
         .with_rate_limiter(rate_limiter)
         .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces());
 
+        // DNS64 query-log tagging: only when enabled with a valid /96 prefix.
+        if config.dns64.enabled {
+            if let Some(prefix) = config.dns64.parsed_prefix() {
+                handler = handler.with_dns64(prefix);
+            }
+        }
+
         if let Some((ref detector, ref tx)) = tunneling_detector {
             handler = handler
                 .with_tunneling_detection(&config.dns.tunneling_detection)

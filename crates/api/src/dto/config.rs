@@ -8,6 +8,7 @@ pub struct ConfigResponse {
     pub server: ServerConfigResponse,
     pub dns: DnsConfigResponse,
     pub blocking: BlockingConfigResponse,
+    pub dns64: Dns64ConfigResponse,
     pub logging: LoggingConfigResponse,
     pub database: DatabaseConfigResponse,
     pub auth: AuthConfigResponse,
@@ -179,6 +180,29 @@ pub fn parse_sinkhole_ipv6(value: &str) -> Result<Option<Ipv6Addr>, String> {
         .map_err(|_| format!("Invalid IPv6 sinkhole address: {trimmed}"))
 }
 
+/// Validates an API DNS64 prefix string (must be a `/96`) and returns the
+/// trimmed value. A malformed or non-/96 value is rejected so a bad UI value
+/// can't silently disable synthesis at the next restart.
+pub fn parse_dns64_prefix(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    let cfg = ferrous_dns_domain::Dns64Config {
+        enabled: true,
+        prefix: trimmed.to_string(),
+    };
+    if cfg.parsed_prefix().is_none() {
+        return Err(format!(
+            "Invalid DNS64 prefix (only /96 is supported): {trimmed}"
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct Dns64ConfigResponse {
+    pub enabled: bool,
+    pub prefix: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct LoggingConfigResponse {
     pub level: String,
@@ -324,6 +348,12 @@ pub struct SettingsDto {
 
     #[serde(default)]
     pub sinkhole_ipv6: String,
+
+    #[serde(default)]
+    pub dns64_enabled: bool,
+
+    #[serde(default)]
+    pub nat64_prefix: String,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -344,6 +374,8 @@ impl From<ConfigResponse> for SettingsDto {
             block_ttl: config.blocking.block_ttl,
             sinkhole_ipv4: config.blocking.sinkhole_ipv4,
             sinkhole_ipv6: config.blocking.sinkhole_ipv6,
+            dns64_enabled: config.dns64.enabled,
+            nat64_prefix: config.dns64.prefix,
         }
     }
 }

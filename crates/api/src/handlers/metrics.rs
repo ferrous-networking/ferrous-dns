@@ -206,7 +206,7 @@ pub fn render_metrics(
 
     // --- Query-log–derived gauges (24h rolling window) ---
     if let Some(stats) = query_stats {
-        let windowed: [(&str, &str, i64); 6] = [
+        let windowed: [(&str, &str, i64); 7] = [
             (
                 "queries",
                 "DNS client queries in the last 24h",
@@ -231,6 +231,11 @@ pub fn render_metrics(
                 "queries_dnssec_bogus",
                 "DNS client queries with a Bogus DNSSEC validation in the last 24h",
                 stats.queries_dnssec_bogus as i64,
+            ),
+            (
+                "dns64_synthesized",
+                "AAAA answers synthesized by DNS64 (RFC 6147) in the last 24h",
+                stats.queries_dns64_synthesized as i64,
             ),
             (
                 "unique_clients",

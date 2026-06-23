@@ -22,6 +22,10 @@ pub struct SnapshotConfig {
     pub server: SnapshotServerConfig,
     pub dns: SnapshotDnsConfig,
     pub blocking: SnapshotBlockingConfig,
+    // Absent from pre-0.9.2 backups; serde default keeps older files importable
+    // (DNS64 disabled, well-known prefix).
+    #[serde(default)]
+    pub dns64: SnapshotDns64Config,
     pub logging: SnapshotLoggingConfig,
     pub auth: SnapshotAuthConfig,
 }
@@ -87,6 +91,16 @@ pub struct SnapshotBlockingConfig {
 
 fn default_block_ttl() -> u32 {
     ferrous_dns_domain::DEFAULT_BLOCK_TTL
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SnapshotDns64Config {
+    #[serde(default)]
+    pub enabled: bool,
+    /// `None` in older/default backups; import falls back to the well-known
+    /// prefix.
+    #[serde(default)]
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

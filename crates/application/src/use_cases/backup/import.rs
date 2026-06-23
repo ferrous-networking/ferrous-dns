@@ -165,6 +165,11 @@ impl ImportConfigUseCase {
         new_config.blocking.sinkhole_ipv4 = sc.blocking.sinkhole_ipv4;
         new_config.blocking.sinkhole_ipv6 = sc.blocking.sinkhole_ipv6;
 
+        new_config.dns64.enabled = sc.dns64.enabled;
+        if let Some(prefix) = sc.dns64.prefix.clone() {
+            new_config.dns64.prefix = prefix;
+        }
+
         new_config.logging.level = sc.logging.level.clone();
 
         new_config.auth.enabled = sc.auth.enabled;

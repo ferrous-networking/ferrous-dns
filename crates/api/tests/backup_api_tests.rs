@@ -509,6 +509,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             response_time_ms INTEGER,
             blocked_by TEXT,
             upstream TEXT,
+            dns64_synthesized INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         "#,
@@ -948,6 +949,49 @@ async fn test_import_valid_backup_returns_success_true() {
     let json: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["success"], true);
     assert!(json.get("summary").is_some());
+}
+
+#[tokio::test]
+async fn test_dns64_config_survives_export_import_roundtrip() {
+    // App A: enable DNS64 with a non-default prefix, then export — exercises the
+    // real `export.rs` dns64 mapping.
+    let (app_a, config_a, _pool_a) = create_test_app().await;
+    {
+        let mut cfg = config_a.write().await;
+        cfg.dns64.enabled = true;
+        cfg.dns64.prefix = "2001:db8:64::/96".to_string();
+    }
+    let (status, exported) = do_export(app_a).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(exported["config"]["dns64"]["enabled"], true);
+    assert_eq!(exported["config"]["dns64"]["prefix"], "2001:db8:64::/96");
+
+    // App B (fresh, DNS64 default-disabled with the well-known prefix): import the
+    // exported backup — exercises the real `import.rs` dns64 mapping. Both fields
+    // must land in the live config, proving the round-trip is not just defaults.
+    let (app_b, config_b, _pool_b) = create_test_app().await;
+    {
+        let cfg = config_b.read().await;
+        assert!(
+            !cfg.dns64.enabled,
+            "fresh app must start with DNS64 disabled"
+        );
+        assert_ne!(cfg.dns64.prefix, "2001:db8:64::/96");
+    }
+
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["success"], true);
+
+    let cfg = config_b.read().await;
+    assert!(
+        cfg.dns64.enabled,
+        "imported DNS64 enabled flag must survive"
+    );
+    assert_eq!(cfg.dns64.prefix, "2001:db8:64::/96");
 }
 
 #[tokio::test]

@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-const COLS_PER_ROW: usize = 14;
+const COLS_PER_ROW: usize = 15;
 const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
 
 pub(super) struct QueryLogEntry {
@@ -18,6 +18,7 @@ pub(super) struct QueryLogEntry {
     cache_hit: bool,
     cache_refresh: bool,
     dnssec_status: Option<&'static str>,
+    dns64_synthesized: bool,
     upstream_server: Option<Arc<str>>,
     upstream_pool: Option<Arc<str>>,
     response_status: Option<&'static str>,
@@ -37,6 +38,7 @@ impl QueryLogEntry {
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
+            dns64_synthesized: q.dns64_synthesized,
             upstream_server: q.upstream_server.clone(),
             upstream_pool: q.upstream_pool.clone(),
             response_status: q.response_status,
@@ -51,9 +53,9 @@ fn build_multi_insert_sql(n: usize) -> String {
     debug_assert!(n > 0 && n <= ROWS_PER_CHUNK);
     const HEADER: &str = "INSERT INTO query_log \
         (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-         cache_refresh, dnssec_status, upstream_server, upstream_pool, response_status, query_source, group_id, block_source) \
+         cache_refresh, dnssec_status, dns64_synthesized, upstream_server, upstream_pool, response_status, query_source, group_id, block_source) \
         VALUES ";
-    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     let mut sql = String::with_capacity(HEADER.len() + n * (PLACEHOLDER.len() + 1));
     sql.push_str(HEADER);
     for i in 0..n {
@@ -137,6 +139,7 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
                 .bind(if entry.cache_hit { 1i64 } else { 0i64 })
                 .bind(if entry.cache_refresh { 1i64 } else { 0i64 })
                 .bind(entry.dnssec_status)
+                .bind(if entry.dns64_synthesized { 1i64 } else { 0i64 })
                 .bind(entry.upstream_server.as_deref())
                 .bind(entry.upstream_pool.as_deref())
                 .bind(entry.response_status)

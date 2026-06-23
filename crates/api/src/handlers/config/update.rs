@@ -414,6 +414,14 @@ pub async fn update_settings(
             Ok(addr) => addr,
             Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
         };
+    new_config.dns64.enabled = request.dns64_enabled;
+    if !request.nat64_prefix.trim().is_empty() {
+        new_config.dns64.prefix =
+            match crate::dto::config::parse_dns64_prefix(&request.nat64_prefix) {
+                Ok(prefix) => prefix,
+                Err(e) => return Json(serde_json::json!({ "success": false, "error": e })),
+            };
+    }
 
     match state
         .config_file_persistence
