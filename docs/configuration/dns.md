@@ -14,6 +14,7 @@ default_strategy = "Parallel"
 dnssec_mode = "Permissive"
 block_private_ptr = true
 block_non_fqdn = false
+mdns_enabled = false              # passive mDNS/Bonjour listener on UDP 5353
 # local_domain = "lan"            # optional — no default
 local_dns_server = "10.0.0.1:53"
 ```
@@ -28,6 +29,7 @@ local_dns_server = "10.0.0.1:53"
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
 | `local_domain` | — | Local domain suffix appended to short hostnames |
 | `local_dns_server` | — | Router/DHCP server used for PTR lookups and client hostname resolution |
+| `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
 | `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
 

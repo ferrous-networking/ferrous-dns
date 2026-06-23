@@ -1,9 +1,12 @@
 pub(crate) mod connection_limiter;
 pub mod dot;
+mod mdns;
 mod pktinfo;
 mod tcp;
 pub mod tls_config;
 mod udp;
+
+pub use mdns::start_mdns_listener;
 
 use connection_limiter::ConnectionLimiter;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;

@@ -182,6 +182,7 @@ block_private_ptr = true
 block_non_fqdn    = true
 local_domain      = "lan"
 local_dns_server  = "10.0.0.1:53"
+mdns_enabled      = false
 ```
 
 | Option | Type | Default | Description |
@@ -194,6 +195,7 @@ local_dns_server  = "10.0.0.1:53"
 | `block_non_fqdn` | `bool` | `true` | Block queries for non-fully-qualified domain names |
 | `local_domain` | `str` | `"lan"` | Local domain suffix appended to short hostnames |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups and client hostname resolution |
+| `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
 
 See [DNS & Upstreams](dns.md).
 

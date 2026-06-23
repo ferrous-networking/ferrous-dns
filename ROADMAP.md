@@ -120,4 +120,5 @@
 - [ ] WebSocket dashboard for slow query monitoring
 - [ ] Query anomaly detection
 - [ ] DoH bypass detection (detect malware using direct DoH to public resolvers)
+- [ ] mDNS / Bonjour device discovery — passive UDP 5353 listener (multicast 224.0.0.251) to label clients by device name instead of bare IPs (listener landed; name parsing + UI labeling in progress)
 ---

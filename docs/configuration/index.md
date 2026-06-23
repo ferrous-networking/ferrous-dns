@@ -465,6 +465,7 @@ default_strategy = "Parallel"              # "Parallel" or "Sequential"
 dnssec_enabled   = true                    # Validate DNSSEC signatures
 block_private_ptr = true                   # Block PTR lookups for RFC-1918 ranges
 block_non_fqdn   = true                    # Block non-FQDN queries
+mdns_enabled     = false                   # Passive mDNS/Bonjour listener (UDP 5353, needs host networking in Docker)
 local_domain     = "lan"                   # Local domain suffix
 local_dns_server = "10.0.0.1:53"           # Router — PTR/hostname/upstream resolution
 
