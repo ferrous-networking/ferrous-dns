@@ -153,6 +153,7 @@ impl ImportConfigUseCase {
         new_config.dns.cache_max_ttl = sc.dns.cache_max_ttl;
         new_config.dns.block_non_fqdn = sc.dns.block_non_fqdn;
         new_config.dns.block_private_ptr = sc.dns.block_private_ptr;
+        new_config.dns.mdns_enabled = sc.dns.mdns_enabled;
         new_config.dns.local_domain = sc.dns.local_domain.clone();
         new_config.dns.local_dns_server = sc.dns.local_dns_server.clone();
 

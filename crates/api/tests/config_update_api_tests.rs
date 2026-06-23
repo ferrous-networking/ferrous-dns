@@ -867,3 +867,21 @@ async fn test_update_config_persists_then_clears_sinkhole() {
         "cleared sinkhole key must be removed from the file, got:\n{cleared}"
     );
 }
+
+#[tokio::test]
+async fn test_update_config_persists_mdns_enabled() {
+    let pool = create_test_db().await;
+    let (app, _pm, path) = create_test_app(pool).await;
+
+    let (status, json) =
+        post_config(app, serde_json::json!({ "dns": { "mdns_enabled": true } })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+
+    // The flag must be written through to the config file under [dns].
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("mdns_enabled = true"),
+        "config file should carry mdns_enabled = true, got:\n{written}"
+    );
+}

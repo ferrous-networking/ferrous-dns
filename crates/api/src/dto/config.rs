@@ -69,6 +69,7 @@ pub struct DnsConfigResponse {
     pub block_private_ptr: bool,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
+    pub mdns_enabled: bool,
     pub rate_limit: RateLimitConfigResponse,
 }
 
@@ -257,6 +258,7 @@ pub struct DnsConfigUpdate {
     pub block_private_ptr: Option<bool>,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
+    pub mdns_enabled: Option<bool>,
     pub rate_limit: Option<RateLimitConfigUpdate>,
 }
 

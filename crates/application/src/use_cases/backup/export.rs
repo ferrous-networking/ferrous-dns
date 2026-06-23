@@ -130,6 +130,7 @@ impl ExportConfigUseCase {
                 cache_max_ttl: config.dns.cache_max_ttl,
                 block_non_fqdn: config.dns.block_non_fqdn,
                 block_private_ptr: config.dns.block_private_ptr,
+                mdns_enabled: config.dns.mdns_enabled,
                 local_domain: config.dns.local_domain.clone(),
                 local_dns_server: config.dns.local_dns_server.clone(),
             },

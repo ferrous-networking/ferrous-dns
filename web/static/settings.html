@@ -565,6 +565,21 @@
                 </select>
             </div>
 
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="wifi" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">mDNS Device Discovery</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Listens for mDNS/Bonjour announcements on the local network so clients show up by device name instead of bare IPs in the query log and dashboard.</p>
+                    <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Requires the server to reach the LAN multicast group (in Docker, host networking). Off by default.</p>
+                </div>
+                <div @click="config.dns.mdns_enabled=!config.dns.mdns_enabled"
+                     :class="config.dns.mdns_enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+
             <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
                 <div style="flex:1;margin-right:24px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
