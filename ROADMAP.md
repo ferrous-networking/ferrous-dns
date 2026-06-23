@@ -91,6 +91,7 @@
 - [ ] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `64:ff9b::/96` well-known prefix for IPv6-only clients
 - [ ] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`)
 - [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
+- [x] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`) — `[blocking]` `sinkhole_ipv4` / `sinkhole_ipv6`, applied to `null_ip` blocked answers
 
 ### 🌟 v1.0.0 - Production Ready
 

@@ -1,3 +1,5 @@
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use serde::{Deserialize, Serialize};
 
 /// How a blocked (or security-flagged) domain is answered on the wire.
@@ -57,6 +59,17 @@ pub struct BlockingConfig {
 
     #[serde(default = "default_block_ttl")]
     pub block_ttl: u32,
+
+    /// Optional custom A target for `null_ip` blocked answers. When unset, the
+    /// null address `0.0.0.0` is used. Lets operators point blocked domains at a
+    /// local block-page server instead of a dead address.
+    #[serde(default)]
+    pub sinkhole_ipv4: Option<Ipv4Addr>,
+
+    /// Optional custom AAAA target for `null_ip` blocked answers. When unset, the
+    /// null address `::` is used.
+    #[serde(default)]
+    pub sinkhole_ipv6: Option<Ipv6Addr>,
 }
 
 impl Default for BlockingConfig {
@@ -67,6 +80,8 @@ impl Default for BlockingConfig {
             whitelist: vec![],
             block_mode: BlockResponseMode::default(),
             block_ttl: default_block_ttl(),
+            sinkhole_ipv4: None,
+            sinkhole_ipv6: None,
         }
     }
 }
@@ -127,5 +142,38 @@ mod tests {
     fn custom_block_ttl_is_honoured() {
         let config: BlockingConfig = toml::from_str("enabled = true\nblock_ttl = 300").unwrap();
         assert_eq!(config.block_ttl, 300);
+    }
+
+    #[test]
+    fn sinkhole_addresses_default_to_none() {
+        let config: BlockingConfig = toml::from_str("enabled = true").unwrap();
+        assert_eq!(config.sinkhole_ipv4, None);
+        assert_eq!(config.sinkhole_ipv6, None);
+    }
+
+    #[test]
+    fn sinkhole_addresses_round_trip() {
+        let config: BlockingConfig = toml::from_str(
+            "enabled = true\nsinkhole_ipv4 = \"192.168.1.2\"\nsinkhole_ipv6 = \"fd00::2\"",
+        )
+        .unwrap();
+        assert_eq!(config.sinkhole_ipv4, Some(Ipv4Addr::new(192, 168, 1, 2)));
+        assert_eq!(
+            config.sinkhole_ipv6,
+            Some("fd00::2".parse::<Ipv6Addr>().unwrap())
+        );
+
+        let serialized = toml::Value::try_from(&config).unwrap();
+        let blocking = serialized.as_table().unwrap();
+        assert_eq!(blocking["sinkhole_ipv4"].as_str(), Some("192.168.1.2"));
+        assert_eq!(blocking["sinkhole_ipv6"].as_str(), Some("fd00::2"));
+    }
+
+    #[test]
+    fn invalid_sinkhole_address_errors() {
+        assert!(
+            toml::from_str::<BlockingConfig>("enabled = true\nsinkhole_ipv4 = \"10.0.0.300\"")
+                .is_err()
+        );
     }
 }

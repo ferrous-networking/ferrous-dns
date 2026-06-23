@@ -136,6 +136,10 @@ impl ExportConfigUseCase {
                 enabled: config.blocking.enabled,
                 custom_blocked: config.blocking.custom_blocked.clone(),
                 whitelist: config.blocking.whitelist.clone(),
+                block_mode: config.blocking.block_mode,
+                block_ttl: config.blocking.block_ttl,
+                sinkhole_ipv4: config.blocking.sinkhole_ipv4,
+                sinkhole_ipv6: config.blocking.sinkhole_ipv6,
             },
             logging: SnapshotLoggingConfig {
                 level: config.logging.level.clone(),

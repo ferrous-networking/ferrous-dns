@@ -31,7 +31,12 @@ fn query(record_type: RecordType) -> Query {
 }
 
 fn policy(mode: BlockResponseMode) -> BlockPolicy {
-    BlockPolicy { mode, ttl: TTL }
+    BlockPolicy {
+        mode,
+        ttl: TTL,
+        sinkhole_ipv4: None,
+        sinkhole_ipv6: None,
+    }
 }
 
 /// Asserts the authority section carries exactly one synthetic SOA with the
@@ -49,15 +54,12 @@ fn assert_soa(msg: &Message) {
 // ── UDP fast path: build_blocked_wire ────────────────────────────────────
 
 fn decode(mode: BlockResponseMode, record_type: RecordType) -> Message {
-    let wire = build_blocked_wire(
-        0x1234,
-        true,
-        &[query(record_type)],
-        policy(mode),
-        false,
-        None,
-    )
-    .expect("wire bytes");
+    decode_with(policy(mode), record_type)
+}
+
+fn decode_with(policy: BlockPolicy, record_type: RecordType) -> Message {
+    let wire = build_blocked_wire(0x1234, true, &[query(record_type)], policy, false, None)
+        .expect("wire bytes");
     Message::from_vec(&wire).expect("valid DNS message")
 }
 
@@ -87,6 +89,52 @@ fn null_ip_aaaa_query_returns_unspecified_v6_with_ttl() {
     match answer.data() {
         RData::AAAA(aaaa) => assert_eq!(aaaa.0, Ipv6Addr::UNSPECIFIED),
         other => panic!("expected AAAA ::, got {other:?}"),
+    }
+}
+
+#[test]
+fn null_ip_a_query_uses_custom_sinkhole_ipv4() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv4 = Some(Ipv4Addr::new(192, 168, 1, 2));
+    let msg = decode_with(p, RecordType::A);
+    assert_eq!(msg.answers().len(), 1);
+    match msg.answers()[0].data() {
+        RData::A(a) => assert_eq!(a.0, Ipv4Addr::new(192, 168, 1, 2)),
+        other => panic!("expected custom A, got {other:?}"),
+    }
+}
+
+#[test]
+fn null_ip_aaaa_query_uses_custom_sinkhole_ipv6() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv6 = Some(Ipv6Addr::from_str("fd00::2").unwrap());
+    let msg = decode_with(p, RecordType::AAAA);
+    assert_eq!(msg.answers().len(), 1);
+    match msg.answers()[0].data() {
+        RData::AAAA(aaaa) => assert_eq!(aaaa.0, Ipv6Addr::from_str("fd00::2").unwrap()),
+        other => panic!("expected custom AAAA, got {other:?}"),
+    }
+}
+
+#[test]
+fn null_ip_aaaa_falls_back_to_unspecified_when_only_v4_set() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv4 = Some(Ipv4Addr::new(192, 168, 1, 2));
+    let msg = decode_with(p, RecordType::AAAA);
+    match msg.answers()[0].data() {
+        RData::AAAA(aaaa) => assert_eq!(aaaa.0, Ipv6Addr::UNSPECIFIED),
+        other => panic!("expected AAAA ::, got {other:?}"),
+    }
+}
+
+#[test]
+fn null_ip_a_falls_back_to_unspecified_when_only_v6_set() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv6 = Some(Ipv6Addr::from_str("fd00::2").unwrap());
+    let msg = decode_with(p, RecordType::A);
+    match msg.answers()[0].data() {
+        RData::A(a) => assert_eq!(a.0, Ipv4Addr::UNSPECIFIED),
+        other => panic!("expected A 0.0.0.0, got {other:?}"),
     }
 }
 
@@ -201,18 +249,14 @@ fn make_request(query_type: RecordType, with_edns: bool) -> Request {
 }
 
 async fn send(mode: BlockResponseMode, query_type: RecordType, with_edns: bool) -> Message {
+    send_with(policy(mode), query_type, with_edns).await
+}
+
+async fn send_with(policy: BlockPolicy, query_type: RecordType, with_edns: bool) -> Message {
     let request = make_request(query_type, with_edns);
     let mut handler = CapturingHandler::default();
     let ede = ede::from_domain_error(&DomainError::Blocked);
-    let _ = send_blocked_response(
-        &request,
-        &mut handler,
-        name(),
-        query_type,
-        policy(mode),
-        ede,
-    )
-    .await;
+    let _ = send_blocked_response(&request, &mut handler, name(), query_type, policy, ede).await;
     handler.decoded()
 }
 
@@ -222,6 +266,52 @@ async fn send_null_ip_a_returns_unspecified_v4() {
     assert_eq!(msg.response_code(), ResponseCode::NoError);
     assert_eq!(msg.answers().len(), 1);
     assert_eq!(msg.name_servers().len(), 0);
+    match msg.answers()[0].data() {
+        RData::A(a) => assert_eq!(a.0, Ipv4Addr::UNSPECIFIED),
+        other => panic!("expected A 0.0.0.0, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn send_null_ip_a_uses_custom_sinkhole_ipv4() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv4 = Some(Ipv4Addr::new(10, 0, 0, 1));
+    let msg = send_with(p, RecordType::A, false).await;
+    assert_eq!(msg.answers().len(), 1);
+    match msg.answers()[0].data() {
+        RData::A(a) => assert_eq!(a.0, Ipv4Addr::new(10, 0, 0, 1)),
+        other => panic!("expected custom A, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn send_null_ip_aaaa_falls_back_to_unspecified_when_only_v4_set() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv4 = Some(Ipv4Addr::new(10, 0, 0, 1));
+    let msg = send_with(p, RecordType::AAAA, false).await;
+    match msg.answers()[0].data() {
+        RData::AAAA(aaaa) => assert_eq!(aaaa.0, Ipv6Addr::UNSPECIFIED),
+        other => panic!("expected AAAA ::, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn send_null_ip_aaaa_uses_custom_sinkhole_ipv6() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv6 = Some(Ipv6Addr::from_str("fd00::2").unwrap());
+    let msg = send_with(p, RecordType::AAAA, false).await;
+    assert_eq!(msg.answers().len(), 1);
+    match msg.answers()[0].data() {
+        RData::AAAA(aaaa) => assert_eq!(aaaa.0, Ipv6Addr::from_str("fd00::2").unwrap()),
+        other => panic!("expected custom AAAA, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn send_null_ip_a_falls_back_to_unspecified_when_only_v6_set() {
+    let mut p = policy(BlockResponseMode::NullIp);
+    p.sinkhole_ipv6 = Some(Ipv6Addr::from_str("fd00::2").unwrap());
+    let msg = send_with(p, RecordType::A, false).await;
     match msg.answers()[0].data() {
         RData::A(a) => assert_eq!(a.0, Ipv4Addr::UNSPECIFIED),
         other => panic!("expected A 0.0.0.0, got {other:?}"),

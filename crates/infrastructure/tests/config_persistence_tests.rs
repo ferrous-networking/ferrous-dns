@@ -469,6 +469,64 @@ fn test_save_and_reload_preserves_block_mode_and_ttl() {
     assert_eq!(reloaded.blocking.block_ttl, 300);
 }
 
+#[test]
+fn test_save_and_reload_preserves_sinkhole_addresses() {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    let mut config = load_config(default_config_toml());
+    config.blocking.sinkhole_ipv4 = Some(Ipv4Addr::new(192, 168, 1, 2));
+    config.blocking.sinkhole_ipv6 = Some("fd00::2".parse::<Ipv6Addr>().unwrap());
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sinkhole_roundtrip.toml");
+    std::fs::write(&path, default_config_toml()).unwrap();
+
+    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("sinkhole_ipv4 = \"192.168.1.2\""),
+        "sinkhole_ipv4 should be written, got:\n{written}"
+    );
+    assert!(
+        written.contains("sinkhole_ipv6 = \"fd00::2\""),
+        "sinkhole_ipv6 should be written, got:\n{written}"
+    );
+
+    let reloaded = Config::load(Some(path.to_str().unwrap()), Default::default()).unwrap();
+    assert_eq!(
+        reloaded.blocking.sinkhole_ipv4,
+        Some(Ipv4Addr::new(192, 168, 1, 2))
+    );
+    assert_eq!(
+        reloaded.blocking.sinkhole_ipv6,
+        Some("fd00::2".parse::<Ipv6Addr>().unwrap())
+    );
+}
+
+#[test]
+fn test_clearing_sinkhole_removes_keys_from_toml() {
+    let mut config = load_config(default_config_toml());
+    config.blocking.sinkhole_ipv4 = Some(std::net::Ipv4Addr::new(10, 0, 0, 1));
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sinkhole_clear.toml");
+    std::fs::write(&path, default_config_toml()).unwrap();
+
+    // Write once with a value, then clear and write again.
+    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
+    config.blocking.sinkhole_ipv4 = None;
+    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !written.contains("sinkhole_ipv4"),
+        "cleared sinkhole_ipv4 key should be removed, got:\n{written}"
+    );
+    let reloaded = Config::load(Some(path.to_str().unwrap()), Default::default()).unwrap();
+    assert_eq!(reloaded.blocking.sinkhole_ipv4, None);
+}
+
 // ── Error handling ───────────────────────────────────────────────────────
 
 #[test]

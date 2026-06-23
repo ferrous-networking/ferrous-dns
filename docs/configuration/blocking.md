@@ -11,6 +11,8 @@ The `[blocking]` section controls the base blocking settings. Blocklists, client
 enabled = true
 block_mode = "null_ip"
 block_ttl = 60
+# sinkhole_ipv4 = "192.168.1.2"
+# sinkhole_ipv6 = "fd00::2"
 ```
 
 | Option | Default | Description |
@@ -18,6 +20,8 @@ block_ttl = 60
 | `enabled` | `true` | Enable DNS-based blocking globally |
 | `block_mode` | `"null_ip"` | How blocked domains are answered on the wire — see [Block Response Mode](#block-response-mode) |
 | `block_ttl` | `60` | TTL (seconds) clients cache a blocked answer; also bounds the negative-cache lifetime for `nxdomain`/`nodata` |
+| `sinkhole_ipv4` | _(unset)_ | Custom `A` target for `null_ip` blocks — see [Custom Sinkhole IP](#custom-sinkhole-ip). Unset → `0.0.0.0` |
+| `sinkhole_ipv6` | _(unset)_ | Custom `AAAA` target for `null_ip` blocks. Unset → `::` |
 
 !!! warning "Domains are not configured here"
     The `[blocking]` section also accepts `custom_blocked` and `whitelist` arrays, but **they are not consulted by the DNS query pipeline** — listing domains there has no effect on what is blocked or allowed. Blocked domains and allow-listed domains are managed via the dashboard or REST API and persisted in the SQLite database, not in this TOML file. See [Blocklist Management](#blocklist-management-dashboard) and [Allow/Block from Query Log](#allowblock-from-query-log) below.
@@ -47,7 +51,27 @@ block_ttl  = 60          # seconds clients/resolvers cache the blocked answer
     A cacheable `0.0.0.0` answer is the gentlest on both the client and the resolver: the client gets an immediate connection failure and caches it for `block_ttl`, so it stops hammering the resolver. `refused` is non-cacheable (RFC 2308 §7), so clients re-query on every attempt.
 
 !!! warning "Requires a restart"
-    `block_mode` and `block_ttl` are read once at startup. Changing them in the config file or via the dashboard takes effect only after the server is restarted. Blocklist contents (the domains themselves) still update live without a restart.
+    `block_mode`, `block_ttl`, `sinkhole_ipv4`, and `sinkhole_ipv6` are read once at startup. Changing them in the config file or via the dashboard takes effect only after the server is restarted. Blocklist contents (the domains themselves) still update live without a restart.
+
+---
+
+## Custom Sinkhole IP
+
+By default, `null_ip` answers a blocked `A` query with `0.0.0.0` and a blocked `AAAA` query with `::` — addresses that clients can't connect to, so the request fails fast. If you instead run a local **block page** (a small web server that explains the domain was blocked), point blocked domains at it with `sinkhole_ipv4` / `sinkhole_ipv6`:
+
+```toml
+[blocking]
+block_mode = "null_ip"          # sinkhole IPs only apply in null_ip mode
+sinkhole_ipv4 = "192.168.1.2"   # A target for blocked domains
+sinkhole_ipv6 = "fd00::2"       # AAAA target for blocked domains
+```
+
+The two families are independent: if you set only `sinkhole_ipv4`, blocked `AAAA` queries still return `::` (and vice-versa). The targets apply to **every** domain-verdict block (blocklist, DGA, tunneling, C2), just like `block_mode`. They are ignored in `nxdomain`, `nodata`, and `refused` modes, which carry no address.
+
+A non-empty value must be a valid address of the matching family. A malformed IP is rejected rather than silently ignored: the dashboard and REST API return an error and save nothing, and an invalid value in the config file stops the server from starting (so a typo can't quietly revert the block target to `0.0.0.0` / `::`).
+
+!!! warning "Don't use loopback"
+    Point the sinkhole at the **LAN IP** of the host serving the block page, not loopback (`127.0.0.1` / `::1`). A loopback target resolves to each *client's own* machine, not the Ferrous DNS server, so the block page won't load.
 
 ---
 

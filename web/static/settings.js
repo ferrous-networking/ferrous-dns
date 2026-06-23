@@ -37,7 +37,9 @@
                 local_domain: '',
                 local_dns_server: '',
                 block_mode: 'null_ip',
-                block_ttl: 60
+                block_ttl: 60,
+                sinkhole_ipv4: '',
+                sinkhole_ipv6: ''
             },
             cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
             healthStatus: {},

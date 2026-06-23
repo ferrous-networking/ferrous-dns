@@ -276,6 +276,8 @@ whitelist = []                          # Domains to always allow, even if prese
 block_mode = "null_ip"                  # How blocked domains are answered: "null_ip" (NOERROR + 0.0.0.0/::,
                                         #   cacheable — recommended), "nxdomain", "nodata", or "refused" (legacy)
 block_ttl = 60                          # TTL (seconds) clients cache the null-IP block answer
+# sinkhole_ipv4 = "192.168.1.2"         # Custom A target for "null_ip" blocks (default 0.0.0.0).
+# sinkhole_ipv6 = "fd00::2"             #   Point at a LAN block-page server; omit for the null address.
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
