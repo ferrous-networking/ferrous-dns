@@ -1,5 +1,5 @@
 use crate::dns::events::{QueryEvent, QueryEventEmitter};
-use crate::dns::forwarding::{DnsResponse, ResponseParser};
+use crate::dns::forwarding::{DnsResponse, ResponseParser, ResponseValidator};
 use crate::dns::transport;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use std::collections::HashMap;
@@ -28,6 +28,7 @@ pub async fn query_server(
     domain: &Arc<str>,
     record_type: &RecordType,
     timeout_ms: u64,
+    validator: &ResponseValidator,
     emitter: &QueryEventEmitter,
     pool_name: &Arc<str>,
     server_displays: &Arc<HashMap<Arc<DnsProtocol>, Arc<str>>>,
@@ -40,6 +41,10 @@ pub async fn query_server(
     let transport_response = dns_transport.send(query_bytes, timeout_duration).await?;
 
     let dns_response = ResponseParser::parse_bytes(transport_response.bytes)?;
+
+    // Reject spoofed/off-path responses before acting on them (incl. before the
+    // TCP-on-truncation retry below), so a forged TC=1 packet can't waste a retry.
+    validator.validate(&dns_response, protocol)?;
 
     let response_time_us = start.elapsed().as_micros() as u64;
     let server_arc = get_display(protocol, server_displays);
@@ -66,6 +71,7 @@ pub async fn query_server(
             let tcp_start = Instant::now();
             let tcp_response = tcp_transport.send(query_bytes, remaining).await?;
             let tcp_dns_response = ResponseParser::parse_bytes(tcp_response.bytes)?;
+            validator.validate(&tcp_dns_response, &tcp_protocol)?;
 
             let tcp_response_time_us = tcp_start.elapsed().as_micros() as u64;
             let tcp_server_arc = get_display(&tcp_protocol, server_displays);

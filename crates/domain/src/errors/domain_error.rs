@@ -149,6 +149,9 @@ pub enum DomainError {
     #[error("All upstream servers are unreachable")]
     TransportAllServersUnreachable,
 
+    #[error("Spoofed or invalid upstream response from {server}: {reason}")]
+    SpoofedResponse { server: String, reason: String },
+
     #[error("Schedule profile not found: {0}")]
     ScheduleProfileNotFound(i64),
 

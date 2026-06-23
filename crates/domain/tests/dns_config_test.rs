@@ -30,6 +30,24 @@ fn test_config_default_values() {
     assert!(config.local_domain.is_none());
     assert!(config.local_dns_server.is_none());
     assert!(config.local_records.is_empty());
+    assert!(!config.qname_case_randomization);
+}
+
+#[test]
+fn test_qname_case_randomization_defaults_off_when_absent() {
+    // Existing configs without the field must still deserialize, defaulting off.
+    let config: DnsConfig = toml::from_str("query_timeout = 3").unwrap();
+    assert!(!config.qname_case_randomization);
+}
+
+#[test]
+fn test_qname_case_randomization_roundtrip() {
+    let config: DnsConfig = toml::from_str("qname_case_randomization = true").unwrap();
+    assert!(config.qname_case_randomization);
+
+    let serialized = toml::to_string(&config).unwrap();
+    let reparsed: DnsConfig = toml::from_str(&serialized).unwrap();
+    assert!(reparsed.qname_case_randomization);
 }
 
 #[test]

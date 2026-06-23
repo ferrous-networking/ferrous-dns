@@ -229,33 +229,53 @@ impl DnsServerHandler {
             resp.add_query(q.clone());
         }
 
+        // Copies a record, lowercasing its owner name when `canonicalize` is set,
+        // so any 0x20-randomized case the upstream echoed is stripped before serving.
+        fn copy_record(record: &Record, canonicalize: bool) -> Record {
+            if !canonicalize {
+                return record.clone();
+            }
+            let mut copy = record.clone();
+            let lower = copy.name().to_lowercase();
+            copy.set_name(lower);
+            copy
+        }
+
         if addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
+                // A/AAAA queries may have been 0x20 case-randomized, so the upstream
+                // echoes mixed-case names. Rebuild the reply from the client's
+                // question (already on `resp`) and canonicalize copied record owner
+                // names, so our randomization never reaches the client. Non-address
+                // types are never randomized, so they keep the raw-bytes fast path
+                // (unless a cookie must be injected, which already rebuilds from the
+                // client question).
+                let is_address_type = matches!(our_rt, RecordType::A | RecordType::AAAA);
                 let has_cookie_to_inject = dns_request
                     .edns_cookie
                     .as_ref()
                     .is_some_and(|c| c.len() >= 8);
 
-                if has_cookie_to_inject {
+                if is_address_type || has_cookie_to_inject {
                     match Message::from_vec(wire_data) {
                         Ok(upstream_msg) => {
                             resp.set_response_code(upstream_msg.response_code());
                             for record in upstream_msg.answers() {
-                                resp.add_answer(record.clone());
+                                resp.add_answer(copy_record(record, is_address_type));
                             }
                             for record in upstream_msg.name_servers() {
-                                resp.add_name_server(record.clone());
+                                resp.add_name_server(copy_record(record, is_address_type));
                             }
                             for record in upstream_msg.additionals() {
-                                // skip existing OPT — we'll add our own with the server cookie
+                                // skip existing OPT — we add our own below
                                 if record.record_type() != hickory_proto::rr::RecordType::OPT {
-                                    resp.add_additional(record.clone());
+                                    resp.add_additional(copy_record(record, is_address_type));
                                 }
                             }
-                            // fall through to cookie injection below
+                            // fall through to EDNS/cookie handling + encode resp below
                         }
                         Err(_) => {
-                            // parse failed — fallback to raw bytes (no cookie)
+                            // parse failed — fall back to raw bytes (id-patched)
                             let mut response = wire_data.to_vec();
                             if response.len() >= 2 {
                                 response[0] = (query_id >> 8) as u8;
@@ -266,7 +286,7 @@ impl DnsServerHandler {
                         }
                     }
                 } else {
-                    // no cookie to inject — return raw bytes (fast path unchanged)
+                    // Non-address type with no cookie — raw bytes fast path unchanged.
                     let mut response = wire_data.to_vec();
                     if response.len() >= 2 {
                         response[0] = (query_id >> 8) as u8;

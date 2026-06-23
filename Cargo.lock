@@ -979,6 +979,7 @@ dependencies = [
  "smallvec",
  "socket2",
  "sqlx",
+ "subtle",
  "tempfile",
  "time",
  "tokio",

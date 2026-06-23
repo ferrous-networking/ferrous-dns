@@ -66,6 +66,13 @@ block_non_fqdn = true                   # Block queries for names that are not f
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
 
+# Anti-spoofing for plaintext (Do53) upstream A/AAAA queries. DNS Cookies (RFC 7873)
+# are always sent and validated gracefully. Setting this adds draft-vixie-dns-0x20
+# QNAME case randomization for extra off-path entropy, validating the echoed case.
+# Off by default: a few upstreams/forwarders normalize QNAME case and would fail
+# validation. Encrypted transports (DoT/DoH/DoQ) skip both — TLS already authenticates.
+qname_case_randomization = false
+
 
 # ── DNS Cache ─────────────────────────────────────────────────────────────────
 

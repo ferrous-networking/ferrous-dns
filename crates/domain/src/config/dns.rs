@@ -137,6 +137,14 @@ pub struct DnsConfig {
     /// DNS Cookies anti-spoofing configuration (RFC 7873).
     #[serde(default)]
     pub dns_cookies: DnsCookiesConfig,
+
+    /// Randomize the case of QNAME letters on A/AAAA upstream queries
+    /// (draft-vixie-dns-0x20) for extra anti-spoofing entropy, validating the
+    /// echoed case on the response. Off by default: some upstreams/forwarders do
+    /// not preserve QNAME case and would fail validation. DNS Cookies on A/AAAA
+    /// upstream queries are always on and graceful, independent of this flag.
+    #[serde(default = "default_false")]
+    pub qname_case_randomization: bool,
 }
 
 impl Default for DnsConfig {
@@ -181,6 +189,7 @@ impl Default for DnsConfig {
             response_ip_filter: ResponseIpFilterConfig::default(),
             dga_detection: DgaDetectionConfig::default(),
             dns_cookies: DnsCookiesConfig::default(),
+            qname_case_randomization: false,
         }
     }
 }
