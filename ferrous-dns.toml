@@ -281,6 +281,16 @@ block_ttl = 60                          # TTL (seconds) clients cache the null-I
 # sinkhole_ipv6 = "fd00::2"             #   Point at a LAN block-page server; omit for the null address.
 
 
+# ── DNS64 (NAT64 AAAA synthesis, RFC 6147) ────────────────────────────────────
+# Synthesizes AAAA records from IPv4-only domains so IPv6-only clients can reach
+# them via a NAT64 gateway. Requires a NAT64 gateway on the network — without one,
+# IPv6-only clients break. Applied at startup (changes need a restart).
+
+[dns64]
+enabled = false                         # Off by default — only enable with a NAT64 gateway present
+prefix = "64:ff9b::/96"                 # NAT64 prefix; only /96 is supported (well-known prefix per RFC 6052)
+
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 
 [logging]

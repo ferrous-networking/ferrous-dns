@@ -21,6 +21,9 @@ pub struct PagedQueryInput<'a> {
     pub record_type: Option<&'a str>,
     pub upstream: Option<&'a str>,
     pub dnssec_status: Option<&'a str>,
+    /// `Some(true)` → only DNS64-synthesized answers; `Some(false)` → only
+    /// non-synthesized; `None` → no filter.
+    pub dns64: Option<bool>,
 }
 
 /// Validates and normalises a DNSSEC status filter value to the casing stored
@@ -90,6 +93,7 @@ impl GetRecentQueriesUseCase {
             record_type: parsed_record_type,
             upstream: input.upstream.filter(|u| !u.is_empty()).map(String::from),
             dnssec_status: parsed_dnssec_status,
+            dns64_synthesized: input.dns64,
         };
 
         self.repository

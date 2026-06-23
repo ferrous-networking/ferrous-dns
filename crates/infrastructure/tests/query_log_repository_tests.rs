@@ -22,6 +22,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             cache_hit INTEGER NOT NULL DEFAULT 0,
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
+            dns64_synthesized INTEGER NOT NULL DEFAULT 0,
             upstream_server TEXT,
             upstream_pool TEXT,
             response_status TEXT,
@@ -996,6 +997,78 @@ async fn test_record_type_filter() {
         .all(|q| q.record_type == ferrous_dns_domain::RecordType::AAAA));
 }
 
+async fn insert_dns64_query(pool: &sqlx::SqlitePool, domain: &str, record_type: &str, dns64: bool) {
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, response_status, dns64_synthesized)
+         VALUES (?, ?, '10.0.0.1', 0, 100, 0, 'client', 'NOERROR', ?)",
+    )
+    .bind(domain)
+    .bind(record_type)
+    .bind(if dns64 { 1i64 } else { 0i64 })
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_dns64_synthesized_filter() {
+    let pool = create_test_db().await;
+
+    insert_dns64_query(&pool, "synth.example.com", "AAAA", true).await;
+    insert_dns64_query(&pool, "real.example.com", "AAAA", false).await;
+    insert_dns64_query(&pool, "plain.example.com", "A", false).await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    // dns64=Some(true): only the synthesized row, and the flag round-trips from SQLite.
+    let only_synth = repo
+        .get_recent_paged(
+            100,
+            0,
+            24.0,
+            None,
+            &QueryLogFilter {
+                dns64_synthesized: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(only_synth.records_filtered, 1);
+    assert_eq!(only_synth.queries.len(), 1);
+    assert_eq!(&*only_synth.queries[0].domain, "synth.example.com");
+    assert!(only_synth.queries[0].dns64_synthesized);
+
+    // dns64=Some(false): the two non-synthesized rows (one AAAA, one A).
+    let non_synth = repo
+        .get_recent_paged(
+            100,
+            0,
+            24.0,
+            None,
+            &QueryLogFilter {
+                dns64_synthesized: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(non_synth.records_filtered, 2);
+    assert!(non_synth.queries.iter().all(|q| !q.dns64_synthesized));
+
+    // None: no DNS64 filtering — all three rows are returned.
+    let all = repo
+        .get_recent_paged(100, 0, 24.0, None, &QueryLogFilter::default())
+        .await
+        .unwrap();
+    assert_eq!(all.records_filtered, 3);
+}
+
 #[tokio::test]
 async fn test_upstream_filter() {
     let pool = create_test_db().await;
@@ -1218,6 +1291,7 @@ async fn test_combined_all_filters() {
         record_type: Some(ferrous_dns_domain::RecordType::AAAA),
         upstream: Some("8.8.8.8".to_string()),
         dnssec_status: None,
+        dns64_synthesized: None,
     };
     let result = repo
         .get_recent_paged(100, 0, 24.0, None, &filter)

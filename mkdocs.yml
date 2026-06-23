@@ -90,6 +90,7 @@ nav:
     - Dashboard: features/dashboard.md
     - Upstream Management: features/upstream-management.md
     - Encrypted DNS: features/encrypted-dns.md
+    - DNS64: features/dns64.md
     - Blocking & Filtering: features/blocking-filtering.md
     - Block Services & Schedules: features/block-services.md
     - Client Management: features/client-management.md

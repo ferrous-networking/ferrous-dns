@@ -9,8 +9,8 @@ use crate::ports::{BlocklistSourceRepository, GroupRepository};
 
 use super::snapshot::{
     BackupSnapshot, BlocklistSourceSnapshot, GroupSnapshot, LocalRecordSnapshot,
-    SnapshotAuthConfig, SnapshotBlockingConfig, SnapshotConfig, SnapshotData, SnapshotDnsConfig,
-    SnapshotLoggingConfig, SnapshotServerConfig,
+    SnapshotAuthConfig, SnapshotBlockingConfig, SnapshotConfig, SnapshotData, SnapshotDns64Config,
+    SnapshotDnsConfig, SnapshotLoggingConfig, SnapshotServerConfig,
 };
 
 const SNAPSHOT_FORMAT_VERSION: &str = "1";
@@ -142,6 +142,10 @@ impl ExportConfigUseCase {
                 block_ttl: config.blocking.block_ttl,
                 sinkhole_ipv4: config.blocking.sinkhole_ipv4,
                 sinkhole_ipv6: config.blocking.sinkhole_ipv6,
+            },
+            dns64: SnapshotDns64Config {
+                enabled: config.dns64.enabled,
+                prefix: Some(config.dns64.prefix.clone()),
             },
             logging: SnapshotLoggingConfig {
                 level: config.logging.level.clone(),

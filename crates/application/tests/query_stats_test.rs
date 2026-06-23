@@ -31,6 +31,7 @@ fn make_log_with_upstream(
         cache_hit,
         cache_refresh: false,
         dnssec_status: None,
+        dns64_synthesized: false,
         upstream_server: upstream_server.map(Arc::from),
         upstream_pool: upstream_pool.map(Arc::from),
         response_status: Some("NOERROR"),

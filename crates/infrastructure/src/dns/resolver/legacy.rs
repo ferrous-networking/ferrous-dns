@@ -7,6 +7,7 @@ use super::local_ptr::PtrMap;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DomainError};
+use std::net::Ipv6Addr;
 use std::sync::Arc;
 
 const DEFAULT_CACHE_TTL: u32 = 3600;
@@ -26,6 +27,7 @@ struct BuilderState {
     local_dns_server: Option<String>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
+    dns64_prefix: Option<Ipv6Addr>,
 }
 
 impl HickoryDnsResolver {
@@ -51,6 +53,7 @@ impl HickoryDnsResolver {
             local_dns_server: None,
             filters: None,
             local_ptr_map: None,
+            dns64_prefix: None,
         };
 
         let inner = ResolverBuilder::new(pool_manager)
@@ -114,6 +117,14 @@ impl HickoryDnsResolver {
         self
     }
 
+    /// Enables DNS64 (RFC 6147) AAAA synthesis using the given `/96` NAT64
+    /// network prefix.
+    pub fn with_dns64(mut self, prefix: Ipv6Addr) -> Self {
+        self.builder_state.dns64_prefix = Some(prefix);
+        self.rebuild();
+        self
+    }
+
     fn rebuild(&mut self) {
         let mut builder = ResolverBuilder::new(self.builder_state.pool_manager.clone())
             .with_config(self.builder_state.config.clone())
@@ -134,6 +145,10 @@ impl HickoryDnsResolver {
 
         if let Some(map) = &self.builder_state.local_ptr_map {
             builder = builder.with_local_ptr_map(Arc::clone(map));
+        }
+
+        if let Some(prefix) = self.builder_state.dns64_prefix {
+            builder = builder.with_dns64(prefix);
         }
 
         self.inner = builder.build();

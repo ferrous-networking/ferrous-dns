@@ -497,6 +497,28 @@
                     <span>Point the sinkhole at this server's LAN IP if it serves a block page. Avoid loopback (<code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">127.0.0.1</code> / <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">::1</code>) — it resolves to each client's own machine, not this server.</span>
                 </p>
             </div>
+
+            <div style="padding:16px 0;border-top:1px solid var(--border-color)">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="globe" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">DNS64 (NAT64 AAAA synthesis)</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Synthesize <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">AAAA</code> records from IPv4-only domains so IPv6-only clients reach them through a NAT64 gateway (<a href="https://www.rfc-editor.org/rfc/rfc6147" style="color:var(--color-primary)" target="_blank">RFC 6147</a>). <b>Requires a NAT64 gateway on your network</b> — without one, IPv6-only clients break. Takes effect after a restart.</p>
+                    </div>
+                    <div @click="settings.dns64_enabled=!settings.dns64_enabled"
+                         :class="settings.dns64_enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:0" x-show="settings.dns64_enabled" x-cloak>
+                    <label class="form-label">NAT64 prefix</label>
+                    <input type="text" x-model="settings.nat64_prefix" placeholder="64:ff9b::/96"
+                           style="max-width:240px;font-family:monospace">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Must be a <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">/96</code> prefix. Use the well-known <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">64:ff9b::/96</code> unless your NAT64 gateway uses a custom one.</p>
+                </div>
+            </div>
         </div>
 
         <button @click="saveDnsSettings()" class="btn btn-success">

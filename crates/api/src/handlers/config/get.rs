@@ -1,8 +1,8 @@
 use crate::{
     dto::{
         AuthConfigResponse, BlockingConfigResponse, ConfigResponse, DatabaseConfigResponse,
-        DnsConfigResponse, HealthCheckResponse, LoggingConfigResponse, ServerConfigResponse,
-        UpstreamPoolResponse, WebTlsConfigResponse,
+        Dns64ConfigResponse, DnsConfigResponse, HealthCheckResponse, LoggingConfigResponse,
+        ServerConfigResponse, UpstreamPoolResponse, WebTlsConfigResponse,
     },
     state::AppState,
 };
@@ -112,6 +112,10 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             block_ttl: config.blocking.block_ttl,
             sinkhole_ipv4: crate::dto::config::sinkhole_to_string(config.blocking.sinkhole_ipv4),
             sinkhole_ipv6: crate::dto::config::sinkhole_to_string(config.blocking.sinkhole_ipv6),
+        },
+        dns64: Dns64ConfigResponse {
+            enabled: config.dns64.enabled,
+            prefix: config.dns64.prefix.clone(),
         },
         logging: LoggingConfigResponse {
             level: config.logging.level.clone(),

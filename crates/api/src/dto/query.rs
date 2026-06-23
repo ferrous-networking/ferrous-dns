@@ -20,6 +20,9 @@ pub struct QueryParams {
     /// Filter by DNSSEC validation status: `any` (any validated row), `Secure`,
     /// `Insecure`, `Bogus`, or `Indeterminate` (case-insensitive).
     pub dnssec_status: Option<String>,
+    /// Filter by DNS64 synthesis: `true` keeps only synthesized AAAA answers,
+    /// `false` only non-synthesized rows.
+    pub dns64: Option<bool>,
 }
 
 fn default_limit() -> u32 {
@@ -59,6 +62,8 @@ pub struct QueryResponse {
     pub cache_refresh: bool,
     #[schema(value_type = Option<String>)]
     pub dnssec_status: Option<&'static str>,
+    /// `true` when the AAAA answer was synthesized by DNS64 (RFC 6147).
+    pub dns64_synthesized: bool,
     #[schema(value_type = Option<String>)]
     pub upstream_server: Option<Arc<str>>,
     #[schema(value_type = Option<String>)]
