@@ -3,7 +3,9 @@ use ferrous_dns_application::ports::{
     CacheStats, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };
 use ferrous_dns_application::use_cases::{GetRecentQueriesUseCase, PagedQueryInput};
-use ferrous_dns_domain::{query_log::QueryLog, DomainError, QueryLogFilter, QueryStats};
+use ferrous_dns_domain::{
+    query_log::QueryLog, DnssecStats, DomainError, QueryLogFilter, QueryStats,
+};
 use std::sync::{Arc, Mutex};
 
 struct CaptureLimitRepository {
@@ -40,6 +42,10 @@ impl QueryLogRepository for CaptureLimitRepository {
 
     async fn get_stats(&self, _: f32) -> Result<QueryStats, DomainError> {
         unimplemented!()
+    }
+
+    async fn get_dnssec_stats(&self, _: f32) -> Result<DnssecStats, DomainError> {
+        Ok(DnssecStats::default())
     }
 
     async fn get_timeline(

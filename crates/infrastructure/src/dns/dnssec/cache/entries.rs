@@ -1,30 +1,6 @@
 use super::super::types::{DnskeyRecord, DsRecord};
-use super::super::validation::ValidationResult;
 use std::sync::Arc;
 use std::time::Instant;
-
-#[derive(Debug, Clone)]
-pub struct ValidationEntry {
-    pub(super) result: ValidationResult,
-    pub(super) expires_at: Instant,
-}
-
-impl ValidationEntry {
-    pub fn new(result: ValidationResult, ttl_secs: u32) -> Self {
-        Self {
-            result,
-            expires_at: Instant::now() + std::time::Duration::from_secs(ttl_secs as u64),
-        }
-    }
-
-    pub fn is_expired(&self) -> bool {
-        Instant::now() >= self.expires_at
-    }
-
-    pub fn result(&self) -> &ValidationResult {
-        &self.result
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct DnskeyEntry {

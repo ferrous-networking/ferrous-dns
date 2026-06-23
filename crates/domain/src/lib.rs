@@ -12,10 +12,10 @@ pub use entities::whitelist;
 
 pub use config::{
     AdminConfig, AuthConfig, BlockResponseMode, CliOverrides, Config, ConfigError,
-    DgaDetectionAction, DgaDetectionConfig, DnsConfig, DnsCookiesConfig, EncryptedDnsConfig,
-    HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction, NxdomainHijackConfig, RateLimitConfig,
-    ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
-    UpstreamPool, UpstreamStrategy, DEFAULT_BLOCK_TTL,
+    DgaDetectionAction, DgaDetectionConfig, DnsConfig, DnsCookiesConfig, DnssecMode,
+    EncryptedDnsConfig, HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction,
+    NxdomainHijackConfig, RateLimitConfig, ResponseIpFilterAction, ResponseIpFilterConfig,
+    TunnelingAction, TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy, DEFAULT_BLOCK_TTL,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use entities::api_token::ApiToken;
@@ -33,7 +33,8 @@ pub use entities::filter_explanation::{
 pub use entities::group::{Group, GroupStats};
 pub use entities::managed_domain::{DomainAction, ManagedDomain};
 pub use entities::query_log::{
-    CacheStats, QueryCategory, QueryLog, QueryLogFilter, QuerySource, QueryStats,
+    CacheStats, DnssecStats, DnssecStatus, QueryCategory, QueryLog, QueryLogFilter, QuerySource,
+    QueryStats,
 };
 pub use entities::regex_filter::RegexFilter;
 pub use entities::safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};

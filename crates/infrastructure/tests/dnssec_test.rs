@@ -1,6 +1,6 @@
 use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::{
-    cache::{DnskeyEntry, DsEntry, ValidationEntry},
+    cache::{DnskeyEntry, DsEntry},
     ChainVerifier, DnskeyRecord, DnssecCache, DsRecord, SignatureVerifier, TrustAnchorStore,
     ValidationResult,
 };
@@ -9,61 +9,6 @@ use ferrous_dns_infrastructure::dns::load_balancer::PoolManager;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-
-#[test]
-fn test_validation_entry_creation() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 300);
-    assert!(!entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_secure() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 300);
-
-    assert!(!entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_insecure() {
-    let entry = ValidationEntry::new(ValidationResult::Insecure, 300);
-    assert!(!entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_bogus() {
-    let entry = ValidationEntry::new(ValidationResult::Bogus, 300);
-    assert!(!entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_indeterminate() {
-    let entry = ValidationEntry::new(ValidationResult::Indeterminate, 300);
-    assert!(!entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_expiration() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 1);
-    assert!(!entry.is_expired());
-
-    thread::sleep(Duration::from_secs(2));
-    assert!(entry.is_expired());
-}
-
-#[test]
-fn test_validation_entry_short_ttl() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 0);
-
-    thread::sleep(Duration::from_millis(100));
-
-    let _ = entry.is_expired();
-}
-
-#[test]
-fn test_validation_entry_long_ttl() {
-    let entry = ValidationEntry::new(ValidationResult::Secure, 86400);
-    assert!(!entry.is_expired());
-}
 
 #[test]
 fn test_dnskey_entry_empty() {
@@ -137,18 +82,16 @@ fn test_ds_entry_various_ttls() {
 
 #[test]
 fn test_all_entry_types_implement_expiration() {
-    let validation = ValidationEntry::new(ValidationResult::Secure, 300);
     let dnskey = DnskeyEntry::new(vec![], 300);
     let ds = DsEntry::new(vec![], 300);
 
-    assert!(!validation.is_expired());
     assert!(!dnskey.is_expired());
     assert!(!ds.is_expired());
 }
 
 #[test]
 fn test_entry_types_expire_independently() {
-    let short = ValidationEntry::new(ValidationResult::Secure, 1);
+    let short = DnskeyEntry::new(vec![], 1);
     let medium = DnskeyEntry::new(vec![], 5);
     let long = DsEntry::new(vec![], 10);
 
@@ -160,30 +103,6 @@ fn test_entry_types_expire_independently() {
     assert!(short.is_expired());
     assert!(!medium.is_expired());
     assert!(!long.is_expired());
-}
-
-#[test]
-fn test_validation_results_all_states() {
-    let results = vec![
-        ValidationResult::Secure,
-        ValidationResult::Insecure,
-        ValidationResult::Bogus,
-        ValidationResult::Indeterminate,
-    ];
-
-    for result in results {
-        let entry = ValidationEntry::new(result, 300);
-        assert!(!entry.is_expired());
-    }
-}
-
-#[test]
-fn test_validation_result_edge_cases() {
-    let zero_ttl = ValidationEntry::new(ValidationResult::Secure, 0);
-    let _ = zero_ttl.is_expired();
-
-    let max_ttl = ValidationEntry::new(ValidationResult::Secure, u32::MAX);
-    assert!(!max_ttl.is_expired());
 }
 
 #[test]
@@ -378,6 +297,27 @@ fn test_verify_ds_unsupported_digest_type() {
         result.is_err(),
         "Unsupported digest type should return error"
     );
+}
+
+#[test]
+fn test_is_supported_algorithm_matches_dispatch_arms() {
+    // The RFC 6840 §5.2 "insecure, not bogus" decision in `validate_delegation`
+    // keys off this predicate, so it MUST stay in lockstep with the algorithms
+    // `verify_rrsig_with_name` can actually dispatch. Supported today: RSA/SHA-1
+    // (5,7), RSA/SHA-256 (8), RSA/SHA-512 (10), ECDSA P-256/P-384 (13,14),
+    // Ed25519 (15). Notably Ed448 (16) is NOT implemented.
+    for alg in [5, 7, 8, 10, 13, 14, 15] {
+        assert!(
+            SignatureVerifier::is_supported_algorithm(alg),
+            "algorithm {alg} should be reported as supported"
+        );
+    }
+    for alg in [0, 1, 3, 6, 12, 16, 17, 252, 253, 254] {
+        assert!(
+            !SignatureVerifier::is_supported_algorithm(alg),
+            "algorithm {alg} should be reported as unsupported"
+        );
+    }
 }
 
 // ============================================================================

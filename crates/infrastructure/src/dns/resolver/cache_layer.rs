@@ -1,12 +1,13 @@
 use super::super::cache::key::CacheKey;
 use super::super::cache::negative_cache::clamp_negative_ttl;
 use super::super::cache::{
-    CachedAddresses, CachedData, DnsCacheAccess, DnssecStatus, NegativeQueryTracker,
+    CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, NegativeQueryTracker,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
+use ferrous_dns_domain::DnssecStatus;
 use std::cell::Cell;
 use std::sync::LazyLock;
 
@@ -149,18 +150,24 @@ impl CachedResolver {
             query.record_type,
             CachedData::NegativeResponse,
             ttl,
-            Some(DnssecStatus::Insecure),
+            Some(CachedDnssecStatus::Insecure),
         );
     }
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
+        // Never cache a Bogus result. Under Strict enforcement it must SERVFAIL
+        // on every query, so the fast cache path must not be able to serve it;
+        // under Permissive, re-validating a broken domain each time is fine.
+        if resolution.dnssec_status == Some(DnssecStatus::Bogus.as_str()) {
+            return;
+        }
         if resolution.addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
                 let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl).max(1);
                 let dnssec_status = resolution
                     .dnssec_status
                     .and_then(|s| s.parse().ok())
-                    .unwrap_or(DnssecStatus::Insecure);
+                    .unwrap_or(CachedDnssecStatus::Insecure);
                 self.cache.insert(
                     query.domain.as_ref(),
                     query.record_type,
@@ -178,7 +185,7 @@ impl CachedResolver {
                     query.record_type,
                     CachedData::NegativeResponse,
                     ttl,
-                    Some(DnssecStatus::Insecure),
+                    Some(CachedDnssecStatus::Insecure),
                 );
             }
         } else {
@@ -186,7 +193,7 @@ impl CachedResolver {
             let dnssec_status = resolution
                 .dnssec_status
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(DnssecStatus::Insecure);
+                .unwrap_or(CachedDnssecStatus::Insecure);
 
             let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
 

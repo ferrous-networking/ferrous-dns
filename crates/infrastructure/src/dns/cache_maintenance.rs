@@ -86,7 +86,7 @@ impl DnsCacheMaintenance {
             {
                 let response_time = start.elapsed().as_micros() as u64;
 
-                let dnssec_status: Option<super::cache::DnssecStatus> =
+                let dnssec_status: Option<super::cache::CachedDnssecStatus> =
                     resolution.dnssec_status.and_then(|s| s.parse().ok());
 
                 let new_data = if !resolution.addresses.is_empty() {

@@ -6,7 +6,7 @@ use ferrous_dns_application::ports::{
 use ferrous_dns_application::use_cases::{
     BacktestBlocklistsUseCase, BacktestRequest, CandidateAction,
 };
-use ferrous_dns_domain::query_log::{QueryLog, QueryLogFilter, QueryStats};
+use ferrous_dns_domain::query_log::{DnssecStats, QueryLog, QueryLogFilter, QueryStats};
 use ferrous_dns_domain::{
     AllowMatch, AllowMatchKind, BlockMatch, BlockMatchKind, DomainError, FilterExplanation,
     MatchType,
@@ -40,6 +40,9 @@ impl QueryLogRepository for FakeQueryLog {
     }
     async fn get_stats(&self, _p: f32) -> Result<QueryStats, DomainError> {
         unimplemented!()
+    }
+    async fn get_dnssec_stats(&self, _p: f32) -> Result<DnssecStats, DomainError> {
+        Ok(DnssecStats::default())
     }
     async fn get_timeline(
         &self,

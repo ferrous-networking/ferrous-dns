@@ -21,6 +21,10 @@ pub struct FastPathQuery {
     pub question_end: usize,
     pub client_max_size: u16,
     pub has_edns: bool,
+    /// The client set the EDNS DO bit — it is DNSSEC-aware and expects the AD
+    /// bit / validation to be honoured. Such queries skip the inline cache fast
+    /// path (which cannot set AD) and take the full resolver path instead.
+    pub wants_dnssec: bool,
     domain_buf: [u8; MAX_DOMAIN_LEN + 1],
     domain_len: usize,
 }
@@ -120,6 +124,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
     let question_end = pos;
     let mut client_max_size: u16 = 512;
     let mut has_edns = false;
+    let mut wants_dnssec = false;
 
     if arcount > 0 {
         let mut ar_pos = question_end;
@@ -151,7 +156,8 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
                 if !is_valid_edns_version(buf[ar_pos + 1]) {
                     return None;
                 }
-                let _do_flags = u16::from_be_bytes([buf[ar_pos + 2], buf[ar_pos + 3]]);
+                let do_flags = u16::from_be_bytes([buf[ar_pos + 2], buf[ar_pos + 3]]);
+                wants_dnssec = do_flags & 0x8000 != 0;
                 ar_pos += 4;
 
                 if ar_pos + 2 > buf.len() {
@@ -178,6 +184,7 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         question_end,
         client_max_size,
         has_edns,
+        wants_dnssec,
         domain_buf,
         domain_len,
     })

@@ -13,8 +13,8 @@ use crate::ports::{
     SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DomainError,
-    NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
+    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DnssecStatus,
+    DomainError, NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
     ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
@@ -49,6 +49,9 @@ pub struct HandleDnsQueryUseCase {
     dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
     dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
     cookie_guard: DnsCookieGuard,
+    /// When `true` (DNSSEC Strict mode), a `Bogus` validation result is enforced
+    /// with SERVFAIL instead of being delivered. Set via `with_dnssec_enforcement`.
+    dnssec_enforce: bool,
 }
 
 impl HandleDnsQueryUseCase {
@@ -75,7 +78,15 @@ impl HandleDnsQueryUseCase {
             dga_event_tx: None,
             dga_flag_store: None,
             cookie_guard: DnsCookieGuard::disabled(),
+            dnssec_enforce: false,
         }
+    }
+
+    /// Enables DNSSEC enforcement (Strict mode): a `Bogus` validation result
+    /// returns SERVFAIL to the client, unless the client set the CD bit.
+    pub fn with_dnssec_enforcement(mut self, enforce: bool) -> Self {
+        self.dnssec_enforce = enforce;
+        self
     }
 
     pub fn with_safe_search(mut self, safe_search: Arc<dyn SafeSearchEnginePort>) -> Self {
@@ -690,6 +701,21 @@ impl HandleDnsQueryUseCase {
                             );
                         }
                     }
+                }
+                // DNSSEC enforcement (Strict mode): a proven Bogus result is
+                // returned as SERVFAIL — unless the client set the CD bit, in
+                // which case it asked to do its own validation. Only "Bogus"
+                // is enforced; Insecure/Indeterminate/errors fail open.
+                if self.dnssec_enforce
+                    && !request.checking_disabled
+                    && resolution.dnssec_status == Some(DnssecStatus::Bogus.as_str())
+                {
+                    self.log(&QueryLog {
+                        dnssec_status: resolution.dnssec_status,
+                        response_status: Some("SERVFAIL_BOGUS"),
+                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                    });
+                    return Err(DomainError::DnssecBogus);
                 }
                 let response_status = if resolution.local_dns {
                     Some("LOCAL_DNS")

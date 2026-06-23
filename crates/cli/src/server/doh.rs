@@ -61,7 +61,10 @@ pub async fn dns_query_handler(
         }
     };
 
-    match handler.handle_raw_udp_fallback(&wire, client_ip).await {
+    match handler
+        .handle_raw_udp_fallback(&wire, client_ip, false)
+        .await
+    {
         Some(response_bytes) if json_response => match wire_to_dns_json(&response_bytes) {
             Ok(body) => (
                 StatusCode::OK,

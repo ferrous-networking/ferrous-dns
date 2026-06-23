@@ -61,15 +61,22 @@ impl DnsServices {
         let timeout_ms = config.dns.query_timeout * 1000;
         let pool_manager_clone = Arc::clone(&pool_manager);
 
+        // The DNSSEC validator walks the chain of trust on its own pool manager
+        // (so its DS/DNSKEY probes don't pollute query stats). It needs its own
+        // health checker + probe task, otherwise its upstreams are never marked
+        // healthy and every chain lookup fails "unreachable" — which would make
+        // Strict mode SERVFAIL even correctly-signed domains.
+        let dnssec_health_checker = pool::setup_health_checker(config);
         let pool_manager_for_dnssec = Arc::new(
             PoolManager::new(
                 config.dns.pools.clone(),
-                health_checker,
+                dnssec_health_checker.clone(),
                 QueryEventEmitter::new_disabled(),
             )
             .await?
             .with_hardening(pool::hardening_opts(config)),
         );
+        pool::start_health_checker_task(dnssec_health_checker, &pool_manager_for_dnssec, config);
         let dnssec_pool_manager_clone = Arc::clone(&pool_manager_for_dnssec);
 
         let mut dns_resolver = resolver::build_resolver(
@@ -205,7 +212,8 @@ impl DnsServices {
             config.dns.local_domain.as_deref(),
             &config.dns.rebinding_allowlist,
         )
-        .with_rate_limiter(rate_limiter);
+        .with_rate_limiter(rate_limiter)
+        .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces());
 
         if let Some((ref detector, ref tx)) = tunneling_detector {
             handler = handler

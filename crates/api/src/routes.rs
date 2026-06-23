@@ -30,6 +30,7 @@ pub fn create_api_router_with_openapi(state: AppState) -> (Router, utoipa::opena
         .routes(routes!(handlers::rate::get_query_rate))
         .routes(routes!(handlers::timeline::get_timeline))
         .routes(routes!(handlers::queries::get_queries))
+        .routes(routes!(handlers::dnssec::get_dnssec_stats))
         .routes(routes!(handlers::blocklist::get_blocklist))
         .routes(routes!(handlers::whitelist::get_whitelist))
         .routes(routes!(handlers::cache::get_cache_stats))

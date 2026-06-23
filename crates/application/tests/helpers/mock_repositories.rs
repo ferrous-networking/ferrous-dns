@@ -9,7 +9,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_domain::{
     blocklist::BlockedDomain, BlockSource, BlocklistSource, Client, ClientStats, DnsQuery,
-    DomainAction, DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType,
+    DnssecStats, DomainAction, DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType,
     WhitelistSource, WhitelistedDomain,
 };
 use std::collections::{HashMap, HashSet};
@@ -359,6 +359,7 @@ impl QueryLogRepository for MockQueryLogRepository {
             queries_blocked,
             queries_rate_limited: 0,
             queries_malware_detected: 0,
+            queries_dnssec_bogus: 0,
             unique_clients: 0,
             uptime_seconds: 0,
             cache_hit_rate: 0.0,
@@ -370,6 +371,10 @@ impl QueryLogRepository for MockQueryLogRepository {
             most_queried_type: None,
             record_type_distribution: Vec::new(),
         })
+    }
+
+    async fn get_dnssec_stats(&self, _period_hours: f32) -> Result<DnssecStats, DomainError> {
+        Ok(DnssecStats::default())
     }
 
     async fn get_timeline(

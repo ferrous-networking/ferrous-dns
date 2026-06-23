@@ -12,10 +12,13 @@ pub(super) fn build_resolver(
     repos: &Repositories,
     timeout_ms: u64,
 ) -> anyhow::Result<HickoryDnsResolver> {
+    let dnssec_mode = config.dns.effective_dnssec_mode();
+    let dnssec_validates = dnssec_mode.validates();
+
     let mut resolver = HickoryDnsResolver::new_with_pools(
         pool_manager,
         timeout_ms,
-        config.dns.dnssec_enabled,
+        dnssec_validates,
         Some(repos.query_log.clone()),
     )?
     .with_query_filters(
@@ -26,12 +29,12 @@ pub(super) fn build_resolver(
     )
     .with_local_dns_server(config.dns.local_dns_server.clone());
 
-    if config.dns.dnssec_enabled {
+    if dnssec_validates {
         resolver = resolver.with_dnssec_pool_manager(pool_manager_for_dnssec);
     }
 
     info!(
-        dnssec_enabled = config.dns.dnssec_enabled,
+        dnssec_mode = %dnssec_mode,
         pools = config.dns.pools.len(),
         block_private_ptr = config.dns.block_private_ptr,
         block_non_fqdn = config.dns.block_non_fqdn,

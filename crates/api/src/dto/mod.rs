@@ -11,6 +11,7 @@ pub mod client_subnet;
 pub mod config;
 pub mod custom_service;
 pub mod dashboard;
+pub mod dnssec;
 pub mod group;
 pub mod hostname;
 pub mod local_record;
@@ -50,6 +51,7 @@ pub use client_subnet::{
 };
 pub use config::*;
 pub use dashboard::{DashboardQuery, DashboardResponse, TopBlockedDomain, TopClient};
+pub use dnssec::DnssecStatsResponse;
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};

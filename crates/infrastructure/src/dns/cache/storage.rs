@@ -5,7 +5,7 @@ use super::key::{BorrowedKey, CacheKey};
 use super::l1::{l1_clear, l1_get, l1_insert};
 use super::negative_cache::NegativeDnsCache;
 use super::port::DnsCacheAccess;
-use super::{CacheMetrics, CachedData, CachedRecord, DnssecStatus};
+use super::{CacheMetrics, CachedData, CachedDnssecStatus, CachedRecord};
 use dashmap::{DashMap, DashSet};
 use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
@@ -178,19 +178,19 @@ impl DnsCache {
         &self,
         domain: &str,
         record_type: &RecordType,
-    ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+    ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>)> {
         let domain = normalize_domain(domain);
         let domain = domain.as_ref();
         let borrowed = BorrowedKey::new(domain, *record_type);
 
-        if let Some((arc_data, remaining_ttl)) = l1_get(domain, record_type) {
+        if let Some((arc_data, dnssec_status, remaining_ttl)) = l1_get(domain, record_type) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
             self.bloom.refresh(&borrowed);
             return Some((
                 CachedData::IpAddresses(super::data::CachedAddresses {
                     addresses: arc_data,
                 }),
-                None,
+                Some(dnssec_status),
                 Some(remaining_ttl),
             ));
         }
@@ -269,7 +269,7 @@ impl DnsCache {
         record_type: RecordType,
         data: CachedData,
         ttl: u32,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     ) {
         let domain = normalize_domain(domain);
         let domain = domain.as_ref();
@@ -316,7 +316,13 @@ impl DnsCache {
         }
 
         if let Some(addresses) = maybe_l1_addresses {
-            l1_insert(domain, &record_type, addresses, expires_secs);
+            l1_insert(
+                domain,
+                &record_type,
+                addresses,
+                dnssec_status.unwrap_or(CachedDnssecStatus::Unknown),
+                expires_secs,
+            );
         }
 
         debug!(
@@ -332,7 +338,7 @@ impl DnsCache {
         domain: &str,
         record_type: RecordType,
         data: CachedData,
-        _dnssec_status: Option<DnssecStatus>,
+        _dnssec_status: Option<CachedDnssecStatus>,
     ) {
         let domain = normalize_domain(domain);
         let domain = domain.as_ref();
@@ -354,7 +360,14 @@ impl DnsCache {
         self.cache.insert(key, record);
 
         if let Some(addresses) = maybe_l1_addresses {
-            l1_insert(domain, &record_type, addresses, u64::MAX);
+            // Permanent (local DNS / hosts) entries are not DNSSEC-validated.
+            l1_insert(
+                domain,
+                &record_type,
+                addresses,
+                CachedDnssecStatus::Unknown,
+                u64::MAX,
+            );
         }
     }
 
@@ -436,7 +449,7 @@ impl DnsCache {
         record_type: &RecordType,
         new_ttl: Option<u32>,
         new_data: CachedData,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     ) -> bool {
         let domain = normalize_domain(domain);
         let domain = domain.as_ref();
@@ -465,7 +478,13 @@ impl DnsCache {
             record.data = new_data;
 
             if let Some(addresses) = maybe_l1_addresses {
-                l1_insert(domain, record_type, addresses, record.expires_at_secs);
+                l1_insert(
+                    domain,
+                    record_type,
+                    addresses,
+                    record.dnssec_status,
+                    record.expires_at_secs,
+                );
             }
             true
         } else {
@@ -490,6 +509,7 @@ impl DnsCache {
                 domain,
                 record_type,
                 Arc::clone(&entry.addresses),
+                record.dnssec_status,
                 record.expires_at_secs,
             );
         }
@@ -686,7 +706,7 @@ impl DnsCacheAccess for DnsCache {
         &self,
         domain: &str,
         record_type: &RecordType,
-    ) -> Option<(CachedData, Option<DnssecStatus>, Option<u32>)> {
+    ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>)> {
         DnsCache::get(self, domain, record_type)
     }
 
@@ -696,7 +716,7 @@ impl DnsCacheAccess for DnsCache {
         record_type: RecordType,
         data: CachedData,
         ttl: u32,
-        dnssec_status: Option<DnssecStatus>,
+        dnssec_status: Option<CachedDnssecStatus>,
     ) {
         DnsCache::insert(self, domain, record_type, data, ttl, dnssec_status);
     }

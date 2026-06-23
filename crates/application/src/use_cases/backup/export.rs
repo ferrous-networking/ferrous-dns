@@ -114,7 +114,8 @@ impl ExportConfigUseCase {
             dns: SnapshotDnsConfig {
                 upstream_servers: config.dns.upstream_servers.clone(),
                 cache_enabled: config.dns.cache_enabled,
-                dnssec_enabled: config.dns.dnssec_enabled,
+                dnssec_mode: Some(config.dns.effective_dnssec_mode().as_str().to_string()),
+                dnssec_enabled: None,
                 cache_eviction_strategy: config.dns.cache_eviction_strategy.clone(),
                 cache_max_entries: config.dns.cache_max_entries,
                 cache_min_hit_rate: config.dns.cache_min_hit_rate,

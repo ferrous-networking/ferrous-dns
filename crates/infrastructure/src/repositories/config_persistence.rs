@@ -155,8 +155,8 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
         set_val(
             t,
-            "dnssec_enabled",
-            toml_edit::Value::from(config.dns.dnssec_enabled),
+            "dnssec_mode",
+            toml_edit::Value::from(config.dns.effective_dnssec_mode().to_string()),
         );
         set_val(
             t,

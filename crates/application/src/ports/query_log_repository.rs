@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{
-    query_log::{QueryLog, QueryLogFilter, QueryStats},
+    query_log::{DnssecStats, QueryLog, QueryLogFilter, QueryStats},
     DomainError,
 };
 
@@ -61,6 +61,11 @@ pub trait QueryLogRepository: Send + Sync {
         filter: &QueryLogFilter,
     ) -> Result<PagedQueryResult, DomainError>;
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError>;
+    /// Aggregated DNSSEC validation outcome counts over client queries in the
+    /// period. Required (no default) so a real repository can never silently
+    /// report all-zero by forgetting to implement it; test doubles return
+    /// `DnssecStats::default()` explicitly.
+    async fn get_dnssec_stats(&self, period_hours: f32) -> Result<DnssecStats, DomainError>;
     async fn get_timeline(
         &self,
         period_hours: u32,

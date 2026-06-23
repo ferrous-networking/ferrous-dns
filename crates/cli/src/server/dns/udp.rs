@@ -112,7 +112,9 @@ async fn run_udp_worker_batch(
                 let msg = batch.get_msg(i);
                 let client_ip = msg.src.ip();
 
-                if let Some(fast_query) = fast_path::parse_query(msg.data) {
+                if let Some(fast_query) =
+                    fast_path::parse_query(msg.data).filter(|q| !q.wants_dnssec)
+                {
                     match fast_query.kind {
                         FastPathKind::IpAddress => {
                             if let Some((addresses, ttl)) = handler.try_fast_path(
@@ -140,21 +142,18 @@ async fn run_udp_worker_batch(
                             }
                         }
                         FastPathKind::WireData => {
-                            if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                            if let Some((patched, _ttl)) = handler.try_fast_path_wire(
                                 fast_query.domain(),
                                 fast_query.record_type,
                                 client_ip,
+                                fast_query.id,
                             ) {
-                                if let Some(patched) =
-                                    wire_response::patch_wire_id(&wire_bytes, fast_query.id)
-                                {
-                                    pending_wire.push(pktinfo::PendingWireResponse {
-                                        data: patched,
-                                        to: msg.src,
-                                        src_ip: msg.dst_ip,
-                                    });
-                                    continue;
-                                }
+                                pending_wire.push(pktinfo::PendingWireResponse {
+                                    data: patched,
+                                    to: msg.src,
+                                    src_ip: msg.dst_ip,
+                                });
+                                continue;
                             }
                         }
                     }
@@ -189,7 +188,7 @@ async fn run_udp_worker_batch(
                 let h = handler.clone();
                 let s = socket.clone();
                 tokio::spawn(async move {
-                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip).await {
+                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip, true).await {
                         let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
                     }
                 });
@@ -220,7 +219,9 @@ async fn run_udp_worker_single(
                     let query_buf = &recv_buf[..n];
                     let client_ip = from.ip();
 
-                    if let Some(fast_query) = fast_path::parse_query(query_buf) {
+                    if let Some(fast_query) =
+                        fast_path::parse_query(query_buf).filter(|q| !q.wants_dnssec)
+                    {
                         match fast_query.kind {
                             FastPathKind::IpAddress => {
                                 if let Some((addresses, ttl)) = handler.try_fast_path(
@@ -247,22 +248,19 @@ async fn run_udp_worker_single(
                                 }
                             }
                             FastPathKind::WireData => {
-                                if let Some((wire_bytes, _ttl)) = handler.try_fast_path_wire(
+                                if let Some((patched, _ttl)) = handler.try_fast_path_wire(
                                     fast_query.domain(),
                                     fast_query.record_type,
                                     client_ip,
+                                    fast_query.id,
                                 ) {
-                                    if let Some(patched) =
-                                        wire_response::patch_wire_id(&wire_bytes, fast_query.id)
-                                    {
-                                        let _ = pktinfo::try_send_with_src_ip(
-                                            socket.get_ref(),
-                                            &patched,
-                                            from,
-                                            dst_ip,
-                                        );
-                                        continue;
-                                    }
+                                    let _ = pktinfo::try_send_with_src_ip(
+                                        socket.get_ref(),
+                                        &patched,
+                                        from,
+                                        dst_ip,
+                                    );
+                                    continue;
                                 }
                             }
                         }
@@ -273,7 +271,7 @@ async fn run_udp_worker_single(
                     let owned_buf: Arc<[u8]> = Arc::from(query_buf);
                     tokio::spawn(async move {
                         if let Some(response) = handler_clone
-                            .handle_raw_udp_fallback(&owned_buf, client_ip)
+                            .handle_raw_udp_fallback(&owned_buf, client_ip, true)
                             .await
                         {
                             let _ = pktinfo::try_send_with_src_ip(

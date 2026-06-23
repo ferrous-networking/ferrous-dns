@@ -157,7 +157,10 @@ async fn handle_dot_connection(
             break;
         }
 
-        if let Some(resp) = handler.handle_raw_udp_fallback(&dns_buf, client_ip).await {
+        if let Some(resp) = handler
+            .handle_raw_udp_fallback(&dns_buf, client_ip, false)
+            .await
+        {
             let resp_len = (resp.len() as u16).to_be_bytes();
             if tls_stream.write_all(&resp_len).await.is_err() {
                 break;
