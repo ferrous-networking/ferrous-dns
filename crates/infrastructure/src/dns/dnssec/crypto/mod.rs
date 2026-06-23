@@ -93,6 +93,14 @@ impl SignatureVerifier {
         }
     }
 
+    /// Whether this build implements the given DNSSEC signature algorithm
+    /// (matches the dispatch arms in [`verify_rrsig_with_name`]). Used to decide,
+    /// per RFC 6840 §5.2, whether a zone whose DS RRset names only algorithms we
+    /// cannot process must be treated as Insecure rather than Bogus.
+    pub fn is_supported_algorithm(algorithm: u8) -> bool {
+        matches!(algorithm, 5 | 7 | 8 | 10 | 13 | 14 | 15)
+    }
+
     pub fn verify_ds(
         &self,
         ds: &DsRecord,

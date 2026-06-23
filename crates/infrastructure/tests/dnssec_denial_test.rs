@@ -216,6 +216,44 @@ fn nsec3_ds_nodata_optout_is_insecure() {
 }
 
 #[test]
+fn nsec3_nxdomain_secure_closest_encloser_proof() {
+    // RFC 5155 §8.4 closest-encloser NXDOMAIN proof for nonexist.example.com:
+    //   - a *matching* NSEC3 for the closest encloser (example.com),
+    //   - a *covering* NSEC3 for the next closer (nonexist.example.com),
+    //   - a *covering* NSEC3 for the wildcard (*.example.com).
+    // A single broad covering record (00.. , ff..] supplies both coverings; the
+    // closest-encloser match is a separate record. This is the most intricate
+    // secure denial path and was previously exercised only on its failure
+    // branches (opt-out, high-iteration).
+    let covering = nsec3(false, ITER, vec![0xff; 20], &[]);
+    let ce_match = nsec3(
+        false,
+        ITER,
+        hash("zzzz.example.com."),
+        &[RecordType::NS, RecordType::SOA],
+    );
+    let nsec3s = vec![
+        VerifiedNsec3 {
+            owner_label: label_of(&[0u8; 20]),
+            data: &covering,
+        },
+        VerifiedNsec3 {
+            owner_label: label_of(&hash("example.com.")),
+            data: &ce_match,
+        },
+    ];
+    let result = prove_denial(
+        &n("nonexist.example.com."),
+        RecordType::A,
+        ResponseCode::NXDomain,
+        &n("example.com."),
+        &nsec3s,
+        &[],
+    );
+    assert_eq!(result, ValidationResult::Secure);
+}
+
+#[test]
 fn nsec3_high_iterations_is_insecure() {
     // RFC 9276 hardening: iterations above the cap fail open (no SERVFAIL).
     let rec = nsec3(false, 500, vec![0xff; 20], &[RecordType::A]);

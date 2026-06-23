@@ -5,6 +5,17 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
+/// Per-map ceiling on cached zones. Without it, a stream of queries naming
+/// distinct (attacker-chosen) signer zones would grow these maps without bound
+/// — a memory-exhaustion vector, since every cold chain walk inserts a DS and a
+/// DNSKEY entry. The real namespace a recursor touches is far smaller than this.
+const MAX_ENTRIES: usize = 50_000;
+
+/// How many expired entries to sweep per over-capacity insert before falling
+/// back to evicting an arbitrary entry. Bounds the work done while holding the
+/// insert path open, mirroring the main negative cache.
+const EVICTION_BATCH_SIZE: usize = 32;
+
 pub struct DnssecCache {
     dnskeys: DashMap<Arc<str>, DnskeyEntry>,
 
@@ -26,6 +37,7 @@ impl DnssecCache {
         let key = Arc::from(domain);
         let entry = DnskeyEntry::new(keys, ttl_seconds);
 
+        evict_if_full(&self.dnskeys, DnskeyEntry::is_expired);
         self.dnskeys.insert(key, entry);
 
         trace!(
@@ -65,6 +77,7 @@ impl DnssecCache {
         let key = Arc::from(domain);
         let entry = DsEntry::new(records, ttl_seconds);
 
+        evict_if_full(&self.ds_records, DsEntry::is_expired);
         self.ds_records.insert(key, entry);
 
         trace!(
@@ -121,5 +134,37 @@ impl DnssecCache {
 impl Default for DnssecCache {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Keeps `map` under [`MAX_ENTRIES`] before an insert. Sweeps up to
+/// [`EVICTION_BATCH_SIZE`] expired entries first (cheap, preserves live keys);
+/// if the map is still full of live entries it drops one arbitrary entry so the
+/// insert cannot grow the map past the ceiling. Hot zones (root, common TLDs)
+/// re-populate on the next miss, so worst case is extra churn, never unbounded
+/// growth.
+fn evict_if_full<V, F>(map: &DashMap<Arc<str>, V>, is_expired: F)
+where
+    F: Fn(&V) -> bool,
+{
+    if map.len() < MAX_ENTRIES {
+        return;
+    }
+
+    let expired: Vec<Arc<str>> = map
+        .iter()
+        .filter(|e| is_expired(e.value()))
+        .map(|e| e.key().clone())
+        .take(EVICTION_BATCH_SIZE)
+        .collect();
+    for k in &expired {
+        map.remove(k);
+    }
+
+    if map.len() >= MAX_ENTRIES {
+        let fallback = map.iter().next().map(|e| e.key().clone());
+        if let Some(k) = fallback {
+            map.remove(&k);
+        }
     }
 }

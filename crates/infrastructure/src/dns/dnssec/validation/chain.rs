@@ -28,6 +28,14 @@ fn is_transient_error(e: &DomainError) -> bool {
     )
 }
 
+/// Current UNIX time in seconds, clamped to `u32` (the RRSIG timestamp domain).
+fn now_secs() -> u32 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as u32)
+        .unwrap_or(0)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationResult {
     Secure,
@@ -68,6 +76,21 @@ struct DnskeyQueryResult {
     /// its self-signature checked.
     from_cache: bool,
     /// TTL to cache the validated key set under, once validation succeeds.
+    ttl: u32,
+}
+
+struct DsQueryResult {
+    /// DS records usable for validation (SHA-1 digests dropped per RFC 8624).
+    records: Arc<[DsRecord]>,
+    /// RRSIG(s) covering the DS RRset, signed by the parent zone.
+    rrsigs: Vec<RrsigRecord>,
+    /// The *complete* DS RRset as received (including any SHA-1 entries), needed
+    /// to reconstruct the signed data when verifying `rrsigs`.
+    raw_records: Vec<Record>,
+    /// True when the records came from the DS cache (already parent-authenticated
+    /// on the original fetch) rather than a fresh upstream response.
+    from_cache: bool,
+    /// TTL to cache the authenticated DS set under, once validation succeeds.
     ttl: u32,
 }
 
@@ -115,15 +138,22 @@ impl ChainVerifier {
         let labels = Self::split_domain(domain);
         debug!(labels = ?labels, "Domain labels");
 
-        let root_anchor = match self.trust_store.get_anchor(".") {
-            Some(anchor) => anchor,
-            None => {
-                warn!("Root trust anchor disappeared during validation");
-                return Ok(ValidationResult::Indeterminate);
+        // Turn the configured KSK trust anchor into the full validated root
+        // DNSKEY RRset (KSK + ZSK). The bare anchor KSK is not enough: the DS
+        // RRset of each TLD is signed by the root *ZSK*, so without the ZSK the
+        // first delegation's DS could not be authenticated. Done on every walk —
+        // it is cache-backed (a hit re-uses the already-validated set), so it
+        // stays cheap while still honouring the DNSKEY TTL and root key rollover.
+        match self.bootstrap_root_keys().await {
+            Ok(()) => {}
+            Err(e) => {
+                warn!(error = %e, "Root key bootstrap failed");
+                if is_transient_error(&e) {
+                    return Ok(ValidationResult::Indeterminate);
+                }
+                return Ok(ValidationResult::Bogus);
             }
-        };
-        self.validated_keys
-            .insert(".".to_string(), Arc::from(vec![root_anchor.dnskey.clone()]));
+        }
 
         let mut current_domain = String::from(".");
 
@@ -186,7 +216,7 @@ impl ChainVerifier {
 
     async fn validate_delegation(
         &mut self,
-        _parent_domain: &str,
+        parent_domain: &str,
         child_domain: &str,
     ) -> Result<(), DomainError> {
         let (ds_result, dnskey_result) = tokio::join!(
@@ -194,10 +224,110 @@ impl ChainVerifier {
             Self::fetch_dnskey(&self.dnssec_cache, &self.pool_manager, child_domain),
         );
 
-        let ds_records = ds_result?;
+        let ds_result = ds_result?;
 
-        if ds_records.is_empty() {
+        if ds_result.records.is_empty() {
             debug!(domain = %child_domain, "No DS records found (insecure delegation)");
+            return Err(DomainError::InsecureDelegation);
+        }
+
+        // RFC 4035 §5.2: the DS RRset lives in — and is signed by — the *parent*
+        // zone. Before any DS is used to authenticate the child's keys, the DS
+        // RRset itself MUST be verified with a parent key already established in
+        // the chain of trust. Without this the validator merely trusts whatever
+        // DS the upstream returned: an on-path attacker (plaintext Do53, or any
+        // untrusted upstream) could inject a DS matching an attacker-generated
+        // KSK, serve a self-signed DNSKEY RRset and ZSK-signed answers, and have
+        // the whole forged branch accepted as Secure / AD=1.
+        //
+        // A cache hit is exempt: the DS cache is populated only *after* this
+        // check passes (below), so cached DS records are already
+        // parent-authenticated — and the cache does not retain the RRSIGs.
+        if !ds_result.from_cache {
+            let Some(parent_keys) = self.validated_keys.get(parent_domain).cloned() else {
+                warn!(
+                    parent = %parent_domain,
+                    child = %child_domain,
+                    "Parent zone keys not established; cannot authenticate DS RRset"
+                );
+                return Err(DomainError::InvalidDnsResponse(
+                    "Parent keys unavailable for DS validation".into(),
+                ));
+            };
+
+            if ds_result.rrsigs.is_empty() || ds_result.raw_records.is_empty() {
+                warn!(
+                    parent = %parent_domain,
+                    child = %child_domain,
+                    "DS RRset carried no RRSIG; cannot anchor it to the parent zone"
+                );
+                return Err(DomainError::InvalidDnsResponse(
+                    "DS RRset missing RRSIG".into(),
+                ));
+            }
+
+            let now = now_secs();
+            let mut ds_authentic = false;
+            'ds: for rrsig in &ds_result.rrsigs {
+                for key in parent_keys.iter() {
+                    match self.crypto_verifier.verify_rrsig(
+                        rrsig,
+                        key,
+                        child_domain,
+                        &ds_result.raw_records,
+                        now,
+                    ) {
+                        Ok(true) => {
+                            debug!(
+                                parent = %parent_domain,
+                                child = %child_domain,
+                                key_tag = key.calculate_key_tag(),
+                                "DS RRSIG verified against parent key"
+                            );
+                            ds_authentic = true;
+                            break 'ds;
+                        }
+                        Ok(false) => {}
+                        Err(e) => {
+                            warn!(error = %e, "DS RRSIG verification error");
+                        }
+                    }
+                }
+            }
+
+            if !ds_authentic {
+                warn!(
+                    parent = %parent_domain,
+                    child = %child_domain,
+                    "DS RRSIG did not verify against any parent key"
+                );
+                return Err(DomainError::InvalidDnsResponse(
+                    "DS RRSIG verification failed".into(),
+                ));
+            }
+
+            // Parent-authenticated ⇒ safe to cache the usable DS set now.
+            self.dnssec_cache
+                .cache_ds(child_domain, ds_result.records.to_vec(), ds_result.ttl);
+        }
+
+        // RFC 6840 §5.2: the DS RRset's algorithm field names the algorithm the
+        // child zone signs with. If this build implements none of the algorithms
+        // in the (now parent-authenticated) DS RRset, there is no usable
+        // authentication path into the child — it MUST be treated as Insecure
+        // (served, AD=0), exactly as a missing DS, NOT Bogus. Without this the walk
+        // continues and the child's DNSKEY self-signature — necessarily in that
+        // same unsupported algorithm — fails to verify, so the zone is wrongly
+        // flagged Bogus and SERVFAIL'd in Strict mode.
+        if !ds_result
+            .records
+            .iter()
+            .any(|ds| SignatureVerifier::is_supported_algorithm(ds.algorithm))
+        {
+            debug!(
+                domain = %child_domain,
+                "DS RRset references only unsupported algorithms; treating child as insecure"
+            );
             return Err(DomainError::InsecureDelegation);
         }
 
@@ -212,7 +342,7 @@ impl ChainVerifier {
 
         let mut validated_keys = Vec::new();
 
-        for ds in ds_records.iter() {
+        for ds in ds_result.records.iter() {
             for dnskey in dnskey_result.keys.iter() {
                 match self.crypto_verifier.verify_ds(ds, dnskey, child_domain) {
                     Ok(true) => {
@@ -270,10 +400,7 @@ impl ChainVerifier {
                 ));
             }
 
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as u32)
-                .unwrap_or(0);
+            let now = now_secs();
 
             let mut rrsig_ok = false;
             'outer: for rrsig in &dnskey_result.rrsigs {
@@ -283,7 +410,7 @@ impl ChainVerifier {
                         key,
                         child_domain,
                         &dnskey_result.raw_records,
-                        now_secs,
+                        now,
                     ) {
                         Ok(true) => {
                             debug!(
@@ -332,14 +459,20 @@ impl ChainVerifier {
         cache: &DnssecCache,
         pool: &PoolManager,
         domain: &str,
-    ) -> Result<Arc<[DsRecord]>, DomainError> {
+    ) -> Result<DsQueryResult, DomainError> {
         if let Some(records) = cache.get_ds(domain) {
             debug!(
                 domain = %domain,
                 count = records.len(),
                 "DS cache hit"
             );
-            return Ok(records);
+            return Ok(DsQueryResult {
+                records,
+                rrsigs: vec![],
+                raw_records: vec![],
+                from_cache: true,
+                ttl: 0,
+            });
         }
 
         debug!(domain = %domain, "DS cache miss, querying DNS");
@@ -350,39 +483,82 @@ impl ChainVerifier {
         match result {
             Ok(upstream_result) => {
                 let mut records = Vec::new();
+                let mut rrsigs = Vec::new();
+                let mut raw_records = Vec::new();
 
                 for record in &upstream_result.response.raw_answers {
-                    if let RData::DNSSEC(DNSSECRData::DS(ds)) = record.data() {
-                        let digest_type = u8::from(ds.digest_type());
-                        // RFC 8624: the SHA-1 DS digest (type 1) MUST NOT be used
-                        // for validation. Dropping it here means a delegation that
-                        // publishes only SHA-1 DS records is treated as having no
-                        // usable DS (Insecure, served, AD=0), while a zone that also
-                        // publishes a SHA-256/384 DS validates against the stronger
-                        // digest.
-                        if digest_type == 1 {
-                            debug!(domain = %domain, "Ignoring SHA-1 DS digest (RFC 8624)");
-                            continue;
+                    match record.data() {
+                        RData::DNSSEC(DNSSECRData::DS(ds)) => {
+                            // The DS RRSIG covers the *complete* DS RRset as
+                            // published, so every DS record (SHA-1 included) is
+                            // needed to reconstruct the signed data, even though
+                            // SHA-1 digests are not used for digest matching.
+                            raw_records.push(record.clone());
+
+                            let digest_type = u8::from(ds.digest_type());
+                            // RFC 8624: the SHA-1 DS digest (type 1) MUST NOT be
+                            // used for validation. Dropping it here means a
+                            // delegation that publishes only SHA-1 DS records is
+                            // treated as having no usable DS (Insecure, served,
+                            // AD=0), while a zone that also publishes a
+                            // SHA-256/384 DS validates against the stronger digest.
+                            if digest_type == 1 {
+                                debug!(domain = %domain, "Ignoring SHA-1 DS digest (RFC 8624)");
+                                continue;
+                            }
+                            records.push(DsRecord {
+                                key_tag: ds.key_tag(),
+                                algorithm: u8::from(ds.algorithm()),
+                                digest_type,
+                                digest: ds.digest().to_vec(),
+                            });
                         }
-                        records.push(DsRecord {
-                            key_tag: ds.key_tag(),
-                            algorithm: u8::from(ds.algorithm()),
-                            digest_type,
-                            digest: ds.digest().to_vec(),
-                        });
+                        RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) => {
+                            let input = rrsig.input();
+                            if input.type_covered != hickory_proto::rr::RecordType::DS {
+                                continue;
+                            }
+                            let Some(type_covered) =
+                                RecordTypeMapper::from_hickory(input.type_covered)
+                            else {
+                                continue;
+                            };
+                            rrsigs.push(RrsigRecord {
+                                type_covered,
+                                algorithm: u8::from(input.algorithm),
+                                labels: input.num_labels,
+                                original_ttl: input.original_ttl,
+                                signature_expiration: input.sig_expiration.get(),
+                                signature_inception: input.sig_inception.get(),
+                                key_tag: input.key_tag,
+                                signer_name: input.signer_name.to_string(),
+                                signature: rrsig.sig().to_vec(),
+                            });
+                        }
+                        _ => {}
                     }
                 }
 
                 debug!(
                     domain = %domain,
                     count = records.len(),
-                    "DS query successful, caching result"
+                    rrsigs = rrsigs.len(),
+                    "DS query successful"
                 );
 
+                // Caching is deferred to validate_delegation, which caches the DS
+                // set only *after* its RRSIG has been verified against a parent
+                // key. Caching here would let an unauthenticated (possibly
+                // attacker-injected) DS set poison later lookups.
                 let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-                cache.cache_ds(domain, records.clone(), ttl);
 
-                Ok(Arc::from(records))
+                Ok(DsQueryResult {
+                    records: Arc::from(records),
+                    rrsigs,
+                    raw_records,
+                    from_cache: false,
+                    ttl,
+                })
             }
             Err(e) => {
                 warn!(domain = %domain, error = %e, "DS query failed");
@@ -489,6 +665,93 @@ impl ChainVerifier {
                 Err(e)
             }
         }
+    }
+
+    /// Establishes the validated root DNSKEY RRset (KSK + ZSK) from the
+    /// configured KSK trust anchor, storing it as the keys of the `.` zone.
+    ///
+    /// The trust anchor only pins the root KSK, but the DS RRset of every TLD is
+    /// signed by the root *ZSK*. So we fetch the live root DNSKEY RRset, confirm
+    /// it contains the anchor KSK, verify the RRset's self-signature against that
+    /// KSK (RFC 4035 §5.2), and only then trust the whole set — which now
+    /// includes the ZSK needed to authenticate TLD DS records.
+    async fn bootstrap_root_keys(&mut self) -> Result<(), DomainError> {
+        let anchor = match self.trust_store.get_anchor(".") {
+            Some(a) => a.clone(),
+            None => {
+                return Err(DomainError::InvalidDnsResponse(
+                    "No root trust anchor configured".into(),
+                ))
+            }
+        };
+
+        let dnskey_result = Self::fetch_dnskey(&self.dnssec_cache, &self.pool_manager, ".").await?;
+
+        if dnskey_result.keys.is_empty() {
+            return Err(DomainError::InvalidDnsResponse(
+                "No root DNSKEY records".into(),
+            ));
+        }
+
+        // A cache hit was already validated against the anchor on first fetch.
+        if dnskey_result.from_cache {
+            self.validated_keys
+                .insert(".".to_string(), dnskey_result.keys);
+            return Ok(());
+        }
+
+        // The configured anchor KSK must be present in the live root RRset.
+        let Some(anchor_key) = dnskey_result
+            .keys
+            .iter()
+            .find(|k| anchor.matches(k))
+            .cloned()
+        else {
+            return Err(DomainError::InvalidDnsResponse(
+                "Root DNSKEY RRset does not contain the trust anchor".into(),
+            ));
+        };
+
+        if dnskey_result.rrsigs.is_empty() || dnskey_result.raw_records.is_empty() {
+            return Err(DomainError::InvalidDnsResponse(
+                "Root DNSKEY RRset carried no self-signature".into(),
+            ));
+        }
+
+        let now = now_secs();
+        let mut rrsig_ok = false;
+        for rrsig in &dnskey_result.rrsigs {
+            match self.crypto_verifier.verify_rrsig(
+                rrsig,
+                &anchor_key,
+                ".",
+                &dnskey_result.raw_records,
+                now,
+            ) {
+                Ok(true) => {
+                    rrsig_ok = true;
+                    break;
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    warn!(error = %e, "Root DNSKEY RRSIG verification error");
+                }
+            }
+        }
+
+        if !rrsig_ok {
+            return Err(DomainError::InvalidDnsResponse(
+                "Root DNSKEY self-signature verification failed".into(),
+            ));
+        }
+
+        self.dnssec_cache
+            .cache_dnskey(".", dnskey_result.keys.to_vec(), dnskey_result.ttl);
+        self.validated_keys
+            .insert(".".to_string(), dnskey_result.keys);
+
+        debug!("Root DNSKEY RRset bootstrapped from trust anchor");
+        Ok(())
     }
 
     pub fn get_zone_keys(&self, zone: &str) -> Option<&Arc<[DnskeyRecord]>> {

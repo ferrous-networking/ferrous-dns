@@ -17,6 +17,14 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+/// Upper bound on distinct signer zones a single answer may carry before it is
+/// rejected without walking any chain. Each distinct zone drives an independent
+/// chain walk (per-label DS + DNSKEY fetches), so an attacker can pack RRSIGs
+/// naming many bogus signer zones to multiply upstream queries. A legitimate
+/// answer — even a long cross-zone CNAME chain — names only a few zones; this
+/// ceiling is well above any real case while bounding the walk fan-out.
+const MAX_SIGNER_ZONES: usize = 8;
+
 /// Current UNIX time in seconds, clamped to `u32` (RRSIG timestamp domain).
 fn now_secs() -> u32 {
     std::time::SystemTime::now()
@@ -338,10 +346,30 @@ impl DnssecValidator {
         if signer_zones.is_empty() {
             signer_zones.push(domain.to_owned());
         }
+
+        // Anti-amplification: cap the number of independent chain walks one
+        // answer can trigger. More distinct signer zones than any legitimate
+        // answer would carry means a crafted response trying to multiply
+        // upstream DS/DNSKEY queries — reject it before walking anything.
+        if signer_zones.len() > MAX_SIGNER_ZONES {
+            warn!(
+                domain = %domain,
+                zones = signer_zones.len(),
+                "answer names too many signer zones; refusing chain walk (possible amplification)"
+            );
+            return Ok(ValidationResult::Bogus);
+        }
+
         let mut status = ValidationResult::Secure;
         for zone in &signer_zones {
             let zone_status = self.chain_verifier.verify_chain(zone, record_type).await?;
             status = Self::combine_chain_status(status, zone_status);
+            // Bogus is terminal under `combine_chain_status` (it dominates every
+            // other outcome), so once any zone is Bogus the remaining walks
+            // cannot change the verdict — stop and save the queries.
+            if status == ValidationResult::Bogus {
+                break;
+            }
         }
 
         if status == ValidationResult::Secure {
@@ -366,6 +394,25 @@ impl DnssecValidator {
             // No signed authority section: unsigned negative, serve without AD.
             return Ok(ValidationResult::Insecure);
         };
+
+        // The authority's signer zone must enclose the queried name. Otherwise a
+        // validly-signed denial from an unrelated zone the attacker controls
+        // could be presented as a proof about `domain`; the chain walk below
+        // would happily anchor that real zone, and the NSEC/NSEC3 owners would
+        // be checked against it — never against the victim name. Reject it as
+        // Bogus before doing any of that work.
+        match (Self::to_name(domain), Self::to_name(&zone)) {
+            (Some(qname), Some(zone_name)) if Self::name_encloses(&zone_name, &qname) => {}
+            _ => {
+                warn!(
+                    domain = %domain,
+                    zone = %zone,
+                    "negative-answer signer zone does not enclose the queried name"
+                );
+                return Ok(ValidationResult::Bogus);
+            }
+        }
+
         let chain_status = self.chain_verifier.verify_chain(&zone, record_type).await?;
         if chain_status != ValidationResult::Secure {
             return Ok(chain_status);
@@ -387,6 +434,21 @@ impl DnssecValidator {
             format!("{domain}.")
         };
         Name::from_str(&fqdn).ok()
+    }
+
+    /// True when `zone` is `qname` itself or one of its ancestors, i.e. `zone`
+    /// encloses `qname`. Label comparison is the DNS-canonical (case-folded)
+    /// equality of [`Name`].
+    fn name_encloses(zone: &Name, qname: &Name) -> bool {
+        let (zone_labels, qname_labels) = (zone.num_labels(), qname.num_labels());
+        if zone_labels > qname_labels {
+            return false;
+        }
+        let mut ancestor = qname.clone();
+        for _ in 0..(qname_labels - zone_labels) {
+            ancestor = ancestor.base_name();
+        }
+        &ancestor == zone
     }
 
     /// True when the `rrset` (every record sharing `owner` + `rtype`) is covered
@@ -413,6 +475,18 @@ impl DnssecValidator {
             }
             let input = rrsig.input();
             if input.type_covered != rtype {
+                continue;
+            }
+            // RFC 4035 §5.3.1: the RRSIG's signer name must be the apex of the
+            // zone authoritative for the RRset, i.e. it MUST enclose the owner
+            // name. The signature math does not bind signer⊇owner — only the key
+            // identity — so without this check an attacker who controls *any*
+            // validly-signed zone (which chains to root, so its keys land in
+            // `validated_keys` once `extract_signer_zones` drives a walk for it)
+            // could sign a forged RRset for an unrelated victim name with their
+            // own key and have it accepted as Secure / AD=1.
+            if !Self::name_encloses(&input.signer_name, owner) {
+                outcome = "signer-not-enclosing";
                 continue;
             }
             let Some(type_covered) = RecordTypeMapper::from_hickory(input.type_covered) else {

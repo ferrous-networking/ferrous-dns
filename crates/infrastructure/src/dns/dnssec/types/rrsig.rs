@@ -101,12 +101,26 @@ impl RrsigRecord {
     }
 
     pub fn is_expired(&self, now: u32) -> bool {
-        now > self.signature_expiration
+        // `now > expiration` under RFC 4034 §3.1.5 serial arithmetic.
+        !serial_le(now, self.signature_expiration)
     }
 
     pub fn is_valid_at(&self, now: u32) -> bool {
-        now >= self.signature_inception && now <= self.signature_expiration
+        // RFC 4034 §3.1.5: RRSIG inception/expiration are mod-2^32 serial
+        // numbers, not absolute u32s, so a window straddling the 2106 wrap (or
+        // a clock near it) must be compared with serial arithmetic. For any
+        // window shorter than 2^31 seconds (~68 years) this matches the naive
+        // comparison; it only differs across the wrap, where a raw `<=` would
+        // wrongly reject a still-valid signature.
+        serial_le(self.signature_inception, now) && serial_le(now, self.signature_expiration)
     }
+}
+
+/// RFC 1982 / RFC 4034 §3.1.5 serial-number comparison: `a <= b` in mod-2^32
+/// arithmetic. `b - a` (wrapping) lands in the lower half of the space iff `a`
+/// is at or before `b` on the serial-number circle.
+fn serial_le(a: u32, b: u32) -> bool {
+    b.wrapping_sub(a) < 0x8000_0000
 }
 
 impl fmt::Display for RrsigRecord {

@@ -224,3 +224,67 @@ fn test_verify_rrset_wrong_zone_key_returns_bogus() {
         ValidationResult::Bogus
     );
 }
+
+#[test]
+fn test_verify_rrset_signer_not_enclosing_owner_returns_bogus() {
+    // Cross-zone forgery (RFC 4035 §5.3.1). An attacker controls a real,
+    // validly-chained zone (evil.example) and signs an A record for an unrelated
+    // victim name (victim.bank.com) with their own key, labelling the RRSIG with
+    // their own signer name. The signature verifies against the attacker key, and
+    // `extract_signer_zones` would have populated validated_keys["evil.example."]
+    // by walking that genuinely-signed zone — so without the signer-encloses-owner
+    // check this answer would be accepted as Secure (AD=1) despite being entirely
+    // forged. The signer name does NOT enclose the owner, so it must be Bogus.
+    use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
+    use hickory_proto::dnssec::{
+        crypto::Ed25519SigningKey, Algorithm, PublicKey, PublicKeyBuf, SigSigner, SigningKey,
+    };
+    use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
+    use time::{Duration as TD, OffsetDateTime};
+
+    let mut validator = make_validator();
+
+    let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
+    let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
+    let pub_key_buf = signing_key.to_public_key().unwrap();
+    let pub_bytes = pub_key_buf.public_bytes().to_vec();
+
+    let attacker_dnskey = DnskeyRecord {
+        flags: 256,
+        protocol: 3,
+        algorithm: 15,
+        public_key: pub_bytes.clone(),
+    };
+
+    let h_pub = PublicKeyBuf::new(pub_bytes, Algorithm::ED25519);
+    let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
+    // The attacker signs with THEIR own zone as the signer name...
+    let signer_name = Name::from_str("evil.example.").unwrap();
+    let sig_duration = std::time::Duration::from_secs(7200);
+    let signer = SigSigner::dnssec(
+        h_dnskey,
+        Box::new(signing_key),
+        signer_name.clone(),
+        sig_duration,
+    );
+
+    // ...over a forged RRset owned by an unrelated victim name.
+    let record_name = Name::from_str("victim.bank.com.").unwrap();
+    let a_record = make_a_record("victim.bank.com.", Ipv4Addr::new(6, 6, 6, 6));
+    let mut rrset = RecordSet::new(record_name.clone(), HRT::A, 0);
+    rrset.insert(a_record.clone(), 0);
+
+    let inception = OffsetDateTime::now_utc() - TD::minutes(5);
+    let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
+    let rrsig_record =
+        Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
+
+    // The attacker's zone keys are trusted (their real zone chains to the root).
+    validator.insert_zone_keys_for_test("evil.example.", vec![attacker_dnskey]);
+
+    let answers = vec![a_record, rrsig_record];
+    assert_eq!(
+        validator.verify_rrset_signatures("victim.bank.com.", &answers),
+        ValidationResult::Bogus
+    );
+}

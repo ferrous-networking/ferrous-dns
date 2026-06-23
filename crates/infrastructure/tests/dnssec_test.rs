@@ -299,6 +299,27 @@ fn test_verify_ds_unsupported_digest_type() {
     );
 }
 
+#[test]
+fn test_is_supported_algorithm_matches_dispatch_arms() {
+    // The RFC 6840 §5.2 "insecure, not bogus" decision in `validate_delegation`
+    // keys off this predicate, so it MUST stay in lockstep with the algorithms
+    // `verify_rrsig_with_name` can actually dispatch. Supported today: RSA/SHA-1
+    // (5,7), RSA/SHA-256 (8), RSA/SHA-512 (10), ECDSA P-256/P-384 (13,14),
+    // Ed25519 (15). Notably Ed448 (16) is NOT implemented.
+    for alg in [5, 7, 8, 10, 13, 14, 15] {
+        assert!(
+            SignatureVerifier::is_supported_algorithm(alg),
+            "algorithm {alg} should be reported as supported"
+        );
+    }
+    for alg in [0, 1, 3, 6, 12, 16, 17, 252, 253, 254] {
+        assert!(
+            !SignatureVerifier::is_supported_algorithm(alg),
+            "algorithm {alg} should be reported as unsupported"
+        );
+    }
+}
+
 // ============================================================================
 // verify_rrsig basic checks (time/key_tag/algorithm)
 // ============================================================================

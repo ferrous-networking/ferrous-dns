@@ -60,3 +60,32 @@ fn dnssec_mode_round_trips() {
     let reserialized = serde_json::to_value(&parsed).unwrap();
     assert_eq!(reserialized["dnssec_mode"], "strict");
 }
+
+#[test]
+fn dnssec_mode_export_string_round_trips_through_import_parse() {
+    use ferrous_dns_domain::DnssecMode;
+    use std::str::FromStr;
+
+    // End-to-end check of the real export↔import seam (not just serde): the
+    // exact string the exporter writes — `effective_dnssec_mode().as_str()`,
+    // which for an explicit mode is `mode.as_str()` — must survive a snapshot
+    // serialize/deserialize and parse back, via the exact mapping the importer
+    // uses (`parse::<DnssecMode>()`), to the same mode. A renamed string or a
+    // new variant on either side breaks this.
+    for mode in [DnssecMode::Off, DnssecMode::Permissive, DnssecMode::Strict] {
+        let exported = mode.as_str();
+        let bytes =
+            serde_json::to_vec(&with_keys(serde_json::json!({ "dnssec_mode": exported }))).unwrap();
+
+        let parsed: SnapshotDnsConfig = serde_json::from_slice(&bytes).unwrap();
+        let mode_str = parsed
+            .dnssec_mode
+            .expect("dnssec_mode present after round-trip");
+        let imported = DnssecMode::from_str(&mode_str).expect("importer parses exported string");
+
+        assert_eq!(
+            imported, mode,
+            "export/import round-trip failed for {mode:?}"
+        );
+    }
+}

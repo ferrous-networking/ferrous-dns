@@ -165,8 +165,33 @@ function showServerVersion() {
     if (el && window.FERROUS_VERSION) el.textContent = 'v' + window.FERROUS_VERSION;
 }
 
+// --- Hide DNSSEC UI (sidebar item + dashboard "DNSSEC Bogus" card) when DNSSEC is disabled (mode = Off) ---
+
+async function hideDnssecUiWhenDisabled() {
+    try {
+        const res = await apiFetch(`${API_BASE}/config`);
+        if (!res.ok) return;
+        const dns = (await res.json()).dns || {};
+        // `dnssec_enabled` is the server-derived "mode validates" flag (false when Off);
+        // fall back to the mode string for older payloads. Fail-open: only hide on a definite Off.
+        let disabled = false;
+        if (typeof dns.dnssec_enabled === 'boolean') {
+            disabled = !dns.dnssec_enabled;
+        } else if (typeof dns.dnssec_mode === 'string') {
+            disabled = dns.dnssec_mode.toLowerCase() === 'off';
+        }
+        if (!disabled) return;
+        // Sidebar item (every page) + the "DNSSEC Bogus" stat card (dashboard only).
+        document.querySelectorAll('a[href="/dnssec.html"], #dnssec-bogus-card')
+            .forEach(el => { el.style.display = 'none'; });
+    } catch (e) {
+        // fail-open: keep the DNSSEC UI visible on any error
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     showServerVersion();
+    hideDnssecUiWhenDisabled();
     if (document.body.dataset.page === 'settings') return;
     if (isRestartRequired()) showRestartBanner();
 });
