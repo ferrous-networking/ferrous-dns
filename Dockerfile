@@ -15,13 +15,17 @@ COPY crates/application/Cargo.toml ./crates/application/
 COPY crates/infrastructure/Cargo.toml ./crates/infrastructure/
 COPY crates/jobs/Cargo.toml ./crates/jobs/
 COPY crates/api/Cargo.toml ./crates/api/
+COPY crates/api-pihole/Cargo.toml ./crates/api-pihole/
+COPY tests/Cargo.toml ./tests/
 
 RUN mkdir -p crates/cli/src crates/domain/src crates/application/src \
-             crates/infrastructure/src crates/jobs/src crates/api/src && \
+             crates/infrastructure/src crates/jobs/src crates/api/src \
+             crates/api-pihole/src tests/performance && \
     echo 'fn main() {}' > crates/cli/src/main.rs && \
     touch crates/domain/src/lib.rs crates/application/src/lib.rs \
           crates/infrastructure/src/lib.rs crates/jobs/src/lib.rs \
-          crates/api/src/lib.rs && \
+          crates/api/src/lib.rs crates/api-pihole/src/lib.rs \
+          tests/performance/competitor_comparison.rs && \
     cargo build --release && \
     rm -rf crates/*/src
 
@@ -33,7 +37,7 @@ RUN find crates -name "*.rs" -exec touch {} + && \
     cargo build --release --bin ferrous-dns && \
     strip target/release/ferrous-dns
 
-FROM alpine:3.19
+FROM alpine:3.22
 
 RUN apk add --no-cache \
     ca-certificates \
