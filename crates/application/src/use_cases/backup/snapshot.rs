@@ -62,6 +62,8 @@ pub struct SnapshotDnsConfig {
     pub cache_max_ttl: u32,
     pub block_non_fqdn: bool,
     pub block_private_ptr: bool,
+    #[serde(default)]
+    pub mdns_enabled: bool,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
 }

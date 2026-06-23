@@ -233,6 +233,11 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "block_non_fqdn",
             toml_edit::Value::from(config.dns.block_non_fqdn),
         );
+        set_val(
+            t,
+            "mdns_enabled",
+            toml_edit::Value::from(config.dns.mdns_enabled),
+        );
         match &config.dns.local_domain {
             Some(domain) => set_val(t, "local_domain", toml_edit::Value::from(domain.clone())),
             None => {

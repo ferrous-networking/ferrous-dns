@@ -673,6 +673,23 @@ async fn post_config(app: Router, body: serde_json::Value) -> (StatusCode, Value
     (status, json)
 }
 
+async fn get_config(app: Router) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/config")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
 fn live_servers(pm: &ferrous_dns_infrastructure::dns::PoolManager) -> Vec<String> {
     pm.get_all_servers().iter().map(|a| a.to_string()).collect()
 }
@@ -866,4 +883,43 @@ async fn test_update_config_persists_then_clears_sinkhole() {
         !cleared.contains("sinkhole_ipv4") && !cleared.contains("192.168.50.50"),
         "cleared sinkhole key must be removed from the file, got:\n{cleared}"
     );
+}
+
+#[tokio::test]
+async fn test_update_config_persists_mdns_enabled() {
+    let pool = create_test_db().await;
+    let (app, _pm, path) = create_test_app(pool).await;
+
+    let (status, json) =
+        post_config(app, serde_json::json!({ "dns": { "mdns_enabled": true } })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+
+    // The flag must be written through to the config file under [dns].
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("mdns_enabled = true"),
+        "config file should carry mdns_enabled = true, got:\n{written}"
+    );
+}
+
+#[tokio::test]
+async fn test_get_config_reports_mdns_enabled() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    // Default config: GET reports the flag as false.
+    let (status, json) = get_config(app.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["dns"]["mdns_enabled"], false);
+
+    // After enabling it, GET reflects the new value — covers the response DTO mapping.
+    let (status, _) = post_config(
+        app.clone(),
+        serde_json::json!({ "dns": { "mdns_enabled": true } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, json) = get_config(app).await;
+    assert_eq!(json["dns"]["mdns_enabled"], true);
 }

@@ -168,6 +168,14 @@ async fn async_main() -> anyhow::Result<()> {
         }
     });
 
+    if config.dns.mdns_enabled {
+        tokio::spawn(async move {
+            if let Err(e) = server::start_mdns_listener().await {
+                error!(error = %e, "mDNS listener error");
+            }
+        });
+    }
+
     let tls_config =
         if config.server.encrypted_dns.dot_enabled || config.server.encrypted_dns.doh_enabled {
             server::load_server_tls_config(

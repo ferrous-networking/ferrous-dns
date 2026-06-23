@@ -31,7 +31,7 @@ Ports, bind address, database path, and log level are all set inside the mounted
 Access the dashboard at `http://localhost:8080`
 
 !!! note "Network mode"
-    `--network host` is required so Ferrous DNS can bind to port 53 and detect client IPs/MACs correctly. On macOS, host networking is not available in Docker Desktop — use a Linux VM or Docker Compose with explicit port mappings.
+    `--network host` is required so Ferrous DNS can bind to port 53 and detect client IPs/MACs correctly. It is also required for **mDNS device discovery** (`mdns_enabled`): multicast on UDP 5353 does not traverse Docker bridge port mapping, so the listener only works in host mode. On macOS, host networking is not available in Docker Desktop — use a Linux VM or Docker Compose with explicit port mappings.
 
 ---
 

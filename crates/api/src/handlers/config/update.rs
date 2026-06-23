@@ -202,6 +202,9 @@ pub async fn update_config(
                 Some(server)
             };
         }
+        if let Some(v) = dns_update.mdns_enabled {
+            new_config.dns.mdns_enabled = v;
+        }
         if let Some(rl) = dns_update.rate_limit {
             if let Some(v) = rl.enabled {
                 new_config.dns.rate_limit.enabled = v;

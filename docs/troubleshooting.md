@@ -87,6 +87,9 @@ sudo ss -tulnp | grep :53
 # Open port 53 (if using ufw)
 sudo ufw allow 53/udp
 sudo ufw allow 53/tcp
+
+# If mDNS device discovery is enabled (mdns_enabled), also allow UDP 5353
+sudo ufw allow 5353/udp
 ```
 
 ### Check 3: Are upstream servers reachable?
@@ -280,6 +283,9 @@ services:
 
 !!! warning "Client IP detection in bridge mode"
     In bridge mode, all queries appear to come from the Docker gateway IP (usually `172.17.0.1`). Client-specific features (groups, per-client policies) will not work correctly. Use host network mode for accurate client detection.
+
+!!! warning "mDNS device discovery requires host mode"
+    The mDNS listener (`mdns_enabled`) relies on multicast (`224.0.0.251:5353`), which does **not** traverse Docker bridge port mapping — adding `"5353:5353/udp"` to `ports:` will not deliver announcements. Use `network_mode: host` for mDNS to work.
 
 ---
 

@@ -11,6 +11,7 @@
                     health_check: {enabled: true, interval_seconds: 30, timeout_ms: 2000, failure_threshold: 3},
                     dnssec_mode: 'permissive',
                     cache_enabled: true,
+                    mdns_enabled: false,
                     cache_ttl: 3600,
                     cache_min_ttl: 0,
                     cache_max_ttl: 86400,

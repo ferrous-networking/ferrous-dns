@@ -1539,3 +1539,49 @@ async fn test_import_mixed_ipv4_and_ipv6_records() {
     assert_eq!(a_count, 2);
     assert_eq!(aaaa_count, 2);
 }
+
+#[tokio::test]
+async fn test_mdns_enabled_survives_export_import_round_trip() {
+    let (app, config, _pool) = create_test_app().await;
+
+    // Enable mDNS in the live config, then export.
+    config.write().await.dns.mdns_enabled = true;
+
+    let export_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/config/export")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(export_response.status(), StatusCode::OK);
+    let export_bytes = export_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let export_json: Value = serde_json::from_slice(&export_bytes).unwrap();
+    // Export must carry the flag — covers build_snapshot_config in export.rs.
+    assert_eq!(export_json["config"]["dns"]["mdns_enabled"], true);
+
+    // Flip it back off, then import the snapshot. Import must restore it to true,
+    // which exercises the apply_config field mapping in import.rs (not just serde).
+    config.write().await.dns.mdns_enabled = false;
+
+    let import_response = app.oneshot(import_request(&export_bytes)).await.unwrap();
+    let body = import_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let import_json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(import_json["success"], true);
+    assert_eq!(import_json["summary"]["config_updated"], true);
+
+    assert!(config.read().await.dns.mdns_enabled);
+}

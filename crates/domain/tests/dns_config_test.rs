@@ -27,6 +27,7 @@ fn test_config_default_values() {
     assert_eq!(config.cache_max_ttl, 86_400);
     assert!(config.block_private_ptr);
     assert!(!config.block_non_fqdn);
+    assert!(!config.mdns_enabled);
     assert!(config.local_domain.is_none());
     assert!(config.local_dns_server.is_none());
     assert!(config.local_records.is_empty());
@@ -48,6 +49,23 @@ fn test_qname_case_randomization_roundtrip() {
     let serialized = toml::to_string(&config).unwrap();
     let reparsed: DnsConfig = toml::from_str(&serialized).unwrap();
     assert!(reparsed.qname_case_randomization);
+}
+
+#[test]
+fn test_mdns_enabled_defaults_off_when_absent() {
+    // Existing configs without the field must still deserialize, defaulting off.
+    let config: DnsConfig = toml::from_str("query_timeout = 3").unwrap();
+    assert!(!config.mdns_enabled);
+}
+
+#[test]
+fn test_mdns_enabled_roundtrip() {
+    let config: DnsConfig = toml::from_str("mdns_enabled = true").unwrap();
+    assert!(config.mdns_enabled);
+
+    let serialized = toml::to_string(&config).unwrap();
+    let reparsed: DnsConfig = toml::from_str(&serialized).unwrap();
+    assert!(reparsed.mdns_enabled);
 }
 
 #[test]
@@ -100,6 +118,7 @@ fn test_config_deserialization_with_all_fields() {
         cache_access_window_secs = 3600
         block_private_ptr = false
         block_non_fqdn = true
+        mdns_enabled = true
         local_domain = "home.lan"
         local_dns_server = "192.168.1.1:53"
     "#;
@@ -119,6 +138,7 @@ fn test_config_deserialization_with_all_fields() {
     assert_eq!(config.cache_access_window_secs, 3600);
     assert!(!config.block_private_ptr);
     assert!(config.block_non_fqdn);
+    assert!(config.mdns_enabled);
     assert_eq!(config.local_domain, Some("home.lan".to_string()));
     assert_eq!(config.local_dns_server, Some("192.168.1.1:53".to_string()));
 }
