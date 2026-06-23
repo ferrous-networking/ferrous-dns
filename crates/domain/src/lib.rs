@@ -12,10 +12,11 @@ pub use entities::whitelist;
 
 pub use config::{
     AdminConfig, AuthConfig, BlockResponseMode, CliOverrides, Config, ConfigError,
-    DgaDetectionAction, DgaDetectionConfig, DnsConfig, DnsCookiesConfig, DnssecMode,
+    DgaDetectionAction, DgaDetectionConfig, Dns64Config, DnsConfig, DnsCookiesConfig, DnssecMode,
     EncryptedDnsConfig, HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction,
     NxdomainHijackConfig, RateLimitConfig, ResponseIpFilterAction, ResponseIpFilterConfig,
     TunnelingAction, TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy, DEFAULT_BLOCK_TTL,
+    DEFAULT_DNS64_PREFIX,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use entities::api_token::ApiToken;
@@ -49,4 +50,5 @@ pub use errors::domain_error::DomainError;
 pub use value_objects::dns_protocol::{DnsProtocol, UpstreamAddr};
 pub use value_objects::dns_query::DnsQuery;
 pub use value_objects::dns_request::{DnsRequest, EdnsCookie};
+pub use value_objects::nat64::Nat64Prefix;
 pub use value_objects::query_filters::{FqdnFilter, PrivateIpFilter};

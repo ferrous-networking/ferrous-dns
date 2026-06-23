@@ -115,6 +115,12 @@ pub(super) async fn get_recent_paged(
         Some(_) => " AND q.dnssec_status = ?",
         None => "",
     };
+    // Static fragment (no bound param) so it doesn't disturb `bind_filters!`.
+    let dns64_clause = match filter.dns64_synthesized {
+        Some(true) => " AND q.dns64_synthesized = 1",
+        Some(false) => " AND q.dns64_synthesized = 0",
+        None => "",
+    };
 
     // Binds the conditional filter parameters in a fixed order.
     macro_rules! bind_filters {
@@ -146,7 +152,7 @@ pub(super) async fn get_recent_paged(
             if let Some(cursor_id) = cursor {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q
@@ -154,7 +160,7 @@ pub(super) async fn get_recent_paged(
                      WHERE q.id < ?
                        AND q.query_source = 'client'
                        AND q.created_at >= ?
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}
                      ORDER BY q.id DESC
                      LIMIT ?"
                 );
@@ -164,14 +170,14 @@ pub(super) async fn get_recent_paged(
             } else {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q
                      LEFT JOIN clients c ON q.client_ip = c.ip_address
                      WHERE q.created_at >= ?
                        AND q.query_source = 'client'
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}
                      ORDER BY q.created_at DESC
                      LIMIT ? OFFSET ?"
                 );
@@ -187,7 +193,7 @@ pub(super) async fn get_recent_paged(
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
-                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}"
+                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}"
             );
             let q = sqlx::query(&count_sql).bind(&cutoff);
             let q = bind_filters!(q, filter);
@@ -266,6 +272,7 @@ pub(super) async fn get_stats(
                     SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
                     SUM(CASE WHEN response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC') THEN 1 ELSE 0 END) as rate_limited,
                     SUM(CASE WHEN dnssec_status = 'Bogus' THEN 1 ELSE 0 END) as dnssec_bogus,
+                    SUM(CASE WHEN dns64_synthesized = 1 THEN 1 ELSE 0 END) as dns64_synthesized,
                     SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
                     AVG(response_time_ms) as avg_time,
                     AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
@@ -384,6 +391,7 @@ pub(super) async fn get_stats(
         queries_rate_limited: row.get::<i64, _>("rate_limited") as u64,
         queries_malware_detected: malware_detected,
         queries_dnssec_bogus: row.get::<i64, _>("dnssec_bogus") as u64,
+        queries_dns64_synthesized: row.get::<i64, _>("dns64_synthesized") as u64,
         unique_clients: 0,
         uptime_seconds: get_uptime(),
         cache_hit_rate,

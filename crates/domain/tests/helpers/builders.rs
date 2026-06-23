@@ -78,6 +78,7 @@ impl QueryLogBuilder {
             cache_hit: self.cache_hit,
             cache_refresh: self.cache_refresh,
             dnssec_status: None,
+            dns64_synthesized: false,
             upstream_server: None,
             upstream_pool: None,
             response_status: None,

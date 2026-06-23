@@ -120,6 +120,10 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         cache_hit: row.get::<i64, _>("cache_hit") != 0,
         cache_refresh: row.get::<i64, _>("cache_refresh") != 0,
         dnssec_status,
+        dns64_synthesized: row
+            .try_get::<i64, _>("dns64_synthesized")
+            .map(|v| v != 0)
+            .unwrap_or(false),
         upstream_server: row
             .get::<Option<String>, _>("upstream_server")
             .map(|s| Arc::from(s.as_str())),

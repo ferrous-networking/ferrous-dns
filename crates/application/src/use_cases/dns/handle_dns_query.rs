@@ -14,12 +14,13 @@ use crate::ports::{
 };
 use ferrous_dns_domain::{
     BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DnssecStatus,
-    DomainError, NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource, RecordType,
-    ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
+    DomainError, Nat64Prefix, NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource,
+    RecordType, ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction,
+    TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,6 +53,9 @@ pub struct HandleDnsQueryUseCase {
     /// When `true` (DNSSEC Strict mode), a `Bogus` validation result is enforced
     /// with SERVFAIL instead of being delivered. Set via `with_dnssec_enforcement`.
     dnssec_enforce: bool,
+    /// `/96` NAT64 network prefix when DNS64 is enabled. Used only to derive the
+    /// `dns64_synthesized` query-log tag from an AAAA answer's address membership.
+    dns64_prefix: Option<Ipv6Addr>,
 }
 
 impl HandleDnsQueryUseCase {
@@ -79,6 +83,7 @@ impl HandleDnsQueryUseCase {
             dga_flag_store: None,
             cookie_guard: DnsCookieGuard::disabled(),
             dnssec_enforce: false,
+            dns64_prefix: None,
         }
     }
 
@@ -87,6 +92,27 @@ impl HandleDnsQueryUseCase {
     pub fn with_dnssec_enforcement(mut self, enforce: bool) -> Self {
         self.dnssec_enforce = enforce;
         self
+    }
+
+    /// Records the `/96` NAT64 prefix so AAAA answers synthesized by the DNS64
+    /// resolver layer can be tagged in the query log. Only used for the tag.
+    pub fn with_dns64(mut self, prefix: Ipv6Addr) -> Self {
+        self.dns64_prefix = Some(prefix);
+        self
+    }
+
+    /// Whether an AAAA answer was synthesized by DNS64: every answer address
+    /// falls inside the configured NAT64 prefix (RFC 6052 reserves `64:ff9b::/96`
+    /// exclusively for NAT64, so a real AAAA never lands there).
+    fn is_dns64_synthesized(&self, record_type: RecordType, addresses: &[IpAddr]) -> bool {
+        record_type == RecordType::AAAA
+            && self.dns64_prefix.is_some_and(|prefix| {
+                !addresses.is_empty()
+                    && addresses.iter().all(|addr| match addr {
+                        IpAddr::V6(v6) => Nat64Prefix::contains(prefix, *v6),
+                        IpAddr::V4(_) => false,
+                    })
+            })
     }
 
     pub fn with_safe_search(mut self, safe_search: Arc<dyn SafeSearchEnginePort>) -> Self {
@@ -304,6 +330,7 @@ impl HandleDnsQueryUseCase {
             cache_hit: false,
             cache_refresh: false,
             dnssec_status: None,
+            dns64_synthesized: false,
             upstream_server: None,
             upstream_pool: None,
             response_status: Some("NOERROR"),
@@ -403,6 +430,7 @@ impl HandleDnsQueryUseCase {
             cache_hit: true,
             cache_refresh: false,
             dnssec_status: resolution.dnssec_status,
+            dns64_synthesized: false,
             upstream_server: None,
             upstream_pool: None,
             response_status: Some("NOERROR"),
@@ -468,6 +496,7 @@ impl HandleDnsQueryUseCase {
             cache_hit: true,
             cache_refresh: false,
             dnssec_status: resolution.dnssec_status,
+            dns64_synthesized: self.is_dns64_synthesized(record_type, &resolution.addresses),
             upstream_server: None,
             upstream_pool: None,
             response_status: Some("NOERROR"),
@@ -727,6 +756,8 @@ impl HandleDnsQueryUseCase {
                 self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
+                    dns64_synthesized: self
+                        .is_dns64_synthesized(request.record_type, &resolution.addresses),
                     upstream_server: resolution.upstream_server.clone(),
                     upstream_pool: resolution.upstream_pool.clone(),
                     response_status,

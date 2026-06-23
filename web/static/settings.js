@@ -40,7 +40,9 @@
                 block_mode: 'null_ip',
                 block_ttl: 60,
                 sinkhole_ipv4: '',
-                sinkhole_ipv6: ''
+                sinkhole_ipv6: '',
+                dns64_enabled: false,
+                nat64_prefix: '64:ff9b::/96'
             },
             cacheStats: {total_entries: 0, hit_rate: 0, total_hits: 0, total_misses: 0},
             healthStatus: {},

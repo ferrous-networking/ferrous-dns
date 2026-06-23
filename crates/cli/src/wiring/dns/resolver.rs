@@ -1,7 +1,7 @@
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{HickoryDnsResolver, PoolManager};
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::wiring::Repositories;
 
@@ -31,6 +31,21 @@ pub(super) fn build_resolver(
 
     if dnssec_validates {
         resolver = resolver.with_dnssec_pool_manager(pool_manager_for_dnssec);
+    }
+
+    // DNS64 (RFC 6147) — fail-soft: a malformed / non-/96 prefix disables the
+    // feature with a warning rather than refusing to start.
+    if config.dns64.enabled {
+        match config.dns64.parsed_prefix() {
+            Some(prefix) => {
+                resolver = resolver.with_dns64(prefix);
+                info!(prefix = %prefix, "DNS64 AAAA synthesis enabled");
+            }
+            None => warn!(
+                prefix = %config.dns64.prefix,
+                "DNS64 enabled but prefix is invalid (only /96 is supported) — DNS64 disabled"
+            ),
+        }
     }
 
     info!(

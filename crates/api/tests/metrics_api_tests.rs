@@ -54,6 +54,7 @@ fn sample_stats() -> QueryStats {
         queries_rate_limited: 2,
         queries_malware_detected: 1,
         queries_dnssec_bogus: 7,
+        queries_dns64_synthesized: 3,
         unique_clients: 4,
         uptime_seconds: 3600,
         cache_hit_rate: 50.0,

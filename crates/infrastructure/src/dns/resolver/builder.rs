@@ -3,11 +3,13 @@ use super::super::load_balancer::PoolManager;
 use super::cache_layer::CachedResolver;
 use super::config::ResolverConfig;
 use super::core::CoreResolver;
+use super::dns64_layer::Dns64Resolver;
 use super::dnssec_layer::DnssecResolver;
 use super::filtered_resolver::FilteredResolver;
 use super::filters::QueryFilters;
 use super::local_ptr::{LocalPtrResolver, PtrMap};
 use ferrous_dns_application::ports::DnsResolver;
+use std::net::Ipv6Addr;
 use std::sync::Arc;
 use tracing::info;
 
@@ -20,6 +22,7 @@ pub struct ResolverBuilder {
     local_dns_server: Option<String>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
+    dns64_prefix: Option<Ipv6Addr>,
 }
 
 impl ResolverBuilder {
@@ -33,6 +36,7 @@ impl ResolverBuilder {
             local_dns_server: None,
             filters: None,
             local_ptr_map: None,
+            dns64_prefix: None,
         }
     }
 
@@ -78,6 +82,14 @@ impl ResolverBuilder {
         self
     }
 
+    /// Enables DNS64 (RFC 6147) AAAA synthesis using the given `/96` NAT64
+    /// network prefix. The layer is placed just below the cache so synthesized
+    /// answers are cached and served consistently.
+    pub fn with_dns64(mut self, prefix: Ipv6Addr) -> Self {
+        self.dns64_prefix = Some(prefix);
+        self
+    }
+
     pub fn build(self) -> Arc<dyn DnsResolver> {
         info!(
             dnssec = self.config.dnssec_enabled,
@@ -107,6 +119,13 @@ impl ResolverBuilder {
                 dnssec_pm,
                 self.config.query_timeout_ms,
             ));
+        }
+
+        // DNS64 sits below the cache: synthesized AAAA answers are stored as
+        // ordinary positive cache entries and served consistently by the cache
+        // fast-path, while the negative AAAA is DNSSEC-validated first (inner).
+        if let Some(prefix) = self.dns64_prefix {
+            resolver = Arc::new(Dns64Resolver::new(resolver, prefix));
         }
 
         if let Some(cache) = self.cache {

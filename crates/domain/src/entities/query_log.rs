@@ -25,6 +25,9 @@ pub struct QueryLogFilter {
     /// row that received a determination (non-NULL status); any other value
     /// is an exact match on the stored status string.
     pub dnssec_status: Option<String>,
+    /// `Some(true)` keeps only DNS64-synthesized AAAA answers, `Some(false)`
+    /// only non-synthesized rows; `None` does not filter.
+    pub dns64_synthesized: Option<bool>,
 }
 
 /// Category filter for query log pagination.
@@ -122,6 +125,8 @@ pub struct QueryLog {
     pub cache_hit: bool,
     pub cache_refresh: bool,
     pub dnssec_status: Option<&'static str>,
+    /// `true` when the AAAA answer was synthesized by DNS64 (RFC 6147).
+    pub dns64_synthesized: bool,
     pub upstream_server: Option<Arc<str>>,
     pub upstream_pool: Option<Arc<str>>,
     pub response_status: Option<&'static str>,
@@ -142,6 +147,8 @@ pub struct QueryStats {
     /// Queries whose DNSSEC validation returned Bogus (whether served under
     /// Permissive or SERVFAIL'd under Strict).
     pub queries_dnssec_bogus: u64,
+    /// AAAA answers synthesized by DNS64 (RFC 6147).
+    pub queries_dns64_synthesized: u64,
     pub unique_clients: u64,
     pub uptime_seconds: u64,
     pub cache_hit_rate: f64,
@@ -277,6 +284,7 @@ impl Default for QueryStats {
             queries_rate_limited: 0,
             queries_malware_detected: 0,
             queries_dnssec_bogus: 0,
+            queries_dns64_synthesized: 0,
             unique_clients: 0,
             uptime_seconds: 0,
             cache_hit_rate: 0.0,

@@ -56,6 +56,7 @@ pub async fn get_queries(
         record_type: params.record_type.as_deref(),
         upstream: params.upstream.as_deref(),
         dnssec_status: params.dnssec_status.as_deref(),
+        dns64: params.dns64,
     };
 
     let result = state.query.get_queries.execute_paged(&input).await?;
@@ -74,6 +75,7 @@ pub async fn get_queries(
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
+            dns64_synthesized: q.dns64_synthesized,
             upstream_server: q.upstream_server,
             upstream_pool: q.upstream_pool,
             query_source: q.query_source.as_str(),

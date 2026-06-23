@@ -369,6 +369,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             cache_hit INTEGER NOT NULL DEFAULT 0,
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
+            dns64_synthesized INTEGER NOT NULL DEFAULT 0,
             upstream_server TEXT,
             upstream_pool TEXT,
             response_status TEXT,
@@ -922,4 +923,90 @@ async fn test_get_config_reports_mdns_enabled() {
     assert_eq!(status, StatusCode::OK);
     let (_, json) = get_config(app).await;
     assert_eq!(json["dns"]["mdns_enabled"], true);
+}
+
+async fn post_settings(app: Router, body: serde_json::Value) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/settings")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+#[tokio::test]
+async fn test_get_config_reports_dns64_defaults() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = get_config(app).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["dns64"]["enabled"], false);
+    assert_eq!(json["dns64"]["prefix"], "64:ff9b::/96");
+}
+
+#[tokio::test]
+async fn test_update_settings_enables_dns64_and_persists() {
+    let pool = create_test_db().await;
+    let (app, _pm, path) = create_test_app(pool).await;
+
+    let (status, json) = post_settings(
+        app.clone(),
+        serde_json::json!({
+            "never_forward_non_fqdn": false,
+            "never_forward_reverse_lookups": false,
+            "dns64_enabled": true,
+            "nat64_prefix": "64:ff9b::/96"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+
+    // Persisted to the config file under [dns64].
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        written.contains("[dns64]") && written.contains("prefix = \"64:ff9b::/96\""),
+        "config file should carry the [dns64] section, got:\n{written}"
+    );
+
+    // And reflected back through GET /config (response DTO mapping).
+    let (_, json) = get_config(app).await;
+    assert_eq!(json["dns64"]["enabled"], true);
+}
+
+#[tokio::test]
+async fn test_update_settings_rejects_invalid_dns64_prefix() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_settings(
+        app,
+        serde_json::json!({
+            "never_forward_non_fqdn": false,
+            "never_forward_reverse_lookups": false,
+            "dns64_enabled": true,
+            "nat64_prefix": "64:ff9b::/64"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], false);
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Invalid DNS64 prefix"),
+        "error should name the bad prefix, got: {}",
+        json["error"]
+    );
 }
