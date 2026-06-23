@@ -147,6 +147,7 @@ async fn run_udp_worker_batch(
                                 fast_query.record_type,
                                 client_ip,
                                 fast_query.id,
+                                fast_query.client_max_size,
                             ) {
                                 pending_wire.push(pktinfo::PendingWireResponse {
                                     data: patched,
@@ -253,6 +254,7 @@ async fn run_udp_worker_single(
                                     fast_query.record_type,
                                     client_ip,
                                     fast_query.id,
+                                    fast_query.client_max_size,
                                 ) {
                                     let _ = pktinfo::try_send_with_src_ip(
                                         socket.get_ref(),
