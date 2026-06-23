@@ -2,7 +2,7 @@ use super::balanced::BalancedStrategy;
 use super::failover::FailoverStrategy;
 use super::parallel::ParallelStrategy;
 use crate::dns::events::QueryEventEmitter;
-use crate::dns::forwarding::DnsResponse;
+use crate::dns::forwarding::{DnsResponse, ResponseValidator};
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -22,6 +22,7 @@ pub struct QueryContext<'a> {
     pub record_type: &'a RecordType,
     pub timeout_ms: u64,
     pub query_bytes: Arc<[u8]>,
+    pub validator: &'a Arc<ResponseValidator>,
     pub emitter: &'a QueryEventEmitter,
     pub pool_name: &'a Arc<str>,
     pub server_displays: &'a Arc<std::collections::HashMap<Arc<DnsProtocol>, Arc<str>>>,

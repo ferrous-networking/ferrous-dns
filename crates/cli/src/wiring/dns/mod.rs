@@ -67,7 +67,8 @@ impl DnsServices {
                 health_checker,
                 QueryEventEmitter::new_disabled(),
             )
-            .await?,
+            .await?
+            .with_hardening(pool::hardening_opts(config)),
         );
         let dnssec_pool_manager_clone = Arc::clone(&pool_manager_for_dnssec);
 
@@ -358,7 +359,8 @@ impl DnsServices {
                 health_checker,
                 QueryEventEmitter::new_disabled(),
             )
-            .await?,
+            .await?
+            .with_hardening(pool::hardening_opts(config)),
         );
         // Keep a handle so hot upstream reloads also reach this resolver.
         let maintenance_pool_manager = Arc::clone(&pool_manager_for_maintenance);
