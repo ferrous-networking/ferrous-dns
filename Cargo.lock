@@ -834,6 +834,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "sqlx",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tower",
