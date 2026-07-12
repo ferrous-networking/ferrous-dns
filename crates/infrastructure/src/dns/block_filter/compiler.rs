@@ -444,7 +444,7 @@ async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMa
         let action: String = row.get("action");
         let group_id: i64 = row.get("group_id");
 
-        match Regex::new(&format!("(?i){}", &pattern)) {
+        match Regex::new(&format!("(?i){}", pattern)) {
             Ok(re) => {
                 let rule = RegexRule {
                     id,
