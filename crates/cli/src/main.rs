@@ -19,6 +19,8 @@ mod server;
 mod wiring;
 
 fn main() -> anyhow::Result<()> {
+    ferrous_dns::install_crypto_provider();
+
     let core_ids = core_affinity::get_core_ids().unwrap_or_default();
     let num_workers = core_ids.len().max(1);
     let core_ids = Arc::new(core_ids);
