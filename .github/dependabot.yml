@@ -17,8 +17,11 @@ updates:
       time: "06:00"
       timezone: "America/Sao_Paulo"
     open-pull-requests-limit: 10
+    # Titles must satisfy pr-validation.yml (Conventional Commits, allowed
+    # types only). "build" + scope yields e.g. "build(deps): bump tokio ...".
     commit-message:
-      prefix: "deps"
+      prefix: "build"
+      include: "scope"
     labels:
       - "dependencies"
       - "rust"
@@ -41,6 +44,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
+      include: "scope"
     labels:
       - "dependencies"
       - "github-actions"
@@ -63,7 +67,8 @@ updates:
       timezone: "America/Sao_Paulo"
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "docker"
+      prefix: "build"
+      include: "scope"
     labels:
       - "dependencies"
       - "docker"
@@ -79,6 +84,7 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "docs"
+      include: "scope"
     labels:
       - "dependencies"
       - "documentation"
