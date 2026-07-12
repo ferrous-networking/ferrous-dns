@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   TARPAULIN_VERSION: '0.27.0'
-  AUDIT_VERSION: '0.18.0'
+  AUDIT_VERSION: '0.22.2'
 
 jobs:
   quick-check:
