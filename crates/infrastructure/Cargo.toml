@@ -68,7 +68,7 @@ equivalent = "1"
 toml_edit.workspace = true
 
 # TLS certificate management
-rcgen = "0.13"
+rcgen = "0.14"
 x509-parser = "0.18"
 rustls-pemfile = "2"
 
