@@ -29,17 +29,17 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rayon = "1"
 fastrand = "2.0"
-lru = "0.16.3"
+lru = "0.18.1"
 ahash = "0.8"
 bloomfilter = "3.0.1"
 arc-swap = "1.7"
 aho-corasick = "1.1"
-fancy-regex = "0.17.0"
+fancy-regex = "0.18.0"
 hostname = "0.4"
 async-trait = "0.1"
 axum = { version = "0.8.8", features = ["macros", "multipart"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.8", features = ["cors", "trace", "fs", "compression-gzip"] }
+tower-http = { version = "0.7.0", features = ["cors", "trace", "fs", "compression-gzip"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 tracing = "0.1"
@@ -52,7 +52,7 @@ chrono = "0.4.44"
 hickory-server = "0.26.0-alpha.1"
 hickory-proto = { version = "0.26.0-alpha.1", features = ["dnssec-ring"] }
 toml = "0.9.8"
-toml_edit = "0.23.9"
+toml_edit = "0.24.0"
 dashmap = "6.1"
 futures = "0.3"
 rustc-hash = "2.1.0"
@@ -63,7 +63,7 @@ socket2 = "0.6.3"
 # DNSSEC Crypto (FASE 2)
 ring = "0.17"
 sha1 = "0.11"
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22.1"
 data-encoding = "2.10"
 
