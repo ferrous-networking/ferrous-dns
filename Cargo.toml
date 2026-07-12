@@ -62,7 +62,7 @@ socket2 = "0.6.3"
 
 # DNSSEC Crypto (FASE 2)
 ring = "0.17"
-sha1 = "0.10"
+sha1 = "0.11"
 sha2 = "0.10"
 base64 = "0.22.1"
 data-encoding = "2.10"
