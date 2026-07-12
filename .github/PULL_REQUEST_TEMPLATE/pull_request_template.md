@@ -1,5 +1,5 @@
 <!--
-Title convention: `type - short description` (hyphen), e.g. `feat - DNS64 AAAA synthesis for IPv6-only clients`.
+Title convention: `type: short description` (Conventional Commits), e.g. `feat: DNS64 AAAA synthesis for IPv6-only clients`.
 Types: feat, fix, refactor, chore, docs, perf, test.
 -->
 

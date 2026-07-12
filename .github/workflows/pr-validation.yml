@@ -35,8 +35,6 @@ jobs:
             ci
             build
           requireScope: false
-          headerPattern: '^(\w+)(\s-\s)(.+)$'
-          headerPatternCorrespondence: 'type, separator, subject'
 
   breaking-changes:
     name: Check for Breaking Changes
