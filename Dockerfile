@@ -37,7 +37,7 @@ RUN find crates -name "*.rs" -exec touch {} + && \
     cargo build --release --bin ferrous-dns && \
     strip target/release/ferrous-dns
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache \
     ca-certificates \
