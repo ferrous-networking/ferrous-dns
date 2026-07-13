@@ -1,7 +1,7 @@
 use anyhow::Context;
-use rustls::pki_types::CertificateDer;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::warn;
@@ -38,13 +38,12 @@ pub fn load_server_tls_config(
     let key_file =
         File::open(key_path).with_context(|| format!("Failed to open TLS key: {key_path}"))?;
 
-    let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(cert_file))
+    let certs: Vec<CertificateDer> = CertificateDer::pem_reader_iter(cert_file)
         .collect::<Result<_, _>>()
         .with_context(|| format!("Failed to parse TLS cert: {cert_path}"))?;
 
-    let key = rustls_pemfile::private_key(&mut BufReader::new(key_file))
-        .with_context(|| format!("Failed to read TLS key: {key_path}"))?
-        .ok_or_else(|| anyhow::anyhow!("No private key found in {key_path}"))?;
+    let key = PrivateKeyDer::from_pem_reader(key_file)
+        .with_context(|| format!("No valid private key found in {key_path}"))?;
 
     let config = rustls::ServerConfig::builder()
         .with_no_client_auth()

@@ -70,7 +70,6 @@ toml_edit.workspace = true
 # TLS certificate management
 rcgen = "0.14"
 x509-parser = "0.18"
-rustls-pemfile = "2"
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -14,4 +14,11 @@ ignore = [
     # it because it records optional deps regardless of feature activation.
     # No fixed upgrade of `rsa` is available upstream. Not applicable here.
     "RUSTSEC-2023-0071",
+
+    # RUSTSEC-2024-0436 — `paste` is unmaintained (informational, no CVE).
+    # `paste` is a compile-time-only proc-macro pulled transitively by
+    # `utoipa-axum` (already on its latest release, 0.2.0, which still depends
+    # on it). It emits no runtime code of its own and has no attack surface at
+    # execution time. Nothing to upgrade until utoipa-axum drops it upstream.
+    "RUSTSEC-2024-0436",
 ]

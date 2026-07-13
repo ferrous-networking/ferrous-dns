@@ -69,7 +69,6 @@ data-encoding = "2.10"
 
 # Transport layer
 rustls = "0.23.37"
-rustls-pemfile = "2"
 tokio-rustls = "0.26"
 webpki-roots = "1.0"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
