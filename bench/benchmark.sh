@@ -2,7 +2,7 @@
 # =============================================================================
 # ferrous-dns — Performance Benchmark vs. Competitors
 # =============================================================================
-# Measures QPS, P50/P99 latency and cache hit throughput against:
+# Measures QPS, average/worst-case latency and loss against:
 #   - ferrous-dns (this project)
 #   - Pi-hole
 #   - AdGuard Home
@@ -13,7 +13,12 @@
 # Prerequisites:
 #   - dnsperf  (DNS-OARC):  apt install dnsperf  |  brew install dnsperf
 #   - docker + docker compose
+#   - taskset (util-linux) — optional; enables CPU isolation on Linux so the
+#     load generator and server-under-test don't contend for cores
 #   - A running ferrous-dns instance (or pass FERROUS_DNS_ADDR)
+#
+# Each server is started, warmed, measured, and stopped one at a time; dnsperf
+# is pinned to a separate core set from the server to keep results reproducible.
 #
 # Usage:
 #   ./bench/benchmark.sh [options]
@@ -39,9 +44,17 @@ USE_DOCKER=true
 OUTPUT_FILE=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# ── CPU isolation state (populated by setup_cpu_isolation) ───────────────────
+# dnsperf (the load generator) and the server-under-test must not share cores,
+# otherwise they fight for CPU and the kernel drops UDP on loopback — noise that
+# dnsperf mis-reports as "lost". TASKSET pins dnsperf to a dedicated core set.
+PIN_ENABLED=false
+LOADGEN_CPUS=""
+declare -a TASKSET=()
+
 # ── ports for competitor containers ─────────────────────────────────────────
 PIHOLE_PORT=5354
-ADGUARD_PORT=5355
+ADGUARD_PORT=5359   # not 5355 — that's LLMNR, held by systemd-resolved on many hosts
 UNBOUND_PORT=5356
 BLOCKY_PORT=5357
 POWERDNS_PORT=5358
@@ -95,8 +108,35 @@ check_prereqs() {
   if [[ "$missing" == "true" ]]; then exit 1; fi
 }
 
+# ── CPU isolation setup ──────────────────────────────────────────────────────
+# Splits the host cores in half: the lower half runs the server-under-test
+# (exported to docker-compose via BENCH_SERVER_CPUS / BENCH_SERVER_NCPU), the
+# upper half runs dnsperf (via the TASKSET prefix). Requires Linux + taskset +
+# at least 4 cores; otherwise pinning is skipped and defaults (0-15 / 16) apply.
+setup_cpu_isolation() {
+  local ncpu
+  ncpu=$(nproc 2>/dev/null || echo 1)
+
+  if [[ "$(uname -s)" != "Linux" ]] || ! command -v taskset &>/dev/null || [[ $ncpu -lt 4 ]]; then
+    warn "CPU isolation disabled (needs Linux + taskset + ≥4 cores) — results may be noisy"
+    return
+  fi
+
+  local half=$(( ncpu / 2 ))
+  local server_cpus="0-$(( half - 1 ))"
+  LOADGEN_CPUS="${half}-$(( ncpu - 1 ))"
+  PIN_ENABLED=true
+  TASKSET=(taskset -c "$LOADGEN_CPUS")
+
+  # Consumed by docker-compose.yml (cpuset / cpus) for every server container.
+  export BENCH_SERVER_CPUS="$server_cpus"
+  export BENCH_SERVER_NCPU="$half"
+
+  log "CPU isolation: server on cores ${server_cpus}, dnsperf on cores ${LOADGEN_CPUS}"
+}
+
 # ── run dnsperf and parse output ─────────────────────────────────────────────
-# Returns: "QPS P50_ms P99_ms"
+# Returns: "QPS AVG_ms MAX_ms COMPLETED% LOST%"
 run_dnsperf() {
   local name="$1" host="$2" port="$3"
 
@@ -108,7 +148,7 @@ run_dnsperf() {
   grep -v '^[[:space:]]*;' "$QUERIES_FILE" | grep -v '^[[:space:]]*$' > "$tmp_queries"
 
   local output
-  output=$(dnsperf \
+  output=$("${TASKSET[@]}" dnsperf \
     -s "$host" \
     -p "$port" \
     -d "$tmp_queries" \
@@ -121,22 +161,20 @@ run_dnsperf() {
   rm -f "$tmp_queries"
 
   # Parse dnsperf output
-  local qps p50_ms p99_ms completed lost
-  qps=$(echo "$output"      | grep -oP 'Queries per second:\s+\K[\d.]+' || echo "0")
-  p50_ms=$(echo "$output"   | grep -oP 'Average Latency.*?:\s+\K[\d.]+' || echo "0")
-  lost=$(echo "$output"     | grep -oP 'Queries lost:\s+\d+ \(\K[\d.]+' || echo "0")
+  local qps avg_s max_s completed lost
+  qps=$(echo "$output"       | grep -oP 'Queries per second:\s+\K[\d.]+' || echo "0")
+  lost=$(echo "$output"      | grep -oP 'Queries lost:\s+\d+ \(\K[\d.]+' || echo "0")
   completed=$(echo "$output" | grep -oP 'Queries completed:\s+\d+ \(\K[\d.]+' || echo "0")
 
-  # dnsperf reports latency in seconds — convert to ms using awk
-  local stddev avg_s
-  avg_s="$p50_ms"
-  stddev=$(echo "$output" | grep -oP 'Latency StdDev.*?:\s+\K[\d.]+' || echo "0")
-  p50_ms=$(awk "BEGIN { printf \"%.2f\", $avg_s * 1000 }")
+  # dnsperf reports "Average Latency (s): <avg> (min <min>, max <max>)" — take
+  # avg and the real worst-case max (both in seconds), convert to ms.
+  avg_s=$(echo "$output" | grep -oP 'Average Latency \(s\):\s+\K[\d.]+' || echo "0")
+  max_s=$(echo "$output" | grep -oP 'Average Latency.*max \K[\d.]+' || echo "0")
+  local avg_ms max_ms
+  avg_ms=$(awk "BEGIN { printf \"%.2f\", $avg_s * 1000 }")
+  max_ms=$(awk "BEGIN { printf \"%.2f\", $max_s * 1000 }")
 
-  # Estimate P99 from StdDev (approximation: avg + 2.33*stddev for normal distribution)
-  p99_ms=$(awk "BEGIN { printf \"%.2f\", ($avg_s + 2.33 * $stddev) * 1000 }")
-
-  echo "$qps $p50_ms $p99_ms $completed $lost"
+  echo "$qps $avg_ms $max_ms $completed $lost"
 }
 
 # ── warm up a DNS server ─────────────────────────────────────────────────────
@@ -144,11 +182,13 @@ warm_up() {
   local host="$1" port="$2" name="$3"
   log "Warming up ${name}..."
 
+  # Warm the full query set so the measurement runs against a warm cache for
+  # every domain, not just the first 20.
   local tmp
   tmp=$(mktemp)
-  grep -v '^[[:space:]]*;' "$QUERIES_FILE" | grep -v '^[[:space:]]*$' | head -20 > "$tmp"
+  grep -v '^[[:space:]]*;' "$QUERIES_FILE" | grep -v '^[[:space:]]*$' > "$tmp"
 
-  dnsperf -s "$host" -p "$port" -d "$tmp" -l 5 -c 2 -q 100 &>/dev/null || true
+  "${TASKSET[@]}" dnsperf -s "$host" -p "$port" -d "$tmp" -l 5 -c 2 -q 100 &>/dev/null || true
   rm -f "$tmp"
 }
 
@@ -161,7 +201,7 @@ wait_for_dns() {
   local _tmp_q
   _tmp_q=$(mktemp)
   echo "google.com A" > "$_tmp_q"
-  while ! dnsperf -s "$host" -p "$port" -d "$_tmp_q" -l 1 -c 1 -q 5 &>/dev/null \
+  while ! "${TASKSET[@]}" dnsperf -s "$host" -p "$port" -d "$_tmp_q" -l 1 -c 1 -q 5 &>/dev/null \
         && [[ $count -lt $max_wait ]]; do
     sleep 1
     ((count++))
@@ -177,15 +217,22 @@ wait_for_dns() {
 }
 
 # ── Docker competitor management ─────────────────────────────────────────────
-start_competitors() {
-  log "Starting competitor containers..."
-  docker compose -f "$DOCKER_COMPOSE" up -d --wait 2>/dev/null || \
-    docker-compose -f "$DOCKER_COMPOSE" up -d 2>/dev/null || {
-      warn "Failed to start containers. Run manually or use --no-docker."
-      USE_DOCKER=false
-    }
+# Start a single service and wait for its healthcheck. Servers are started one
+# at a time (and stopped after) so an idle competitor never steals CPU from the
+# server being measured. Returns non-zero if the service failed to come up.
+start_service() {
+  local svc="$1"
+  docker compose -f "$DOCKER_COMPOSE" up -d --wait "$svc" 2>/dev/null || \
+    docker-compose -f "$DOCKER_COMPOSE" up -d "$svc" 2>/dev/null
 }
 
+stop_service() {
+  local svc="$1"
+  docker compose -f "$DOCKER_COMPOSE" stop "$svc" 2>/dev/null || \
+    docker-compose -f "$DOCKER_COMPOSE" stop "$svc" 2>/dev/null || true
+}
+
+# Safety net on exit: tear everything down.
 stop_competitors() {
   if [[ "$USE_DOCKER" == "true" ]]; then
     log "Stopping competitor containers..."
@@ -194,11 +241,45 @@ stop_competitors() {
   fi
 }
 
+# ── benchmark one server end-to-end ──────────────────────────────────────────
+# Starts the container (when USE_DOCKER), waits for it, warms it, measures it,
+# appends a result row, then stops the container. In --no-docker mode the server
+# is assumed to be already running at host:port.
+bench_server() {
+  local disp="$1" svc="$2" host="$3" port="$4"
+
+  if [[ "$USE_DOCKER" == "true" ]]; then
+    log "Starting ${disp}..."
+    if ! start_service "$svc"; then
+      warn "Failed to start ${svc} — skipping"
+      ROWS+=("$(format_row "$disp" "N/A" "N/A" "N/A" "N/A" "N/A")")
+      return
+    fi
+    if ! wait_for_dns "$host" "$port" "$disp" 30; then
+      ROWS+=("$(format_row "$disp" "N/A" "N/A" "N/A" "N/A" "N/A")")
+      stop_service "$svc"
+      return
+    fi
+  elif ! wait_for_dns "$host" "$port" "$disp" 5; then
+    warn "${disp} not reachable at ${host}:${port} — start it first or use docker"
+    ROWS+=("$(format_row "$disp" "N/A" "N/A" "N/A" "N/A" "N/A")")
+    return
+  fi
+
+  warm_up "$host" "$port" "$disp"
+  local qps avg max comp lost
+  read -r qps avg max comp lost < <(run_dnsperf "$disp" "$host" "$port")
+  ROWS+=("$(format_row "$disp" "$qps" "$avg" "$max" "$comp" "$lost")")
+  ok "${disp}: ${qps} QPS, avg ${avg}ms, max ${max}ms"
+
+  [[ "$USE_DOCKER" == "true" ]] && { log "Stopping ${disp}..."; stop_service "$svc"; }
+}
+
 # ── format table row ─────────────────────────────────────────────────────────
 format_row() {
-  local name="$1" qps="$2" p50="$3" p99="$4" completed="$5" lost="$6"
+  local name="$1" qps="$2" avg="$3" max="$4" completed="$5" lost="$6"
   printf "| %-18s | %10s | %10s | %10s | %12s%% | %10s%% |\n" \
-    "$name" "$qps" "${p50}ms" "${p99}ms" "$completed" "$lost"
+    "$name" "$qps" "${avg}ms" "${max}ms" "$completed" "$lost"
 }
 
 # ── print markdown table ─────────────────────────────────────────────────────
@@ -206,7 +287,7 @@ print_table() {
   local -n rows_ref=$1
   local header separator
 
-  header="| Server             |    QPS     | Avg Lat    |  P99 Lat   | Completed   | Lost       |"
+  header="| Server             |    QPS     | Avg Lat    |  Max Lat   | Completed   | Lost       |"
   separator="|:-------------------|:----------:|:----------:|:----------:|:-----------:|:----------:|"
 
   echo ""
@@ -230,7 +311,7 @@ save_report() {
 
 ## Results
 
-| Server             |    QPS     | Avg Lat    |  P99 Lat   | Completed   | Lost       |
+| Server             |    QPS     | Avg Lat    |  Max Lat   | Completed   | Lost       |
 |:-------------------|:----------:|:----------:|:----------:|:-----------:|:----------:|
 EOF
 
@@ -243,10 +324,15 @@ EOF
 ## Methodology
 
 - **Tool**: [dnsperf](https://www.dns-oarc.net/tools/dnsperf) by DNS-OARC
-- **Query dataset**: `scripts/bench-data/queries.txt` (mix of A, AAAA, MX, TXT, NS)
+- **Query dataset**: `bench/data/queries.txt` (mix of A, AAAA, MX, TXT, NS)
 - **Workload**: All servers use the same query dataset in loop mode
-- **Warm-up**: 5s warm-up before each measurement
-- **P99**: Estimated from average + 2.33×σ (dnsperf provides average + stddev)
+- **CPU isolation**: The load generator (dnsperf) is pinned to a separate set of
+  cores from the server under test so they don't contend for CPU (Linux + taskset,
+  ≥4 cores). Server containers are pinned to the complementary cores.
+- **One server at a time**: each server is started, measured, and stopped before
+  the next — an idle competitor never steals CPU during a measurement.
+- **Warm-up**: full query set warmed before each measurement (warm cache)
+- **Max Lat**: real worst-case latency reported by dnsperf (not an estimate)
 
 ## How to reproduce
 
@@ -275,80 +361,28 @@ main() {
   echo ""
 
   check_prereqs
+  setup_cpu_isolation
 
-  # Start competitor containers
+  # Tear everything down on exit (safety net; servers are also stopped
+  # individually after each measurement).
   if [[ "$USE_DOCKER" == "true" ]]; then
-    start_competitors
     trap stop_competitors EXIT
   fi
 
   declare -a ROWS
 
-  # ── ferrous-dns ──────────────────────────────────────────────────────────
+  # ferrous-dns address is configurable (may be an external instance in
+  # --no-docker mode); competitors always run on loopback via docker.
   local ferrous_host ferrous_port
   ferrous_host="${FERROUS_ADDR%%:*}"
   ferrous_port="${FERROUS_ADDR##*:}"
 
-  if nc -z -u "$ferrous_host" "$ferrous_port" 2>/dev/null || \
-     dig +short +timeout=1 google.com @"$ferrous_host" -p "$ferrous_port" &>/dev/null; then
-    warm_up "$ferrous_host" "$ferrous_port" "ferrous-dns"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "ferrous-dns" "$ferrous_host" "$ferrous_port")
-    ROWS+=("$(format_row "🦀 ferrous-dns" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "ferrous-dns: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    warn "ferrous-dns not reachable at ${FERROUS_ADDR} — start it first or set FERROUS_DNS_ADDR"
-    ROWS+=("$(format_row "🦀 ferrous-dns" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
-
-  # ── Pi-hole ──────────────────────────────────────────────────────────────
-  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$PIHOLE_PORT" "Pi-hole" 5; then
-    warm_up "127.0.0.1" "$PIHOLE_PORT" "Pi-hole"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "Pi-hole" "127.0.0.1" "$PIHOLE_PORT")
-    ROWS+=("$(format_row "🕳️  Pi-hole" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "Pi-hole: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    ROWS+=("$(format_row "🕳️  Pi-hole" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
-
-  # ── AdGuard Home ─────────────────────────────────────────────────────────
-  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$ADGUARD_PORT" "AdGuard Home" 5; then
-    warm_up "127.0.0.1" "$ADGUARD_PORT" "AdGuard Home"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "AdGuard Home" "127.0.0.1" "$ADGUARD_PORT")
-    ROWS+=("$(format_row "🛡️  AdGuard Home" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "AdGuard Home: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    ROWS+=("$(format_row "🛡️  AdGuard Home" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
-
-  # ── Unbound ──────────────────────────────────────────────────────────────
-  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$UNBOUND_PORT" "Unbound" 5; then
-    warm_up "127.0.0.1" "$UNBOUND_PORT" "Unbound"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "Unbound" "127.0.0.1" "$UNBOUND_PORT")
-    ROWS+=("$(format_row "⚡ Unbound" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "Unbound: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    ROWS+=("$(format_row "⚡ Unbound" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
-
-  # ── Blocky ───────────────────────────────────────────────────────────────
-  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$BLOCKY_PORT" "Blocky" 5; then
-    warm_up "127.0.0.1" "$BLOCKY_PORT" "Blocky"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "Blocky" "127.0.0.1" "$BLOCKY_PORT")
-    ROWS+=("$(format_row "🔷 Blocky" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "Blocky: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    ROWS+=("$(format_row "🔷 Blocky" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
-
-  # ── PowerDNS Recursor ────────────────────────────────────────────────────
-  if [[ "$USE_DOCKER" == "true" ]] || wait_for_dns "127.0.0.1" "$POWERDNS_PORT" "PowerDNS" 5; then
-    warm_up "127.0.0.1" "$POWERDNS_PORT" "PowerDNS"
-    read -r qps p50 p99 comp lost < <(run_dnsperf "PowerDNS" "127.0.0.1" "$POWERDNS_PORT")
-    ROWS+=("$(format_row "⚡ PowerDNS (C++)" "$qps" "$p50" "$p99" "$comp" "$lost")")
-    ok "PowerDNS: ${qps} QPS, avg ${p50}ms, p99 ${p99}ms"
-  else
-    ROWS+=("$(format_row "⚡ PowerDNS (C++)" "N/A" "N/A" "N/A" "N/A" "N/A")")
-  fi
+  bench_server "🦀 ferrous-dns"    "ferrous-dns" "$ferrous_host" "$ferrous_port"
+  bench_server "🕳️  Pi-hole"       "pihole"      "127.0.0.1"     "$PIHOLE_PORT"
+  bench_server "🛡️  AdGuard Home"  "adguard"     "127.0.0.1"     "$ADGUARD_PORT"
+  bench_server "⚡ Unbound"        "unbound"     "127.0.0.1"     "$UNBOUND_PORT"
+  bench_server "🔷 Blocky"         "blocky"      "127.0.0.1"     "$BLOCKY_PORT"
+  bench_server "⚡ PowerDNS (C++)" "powerdns"    "127.0.0.1"     "$POWERDNS_PORT"
 
   # ── Results ───────────────────────────────────────────────────────────────
   echo ""

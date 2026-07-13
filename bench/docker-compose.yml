@@ -11,10 +11,14 @@
 #   ./bench/benchmark.sh --no-docker
 #   docker compose -f bench/docker-compose.yml down
 #
+# CPU pinning: benchmark.sh exports BENCH_SERVER_CPUS / BENCH_SERVER_NCPU so the
+# server-under-test runs on a different core set than the dnsperf load generator.
+# Run by hand without those vars and it defaults to cpuset 0-15 / cpus 16.
+#
 # Ports (host networking — each server binds directly on the host):
 #   ferrous-dns:  0.0.0.0:5353/udp+tcp
 #   Pi-hole:      0.0.0.0:5354/udp+tcp
-#   AdGuard Home: 0.0.0.0:5355/udp+tcp
+#   AdGuard Home: 0.0.0.0:5359/udp+tcp  (5355 avoided — LLMNR / systemd-resolved)
 #   Unbound:      0.0.0.0:5356/udp+tcp
 #   Blocky:       0.0.0.0:5357/udp+tcp
 #   PowerDNS:     0.0.0.0:5358/udp+tcp
@@ -48,7 +52,7 @@ services:
       FERROUS_LOG_LEVEL: info
       RUST_LOG: info
       TZ: UTC
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -57,7 +61,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/usr/local/bin/ferrous-dns", "--version"]
@@ -83,7 +87,7 @@ services:
       - pihole_data:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
       - ./pihole.toml:/etc/pihole/pihole.toml:ro
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -92,7 +96,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "dig", "+short", "+timeout=2", "-p", "5354", "google.com", "@127.0.0.1"]
@@ -103,18 +107,21 @@ services:
 
   # ---------------------------------------------------------------------------
   # AdGuard Home — DNS blocker + DoH/DoT support
-  # GOMAXPROCS=16 — Go runtime uses 16 OS threads
+  # GOMAXPROCS=8 — matches the server cpuset (lower half of host cores)
   # ---------------------------------------------------------------------------
   adguard:
     image: adguard/adguardhome:latest
     container_name: bench-adguard
     network_mode: host
     environment:
-      GOMAXPROCS: 16
+      GOMAXPROCS: 8
     volumes:
       - adguard_work:/opt/adguardhome/work
+      # NOTE: must stay writable — AdGuard atomically rewrites its config on
+      # startup (fatal error under :ro). Side effect: it re-chowns this file to
+      # root:0600 each run. Re-create it from the tracked copy if git can't read it.
       - ./adguard-config:/opt/adguardhome/conf
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -123,7 +130,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
@@ -142,7 +149,7 @@ services:
     network_mode: host
     volumes:
       - ./unbound.conf:/opt/unbound/etc/unbound/unbound.conf:ro
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -151,7 +158,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "drill", "-p", "5356", "google.com", "@127.0.0.1"]
@@ -167,17 +174,17 @@ services:
   #   - Blocking disabled (no denylists)
   #   - Caching enabled (minTime: 60s, maxTime: 86400s, prefetching: true)
   #   - Log level: info
-  # GOMAXPROCS=16 — Go runtime uses 16 OS threads
+  # GOMAXPROCS=8 — matches the server cpuset (lower half of host cores)
   # ---------------------------------------------------------------------------
   blocky:
     image: ghcr.io/0xerr0r/blocky:latest
     container_name: bench-blocky
     network_mode: host
     environment:
-      GOMAXPROCS: 16
+      GOMAXPROCS: 8
     volumes:
       - ./blocky-config.yml:/app/config.yml:ro
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -186,7 +193,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     # Blocky runs on a scratch image (no shell/wget/dig). Use its built-in healthcheck subcommand.
     healthcheck:
@@ -211,7 +218,7 @@ services:
     network_mode: host
     volumes:
       - ./powerdns-recursor.yml:/etc/powerdns/recursor.yml:ro
-    cpuset: "0-15"
+    cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
       - SYS_TIME
@@ -220,7 +227,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '16'
+          cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rec_control", "ping"]

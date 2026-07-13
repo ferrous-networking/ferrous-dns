@@ -6,7 +6,7 @@ incoming:
     - "0.0.0.0:5358"
 
 recursor:
-  threads: 16
+  threads: 8   # matches the server cpuset (lower half of host cores)
   forward_zones_recurse:
     - zone: "."
       forwarders:

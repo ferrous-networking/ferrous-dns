@@ -213,7 +213,8 @@ impl DnsServices {
             &config.dns.rebinding_allowlist,
         )
         .with_rate_limiter(rate_limiter)
-        .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces());
+        .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces())
+        .with_query_logging(config.database.log_queries);
 
         // DNS64 query-log tagging: only when enabled with a valid /96 prefix.
         if config.dns64.enabled {
