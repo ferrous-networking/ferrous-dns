@@ -330,6 +330,8 @@ env/
 # !Cargo.toml
 # !**/Cargo.toml
 .cargo/**
+# ...but keep the checked-in cargo-audit policy (shared, no secrets).
+!.cargo/audit.toml
 
 # Keep empty directories
 # !.gitkeep
