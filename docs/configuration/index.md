@@ -100,6 +100,7 @@ slip_ratio             = 2
 whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 tcp_max_connections_per_ip = 16
 dot_max_connections_per_ip = 8
+doq_max_connections_per_ip = 8
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
@@ -234,6 +235,7 @@ slip_ratio             = 2       # 50% TC=1 for rate-limited traffic
 whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 tcp_max_connections_per_ip = 30
 dot_max_connections_per_ip = 15
+doq_max_connections_per_ip = 15
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
@@ -373,6 +375,7 @@ ipv6_prefix_len        = 48
 whitelist              = []      # no exemptions on public resolvers
 tcp_max_connections_per_ip = 30
 dot_max_connections_per_ip = 15
+doq_max_connections_per_ip = 15
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
@@ -453,6 +456,8 @@ password_hash = ""                          # Argon2id hash (set via setup wizar
 # dot_port      = 853
 # doh_enabled   = true
 # doh_port      = 443                       # omit to co-host on web_port
+# doq_enabled   = true
+# doq_port      = 853                       # UDP port; no collision with dot_port (TCP)
 # tls_cert_path = "/data/cert.pem"
 # tls_key_path  = "/data/key.pem"
 
@@ -534,6 +539,7 @@ dry_run                    = false      # true = log only, don't enforce
 stale_entry_ttl_secs       = 300        # idle bucket eviction
 tcp_max_connections_per_ip = 30         # TCP connection limit per IP
 dot_max_connections_per_ip = 15         # DoT connection limit per IP
+doq_max_connections_per_ip = 15         # DoQ connection limit per IP
 
 # ── Local DNS Records ─────────────────────────────────────────────────────────
 
@@ -595,7 +601,7 @@ sqlite_mmap_size_mb          = 64
 | [`[server]`](server.md) | Ports, bind address, Pi-hole compat |
 | [`[server.web_tls]`](server.md#web-tls) | TLS certificate for the dashboard and REST API |
 | [`[auth]`](server.md#authentication) | Authentication, sessions, API tokens, rate limiting |
-| [`[server.encrypted_dns]`](server.md#encrypted-dns) | DoT and DoH server-side listeners |
+| [`[server.encrypted_dns]`](server.md#encrypted-dns) | DoT, DoH, and DoQ server-side listeners |
 | [`[dns]`](dns.md) | Upstream resolution, DNSSEC, local records |
 | [`[[dns.pools]]`](dns.md#upstream-pools) | Upstream server groups and strategies |
 | [`[dns.health_check]`](dns.md#health-checks) | Upstream health monitoring |

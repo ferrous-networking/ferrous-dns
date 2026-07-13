@@ -39,6 +39,7 @@ pub struct DnsServices {
     pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
     pub tcp_conn_limiter: ConnectionLimiter,
     pub dot_conn_limiter: ConnectionLimiter,
+    pub doq_conn_limiter: ConnectionLimiter,
     pub tunneling_eviction_job: Option<TunnelingEvictionJob>,
     pub nxdomain_hijack_eviction_job: Option<NxdomainHijackEvictionJob>,
     pub response_ip_filter_eviction_job: Option<ResponseIpFilterEvictionJob>,
@@ -331,6 +332,8 @@ impl DnsServices {
             ConnectionLimiter::new(config.dns.rate_limit.tcp_max_connections_per_ip);
         let dot_conn_limiter =
             ConnectionLimiter::new(config.dns.rate_limit.dot_max_connections_per_ip);
+        let doq_conn_limiter =
+            ConnectionLimiter::new(config.dns.rate_limit.doq_max_connections_per_ip);
 
         info!("DNS services initialized successfully with load balancing");
 
@@ -345,6 +348,7 @@ impl DnsServices {
             ptr_registry,
             tcp_conn_limiter,
             dot_conn_limiter,
+            doq_conn_limiter,
             tunneling_eviction_job,
             nxdomain_hijack_eviction_job,
             response_ip_filter_eviction_job,

@@ -239,6 +239,9 @@ pub async fn update_config(
             if let Some(v) = rl.dot_max_connections_per_ip {
                 new_config.dns.rate_limit.dot_max_connections_per_ip = v;
             }
+            if let Some(v) = rl.doq_max_connections_per_ip {
+                new_config.dns.rate_limit.doq_max_connections_per_ip = v;
+            }
             if let Some(v) = rl.whitelist {
                 new_config.dns.rate_limit.whitelist = v;
             }

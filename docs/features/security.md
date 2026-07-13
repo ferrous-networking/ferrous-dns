@@ -334,22 +334,29 @@ Set `dry_run = true` to log rate-limit events without actually refusing queries.
 
 ---
 
-## TCP/DoT Connection Limiting {#connection-limiting}
+## TCP/DoT/DoQ Connection Limiting {#connection-limiting}
 
-Per-IP connection limits protect against TCP and DoT connection exhaustion:
+Per-IP connection limits protect against TCP, DoT, and DoQ connection exhaustion:
 
 ```toml title="ferrous-dns.toml"
 [dns.rate_limit]
 tcp_max_connections_per_ip = 30    # max concurrent TCP DNS connections per IP
 dot_max_connections_per_ip = 15    # max concurrent DoT connections per IP
+doq_max_connections_per_ip = 15    # max concurrent DoQ connections per IP
 ```
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `tcp_max_connections_per_ip` | `30` | Max concurrent TCP connections per IP. 0 = unlimited |
 | `dot_max_connections_per_ip` | `15` | Max concurrent DoT connections per IP. 0 = unlimited |
+| `doq_max_connections_per_ip` | `15` | Max concurrent DoQ connections per IP. 0 = unlimited |
 
 Connections that exceed the limit are immediately closed. The connection counter is automatically decremented when a connection closes, preventing resource leaks.
+
+Because a single QUIC connection multiplexes many streams, DoQ adds two further per-connection safeguards on top of the per-IP limit above (both fixed, not configurable):
+
+- **Concurrent stream cap** — each DoQ connection may have at most **100** in-flight query streams at once, so one admitted connection cannot open unbounded streams.
+- **Stream read timeout** — a stream that opens but does not deliver its complete length-prefixed query within **5 seconds** is dropped, closing the slow-loris vector that QUIC keep-alive would otherwise keep alive.
 
 ---
 

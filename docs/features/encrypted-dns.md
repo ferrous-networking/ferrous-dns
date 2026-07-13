@@ -58,18 +58,19 @@ servers = [
 
 ## Server-Side Encrypted DNS
 
-Ferrous DNS can serve DNS-over-TLS and DNS-over-HTTPS to clients on your network, so devices can connect to Ferrous DNS securely.
+Ferrous DNS can serve DNS-over-TLS, DNS-over-HTTPS, and DNS-over-QUIC to clients on your network, so devices can connect to Ferrous DNS securely.
 
-The two protocols terminate TLS differently:
+The three protocols terminate TLS differently:
 
 - **DoT** is terminated by Ferrous DNS itself, using the certificate and key in `[server.encrypted_dns]`.
 - **DoH** is served as plain HTTP and expects a **reverse proxy** (nginx, Traefik, Caddy) in front of it to terminate TLS. The DoH endpoint reads `X-Real-IP` / `X-Forwarded-For` for correct client attribution, so it must sit behind a proxy that sets those headers.
+- **DoQ** is terminated by Ferrous DNS itself, same as DoT — QUIC's TLS 1.3 handshake uses the same certificate and key, just over UDP instead of TCP.
 
 ### Requirements
 
 - A TLS certificate and private key in PEM format (used by the DoT listener)
 - A reverse proxy terminating HTTPS for DoH
-- Open firewall ports (853 for DoT; on the proxy, 443 or custom for DoH)
+- Open firewall ports (TCP/853 for DoT, UDP/853 for DoQ — no collision since they're different transports; on the proxy, 443 or custom for DoH)
 
 ### Configuration
 
@@ -79,8 +80,10 @@ dot_enabled   = true
 dot_port      = 853
 doh_enabled   = true
 doh_port      = 8053       # optional: plain-HTTP port for the proxy to forward to; omit to co-host on web_port
-tls_cert_path = "/data/cert.pem"   # certificate for the DoT listener
-tls_key_path  = "/data/key.pem"    # private key for the DoT listener
+doq_enabled   = true
+doq_port      = 853        # UDP port for DNS-over-QUIC (standard: 853)
+tls_cert_path = "/data/cert.pem"   # certificate for the DoT and DoQ listeners
+tls_key_path  = "/data/key.pem"    # private key for the DoT and DoQ listeners
 ```
 
 !!! note "DoH TLS termination"
@@ -157,6 +160,28 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
     DNSOverTLS=yes
     ```
 
+### DNS-over-QUIC (DoQ)
+
+=== "Android"
+
+    Settings > Network > Private DNS > Enter hostname (Android 13+ supports DoQ automatically when the resolver advertises it via DDR; otherwise use a DoQ-aware app):
+    ```text
+    192.168.1.100
+    ```
+
+=== "AdGuard Home / dnscrypt-proxy clients"
+
+    Point the client's upstream at:
+    ```text
+    quic://192.168.1.100:853
+    ```
+
+=== "kdig (testing)"
+
+    ```bash
+    kdig +quic @192.168.1.100 example.com
+    ```
+
 ### DNS-over-HTTPS (DoH)
 
 === "Firefox"
@@ -185,6 +210,9 @@ tls_key_path  = "/etc/letsencrypt/live/dns.yourdomain.com/privkey.pem"
     ```bash
     # Test DoT
     kdig @192.168.1.100 +tls example.com
+
+    # Test DoQ
+    kdig @192.168.1.100 +quic example.com
 
     # Test DoH
     curl -H "accept: application/dns-json" \

@@ -207,6 +207,7 @@ mod tests {
             stale_entry_ttl_secs: 300,
             tcp_max_connections_per_ip: 30,
             dot_max_connections_per_ip: 15,
+            doq_max_connections_per_ip: 15,
         }
     }
 
