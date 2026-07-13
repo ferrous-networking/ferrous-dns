@@ -863,7 +863,7 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "ferrous-dns"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "axum",
@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api-pihole"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "axum",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-application"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "bytes",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-domain"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "chrono",
  "ipnetwork",
@@ -996,7 +996,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-infrastructure"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-jobs"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2809,9 +2809,9 @@ dependencies = [
 
 [[package]]
 name = "serde_spanned"
-version = "1.0.4"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8bbf91e5a4d6315eee45e704372590b30e260ee83af6639d64557f51b067776"
+checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
 dependencies = [
  "serde_core",
 ]
@@ -3393,9 +3393,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.11+spec-1.1.0"
+version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3afc9a848309fe1aaffaed6e1546a7a14de1f935dc9d89d32afd9a44bab7c46"
+checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
 dependencies = [
  "indexmap",
  "serde_core",
@@ -3403,23 +3403,23 @@ dependencies = [
  "toml_datetime",
  "toml_parser",
  "toml_writer",
- "winnow 0.7.14",
+ "winnow 1.0.3",
 ]
 
 [[package]]
 name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
+version = "1.1.1+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
+checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
 dependencies = [
  "serde_core",
 ]
 
 [[package]]
 name = "toml_edit"
-version = "0.24.1+spec-1.1.0"
+version = "0.25.4+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01f2eadbbc6b377a847be05f60791ef1058d9f696ecb51d2c07fe911d8569d8e"
+checksum = "7193cbd0ce53dc966037f54351dbbcf0d5a642c7f0038c382ef9e677ce8c13f2"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -3439,9 +3439,9 @@ dependencies = [
 
 [[package]]
 name = "toml_writer"
-version = "1.0.6+spec-1.1.0"
+version = "1.1.1+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab16f14aed21ee8bfd8ec22513f7287cd4a91aa92e44edfe2c17ddd004e92607"
+checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "tower"
