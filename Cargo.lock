@@ -863,7 +863,7 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "ferrous-dns"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -909,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "axum",
@@ -934,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api-pihole"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "axum",
@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-application"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "bytes",
@@ -988,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-domain"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "ipnetwork",
@@ -999,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-infrastructure"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -1054,7 +1054,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-jobs"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "chrono",
