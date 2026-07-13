@@ -56,6 +56,11 @@ pub struct HandleDnsQueryUseCase {
     /// `/96` NAT64 network prefix when DNS64 is enabled. Used only to derive the
     /// `dns64_synthesized` query-log tag from an AAAA answer's address membership.
     dns64_prefix: Option<Ipv6Addr>,
+    /// Honors `[database] log_queries`. When `false`, query logging is fully
+    /// suppressed on every path: the hot cache-hit path skips building the
+    /// `QueryLog` entry (no per-hit `Arc<str>` alloc, no channel send) and
+    /// `log()` short-circuits for the slow paths. Set via `with_query_logging`.
+    log_queries: bool,
 }
 
 impl HandleDnsQueryUseCase {
@@ -84,6 +89,7 @@ impl HandleDnsQueryUseCase {
             cookie_guard: DnsCookieGuard::disabled(),
             dnssec_enforce: false,
             dns64_prefix: None,
+            log_queries: true,
         }
     }
 
@@ -91,6 +97,14 @@ impl HandleDnsQueryUseCase {
     /// returns SERVFAIL to the client, unless the client set the CD bit.
     pub fn with_dnssec_enforcement(mut self, enforce: bool) -> Self {
         self.dnssec_enforce = enforce;
+        self
+    }
+
+    /// Honors `[database] log_queries`. When `false`, every query-log write is
+    /// suppressed and the hot cache-hit path skips building the log entry
+    /// entirely. Defaults to `true` (log all queries).
+    pub fn with_query_logging(mut self, enabled: bool) -> Self {
+        self.log_queries = enabled;
         self
     }
 
@@ -313,6 +327,9 @@ impl HandleDnsQueryUseCase {
     }
 
     fn log(&self, query_log: &QueryLog) {
+        if !self.log_queries {
+            return;
+        }
         if let Err(e) = self.query_log.log_query_sync(query_log) {
             tracing::warn!(error = %e, domain = %query_log.domain, "Failed to log query");
         }
@@ -417,28 +434,30 @@ impl HandleDnsQueryUseCase {
         let wire = resolution.upstream_wire_data?;
         let ttl = resolution.min_ttl.unwrap_or(0);
 
-        let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
-        let domain_arc: Arc<str> = Arc::from(domain);
-        self.log(&QueryLog {
-            id: None,
-            domain: domain_arc,
-            record_type,
-            client_ip,
-            client_hostname: None,
-            blocked: false,
-            response_time_us: Some(elapsed_us),
-            cache_hit: true,
-            cache_refresh: false,
-            dnssec_status: resolution.dnssec_status,
-            dns64_synthesized: false,
-            upstream_server: None,
-            upstream_pool: None,
-            response_status: Some("NOERROR"),
-            timestamp: None,
-            query_source: QuerySource::Client,
-            group_id: Some(group_id),
-            block_source: None,
-        });
+        if self.log_queries {
+            let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
+            let domain_arc: Arc<str> = Arc::from(domain);
+            self.log(&QueryLog {
+                id: None,
+                domain: domain_arc,
+                record_type,
+                client_ip,
+                client_hostname: None,
+                blocked: false,
+                response_time_us: Some(elapsed_us),
+                cache_hit: true,
+                cache_refresh: false,
+                dnssec_status: resolution.dnssec_status,
+                dns64_synthesized: false,
+                upstream_server: None,
+                upstream_pool: None,
+                response_status: Some("NOERROR"),
+                timestamp: None,
+                query_source: QuerySource::Client,
+                group_id: Some(group_id),
+                block_source: None,
+            });
+        }
 
         Some((wire, ttl))
     }
@@ -483,28 +502,30 @@ impl HandleDnsQueryUseCase {
             return None; // fall through to execute() for logging
         }
 
-        let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
-        let domain_arc: Arc<str> = Arc::from(domain);
-        self.log(&QueryLog {
-            id: None,
-            domain: domain_arc,
-            record_type,
-            client_ip,
-            client_hostname: None,
-            blocked: false,
-            response_time_us: Some(elapsed_us),
-            cache_hit: true,
-            cache_refresh: false,
-            dnssec_status: resolution.dnssec_status,
-            dns64_synthesized: self.is_dns64_synthesized(record_type, &resolution.addresses),
-            upstream_server: None,
-            upstream_pool: None,
-            response_status: Some("NOERROR"),
-            timestamp: None,
-            query_source: QuerySource::Client,
-            group_id: Some(group_id),
-            block_source: None,
-        });
+        if self.log_queries {
+            let elapsed_us = tsc_timer::elapsed_us_since(tsc_start);
+            let domain_arc: Arc<str> = Arc::from(domain);
+            self.log(&QueryLog {
+                id: None,
+                domain: domain_arc,
+                record_type,
+                client_ip,
+                client_hostname: None,
+                blocked: false,
+                response_time_us: Some(elapsed_us),
+                cache_hit: true,
+                cache_refresh: false,
+                dnssec_status: resolution.dnssec_status,
+                dns64_synthesized: self.is_dns64_synthesized(record_type, &resolution.addresses),
+                upstream_server: None,
+                upstream_pool: None,
+                response_status: Some("NOERROR"),
+                timestamp: None,
+                query_source: QuerySource::Client,
+                group_id: Some(group_id),
+                block_source: None,
+            });
+        }
 
         Some((resolution.addresses, resolution.min_ttl.unwrap_or(60)))
     }
