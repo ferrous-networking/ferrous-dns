@@ -288,36 +288,37 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 ## Benchmark Results
 
-> **Host:** Intel Core i9-9900KF @ 3.60GHz | 8 cores / 16 threads / 46 GB RAM | Arch Linux | Kernel 6.18.16-1-lts
-> **Tool:** dnsperf 2.14.0 | 60s per server | 10 concurrent clients | 187 domains (A, AAAA, MX, TXT, NS)
+> **Host:** Intel Core i9-9900KF @ 3.60GHz | 8 cores / 16 threads / 46 GB RAM | Arch Linux | Kernel 7.0.10-zen1-1-zen
+> **Tool:** dnsperf | median of 3 runs, 45s measured per server | 10 concurrent clients | 187 domains (A, AAAA, MX, TXT, NS)
 >
 > **Docker config (identical for all servers):**
 >
 > | Setting | Value |
 > |:--------|:------|
-> | CPUs | `cpuset: 0-15` — 16 threads |
+> | CPUs | server pinned to `cpuset: 0-7` (`cpus: 8`); dnsperf pinned to cores `8-15` |
+> | Threads | matched to the 8-core cpuset for every server |
 > | Network | host mode |
 > | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` (parallel) |
 > | Cache | enabled |
 > | Blocking / denylists | disabled — isolates raw forwarding performance |
 > | Rate limiting | disabled |
-> | Log level | info |
-> | Query logging (disk I/O) | disabled |
+> | Query logging (disk I/O) | disabled (all servers) |
 
-| Server | QPS | Avg Lat | P99 Lat | Completed | Lost |
-|:-------|----:|--------:|--------:|----------:|-----:|
-| ⚡ Unbound (C) | 1,018,691 | 0.74ms | 2.05ms | 100.00% | 0.00% |
-| ⚡ PowerDNS (C++) | 797,600 | 1.11ms | 3.47ms | 100.00% | 0.00% |
-| 🦀 **ferrous-dns** | **511,413** | **1.89ms** | **47.50ms** | **100.00%** | **0.00%** |
-| 🔷 Blocky (Go) | 98,574 | 9.49ms | 21.39ms | 99.99% | 0.01% |
-| 🛡️ AdGuard Home | 97,808 | 3.90ms | 15.59ms | 99.87% | 0.13% |
-| 🕳️ Pi-hole | 558 | 2.55ms | 24.83ms | 73.63% | 26.37% |
+| Server | Median QPS | Median Avg Lat | QPS spread (min–max) |
+|:-------|-----------:|:--------------:|:---------------------|
+| 🦀 **ferrous-dns** | **899,234** | **0.86ms** | 886,953 – 1,019,534 |
+| ⚡ Unbound (C) | 816,928 | 0.85ms | 633,167 – 822,635 |
+| ⚡ PowerDNS (C++) | 675,910 | 1.36ms | 659,487 – 722,406 |
+| 🔷 Blocky (Go) | 142,715 | 1.53ms | 142,473 – 144,368 |
+| 🛡️ AdGuard Home | 88,985 | 3.81ms | 87,448 – 98,437 |
+| 🕳️ Pi-hole | 8,248 | 2.99ms | 7,219 – 8,939 |
 
-**ferrous-dns vs competitors:** 5.2× faster than AdGuard Home | 5.2× faster than Blocky | 916× faster than Pi-hole
+**ferrous-dns leads the field** — ~10% ahead of Unbound and ~33% ahead of PowerDNS Recursor, plus 6.3× Blocky, 10.1× AdGuard Home, and 109× Pi-hole. Unbound and PowerDNS are purpose-built pure recursive resolvers (C and C++) with no REST API, no Web UI, no database, and no blocking engine; ferrous-dns runs all of those in the same single-process binary and still comes out on top.
 
-Unbound and PowerDNS Recursor lead as purpose-built pure recursive resolvers (C and C++) — no REST API, no Web UI, no database, no blocking engine. ferrous-dns runs all of these in the same single-process binary.
+!!! note "Read the median, not a single run"
+    Run-to-run variance on this host is real (~10–15% for ferrous-dns, up to ~30% for Unbound, which had one low outlier). The lead over Unbound sits inside that noise band on any single run — but ferrous-dns was #1 in all 3 runs. The numbers above are the median of 3 end-to-end runs, with the min–max spread shown for transparency.
 
-Pi-hole's loss rate reflects its architectural ceiling: FTL v6 is mostly single-threaded and saturates under concurrent load from other containers sharing the same CPU pool.
+Pi-hole's loss rate (~2%) reflects its architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than one core regardless of the CPU budget.
 
 Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
 

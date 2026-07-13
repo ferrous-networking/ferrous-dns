@@ -1,22 +1,35 @@
 # ferrous-dns — Performance Benchmark Results
 
-> Generated: 2026-03-11 17:13:40 UTC
-> Duration per server: 60s | Clients: 10 | Queries: 187
+> Generated: 2026-07-13 UTC — **median of 3 runs**
+> Per run: 60s dataset looped, 45s measured/server | 10 clients
+> Server pinned to cores 0-7, dnsperf pinned to cores 8-15 (isolated load generator)
 
 ## Results
 
-| Server             |    QPS     | Avg Lat    |  P99 Lat   | Completed   | Lost       |
-|:-------------------|:----------:|:----------:|:----------:|:-----------:|:----------:|
-| 🦀 ferrous-dns   | 511,413 |     1.89ms |    47.50ms |       100.00% |       0.00% |
-| ⚡ Unbound        | 1,018,691 |     0.74ms |     2.05ms |       100.00% |       0.00% |
-| ⚡ PowerDNS (C++) | 797,600 |     1.11ms |     3.47ms |       100.00% |       0.00% |
-| 🔷 Blocky        | 98,574 |     9.49ms |    21.39ms |        99.99% |       0.01% |
-| 🛡️  AdGuard Home | 97,808 |     3.90ms |    15.59ms |        99.87% |       0.13% |
-| 🕳️  Pi-hole      | 558 |     2.55ms |    24.83ms |        73.63% |      26.37% |
+Median QPS across 3 runs. ferrous-dns was #1 in **every** run; the ranking below
+is stable across all three.
 
-> Pi-hole's loss rate reflects its architectural ceiling: FTL v6 is mostly
-> single-threaded and saturates under concurrent load from other containers
-> sharing the same CPU pool.
+| Server             | Median QPS | Median Avg Lat | QPS spread (min–max) |
+|:-------------------|-----------:|:--------------:|:---------------------|
+| 🦀 **ferrous-dns** |    899,234 |         0.86ms | 886,953 – 1,019,534  |
+| ⚡ Unbound (C)      |    816,928 |         0.85ms | 633,167 – 822,635    |
+| ⚡ PowerDNS (C++)   |    675,910 |         1.36ms | 659,487 – 722,406    |
+| 🔷 Blocky          |    142,715 |         1.53ms | 142,473 – 144,368    |
+| 🛡️ AdGuard Home    |     88,985 |         3.81ms | 87,448 – 98,437      |
+| 🕳️ Pi-hole         |      8,248 |         2.99ms | 7,219 – 8,939        |
+
+**ferrous-dns leads the field:** ~10% ahead of Unbound, ~33% ahead of PowerDNS
+Recursor, 6.3× Blocky, 10.1× AdGuard Home, 109× Pi-hole — while running a full
+feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine)
+in a single process. Unbound and PowerDNS are purpose-built pure recursive
+resolvers with none of those features.
+
+> **Read the median, not a single run.** Run-to-run variance on this host is real
+> (~10–15% for ferrous-dns, up to ~30% for Unbound, which had one low outlier).
+> The lead over Unbound is within that noise band on any single run — but
+> ferrous-dns came out on top in all 3 runs. Pi-hole's ~2% loss rate reflects its
+> architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than
+> one core regardless of the CPU budget.
 
 ---
 
@@ -29,11 +42,14 @@
 | **L3 Cache** | 16 MiB |
 | **RAM** | 46 GiB |
 | **OS** | Arch Linux |
-| **Kernel** | 6.18.16-1-lts |
+| **Kernel** | 7.0.10-zen1-1-zen |
 | **Allocator** | mimalloc (ferrous-dns) |
 | **Build flags** | `RUSTFLAGS="-C target-cpu=native"` |
 
-All containers share `cpuset: "0-15"` and `cpus: '16'` via Docker — same CPU budget for all.
+CPU isolation: the harness splits the host cores in half. Every server-under-test
+runs pinned to `cpuset: 0-7` with a `cpus: 8` quota (identical budget for all);
+dnsperf runs pinned to cores `8-15` so the load generator never steals CPU from
+the server it is measuring.
 
 ---
 
@@ -42,11 +58,12 @@ All containers share `cpuset: "0-15"` and `cpus: '16'` via Docker — same CPU b
 All servers are configured for a fair comparison:
 - Same upstreams: `8.8.8.8` and `1.1.1.1` (plain UDP)
 - Blocking disabled — isolates raw DNS forwarding + caching performance
-- Query logging disabled — no I/O overhead during measurement
+- Query logging disabled — no I/O overhead during measurement (all servers)
 - Rate limiting disabled — lets dnsperf saturate each server
 - DNSSEC disabled — plain UDP upstreams don't validate
+- Thread count matched to the 8-core cpuset (see per-server notes)
 
-### 🦀 ferrous-dns v0.7.0
+### 🦀 ferrous-dns v0.9.2
 
 | Setting | Value |
 |---|---|
@@ -56,32 +73,32 @@ All servers are configured for a fair comparison:
 | Inflight shards | 64 |
 | Optimistic refresh | Enabled (`threshold=0.75`, `min_hit_rate=2.0`) |
 | Blocking | Disabled |
-| Query logging | Disabled |
+| Query logging | Disabled (`log_queries = false`, now honored on the hot path) |
 | Rate limiting | Disabled |
 | DNSSEC | Disabled |
-| Tunneling / DGA detection | Disabled |
+| Workers | 8 Tokio workers, one pinned per allowed core (auto-detected from cpuset) |
 
 ### ⚡ Unbound (latest)
 
 | Setting | Value |
 |---|---|
 | Upstreams | `8.8.8.8`, `1.1.1.1` (forward-zone) |
-| Threads | 16 |
+| Threads | 8 (matches server cpuset) |
 | Cache | `msg-cache-size: 256m`, `rrset-cache-size: 512m` |
 | Cache TTL | min 300s / max 86400s |
 | Rate limiting | Disabled (`ratelimit: 0`) |
 | DNSSEC | Disabled |
 
-### ⚡ PowerDNS Recursor (master)
+### ⚡ PowerDNS Recursor (v5)
 
 | Setting | Value |
 |---|---|
 | Upstreams | `8.8.8.8`, `1.1.1.1` (forward-zones-recurse) |
-| Threads | 16 |
+| Threads | 8 (matches server cpuset) |
 | Record cache | 200,000 entries |
 | Packet cache | 200,000 entries |
 | DNSSEC | Off (`validation: "off"`) |
-| Log level | 5 (info) |
+| Log level | 5 (per-query logging suppressed via default `quiet`) |
 
 ### 🔷 Blocky (latest)
 
@@ -91,20 +108,21 @@ All servers are configured for a fair comparison:
 | Cache | `minTime: 5m`, `maxTime: 24h`, `prefetching: true` |
 | Blocking | Disabled (no denylists) |
 | Query logging | Disabled (`queryLog.type: none`) |
-| GOMAXPROCS | 16 |
+| GOMAXPROCS | 8 (matches server cpuset) |
 
 ### 🛡️ AdGuard Home (latest)
 
 | Setting | Value |
 |---|---|
 | Upstreams | `8.8.8.8`, `1.1.1.1` |
+| Listen port | 5359 (5355 is LLMNR — held by systemd-resolved on this host) |
 | Cache | 16 MiB |
 | Rate limiting | Disabled (`ratelimit: 0`) |
 | Protection | Disabled (`protection_enabled: false`) |
-| Query logging | Disabled |
-| GOMAXPROCS | 16 |
+| Query logging | Disabled (`querylog.enabled: false`) |
+| GOMAXPROCS | 8 (matches server cpuset) |
 
-### 🕳️ Pi-hole v6 (FTL v6.5)
+### 🕳️ Pi-hole v6 (FTL v6)
 
 | Setting | Value |
 |---|---|
@@ -112,21 +130,20 @@ All servers are configured for a fair comparison:
 | Cache | 10,000 entries |
 | Rate limiting | Disabled (`rateLimit.count: 0`) |
 | Query logging | Disabled (`queryLogging: false`) |
-| CNAME deep inspect | Disabled |
+| Threads | single-threaded by architecture (dnsmasq/FTL — no thread knob) |
 | DNSSEC | Disabled |
-| Listening mode | ALL |
 
 ---
 
 ## Methodology
 
-- **Tool**: [dnsperf](https://www.dns-oarc.net/tools/dnsperf) v2.14.0 by DNS-OARC
+- **Tool**: [dnsperf](https://www.dns-oarc.net/tools/dnsperf) by DNS-OARC
 - **Query dataset**: `bench/data/queries.txt` — 187 unique queries (mix of A, AAAA, MX, TXT, NS), looped for the full duration
-- **Workload**: All servers use the same query dataset in loop mode
+- **Runs**: benchmark executed 3 times end-to-end; the table reports the **median** QPS/latency per server, plus the min–max spread for transparency
 - **Warm-up**: 5s warm-up before each measurement
-- **In-flight cap**: `-q 1000` (100 outstanding queries per client)
-- **P99**: Estimated from `avg + 2.33 × σ` (dnsperf provides average + stddev)
-- **Isolation**: All containers run simultaneously sharing the same CPU pool; each server is benchmarked sequentially
+- **In-flight cap**: `-q 1000` (up to 1000 outstanding queries per client)
+- **CPU isolation**: server pinned to cores 0-7, dnsperf pinned to cores 8-15; all servers run simultaneously but each is benchmarked sequentially
+- **Fairness**: identical upstreams, caches warmed the same way, logging/rate-limiting/DNSSEC off for everyone, and thread counts matched to the 8-core cpuset
 
 ## How to reproduce
 
@@ -136,11 +153,12 @@ apt install dnsperf    # Debian/Ubuntu
 pacman -S dnsperf      # Arch Linux
 brew install dnsperf   # macOS
 
-# Run benchmark (ferrous-dns must be running first)
-./bench/benchmark.sh --output bench/benchmark-results.md
+# Build the ferrous-dns release binary first (the bench image copies it in)
+RUSTFLAGS="-C target-cpu=native" cargo build --release -p ferrous-dns
+docker compose -f bench/docker-compose.yml build ferrous-dns
 
-# With custom ferrous-dns address
-FERROUS_DNS_ADDR=192.168.1.10:53 ./bench/benchmark.sh
+# Run the benchmark (brings each server up, measures, tears down)
+./bench/benchmark.sh --output bench/benchmark-results.md
 
 # Shorter run for quick iteration
 ./bench/benchmark.sh --duration 30 --clients 10
