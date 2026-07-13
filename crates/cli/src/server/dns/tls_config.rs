@@ -15,6 +15,7 @@ pub fn load_server_tls_config(
     cert_path: &str,
     key_path: &str,
     listener_name: &str,
+    alpn: &[&[u8]],
 ) -> anyhow::Result<Option<Arc<rustls::ServerConfig>>> {
     if !Path::new(cert_path).exists() {
         warn!(
@@ -45,10 +46,11 @@ pub fn load_server_tls_config(
     let key = PrivateKeyDer::from_pem_reader(key_file)
         .with_context(|| format!("No valid private key found in {key_path}"))?;
 
-    let config = rustls::ServerConfig::builder()
+    let mut config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .context("Failed to build rustls ServerConfig")?;
+    config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
 
     Ok(Some(Arc::new(config)))
 }

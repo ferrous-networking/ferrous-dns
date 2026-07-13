@@ -15,8 +15,8 @@ use tracing::{error, info};
 
 mod args;
 mod bootstrap;
-mod server;
 mod wiring;
+use ferrous_dns::server;
 
 fn main() -> anyhow::Result<()> {
     ferrous_dns::install_crypto_provider();
@@ -144,6 +144,7 @@ async fn async_main() -> anyhow::Result<()> {
     let handler_use_case = dns_services.handler_use_case;
     let tcp_conn_limiter = dns_services.tcp_conn_limiter;
     let dot_conn_limiter = dns_services.dot_conn_limiter;
+    let doq_conn_limiter = dns_services.doq_conn_limiter;
     let block_policy = BlockPolicy {
         mode: config.blocking.block_mode,
         ttl: config.blocking.block_ttl,
@@ -184,6 +185,7 @@ async fn async_main() -> anyhow::Result<()> {
                 &config.server.encrypted_dns.tls_cert_path,
                 &config.server.encrypted_dns.tls_key_path,
                 "DoT/DoH",
+                &[],
             )?
         } else {
             None
@@ -211,6 +213,32 @@ async fn async_main() -> anyhow::Result<()> {
                 .await
                 {
                     error!(error = %e, "DoT server error");
+                }
+            });
+        }
+    }
+
+    if config.server.encrypted_dns.doq_enabled {
+        let doq_tls_config = server::load_server_tls_config(
+            &config.server.encrypted_dns.tls_cert_path,
+            &config.server.encrypted_dns.tls_key_path,
+            "DoQ",
+            &[b"doq"],
+        )?;
+        if let Some(tls_cfg) = doq_tls_config {
+            let doq_addr = format!(
+                "{}:{}",
+                config.server.bind_address, config.server.encrypted_dns.doq_port
+            );
+            let doq_handler = Arc::new(DnsServerHandler::new(
+                handler_use_case.clone(),
+                block_policy,
+            ));
+            tokio::spawn(async move {
+                if let Err(e) =
+                    server::start_doq_server(doq_addr, doq_handler, tls_cfg, doq_conn_limiter).await
+                {
+                    error!(error = %e, "DoQ server error");
                 }
             });
         }
@@ -246,6 +274,7 @@ async fn async_main() -> anyhow::Result<()> {
             &config.server.web_tls.tls_cert_path,
             &config.server.web_tls.tls_key_path,
             "Web HTTPS",
+            &[],
         )?
     } else {
         None

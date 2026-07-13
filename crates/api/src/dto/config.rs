@@ -88,6 +88,7 @@ pub struct RateLimitConfigResponse {
     pub stale_entry_ttl_secs: u64,
     pub tcp_max_connections_per_ip: u32,
     pub dot_max_connections_per_ip: u32,
+    pub doq_max_connections_per_ip: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -300,6 +301,7 @@ pub struct RateLimitConfigUpdate {
     pub stale_entry_ttl_secs: Option<u64>,
     pub tcp_max_connections_per_ip: Option<u32>,
     pub dot_max_connections_per_ip: Option<u32>,
+    pub doq_max_connections_per_ip: Option<u32>,
 }
 
 #[derive(Deserialize, Debug, ToSchema)]

@@ -47,6 +47,9 @@ reqwest.workspace = true
 ring.workspace = true
 utoipa.workspace = true
 utoipa-scalar.workspace = true
+quinn.workspace = true
 
 [dev-dependencies]
 tempfile = "3.8"
+rcgen = "0.14"
+async-trait.workspace = true

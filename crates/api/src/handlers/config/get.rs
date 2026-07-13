@@ -102,6 +102,7 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 stale_entry_ttl_secs: config.dns.rate_limit.stale_entry_ttl_secs,
                 tcp_max_connections_per_ip: config.dns.rate_limit.tcp_max_connections_per_ip,
                 dot_max_connections_per_ip: config.dns.rate_limit.dot_max_connections_per_ip,
+                doq_max_connections_per_ip: config.dns.rate_limit.doq_max_connections_per_ip,
             },
         },
         blocking: BlockingConfigResponse {

@@ -4,6 +4,8 @@
 //! code paths (like crypto provider installation) that would otherwise be
 //! private to `main.rs`.
 
+pub mod server;
+
 /// Installs the process-wide rustls crypto provider.
 ///
 /// The dependency tree pulls in both the `ring` and `aws-lc-rs` crypto

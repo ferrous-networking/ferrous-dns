@@ -1002,6 +1002,19 @@
                     </div>
                 </div>
 
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="zap" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">DoQ Max Connections per IP</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum concurrent DNS-over-QUIC connections per IP address.</p>
+                    </div>
+                    <div style="flex-shrink:0;width:150px">
+                        <input type="number" x-model.number="config.dns.rate_limit.doq_max_connections_per_ip" min="0" placeholder="15" style="width:100%;text-align:right">
+                    </div>
+                </div>
+
                 <div style="padding:16px 0">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
                         <i data-lucide="list-checks" style="width:20px;height:20px;color:var(--color-primary)"></i>
