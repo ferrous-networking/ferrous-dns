@@ -18,7 +18,7 @@ fn prefix() -> Ipv6Addr {
 /// Minimal DNS message wire with the given response code and answers.
 fn message_wire(rcode: ResponseCode, answers: Vec<Record>) -> Bytes {
     let mut msg = Message::new(0, MessageType::Response, OpCode::Query);
-    msg.set_response_code(rcode);
+    msg.metadata.response_code = rcode;
     for answer in answers {
         msg.add_answer(answer);
     }
@@ -229,13 +229,13 @@ async fn reverse_ptr_answer_owner_is_ip6_arpa_name() {
     // The synthesized answer must be owned by the ip6.arpa query name.
     let wire = res.upstream_wire_data.expect("reverse PTR wire");
     let msg = Message::from_vec(&wire).unwrap();
-    let answer = msg.answers().first().expect("a PTR answer");
+    let answer = msg.answers.first().expect("a PTR answer");
     assert_eq!(
-        answer.name().to_string().trim_end_matches('.'),
+        answer.name.to_string().trim_end_matches('.'),
         ip6_arpa,
         "PTR answer must be owned by the ip6.arpa query name, not in-addr.arpa"
     );
-    match answer.data() {
+    match &answer.data {
         RData::PTR(ptr) => assert_eq!(ptr.0.to_string().trim_end_matches('.'), "host.example.com"),
         other => panic!("expected PTR rdata, got {other:?}"),
     }
@@ -257,7 +257,7 @@ async fn reverse_ptr_falls_back_when_ipv4_has_no_ptr() {
 
     // No fabricated PTR answer.
     let msg = Message::from_vec(&res.upstream_wire_data.unwrap()).unwrap();
-    assert!(msg.answers().is_empty());
+    assert!(msg.answers.is_empty());
 }
 
 #[tokio::test]

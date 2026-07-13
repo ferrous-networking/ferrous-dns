@@ -37,17 +37,17 @@ async fn spawn_responder(seen: Arc<Mutex<Vec<Vec<u8>>>>, echo_cookie: bool) -> S
             let Ok(req) = Message::from_vec(&buf[..len]) else {
                 continue;
             };
-            let Some(q) = req.queries().first().cloned() else {
+            let Some(q) = req.queries.first().cloned() else {
                 continue;
             };
             seen.lock()
                 .unwrap()
                 .push(q.name().iter().flat_map(|l| l.to_vec()).collect());
 
-            let mut resp = Message::new(req.id(), MessageType::Response, OpCode::Query);
-            resp.set_recursion_desired(true);
-            resp.set_recursion_available(true);
-            resp.set_response_code(ResponseCode::NoError);
+            let mut resp = Message::new(req.id, MessageType::Response, OpCode::Query);
+            resp.metadata.recursion_desired = true;
+            resp.metadata.recursion_available = true;
+            resp.metadata.response_code = ResponseCode::NoError;
             resp.add_query(q.clone());
             // Owner name echoes the randomized query name; the parser must still
             // extract the IP by rdata regardless of its case.
@@ -59,7 +59,7 @@ async fn spawn_responder(seen: Arc<Mutex<Vec<Vec<u8>>>>, echo_cookie: bool) -> S
             // A cookie-supporting upstream echoes the client's COOKIE option back
             // (validated path); copying the request OPT carries option 10 verbatim.
             if echo_cookie {
-                if let Some(edns) = req.extensions().clone() {
+                if let Some(edns) = req.edns.clone() {
                     resp.set_edns(edns);
                 }
             }

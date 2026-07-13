@@ -99,7 +99,7 @@ impl DnsServerHandler {
     ) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
-        let queries: Vec<_> = query_msg.queries().to_vec();
+        let queries: Vec<_> = query_msg.queries.to_vec();
         let query_info = queries.first()?;
 
         let domain_name = query_info.name().to_utf8();
@@ -109,14 +109,14 @@ impl DnsServerHandler {
 
         let our_rt = RecordTypeMapper::from_hickory(hickory_rt)?;
 
-        let query_id = query_msg.id();
-        let rd = query_msg.recursion_desired();
-        let cd = query_msg.checking_disabled();
-        let has_edns = query_msg.extensions().is_some();
+        let query_id = query_msg.id;
+        let rd = query_msg.recursion_desired;
+        let cd = query_msg.checking_disabled;
+        let has_edns = query_msg.edns.is_some();
         // RFC 6840 §5.8: only DNSSEC-aware clients (EDNS DO bit set) are eligible
         // for the AD bit in the response.
         let wants_dnssec = query_msg
-            .extensions()
+            .edns
             .as_ref()
             .map(|edns| edns.flags().dnssec_ok)
             .unwrap_or(false);
@@ -126,7 +126,7 @@ impl DnsServerHandler {
         let udp_limit: Option<usize> = if is_udp {
             Some(
                 query_msg
-                    .extensions()
+                    .edns
                     .as_ref()
                     .map(|edns| edns.max_payload() as usize)
                     .filter(|&size| size >= 512)
@@ -136,7 +136,7 @@ impl DnsServerHandler {
             None
         };
         let edns_cookie: Option<Vec<u8>> = query_msg
-            .extensions()
+            .edns
             .as_ref()
             .and_then(|edns| extract_edns_cookie(edns.options().as_ref().iter()));
         drop(query_msg);
@@ -229,8 +229,8 @@ impl DnsServerHandler {
             wants_dnssec && !cd && resolution.dnssec_status == Some(DnssecStatus::Secure.as_str());
 
         let mut resp = Message::new(query_id, MessageType::Response, OpCode::Query);
-        resp.set_recursion_desired(rd);
-        resp.set_recursion_available(true);
+        resp.metadata.recursion_desired = rd;
+        resp.metadata.recursion_available = true;
         for q in &queries {
             resp.add_query(q.clone());
         }
@@ -242,8 +242,8 @@ impl DnsServerHandler {
                 return record.clone();
             }
             let mut copy = record.clone();
-            let lower = copy.name().to_lowercase();
-            copy.set_name(lower);
+            let lower = copy.name.to_lowercase();
+            copy.name = lower;
             copy
         }
 
@@ -265,14 +265,14 @@ impl DnsServerHandler {
                 if is_address_type || has_cookie_to_inject {
                     match Message::from_vec(wire_data) {
                         Ok(upstream_msg) => {
-                            resp.set_response_code(upstream_msg.response_code());
-                            for record in upstream_msg.answers() {
+                            resp.metadata.response_code = upstream_msg.response_code;
+                            for record in &upstream_msg.answers {
                                 resp.add_answer(copy_record(record, is_address_type));
                             }
-                            for record in upstream_msg.name_servers() {
-                                resp.add_name_server(copy_record(record, is_address_type));
+                            for record in &upstream_msg.authorities {
+                                resp.add_authority(copy_record(record, is_address_type));
                             }
-                            for record in upstream_msg.additionals() {
+                            for record in &upstream_msg.additionals {
                                 // skip existing OPT — we add our own below
                                 if record.record_type() != hickory_proto::rr::RecordType::OPT {
                                     resp.add_additional(copy_record(record, is_address_type));
@@ -332,7 +332,7 @@ impl DnsServerHandler {
             }
         }
         resp.set_edns(edns_resp);
-        resp.set_authentic_data(set_ad);
+        resp.metadata.authentic_data = set_ad;
 
         maybe_truncate(encode_message(&resp)?)
     }
@@ -368,9 +368,9 @@ fn build_error_wire(
     ede: Option<ExtendedDnsError>,
 ) -> Option<Vec<u8>> {
     let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
-    resp.set_recursion_desired(rd);
-    resp.set_recursion_available(true);
-    resp.set_response_code(code);
+    resp.metadata.recursion_desired = rd;
+    resp.metadata.recursion_available = true;
+    resp.metadata.response_code = code;
     for q in queries {
         resp.add_query(q.clone());
     }
@@ -435,8 +435,8 @@ pub fn build_blocked_wire(
     }
 
     let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
-    resp.set_recursion_desired(rd);
-    resp.set_recursion_available(true);
+    resp.metadata.recursion_desired = rd;
+    resp.metadata.recursion_available = true;
     for q in queries {
         resp.add_query(q.clone());
     }
@@ -447,13 +447,13 @@ pub fn build_blocked_wire(
 
     match policy.mode {
         BlockResponseMode::NxDomain => {
-            resp.set_response_code(ResponseCode::NXDomain);
+            resp.metadata.response_code = ResponseCode::NXDomain;
         }
         BlockResponseMode::NoData => {
-            resp.set_response_code(ResponseCode::NoError);
+            resp.metadata.response_code = ResponseCode::NoError;
         }
         BlockResponseMode::NullIp => {
-            resp.set_response_code(ResponseCode::NoError);
+            resp.metadata.response_code = ResponseCode::NoError;
             if let Some(q) = queries.first() {
                 let rdata = match q.query_type() {
                     RecordType::A => Some(RData::A(hickory_proto::rr::rdata::A(
@@ -477,7 +477,7 @@ pub fn build_blocked_wire(
 
     if !answered {
         if let Some(q) = queries.first() {
-            resp.add_name_server(synthetic_block_soa(q.name().clone(), policy.ttl));
+            resp.add_authority(synthetic_block_soa(q.name().clone(), policy.ttl));
         }
     }
 
@@ -506,10 +506,10 @@ fn build_truncated_wire(
     queries: &[hickory_proto::op::Query],
 ) -> Option<Vec<u8>> {
     let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
-    resp.set_recursion_desired(rd);
-    resp.set_recursion_available(true);
-    resp.set_truncated(true);
-    resp.set_response_code(ResponseCode::NoError);
+    resp.metadata.recursion_desired = rd;
+    resp.metadata.recursion_available = true;
+    resp.metadata.truncation = true;
+    resp.metadata.response_code = ResponseCode::NoError;
     for q in queries {
         resp.add_query(q.clone());
     }

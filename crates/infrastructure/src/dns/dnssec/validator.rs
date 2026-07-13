@@ -278,7 +278,7 @@ impl DnssecValidator {
 
     fn extract_signer_zone(answers: &[Record]) -> Option<String> {
         for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
+            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
                 let input = rrsig.input();
                 if input.type_covered != hickory_proto::rr::RecordType::DNSKEY {
                     return Some(input.signer_name.to_string());
@@ -294,7 +294,7 @@ impl DnssecValidator {
     fn extract_signer_zones(answers: &[Record]) -> Vec<String> {
         let mut zones: Vec<String> = Vec::new();
         for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
+            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
                 let input = rrsig.input();
                 if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
                     continue;
@@ -333,7 +333,7 @@ impl DnssecValidator {
         record_type: RecordType,
         message: &hickory_proto::op::Message,
     ) -> Result<ValidationResult, DomainError> {
-        if message.answers().is_empty() {
+        if message.answers.is_empty() {
             return self.validate_negative(domain, record_type, message).await;
         }
 
@@ -342,7 +342,7 @@ impl DnssecValidator {
         // RRset can later be checked against the keys of its own signer zone. If
         // the answer is unsigned there are no signer zones; fall back to the
         // queried name so an insecure delegation is still detected.
-        let mut signer_zones = Self::extract_signer_zones(message.answers());
+        let mut signer_zones = Self::extract_signer_zones(&message.answers);
         if signer_zones.is_empty() {
             signer_zones.push(domain.to_owned());
         }
@@ -373,10 +373,10 @@ impl DnssecValidator {
         }
 
         if status == ValidationResult::Secure {
-            let all_answers: Vec<Record> = message.answers().to_vec();
+            let all_answers: Vec<Record> = message.answers.to_vec();
             status = self.verify_rrset_signatures(domain, &all_answers);
             if status == ValidationResult::Secure {
-                status = self.verify_wildcard_proof(domain, &all_answers, message.name_servers());
+                status = self.verify_wildcard_proof(domain, &all_answers, &message.authorities);
             }
         }
         Ok(status)
@@ -390,7 +390,7 @@ impl DnssecValidator {
         record_type: RecordType,
         message: &hickory_proto::op::Message,
     ) -> Result<ValidationResult, DomainError> {
-        let Some(zone) = Self::extract_signer_zone(message.name_servers()) else {
+        let Some(zone) = Self::extract_signer_zone(&message.authorities) else {
             // No signed authority section: unsigned negative, serve without AD.
             return Ok(ValidationResult::Insecure);
         };
@@ -420,9 +420,9 @@ impl DnssecValidator {
         Ok(self.validate_denial(
             domain,
             record_type,
-            message.response_code(),
+            message.response_code,
             &zone,
-            message.name_servers(),
+            &message.authorities,
         ))
     }
 
@@ -467,10 +467,10 @@ impl DnssecValidator {
         let mut outcome = "no-rrsig";
 
         for sig in sigs {
-            let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = sig.data() else {
+            let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &sig.data else {
                 continue;
             };
-            if sig.name() != owner {
+            if &sig.name != owner {
                 continue;
             }
             let input = rrsig.input();
@@ -531,10 +531,10 @@ impl DnssecValidator {
         let mut nsecs: Vec<VerifiedNsec<'a>> = Vec::new();
 
         for record in authority {
-            match record.data() {
+            match &record.data {
                 RData::DNSSEC(DNSSECRData::NSEC3(nsec3))
                     if self.rrset_is_authentic(
-                        record.name(),
+                        &record.name,
                         record.record_type(),
                         std::slice::from_ref(record),
                         authority,
@@ -543,7 +543,7 @@ impl DnssecValidator {
                     ) =>
                 {
                     if let Some(label) = record
-                        .name()
+                        .name
                         .iter()
                         .next()
                         .and_then(|first| Label::from_raw_bytes(first).ok())
@@ -556,7 +556,7 @@ impl DnssecValidator {
                 }
                 RData::DNSSEC(DNSSECRData::NSEC(nsec))
                     if self.rrset_is_authentic(
-                        record.name(),
+                        &record.name,
                         record.record_type(),
                         std::slice::from_ref(record),
                         authority,
@@ -565,7 +565,7 @@ impl DnssecValidator {
                     ) =>
                 {
                     nsecs.push(VerifiedNsec {
-                        owner: record.name(),
+                        owner: &record.name,
                         data: nsec,
                     });
                 }
@@ -633,12 +633,12 @@ impl DnssecValidator {
     ) -> ValidationResult {
         let mut wildcard_labels: Option<u8> = None;
         for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = record.data() {
+            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
                 let input = rrsig.input();
                 if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
                     continue;
                 }
-                if input.num_labels < record.name().num_labels() {
+                if input.num_labels < record.name.num_labels() {
                     wildcard_labels = Some(input.num_labels);
                     break;
                 }
@@ -665,7 +665,7 @@ impl DnssecValidator {
         let mut has_data = false;
         let mut has_rrsig = false;
         for record in all_answers {
-            match record.data() {
+            match &record.data {
                 RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) => {
                     if rrsig.input().type_covered != hickory_proto::rr::RecordType::DNSKEY {
                         has_rrsig = true;
@@ -698,10 +698,10 @@ impl DnssecValidator {
         // therefore the AD bit — flagged Secure.
         let mut rrsets: Vec<(&Name, hickory_proto::rr::RecordType, Vec<Record>)> = Vec::new();
         for record in all_answers {
-            if matches!(record.data(), RData::DNSSEC(DNSSECRData::RRSIG(_))) {
+            if matches!(record.data, RData::DNSSEC(DNSSECRData::RRSIG(_))) {
                 continue;
             }
-            let owner = record.name();
+            let owner = &record.name;
             let rtype = record.record_type();
             match rrsets
                 .iter_mut()

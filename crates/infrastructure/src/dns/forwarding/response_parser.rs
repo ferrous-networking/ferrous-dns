@@ -56,19 +56,19 @@ impl ResponseParser {
             DomainError::InvalidDomainName(format!("Failed to parse DNS response: {}", e))
         })?;
 
-        let rcode = message.response_code();
-        let truncated = message.truncated();
+        let rcode = message.response_code;
+        let truncated = message.truncation;
 
-        let mut addresses = Vec::with_capacity(message.answers().len().min(8));
+        let mut addresses = Vec::with_capacity(message.answers.len().min(8));
         let mut cname_chain: Vec<Arc<str>> = Vec::new();
         let mut min_ttl: Option<u32> = None;
         let mut raw_answers = Vec::new();
 
-        for record in message.answers() {
-            let record_ttl = record.ttl();
+        for record in &message.answers {
+            let record_ttl = record.ttl;
             min_ttl = Some(min_ttl.map_or(record_ttl, |current| current.min(record_ttl)));
 
-            match record.data() {
+            match &record.data {
                 RData::A(a) => {
                     addresses.push(IpAddr::V4(a.0));
                 }
@@ -86,9 +86,9 @@ impl ResponseParser {
             }
         }
 
-        let negative_soa_ttl = message.name_servers().iter().find_map(|r| {
-            if let RData::SOA(soa) = r.data() {
-                Some(soa.minimum().min(r.ttl()))
+        let negative_soa_ttl = message.authorities.iter().find_map(|r| {
+            if let RData::SOA(soa) = &r.data {
+                Some(soa.minimum.min(r.ttl))
             } else {
                 None
             }

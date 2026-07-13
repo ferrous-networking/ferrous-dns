@@ -20,8 +20,8 @@ fn make_soa_record(zone: &str, minimum: u32, record_ttl: u32) -> Record {
 
 fn extract_soa_ttl(records: &[Record]) -> Option<u32> {
     records.iter().find_map(|r| {
-        if let RData::SOA(soa) = r.data() {
-            Some(soa.minimum().min(r.ttl()))
+        if let RData::SOA(soa) = &r.data {
+            Some(soa.minimum.min(r.ttl))
         } else {
             None
         }

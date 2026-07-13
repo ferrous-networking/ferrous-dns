@@ -173,7 +173,7 @@ impl MessageBuilder {
         query.set_query_class(hickory_proto::rr::DNSClass::IN);
 
         let mut message = Message::new(id, MessageType::Query, OpCode::Query);
-        message.set_recursion_desired(true);
+        message.metadata.recursion_desired = true;
         message.add_query(query);
         message.set_edns(edns);
 

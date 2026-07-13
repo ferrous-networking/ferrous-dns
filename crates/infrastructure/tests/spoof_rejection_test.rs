@@ -41,14 +41,14 @@ async fn spawn_responder(mode: Mode) -> SocketAddr {
             };
 
             let id = match mode {
-                Mode::WrongTxid => req.id() ^ 0xFFFF,
-                _ => req.id(),
+                Mode::WrongTxid => req.id ^ 0xFFFF,
+                _ => req.id,
             };
             let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
-            resp.set_recursion_desired(true);
-            resp.set_recursion_available(true);
-            resp.set_response_code(ResponseCode::NoError);
-            for q in req.queries() {
+            resp.metadata.recursion_desired = true;
+            resp.metadata.recursion_available = true;
+            resp.metadata.response_code = ResponseCode::NoError;
+            for q in &req.queries {
                 if let Mode::FlipQnameCase = mode {
                     // Flip the 0x20 bit of the first label's first byte: since that
                     // byte is always an ASCII letter, this is a guaranteed (non-flaky)
@@ -185,12 +185,12 @@ async fn spawn_truncating_pair(tcp_mode: Mode) -> SocketAddr {
             let Ok(req) = Message::from_vec(&buf[..len]) else {
                 continue;
             };
-            let mut resp = Message::new(req.id(), MessageType::Response, OpCode::Query);
-            resp.set_recursion_desired(true);
-            resp.set_recursion_available(true);
-            resp.set_response_code(ResponseCode::NoError);
-            resp.set_truncated(true);
-            for q in req.queries() {
+            let mut resp = Message::new(req.id, MessageType::Response, OpCode::Query);
+            resp.metadata.recursion_desired = true;
+            resp.metadata.recursion_available = true;
+            resp.metadata.response_code = ResponseCode::NoError;
+            resp.metadata.truncation = true;
+            for q in &req.queries {
                 resp.add_query(q.clone());
             }
             let _ = udp.send_to(&resp.to_bytes().unwrap(), peer).await;
@@ -214,14 +214,14 @@ async fn spawn_truncating_pair(tcp_mode: Mode) -> SocketAddr {
                     return;
                 };
                 let id = match tcp_mode {
-                    Mode::WrongTxid => req.id() ^ 0xFFFF,
-                    _ => req.id(),
+                    Mode::WrongTxid => req.id ^ 0xFFFF,
+                    _ => req.id,
                 };
                 let mut resp = Message::new(id, MessageType::Response, OpCode::Query);
-                resp.set_recursion_desired(true);
-                resp.set_recursion_available(true);
-                resp.set_response_code(ResponseCode::NoError);
-                for q in req.queries() {
+                resp.metadata.recursion_desired = true;
+                resp.metadata.recursion_available = true;
+                resp.metadata.response_code = ResponseCode::NoError;
+                for q in &req.queries {
                     resp.add_query(q.clone());
                 }
                 let bytes = resp.to_bytes().unwrap();

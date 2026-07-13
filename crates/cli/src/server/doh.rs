@@ -131,7 +131,7 @@ fn build_wire_query(name: &str, record_type_str: &str) -> anyhow::Result<Vec<u8>
     edns.set_version(0);
 
     let mut message = Message::new(fastrand::u16(..), MessageType::Query, OpCode::Query);
-    message.set_recursion_desired(true);
+    message.metadata.recursion_desired = true;
     message.add_query(query);
     message.set_edns(edns);
 
@@ -145,46 +145,46 @@ fn wire_to_dns_json(wire: &[u8]) -> anyhow::Result<String> {
     let msg = Message::from_vec(wire)?;
 
     let questions: Vec<Value> = msg
-        .queries()
+        .queries
         .iter()
         .map(|q| json!({ "name": q.name().to_string(), "type": u16::from(q.query_type()) }))
         .collect();
 
     let answers: Vec<Value> = msg
-        .answers()
+        .answers
         .iter()
         .filter(|r| r.record_type() != HickoryRecordType::OPT)
         .map(|r| {
             json!({
-                "name": r.name().to_string(),
+                "name": r.name.to_string(),
                 "type": u16::from(r.record_type()),
-                "TTL": r.ttl(),
-                "data": format_rdata(r.data()),
+                "TTL": r.ttl,
+                "data": format_rdata(&r.data),
             })
         })
         .collect();
 
     let authority: Vec<Value> = msg
-        .name_servers()
+        .authorities
         .iter()
         .filter(|r| r.record_type() != HickoryRecordType::OPT)
         .map(|r| {
             json!({
-                "name": r.name().to_string(),
+                "name": r.name.to_string(),
                 "type": u16::from(r.record_type()),
-                "TTL": r.ttl(),
-                "data": format_rdata(r.data()),
+                "TTL": r.ttl,
+                "data": format_rdata(&r.data),
             })
         })
         .collect();
 
     Ok(serde_json::to_string(&json!({
-        "Status": u16::from(msg.response_code()),
-        "TC": msg.truncated(),
-        "RD": msg.recursion_desired(),
-        "RA": msg.recursion_available(),
-        "AD": msg.authentic_data(),
-        "CD": msg.checking_disabled(),
+        "Status": u16::from(msg.response_code),
+        "TC": msg.truncation,
+        "RD": msg.recursion_desired,
+        "RA": msg.recursion_available,
+        "AD": msg.authentic_data,
+        "CD": msg.checking_disabled,
         "Question": questions,
         "Answer": answers,
         "Authority": authority,
@@ -198,21 +198,16 @@ fn format_rdata(data: &RData) -> String {
         RData::CNAME(name) => name.to_utf8(),
         RData::NS(name) => name.to_utf8(),
         RData::PTR(name) => name.to_utf8(),
-        RData::MX(mx) => format!("{} {}", mx.preference(), mx.exchange()),
+        RData::MX(mx) => format!("{} {}", mx.preference, mx.exchange),
         RData::TXT(txt) => txt
+            .txt_data
             .iter()
             .map(|b| String::from_utf8_lossy(b).to_string())
             .collect::<Vec<_>>()
             .join(" "),
         RData::SOA(soa) => format!(
             "{} {} {} {} {} {} {}",
-            soa.mname(),
-            soa.rname(),
-            soa.serial(),
-            soa.refresh(),
-            soa.retry(),
-            soa.expire(),
-            soa.minimum()
+            soa.mname, soa.rname, soa.serial, soa.refresh, soa.retry, soa.expire, soa.minimum
         ),
         _ => data.to_string(),
     }
