@@ -77,7 +77,7 @@ fn test_verify_rrset_multiple_a_records_no_rrsig_returns_bogus() {
 fn test_verify_rrset_rrsig_present_no_zone_keys_returns_bogus() {
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, PublicKey, PublicKeyBuf, SigSigner, SigningKey,
+        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
     };
     use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
     use time::{Duration as TD, OffsetDateTime};
@@ -93,7 +93,7 @@ fn test_verify_rrset_rrsig_present_no_zone_keys_returns_bogus() {
     let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
     let signer_name = Name::from_str("example.com.").unwrap();
     let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = SigSigner::dnssec(
+    let signer = DnssecSigner::new(
         h_dnskey,
         Box::new(signing_key),
         signer_name.clone(),
@@ -121,7 +121,7 @@ fn test_verify_rrset_rrsig_present_no_zone_keys_returns_bogus() {
 fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, PublicKey, PublicKeyBuf, SigSigner, SigningKey,
+        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
     };
     use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
     use time::{Duration as TD, OffsetDateTime};
@@ -144,7 +144,7 @@ fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
     let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
     let signer_name = Name::from_str("example.com.").unwrap();
     let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = SigSigner::dnssec(
+    let signer = DnssecSigner::new(
         h_dnskey,
         Box::new(signing_key),
         signer_name.clone(),
@@ -174,7 +174,7 @@ fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
 fn test_verify_rrset_wrong_zone_key_returns_bogus() {
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, PublicKeyBuf, SigSigner, SigningKey,
+        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKeyBuf, SigningKey,
     };
     use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
     use time::{Duration as TD, OffsetDateTime};
@@ -193,7 +193,7 @@ fn test_verify_rrset_wrong_zone_key_returns_bogus() {
     let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
     let signer_name = Name::from_str("example.com.").unwrap();
     let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = SigSigner::dnssec(
+    let signer = DnssecSigner::new(
         h_dnskey,
         Box::new(signing_key),
         signer_name.clone(),
@@ -237,7 +237,7 @@ fn test_verify_rrset_signer_not_enclosing_owner_returns_bogus() {
     // forged. The signer name does NOT enclose the owner, so it must be Bogus.
     use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
     use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, PublicKey, PublicKeyBuf, SigSigner, SigningKey,
+        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
     };
     use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
     use time::{Duration as TD, OffsetDateTime};
@@ -261,7 +261,7 @@ fn test_verify_rrset_signer_not_enclosing_owner_returns_bogus() {
     // The attacker signs with THEIR own zone as the signer name...
     let signer_name = Name::from_str("evil.example.").unwrap();
     let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = SigSigner::dnssec(
+    let signer = DnssecSigner::new(
         h_dnskey,
         Box::new(signing_key),
         signer_name.clone(),

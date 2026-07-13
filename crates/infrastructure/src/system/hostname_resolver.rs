@@ -80,7 +80,7 @@ impl HostnameResolver for PtrHostnameResolver {
                 {
                     Ok(result) => {
                         for record in &result.raw_answers {
-                            if let RData::PTR(ptr) = record.data() {
+                            if let RData::PTR(ptr) = &record.data {
                                 let hostname = ptr.to_utf8();
                                 debug!(ip = %ip, hostname = %hostname, server = %server, "PTR lookup via local DNS server successful");
                                 return Ok(Some(hostname));
@@ -104,7 +104,7 @@ impl HostnameResolver for PtrHostnameResolver {
         {
             Ok(result) => {
                 for record in &result.response.raw_answers {
-                    if let RData::PTR(ptr) = record.data() {
+                    if let RData::PTR(ptr) = &record.data {
                         let hostname = ptr.to_utf8();
                         debug!(ip = %ip, hostname = %hostname, "PTR lookup successful");
                         return Ok(Some(hostname));

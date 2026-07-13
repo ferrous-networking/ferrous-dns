@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   TARPAULIN_VERSION: '0.27.0'
-  AUDIT_VERSION: '0.18.0'
+  AUDIT_VERSION: '0.22.2'
 
 jobs:
   quick-check:
@@ -248,6 +248,33 @@ jobs:
           comment-on-alert: true
           alert-threshold: '150%'
           fail-on-alert: false
+
+  security-audit:
+    name: Security Audit (cargo audit)
+    needs: quick-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo-audit binary
+        id: cache-audit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-cargo-audit-${{ env.AUDIT_VERSION }}
+
+      - name: Install cargo-audit
+        if: steps.cache-audit.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --version ${{ env.AUDIT_VERSION }}
+
+      - name: Run cargo audit
+        run: cargo audit
 
   dependency-review:
     name: Dependency Review

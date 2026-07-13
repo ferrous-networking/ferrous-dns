@@ -1,0 +1,24 @@
+# cargo-audit policy for ferrous-dns.
+#
+# Advisories listed here are triaged as not-applicable to this project and are
+# suppressed so `cargo audit` (and the CI security-audit job) stays green on
+# real, actionable findings. Each entry documents why it does not apply.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 — Marvin Attack timing sidechannel in `rsa`.
+    # `rsa` is pulled in ONLY as an OPTIONAL dependency of `sqlx-mysql`. This
+    # project uses sqlx with `default-features = false` and the `sqlite` driver
+    # only (see workspace Cargo.toml); the MySQL driver is never enabled, so
+    # `rsa` is never compiled or linked into the binary. Cargo.lock still lists
+    # it because it records optional deps regardless of feature activation.
+    # No fixed upgrade of `rsa` is available upstream. Not applicable here.
+    "RUSTSEC-2023-0071",
+
+    # RUSTSEC-2024-0436 — `paste` is unmaintained (informational, no CVE).
+    # `paste` is a compile-time-only proc-macro pulled transitively by
+    # `utoipa-axum` (already on its latest release, 0.2.0, which still depends
+    # on it). It emits no runtime code of its own and has no attack surface at
+    # execution time. Nothing to upgrade until utoipa-axum drops it upstream.
+    "RUSTSEC-2024-0436",
+]

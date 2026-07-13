@@ -1,6 +1,7 @@
 use ferrous_dns_application::ports::{TlsCertificateInfo, TlsCertificatePort};
 use ferrous_dns_domain::DomainError;
-use std::io::BufReader;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::path::Path;
 use tracing::warn;
 
@@ -149,8 +150,7 @@ fn parse_cert_info(cert_path: &str) -> (Option<String>, Option<String>, bool) {
 }
 
 fn validate_pem_cert(data: &[u8]) -> Result<(), DomainError> {
-    let mut reader = BufReader::new(data);
-    let certs: Vec<_> = rustls_pemfile::certs(&mut reader)
+    let certs: Vec<_> = CertificateDer::pem_slice_iter(data)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| DomainError::InvalidInput(format!("Invalid certificate PEM: {e}")))?;
     if certs.is_empty() {
@@ -162,10 +162,8 @@ fn validate_pem_cert(data: &[u8]) -> Result<(), DomainError> {
 }
 
 fn validate_pem_key(data: &[u8]) -> Result<(), DomainError> {
-    let mut reader = BufReader::new(data);
-    rustls_pemfile::private_key(&mut reader)
-        .map_err(|e| DomainError::InvalidInput(format!("Invalid key PEM: {e}")))?
-        .ok_or_else(|| DomainError::InvalidInput("No private key found in PEM data".into()))?;
+    PrivateKeyDer::from_pem_slice(data)
+        .map_err(|e| DomainError::InvalidInput(format!("Invalid key PEM: {e}")))?;
     Ok(())
 }
 

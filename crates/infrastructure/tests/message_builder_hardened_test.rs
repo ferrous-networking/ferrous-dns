@@ -21,7 +21,7 @@ fn udp() -> DnsProtocol {
 }
 
 fn cookie_of(msg: &Message) -> Option<Vec<u8>> {
-    msg.extensions().as_ref().and_then(|edns| {
+    msg.edns.as_ref().and_then(|edns| {
         edns.options()
             .as_ref()
             .iter()
@@ -33,7 +33,7 @@ fn cookie_of(msg: &Message) -> Option<Vec<u8>> {
 }
 
 fn labels(msg: &Message) -> Vec<Vec<u8>> {
-    msg.queries()[0].name().iter().map(|l| l.to_vec()).collect()
+    msg.queries[0].name().iter().map(|l| l.to_vec()).collect()
 }
 
 fn has_upper(labels: &[Vec<u8>]) -> bool {
@@ -47,7 +47,7 @@ fn build_response(id: u16, name: &Name, qtype: HRecordType, cookie: Option<&[u8]
     query.set_query_class(DNSClass::IN);
 
     let mut msg = Message::new(id, MessageType::Response, OpCode::Query);
-    msg.set_response_code(ResponseCode::NoError);
+    msg.metadata.response_code = ResponseCode::NoError;
     msg.add_query(query);
     if let Some(c) = cookie {
         let mut edns = Edns::new();
@@ -145,8 +145,8 @@ fn returned_validator_accepts_faithful_echo_and_rejects_tampered_cookie() {
         MessageBuilder::build_query_hardened("example.org", &RecordType::A, false, hardened())
             .unwrap();
     let query = Message::from_vec(&bytes).unwrap();
-    let id = query.id();
-    let name = query.queries()[0].name().clone();
+    let id = query.id;
+    let name = query.queries[0].name().clone();
     let cookie = cookie_of(&query).unwrap();
 
     let faithful = build_response(id, &name, HRecordType::A, Some(&cookie));

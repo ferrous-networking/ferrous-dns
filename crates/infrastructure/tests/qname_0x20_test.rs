@@ -56,7 +56,7 @@ fn name_from_labels_preserves_case_through_roundtrip() {
     }
 
     let parsed = Message::from_vec(&buf).unwrap();
-    let parsed_labels = labels(parsed.queries()[0].name());
+    let parsed_labels = labels(parsed.queries[0].name());
 
     assert_eq!(
         labels(&original),
@@ -97,7 +97,7 @@ fn mixed_case_qname_survives_wire_roundtrip() {
     }
 
     let parsed = Message::from_vec(&buf).unwrap();
-    let parsed_labels = labels(parsed.queries()[0].name());
+    let parsed_labels = labels(parsed.queries[0].name());
 
     assert_eq!(
         original_labels, parsed_labels,

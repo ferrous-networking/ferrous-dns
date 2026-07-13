@@ -24,6 +24,6 @@ prometheus-client = "0.25"
 [dev-dependencies]
 ferrous-dns-infrastructure.workspace = true
 async-trait.workspace = true
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
+sqlx.workspace = true
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

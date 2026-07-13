@@ -52,19 +52,18 @@ impl ResponseValidator {
     pub fn validate(&self, resp: &DnsResponse, protocol: &DnsProtocol) -> Result<(), DomainError> {
         let msg = &resp.message;
 
-        if msg.id() != self.id {
+        if msg.id != self.id {
             return Err(self.spoof(
                 protocol,
                 format!(
                     "transaction ID mismatch: expected {:#06x}, got {:#06x}",
-                    self.id,
-                    msg.id()
+                    self.id, msg.id
                 ),
             ));
         }
 
         let query = msg
-            .queries()
+            .queries
             .first()
             .ok_or_else(|| self.spoof(protocol, "response has no question section".to_string()))?;
 
@@ -127,7 +126,7 @@ impl ResponseValidator {
         expected: &[u8; CLIENT_COOKIE_LEN],
     ) -> Result<(), DomainError> {
         let echoed = msg
-            .extensions()
+            .edns
             .as_ref()
             .and_then(|edns| extract_cookie(edns.options().as_ref().iter()));
 

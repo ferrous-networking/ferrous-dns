@@ -49,7 +49,7 @@ impl Dns64Resolver {
             .upstream_wire_data
             .as_ref()
             .and_then(|bytes| Message::from_vec(bytes).ok())
-            .map(|msg| msg.response_code() == ResponseCode::NoError)
+            .map(|msg| msg.response_code == ResponseCode::NoError)
             .unwrap_or(false);
         if !is_nodata {
             return Ok(res);
@@ -166,9 +166,9 @@ fn ptr_targets_from_wire(wire: Option<&[u8]>) -> Vec<Name> {
     let Ok(msg) = Message::from_vec(bytes) else {
         return Vec::new();
     };
-    msg.answers()
+    msg.answers
         .iter()
-        .filter_map(|record| match record.data() {
+        .filter_map(|record| match &record.data {
             RData::PTR(ptr) => Some(ptr.0.clone()),
             _ => None,
         })
@@ -181,8 +181,8 @@ fn build_ptr_response(owner_name: &str, targets: &[Name], ttl: u32) -> Option<Dn
     let owner = Name::from_str(owner_name).ok()?;
 
     let mut message = Message::new(0, MessageType::Response, OpCode::Query);
-    message.set_response_code(ResponseCode::NoError);
-    message.set_authoritative(true);
+    message.metadata.response_code = ResponseCode::NoError;
+    message.metadata.authoritative = true;
     for target in targets {
         message.add_answer(Record::from_rdata(
             owner.clone(),

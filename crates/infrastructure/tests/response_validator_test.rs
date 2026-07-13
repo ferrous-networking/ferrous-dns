@@ -41,7 +41,7 @@ fn response(id: u16, labels: &[&[u8]], qtype: RecordType, cookie: Option<&[u8]>)
     query.set_query_class(DNSClass::IN);
 
     let mut msg = Message::new(id, MessageType::Response, OpCode::Query);
-    msg.set_response_code(ResponseCode::NoError);
+    msg.metadata.response_code = ResponseCode::NoError;
     msg.add_query(query);
     if let Some(c) = cookie {
         let mut edns = Edns::new();

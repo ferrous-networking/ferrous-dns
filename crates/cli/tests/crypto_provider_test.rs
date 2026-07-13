@@ -7,9 +7,8 @@
 
 use ferrous_dns_application::ports::TlsCertificatePort;
 use ferrous_dns_infrastructure::tls::TlsCertificateService;
-use rustls_pemfile::{certs, private_key};
-use std::fs::File;
-use std::io::BufReader;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
 #[tokio::test]
 async fn server_config_builds_after_installing_crypto_provider() {
@@ -24,12 +23,11 @@ async fn server_config_builds_after_installing_crypto_provider() {
         .await
         .unwrap();
 
-    let cert_file = File::open(&cert_path).unwrap();
-    let cert_chain = certs(&mut BufReader::new(cert_file))
+    let cert_chain = CertificateDer::pem_file_iter(&cert_path)
+        .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    let key_file = File::open(&key_path).unwrap();
-    let key = private_key(&mut BufReader::new(key_file)).unwrap().unwrap();
+    let key = PrivateKeyDer::from_pem_file(&key_path).unwrap();
 
     let result = rustls::ServerConfig::builder()
         .with_no_client_auth()

@@ -136,8 +136,8 @@ fn build_ptr_resolution(query: &DnsQuery, hostname: &str, ttl: u32) -> Option<Dn
     let record = hickory_proto::rr::Record::from_rdata(query_name, ttl, RData::PTR(PTR(ptr_name)));
 
     let mut message = Message::new(0, MessageType::Response, OpCode::Query);
-    message.set_response_code(ResponseCode::NoError);
-    message.set_authoritative(true);
+    message.metadata.response_code = ResponseCode::NoError;
+    message.metadata.authoritative = true;
     message.add_answer(record);
 
     let mut buf = Vec::with_capacity(128);

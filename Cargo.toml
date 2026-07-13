@@ -49,8 +49,8 @@ anyhow = "1.0.102"
 clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"], default-features = false }
 chrono = "0.4.44"
-hickory-server = "0.26.0-alpha.1"
-hickory-proto = { version = "0.26.0-alpha.1", features = ["dnssec-ring"] }
+hickory-server = "=0.26.1"
+hickory-proto = { version = "=0.26.1", features = ["dnssec-ring"] }
 toml = "0.9.8"
 toml_edit = "0.24.0"
 dashmap = "6.1"
@@ -69,7 +69,6 @@ data-encoding = "2.10"
 
 # Transport layer
 rustls = "0.23.37"
-rustls-pemfile = "2"
 tokio-rustls = "0.26"
 webpki-roots = "1.0"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }

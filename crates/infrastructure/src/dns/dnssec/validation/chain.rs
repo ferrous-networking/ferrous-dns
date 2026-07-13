@@ -487,7 +487,7 @@ impl ChainVerifier {
                 let mut raw_records = Vec::new();
 
                 for record in &upstream_result.response.raw_answers {
-                    match record.data() {
+                    match &record.data {
                         RData::DNSSEC(DNSSECRData::DS(ds)) => {
                             // The DS RRSIG covers the *complete* DS RRset as
                             // published, so every DS record (SHA-1 included) is
@@ -601,7 +601,7 @@ impl ChainVerifier {
                 let mut raw_records = Vec::new();
 
                 for record in &upstream_result.response.raw_answers {
-                    match record.data() {
+                    match &record.data {
                         RData::DNSSEC(DNSSECRData::DNSKEY(dnskey)) => {
                             let pk = dnskey.public_key();
                             keys.push(DnskeyRecord {
