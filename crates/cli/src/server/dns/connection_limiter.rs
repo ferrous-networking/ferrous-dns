@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// Uses an RAII guard: when a connection is accepted, `try_acquire()` returns
 /// a `ConnectionGuard` that decrements the count on drop.
 #[derive(Clone)]
-pub(crate) struct ConnectionLimiter {
+pub struct ConnectionLimiter {
     counts: Arc<DashMap<IpAddr, AtomicU32, FxBuildHasher>>,
     max_per_ip: u32,
 }
@@ -17,7 +17,7 @@ pub(crate) struct ConnectionLimiter {
 /// RAII guard that decrements the connection count when the connection closes.
 ///
 /// When `limited` is `false` (unlimited mode), the guard is a no-op on drop.
-pub(crate) struct ConnectionGuard {
+pub struct ConnectionGuard {
     counts: Arc<DashMap<IpAddr, AtomicU32, FxBuildHasher>>,
     ip: IpAddr,
     limited: bool,
@@ -25,7 +25,7 @@ pub(crate) struct ConnectionGuard {
 
 impl ConnectionLimiter {
     /// Creates a new limiter. `max_per_ip = 0` means unlimited.
-    pub(crate) fn new(max_per_ip: u32) -> Self {
+    pub fn new(max_per_ip: u32) -> Self {
         Self {
             counts: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             max_per_ip,
@@ -34,7 +34,7 @@ impl ConnectionLimiter {
 
     /// Tries to acquire a connection slot for `ip`.
     /// Returns `Some(guard)` if within limit, `None` if the limit is exceeded.
-    pub(crate) fn try_acquire(&self, ip: IpAddr) -> Option<ConnectionGuard> {
+    pub fn try_acquire(&self, ip: IpAddr) -> Option<ConnectionGuard> {
         if self.max_per_ip == 0 {
             return Some(ConnectionGuard {
                 counts: Arc::clone(&self.counts),

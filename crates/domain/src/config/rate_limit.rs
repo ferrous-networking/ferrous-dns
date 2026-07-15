@@ -54,6 +54,10 @@ pub struct RateLimitConfig {
     /// Maximum concurrent DNS-over-TLS connections per IP address.
     #[serde(default = "default_dot_max")]
     pub dot_max_connections_per_ip: u32,
+
+    /// Maximum concurrent DNS-over-QUIC connections per IP address.
+    #[serde(default = "default_doq_max")]
+    pub doq_max_connections_per_ip: u32,
 }
 
 impl Default for RateLimitConfig {
@@ -71,6 +75,7 @@ impl Default for RateLimitConfig {
             stale_entry_ttl_secs: default_stale_ttl(),
             tcp_max_connections_per_ip: default_tcp_max(),
             dot_max_connections_per_ip: default_dot_max(),
+            doq_max_connections_per_ip: default_doq_max(),
         }
     }
 }
@@ -107,6 +112,10 @@ fn default_dot_max() -> u32 {
     15
 }
 
+fn default_doq_max() -> u32 {
+    15
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,6 +135,7 @@ mod tests {
         assert_eq!(config.stale_entry_ttl_secs, 300);
         assert_eq!(config.tcp_max_connections_per_ip, 30);
         assert_eq!(config.dot_max_connections_per_ip, 15);
+        assert_eq!(config.doq_max_connections_per_ip, 15);
     }
 
     #[test]
@@ -166,6 +176,7 @@ mod tests {
             stale_entry_ttl_secs = 300
             tcp_max_connections_per_ip = 30
             dot_max_connections_per_ip = 15
+            doq_max_connections_per_ip = 15
         "#;
         let config: RateLimitConfig = toml::from_str(toml).unwrap();
         assert!(config.enabled);
@@ -173,6 +184,7 @@ mod tests {
         assert_eq!(config.burst_size, 500);
         assert_eq!(config.whitelist.len(), 2);
         assert_eq!(config.slip_ratio, 2);
+        assert_eq!(config.doq_max_connections_per_ip, 15);
     }
 
     #[test]
@@ -190,6 +202,7 @@ mod tests {
             stale_entry_ttl_secs: 120,
             tcp_max_connections_per_ip: 8,
             dot_max_connections_per_ip: 4,
+            doq_max_connections_per_ip: 4,
         };
         let toml_str = toml::to_string(&original).unwrap();
         let restored: RateLimitConfig = toml::from_str(&toml_str).unwrap();
@@ -210,6 +223,10 @@ mod tests {
         assert_eq!(
             restored.dot_max_connections_per_ip,
             original.dot_max_connections_per_ip
+        );
+        assert_eq!(
+            restored.doq_max_connections_per_ip,
+            original.doq_max_connections_per_ip
         );
     }
 }

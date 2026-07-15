@@ -28,7 +28,7 @@
                         ipv4_prefix_len: 24, ipv6_prefix_len: 48, whitelist: [],
                         nxdomain_per_second: 50, slip_ratio: 0, dry_run: false,
                         stale_entry_ttl_secs: 300, tcp_max_connections_per_ip: 30,
-                        dot_max_connections_per_ip: 15
+                        dot_max_connections_per_ip: 15, doq_max_connections_per_ip: 15
                     }
                 }
             },

@@ -38,6 +38,7 @@ dry_run                    = false      # true = log only
 stale_entry_ttl_secs       = 300        # idle bucket eviction
 tcp_max_connections_per_ip = 30         # TCP connection limit
 dot_max_connections_per_ip = 15         # DoT connection limit
+doq_max_connections_per_ip = 15         # DoQ connection limit
 ```
 
 ---
@@ -88,6 +89,7 @@ Subnet 10.0.0.0/24:
 |:-------|:-----|:--------|:------------|
 | `tcp_max_connections_per_ip` | `u32` | `30` | Max concurrent TCP DNS connections per IP address. `0` = unlimited |
 | `dot_max_connections_per_ip` | `u32` | `15` | Max concurrent DoT connections per IP address. `0` = unlimited |
+| `doq_max_connections_per_ip` | `u32` | `15` | Max concurrent DoQ connections per IP address. `0` = unlimited |
 
 ---
 

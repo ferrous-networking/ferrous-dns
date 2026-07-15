@@ -144,7 +144,7 @@ proxy_protocol_enabled = true
 
 ## Encrypted DNS {#encrypted-dns}
 
-Ferrous DNS can serve **DNS-over-TLS (DoT)** and **DNS-over-HTTPS (DoH)** directly to clients. Both require a TLS certificate and private key in PEM format.
+Ferrous DNS can serve **DNS-over-TLS (DoT)**, **DNS-over-HTTPS (DoH)**, and **DNS-over-QUIC (DoQ)** directly to clients. All three require a TLS certificate and private key in PEM format.
 
 ```toml
 [server.encrypted_dns]
@@ -152,6 +152,8 @@ dot_enabled   = true
 dot_port      = 853
 doh_enabled   = true
 doh_port      = 443        # omit to co-host DoH on web_port
+doq_enabled   = true
+doq_port      = 853        # UDP port; no collision with dot_port (TCP)
 tls_cert_path = "/data/cert.pem"
 tls_key_path  = "/data/key.pem"
 ```
@@ -162,6 +164,8 @@ tls_key_path  = "/data/key.pem"
 | `dot_port` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
 | `doh_enabled` | `false` | Enable DoH endpoint (`/dns-query`) |
 | `doh_port` | — | Dedicated HTTPS port for DoH; omit to co-host on `web_port` |
+| `doq_enabled` | `false` | Enable DoQ listener |
+| `doq_port` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `tls_cert_path` | `/data/cert.pem` | Path to TLS certificate (PEM) |
 | `tls_key_path` | `/data/key.pem` | Path to TLS private key (PEM) |
 

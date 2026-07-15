@@ -27,7 +27,7 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 |:--------|:--------|:-------|
 | [`[server]`](#server) | Ports, bind address, Pi-hole compat, PROXY Protocol | [Server config](server.md) |
 | [`[server.web_tls]`](#web-tls) | HTTPS for the web dashboard and REST API | [Server config](server.md#web-tls) |
-| [`[server.encrypted_dns]`](#encrypted-dns) | DoT and DoH server-side listeners | [Encrypted DNS](../features/encrypted-dns.md) |
+| [`[server.encrypted_dns]`](#encrypted-dns) | DoT, DoH, and DoQ server-side listeners | [Encrypted DNS](../features/encrypted-dns.md) |
 | [`[auth]`](#auth) | Session authentication for dashboard and API | [Security](../features/security.md) |
 | [`[auth.admin]`](#auth-admin) | Admin username and password hash | [Security](../features/security.md) |
 | [`[dns]`](#dns) | Upstream fallback, timeouts, DNSSEC, privacy controls | [DNS & Upstreams](dns.md) |
@@ -103,7 +103,7 @@ tls_key_path  = "/data/key.pem"
 
 ## `[server.encrypted_dns]` {#encrypted-dns}
 
-Enables DNS-over-TLS (DoT) and DNS-over-HTTPS (DoH) server-side listeners. This section is commented out by default. If the cert or key files are missing at startup, the affected listeners are skipped with a warning; plain DNS continues normally.
+Enables DNS-over-TLS (DoT), DNS-over-HTTPS (DoH), and DNS-over-QUIC (DoQ) server-side listeners. This section is commented out by default. If the cert or key files are missing at startup, the affected listeners are skipped with a warning; plain DNS continues normally.
 
 ```toml title="ferrous-dns.toml"
 [server.encrypted_dns]
@@ -111,6 +111,8 @@ dot_enabled   = false
 dot_port      = 853
 doh_enabled   = false
 # doh_port    = 443           # omit to co-host DoH on web_port
+doq_enabled   = false
+doq_port      = 853           # UDP port; no collision with dot_port (TCP)
 tls_cert_path = "/data/cert.pem"
 tls_key_path  = "/data/key.pem"
 ```
@@ -121,6 +123,8 @@ tls_key_path  = "/data/key.pem"
 | `dot_port` | `int` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
 | `doh_enabled` | `bool` | `false` | Enable the `/dns-query` DoH endpoint |
 | `doh_port` | `int` | — | Dedicated HTTPS port for DoH; omit to co-host on `web_port` |
+| `doq_enabled` | `bool` | `false` | Enable the DNS-over-QUIC listener |
+| `doq_port` | `int` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
 | `tls_cert_path` | `str` | `"/data/cert.pem"` | Path to the PEM-encoded TLS certificate |
 | `tls_key_path` | `str` | `"/data/key.pem"` | Path to the PEM-encoded TLS private key |
 
@@ -369,6 +373,7 @@ slip_ratio                 = 2
 dry_run                    = false
 tcp_max_connections_per_ip = 30
 dot_max_connections_per_ip = 15
+doq_max_connections_per_ip = 15
 stale_entry_ttl_secs       = 300
 ```
 
@@ -385,6 +390,7 @@ stale_entry_ttl_secs       = 300
 | `dry_run` | `bool` | `false` | Log rate limit events without enforcing them |
 | `tcp_max_connections_per_ip` | `int` | `30` | Maximum concurrent TCP DNS connections per client IP |
 | `dot_max_connections_per_ip` | `int` | `15` | Maximum concurrent DoT connections per client IP |
+| `doq_max_connections_per_ip` | `int` | `15` | Maximum concurrent DoQ connections per client IP |
 | `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a token bucket entry is evicted |
 
 See [Rate Limiting](rate-limiting.md).

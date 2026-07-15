@@ -3,6 +3,8 @@ pub mod doh;
 pub mod web;
 mod web_tls;
 
+pub use dns::connection_limiter::ConnectionLimiter;
+pub use dns::doq::{bind_doq_endpoint, serve_doq, start_doq_server};
 pub use dns::dot::start_dot_server;
 pub use dns::start_dns_server;
 pub use dns::start_mdns_listener;

@@ -1,4 +1,5 @@
-pub(crate) mod connection_limiter;
+pub mod connection_limiter;
+pub mod doq;
 pub mod dot;
 mod mdns;
 mod pktinfo;

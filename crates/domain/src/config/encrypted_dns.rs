@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-/// Configuration for DoT and DoH server-side listeners.
+/// Configuration for DoT, DoH, and DoQ server-side listeners.
 ///
-/// Both protocols are disabled by default. Enabling either requires a valid TLS
+/// All three protocols are disabled by default. Enabling any requires a valid TLS
 /// certificate and private key in PEM format. Default paths point to `/data/`,
 /// the standard Docker volume mount for Ferrous DNS containers.
 ///
@@ -31,11 +31,20 @@ pub struct EncryptedDnsConfig {
     #[serde(default)]
     pub doh_port: Option<u16>,
 
-    /// Path to the PEM certificate file shared by DoT and DoH.
+    /// Enable the DNS-over-QUIC listener (RFC 9250) on `doq_port`.
+    #[serde(default)]
+    pub doq_enabled: bool,
+
+    /// UDP port for DNS-over-QUIC. Standard port is 853 (shared numeral with
+    /// `dot_port`; no collision since DoQ is UDP-based and DoT is TCP-based).
+    #[serde(default = "default_dot_port")]
+    pub doq_port: u16,
+
+    /// Path to the PEM certificate file shared by DoT, DoH, and DoQ.
     #[serde(default = "default_cert_path")]
     pub tls_cert_path: String,
 
-    /// Path to the PEM private key file shared by DoT and DoH.
+    /// Path to the PEM private key file shared by DoT, DoH, and DoQ.
     #[serde(default = "default_key_path")]
     pub tls_key_path: String,
 }
@@ -59,6 +68,8 @@ impl Default for EncryptedDnsConfig {
             dot_port: default_dot_port(),
             doh_enabled: false,
             doh_port: None,
+            doq_enabled: false,
+            doq_port: default_dot_port(),
             tls_cert_path: default_cert_path(),
             tls_key_path: default_key_path(),
         }

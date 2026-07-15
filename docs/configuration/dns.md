@@ -220,6 +220,7 @@ dry_run                    = false
 stale_entry_ttl_secs       = 300
 tcp_max_connections_per_ip = 30
 dot_max_connections_per_ip = 15
+doq_max_connections_per_ip = 15
 ```
 
 | Option | Default | Description |
@@ -236,6 +237,7 @@ dot_max_connections_per_ip = 15
 | `stale_entry_ttl_secs` | `300` | Seconds before an idle subnet bucket is evicted from memory |
 | `tcp_max_connections_per_ip` | `30` | Max concurrent TCP DNS connections per IP. 0 = unlimited |
 | `dot_max_connections_per_ip` | `15` | Max concurrent DoT connections per IP. 0 = unlimited |
+| `doq_max_connections_per_ip` | `15` | Max concurrent DoQ connections per IP. 0 = unlimited |
 
 !!! tip "Tuning for your network"
     For a typical household (~100 devices), the defaults work well. The `whitelist` should include your local networks to avoid rate-limiting internal traffic. Use `dry_run = true` to validate thresholds before enforcing.
