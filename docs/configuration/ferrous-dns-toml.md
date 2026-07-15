@@ -162,7 +162,7 @@ password_hash = ""
 | `password_hash` | `str` | `""` | Argon2id hash; empty string triggers the setup wizard on first run |
 
 !!! tip "Setting the password"
-    Set the admin password via the web setup wizard on first run, or reset it at any time with the `--reset-password` CLI flag. The Argon2id hash is written back to the config file automatically.
+    Set the admin password via the web setup wizard on first run — the Argon2id hash is written back to the config file automatically. To reset a forgotten password, clear this field (`password_hash = ""`) and restart; the setup wizard runs again on next access.
 
 See [Security](../features/security.md).
 

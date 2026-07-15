@@ -37,7 +37,7 @@ login_rate_limit_window_secs = 900      # Lockout window (15 min)
 
 [auth.admin]
 username = "admin"                      # Admin username
-password_hash = ""                      # Argon2id hash (set via setup wizard or CLI)
+password_hash = ""                      # Argon2id hash (set via setup wizard; empty triggers it)
 ```
 
 | Option | Type | Default | Description |

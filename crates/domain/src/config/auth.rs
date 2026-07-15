@@ -41,8 +41,8 @@ pub struct AdminConfig {
     #[serde(default = "default_admin_username")]
     pub username: String,
 
-    /// Argon2id password hash. Set via `--reset-password` CLI or setup endpoint.
-    /// When empty/None, first-run setup is triggered.
+    /// Argon2id password hash. Set via the setup endpoint (first-run wizard).
+    /// When empty/None, first-run setup is triggered; clear it to reset a lost password.
     pub password_hash: Option<String>,
 }
 

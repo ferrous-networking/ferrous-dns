@@ -265,7 +265,7 @@ login_rate_limit_window_secs = 900      # Lockout window in seconds (900 = 15 mi
 
 [auth.admin]
 username = "admin"                      # Admin username (TOML admin — always recoverable via file edit)
-password_hash = "$argon2id$v=19$m=19456,t=2,p=1$9pNep2fexSNQtaie80I/Mg$T9qgw7GKOCSUUZdfUNaMLVV13yftftRGoeFmFGFKa8I"                      # Argon2id hash — set via setup wizard or --reset-password CLI
+password_hash = ""                      # Argon2id hash — empty triggers the first-run setup wizard; set via the wizard
 
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
