@@ -42,7 +42,7 @@ bind_address = "0.0.0.0"
 
 [dns]
 query_timeout    = 5
-dnssec_enabled   = false          # disable for ~20% lower cache-miss latency on ARM
+dnssec_mode      = "Off"          # disable for ~20% lower cache-miss latency on ARM
 block_private_ptr = true
 block_non_fqdn   = true
 local_domain     = "lan"
@@ -168,7 +168,7 @@ password_hash = ""                       # ← set via setup wizard on first run
 
 [dns]
 query_timeout     = 3
-dnssec_enabled    = true
+dnssec_mode       = "Permissive"
 block_private_ptr = true
 block_non_fqdn    = true
 local_domain      = "lan"
@@ -301,7 +301,7 @@ password_hash = ""                        # ← set via setup wizard on first ru
 
 [dns]
 query_timeout     = 2             # tighter timeout — upstreams must be fast
-dnssec_enabled    = true
+dnssec_mode       = "Permissive"
 block_private_ptr = true
 block_non_fqdn    = true
 local_domain      = "corp"
@@ -467,7 +467,7 @@ password_hash = ""                          # Argon2id hash (set via setup wizar
 upstream_servers = []                       # Fallback upstreams when no pool matches
 query_timeout    = 3                        # Seconds to wait for upstream response
 default_strategy = "Parallel"              # "Parallel" or "Sequential"
-dnssec_enabled   = true                    # Validate DNSSEC signatures
+dnssec_mode      = "Permissive"            # Validate DNSSEC signatures
 block_private_ptr = true                   # Block PTR lookups for RFC-1918 ranges
 block_non_fqdn   = true                    # Block non-FQDN queries
 mdns_enabled     = false                   # Passive mDNS/Bonjour listener (UDP 5353, needs host networking in Docker)

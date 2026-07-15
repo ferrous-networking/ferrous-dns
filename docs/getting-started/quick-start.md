@@ -114,7 +114,7 @@ web_port = 8080
 bind_address = "0.0.0.0"
 
 [dns]
-dnssec_enabled = true
+dnssec_mode = "Permissive"
 local_domain = "lan"
 local_dns_server = "192.168.1.1:53"  # your router
 

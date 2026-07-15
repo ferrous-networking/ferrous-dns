@@ -291,7 +291,7 @@ Fast encrypted DNS with a plain UDP safety net:
 ```toml
 [dns]
 query_timeout    = 3
-dnssec_enabled   = true
+dnssec_mode      = "Permissive"
 default_strategy = "Parallel"
 
 [[dns.pools]]
@@ -327,7 +327,7 @@ Balanced load across multiple providers with automatic failover:
 ```toml
 [dns]
 query_timeout    = 2
-dnssec_enabled   = true
+dnssec_mode      = "Permissive"
 default_strategy = "Balanced"
 
 [[dns.pools]]
