@@ -66,6 +66,8 @@ default_strategy = "Parallel"           # Resolution strategy: "Parallel" (faste
 dnssec_mode = "Permissive"              # DNSSEC enforcement: "Off" (no validation), "Permissive" (validate + tag, no SERVFAIL), "Strict" (SERVFAIL on Bogus). Default: Permissive
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
+rebinding_protection_enabled = true     # Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding)
+# rebinding_allowlist = []              # Domains exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
 mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
@@ -269,7 +271,7 @@ login_rate_limit_window_secs = 900      # Lockout window in seconds (900 = 15 mi
 
 [auth.admin]
 username = "admin"                      # Admin username (TOML admin — always recoverable via file edit)
-password_hash = "$argon2id$v=19$m=19456,t=2,p=1$9pNep2fexSNQtaie80I/Mg$T9qgw7GKOCSUUZdfUNaMLVV13yftftRGoeFmFGFKa8I"                      # Argon2id hash — set via setup wizard or --reset-password CLI
+password_hash = ""                      # Argon2id hash — empty triggers the first-run setup wizard; set via the wizard
 
 
 # ── Blocking ──────────────────────────────────────────────────────────────────
@@ -397,6 +399,6 @@ sqlite_mmap_size_mb = 64
 # support RFC 7873 (dig, modern resolvers). Default is permissive.
 [dns_cookies]
 # enabled = true                                                                   # default: true
-server_secret = "b552a5c0a9e055c9d220da606301419406f6aabf8f750d54ee6374f74eb6688f" # replace with: openssl rand -hex 32
+server_secret = ""                                                                 # empty = ephemeral secret (regenerated each restart); set a unique 64-char hex via: openssl rand -hex 32
 # secret_rotation_secs = 3600                                                      # default: 3600
 # require_valid_cookie = false                                                      # default: false (permissive)
