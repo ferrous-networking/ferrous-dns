@@ -32,6 +32,7 @@ local_dns_server = "10.0.0.1:53"
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
 | `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
+| `qname_case_randomization` | `false` | Randomize QNAME letter case on upstream A/AAAA queries (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off by default because some upstreams/forwarders normalize case and would fail validation. DNS Cookies on A/AAAA queries are always on regardless of this flag |
 
 ---
 

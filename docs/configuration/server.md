@@ -11,6 +11,7 @@ The `[server]` section controls ports, bind address, API authentication, and enc
 dns_port = 53
 web_port = 8080
 bind_address = "0.0.0.0"
+metrics_enabled = false
 ```
 
 | Option | Default | Description |
@@ -18,6 +19,7 @@ bind_address = "0.0.0.0"
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
 | `bind_address` | `0.0.0.0` | Network interface to bind to. Use a specific IP to restrict access |
+| `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
 
 ---
 

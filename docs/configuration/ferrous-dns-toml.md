@@ -40,7 +40,9 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 | [`[dns.nxdomain_hijack]`](#nxdomain-hijack) | ISP NXDOMAIN hijack detection and reversal | [Malware Detection](../features/malware-detection.md#nxdomain-hijack-detection) |
 | [`[dns.response_ip_filter]`](#response-ip-filter) | Block responses resolving to known C2 IPs | [Malware Detection](../features/malware-detection.md#response-ip-filtering) |
 | [`[[dns.local_records]]`](#local-records) | Static A/AAAA records with auto-PTR | [DNS & Upstreams](dns.md#local-records) |
+| [`[dns_cookies]`](#dns-cookies) | DNS Cookies anti-spoofing (RFC 7873) | [Security](../features/security.md) |
 | [`[blocking]`](#blocking) | Ad and malware blocking via blocklists | [Blocking & Filtering](../features/blocking-filtering.md) |
+| [`[dns64]`](#dns64) | NAT64 AAAA synthesis for IPv6-only clients (RFC 6147) | [DNS64](../features/dns64.md) |
 | [`[logging]`](#logging) | Log level | — |
 | [`[database]`](#database) | SQLite persistence, query log pipeline, connection pools | [Database configuration](database.md) |
 
@@ -57,6 +59,7 @@ web_port                 = 8080
 bind_address             = "0.0.0.0"
 pihole_compat            = false
 proxy_protocol_enabled   = false
+metrics_enabled          = false
 ```
 
 | Option | Type | Default | Description |
@@ -66,6 +69,8 @@ proxy_protocol_enabled   = false
 | `bind_address` | `str` | `"0.0.0.0"` | Network interface to bind to; `0.0.0.0` listens on all interfaces |
 | `pihole_compat` | `bool` | `false` | Expose Pi-hole v6 compatible API at `/api/*`; Ferrous DNS native API moves to `/ferrous/api/*` |
 | `proxy_protocol_enabled` | `bool` | `false` | Enable PROXY Protocol v2 on TCP DNS and DoT listeners |
+| `metrics_enabled` | `bool` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port |
+| `cors_allowed_origins` | `list` | _(dashboard origin)_ | Browser origins allowed to call the REST API via CORS |
 
 !!! warning "PROXY Protocol"
     Only enable `proxy_protocol_enabled` when a trusted load balancer always sits in front of Ferrous DNS. Without a load balancer, all TCP DNS connections will be rejected because the server expects a PROXY Protocol header on every connection.
@@ -177,12 +182,14 @@ Core DNS resolver options: upstream fallback, timeouts, DNSSEC validation, local
 upstream_servers  = []
 query_timeout     = 3
 default_strategy  = "Parallel"
-dnssec_enabled    = true
+dnssec_mode       = "Permissive"
 block_private_ptr = true
 block_non_fqdn    = true
+rebinding_protection_enabled = true
 local_domain      = "lan"
 local_dns_server  = "10.0.0.1:53"
 mdns_enabled      = false
+qname_case_randomization = false
 ```
 
 | Option | Type | Default | Description |
@@ -190,12 +197,15 @@ mdns_enabled      = false
 | `upstream_servers` | `list` | `[]` | Fallback upstream servers used when no pool matches; supports all URI schemes |
 | `query_timeout` | `int` | `3` | Seconds to wait for an upstream response before trying the next server |
 | `default_strategy` | `str` | `"Parallel"` | Default resolution strategy for `upstream_servers`: `"Parallel"` or `"Sequential"` |
-| `dnssec_enabled` | `bool` | `true` | Validate DNSSEC signatures on upstream responses |
+| `dnssec_mode` | `str` | `"Permissive"` | DNSSEC enforcement: `"Off"` (no validation), `"Permissive"` (validate + tag, no SERVFAIL), `"Strict"` (SERVFAIL on Bogus). The legacy `dnssec_enabled` bool is still accepted (`true` → Permissive, `false` → Off) |
 | `block_private_ptr` | `bool` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
-| `block_non_fqdn` | `bool` | `true` | Block queries for non-fully-qualified domain names |
+| `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
+| `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection) |
+| `rebinding_allowlist` | `list` | `[]` | Domains exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels) |
 | `local_domain` | `str` | `"lan"` | Local domain suffix appended to short hostnames |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups and client hostname resolution |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
+| `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream A/AAAA queries (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
 
 See [DNS & Upstreams](dns.md).
 
@@ -584,6 +594,51 @@ block_ttl      = 60
     `block_mode`, `block_ttl`, `sinkhole_ipv4`, and `sinkhole_ipv6` are applied at startup; changing them needs a server restart. See [Block Response Mode](blocking.md#block-response-mode) for what each mode returns.
 
 See [Blocking & Filtering](../features/blocking-filtering.md).
+
+---
+
+## `[dns64]` {#dns64}
+
+NAT64 AAAA synthesis (RFC 6147). Synthesizes `AAAA` records for IPv4-only domains so IPv6-only clients can reach them through a NAT64 gateway. Requires a NAT64 gateway on the network — without one, IPv6-only clients break. Applied at startup; changes need a restart.
+
+```toml title="ferrous-dns.toml"
+[dns64]
+enabled = false
+prefix  = "64:ff9b::/96"
+```
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `false` | Enable DNS64 AAAA synthesis; only turn on with a NAT64 gateway present |
+| `prefix` | `str` | `"64:ff9b::/96"` | NAT64 prefix; only `/96` is supported (well-known prefix per RFC 6052) |
+
+See [DNS64](../features/dns64.md).
+
+---
+
+## `[dns_cookies]` {#dns-cookies}
+
+DNS Cookies (RFC 7873) anti-spoofing. The server echoes an HMAC-SHA256 server cookie on every response so clients can verify they are talking to the same server, mitigating UDP spoofing and amplification abuse. Enabled by default.
+
+```toml title="ferrous-dns.toml"
+[dns_cookies]
+enabled              = true
+server_secret        = ""
+secret_rotation_secs = 3600
+require_valid_cookie = false
+```
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `enabled` | `bool` | `true` | Enable DNS Cookies on UDP responses |
+| `server_secret` | `str` | `""` (ephemeral) | 64-char hex (32 bytes) secret so cookies survive restarts; generate with `openssl rand -hex 32`. Empty uses an ephemeral secret regenerated on each restart |
+| `secret_rotation_secs` | `int` | `3600` | Seconds between server-secret rotations |
+| `require_valid_cookie` | `bool` | `false` | Strict mode: refuse queries without a valid cookie (REFUSED + EDE 25). Only enable when every client supports RFC 7873 |
+
+!!! warning "Do not commit a shared `server_secret`"
+    Leave `server_secret` empty (ephemeral) or generate a unique value per deployment. A fixed secret baked into an image means every install shares the same cookie key, defeating the anti-spoofing guarantee.
+
+See [Security](../features/security.md).
 
 ---
 
