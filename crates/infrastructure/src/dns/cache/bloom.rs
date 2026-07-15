@@ -11,6 +11,11 @@ pub struct AtomicBloom {
 
 impl AtomicBloom {
     pub fn new(capacity: usize, fp_rate: f64) -> Self {
+        // A zero capacity (e.g. a disabled cache with max_entries = 0) makes
+        // optimal_num_hashes divide by n = 0 → ∞, which saturates to usize::MAX
+        // on the `as usize` cast and turns `set`/`check` into a ~infinite loop.
+        // Clamp to 1 so we still build a tiny, well-formed filter.
+        let capacity = capacity.max(1);
         let num_bits = Self::optimal_num_bits(capacity, fp_rate);
         let num_hashes = Self::optimal_num_hashes(capacity, num_bits);
         let num_words = num_bits.div_ceil(64);
