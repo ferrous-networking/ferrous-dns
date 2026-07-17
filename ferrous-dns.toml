@@ -268,10 +268,16 @@ session_ttl_hours = 24                  # Session lifetime without "Remember Me"
 remember_me_days = 30                   # Session lifetime with "Remember Me" (days)
 login_rate_limit_attempts = 5           # Max failed login attempts before IP lockout
 login_rate_limit_window_secs = 900      # Lockout window in seconds (900 = 15 minutes)
+totp_issuer = "Ferrous DNS"             # Label authenticator apps show next to the TOTP account
+mfa_challenge_ttl_secs = 300            # Seconds a 2FA challenge stays valid (password→TOTP/passkey step)
 
 [auth.admin]
 username = "admin"                      # Admin username (TOML admin — always recoverable via file edit)
 password_hash = ""                      # Argon2id hash — empty triggers the first-run setup wizard; set via the wizard
+
+[auth.webauthn]                         # Passkeys — inert until BOTH fields are set (TOTP works regardless).
+rp_id = ""                              #   Registrable domain, e.g. "dns.example.com" (must match the origin).
+rp_origin = ""                          #   Full HTTPS origin, e.g. "https://dns.example.com" (or http://localhost).
 
 
 # ── Blocking ──────────────────────────────────────────────────────────────────

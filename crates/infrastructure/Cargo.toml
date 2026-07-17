@@ -37,6 +37,20 @@ socket2.workspace = true
 # Auth (password hashing)
 argon2 = { version = "0.5", features = ["std"] }
 
+# Auth (TOTP / 2FA + WebAuthn passkeys)
+totp-rs = { version = "5.7", features = ["gen_secret", "otpauth"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+# `danger-allow-state-serialisation` lets us persist the short-lived ceremony
+# state server-side (in the mfa_challenges row), as WebAuthn requires.
+# `conditional-ui` unlocks the discoverable-credential (usernameless) auth API
+# used for passwordless passkey login.
+webauthn-rs = { version = "0.5", features = [
+    "danger-allow-state-serialisation",
+    "conditional-ui",
+] }
+# v5 (namespaced) UUIDs derive a stable WebAuthn user handle from the username.
+uuid = { version = "1", features = ["v5"] }
+
 # DNSSEC Crypto (FASE 2)
 ring.workspace = true
 sha1.workspace = true

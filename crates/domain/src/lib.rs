@@ -15,8 +15,8 @@ pub use config::{
     DgaDetectionAction, DgaDetectionConfig, Dns64Config, DnsConfig, DnsCookiesConfig, DnssecMode,
     EncryptedDnsConfig, HealthCheckConfig, LocalDnsRecord, NxdomainHijackAction,
     NxdomainHijackConfig, RateLimitConfig, ResponseIpFilterAction, ResponseIpFilterConfig,
-    TunnelingAction, TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy, DEFAULT_BLOCK_TTL,
-    DEFAULT_DNS64_PREFIX,
+    TunnelingAction, TunnelingDetectionConfig, UpstreamPool, UpstreamStrategy, WebauthnConfig,
+    DEFAULT_BLOCK_TTL, DEFAULT_DNS64_PREFIX,
 };
 pub use dns_record::{DnsRecord, RecordCategory, RecordType};
 pub use entities::api_token::ApiToken;
@@ -44,6 +44,7 @@ pub use entities::schedule::{
 };
 pub use entities::service_catalog::ServiceDefinition;
 pub use entities::user::{User, UserRole, UserSource};
+pub use entities::user_mfa::{MfaChallenge, MfaMethod, RecoveryCode, UserMfa, WebauthnCredential};
 pub use entities::whitelist::WhitelistedDomain;
 pub use entities::whitelist_source::WhitelistSource;
 pub use errors::domain_error::DomainError;

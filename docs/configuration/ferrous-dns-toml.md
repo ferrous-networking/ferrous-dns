@@ -30,6 +30,7 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 | [`[server.encrypted_dns]`](#encrypted-dns) | DoT, DoH, and DoQ server-side listeners | [Encrypted DNS](../features/encrypted-dns.md) |
 | [`[auth]`](#auth) | Session authentication for dashboard and API | [Security](../features/security.md) |
 | [`[auth.admin]`](#auth-admin) | Admin username and password hash | [Security](../features/security.md) |
+| [`[auth.webauthn]`](#auth-webauthn) | Passkey / WebAuthn relying-party settings | [Two-Factor Auth](../features/two-factor-auth.md) |
 | [`[dns]`](#dns) | Upstream fallback, timeouts, DNSSEC, privacy controls | [DNS & Upstreams](dns.md) |
 | [`[[dns.pools]]`](#pools) | Named upstream server pools with strategy and priority | [Upstream Management](../features/upstream-management.md) |
 | [`[dns.health_check]`](#health-check) | Probes to detect and evict unhealthy upstreams | [Upstream Management](../features/upstream-management.md) |
@@ -143,6 +144,8 @@ session_ttl_hours            = 24
 remember_me_days             = 30
 login_rate_limit_attempts    = 5
 login_rate_limit_window_secs = 900
+totp_issuer                  = "Ferrous DNS"
+mfa_challenge_ttl_secs       = 300
 ```
 
 | Option | Type | Default | Description |
@@ -152,6 +155,10 @@ login_rate_limit_window_secs = 900
 | `remember_me_days` | `int` | `30` | Extended session lifetime in days with "Remember Me" |
 | `login_rate_limit_attempts` | `int` | `5` | Max failed login attempts before lockout |
 | `login_rate_limit_window_secs` | `int` | `900` | Lockout window duration in seconds (15 min) |
+| `totp_issuer` | `str` | `"Ferrous DNS"` | Issuer label shown by authenticator apps next to the TOTP account |
+| `mfa_challenge_ttl_secs` | `int` | `300` | Lifetime of a pending second-factor / passkey ceremony, in seconds (5 min) |
+
+See [Two-Factor Authentication](../features/two-factor-auth.md) for the TOTP and passkey enrollment flows.
 
 ---
 
@@ -174,6 +181,28 @@ password_hash = ""
     Set the admin password via the web setup wizard on first run — the Argon2id hash is written back to the config file automatically. To reset a forgotten password, clear this field (`password_hash = ""`) and restart; the setup wizard runs again on next access.
 
 See [Security](../features/security.md).
+
+---
+
+## `[auth.webauthn]` {#auth-webauthn}
+
+WebAuthn relying-party settings for passkeys. Passkeys stay **inert until both `rp_id` and `rp_origin` are set** — TOTP works regardless. WebAuthn requires a secure context: `rp_origin` must be HTTPS (or `http://localhost`), and `rp_id` must be a registrable domain the origin belongs to. A server reached by bare IP over plain HTTP cannot use passkeys, and those users rely on TOTP instead.
+
+```toml title="ferrous-dns.toml"
+[auth.webauthn]
+rp_id     = "dns.example.com"
+rp_origin = "https://dns.example.com"
+```
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `rp_id` | `str` | `""` | Relying-party ID — the effective/registrable domain (e.g. `dns.example.com`, or `localhost` for local testing) |
+| `rp_origin` | `str` | `""` | Full relying-party origin URL (e.g. `https://dns.example.com`, or `http://localhost:PORT`); must match how the browser reaches the dashboard |
+
+!!! warning "`rp_origin` must match the browser's address bar"
+    Passkey registration and login fail if the origin the browser uses does not exactly match `rp_origin`. Use the same scheme, host, and port the user types to reach the dashboard.
+
+See [Two-Factor Authentication](../features/two-factor-auth.md).
 
 ---
 

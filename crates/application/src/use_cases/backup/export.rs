@@ -156,6 +156,8 @@ impl ExportConfigUseCase {
                 remember_me_days: config.auth.remember_me_days,
                 login_rate_limit_attempts: config.auth.login_rate_limit_attempts,
                 login_rate_limit_window_secs: config.auth.login_rate_limit_window_secs,
+                webauthn_rp_id: config.auth.webauthn.rp_id.clone(),
+                webauthn_rp_origin: config.auth.webauthn.rp_origin.clone(),
             },
         }
     }

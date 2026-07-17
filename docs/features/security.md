@@ -482,7 +482,6 @@ The following are planned for future releases:
 
 | Feature | Description |
 |:--------|:------------|
-| **TOTP / 2FA** | Time-based one-time passwords for login |
 | **Read-Only Mode** | Disable config changes via a flag |
 
 ---
@@ -505,4 +504,5 @@ The following are planned for future releases:
 | HTTPS dashboard | :white_check_mark: Active |
 | DNS rate limiting | :white_check_mark: Active |
 | TCP/DoT connection limiting | :white_check_mark: Active |
-| TOTP / 2FA | :material-clock-outline: Planned |
+| TOTP / 2FA (authenticator app) | :white_check_mark: Active |
+| Passkeys / WebAuthn (second factor + passwordless) | :white_check_mark: Active |

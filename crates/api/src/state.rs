@@ -3,30 +3,32 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::services::SubnetMatcherService;
 use ferrous_dns_application::use_cases::{
-    AssignClientGroupUseCase, AssignScheduleProfileUseCase, BacktestBlocklistsUseCase,
-    BlockServiceUseCase, ChangePasswordUseCase, CreateApiTokenUseCase,
-    CreateBlocklistSourceUseCase, CreateClientSubnetUseCase, CreateCustomServiceUseCase,
-    CreateGroupUseCase, CreateLocalRecordUseCase, CreateManagedDomainUseCase,
-    CreateManualClientUseCase, CreateRegexFilterUseCase, CreateScheduleProfileUseCase,
-    CreateUserUseCase, CreateWhitelistSourceUseCase, DeleteApiTokenUseCase,
-    DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase, DeleteClientUseCase,
-    DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteLocalRecordUseCase,
-    DeleteManagedDomainUseCase, DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase,
-    DeleteScheduleProfileUseCase, DeleteUserUseCase, DeleteWhitelistSourceUseCase,
+    AssignClientGroupUseCase, AssignScheduleProfileUseCase, AuthenticatePasskeyUseCase,
+    BacktestBlocklistsUseCase, BlockServiceUseCase, ChangePasswordUseCase, ConfirmTotpUseCase,
+    CreateApiTokenUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
+    CreateCustomServiceUseCase, CreateGroupUseCase, CreateLocalRecordUseCase,
+    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
+    CreateScheduleProfileUseCase, CreateUserUseCase, CreateWhitelistSourceUseCase,
+    DeleteApiTokenUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
+    DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteLocalRecordUseCase,
+    DeleteManagedDomainUseCase, DeletePasskeyUseCase, DeleteRegexFilterUseCase,
+    DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase, DeleteUserUseCase,
+    DeleteWhitelistSourceUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase,
     ExportConfigUseCase, GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase,
     GetBlockFilterStatsUseCase, GetBlockedServicesUseCase, GetBlocklistSourcesUseCase,
     GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase,
-    GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryRateUseCase,
-    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetMfaStatusUseCase,
+    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
     GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUsersUseCase,
     GetWhitelistSourcesUseCase, GetWhitelistUseCase, ImportConfigUseCase, LoginUseCase,
-    LogoutUseCase, ManageTimeSlotsUseCase, SetupPasswordUseCase, TestDomainUseCase,
-    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateApiTokenUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
-    UpdateGroupUseCase, UpdateLocalRecordUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
-    ValidateApiTokenUseCase, ValidateSessionUseCase,
+    LogoutUseCase, ManageTimeSlotsUseCase, RegisterPasskeyUseCase, SetupPasswordUseCase,
+    SetupTotpUseCase, TestDomainUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateApiTokenUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
+    UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
+    VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -145,6 +147,17 @@ pub struct AuthUseCases {
     pub create_user: Arc<CreateUserUseCase>,
     pub get_users: Arc<GetUsersUseCase>,
     pub delete_user: Arc<DeleteUserUseCase>,
+    // MFA (TOTP + recovery codes)
+    pub verify_mfa: Arc<VerifyMfaUseCase>,
+    pub setup_totp: Arc<SetupTotpUseCase>,
+    pub confirm_totp: Arc<ConfirmTotpUseCase>,
+    pub disable_mfa: Arc<DisableMfaUseCase>,
+    pub get_mfa_status: Arc<GetMfaStatusUseCase>,
+    // WebAuthn passkeys
+    pub register_passkey: Arc<RegisterPasskeyUseCase>,
+    pub authenticate_passkey: Arc<AuthenticatePasskeyUseCase>,
+    pub discoverable_passkey_login: Arc<DiscoverablePasskeyLoginUseCase>,
+    pub delete_passkey: Arc<DeletePasskeyUseCase>,
 }
 
 #[derive(Clone)]
@@ -170,6 +183,8 @@ pub struct AppState {
     pub config_path: Option<Arc<str>>,
     pub tls_cert: Arc<dyn TlsCertificatePort>,
     pub tls_enabled: bool,
+    /// Whether `[auth.webauthn]` is populated (passkeys usable).
+    pub webauthn_configured: bool,
 }
 
 impl AppState {

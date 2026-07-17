@@ -27,8 +27,12 @@ pub use api_tokens::{
     UpdateApiTokenUseCase, ValidateApiTokenUseCase,
 };
 pub use auth::{
-    AuthStatus, ChangePasswordUseCase, GetActiveSessionsUseCase, GetAuthStatusUseCase,
-    LoginUseCase, LogoutUseCase, SetupPasswordUseCase, ValidateSessionUseCase,
+    AuthStatus, AuthenticatePasskeyUseCase, ChangePasswordUseCase, ConfirmTotpUseCase,
+    DeletePasskeyUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase, DiscoverableStart,
+    GetActiveSessionsUseCase, GetAuthStatusUseCase, GetMfaStatusUseCase, LoginOutcome,
+    LoginUseCase, LogoutUseCase, MfaStatus, PasskeySummary, RegisterPasskeyUseCase,
+    RegistrationStart, SetupPasswordUseCase, SetupTotpUseCase, TotpSetup, ValidateSessionUseCase,
+    VerifyMfaUseCase,
 };
 pub use backup::{BackupSnapshot, ExportConfigUseCase, ImportConfigUseCase, ImportSummary};
 pub use block_filter::{

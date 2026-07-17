@@ -4,9 +4,74 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use ferrous_dns_application::ports::{PasswordHasher, SessionRepository, UserProvider};
+use ferrous_dns_application::ports::{
+    MfaRepository, PasswordHasher, SessionRepository, UserProvider,
+};
 use ferrous_dns_application::use_cases::LoginUseCase;
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, User, UserRole, UserSource};
+use ferrous_dns_domain::{
+    AuthConfig, AuthSession, DomainError, MfaChallenge, RecoveryCode, User, UserMfa, UserRole,
+    UserSource, WebauthnCredential,
+};
+
+struct NoMfaRepository;
+
+#[async_trait::async_trait]
+impl MfaRepository for NoMfaRepository {
+    async fn get(&self, _u: &str) -> Result<Option<UserMfa>, DomainError> {
+        Ok(None)
+    }
+    async fn upsert_secret(&self, _u: &str, _s: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn enable(&self, _u: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn delete_all(&self, _u: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn replace_recovery_codes(&self, _u: &str, _h: &[String]) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn list_unused_recovery_codes(&self, _u: &str) -> Result<Vec<RecoveryCode>, DomainError> {
+        Ok(vec![])
+    }
+    async fn mark_recovery_code_used(&self, _id: i64) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn create_challenge(&self, _c: &MfaChallenge) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn get_challenge(&self, _t: &str) -> Result<Option<MfaChallenge>, DomainError> {
+        Ok(None)
+    }
+    async fn delete_challenge(&self, _t: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn delete_expired_challenges(&self) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+    async fn add_credential(&self, _c: &WebauthnCredential) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn list_credentials(&self, _u: &str) -> Result<Vec<WebauthnCredential>, DomainError> {
+        Ok(vec![])
+    }
+    async fn find_credential_by_id(
+        &self,
+        _c: &str,
+    ) -> Result<Option<WebauthnCredential>, DomainError> {
+        Ok(None)
+    }
+    async fn update_credential_counter(&self, _c: &str, _n: i64) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn delete_credential(&self, _id: i64, _u: &str) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn has_credentials(&self, _u: &str) -> Result<bool, DomainError> {
+        Ok(false)
+    }
+}
 use http_body_util::BodyExt;
 use serde_json::Value;
 use std::sync::Arc;
@@ -115,6 +180,7 @@ fn build_login_use_case() -> Arc<LoginUseCase> {
         user_provider,
         session_repo,
         hasher,
+        Arc::new(NoMfaRepository),
         config,
     ))
 }

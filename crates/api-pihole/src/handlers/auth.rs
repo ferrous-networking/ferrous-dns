@@ -5,6 +5,8 @@ use axum::{
     Json,
 };
 
+use ferrous_dns_application::use_cases::LoginOutcome;
+
 use crate::{
     dto::auth::{AuthResponse, LoginRequest, SessionInfo},
     state::PiholeAppState,
@@ -56,7 +58,7 @@ pub async fn login(
             )
             .await
         {
-            Ok(session) => {
+            Ok(LoginOutcome::Authenticated(session)) => {
                 return (
                     StatusCode::OK,
                     Json(AuthResponse {
@@ -67,6 +69,25 @@ pub async fn login(
                             csrf: String::new(),
                             validity: 1_800,
                             message: String::new(),
+                        },
+                    }),
+                )
+                    .into_response();
+            }
+            // Password OK but a second factor is enrolled. The Pi-hole v6
+            // protocol has no challenge exchange, so signal that 2FA is
+            // required (clients should use the native /auth/2fa flow).
+            Ok(LoginOutcome::MfaRequired { .. }) => {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(AuthResponse {
+                        session: SessionInfo {
+                            valid: false,
+                            totp: true,
+                            sid: String::new(),
+                            csrf: String::new(),
+                            validity: 0,
+                            message: "Two-factor authentication required".to_string(),
                         },
                     }),
                 )

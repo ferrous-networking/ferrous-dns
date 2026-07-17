@@ -650,6 +650,7 @@ async fn create_test_app(
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         config_path: Some(Arc::from(config_path.as_str())),
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
+        webauthn_configured: false,
         tls_enabled: false,
     };
 

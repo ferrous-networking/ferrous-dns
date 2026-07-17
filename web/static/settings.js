@@ -4,6 +4,18 @@
             queryRate: {queries: 0, rate: '0 q/s'},
             currentTab: 'systemstatus',
             loading: true,
+            mfa: {
+                totpEnabled: false,
+                recoveryRemaining: 0,
+                webauthnConfigured: false,
+                passkeys: [],
+                setup: null,
+                confirmCode: '',
+                recoveryCodes: [],
+                disablePassword: '',
+                msg: '',
+                msgErr: false,
+            },
             stats: {queries_total: 0},
             config: {
                 dns: {
@@ -492,6 +504,119 @@
                         this.showAlert('error', data.error || 'Failed to change password');
                     }
                 } catch (e) { this.showAlert('error', 'Error: ' + e.message); }
+            },
+            mfaMsg(text, isErr) { this.mfa.msg = text; this.mfa.msgErr = !!isErr; },
+            async loadMfa() {
+                try {
+                    const r = await apiFetch(`${API_BASE}/auth/2fa/status`);
+                    if (r.ok) {
+                        const d = await r.json();
+                        this.mfa.totpEnabled = d.totp_enabled;
+                        this.mfa.recoveryRemaining = d.recovery_codes_remaining;
+                        this.mfa.webauthnConfigured = d.webauthn_configured;
+                        this.mfa.passkeys = d.passkeys || [];
+                        scheduleLucide(50);
+                    }
+                } catch (e) { console.error('Load MFA:', e); }
+            },
+            async startTotp() {
+                this.mfaMsg('');
+                try {
+                    const r = await apiFetch(`${API_BASE}/auth/2fa/setup`, {method: 'POST'});
+                    if (r.ok) {
+                        this.mfa.setup = await r.json();
+                        this.mfa.confirmCode = '';
+                        scheduleLucide(50);
+                    } else {
+                        const d = await r.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Could not start setup', true);
+                    }
+                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+            },
+            async confirmTotp() {
+                if (!this.mfa.confirmCode) return;
+                this.mfaMsg('');
+                try {
+                    const r = await apiFetch(`${API_BASE}/auth/2fa/confirm`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({code: this.mfa.confirmCode.trim()})
+                    });
+                    if (r.ok) {
+                        const d = await r.json();
+                        this.mfa.setup = null;
+                        this.mfa.confirmCode = '';
+                        this.mfa.recoveryCodes = d.recovery_codes || [];
+                        await this.loadMfa();
+                        this.mfaMsg('Authenticator enabled', false);
+                    } else {
+                        const d = await r.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Invalid code', true);
+                    }
+                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+            },
+            async disableMfa() {
+                if (!this.mfa.disablePassword) return;
+                this.mfaMsg('');
+                try {
+                    const r = await apiFetch(`${API_BASE}/auth/2fa`, {
+                        method: 'DELETE',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({password: this.mfa.disablePassword})
+                    });
+                    if (r.ok || r.status === 204) {
+                        this.mfa.disablePassword = '';
+                        await this.loadMfa();
+                        this.mfaMsg('Two-factor authentication disabled', false);
+                    } else {
+                        const d = await r.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Failed to disable', true);
+                    }
+                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
+            },
+            async registerPasskey() {
+                if (!webauthnSupported()) { this.mfaMsg('Passkeys not supported in this browser', true); return; }
+                this.mfaMsg('');
+                try {
+                    const startRes = await apiFetch(`${API_BASE}/auth/webauthn/register/start`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({})
+                    });
+                    if (!startRes.ok) {
+                        const d = await startRes.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Could not start registration', true);
+                        return;
+                    }
+                    const start = await startRes.json();
+                    const attestation = await webauthnCreate(start.challenge);
+                    const finishRes = await apiFetch(`${API_BASE}/auth/webauthn/register/finish`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ceremony_token: start.ceremony_token, response: attestation})
+                    });
+                    if (finishRes.ok || finishRes.status === 204) {
+                        await this.loadMfa();
+                        this.mfaMsg('Passkey registered', false);
+                    } else {
+                        const d = await finishRes.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Registration failed', true);
+                    }
+                } catch (e) {
+                    this.mfaMsg((e && e.name === 'NotAllowedError') ? 'Passkey prompt dismissed' : 'Error: ' + e.message, true);
+                }
+            },
+            async deletePasskey(id) {
+                try {
+                    const r = await apiFetch(`${API_BASE}/auth/webauthn/${id}`, {method: 'DELETE'});
+                    if (r.ok || r.status === 204) {
+                        await this.loadMfa();
+                        this.mfaMsg('Passkey removed', false);
+                    } else {
+                        const d = await r.json().catch(() => ({}));
+                        this.mfaMsg(d.error || 'Failed to remove passkey', true);
+                    }
+                } catch (e) { this.mfaMsg('Error: ' + e.message, true); }
             },
             async loadUsers() {
                 try {

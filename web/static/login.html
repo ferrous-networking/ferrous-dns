@@ -51,8 +51,38 @@
         </div>
     </template>
 
+    <!-- Second factor (2FA) mode -->
+    <template x-if="!setupRequired && mfaRequired">
+        <div>
+            <div class="setup-info">
+                <i data-lucide="shield-check" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
+                Two-factor authentication required.
+            </div>
+            <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
+            <template x-if="mfaMethods.includes('totp')">
+                <div class="form-group">
+                    <label class="form-label">Authentication code</label>
+                    <input type="text" inputmode="numeric" autocomplete="one-time-code" x-model="mfaCode"
+                           placeholder="6-digit code or recovery code" @keydown.enter="verifyMfa()" autofocus>
+                </div>
+            </template>
+            <button x-show="mfaMethods.includes('totp')" class="login-btn" @click="verifyMfa()"
+                    :disabled="loading || !mfaCode">
+                <span x-show="!loading">Verify</span>
+                <span x-show="loading">Verifying...</span>
+            </button>
+            <button x-show="mfaMethods.includes('webauthn')" class="login-btn" style="margin-top:8px"
+                    @click="loginPasskey()" :disabled="loading">
+                <i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
+                Use a passkey
+            </button>
+            <button class="login-btn" style="margin-top:8px;background:transparent;color:inherit;border:1px solid rgba(128,128,128,.3)"
+                    @click="cancelMfa()">Cancel</button>
+        </div>
+    </template>
+
     <!-- Login mode -->
-    <template x-if="!setupRequired">
+    <template x-if="!setupRequired && !mfaRequired">
         <div>
             <div x-show="error" x-cloak class="error-msg" x-text="error"></div>
             <div class="form-group">
@@ -70,6 +100,11 @@
             <button class="login-btn" @click="login()" :disabled="loading || !username || !password">
                 <span x-show="!loading">Sign In</span>
                 <span x-show="loading">Signing in...</span>
+            </button>
+            <button x-show="passkeysAvailable" x-cloak class="login-btn" style="margin-top:8px;background:transparent;color:inherit;border:1px solid rgba(128,128,128,.3)"
+                    @click="loginPasskeyDirect()" :disabled="loading">
+                <i data-lucide="key-round" style="width:14px;height:14px;vertical-align:-2px;margin-right:4px"></i>
+                Sign in with a passkey
             </button>
         </div>
     </template>

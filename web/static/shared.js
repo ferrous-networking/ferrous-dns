@@ -222,3 +222,72 @@ function getRateColor(queryRate) {
     if (q >= 1000) return 'var(--color-warning)';
     return 'var(--color-success)';
 }
+
+// --- WebAuthn (passkey) helpers ---
+// webauthn-rs speaks base64url; the browser WebAuthn API wants ArrayBuffers.
+// These convert between the two for the create/get ceremonies.
+
+function b64urlToBuf(b64url) {
+    const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+    const bin = atob(b64 + pad);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+}
+
+function bufToB64url(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function webauthnSupported() {
+    return typeof window.PublicKeyCredential !== 'undefined';
+}
+
+// Registration: transform the server challenge, call navigator.credentials.create,
+// and shape the attestation back into webauthn-rs's RegisterPublicKeyCredential.
+async function webauthnCreate(challenge) {
+    const pk = challenge.publicKey;
+    pk.challenge = b64urlToBuf(pk.challenge);
+    pk.user.id = b64urlToBuf(pk.user.id);
+    if (pk.excludeCredentials) {
+        pk.excludeCredentials = pk.excludeCredentials.map(c => ({ ...c, id: b64urlToBuf(c.id) }));
+    }
+    const cred = await navigator.credentials.create({ publicKey: pk });
+    return {
+        id: cred.id,
+        rawId: bufToB64url(cred.rawId),
+        type: cred.type,
+        response: {
+            attestationObject: bufToB64url(cred.response.attestationObject),
+            clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+        },
+        extensions: cred.getClientExtensionResults(),
+    };
+}
+
+// Authentication: transform the server challenge, call navigator.credentials.get,
+// and shape the assertion back into webauthn-rs's PublicKeyCredential.
+async function webauthnGet(challenge) {
+    const pk = challenge.publicKey;
+    pk.challenge = b64urlToBuf(pk.challenge);
+    if (pk.allowCredentials) {
+        pk.allowCredentials = pk.allowCredentials.map(c => ({ ...c, id: b64urlToBuf(c.id) }));
+    }
+    const cred = await navigator.credentials.get({ publicKey: pk });
+    return {
+        id: cred.id,
+        rawId: bufToB64url(cred.rawId),
+        type: cred.type,
+        response: {
+            authenticatorData: bufToB64url(cred.response.authenticatorData),
+            clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+            signature: bufToB64url(cred.response.signature),
+            userHandle: cred.response.userHandle ? bufToB64url(cred.response.userHandle) : null,
+        },
+        extensions: cred.getClientExtensionResults(),
+    };
+}

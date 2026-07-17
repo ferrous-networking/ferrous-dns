@@ -216,6 +216,28 @@ pub enum DomainError {
     #[error("Insufficient permissions")]
     InsufficientPermissions,
 
+    // MFA / 2FA errors
+    #[error("Second factor required")]
+    MfaRequired,
+
+    #[error("Invalid or expired verification code")]
+    InvalidMfaCode,
+
+    #[error("Second-factor challenge not found or expired")]
+    MfaChallengeExpired,
+
+    #[error("Two-factor authentication is not configured for this account")]
+    MfaNotConfigured,
+
+    #[error("Two-factor authentication is already enabled")]
+    MfaAlreadyEnabled,
+
+    #[error("WebAuthn is not configured on this server")]
+    WebauthnNotConfigured,
+
+    #[error("WebAuthn error: {0}")]
+    WebauthnError(String),
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 }

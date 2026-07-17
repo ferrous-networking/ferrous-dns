@@ -3,6 +3,19 @@
             margin-bottom: 24px
         }
 
+        /* Constrain the TOTP QR SVG to its box so it can't overflow and
+           overlap the secret/verification fields below it. */
+        .qr-box {
+            box-sizing: border-box;
+            overflow: hidden
+        }
+
+        .qr-box svg {
+            display: block;
+            width: 100%;
+            height: 100%
+        }
+
         .card-stat {
             background: var(--bg-secondary);
             border-radius: 12px;

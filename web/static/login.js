@@ -8,10 +8,18 @@ function loginApp() {
         setupConfirm: '',
         error: '',
         loading: false,
+        // Second-factor step
+        mfaRequired: false,
+        mfaMethods: [],
+        challengeToken: '',
+        mfaCode: '',
+        // Passwordless (discoverable) passkey login
+        passkeysAvailable: false,
 
         async init() {
             const theme = localStorage.getItem('theme') || 'light';
             document.documentElement.classList.toggle('dark', theme === 'dark');
+            this.passkeysAvailable = webauthnSupported();
             try {
                 const res = await fetch(`${API_BASE}/auth/status`);
                 if (res.ok) {
@@ -84,6 +92,15 @@ function loginApp() {
                     })
                 });
                 if (res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    if (data.mfa_required) {
+                        this.password = '';
+                        this.mfaRequired = true;
+                        this.mfaMethods = data.methods || [];
+                        this.challengeToken = data.challenge_token || '';
+                        scheduleLucide(100);
+                        return;
+                    }
                     this.password = '';
                     window.location.href = '/dashboard.html';
                 } else {
@@ -95,6 +112,118 @@ function loginApp() {
             } finally {
                 this.loading = false;
             }
+        },
+
+        async verifyMfa() {
+            if (!this.mfaCode) return;
+            this.error = '';
+            this.loading = true;
+            try {
+                const res = await fetch(`${API_BASE}/auth/2fa/verify`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({challenge_token: this.challengeToken, code: this.mfaCode.trim()})
+                });
+                if (res.ok) {
+                    this.mfaCode = '';
+                    window.location.href = '/dashboard.html';
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    this.error = data.error || 'Invalid or expired code';
+                }
+            } catch (e) {
+                this.error = 'Connection error. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loginPasskey() {
+            if (!webauthnSupported()) {
+                this.error = 'Passkeys are not supported in this browser';
+                return;
+            }
+            this.error = '';
+            this.loading = true;
+            try {
+                const startRes = await fetch(`${API_BASE}/auth/webauthn/authenticate/start`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({challenge_token: this.challengeToken})
+                });
+                if (!startRes.ok) {
+                    const data = await startRes.json().catch(() => ({}));
+                    this.error = data.error || 'Could not start passkey login';
+                    return;
+                }
+                const challenge = await startRes.json();
+                const assertion = await webauthnGet(challenge);
+                const finishRes = await fetch(`${API_BASE}/auth/webauthn/authenticate/finish`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({challenge_token: this.challengeToken, response: assertion})
+                });
+                if (finishRes.ok) {
+                    window.location.href = '/dashboard.html';
+                } else {
+                    const data = await finishRes.json().catch(() => ({}));
+                    this.error = data.error || 'Passkey verification failed';
+                }
+            } catch (e) {
+                this.error = (e && e.name === 'NotAllowedError') ? 'Passkey prompt was dismissed' : 'Passkey error. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loginPasskeyDirect() {
+            if (!webauthnSupported()) {
+                this.error = 'Passkeys are not supported in this browser';
+                return;
+            }
+            this.error = '';
+            this.loading = true;
+            try {
+                const startRes = await fetch(`${API_BASE}/auth/webauthn/discoverable/start`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: '{}'
+                });
+                if (!startRes.ok) {
+                    const data = await startRes.json().catch(() => ({}));
+                    this.error = data.error || 'Passkey login is not available';
+                    return;
+                }
+                const data = await startRes.json();
+                const assertion = await webauthnGet(data.challenge);
+                const finishRes = await fetch(`${API_BASE}/auth/webauthn/discoverable/finish`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        challenge_token: data.challenge_token,
+                        response: assertion,
+                        remember_me: this.rememberMe
+                    })
+                });
+                if (finishRes.ok) {
+                    window.location.href = '/dashboard.html';
+                } else {
+                    const d = await finishRes.json().catch(() => ({}));
+                    this.error = d.error || 'Passkey verification failed';
+                }
+            } catch (e) {
+                this.error = (e && e.name === 'NotAllowedError') ? 'Passkey prompt was dismissed' : 'Passkey error. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        cancelMfa() {
+            this.mfaRequired = false;
+            this.mfaMethods = [];
+            this.challengeToken = '';
+            this.mfaCode = '';
+            this.error = '';
         }
     };
 }
