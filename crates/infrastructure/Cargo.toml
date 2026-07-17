@@ -50,6 +50,10 @@ webauthn-rs = { version = "0.5", features = [
 ] }
 # v5 (namespaced) UUIDs derive a stable WebAuthn user handle from the username.
 uuid = { version = "1", features = ["v5"] }
+# webauthn-rs pulls in OpenSSL transitively (the rest of the project is
+# rustls/ring). Build it vendored (from source) so the binary cross-compiles to
+# aarch64/musl without a target libssl-dev in the `cross` container.
+openssl = { version = "0.10", features = ["vendored"] }
 
 # DNSSEC Crypto (FASE 2)
 ring.workspace = true
