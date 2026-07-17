@@ -26,9 +26,50 @@ pub struct AuthConfig {
     #[serde(default = "default_rate_limit_window_secs")]
     pub login_rate_limit_window_secs: u64,
 
+    /// Issuer label shown by authenticator apps next to the TOTP account
+    /// (the "provider" name in the otpauth URI). Default: "Ferrous DNS".
+    #[serde(default = "default_totp_issuer")]
+    pub totp_issuer: String,
+
+    /// Lifetime in seconds of a pending second-factor challenge — the window
+    /// between the password step and TOTP/passkey verification, and the passkey
+    /// registration ceremony. Default: 300 (5 minutes).
+    #[serde(default = "default_mfa_challenge_ttl_secs")]
+    pub mfa_challenge_ttl_secs: i64,
+
     /// Admin account configured in TOML — always recoverable via file edit.
     #[serde(default)]
     pub admin: AdminConfig,
+
+    /// WebAuthn / passkey settings. Passkeys stay inert until `rp_id` and
+    /// `rp_origin` are set (TOTP works regardless).
+    #[serde(default)]
+    pub webauthn: WebauthnConfig,
+}
+
+/// WebAuthn relying-party configuration, `[auth.webauthn]`.
+///
+/// WebAuthn requires a secure context: `rp_origin` must be HTTPS (or
+/// `http://localhost`) and `rp_id` must be a registrable domain that the
+/// origin belongs to. When either is empty, passkey endpoints report
+/// "not configured" — a server reached by bare IP over plain HTTP cannot use
+/// passkeys, so users there rely on TOTP.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct WebauthnConfig {
+    /// Relying-party ID — the effective domain, e.g. `dns.example.com`.
+    #[serde(default)]
+    pub rp_id: String,
+
+    /// Relying-party origin URL, e.g. `https://dns.example.com`.
+    #[serde(default)]
+    pub rp_origin: String,
+}
+
+impl WebauthnConfig {
+    /// Whether passkeys are usable (both fields populated).
+    pub fn is_configured(&self) -> bool {
+        !self.rp_id.is_empty() && !self.rp_origin.is_empty()
+    }
 }
 
 /// Admin account defined in the TOML config file.
@@ -66,6 +107,14 @@ fn default_rate_limit_window_secs() -> u64 {
     900
 }
 
+fn default_totp_issuer() -> String {
+    "Ferrous DNS".to_string()
+}
+
+fn default_mfa_challenge_ttl_secs() -> i64 {
+    300
+}
+
 fn default_admin_username() -> String {
     "admin".to_string()
 }
@@ -78,7 +127,10 @@ impl Default for AuthConfig {
             remember_me_days: default_remember_me_days(),
             login_rate_limit_attempts: default_rate_limit_attempts(),
             login_rate_limit_window_secs: default_rate_limit_window_secs(),
+            totp_issuer: default_totp_issuer(),
+            mfa_challenge_ttl_secs: default_mfa_challenge_ttl_secs(),
             admin: AdminConfig::default(),
+            webauthn: WebauthnConfig::default(),
         }
     }
 }

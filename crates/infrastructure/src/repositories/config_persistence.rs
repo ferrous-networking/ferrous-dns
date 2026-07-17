@@ -535,6 +535,16 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "login_rate_limit_window_secs",
             toml_edit::Value::from(config.auth.login_rate_limit_window_secs as i64),
         );
+        set_val(
+            t,
+            "totp_issuer",
+            toml_edit::Value::from(config.auth.totp_issuer.clone()),
+        );
+        set_val(
+            t,
+            "mfa_challenge_ttl_secs",
+            toml_edit::Value::from(config.auth.mfa_challenge_ttl_secs),
+        );
     }
 
     // ── [auth.admin] ────────────────────────────────────────────────────
@@ -552,6 +562,22 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
                 admin.remove("password_hash");
             }
         }
+    }
+
+    // ── [auth.webauthn] ─────────────────────────────────────────────────
+    {
+        let auth = ensure_table(&mut doc, "auth")?;
+        let webauthn = ensure_subtable(auth, "webauthn")?;
+        set_val(
+            webauthn,
+            "rp_id",
+            toml_edit::Value::from(config.auth.webauthn.rp_id.clone()),
+        );
+        set_val(
+            webauthn,
+            "rp_origin",
+            toml_edit::Value::from(config.auth.webauthn.rp_origin.clone()),
+        );
     }
 
     std::fs::write(path, doc.to_string())

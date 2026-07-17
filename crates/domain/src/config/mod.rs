@@ -20,7 +20,7 @@ pub mod tunneling;
 pub mod upstream;
 pub mod web_tls;
 
-pub use auth::{AdminConfig, AuthConfig};
+pub use auth::{AdminConfig, AuthConfig, WebauthnConfig};
 pub use blocking::{BlockResponseMode, BlockingConfig, DEFAULT_BLOCK_TTL};
 pub use database::DatabaseConfig;
 pub use dga_detection::{DgaDetectionAction, DgaDetectionConfig};

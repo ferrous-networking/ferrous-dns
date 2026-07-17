@@ -36,7 +36,17 @@ impl IntoResponse for ApiError {
 
             DomainError::InvalidCredentials
             | DomainError::AuthRequired
-            | DomainError::PasswordNotConfigured => (StatusCode::UNAUTHORIZED, self.0.to_string()),
+            | DomainError::PasswordNotConfigured
+            | DomainError::InvalidMfaCode
+            | DomainError::MfaChallengeExpired => (StatusCode::UNAUTHORIZED, self.0.to_string()),
+
+            DomainError::MfaAlreadyEnabled => (StatusCode::CONFLICT, self.0.to_string()),
+
+            DomainError::MfaNotConfigured
+            | DomainError::WebauthnNotConfigured
+            | DomainError::WebauthnError(_) => (StatusCode::BAD_REQUEST, self.0.to_string()),
+
+            DomainError::MfaRequired => (StatusCode::UNAUTHORIZED, self.0.to_string()),
 
             DomainError::InsufficientPermissions | DomainError::ProtectedUser => {
                 (StatusCode::FORBIDDEN, self.0.to_string())

@@ -716,6 +716,7 @@ async fn create_test_app() -> (Router, Arc<RwLock<Config>>, sqlx::SqlitePool) {
         config_file_persistence: Arc::new(ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence),
         config_path: None,
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
+        webauthn_configured: false,
         tls_enabled: false,
     };
 

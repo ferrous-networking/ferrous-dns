@@ -96,6 +96,7 @@ nav:
     - Client Management: features/client-management.md
     - Malware Detection: features/malware-detection.md
     - Security: features/security.md
+    - Two-Factor Authentication: features/two-factor-auth.md
   - API & Integrations:
     - API Reference: api.md
     - Integrations: integrations.md

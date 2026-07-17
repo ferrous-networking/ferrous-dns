@@ -17,6 +17,7 @@ mod dns_resolver;
 mod group_repository;
 mod hostname_resolver;
 mod managed_domain_repository;
+mod mfa_repository;
 mod nxdomain_hijack_store;
 mod ptr_record_registry;
 mod query_log_repository;
@@ -29,10 +30,12 @@ mod schedule_state_port;
 mod service_catalog_port;
 mod session_repository;
 mod tls_certificate_port;
+mod totp_service;
 mod tunneling_flag_store;
 mod upstream_health_port;
 mod upstream_reload_port;
 mod user_repository;
+mod webauthn_service;
 mod whitelist_repository;
 mod whitelist_source_repository;
 
@@ -57,6 +60,7 @@ pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
 pub use managed_domain_repository::ManagedDomainRepository;
+pub use mfa_repository::MfaRepository;
 pub use nxdomain_hijack_store::{NxdomainHijackIpStore, NxdomainHijackProbeTarget};
 pub use ptr_record_registry::PtrRecordRegistry;
 pub use query_log_repository::{
@@ -71,6 +75,7 @@ pub use schedule_state_port::ScheduleStatePort;
 pub use service_catalog_port::ServiceCatalogPort;
 pub use session_repository::SessionRepository;
 pub use tls_certificate_port::{TlsCertificateInfo, TlsCertificatePort};
+pub use totp_service::TotpService;
 pub use tunneling_flag_store::{TunnelingEvictionTarget, TunnelingFlagStore};
 pub use upstream_health_port::{
     AggregateStatus, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth, UpstreamHealthPort,
@@ -78,6 +83,7 @@ pub use upstream_health_port::{
 };
 pub use upstream_reload_port::UpstreamReloadPort;
 pub use user_repository::{CreateUserInput, PasswordHasher, UserProvider, UserRepository};
+pub use webauthn_service::{AuthenticatedCredential, RegisteredCredential, WebauthnService};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
 

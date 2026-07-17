@@ -1733,6 +1733,110 @@
             </div>
         </div>
 
+        <!-- Two-Factor Authentication -->
+        <div class="card" x-init="loadMfa()">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                <h2 style="font-size:18px;font-weight:700;margin:0;color:var(--text-primary)">Two-Factor Authentication</h2>
+            </div>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:20px">
+                Add a second factor to your account: an authenticator app (TOTP) and/or passkeys.
+            </p>
+            <div x-show="mfa.msg" x-cloak style="font-size:12px;margin-bottom:12px"
+                 :style="mfa.msgErr?'color:#ef4444':'color:var(--color-success)'" x-text="mfa.msg"></div>
+
+            <!-- Authenticator app (TOTP) -->
+            <div style="max-width:460px;margin-bottom:28px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                    <strong style="font-size:14px;color:var(--text-primary)">Authenticator app (TOTP)</strong>
+                    <span x-show="mfa.totpEnabled" x-cloak style="font-size:11px;color:var(--color-success);font-weight:600">ENABLED</span>
+                </div>
+
+                <!-- Enabled: show recovery count + disable -->
+                <template x-if="mfa.totpEnabled && !mfa.setup">
+                    <div>
+                        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">
+                            <span x-text="mfa.recoveryRemaining"></span> recovery codes remaining.
+                        </p>
+                        <div class="form-group" style="max-width:300px;margin-bottom:10px">
+                            <label class="form-label">Password (to disable)</label>
+                            <input type="password" x-model="mfa.disablePassword" placeholder="Current password" style="font-size:13px">
+                        </div>
+                        <button @click="disableMfa()" class="btn" style="background:#ef4444;color:#fff"
+                                :disabled="!mfa.disablePassword">
+                            <i data-lucide="shield-off" style="width:15px;height:15px"></i> Disable 2FA
+                        </button>
+                    </div>
+                </template>
+
+                <!-- Not enabled and not enrolling: Enable button -->
+                <template x-if="!mfa.totpEnabled && !mfa.setup">
+                    <button @click="startTotp()" class="btn btn-primary">
+                        <i data-lucide="plus" style="width:15px;height:15px"></i> Set up authenticator
+                    </button>
+                </template>
+
+                <!-- Enrolling: QR + confirm -->
+                <template x-if="mfa.setup">
+                    <div>
+                        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">
+                            Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.
+                        </p>
+                        <div class="qr-box" x-html="mfa.setup.qr_svg" style="width:200px;height:200px;background:#fff;padding:8px;border-radius:8px;margin-bottom:8px"></div>
+                        <p style="font-size:11px;color:var(--text-tertiary);margin-bottom:12px;word-break:break-all">
+                            Secret: <code x-text="mfa.setup.secret"></code>
+                        </p>
+                        <div class="form-group" style="max-width:220px;margin-bottom:12px">
+                            <label class="form-label">Verification code</label>
+                            <input type="text" inputmode="numeric" x-model="mfa.confirmCode" placeholder="6-digit code" style="font-size:13px">
+                        </div>
+                        <button @click="confirmTotp()" class="btn btn-primary" :disabled="!mfa.confirmCode" style="margin-right:8px">
+                            <i data-lucide="check" style="width:15px;height:15px"></i> Confirm & enable
+                        </button>
+                        <button @click="mfa.setup=null;mfa.confirmCode=''" class="btn">Cancel</button>
+                    </div>
+                </template>
+
+                <!-- Recovery codes (shown once after confirm) -->
+                <template x-if="mfa.recoveryCodes && mfa.recoveryCodes.length">
+                    <div style="margin-top:14px;padding:12px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary)">
+                        <p style="font-size:12px;color:var(--text-primary);font-weight:600;margin-bottom:8px">
+                            Save these recovery codes — they are shown only once:
+                        </p>
+                        <div style="font-family:monospace;font-size:13px;columns:2;color:var(--text-primary)">
+                            <template x-for="c in mfa.recoveryCodes" :key="c"><div x-text="c"></div></template>
+                        </div>
+                        <button @click="mfa.recoveryCodes=[]" class="btn" style="margin-top:10px">I've saved them</button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Passkeys -->
+            <div style="max-width:460px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                    <strong style="font-size:14px;color:var(--text-primary)">Passkeys</strong>
+                </div>
+                <p x-show="!mfa.webauthnConfigured" x-cloak style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px">
+                    Passkeys require HTTPS and a configured domain (<code>[auth.webauthn]</code> rp_id / rp_origin). Not configured on this server.
+                </p>
+                <template x-if="mfa.passkeys.length">
+                    <div style="margin-bottom:10px">
+                        <template x-for="p in mfa.passkeys" :key="p.id">
+                            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-color)">
+                                <span style="font-size:13px;color:var(--text-primary)" x-text="p.label || ('Passkey #' + p.id)"></span>
+                                <button @click="deletePasskey(p.id)" class="btn" style="padding:4px 8px;font-size:12px">
+                                    <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <button x-show="mfa.webauthnConfigured" @click="registerPasskey()" class="btn btn-primary" x-cloak>
+                    <i data-lucide="key-round" style="width:15px;height:15px"></i> Register a passkey
+                </button>
+            </div>
+        </div>
+
         <!-- Users -->
         <div class="card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">

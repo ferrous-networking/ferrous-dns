@@ -1,17 +1,33 @@
-use std::fmt::Write;
 use std::sync::Arc;
 
-use ring::rand::SecureRandom;
 use tracing::{info, instrument, warn};
 
-use crate::ports::{PasswordHasher, SessionRepository, UserProvider};
-use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError};
+use super::session_factory::{build_session, generate_session_id, session_max_age};
+use crate::ports::{MfaRepository, PasswordHasher, SessionRepository, UserProvider};
+use ferrous_dns_domain::{AuthConfig, AuthSession, DomainError, MfaChallenge, MfaMethod};
 
-/// Authenticates a user and creates a browser session.
+/// Result of a password check: either a full session, or a second factor is
+/// required and a short-lived challenge has been issued.
+pub enum LoginOutcome {
+    /// Password was sufficient (no second factor enrolled) — session created.
+    Authenticated(AuthSession),
+    /// Password was correct but a second factor is required.
+    MfaRequired {
+        /// Opaque challenge token the client echoes back to `/auth/2fa/verify`.
+        challenge_token: String,
+        /// Which second-factor methods this account has enrolled
+        /// (`"totp"` and/or `"webauthn"`).
+        methods: Vec<&'static str>,
+    },
+}
+
+/// Authenticates a user and either creates a browser session or issues an MFA
+/// challenge when a second factor is enrolled.
 pub struct LoginUseCase {
     user_provider: Arc<dyn UserProvider>,
     session_repo: Arc<dyn SessionRepository>,
     password_hasher: Arc<dyn PasswordHasher>,
+    mfa_repo: Arc<dyn MfaRepository>,
     auth_config: Arc<AuthConfig>,
 }
 
@@ -20,20 +36,23 @@ impl LoginUseCase {
         user_provider: Arc<dyn UserProvider>,
         session_repo: Arc<dyn SessionRepository>,
         password_hasher: Arc<dyn PasswordHasher>,
+        mfa_repo: Arc<dyn MfaRepository>,
         auth_config: Arc<AuthConfig>,
     ) -> Self {
         Self {
             user_provider,
             session_repo,
             password_hasher,
+            mfa_repo,
             auth_config,
         }
     }
 
-    /// Authenticate with username + password and create a session.
+    /// Verify username + password, then branch on second-factor enrollment.
     ///
-    /// Returns the created `AuthSession` with a CSPRNG session ID.
-    /// The caller is responsible for setting the `Set-Cookie` header.
+    /// Returns the created `AuthSession` (no factor enrolled) or an
+    /// `MfaRequired` outcome carrying a challenge token. The caller is
+    /// responsible for setting the `Set-Cookie` header on `Authenticated`.
     #[instrument(skip(self, password))]
     pub async fn execute(
         &self,
@@ -42,7 +61,7 @@ impl LoginUseCase {
         remember_me: bool,
         ip_address: &str,
         user_agent: &str,
-    ) -> Result<AuthSession, DomainError> {
+    ) -> Result<LoginOutcome, DomainError> {
         let user = self
             .user_provider
             .get_by_username(username)
@@ -60,22 +79,58 @@ impl LoginUseCase {
             return Err(DomainError::InvalidCredentials);
         }
 
-        let session_id = generate_session_id()?;
-        let now = chrono::Utc::now();
-        let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
-        let expires_at = compute_expiry(remember_me, &self.auth_config);
+        // Determine which (if any) second factors are enrolled.
+        let totp_enabled = self
+            .mfa_repo
+            .get(username)
+            .await?
+            .map(|m| m.totp_enabled)
+            .unwrap_or(false);
+        let has_passkeys = self.mfa_repo.has_credentials(username).await?;
 
-        let session = AuthSession {
-            id: Arc::from(session_id.as_str()),
-            username: user.username.clone(),
-            role: user.role.clone(),
-            ip_address: Arc::from(ip_address),
-            user_agent: Arc::from(user_agent),
+        if totp_enabled || has_passkeys {
+            let challenge_token = generate_session_id()?;
+            let expires_at = (chrono::Utc::now()
+                + chrono::Duration::seconds(self.auth_config.mfa_challenge_ttl_secs))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+
+            self.mfa_repo
+                .create_challenge(&MfaChallenge {
+                    token: Arc::from(challenge_token.as_str()),
+                    username: user.username.clone(),
+                    remember_me,
+                    // TOTP is the default carrier; WebAuthn ceremonies write
+                    // their own challenge on `/auth/webauthn/authenticate/start`.
+                    kind: MfaMethod::Totp,
+                    state: None,
+                    expires_at,
+                })
+                .await?;
+
+            let mut methods = Vec::new();
+            if totp_enabled {
+                methods.push("totp");
+            }
+            if has_passkeys {
+                methods.push("webauthn");
+            }
+
+            info!(username = username, "Password OK, second factor required");
+            return Ok(LoginOutcome::MfaRequired {
+                challenge_token,
+                methods,
+            });
+        }
+
+        let session = build_session(
+            user.username.clone(),
+            user.role.clone(),
             remember_me,
-            last_seen_at: created_at.clone(),
-            created_at,
-            expires_at,
-        };
+            ip_address,
+            user_agent,
+            &self.auth_config,
+        )?;
 
         self.session_repo.create(&session).await?;
 
@@ -84,37 +139,11 @@ impl LoginUseCase {
             remember_me = remember_me,
             "User logged in"
         );
-        Ok(session)
+        Ok(LoginOutcome::Authenticated(session))
     }
 
     /// Returns the `max_age` in seconds for the session cookie.
     pub fn session_max_age(&self, remember_me: bool) -> i64 {
-        if remember_me {
-            i64::from(self.auth_config.remember_me_days) * 86400
-        } else {
-            i64::from(self.auth_config.session_ttl_hours) * 3600
-        }
+        session_max_age(remember_me, &self.auth_config)
     }
-}
-
-fn generate_session_id() -> Result<String, DomainError> {
-    let mut buf = [0u8; 32];
-    ring::rand::SystemRandom::new()
-        .fill(&mut buf)
-        .map_err(|_| DomainError::IoError("CSPRNG fill failed".to_string()))?;
-    let mut hex = String::with_capacity(64);
-    for byte in &buf {
-        let _ = write!(hex, "{byte:02x}");
-    }
-    Ok(hex)
-}
-
-fn compute_expiry(remember_me: bool, config: &AuthConfig) -> String {
-    let duration = if remember_me {
-        chrono::Duration::days(i64::from(config.remember_me_days))
-    } else {
-        chrono::Duration::hours(i64::from(config.session_ttl_hours))
-    };
-    let expires = chrono::Utc::now() + duration;
-    expires.format("%Y-%m-%d %H:%M:%S").to_string()
 }

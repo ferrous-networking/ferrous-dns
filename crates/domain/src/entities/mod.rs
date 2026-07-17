@@ -16,5 +16,6 @@ pub mod safe_search;
 pub mod schedule;
 pub mod service_catalog;
 pub mod user;
+pub mod user_mfa;
 pub mod whitelist;
 pub mod whitelist_source;

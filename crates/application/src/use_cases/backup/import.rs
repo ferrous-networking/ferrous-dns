@@ -177,6 +177,8 @@ impl ImportConfigUseCase {
         new_config.auth.remember_me_days = sc.auth.remember_me_days;
         new_config.auth.login_rate_limit_attempts = sc.auth.login_rate_limit_attempts;
         new_config.auth.login_rate_limit_window_secs = sc.auth.login_rate_limit_window_secs;
+        new_config.auth.webauthn.rp_id = sc.auth.webauthn_rp_id.clone();
+        new_config.auth.webauthn.rp_origin = sc.auth.webauthn_rp_origin.clone();
 
         match self
             .config_file_persistence

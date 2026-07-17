@@ -1,10 +1,13 @@
-use ferrous_dns_application::ports::{ApiTokenRepository, SessionRepository, UserRepository};
+use ferrous_dns_application::ports::{
+    ApiTokenRepository, MfaRepository, SessionRepository, UserRepository,
+};
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, CustomServiceRepository, SafeSearchConfigRepository,
     SafeSearchEnginePort, ScheduleProfileRepository, ScheduleStatePort, ServiceCatalogPort,
 };
 use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
+use ferrous_dns_infrastructure::auth::SqliteMfaRepository;
 use ferrous_dns_infrastructure::dns::{BlockFilterEngine, SafeSearchEnforcer};
 use ferrous_dns_infrastructure::repositories::{
     api_token_repository::SqliteApiTokenRepository,
@@ -52,6 +55,7 @@ pub struct Repositories {
     pub session: Arc<dyn SessionRepository>,
     pub user: Arc<dyn UserRepository>,
     pub api_token: Arc<dyn ApiTokenRepository>,
+    pub mfa: Arc<dyn MfaRepository>,
 }
 
 impl Repositories {
@@ -135,6 +139,7 @@ impl Repositories {
             schedule_state,
             session: Arc::new(SqliteSessionRepository::new(Arc::new(write_pool.clone()))),
             user: Arc::new(SqliteUserRepository::new(Arc::new(write_pool.clone()))),
+            mfa: Arc::new(SqliteMfaRepository::new(Arc::new(write_pool.clone()))),
             api_token: Arc::new(SqliteApiTokenRepository::new(Arc::new(write_pool))),
         })
     }

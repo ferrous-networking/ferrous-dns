@@ -116,6 +116,10 @@ pub struct SnapshotAuthConfig {
     pub remember_me_days: u32,
     pub login_rate_limit_attempts: u32,
     pub login_rate_limit_window_secs: u64,
+    #[serde(default)]
+    pub webauthn_rp_id: String,
+    #[serde(default)]
+    pub webauthn_rp_origin: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

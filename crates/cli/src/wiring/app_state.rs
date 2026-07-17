@@ -6,15 +6,18 @@ use ferrous_dns_application::ports::{
     BlocklistSourceCreator, ConfigFilePersistence, GroupCreator, LocalRecordCreator, UserProvider,
 };
 use ferrous_dns_application::use_cases::{
-    ChangePasswordUseCase, CreateApiTokenUseCase, CreateLocalRecordUseCase, CreateUserUseCase,
-    DeleteApiTokenUseCase, DeleteLocalRecordUseCase, DeleteUserUseCase, ExportConfigUseCase,
-    GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase, GetUsersUseCase,
-    ImportConfigUseCase, LoginUseCase, LogoutUseCase, SetupPasswordUseCase, UpdateApiTokenUseCase,
-    UpdateLocalRecordUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
+    AuthenticatePasskeyUseCase, ChangePasswordUseCase, ConfirmTotpUseCase, CreateApiTokenUseCase,
+    CreateLocalRecordUseCase, CreateUserUseCase, DeleteApiTokenUseCase, DeleteLocalRecordUseCase,
+    DeletePasskeyUseCase, DeleteUserUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase,
+    ExportConfigUseCase, GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase,
+    GetMfaStatusUseCase, GetUsersUseCase, ImportConfigUseCase, LoginUseCase, LogoutUseCase,
+    RegisterPasskeyUseCase, SetupPasswordUseCase, SetupTotpUseCase, UpdateApiTokenUseCase,
+    UpdateLocalRecordUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::auth::{
-    Argon2PasswordHasher, CompositeUserProvider, TomlAdminProvider,
+    Argon2PasswordHasher, CompositeUserProvider, TomlAdminProvider, TotpRsService,
+    WebauthnRsService,
 };
 use ferrous_dns_infrastructure::dns::{UpstreamHealthAdapter, UpstreamReloadAdapter};
 use ferrous_dns_infrastructure::repositories::{TomlConfigFilePersistence, TomlConfigRepository};
@@ -51,6 +54,13 @@ pub async fn build_app_state(
 
     let password_hasher = Arc::new(Argon2PasswordHasher::new());
 
+    let totp_service: Arc<dyn ferrous_dns_application::ports::TotpService> =
+        Arc::new(TotpRsService::new(auth_config.totp_issuer.clone()));
+    let webauthn_service: Arc<dyn ferrous_dns_application::ports::WebauthnService> = Arc::new(
+        WebauthnRsService::new(&auth_config.webauthn.rp_id, &auth_config.webauthn.rp_origin),
+    );
+    let webauthn_configured = auth_config.webauthn.is_configured();
+
     let toml_admin = TomlAdminProvider::new(auth_config.admin.clone());
     let user_provider: Arc<dyn UserProvider> = Arc::new(CompositeUserProvider::new(
         toml_admin,
@@ -65,6 +75,7 @@ pub async fn build_app_state(
             user_provider.clone(),
             repos.session.clone(),
             password_hasher.clone(),
+            repos.mfa.clone(),
             auth_config.clone(),
         )),
         logout: Arc::new(LogoutUseCase::new(repos.session.clone())),
@@ -88,10 +99,54 @@ pub async fn build_app_state(
         create_user: Arc::new(CreateUserUseCase::new(
             repos.user.clone(),
             user_provider.clone(),
-            password_hasher,
+            password_hasher.clone(),
         )),
-        get_users: Arc::new(GetUsersUseCase::new(user_provider)),
+        get_users: Arc::new(GetUsersUseCase::new(user_provider.clone())),
         delete_user: Arc::new(DeleteUserUseCase::new(repos.user.clone())),
+        verify_mfa: Arc::new(VerifyMfaUseCase::new(
+            repos.mfa.clone(),
+            totp_service.clone(),
+            password_hasher.clone(),
+            user_provider.clone(),
+            repos.session.clone(),
+            auth_config.clone(),
+        )),
+        setup_totp: Arc::new(SetupTotpUseCase::new(
+            repos.mfa.clone(),
+            totp_service.clone(),
+        )),
+        confirm_totp: Arc::new(ConfirmTotpUseCase::new(
+            repos.mfa.clone(),
+            totp_service.clone(),
+            password_hasher.clone(),
+        )),
+        disable_mfa: Arc::new(DisableMfaUseCase::new(
+            user_provider.clone(),
+            password_hasher.clone(),
+            repos.mfa.clone(),
+        )),
+        get_mfa_status: Arc::new(GetMfaStatusUseCase::new(repos.mfa.clone())),
+        register_passkey: Arc::new(RegisterPasskeyUseCase::new(
+            webauthn_service.clone(),
+            repos.mfa.clone(),
+            auth_config.mfa_challenge_ttl_secs,
+        )),
+        authenticate_passkey: Arc::new(AuthenticatePasskeyUseCase::new(
+            webauthn_service.clone(),
+            repos.mfa.clone(),
+            user_provider.clone(),
+            repos.session.clone(),
+            auth_config.clone(),
+        )),
+        discoverable_passkey_login: Arc::new(DiscoverablePasskeyLoginUseCase::new(
+            webauthn_service.clone(),
+            repos.mfa.clone(),
+            user_provider,
+            repos.session.clone(),
+            auth_config.clone(),
+            auth_config.mfa_challenge_ttl_secs,
+        )),
+        delete_passkey: Arc::new(DeletePasskeyUseCase::new(repos.mfa.clone())),
     };
 
     let backup = {
@@ -242,5 +297,6 @@ pub async fn build_app_state(
         config_file_persistence: config_persistence,
         config_path,
         tls_cert: Arc::new(TlsCertificateService),
+        webauthn_configured,
     }
 }
