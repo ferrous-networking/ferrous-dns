@@ -13,20 +13,28 @@ docker run -d \
   --name ferrous-dns \
   --restart always \
   --network host \
-  --user root \
+  --user 1000:1000 \
   -e TZ=America/Sao_Paulo \
+  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
   -v /path/to/ferrous-dns.toml:/data/config/ferrous-dns.toml \
   -v ferrous-data:/data/ \
   --dns 10.0.0.1 \
-  --cap-add NET_ADMIN \
-  --cap-add SYS_TIME \
-  --cap-add SYS_NICE \
   --cap-add NET_BIND_SERVICE \
-  ferrousnetworking/ferrous-dns:latest \
-  --config /data/config/ferrous-dns.toml
+  ferrousnetworking/ferrous-dns:latest
 ```
 
-Ports, bind address, database path, and log level are all set inside the mounted `ferrous-dns.toml`. The binary does not read `FERROUS_*` environment variables; pass overrides as CLI flags after the image name (e.g. `--dns-port 53`).
+Ports, bind address, database path, and log level are all set inside the mounted `ferrous-dns.toml`, and can be overridden with the `FERROUS_*` environment variables below — the Docker image's entrypoint script translates them into the matching CLI flags at startup. The bind mount must stay writable (no `:ro`): the first-run setup wizard, `POST /config` from the dashboard, and backup restore all persist changes back to this file.
+
+#### Environment Variables
+
+| Variable              | Default                               | Description                         |
+|:----------------------|:--------------------------------------|:------------------------------------|
+| `FERROUS_CONFIG`      | —                                     | Path to TOML config file (optional) |
+| `FERROUS_DNS_PORT`    | `53`                                  | DNS server port                     |
+| `FERROUS_WEB_PORT`    | `8080`                                | Web dashboard port                  |
+| `FERROUS_BIND_ADDRESS`| `0.0.0.0`                             | Bind address                        |
+| `FERROUS_DATABASE`    | `/data/db/ferrous.db`                 | SQLite database path                |
+| `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
 Access the dashboard at `http://localhost:8080`
 
@@ -46,16 +54,13 @@ services:
     container_name: ferrous-dns
     restart: always
     network_mode: host
-    user: root
-    command: ["--config", "/data/config/ferrous-dns.toml"]
+    user: "1000:1000"
     environment:
+      - FERROUS_CONFIG=/data/config/ferrous-dns.toml
       - TZ=America/Sao_Paulo
     dns:
       - 10.0.0.1
     cap_add:
-      - NET_ADMIN
-      - SYS_TIME
-      - SYS_NICE
       - NET_BIND_SERVICE
     volumes:
       - ./ferrous-dns.toml:/data/config/ferrous-dns.toml
@@ -116,7 +121,7 @@ The binary is at `./target/release/ferrous-dns`.
 
 ## Configuration
 
-Ferrous DNS is configured through a TOML config file, with a few settings also exposed as command-line flags. **There are no environment variables** — the binary does not read `FERROUS_*` or `RUST_LOG`.
+Ferrous DNS is configured through a TOML config file, with a few settings also exposed as command-line flags. **The `ferrous-dns` binary itself has no environment variables** — it does not read `FERROUS_*` or `RUST_LOG` directly. The `FERROUS_*` variables only exist as a convenience layer in the Docker image's entrypoint script, which converts them into the CLI flags below before launching the binary. `RUST_LOG` is not one of them — the entrypoint only checks it to decide whether to echo its assembled command line for debugging; it never controls the server's own log level (`FERROUS_LOG_LEVEL`/`--log-level` does).
 
 ### Config file
 

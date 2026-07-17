@@ -41,6 +41,7 @@ FROM alpine:3.24
 
 RUN apk add --no-cache \
     ca-certificates \
+    libcap \
     tzdata && \
     addgroup -g 1000 ferrous && \
     adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
@@ -54,7 +55,8 @@ COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh && \
     chown root:root /usr/local/bin/ferrous-dns && \
-    chmod 755 /usr/local/bin/ferrous-dns
+    chmod 755 /usr/local/bin/ferrous-dns && \
+    setcap cap_net_bind_service=+ep /usr/local/bin/ferrous-dns
 
 WORKDIR /data
 USER ferrous
