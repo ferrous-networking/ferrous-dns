@@ -64,7 +64,7 @@ socket2 = "0.6.3"
 ring = "0.17"
 sha1 = "0.11"
 sha2 = "0.11"
-base64 = "0.22.1"
+base64 = "0.23.0"
 data-encoding = "2.10"
 
 # Transport layer
