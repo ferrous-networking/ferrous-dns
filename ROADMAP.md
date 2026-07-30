@@ -91,7 +91,7 @@
 - [x] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `[dns64]` `enabled` / `prefix` (well-known `64:ff9b::/96`, /96 only) synthesizes AAAA from A records for IPv6-only clients; reverse PTR synthesis; `dns64_synthesized` query-log tag + Prometheus metric. NAT64 packet translation remains the network gateway's job
 - [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
 - [x] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`) — `[blocking]` `sinkhole_ipv4` / `sinkhole_ipv6`, applied to `null_ip` blocked answers
-- [ ] TOTP / 2FA
+- [x] TOTP / 2FA — two-phase login (TOTP enrollment + `/auth/2fa/verify`) plus WebAuthn passkeys as a second factor or passwordless login, gated on `[auth.webauthn]`; API keys are exempt
 
 ### 🌟 v1.0.0 - Production Ready
 
