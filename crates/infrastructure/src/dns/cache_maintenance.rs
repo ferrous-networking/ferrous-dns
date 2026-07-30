@@ -16,8 +16,8 @@ use tracing::{debug, info};
 
 const BACKPRESSURE_MS_PER_CANDIDATE: u64 = 2;
 
-/// Minimum bloom rotation interval in refresh cycles.
-/// Ensures bloom entries survive long enough to match cache min_ttl.
+/// Minimum bloom rotation interval in refresh cycles. Rotation re-seeds every
+/// live key, so this only bounds how often that `O(entries)` pass runs.
 const MIN_BLOOM_ROTATION_CYCLES: u64 = 3;
 
 /// Infrastructure adapter implementing `CacheMaintenancePort`.
@@ -38,9 +38,9 @@ impl DnsCacheMaintenance {
         query_log: Option<Arc<dyn QueryLogRepository>>,
         refresh_interval_secs: u64,
     ) -> Self {
-        // Bloom rotation throttled so entries survive ≥ min_ttl seconds.
-        // The 2-slot aging bloom survives 1–2 rotations, so entries live
-        // N*interval to 2*N*interval seconds.
+        // Rotation only governs how quickly bits left behind by removed keys
+        // are purged: `rotate_bloom` re-seeds every live entry into the new
+        // slot, so an entry's visibility no longer depends on this cadence.
         let min_ttl = cache.min_ttl() as u64;
         let interval = refresh_interval_secs.max(1);
         let bloom_rotation_cycles = (min_ttl / interval).max(MIN_BLOOM_ROTATION_CYCLES);
@@ -241,7 +241,12 @@ impl CacheMaintenancePort for DnsCacheMaintenance {
             .fetch_add(1, AtomicOrdering::Relaxed)
             + 1;
         if cycle.is_multiple_of(self.bloom_rotation_cycles) {
-            self.cache.rotate_bloom();
+            let cache_for_bloom = Arc::clone(&self.cache);
+            if let Err(e) =
+                tokio::task::spawn_blocking(move || cache_for_bloom.rotate_bloom()).await
+            {
+                debug!(error = %e, "Bloom rotation task panicked");
+            }
         }
 
         let cache_for_scan = Arc::clone(&self.cache);
