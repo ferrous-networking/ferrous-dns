@@ -422,11 +422,42 @@ impl DnsCache {
         self.eviction_policy.strategy()
     }
 
-    pub fn rotate_bloom(&self) {
+    /// Rotates the two-slot aging bloom and re-seeds it from the live cache.
+    ///
+    /// The filter is an authoritative negative gate in [`Self::get`]: when a
+    /// key's bits are absent the lookup reports a miss without ever consulting
+    /// the backing map. Bits are otherwise written only by `insert` and by a
+    /// read hit, so an entry that went unread across two rotations used to
+    /// become invisible while still holding a valid TTL — the query left for
+    /// upstream and the optimistic refresh job had no way to prevent it.
+    /// Re-seeding ties bloom membership to what the cache actually holds
+    /// rather than to how recently a key was read.
+    ///
+    /// Returns how many keys were re-seeded into the new active slot.
+    pub fn rotate_bloom(&self) -> usize {
         self.bloom.rotate();
+
+        let now = coarse_now_secs();
+        let mut reseeded = 0usize;
+
+        for entry in self.cache.iter() {
+            let record = entry.value();
+            if record.is_marked_for_deletion() {
+                continue;
+            }
+            if record.is_expired_at_secs(now) && !record.is_stale_usable_at_secs(now) {
+                continue;
+            }
+            self.bloom.set(entry.key());
+            reseeded += 1;
+        }
+
         for key in self.permanent_keys.iter() {
             self.bloom.set(key.key());
         }
+
+        debug!(reseeded, "Bloom rotated and re-seeded from live cache");
+        reseeded
     }
 
     pub fn min_ttl(&self) -> u32 {
@@ -486,6 +517,10 @@ impl DnsCache {
                     record.expires_at_secs,
                 );
             }
+
+            // A renewed TTL is worthless if the bloom gate no longer admits the
+            // key, so re-arm it here too instead of waiting for the next rotation.
+            self.bloom.set(&key);
             true
         } else {
             false
