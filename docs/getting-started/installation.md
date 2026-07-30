@@ -2,6 +2,8 @@
 
 Ferrous DNS can be deployed via Docker (recommended), Docker Compose, or built from source.
 
+Linux (`amd64`/`arm64`) is the supported platform. There is **no native Windows or macOS binary** — see [Windows (WSL2)](#windows-wsl2) and [Platform support](#platform-support).
+
 ---
 
 ## Docker
@@ -75,6 +77,95 @@ Then start it:
 ```bash
 docker compose up -d
 ```
+
+---
+
+## Windows (WSL2)
+
+There is no native Windows build. Ferrous DNS's UDP hot path relies on Linux-only socket APIs (`SO_REUSEPORT` for the per-core listeners, `IP_PKTINFO` for source-address selection, `recvmmsg` for batched receives), so on Windows it runs inside **WSL2** — either the Linux binary directly or the Docker image via Docker Desktop's WSL2 backend.
+
+The catch is networking, not the build: by default WSL2 sits behind NAT with its own IP, so devices on your LAN cannot reach port 53 inside it. `netsh interface portproxy` does **not** solve this — it forwards TCP only, and DNS is primarily UDP. Network-wide blocking therefore requires WSL's *mirrored* networking mode.
+
+### 1. Requirements
+
+- **Windows 11 22H2** (build 22621) or newer — mirrored networking does not exist on Windows 10.
+- WSL **2.0.9+** (check with `wsl --version`) and a distro: `wsl --install -d Ubuntu`.
+
+### 2. Put WSL on the LAN
+
+Create or edit `%UserProfile%\.wslconfig`:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+Then apply it with `wsl --shutdown` and reopen your distro. WSL now shares the host's network interfaces, so a socket bound inside WSL is reachable on the Windows machine's LAN IP.
+
+!!! warning "Do not set `hostAddressLoopback`"
+    That option is experimental and does the opposite of what you want here (it lets WSL reach *the host* by its LAN IP). It is not needed for inbound access.
+
+### 3. Allow inbound traffic through the Hyper-V firewall
+
+Mirrored mode is still gated by the Hyper-V firewall, which blocks inbound connections by default. In an **elevated PowerShell**:
+
+```powershell
+$wsl = '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}'
+New-NetFirewallHyperVRule -Name 'FerrousDNS-UDP53' -DisplayName 'Ferrous DNS (DNS/UDP)' `
+  -VMCreatorId $wsl -Protocol UDP -LocalPorts 53 -Action Allow
+New-NetFirewallHyperVRule -Name 'FerrousDNS-TCP53' -DisplayName 'Ferrous DNS (DNS/TCP)' `
+  -VMCreatorId $wsl -Protocol TCP -LocalPorts 53 -Action Allow
+New-NetFirewallHyperVRule -Name 'FerrousDNS-Web' -DisplayName 'Ferrous DNS (dashboard)' `
+  -VMCreatorId $wsl -Protocol TCP -LocalPorts 8080 -Action Allow
+```
+
+Both UDP and TCP on 53 are needed — clients retry over TCP whenever a response is truncated.
+
+### 4. Free port 53 inside the distro
+
+Ubuntu's WSL image boots with systemd, and `systemd-resolved` holds a stub listener on `127.0.0.53:53`. Disable it and stop WSL from rewriting `/etc/resolv.conf`:
+
+```bash
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\nDNSStubListener=no\n' | sudo tee /etc/systemd/resolved.conf.d/ferrous.conf
+sudo systemctl restart systemd-resolved
+
+printf '[network]\ngenerateResolvConf = false\n' | sudo tee -a /etc/wsl.conf
+```
+
+After `wsl --shutdown`, write your own `/etc/resolv.conf` (`nameserver 1.1.1.1`). Point it at a public resolver, not at Ferrous DNS itself — otherwise package installs inside the distro break whenever the server is stopped.
+
+### 5. Run the server
+
+Native binary — follow [Build from Source](#build-from-source) inside the distro, then grant the port-53 capability so you don't need root:
+
+```bash
+sudo setcap cap_net_bind_service=+ep ./target/release/ferrous-dns
+./target/release/ferrous-dns --config ferrous-dns.toml
+```
+
+Docker Desktop — use explicit port mappings instead of `--network host`:
+
+```bash
+docker run -d --name ferrous-dns --restart always \
+  -p 53:53/udp -p 53:53/tcp -p 8080:8080 \
+  -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
+  -v /path/to/ferrous-dns.toml:/data/config/ferrous-dns.toml \
+  -v ferrous-data:/data/ \
+  ferrousnetworking/ferrous-dns:latest
+```
+
+Docker Desktop 4.34+ does support host networking (opt-in under **Settings → Resources → Network**), but it is layer-4 only and containers cannot bind a specific host address, so explicit mappings are the predictable path here.
+
+### Known limitations under WSL2
+
+- **mDNS device discovery** (`mdns_enabled`) is untested and should be left off — multicast behaviour differs from a bare-metal Linux host.
+- **WSL does not start at boot.** Register a Scheduled Task that runs `wsl -d Ubuntu -u root /path/to/ferrous-dns ...` at logon/startup, or the DNS server disappears after a reboot.
+- **Mirrored mode has open port-binding bugs** upstream (wildcard binds and reserved localhost ranges). If a listener fails to bind, try a `wsl --shutdown` first.
+- For anything you actually depend on, a Raspberry Pi, a spare Linux box, or a Hyper-V VM on an *external* (bridged) virtual switch is a less surprising host than WSL2.
+
+!!! note "Windows 10, or NAT mode"
+    Without mirrored networking, WSL2 can only serve the Windows machine itself (via `localhostForwarding`). It cannot act as a network-wide DNS server, and no `netsh` port-forwarding workaround exists for UDP.
 
 ---
 
@@ -156,7 +247,14 @@ These flags override the matching values from the config file:
 
 ---
 
-## Multi-Architecture Support
+## Platform support
+
+| Platform            | Status                                                                 |
+|:--------------------|:-----------------------------------------------------------------------|
+| Linux `amd64`       | Supported — prebuilt binary and Docker image                            |
+| Linux `arm64`       | Supported — prebuilt binary and Docker image (Raspberry Pi 4/5)         |
+| Windows             | Via [WSL2](#windows-wsl2) only — no native binary                       |
+| macOS               | Docker with a Linux VM; no native binary and no host networking         |
 
 Docker images are published for both `amd64` and `arm64` (Raspberry Pi 4/5, Apple Silicon via Linux VM).
 
