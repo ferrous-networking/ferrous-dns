@@ -4,17 +4,10 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "requirements.txt"
-      - "ROADMAP.md"
-      - "Cargo.toml"
-      - "scripts/check-docs-version.sh"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -31,6 +24,10 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Same PAT the release trigger pushes with: main is protected, and
+          # the sync step below has to push back to it. Falls back to the
+          # default token so a fork without the secret still builds.
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -41,11 +38,33 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check docs match the workspace version
-        run: bash scripts/check-docs-version.sh
+      # The banners are machine-owned: this rewrites them to whatever
+      # Cargo.toml says, so a version bump never has to remember to touch
+      # docs/. The remaining consistency checks still fail the build, because
+      # they need a human to write something.
+      - name: Sync docs with the workspace version
+        run: bash scripts/check-docs-version.sh --fix
 
       - name: Build site
         run: mkdocs build --strict
+
+      # site/ is tracked, so it has to be regenerated whenever docs/ changes.
+      # Doing it here is what keeps it from drifting between hand-run builds.
+      # `[skip ci]` stops this commit from starting another round of
+      # workflows: the site it would build is the one already uploaded below.
+      - name: Commit the synced docs and regenerated site
+        if: github.event_name == 'push'
+        run: |
+          if [[ -z "$(git status --porcelain docs site)" ]]; then
+            echo "docs/ and site/ are already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs site
+          git commit -m "docs: sync version banners and regenerate the site [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

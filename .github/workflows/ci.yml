@@ -373,14 +373,19 @@ jobs:
         continue-on-error: true
 
   docs-consistency:
-    name: Docs Consistency (version + roadmap)
+    name: Docs Consistency (roadmap + changelog)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Check docs match the workspace version
-        run: bash scripts/check-docs-version.sh
+      # `--fix` in a throwaway checkout: the version banners are rewritten and
+      # the result is discarded, so banner drift never fails a build — docs.yml
+      # owns them and commits the real fix on every push to main. What still
+      # gates here are the checks a human has to satisfy: the roadmap include,
+      # the milestone for the current series, and the changelog entry.
+      - name: Check the docs a human has to maintain
+        run: bash scripts/check-docs-version.sh --fix
 
   ci-success:
     name: CI Success
