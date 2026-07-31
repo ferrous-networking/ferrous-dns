@@ -1,4 +1,5 @@
 use super::super::dnssec::DnssecValidatorPool;
+use super::super::dnssec::TrustAnchorStore;
 use super::super::load_balancer::PoolManager;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
@@ -17,6 +18,7 @@ impl DnssecResolver {
         inner: Arc<dyn DnsResolver>,
         pool_manager: Arc<PoolManager>,
         query_timeout_ms: u64,
+        trust_store: TrustAnchorStore,
     ) -> Self {
         let pool_size = std::thread::available_parallelism()
             .map(|n| n.get())
@@ -30,6 +32,7 @@ impl DnssecResolver {
                 pool_manager,
                 query_timeout_ms,
                 pool_size,
+                trust_store,
             )),
         }
     }

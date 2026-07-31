@@ -119,6 +119,10 @@ impl ChainVerifier {
         }
     }
 
+    pub fn trust_anchor_count(&self) -> usize {
+        self.trust_store.len()
+    }
+
     pub async fn verify_chain(
         &mut self,
         domain: &str,
@@ -130,7 +134,7 @@ impl ChainVerifier {
             "Starting DNSSEC chain verification"
         );
 
-        if self.trust_store.get_anchor(".").is_none() {
+        if !self.trust_store.has_anchor_for(".") {
             warn!("No root trust anchor configured");
             return Ok(ValidationResult::Indeterminate);
         }
@@ -138,7 +142,7 @@ impl ChainVerifier {
         let labels = Self::split_domain(domain);
         debug!(labels = ?labels, "Domain labels");
 
-        // Turn the configured KSK trust anchor into the full validated root
+        // Turn the configured KSK trust anchors into the full validated root
         // DNSKEY RRset (KSK + ZSK). The bare anchor KSK is not enough: the DS
         // RRset of each TLD is signed by the root *ZSK*, so without the ZSK the
         // first delegation's DS could not be authenticated. Done on every walk —
@@ -668,22 +672,23 @@ impl ChainVerifier {
     }
 
     /// Establishes the validated root DNSKEY RRset (KSK + ZSK) from the
-    /// configured KSK trust anchor, storing it as the keys of the `.` zone.
+    /// configured KSK trust anchors, storing it as the keys of the `.` zone.
     ///
-    /// The trust anchor only pins the root KSK, but the DS RRset of every TLD is
+    /// A trust anchor only pins a root KSK, but the DS RRset of every TLD is
     /// signed by the root *ZSK*. So we fetch the live root DNSKEY RRset, confirm
-    /// it contains the anchor KSK, verify the RRset's self-signature against that
-    /// KSK (RFC 4035 §5.2), and only then trust the whole set — which now
-    /// includes the ZSK needed to authenticate TLD DS records.
+    /// it contains at least one anchored KSK, verify the RRset's self-signature
+    /// against one of them (RFC 4035 §5.2), and only then trust the whole set —
+    /// which now includes the ZSK needed to authenticate TLD DS records.
+    ///
+    /// Every anchored key is tried, not just the first: across a root KSK
+    /// rollover the outgoing and incoming keys are published side by side for
+    /// months, and only one of them signs the RRset at any given moment.
     async fn bootstrap_root_keys(&mut self) -> Result<(), DomainError> {
-        let anchor = match self.trust_store.get_anchor(".") {
-            Some(a) => a.clone(),
-            None => {
-                return Err(DomainError::InvalidDnsResponse(
-                    "No root trust anchor configured".into(),
-                ))
-            }
-        };
+        if !self.trust_store.has_anchor_for(".") {
+            return Err(DomainError::InvalidDnsResponse(
+                "No root trust anchor configured".into(),
+            ));
+        }
 
         let dnskey_result = Self::fetch_dnskey(&self.dnssec_cache, &self.pool_manager, ".").await?;
 
@@ -693,24 +698,27 @@ impl ChainVerifier {
             ));
         }
 
-        // A cache hit was already validated against the anchor on first fetch.
+        // A cache hit was already validated against the anchors on first fetch.
         if dnskey_result.from_cache {
             self.validated_keys
                 .insert(".".to_string(), dnskey_result.keys);
             return Ok(());
         }
 
-        // The configured anchor KSK must be present in the live root RRset.
-        let Some(anchor_key) = dnskey_result
-            .keys
-            .iter()
-            .find(|k| anchor.matches(k))
+        // At least one configured anchor must be present in the live root RRset.
+        let anchor_keys: Vec<DnskeyRecord> = self
+            .trust_store
+            .anchor_keys_present(".", &dnskey_result.keys)
+            .into_iter()
             .cloned()
-        else {
-            return Err(DomainError::InvalidDnsResponse(
-                "Root DNSKEY RRset does not contain the trust anchor".into(),
-            ));
-        };
+            .collect();
+
+        if anchor_keys.is_empty() {
+            return Err(DomainError::InvalidDnsResponse(format!(
+                "Root DNSKEY RRset contains none of the {} configured trust anchors",
+                self.trust_store.len()
+            )));
+        }
 
         if dnskey_result.rrsigs.is_empty() || dnskey_result.raw_records.is_empty() {
             return Err(DomainError::InvalidDnsResponse(
@@ -720,38 +728,63 @@ impl ChainVerifier {
 
         let now = now_secs();
         let mut rrsig_ok = false;
-        for rrsig in &dnskey_result.rrsigs {
-            match self.crypto_verifier.verify_rrsig(
-                rrsig,
-                &anchor_key,
-                ".",
-                &dnskey_result.raw_records,
-                now,
-            ) {
-                Ok(true) => {
-                    rrsig_ok = true;
-                    break;
-                }
-                Ok(false) => {}
-                Err(e) => {
-                    warn!(error = %e, "Root DNSKEY RRSIG verification error");
+        'anchors: for anchor_key in &anchor_keys {
+            for rrsig in &dnskey_result.rrsigs {
+                match self.crypto_verifier.verify_rrsig(
+                    rrsig,
+                    anchor_key,
+                    ".",
+                    &dnskey_result.raw_records,
+                    now,
+                ) {
+                    Ok(true) => {
+                        rrsig_ok = true;
+                        break 'anchors;
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        warn!(error = %e, "Root DNSKEY RRSIG verification error");
+                    }
                 }
             }
         }
 
         if !rrsig_ok {
-            return Err(DomainError::InvalidDnsResponse(
-                "Root DNSKEY self-signature verification failed".into(),
-            ));
+            return Err(DomainError::InvalidDnsResponse(format!(
+                "Root DNSKEY self-signature verification failed against {} anchored key(s)",
+                anchor_keys.len()
+            )));
         }
+
+        self.warn_on_unanchored_root_ksks(&dnskey_result.keys);
 
         self.dnssec_cache
             .cache_dnskey(".", dnskey_result.keys.to_vec(), dnskey_result.ttl);
         self.validated_keys
             .insert(".".to_string(), dnskey_result.keys);
 
-        debug!("Root DNSKEY RRset bootstrapped from trust anchor");
+        debug!(
+            anchored_keys = anchor_keys.len(),
+            "Root DNSKEY RRset bootstrapped from trust anchors"
+        );
         Ok(())
+    }
+
+    /// Early warning for the next root KSK rollover. The root publishes an
+    /// incoming KSK months before it starts signing with it, so a KSK that no
+    /// configured anchor pins is harmless today and fatal the day the root
+    /// switches over. Say so while there is still time to act.
+    ///
+    /// Runs only on a cache miss, so at most once per root DNSKEY TTL (~2 days).
+    fn warn_on_unanchored_root_ksks(&self, keys: &[DnskeyRecord]) {
+        for key in self.trust_store.unanchored_ksks(".", keys) {
+            warn!(
+                key_tag = key.calculate_key_tag(),
+                algorithm = key.algorithm,
+                "Root zone publishes a KSK that no configured trust anchor covers; \
+                 DNSSEC validation will break once the root signs with it — update the trust anchors"
+            );
+        }
     }
 
     pub fn get_zone_keys(&self, zone: &str) -> Option<&Arc<[DnskeyRecord]>> {

@@ -25,6 +25,7 @@ local_dns_server = "10.0.0.1:53"
 | `query_timeout` | `3` | Seconds to wait for an upstream response |
 | `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"`, `"Balanced"`, or `"Failover"` |
 | `dnssec_mode` | `"Permissive"` | DNSSEC enforcement: `"Off"`, `"Permissive"`, or `"Strict"` (see [DNSSEC](#dnssec)) |
+| `dnssec_trust_anchor_file` | — | Path to a trust anchor file replacing the embedded IANA root anchors (see [Trust anchors](#trust-anchors)) |
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
 | `local_domain` | — | Local domain suffix appended to short hostnames |
@@ -199,6 +200,43 @@ dnssec_mode = "Strict"   # SERVFAIL on Bogus; "Permissive" validates without rej
 
 !!! tip "Backward compatibility"
     The legacy `dnssec_enabled = true/false` flag is still accepted (mapping to `Permissive`/`Off`) when `dnssec_mode` is absent, but `dnssec_mode` is the source of truth.
+
+### Trust anchors {#trust-anchors}
+
+Validation starts from the root key-signing key. Ferrous DNS embeds the IANA root trust anchors (`root-anchors.xml`) in the binary — **both** that are currently valid: KSK-2017 (key tag 20326), which signs the root today, and KSK-2024 (key tag 38696), scheduled to take over signing on **2026-10-11**. Shipping both means the rollover needs no action from you.
+
+To pin your own set instead, point `dnssec_trust_anchor_file` at a file in DNS presentation format:
+
+```toml title="ferrous-dns.toml"
+[dns]
+dnssec_trust_anchor_file = "/etc/ferrous-dns/root.key"
+```
+
+The file takes `DS` and `DNSKEY` records, one per line, with `;` comments — the format written by `unbound-anchor -a /etc/ferrous-dns/root.key` and shipped by the `dns-root-data` package as `root.key` / `root.ds`:
+
+```
+; the two current IANA root anchors, in DS form
+. IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
+. IN DS 38696 8 2 683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16
+```
+
+Behaviour worth knowing:
+
+- The file **replaces** the embedded anchors rather than adding to them, so you can retire an anchor and not only introduce one. List every anchor you want trusted.
+- A configured file that cannot be read or parsed **aborts startup**. Falling back to the embedded set would leave you believing you had replaced the trust root when you had not.
+- The path is read once at startup. It is deliberately not exposed through the REST API or the web UI, and is not part of a configuration backup, since it names a host path.
+- Startup logs the count and the source: `DNSSEC trust anchors loaded count=2 source=embedded`.
+
+!!! warning "Rollover early warning"
+    On every root DNSKEY refresh, Ferrous DNS compares the live root key-signing keys against your anchors and warns about any KSK no anchor covers:
+
+    ```
+    WARN Root zone publishes a KSK that no configured trust anchor covers;
+         DNSSEC validation will break once the root signs with it —
+         update the trust anchors key_tag=38696 algorithm=8
+    ```
+
+    Treat it as urgent: validation keeps working until the root starts signing with that key, and then fails for every signed zone. Automatic RFC 5011 anchor rollover is not implemented yet, so the update is manual — or arrives with a release that refreshes the embedded set.
 
 ---
 

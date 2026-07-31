@@ -1,4 +1,5 @@
 use super::cache::DnssecCache;
+use super::trust_anchor::TrustAnchorStore;
 use super::validator::{DnssecValidator, ValidatedResponse};
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DomainError, RecordType};
@@ -13,18 +14,31 @@ pub struct DnssecValidatorPool {
 }
 
 impl DnssecValidatorPool {
-    pub fn new(pool_manager: Arc<PoolManager>, timeout_ms: u64, size: usize) -> Self {
+    pub fn new(
+        pool_manager: Arc<PoolManager>,
+        timeout_ms: u64,
+        size: usize,
+        trust_store: TrustAnchorStore,
+    ) -> Self {
         let cache = Arc::new(DnssecCache::new());
         let validators = (0..size)
             .map(|_| {
                 Mutex::new(
-                    DnssecValidator::with_cache(pool_manager.clone(), cache.clone())
-                        .with_timeout(timeout_ms),
+                    DnssecValidator::with_trust_store_and_cache(
+                        pool_manager.clone(),
+                        trust_store.clone(),
+                        cache.clone(),
+                    )
+                    .with_timeout(timeout_ms),
                 )
             })
             .collect();
 
-        debug!(pool_size = size, "DNSSEC validator pool created");
+        debug!(
+            pool_size = size,
+            trust_anchors = trust_store.len(),
+            "DNSSEC validator pool created"
+        );
 
         Self {
             validators,
