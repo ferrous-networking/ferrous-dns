@@ -238,7 +238,7 @@ qname_case_randomization = false
 | `local_domain` | `str` | `"lan"` | Local domain suffix appended to short hostnames |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups and client hostname resolution |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
-| `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream A/AAAA queries (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
+| `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
 
 See [DNS & Upstreams](dns.md).
 

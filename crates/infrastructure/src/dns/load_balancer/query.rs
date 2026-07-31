@@ -40,11 +40,14 @@ pub async fn query_server(
 
     let transport_response = dns_transport.send(query_bytes, timeout_duration).await?;
 
-    let dns_response = ResponseParser::parse_bytes(transport_response.bytes)?;
+    let mut dns_response = ResponseParser::parse_bytes(transport_response.bytes)?;
 
     // Reject spoofed/off-path responses before acting on them (incl. before the
     // TCP-on-truncation retry below), so a forged TC=1 packet can't waste a retry.
     validator.validate(&dns_response, protocol)?;
+    // Only now that the case echo has been checked: strip our 0x20 randomization,
+    // so nothing downstream (cache included) ever holds a randomized QNAME.
+    validator.canonicalize(&mut dns_response);
 
     let response_time_us = start.elapsed().as_micros() as u64;
     let server_arc = get_display(protocol, server_displays);
@@ -70,8 +73,9 @@ pub async fn query_server(
 
             let tcp_start = Instant::now();
             let tcp_response = tcp_transport.send(query_bytes, remaining).await?;
-            let tcp_dns_response = ResponseParser::parse_bytes(tcp_response.bytes)?;
+            let mut tcp_dns_response = ResponseParser::parse_bytes(tcp_response.bytes)?;
             validator.validate(&tcp_dns_response, &tcp_protocol)?;
+            validator.canonicalize(&mut tcp_dns_response);
 
             let tcp_response_time_us = tcp_start.elapsed().as_micros() as u64;
             let tcp_server_arc = get_display(&tcp_protocol, server_displays);

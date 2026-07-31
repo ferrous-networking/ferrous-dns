@@ -1,4 +1,5 @@
 use super::response_parser::DnsResponse;
+use bytes::Bytes;
 use ferrous_dns_domain::{DnsProtocol, DomainError};
 use hickory_proto::op::Message;
 use hickory_proto::rr::rdata::opt::{EdnsCode, EdnsOption};
@@ -148,12 +149,94 @@ impl ResponseValidator {
         }
     }
 
+    /// Strips our 0x20 case randomization from a validated response, in place.
+    ///
+    /// MUST run after [`validate`](Self::validate): the randomized case *is* the
+    /// evidence that check consumes, and this destroys it.
+    ///
+    /// Canonical here means lowercase, not "whatever the client sent" — the
+    /// server lowercases the queried name on ingress, so by the time a query
+    /// reaches an upstream the client's case is already gone. Doing this at the
+    /// upstream choke point rather than on the way out to the client is what
+    /// covers the cached-wire path, which replays bytes straight from the cache
+    /// without ever re-parsing them.
+    pub fn canonicalize(&self, resp: &mut DnsResponse) {
+        if !self.case_sensitive {
+            return;
+        }
+
+        if let Some(canonical) = lowercase_question_qname(&resp.raw_bytes) {
+            resp.raw_bytes = canonical;
+        }
+
+        for query in resp.message.queries.iter_mut() {
+            let lower = query.name().to_lowercase();
+            query.set_name(lower);
+        }
+        for record in resp
+            .message
+            .answers
+            .iter_mut()
+            .chain(resp.message.authorities.iter_mut())
+            .chain(resp.message.additionals.iter_mut())
+            .chain(resp.raw_answers.iter_mut())
+        {
+            record.name = record.name.to_lowercase();
+        }
+    }
+
     fn spoof(&self, protocol: &DnsProtocol, reason: String) -> DomainError {
         DomainError::SpoofedResponse {
             server: protocol.to_string(),
             reason,
         }
     }
+}
+
+/// Lowercases the QNAME of a raw response's question section, returning a
+/// rewritten buffer only when something actually changed.
+///
+/// The question holds the first name in the message, so it is never a
+/// compression target and a plain length-prefixed walk from the end of the
+/// 12-byte header is enough. Owner names in the other sections are compression
+/// pointers back to it in practice, so they follow along for free. Case changes
+/// preserve length, which keeps this a byte fixup with no header, rdlength or
+/// pointer offsets to repair.
+fn lowercase_question_qname(wire: &Bytes) -> Option<Bytes> {
+    const HEADER_LEN: usize = 12;
+
+    let mut labels: Vec<(usize, usize)> = Vec::new();
+    let mut pos = HEADER_LEN;
+    loop {
+        let len = *wire.get(pos)? as usize;
+        if len == 0 {
+            break;
+        }
+        // A pointer this early would mean a malformed question; leave it be
+        // rather than rewriting bytes we have not understood.
+        if len & 0xC0 != 0 {
+            return None;
+        }
+        let (start, end) = (pos + 1, pos + 1 + len);
+        if end > wire.len() {
+            return None;
+        }
+        labels.push((start, end));
+        pos = end;
+    }
+
+    if !labels
+        .iter()
+        .any(|(start, end)| wire[*start..*end].iter().any(u8::is_ascii_uppercase))
+    {
+        return None;
+    }
+
+    let mut buf = wire.to_vec();
+    for (start, end) in labels {
+        buf[start..end].make_ascii_lowercase();
+    }
+    Some(Bytes::from(buf))
 }
 
 fn is_do53(protocol: &DnsProtocol) -> bool {

@@ -109,34 +109,56 @@ fn aaaa_query_carries_cookie_and_randomizes_qname_case() {
 }
 
 #[test]
-fn non_address_query_is_plain() {
-    for rt in [RecordType::MX, RecordType::TXT] {
+fn non_address_queries_are_hardened_too() {
+    // These used to be exempt, which left the resolver's least-protected queries
+    // exactly where it hurt: DS/DNSKEY (the trust chain itself), MX/TXT
+    // (SPF/DKIM/DMARC) and HTTPS/SVCB (ipv4hint/ipv6hint, ECH).
+    for rt in [
+        RecordType::MX,
+        RecordType::TXT,
+        RecordType::DS,
+        RecordType::DNSKEY,
+        RecordType::HTTPS,
+        RecordType::NS,
+    ] {
+        let mut saw_upper = false;
         for _ in 0..16 {
             let (bytes, _) =
                 MessageBuilder::build_query_hardened("example.com", &rt, false, hardened())
                     .unwrap();
             let msg = Message::from_vec(&bytes).unwrap();
-            assert!(cookie_of(&msg).is_none(), "{rt:?} must not carry a cookie");
-            assert!(
-                !has_upper(&labels(&msg)),
-                "{rt:?} must not be case-randomized"
+            assert_eq!(
+                cookie_of(&msg).map(|c| c.len()),
+                Some(8),
+                "{rt:?} query must carry an 8-byte client cookie"
             );
+            saw_upper |= has_upper(&labels(&msg));
         }
+        // 0x20 is random per query; over 16 queries at least one QNAME must
+        // carry an uppercase letter (all-lowercase odds per query are ~2^-10).
+        assert!(saw_upper, "{rt:?} qname must be 0x20 case-randomized");
     }
 }
 
 #[test]
-fn a_query_is_plain_when_opts_disabled() {
-    let (bytes, _) = MessageBuilder::build_query_hardened(
-        "example.com",
-        &RecordType::A,
-        false,
-        HardeningOpts::default(),
-    )
-    .unwrap();
-    let msg = Message::from_vec(&bytes).unwrap();
-    assert!(cookie_of(&msg).is_none());
-    assert!(!has_upper(&labels(&msg)));
+fn hardening_follows_the_opts_for_every_type() {
+    // The flags alone decide now — no record type is silently exempt, and none
+    // is silently forced on.
+    for rt in [RecordType::A, RecordType::MX, RecordType::DNSKEY] {
+        let (bytes, _) = MessageBuilder::build_query_hardened(
+            "example.com",
+            &rt,
+            false,
+            HardeningOpts::default(),
+        )
+        .unwrap();
+        let msg = Message::from_vec(&bytes).unwrap();
+        assert!(cookie_of(&msg).is_none(), "{rt:?} must honor cookie=false");
+        assert!(
+            !has_upper(&labels(&msg)),
+            "{rt:?} must honor qname_0x20=false"
+        );
+    }
 }
 
 #[test]
