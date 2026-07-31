@@ -50,11 +50,9 @@ fn normalize_domain_to_compact(domain: &str) -> CompactString {
     } else {
         // Domains longer than the RFC 1035 cap are accepted but fall back to
         // a heap-allocated owned string during normalization.
-        let mut owned = String::with_capacity(bytes.len());
-        for &b in bytes {
-            owned.push(b.to_ascii_lowercase() as char);
-        }
-        CompactString::from(owned)
+        // `str::to_ascii_lowercase` rewrites only single-byte ASCII scalars,
+        // so multi-byte UTF-8 sequences survive byte-for-byte.
+        CompactString::from(domain.to_ascii_lowercase())
     }
 }
 

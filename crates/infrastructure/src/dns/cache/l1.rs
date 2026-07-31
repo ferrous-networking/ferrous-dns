@@ -62,9 +62,7 @@ pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
         let mut key = CompactString::with_capacity(total);
         key.push_str(type_str);
         key.push(':');
-        for &b in domain.as_bytes() {
-            key.push(b.to_ascii_lowercase() as char);
-        }
+        key.push_str(&domain.to_ascii_lowercase());
         lookup_l1(&key)
     }
 }
@@ -122,9 +120,7 @@ pub fn l1_insert(
         let mut key = CompactString::with_capacity(total);
         key.push_str(type_str);
         key.push(':');
-        for &b in domain.as_bytes() {
-            key.push(b.to_ascii_lowercase() as char);
-        }
+        key.push_str(&domain.to_ascii_lowercase());
         key
     };
 
