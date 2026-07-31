@@ -3,6 +3,7 @@ use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use base64::Engine;
+use ferrous_dns_infrastructure::dns::forwarding::EDNS_MAX_PAYLOAD;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query as DnsQuery};
 use hickory_proto::rr::{DNSClass, Name, RData, RecordType as HickoryRecordType};
@@ -127,7 +128,7 @@ fn build_wire_query(name: &str, record_type_str: &str) -> anyhow::Result<Vec<u8>
     query.set_query_class(DNSClass::IN);
 
     let mut edns = Edns::new();
-    edns.set_max_payload(4096);
+    edns.set_max_payload(EDNS_MAX_PAYLOAD);
     edns.set_version(0);
 
     let mut message = Message::new(fastrand::u16(..), MessageType::Query, OpCode::Query);

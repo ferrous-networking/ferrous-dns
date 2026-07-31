@@ -12,6 +12,17 @@ use std::sync::LazyLock;
 const CLIENT_COOKIE_LEN: usize = 8;
 const COOKIE_OPTION_CODE: u16 = 10;
 
+/// EDNS0 UDP payload size advertised on every outgoing upstream query.
+///
+/// 1232 is the DNS Flag Day 2020 recommendation: it fits inside the minimum
+/// IPv6 MTU (1280) minus headers, so responses are never IP-fragmented. That
+/// matters twice over — middleboxes routinely drop IP fragments (which shows up
+/// as an unexplained timeout, not an error), and fragment-based cache poisoning
+/// depends on the second fragment, which carries neither UDP header nor TXID.
+/// Responses that no longer fit come back with TC=1 and are retried over TCP by
+/// [`query_server`](crate::dns::load_balancer::query::query_server).
+pub const EDNS_MAX_PAYLOAD: u16 = 1232;
+
 /// Opt-in anti-spoofing measures for an upstream query. Only honored for A/AAAA
 /// queries (see [`MessageBuilder::build_query_hardened`]); ignored for other
 /// record types because their responses are cached/replayed as raw upstream wire
@@ -153,7 +164,7 @@ impl MessageBuilder {
 
     fn build_edns(dnssec_ok: bool) -> Edns {
         let mut edns = Edns::new();
-        edns.set_max_payload(4096);
+        edns.set_max_payload(EDNS_MAX_PAYLOAD);
         edns.set_dnssec_ok(dnssec_ok);
         edns.set_version(0);
         edns
