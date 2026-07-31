@@ -50,7 +50,9 @@ edns_cookie_option="\x00\x0a"
 edns_bad_version="\x01"
 
 # PROXY protocol v2
-proxy_v2_signature="\r\n\r\n\x00\r\nQUIT\n"
+# libFuzzer's dictionary parser only understands \\, \" and \xAB — \r and \n
+# abort the whole run with "ParseDictionaryFile: error in line N".
+proxy_v2_signature="\x0d\x0a\x0d\x0a\x00\x0d\x0aQUIT\x0a"
 proxy_v2_proxy_tcp4="\x21\x11"
 proxy_v2_proxy_tcp6="\x21\x21"
 proxy_v2_local="\x20\x00"
