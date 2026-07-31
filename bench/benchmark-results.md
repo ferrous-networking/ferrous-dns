@@ -6,8 +6,11 @@
 
 ## Results
 
-Median QPS across 3 runs. ferrous-dns was #1 in **every** run; the ranking below
-is stable across all three.
+Median QPS across 3 runs. This is a **cache-hit forwarding** benchmark: every
+server has its cache enabled and forwards to `8.8.8.8` / `1.1.1.1`, so Unbound
+and PowerDNS Recursor run in forward mode rather than recursing from the root.
+The table measures how fast each server answers from its own cache — not
+recursive resolution performance.
 
 | Server             | Median QPS | Median Avg Lat | QPS spread (min–max) |
 |:-------------------|-----------:|:--------------:|:---------------------|
@@ -18,16 +21,20 @@ is stable across all three.
 | 🛡️ AdGuard Home    |     88,985 |         3.81ms | 87,448 – 98,437      |
 | 🕳️ Pi-hole         |      8,248 |         2.99ms | 7,219 – 8,939        |
 
-**ferrous-dns leads the field:** ~10% ahead of Unbound, ~33% ahead of PowerDNS
-Recursor, 6.3× Blocky, 10.1× AdGuard Home, 109× Pi-hole — while running a full
-feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine)
-in a single process. Unbound and PowerDNS are purpose-built pure recursive
-resolvers with none of those features.
+**ferrous-dns, Unbound and PowerDNS Recursor land in the same performance
+tier.** The spread between the three sits inside run-to-run variance on this
+host, so read the top of the table as a tie, not a ranking. The distance to the
+feature-comparable servers is not in doubt: 6.3× Blocky, 10.1× AdGuard Home,
+109× Pi-hole. Unbound and PowerDNS are purpose-built pure recursive resolvers
+with no REST API, no Web UI, no database and no blocking engine; ferrous-dns
+keeps pace with them while running a full feature stack (DNS server, REST API,
+Web UI, SQLite query log, blocking engine) in a single process.
 
 > **Read the median, not a single run.** Run-to-run variance on this host is real
 > (~10–15% for ferrous-dns, up to ~30% for Unbound, which had one low outlier).
-> The lead over Unbound is within that noise band on any single run — but
-> ferrous-dns came out on top in all 3 runs. Pi-hole's ~2% loss rate reflects its
+> With 3 samples and a gap that size, the ordering of the top three is not
+> statistically meaningful — ferrous-dns did come out ahead in all 3 runs, but
+> that is not presented as a lead. Pi-hole's ~2% loss rate reflects its
 > architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than
 > one core regardless of the CPU budget.
 

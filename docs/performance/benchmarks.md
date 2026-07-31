@@ -304,6 +304,9 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 > | Rate limiting | disabled |
 > | Query logging (disk I/O) | disabled (all servers) |
 
+!!! warning "What this benchmark measures"
+    This is a **cache-hit forwarding** benchmark, not a recursion benchmark. Every server runs with its cache enabled and its upstreams pointed at `8.8.8.8` / `1.1.1.1`, so Unbound and PowerDNS Recursor are running in forward mode rather than recursing from the root — not the workload they are built around. The numbers below describe how fast each server answers from its own cache, which is what a home or LAN resolver spends most of its time doing. They say nothing about recursive resolution performance.
+
 | Server | Median QPS | Median Avg Lat | QPS spread (min–max) |
 |:-------|-----------:|:--------------:|:---------------------|
 | 🦀 **ferrous-dns** | **899,234** | **0.86ms** | 886,953 – 1,019,534 |
@@ -313,10 +316,12 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 | 🛡️ AdGuard Home | 88,985 | 3.81ms | 87,448 – 98,437 |
 | 🕳️ Pi-hole | 8,248 | 2.99ms | 7,219 – 8,939 |
 
-**ferrous-dns leads the field** — ~10% ahead of Unbound and ~33% ahead of PowerDNS Recursor, plus 6.3× Blocky, 10.1× AdGuard Home, and 109× Pi-hole. Unbound and PowerDNS are purpose-built pure recursive resolvers (C and C++) with no REST API, no Web UI, no database, and no blocking engine; ferrous-dns runs all of those in the same single-process binary and still comes out on top.
+**ferrous-dns, Unbound and PowerDNS Recursor land in the same performance tier.** The spread between the three is small enough to sit inside run-to-run variance on this host, so read the top of the table as a tie rather than a ranking. What is not in doubt is the distance to the feature-comparable servers: 6.3× Blocky, 10.1× AdGuard Home, 109× Pi-hole.
+
+That tie is the point. Unbound and PowerDNS are purpose-built pure recursive resolvers written in C and C++, with no REST API, no Web UI, no database, and no blocking engine. ferrous-dns keeps pace with them while running all of that in the same single-process binary.
 
 !!! note "Read the median, not a single run"
-    Run-to-run variance on this host is real (~10–15% for ferrous-dns, up to ~30% for Unbound, which had one low outlier). The lead over Unbound sits inside that noise band on any single run — but ferrous-dns was #1 in all 3 runs. The numbers above are the median of 3 end-to-end runs, with the min–max spread shown for transparency.
+    Run-to-run variance on this host is real: ~10–15% for ferrous-dns and up to ~30% for Unbound, which had one low outlier. With 3 samples and a gap that size, the ordering of the top three is not statistically meaningful — ferrous-dns did come out ahead in all 3 runs, but we do not present that as a lead. The numbers above are the median of 3 end-to-end runs, with the min–max spread shown so you can judge the noise yourself.
 
 Pi-hole's loss rate (~2%) reflects its architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than one core regardless of the CPU budget.
 

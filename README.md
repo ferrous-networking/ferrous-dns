@@ -25,7 +25,11 @@ Full documentation is available at **[ferrous-networking.github.io/ferrous-dns](
 
 ## Performance
 
-At **899,234 queries/second** (median of 3 runs, 8-core cpuset, cache enabled, rate limiting disabled), ferrous-dns **leads the field** — ~10% ahead of Unbound (817K QPS) and ~33% ahead of PowerDNS Recursor (676K QPS), the purpose-built pure recursive resolvers, plus **6.3x faster than Blocky**, **10.1x faster than AdGuard Home**, and **109x faster than Pi-hole**. And it does this while running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process — the C/C++ resolvers it beats have none of those features.
+At **899,234 cache-hit queries/second** (median of 3 runs, 8-core cpuset, cache enabled, rate limiting disabled), ferrous-dns delivers throughput in the same tier as the resolvers written in C and C++ (Unbound, PowerDNS Recursor) — while running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process, which those resolvers do not have.
+
+Against the feature-comparable ad-blocking DNS servers the gap is an order of magnitude: **6.3x Blocky**, **10.1x AdGuard Home**, **109x Pi-hole**.
+
+> Read the median, not a single run: run-to-run variance on this host is ~10–15%, so the top three servers are best read as a tie. The full table, per-server configs, and spread are in the benchmark report.
 
 [Full benchmark report](https://ferrous-networking.github.io/ferrous-dns/performance/benchmarks/)
 
