@@ -37,6 +37,13 @@ pub struct DnsConfig {
     #[serde(default)]
     pub dnssec_enabled: Option<bool>,
 
+    /// Path to a DNSSEC trust anchor file in DNS presentation format (DS and/or
+    /// DNSKEY records), replacing the IANA root anchors embedded in the binary.
+    /// Read once at startup — deliberately not exposed through the API, since it
+    /// names a host path and only takes effect on restart.
+    #[serde(default)]
+    pub dnssec_trust_anchor_file: Option<String>,
+
     #[serde(default)]
     pub default_strategy: UpstreamStrategy,
 
@@ -159,6 +166,7 @@ impl Default for DnsConfig {
             cache_ttl: default_cache_ttl(),
             dnssec_mode: None,
             dnssec_enabled: None,
+            dnssec_trust_anchor_file: None,
             default_strategy: UpstreamStrategy::Parallel,
             pools: vec![],
             health_check: HealthCheckConfig::default(),

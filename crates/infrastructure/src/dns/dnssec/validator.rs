@@ -272,7 +272,7 @@ impl DnssecValidator {
     pub fn stats(&self) -> ValidatorStats {
         ValidatorStats {
             timeout_ms: self.timeout_ms,
-            trust_anchors_count: 1,
+            trust_anchors_count: self.chain_verifier.trust_anchor_count(),
         }
     }
 

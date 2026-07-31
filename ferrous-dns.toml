@@ -64,6 +64,7 @@ upstream_servers = []                   # Fallback upstream DNS servers (used wh
 query_timeout = 3                       # Seconds to wait for an upstream response before timing out
 default_strategy = "Parallel"           # Resolution strategy: "Parallel" (fastest wins) or "Sequential"
 dnssec_mode = "Permissive"              # DNSSEC enforcement: "Off" (no validation), "Permissive" (validate + tag, no SERVFAIL), "Strict" (SERVFAIL on Bogus). Default: Permissive
+# dnssec_trust_anchor_file = "/etc/ferrous-dns/root.key"   # Replaces the embedded IANA root anchors (DS/DNSKEY presentation format). Read at startup; an unreadable file aborts boot
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
 rebinding_protection_enabled = true     # Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding)

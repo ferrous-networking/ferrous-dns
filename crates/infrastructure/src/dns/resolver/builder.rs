@@ -1,4 +1,5 @@
 use super::super::cache::{DnsCache, NegativeQueryTracker};
+use super::super::dnssec::TrustAnchorStore;
 use super::super::load_balancer::PoolManager;
 use super::cache_layer::CachedResolver;
 use super::config::ResolverConfig;
@@ -16,6 +17,7 @@ use tracing::info;
 pub struct ResolverBuilder {
     pool_manager: Arc<PoolManager>,
     dnssec_pool_manager: Option<Arc<PoolManager>>,
+    trust_anchors: Option<TrustAnchorStore>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     local_domain: Option<String>,
@@ -30,6 +32,7 @@ impl ResolverBuilder {
         Self {
             pool_manager,
             dnssec_pool_manager: None,
+            trust_anchors: None,
             config: ResolverConfig::default(),
             cache: None,
             local_domain: None,
@@ -42,6 +45,13 @@ impl ResolverBuilder {
 
     pub fn with_dnssec_pool_manager(mut self, pool_manager: Arc<PoolManager>) -> Self {
         self.dnssec_pool_manager = Some(pool_manager);
+        self
+    }
+
+    /// Overrides the DNSSEC trust anchors. Without this the validator uses the
+    /// IANA root anchors embedded in the binary.
+    pub fn with_trust_anchors(mut self, trust_anchors: TrustAnchorStore) -> Self {
+        self.trust_anchors = Some(trust_anchors);
         self
     }
 
@@ -118,6 +128,7 @@ impl ResolverBuilder {
                 resolver,
                 dnssec_pm,
                 self.config.query_timeout_ms,
+                self.trust_anchors.unwrap_or_default(),
             ));
         }
 
