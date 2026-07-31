@@ -1,6 +1,5 @@
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use ahash::RandomState as AHashRandomState;
-use dashmap::DashMap;
 use ferrous_dns_domain::BlockSource;
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
@@ -8,7 +7,7 @@ use std::cell::RefCell;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 pub const TTL_SECS: u64 = 60;
 const L0_CAPACITY: usize = 256;
@@ -17,7 +16,10 @@ const L0_CAPACITY: usize = 256;
 /// Thread-local L0 entries written under an older epoch are treated as stale.
 static DECISION_EPOCH: AtomicU64 = AtomicU64::new(0);
 const L1_CAPACITY: usize = 100_000;
-const EVICTION_BATCH_SIZE: usize = 64;
+
+/// Number of independently locked shards. Sized so the DNS worker threads
+/// rarely contend for the same lock.
+const L1_SHARDS: usize = 64;
 
 const CACHE_ALLOW: u8 = 0;
 
@@ -99,78 +101,274 @@ pub fn decision_l0_clear() {
     DECISION_EPOCH.fetch_add(1, Ordering::Release);
 }
 
+type L1Shard = Mutex<LruCache<u64, (u8, u64), FxBuildHasher>>;
+
+/// Shared L1 decision cache: `(domain, group)` hash -> `(encoded source, expiry)`.
+///
+/// Sharded LRU, so lookup, insert and eviction are all O(1). The previous
+/// implementation evicted by scanning the whole map for expired entries and
+/// then scanning it again for the single oldest one. Once the cache was full
+/// and nothing had expired yet — the steady state whenever the working set is
+/// larger than the cache — that cost two full passes over 100k entries per
+/// insert, holding shard locks throughout.
 pub struct BlockDecisionCache {
-    inner: DashMap<u64, (u8, u64), FxBuildHasher>,
+    shards: Box<[L1Shard]>,
+    shard_mask: u64,
 }
 
 impl BlockDecisionCache {
     pub fn new() -> Self {
+        Self::with_capacity(L1_CAPACITY)
+    }
+
+    /// `total_capacity` is divided evenly across the shards, rounding up, so the
+    /// effective total is the next multiple of `L1_SHARDS`.
+    fn with_capacity(total_capacity: usize) -> Self {
+        const _: () = assert!(L1_SHARDS.is_power_of_two());
+        let per_shard = NonZeroUsize::new(total_capacity.div_ceil(L1_SHARDS).max(1))
+            .expect("per-shard capacity is at least 1");
         Self {
-            inner: DashMap::with_capacity_and_hasher(L1_CAPACITY, FxBuildHasher),
+            shards: (0..L1_SHARDS)
+                .map(|_| Mutex::new(LruCache::with_hasher(per_shard, FxBuildHasher)))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            shard_mask: (L1_SHARDS - 1) as u64,
         }
+    }
+
+    /// Mixes before slicing. Slicing `key` directly would be wrong for any
+    /// caller passing low-entropy values — sequential keys have all-zero high
+    /// bits and would land every entry in a single shard.
+    #[inline]
+    fn shard(&self, key: u64) -> &L1Shard {
+        let mixed = key.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        &self.shards[((mixed >> 56) & self.shard_mask) as usize]
+    }
+
+    /// A panic elsewhere while a shard lock was held must not disable block
+    /// filtering for the rest of the process, so poisoning is recovered from.
+    #[inline]
+    fn lock_shard(&self, key: u64) -> MutexGuard<'_, LruCache<u64, (u8, u64), FxBuildHasher>> {
+        self.shard(key)
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     #[inline]
     pub fn get_by_key(&self, key: u64) -> Option<Option<BlockSource>> {
-        if let Some(entry) = self.inner.get(&key) {
-            let (encoded, expires_at) = *entry;
-            if coarse_now_secs() < expires_at {
-                return Some(decode_source(encoded));
-            }
-            drop(entry);
-            self.inner.remove(&key);
+        let mut shard = self.lock_shard(key);
+        let (encoded, expires_at) = *shard.get(&key)?;
+        if coarse_now_secs() < expires_at {
+            return Some(decode_source(encoded));
         }
+        shard.pop(&key);
         None
-    }
-
-    fn evict_if_full(&self) {
-        if self.inner.len() < L1_CAPACITY {
-            return;
-        }
-        let now = coarse_now_secs();
-        let expired: Vec<u64> = self
-            .inner
-            .iter()
-            .filter(|e| now >= e.value().1)
-            .map(|e| *e.key())
-            .take(EVICTION_BATCH_SIZE)
-            .collect();
-        for k in &expired {
-            self.inner.remove(k);
-        }
-        if self.inner.len() >= L1_CAPACITY {
-            let oldest = self
-                .inner
-                .iter()
-                .min_by_key(|e| e.value().1)
-                .map(|e| *e.key());
-            if let Some(k) = oldest {
-                self.inner.remove(&k);
-            }
-        }
     }
 
     #[inline]
     pub fn set_by_key(&self, key: u64, source: Option<BlockSource>) {
-        self.evict_if_full();
-        self.inner
-            .insert(key, (encode_source(source), coarse_now_secs() + TTL_SECS));
+        self.set_by_key_with_ttl(key, source, TTL_SECS);
     }
 
     #[inline]
     pub fn set_by_key_with_ttl(&self, key: u64, source: Option<BlockSource>, ttl_secs: u64) {
-        self.evict_if_full();
-        self.inner
-            .insert(key, (encode_source(source), coarse_now_secs() + ttl_secs));
+        self.lock_shard(key)
+            .put(key, (encode_source(source), coarse_now_secs() + ttl_secs));
     }
 
     pub fn clear(&self) {
-        self.inner.clear();
+        for shard in self.shards.iter() {
+            shard
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clear();
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|s| s.lock().unwrap_or_else(|p| p.into_inner()).len())
+            .sum()
     }
 }
 
 impl Default for BlockDecisionCache {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    const ALL_SOURCES: [BlockSource; 11] = [
+        BlockSource::Blocklist,
+        BlockSource::ManagedDomain,
+        BlockSource::RegexFilter,
+        BlockSource::CnameCloaking,
+        BlockSource::Schedule,
+        BlockSource::DnsRebinding,
+        BlockSource::RateLimit,
+        BlockSource::DnsTunneling,
+        BlockSource::NxdomainHijack,
+        BlockSource::ResponseIpFilter,
+        BlockSource::DgaDetection,
+    ];
+
+    #[test]
+    fn roundtrips_allow_and_every_block_source() {
+        let cache = BlockDecisionCache::with_capacity(4096);
+
+        cache.set_by_key(1, None);
+        assert_eq!(
+            cache.get_by_key(1),
+            Some(None),
+            "allow must survive a roundtrip"
+        );
+
+        for (i, source) in ALL_SOURCES.iter().enumerate() {
+            let key = 100 + i as u64;
+            cache.set_by_key(key, Some(*source));
+            assert_eq!(
+                cache.get_by_key(key),
+                Some(Some(*source)),
+                "{source:?} must survive a roundtrip"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_key_reads_as_absent_not_as_allow() {
+        let cache = BlockDecisionCache::with_capacity(64);
+        assert_eq!(cache.get_by_key(999), None);
+    }
+
+    #[test]
+    fn expired_entry_is_dropped_on_read() {
+        let cache = BlockDecisionCache::with_capacity(64);
+        cache.set_by_key_with_ttl(7, Some(BlockSource::Blocklist), 0);
+        assert_eq!(
+            cache.get_by_key(7),
+            None,
+            "a zero-TTL entry is already expired"
+        );
+        assert_eq!(
+            cache.len(),
+            0,
+            "reading an expired entry must reclaim its slot"
+        );
+    }
+
+    #[test]
+    fn overwriting_a_key_does_not_grow_the_cache() {
+        let cache = BlockDecisionCache::with_capacity(4096);
+        for _ in 0..1000 {
+            cache.set_by_key(42, Some(BlockSource::Blocklist));
+        }
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.get_by_key(42), Some(Some(BlockSource::Blocklist)));
+    }
+
+    #[test]
+    fn capacity_stays_bounded_under_churn() {
+        let capacity = 6_400;
+        let cache = BlockDecisionCache::with_capacity(capacity);
+
+        // Twenty times the capacity in distinct keys: the cache must evict, not grow.
+        for k in 0..(capacity as u64 * 20) {
+            cache.set_by_key(k.wrapping_mul(2_654_435_761), None);
+        }
+
+        let effective = capacity.div_ceil(L1_SHARDS) * L1_SHARDS;
+        assert!(
+            cache.len() <= effective,
+            "cache grew past its capacity: {} > {effective}",
+            cache.len()
+        );
+    }
+
+    #[test]
+    fn sequential_keys_spread_across_shards() {
+        // Regression guard: selecting the shard from raw high bits of the key
+        // (`key >> 40`) sends every sequential key to shard 0, which silently
+        // shrinks the usable cache to one shard's worth of entries.
+        let capacity = 6_400;
+        let cache = BlockDecisionCache::with_capacity(capacity);
+        for k in 0..capacity as u64 {
+            cache.set_by_key(k, None);
+        }
+
+        let one_shard = capacity.div_ceil(L1_SHARDS);
+        assert!(
+            cache.len() > capacity / 2,
+            "sequential keys collapsed into too few shards: held {} of {capacity} \
+             (a single shard holds {one_shard})",
+            cache.len()
+        );
+    }
+
+    #[test]
+    fn entries_survive_eviction_pressure_in_other_shards() {
+        let cache = BlockDecisionCache::with_capacity(6_400);
+        let pinned = 0xdead_beef_u64;
+        cache.set_by_key(pinned, Some(BlockSource::Blocklist));
+
+        // Churn far more keys than the cache holds, re-reading the pinned entry so
+        // it stays the most recently used in its shard.
+        for k in 0..100_000u64 {
+            cache.set_by_key(k.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1, None);
+            if k % 1_000 == 0 {
+                assert_eq!(
+                    cache.get_by_key(pinned),
+                    Some(Some(BlockSource::Blocklist)),
+                    "a recently used entry was evicted while its shard had room"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn clear_empties_every_shard() {
+        let cache = BlockDecisionCache::with_capacity(4096);
+        for k in 0..2_000u64 {
+            cache.set_by_key(k.wrapping_mul(2_654_435_761), None);
+        }
+        assert!(cache.len() > 0);
+        cache.clear();
+        assert_eq!(cache.len(), 0);
+    }
+
+    /// The regression this whole structure exists to prevent: eviction used to
+    /// scan every entry twice per insert once the cache was full, costing ~2.4ms
+    /// per insert at this capacity. O(1) eviction keeps it in the nanoseconds.
+    /// The bound below is ~1000x looser than the measured cost and still ~48x
+    /// below the scanning implementation, so it discriminates without being
+    /// sensitive to machine load.
+    #[test]
+    fn insert_cost_stays_flat_when_the_cache_is_full() {
+        let cache = BlockDecisionCache::with_capacity(L1_CAPACITY);
+        for k in 0..L1_CAPACITY as u64 {
+            cache.set_by_key(k.wrapping_mul(0x9E37_79B9_7F4A_7C15), None);
+        }
+
+        let samples = 2_000u64;
+        let start = Instant::now();
+        for k in 0..samples {
+            cache.set_by_key(
+                (u64::MAX - k).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+                Some(BlockSource::Blocklist),
+            );
+        }
+        let per_insert = start.elapsed() / samples as u32;
+
+        assert!(
+            per_insert < std::time::Duration::from_micros(50),
+            "insert into a full cache took {per_insert:?}, which suggests eviction \
+             is scanning the cache instead of evicting in constant time"
+        );
     }
 }
