@@ -141,6 +141,22 @@ fn non_address_queries_are_hardened_too() {
 }
 
 #[test]
+fn root_dnskey_query_survives_0x20() {
+    // Regression: the 0x20 walk built the root as one zero-length label, which
+    // `Name::from_labels` rejects. The DNSSEC chain bootstraps with exactly this
+    // query, so the error disabled validation for every domain — silently, since
+    // the walk just reported Indeterminate.
+    for domain in [".", ""] {
+        let (bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::DNSKEY, true, hardened())
+                .expect("root DNSKEY query must build under 0x20");
+        let msg = Message::from_vec(&bytes).unwrap();
+        assert!(msg.queries[0].name().is_root(), "question must be the root");
+        assert_eq!(msg.queries[0].query_type(), HRecordType::DNSKEY);
+    }
+}
+
+#[test]
 fn hardening_follows_the_opts_for_every_type() {
     // The flags alone decide now — no record type is silently exempt, and none
     // is silently forced on.

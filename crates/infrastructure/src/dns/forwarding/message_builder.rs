@@ -124,6 +124,13 @@ impl MessageBuilder {
     /// raw label bytes via `Name::from_labels` because `Name::from_str` lowercases.
     fn randomized_case_name(domain: &str) -> Result<Name, DomainError> {
         let src = domain.trim_end_matches('.').as_bytes();
+        // The root has nothing to randomize, and the walk below would build it as
+        // a single zero-length label, which `from_labels` rejects. That matters
+        // more than it looks: the DNSSEC chain bootstraps with a DNSKEY query for
+        // ".", so failing here disables validation outright.
+        if src.is_empty() {
+            return Ok(Name::root());
+        }
         let mut rnd = vec![0u8; (src.len() / 8) + 1];
         Self::fill_random(&mut rnd);
 
