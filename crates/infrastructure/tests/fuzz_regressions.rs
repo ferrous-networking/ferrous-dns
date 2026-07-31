@@ -96,6 +96,46 @@ fn fast_path_rejects_backslash_and_control_bytes() {
     }
 }
 
+/// Found by the `query_fast_path` oracle after the first round of fixes: `#`
+/// is printable ASCII, but hickory escapes it, so the same packet was keyed
+/// `www.example.co#` by the fast path and `www.example.co\#` by the slow one.
+/// "Printable" is the wrong test — the rule is whatever `Label::is_safe_ascii`
+/// leaves alone.
+#[test]
+fn fast_path_rejects_printable_bytes_that_hickory_escapes() {
+    for label in [
+        b"co#".as_slice(),
+        b"a+b".as_slice(),
+        b"a/b".as_slice(),
+        b"a:b".as_slice(),
+        b"-leading-dash".as_slice(),
+        b"mid*star".as_slice(),
+    ] {
+        let packet = query_packet(0x1234, &[b"www", label], 1, None);
+        assert!(
+            fast_path::parse_query(&packet).is_none(),
+            "label {label:?} is escaped by hickory and must defer to the slow path"
+        );
+    }
+
+    // The shapes hickory leaves alone must still take the fast path, or the
+    // guard would have quietly disabled it for ordinary traffic.
+    for labels in [
+        vec![
+            b"_dmarc".as_slice(),
+            b"my-host9".as_slice(),
+            b"com".as_slice(),
+        ],
+        vec![b"*".as_slice(), b"example".as_slice(), b"com".as_slice()],
+    ] {
+        let packet = query_packet(0x1234, &labels, 1, None);
+        assert!(
+            fast_path::parse_query(&packet).is_some(),
+            "unescaped name must keep the fast path: {labels:?}"
+        );
+    }
+}
+
 /// The invariant the `query_fast_path` fuzz target asserts: whenever both
 /// parsers accept a packet, they must derive the same cache key. The slow path
 /// key is built in `server.rs::handle_raw_udp_fallback`.
@@ -120,6 +160,34 @@ fn fast_path_and_hickory_derive_the_same_key() {
         let expected = expected.trim_end_matches('.').to_ascii_lowercase();
 
         assert_eq!(query.domain(), expected, "labels: {labels:?}");
+    }
+}
+
+/// The same invariant, swept exhaustively over every byte value in every
+/// position of a label, which is what the fuzzer had to search for. Cheap
+/// enough to run on stable, and it fails locally instead of 8 minutes into a
+/// CI fuzz job.
+#[test]
+fn fast_path_key_matches_hickory_for_every_label_byte() {
+    for byte in 0u8..=255 {
+        for label in [vec![byte], vec![b'a', byte], vec![byte, b'a']] {
+            let packet = query_packet(0x1234, &[&label, b"example", b"com"], 1, None);
+            let Some(query) = fast_path::parse_query(&packet) else {
+                continue;
+            };
+            let message = Message::from_vec(&packet).expect("hickory parses the same packet");
+            let expected = message.queries[0]
+                .name()
+                .to_utf8()
+                .trim_end_matches('.')
+                .to_ascii_lowercase();
+
+            assert_eq!(
+                query.domain(),
+                expected,
+                "byte {byte:#04x} in label {label:?} takes the fast path with a different key"
+            );
+        }
     }
 }
 

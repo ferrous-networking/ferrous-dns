@@ -95,15 +95,21 @@ pub fn parse_query(buf: &[u8]) -> Option<FastPathQuery> {
         if label_len >= 4 && buf[pos..pos + 4].eq_ignore_ascii_case(b"xn--") {
             return None;
         }
-        for &b in &buf[pos..pos + label_len] {
-            // A label byte that hickory would escape (`.`, `\`, anything not
-            // printable ASCII) must not be copied verbatim: `domain_buf` is
-            // flattened with `.` separators into the cache key, so a literal
-            // dot inside a label collides with the multi-label name that reads
-            // the same, and a non-UTF-8 byte makes `domain()` fall back to the
-            // empty string. The slow path parses such names with hickory,
-            // which escapes them, so hand the packet over instead.
-            if b == b'.' || b == b'\\' || !b.is_ascii_graphic() {
+        for (i, &b) in buf[pos..pos + label_len].iter().enumerate() {
+            // Only bytes hickory leaves unescaped may be copied verbatim. Its
+            // `Label::is_safe_ascii` keeps ASCII alphanumerics, `_`, `-` when
+            // it is not the first byte of the label, and a leading `*`;
+            // everything else comes back as `\c` or `\DDD`, which is a
+            // different cache key for the same wire name. A literal `.` would
+            // also collide with the multi-label name that reads the same once
+            // `domain_buf` is flattened, and a non-UTF-8 byte would make
+            // `domain()` fall back to the empty string. All of those go to the
+            // slow path, which parses them with hickory.
+            let unescaped = b.is_ascii_alphanumeric()
+                || b == b'_'
+                || (b == b'-' && i != 0)
+                || (b == b'*' && i == 0);
+            if !unescaped {
                 return None;
             }
             domain_buf[domain_len] = b.to_ascii_lowercase();
