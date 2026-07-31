@@ -38,8 +38,8 @@ async fn match_candidate_parses_list_formats_and_regex() {
         "ads.example.com",     // 0: hosts line  -> exact match
         "EXAMPLE.COM",         // 1: plain exact, matched case-insensitively
         "sub.tracker.io",      // 2: *.tracker.io wildcard -> subdomain matches
-        "ads.doubleclick.net", // 3: ||doubleclick.net^ is EXACT -> subdomain does NOT match
-        "doubleclick.net",     // 4: adblock exact -> matches
+        "ads.doubleclick.net", // 3: ||doubleclick.net^ covers subdomains -> matches
+        "doubleclick.net",     // 4: ||doubleclick.net^ covers the domain itself -> matches
         "x.trackme.net",       // 5: /trackme/ substring pattern -> matches
         "cdn42.example.org",   // 6: regex ^cdn[0-9]+\. -> matches
         "exception.com",       // 7: @@ exception line is ignored -> no match
@@ -63,7 +63,7 @@ async fn match_candidate_parses_list_formats_and_regex() {
 
     assert_eq!(
         result,
-        vec![true, true, true, false, true, true, true, false, false],
+        vec![true, true, true, true, true, true, true, false, false],
         "candidate matching must respect parsed exact/wildcard/substring/regex semantics"
     );
 }

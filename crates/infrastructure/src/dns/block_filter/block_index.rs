@@ -162,28 +162,24 @@ impl BlockIndex {
             }
         }
 
-        if !self.bloom.check(&domain) {
-            if has_advanced {
-                if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                    for rule in regexes {
-                        if rule.regex.is_match(domain).unwrap_or(false) {
-                            return Some(BlockSource::RegexFilter);
-                        }
-                    }
+        // The bloom filter is built from exact entries only, so it can vouch
+        // for `exact` and nothing else. A miss must NOT short-circuit the whole
+        // lookup: suffix (wildcard) and substring rules are keyed on parts of
+        // the name that were never inserted into the filter, so gating them on
+        // it made them unreachable for every domain that was not already an
+        // exact entry.
+        if self.bloom.check(&domain) {
+            if let Some(entry) = self.exact.get(domain) {
+                if entry.value() & mask != 0 {
+                    return Some(BlockSource::Blocklist);
                 }
             }
-            return None;
         }
 
-        if let Some(entry) = self.exact.get(domain) {
-            if entry.value() & mask != 0 {
-                return Some(BlockSource::Blocklist);
+        if self.has_suffix_or_substring_rules() {
+            if let Some(hit) = self.check_wildcard_and_patterns(domain, mask) {
+                return Some(hit);
             }
-        }
-
-        let wildcard_result = self.check_wildcard_and_patterns(domain, mask);
-        if wildcard_result.is_some() {
-            return wildcard_result;
         }
 
         if has_advanced {
@@ -197,6 +193,15 @@ impl BlockIndex {
         }
 
         None
+    }
+
+    /// Whether the compiled index holds any rule that the exact-entry bloom
+    /// filter cannot speak for. Both checks are O(1), and lists in hosts or
+    /// plain-domain format compile to none of these, which keeps the fast
+    /// reject path intact for them.
+    #[inline]
+    fn has_suffix_or_substring_rules(&self) -> bool {
+        !self.wildcard.is_empty() || !self.patterns.is_empty()
     }
 
     #[inline]

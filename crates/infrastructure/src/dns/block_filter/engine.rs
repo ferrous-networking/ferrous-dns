@@ -294,6 +294,13 @@ impl BlockFilterEnginePort for BlockFilterEngine {
                         wildcards.push((base, dotted));
                     }
                 }
+                ParsedEntry::DomainAndSubdomains(d) => {
+                    if !d.is_empty() {
+                        let dotted = format!(".{d}");
+                        wildcards.push((d.clone(), dotted));
+                        exact.insert(d);
+                    }
+                }
                 ParsedEntry::Pattern(p) => {
                     if !p.is_empty() {
                         patterns.push(p);

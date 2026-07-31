@@ -27,9 +27,9 @@ const ALLOWED: &str = "content.allowed-example.test";
 /// Builds a real engine over a fresh migrated temp DB seeded with `blocked`
 /// as manual blocklist entries.
 ///
-/// Only exact entries are used: wildcard, adblock and substring rules are
-/// gated behind a bloom filter that the compiler populates with exact entries
-/// only, so they do not match at runtime and would make these tests vacuous.
+/// Only exact entries are used, to keep these tests about the decision cache.
+/// Wildcard, adblock and substring rules are covered end to end in
+/// `block_filter_wildcard_matching_test.rs`.
 ///
 /// The returned `TempDir` must be kept alive for the duration of the test.
 async fn build_engine(blocked: &[&str]) -> (Arc<BlockFilterEngine>, tempfile::TempDir) {

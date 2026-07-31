@@ -30,6 +30,13 @@ impl SuffixTrie {
         }
     }
 
+    /// True when no wildcard was ever inserted. Callers use this to skip the
+    /// suffix lookup entirely on indexes built from exact-only lists.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.root.children.is_empty()
+    }
+
     pub fn insert_wildcard(&mut self, pattern: &str, source_mask: u64) {
         let domain = pattern.strip_prefix("*.").unwrap_or(pattern);
         let mut node = &mut self.root;

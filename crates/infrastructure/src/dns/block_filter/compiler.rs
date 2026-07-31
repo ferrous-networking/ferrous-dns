@@ -33,6 +33,9 @@ pub enum ParsedEntry {
     Exact(String),
     Wildcard(String),
     Pattern(String),
+    /// Adblock `||domain^`: the domain itself AND every subdomain of it.
+    /// Compiles to an exact entry plus a suffix rule.
+    DomainAndSubdomains(String),
 }
 
 pub fn parse_list_line(line: &str) -> Option<ParsedEntry> {
@@ -63,7 +66,7 @@ pub fn parse_list_line(line: &str) -> Option<ParsedEntry> {
         if domain.starts_with("*.") {
             return Some(ParsedEntry::Wildcard(domain));
         }
-        return Some(ParsedEntry::Exact(domain));
+        return Some(ParsedEntry::DomainAndSubdomains(domain));
     }
 
     if line.starts_with("*.") {
@@ -343,7 +346,12 @@ fn build_exact_and_wildcard(
         + source_entries
             .values()
             .flat_map(|entries| entries.iter())
-            .filter(|e| matches!(e, ParsedEntry::Exact(_)))
+            .filter(|e| {
+                matches!(
+                    e,
+                    ParsedEntry::Exact(_) | ParsedEntry::DomainAndSubdomains(_)
+                )
+            })
             .count();
 
     let bloom_capacity = (exact_count + 100).max(1000);
@@ -354,6 +362,12 @@ fn build_exact_and_wildcard(
     let mut patterns_by_source: HashMap<u8, Vec<String>> = HashMap::new();
 
     for domain in manual_domains {
+        // A manually added `*.example.com` is a suffix rule, not a literal
+        // name — inserting it into `exact` would make it match nothing.
+        if domain.starts_with("*.") {
+            wildcard.insert_wildcard(domain, MANUAL_SOURCE_BIT);
+            continue;
+        }
         bloom.set(domain);
         exact
             .entry(CompactString::new(domain))
@@ -365,7 +379,8 @@ fn build_exact_and_wildcard(
         source_entries.par_iter().for_each(|(bit, entries)| {
             let source_bit: SourceBitSet = 1u64 << *bit;
             for entry in entries {
-                if let ParsedEntry::Exact(domain) = entry {
+                if let ParsedEntry::Exact(domain) | ParsedEntry::DomainAndSubdomains(domain) = entry
+                {
                     bloom.set(domain);
                     exact
                         .entry(CompactString::new(domain))
@@ -383,6 +398,12 @@ fn build_exact_and_wildcard(
                 ParsedEntry::Exact(_) => {}
                 ParsedEntry::Wildcard(pattern) => {
                     wildcard.insert_wildcard(pattern, source_bit);
+                }
+                // The exact half was inserted above; this covers the subdomains.
+                // `insert_wildcard` keys on the bare suffix, and `lookup` only
+                // reports proper suffixes, so this cannot double-count the apex.
+                ParsedEntry::DomainAndSubdomains(domain) => {
+                    wildcard.insert_wildcard(domain, source_bit);
                 }
                 ParsedEntry::Pattern(pat) => {
                     patterns_by_source
@@ -682,6 +703,10 @@ async fn build_allowlist_index(
                         }
                         ParsedEntry::Wildcard(pattern) => {
                             trie.insert_wildcard(pattern, 1u64);
+                        }
+                        ParsedEntry::DomainAndSubdomains(domain) => {
+                            exact_set.insert(CompactString::new(domain));
+                            trie.insert_wildcard(domain, 1u64);
                         }
                         ParsedEntry::Pattern(_) => {}
                     }
