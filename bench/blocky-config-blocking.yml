@@ -1,9 +1,12 @@
 # =============================================================================
-# Blocky — Benchmark Configuration
+# Blocky — Benchmark Configuration (scenarios B and C: blocking ON)
 # =============================================================================
-# Mirrors the same constraints applied to all competitors:
+# Identical to blocky-config.yml except for the blocking section. Kept as a
+# separate tracked file rather than patched at runtime so the exact config that
+# produced a published number can be read straight out of the repository.
+#
 #   - Plain UDP to the local stub upstream — no DoH/DoT
-#   - Blocking disabled — isolates raw DNS forwarding performance
+#   - Blocking ENABLED against the generated 1M-rule hosts list
 #   - Caching enabled (minTime: 60s / maxTime: 86400s) — matches ferrous-dns
 #   - Query logging disabled — no I/O noise during measurement
 #   - Rate limiting disabled — dnsperf saturates at 10k in-flight queries
@@ -11,8 +14,6 @@
 # =============================================================================
 
 # -- Upstreams -----------------------------------------------------------------
-# Local catch-all stub (see stub-upstream.conf) — identical to Unbound,
-# AdGuard Home, PowerDNS and ferrous-dns.
 upstreams:
   groups:
     default:
@@ -26,18 +27,30 @@ ports:
   http: 4000    # used for /api/blocking/status healthcheck inside the container
 
 # -- Caching ------------------------------------------------------------------
-# Enabled with same settings as ferrous-dns: min 300s, max 86400s, prefetching.
 caching:
   minTime: 5m
   maxTime: 24h
   prefetching: true         # background refresh — equivalent to ferrous-dns cache_optimistic_refresh
 
 # -- Blocking -----------------------------------------------------------------
-# No denylists configured — blocking is effectively off.
+# Served by the blocklist-server container. ferrous-dns and AdGuard Home load
+# the exact same hosts-format file, which is what makes the comparison fair.
 blocking:
-  denylists: {}
+  denylists:
+    bench:
+      - http://127.0.0.1:8081/blocklist.txt
   allowlists: {}
-  clientGroupsBlock: {}
+  clientGroupsBlock:
+    default:
+      - bench
+  blockType: zeroIP        # answer 0.0.0.0 — same shape as the hosts rules
+  loading:
+    downloads:
+      timeout: 5m          # 30 MB over loopback, but the parse is not instant
+      attempts: 3
+      cooldown: 2s
+    strategy: blocking     # refuse to serve until the list is compiled, so the
+                           # harness never measures a half-loaded index
 
 # -- Logging ------------------------------------------------------------------
 log:
@@ -46,6 +59,5 @@ log:
   privacy: false
 
 # -- Query log ----------------------------------------------------------------
-# Disabled — reduces SQLite / file I/O pressure during measurement.
 queryLog:
   type: none

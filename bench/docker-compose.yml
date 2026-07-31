@@ -22,15 +22,61 @@
 #   Unbound:      0.0.0.0:5356/udp+tcp
 #   Blocky:       0.0.0.0:5357/udp+tcp
 #   PowerDNS:     0.0.0.0:5358/udp+tcp
+#   blocklist:    0.0.0.0:8081/tcp      (static HTTP, scenarios B and C only)
+#   stub upstream:127.0.0.1:5300/udp+tcp
+#
+# Config paths are overridable so benchmark.sh can render a per-scenario config
+# (blocking on/off, query log on/off) into bench/.run/ without touching the
+# tracked files.
 # =============================================================================
 
 services:
 
   # ---------------------------------------------------------------------------
+  # stub-upstream — local catch-all authoritative responder (see stub-upstream.conf)
+  # Every server forwards here. Cache misses cost a loopback round-trip instead
+  # of an internet round-trip, which is what makes a working set larger than the
+  # caches measurable at all. Pinned to the load-generator cores.
+  # ---------------------------------------------------------------------------
+  stub-upstream:
+    image: mvance/unbound:latest
+    container_name: bench-stub-upstream
+    network_mode: host
+    volumes:
+      - ./stub-upstream.conf:/opt/unbound/etc/unbound/unbound.conf:ro
+    cpuset: "${BENCH_LOADGEN_CPUS:-0-15}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "drill", "-p", "5300", "probe.bench.invalid", "@127.0.0.1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  # ---------------------------------------------------------------------------
+  # blocklist-server — serves the generated blocklist fixtures over HTTP
+  # Only needed by scenarios B and C. Idle during measurement, so unpinned.
+  # ---------------------------------------------------------------------------
+  blocklist-server:
+    image: nginx:alpine
+    container_name: bench-blocklist-server
+    network_mode: host
+    volumes:
+      - ./data:/usr/share/nginx/html:ro
+      - ./blocklist-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8081/blocklist.txt"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  # ---------------------------------------------------------------------------
   # ferrous-dns — high-performance DNS server (Rust)
   # Config: docker/bench/ferrous-dns-config.toml
   #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: Parallel
-  #   - Blocking disabled — isolates raw DNS forwarding performance
+  #   - Blocking/query log toggled per scenario via BENCH_FERROUS_CONFIG
   #   - Caching enabled — production-like settings (200k entries, hit_rate eviction)
   #   - Log level: info
   # ---------------------------------------------------------------------------
@@ -42,13 +88,16 @@ services:
     container_name: bench-ferrous-dns
     network_mode: host
     volumes:
-      - ./ferrous-dns-config.toml:/data/config/ferrous-dns-config.toml:ro
+      - ${BENCH_FERROUS_CONFIG:-./ferrous-dns-config.toml}:/data/config/ferrous-dns-config.toml:ro
+      # Host-visible database: the harness seeds blocklist_sources here with
+      # sqlite3 between the migration boot and the measured boot.
+      - ./.run/db:/data/db
     environment:
       FERROUS_CONFIG: /data/config/ferrous-dns-config.toml
       FERROUS_DNS_PORT: 5353
       FERROUS_WEB_PORT: 9090
       FERROUS_BIND_ADDRESS: 0.0.0.0
-      FERROUS_DATABASE: /tmp/ferrous-bench.db
+      FERROUS_DATABASE: /data/db/ferrous-bench.db
       FERROUS_LOG_LEVEL: info
       RUST_LOG: info
       TZ: UTC
@@ -116,11 +165,12 @@ services:
     environment:
       GOMAXPROCS: 8
     volumes:
-      - adguard_work:/opt/adguardhome/work
-      # NOTE: must stay writable — AdGuard atomically rewrites its config on
-      # startup (fatal error under :ro). Side effect: it re-chowns this file to
-      # root:0600 each run. Re-create it from the tracked copy if git can't read it.
-      - ./adguard-config:/opt/adguardhome/conf
+      # Both directories are scratch: the harness wipes them and copies the
+      # scenario's template from adguard-templates/ before each start. AdGuard
+      # rewrites its config in place (fatal under :ro) and re-chowns it to
+      # root:0600, which is why the tracked templates are never mounted directly.
+      - ./.run/adguard-work:/opt/adguardhome/work
+      - ./.run/adguard-conf:/opt/adguardhome/conf
     cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
@@ -171,7 +221,7 @@ services:
   # Blocky — fast DNS proxy and ad-blocker (Go)
   # Config: docker/bench/blocky-config.yml
   #   - Plain UDP upstreams (8.8.8.8 / 1.1.1.1), strategy: parallel_best
-  #   - Blocking disabled (no denylists)
+  #   - Blocking toggled per scenario via BENCH_BLOCKY_CONFIG
   #   - Caching enabled (minTime: 60s, maxTime: 86400s, prefetching: true)
   #   - Log level: info
   # GOMAXPROCS=8 — matches the server cpuset (lower half of host cores)
@@ -183,7 +233,7 @@ services:
     environment:
       GOMAXPROCS: 8
     volumes:
-      - ./blocky-config.yml:/app/config.yml:ro
+      - ${BENCH_BLOCKY_CONFIG:-./blocky-config.yml}:/app/config.yml:ro
     cpuset: "${BENCH_SERVER_CPUS:-0-15}"
     cap_add:
       - NET_ADMIN
@@ -195,9 +245,11 @@ services:
         limits:
           cpus: "${BENCH_SERVER_NCPU:-16}"
     restart: unless-stopped
-    # Blocky runs on a scratch image (no shell/wget/dig). Use its built-in healthcheck subcommand.
+    # Blocky runs on a scratch image (no shell/wget/dig), so its built-in
+    # healthcheck subcommand is the only option. It defaults to port 53 and must
+    # be told the real one, otherwise it fails for 50s before compose gives up.
     healthcheck:
-      test: ["CMD", "/app/blocky", "healthcheck"]
+      test: ["CMD", "/app/blocky", "healthcheck", "--port", "5357"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -239,4 +291,3 @@ services:
 volumes:
   pihole_data:
   pihole_dnsmasq:
-  adguard_work:

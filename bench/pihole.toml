@@ -2,7 +2,8 @@
   # Rate limiting disabled — allow unlimited queries (benchmark mode)
   rateLimit.count = 0
   rateLimit.interval = 0
-  upstreams = ["8.8.8.8", "1.1.1.1"]
+  # Local catch-all stub (see stub-upstream.conf) — identical for every server.
+  upstreams = ["127.0.0.1#5300"]
   dnssec = false
   # Disable SQLite query logging — critical for sustained load benchmarks;
   # FTL v6 writes every query to DB which saturates I/O under high QPS.
@@ -13,7 +14,9 @@
   # Reduce unnecessary overhead for benchmark conditions
   CNAMEdeepInspect = false
   blockESNI = false
-  cache.size = 10000
+  # Sized to hold the generated hot working set, same intent as every other
+  # server's cache setting in this directory.
+  cache.size = 500000
 
 [misc]
   # Suppress startup checks that slow down container init

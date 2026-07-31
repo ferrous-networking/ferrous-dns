@@ -30,11 +30,11 @@ dns:
   ratelimit_whitelist: []
   refuse_any: true
   upstream_dns:
-    - 8.8.8.8
-    - 1.1.1.1
+    # Local catch-all stub (see stub-upstream.conf) — identical for every server.
+    - 127.0.0.1:5300
   upstream_dns_file: ""
   bootstrap_dns:
-    - 9.9.9.10
+    - 127.0.0.1:5300
   fallback_dns: []
   upstream_mode: parallel
   fastest_timeout: 1s
@@ -45,7 +45,9 @@ dns:
     - 127.0.0.0/8
     - ::1/128
   cache_enabled: true
-  cache_size: 16777216
+  # 512 MiB — sized to hold the generated hot working set, same intent as every
+  # other server's cache setting in this directory.
+  cache_size: 536870912
   cache_ttl_min: 0
   cache_ttl_max: 0
   cache_optimistic: true

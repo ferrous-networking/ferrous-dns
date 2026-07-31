@@ -12,7 +12,9 @@
 
 Ferrous DNS is a self-hosted DNS server and network-wide ad-blocker designed as a high-performance alternative to Pi-hole and AdGuard Home. It runs as a **single binary** combining DNS resolution, REST API, and Web UI — with no external runtime dependencies.
 
-At **899,234 cache-hit queries/second** (median of 3 runs, 8-core cpuset, cache enabled, rate limiting disabled), Ferrous DNS delivers throughput in the same tier as the resolvers written in C and C++ — while running a REST API, Web UI, SQLite query log, and blocking engine in the same process. Against the feature-comparable ad-blocking servers the gap is an order of magnitude: **6.3× Blocky**, **10.1× AdGuard Home**, **109× Pi-hole**. Full table and methodology: [Benchmarks](performance/benchmarks.md#benchmark-results).
+Resolving from cache with blocking off, Ferrous DNS reaches **847,711 queries/second** (median of 3 runs, 8-core cpuset, 410,000-name working set) — the same tier as the resolvers written in C and C++, while running a REST API, Web UI, SQLite query log and blocking engine in the same process. Against the feature-comparable ad-blocking servers the gap is an order of magnitude: **9.9× Blocky**, **7.2× AdGuard Home**, **43× Pi-hole**.
+
+With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — blocking costs 1.6%, and the lead over the feature-comparable servers widens to 7.5× AdGuard Home and 8.5× Blocky. The query log is what costs: it brings throughput down to **262,298 q/s** and drops rows silently once its channel saturates. All three scenarios are published, including that one. Full tables and methodology: [Benchmarks](performance/benchmarks.md#benchmark-results).
 
 ---
 
@@ -24,7 +26,8 @@ At **899,234 cache-hit queries/second** (median of 3 runs, 8-core cpuset, cache 
     - **Smart eviction** — frequency-based eviction keeps popular domains cached
     - **In-flight coalescing** — deduplicates concurrent queries to a single upstream request
     - **Optimistic prefetch** — refreshes popular entries before they expire
-    - **899K cache-hit queries/second** (median of 3) — same tier as the C/C++ resolvers, 10.1x faster than AdGuard Home, 109x faster than Pi-hole
+    - **848K cache-hit queries/second** with blocking off (median of 3, ~10–15% run-to-run variance) — same tier as the C/C++ resolvers, 7.2x AdGuard Home, 43x Pi-hole
+    - With a 1M-rule blocklist enabled this holds at 834K q/s (blocking costs 1.6%); enabling the query log drops it to 262K — see [Benchmarks](performance/benchmarks.md#benchmark-results)
     - Cache hit P99 < 35µs (actual ~10-20µs)
 
 === "Encrypted DNS"

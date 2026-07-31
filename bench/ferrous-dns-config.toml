@@ -25,6 +25,17 @@ bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on
 # proxy_protocol_enabled = true
 
 
+# ── Authentication ────────────────────────────────────────────────────────────
+# BENCH ONLY. Disabled so benchmark.sh can register blocklist sources over the
+# REST API without provisioning a user first — the blocklist tables have no CLI
+# import path, and the manual `blocklist` table only feeds the exact matcher.
+# The containers are local, bound to loopback and torn down after each run.
+# Never copy this section into a real deployment.
+
+[auth]
+enabled = false
+
+
 # ── Encrypted DNS (DoT / DoH) ─────────────────────────────────────────────────
 # Serves DNS-over-TLS (RFC 7858) and/or DNS-over-HTTPS (RFC 8484).
 # Requires a TLS certificate and private key in PEM format.
@@ -61,7 +72,10 @@ cache_enabled = true                    # Enable in-memory DNS response cache
 cache_ttl = 7200                        # Default TTL (seconds) for cached entries when the record has none
 cache_min_ttl = 300                     # Minimum TTL; recommended >= 240 so the refresh job can act before expiry
 cache_max_ttl = 86400                   # Maximum TTL; caps values returned by upstream
-cache_max_entries = 200000              # Maximum number of entries the cache can hold
+# Sized to hold the generated hot working set (150k names across ~6 record
+# types). Below that the benchmark degenerates into a miss-rate test of the
+# upstream link instead of a measurement of this server.
+cache_max_entries = 500000              # Maximum number of entries the cache can hold
 cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", or "lru"
 cache_compaction_interval = 600         # Seconds between full cache compaction runs (removes expired entries)
 cache_batch_eviction_percentage = 0.1   # Fraction of cache to evict in one pass when full (0.1 = 10%)
@@ -177,11 +191,13 @@ ip_ttl_secs = 604800
 
 [[dns.pools]]
 name = "pool1"
-strategy = "Parallel"          # query both upstreams simultaneously, return the fastest
+strategy = "Parallel"          # matches the strategy the other servers use
 priority = 1
 servers = [
-    "udp://8.8.8.8:53",
-    "udp://1.1.1.1:53",
+    # Local catch-all stub (see stub-upstream.conf). Every server under test
+    # forwards here, so a cache miss costs a loopback round-trip instead of an
+    # internet round-trip and the benchmark measures the server, not the link.
+    "udp://127.0.0.1:5300",
 ]
 
 
@@ -215,7 +231,7 @@ ttl = 300
 # ── Blocking ──────────────────────────────────────────────────────────────────
 
 [blocking]
-enabled = false                         # Disabled for benchmark — isolates DNS resolution performance
+enabled = false                         # Toggled per scenario by benchmark.sh (A: false, B/C: true)
 custom_blocked = []                     # Additional domains to block (beyond downloaded blocklists)
 whitelist = []                          # Domains to always allow, even if present in a blocklist
 
@@ -229,8 +245,11 @@ level = "info"                          # Log verbosity: "error", "warn", "info"
 # ── Database ──────────────────────────────────────────────────────────────────
 
 [database]
-path = "/tmp/ferrous-bench.db"          # Temp DB for benchmark run
-log_queries = false                     # Disabled — reduces I/O noise during benchmark
+# Bind-mounted to bench/.run/db on the host so the harness can seed
+# blocklist_sources with sqlite3 between runs (there is no CLI import
+# subcommand and the REST route sits behind require_auth).
+path = "/data/db/ferrous-bench.db"      # Temp DB for benchmark run
+log_queries = false                     # Toggled per scenario by benchmark.sh (A/B: false, C: true)
 queries_log_stored = 30                 # Days to retain query log entries before automatic cleanup
 
 # Minimum seconds between consecutive last-seen DB writes for the same client IP.

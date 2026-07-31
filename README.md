@@ -25,11 +25,15 @@ Full documentation is available at **[ferrous-networking.github.io/ferrous-dns](
 
 ## Performance
 
-At **899,234 cache-hit queries/second** (median of 3 runs, 8-core cpuset, cache enabled, rate limiting disabled), ferrous-dns delivers throughput in the same tier as the resolvers written in C and C++ (Unbound, PowerDNS Recursor) — while running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process, which those resolvers do not have.
+The benchmark runs three scenarios against a 410,000-name working set, and all three are published — including the query log result, which is the one that still costs.
 
-Against the feature-comparable ad-blocking DNS servers the gap is an order of magnitude: **6.3x Blocky**, **10.1x AdGuard Home**, **109x Pi-hole**.
+**Resolving from cache, blocking off** — at **847,711 queries/second** (median of 3 runs, 8-core cpuset) ferrous-dns delivers throughput in the same tier as the resolvers written in C and C++, while running a full feature stack (DNS server, REST API, Web UI, SQLite query log, blocking engine) in a single process, which those resolvers do not have. Against the feature-comparable ad-blocking servers the gap is an order of magnitude: **9.9x Blocky**, **7.2x AdGuard Home**, **43x Pi-hole**.
 
-> Read the median, not a single run: run-to-run variance on this host is ~10–15%, so the top three servers are best read as a tie. The full table, per-server configs, and spread are in the benchmark report.
+**With a 1,000,000-rule blocklist enabled, throughput holds at 834,485 q/s** — blocking costs 1.6%, and ferrous-dns runs **7.5x AdGuard Home** (111,238) and **8.5x Blocky** (97,947) on the identical rule set.
+
+**Turning the query log on is what costs.** Throughput falls to **262,298 q/s**, 69% below blocking alone, and the log is not lossless: this run dropped 144,447 entries. The producer uses a non-blocking send on a bounded channel and discards rows when that channel is full, so the number above is the cost of logging *what fit*, not of logging everything.
+
+> Read the median, not a single run: run-to-run variance on this host is ~10–15%. Numbers come from a `RUSTFLAGS="-C target-cpu=native"` build; the published Docker image is generic and will measure lower on the same hardware.
 
 [Full benchmark report](https://ferrous-networking.github.io/ferrous-dns/performance/benchmarks/)
 

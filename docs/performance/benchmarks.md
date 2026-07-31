@@ -217,6 +217,8 @@ DNS handler (hot path)
 
 Batching is critical: a single transaction with 2,000 rows is ~100x faster than 2,000 individual transactions. At very high query rates, `query_log_sample_rate` lets you log 1 in N queries to cap write volume without losing visibility.
 
+The drop on a full channel is not hypothetical at benchmark rates: scenario C below costs 69% of throughput and still discards entries. If you need a complete log under sustained load, raise `query_log_channel_capacity` or lower the sample rate rather than assuming every query is recorded.
+
 ---
 
 ## Optimized Memory Allocator
@@ -279,7 +281,7 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 | Frequency-based eviction | Preserves most-active entries under memory pressure |
 | Zero-allocation hot path | No memory allocation on cache hit path |
 | Hardware timestamp counter | Hot-path timing at ~1-5ns vs ~20ns syscall |
-| Async query log pipeline | Query logging never blocks the resolver |
+| Async query log pipeline | Query logging never blocks the resolver — it drops rows instead when saturated |
 | Optimized memory allocator | 2-3x faster allocation than system default |
 | Parallel upstream strategy | Lowest cache-miss latency, transparent failover |
 | UDP buffer tuning | Absorbs large bursts without packet loss |
@@ -288,43 +290,77 @@ This enables AVX2/SSE4 vectorized string operations, CPU-specific branch predict
 
 ## Benchmark Results
 
-> **Host:** Intel Core i9-9900KF @ 3.60GHz | 8 cores / 16 threads / 46 GB RAM | Arch Linux | Kernel 7.0.10-zen1-1-zen
-> **Tool:** dnsperf | median of 3 runs, 45s measured per server | 10 concurrent clients | 187 domains (A, AAAA, MX, TXT, NS)
->
-> **Docker config (identical for all servers):**
+> **Host:** Intel Core i9-9900KF @ 3.60GHz | 8 cores / 16 threads / 46 GB RAM | Arch Linux
+> **Tool:** dnsperf | median of 3 runs, 10s measured per server after a 20s warm-up | 10 concurrent clients
+> **Workload:** 410,000 unique names — a 150,000-domain recurring set sampled Zipf (α = 0.9), a 10% single-occurrence cold tail, and a realistic record mix (~70% A, 15% AAAA, rest MX/TXT/NS/PTR)
+> **Build:** `RUSTFLAGS="-C target-cpu=native"`
 >
 > | Setting | Value |
 > |:--------|:------|
 > | CPUs | server pinned to `cpuset: 0-7` (`cpus: 8`); dnsperf pinned to cores `8-15` |
 > | Threads | matched to the 8-core cpuset for every server |
 > | Network | host mode |
-> | Upstreams | plain UDP `8.8.8.8` / `1.1.1.1` (parallel) |
-> | Cache | enabled |
-> | Blocking / denylists | disabled — isolates raw forwarding performance |
+> | Upstream | a local catch-all stub on `127.0.0.1:5300`, identical for every server |
+> | Cache | enabled everywhere, sized to hold the working set |
 > | Rate limiting | disabled |
-> | Query logging (disk I/O) | disabled (all servers) |
 
 !!! warning "What this benchmark measures"
-    This is a **cache-hit forwarding** benchmark, not a recursion benchmark. Every server runs with its cache enabled and its upstreams pointed at `8.8.8.8` / `1.1.1.1`, so Unbound and PowerDNS Recursor are running in forward mode rather than recursing from the root — not the workload they are built around. The numbers below describe how fast each server answers from its own cache, which is what a home or LAN resolver spends most of its time doing. They say nothing about recursive resolution performance.
+    This is a **cache-hit forwarding** benchmark, not a recursion benchmark. Every server runs with its cache enabled and forwards to a local stub, so Unbound and PowerDNS Recursor operate in forward mode rather than recursing from the root — not the workload they are built around. The numbers describe how fast each server answers from its own cache, which is what a home or LAN resolver spends most of its time doing. They say nothing about recursive resolution performance.
 
-| Server | Median QPS | Median Avg Lat | QPS spread (min–max) |
-|:-------|-----------:|:--------------:|:---------------------|
-| 🦀 **ferrous-dns** | **899,234** | **0.86ms** | 886,953 – 1,019,534 |
-| ⚡ Unbound (C) | 816,928 | 0.85ms | 633,167 – 822,635 |
-| ⚡ PowerDNS (C++) | 675,910 | 1.36ms | 659,487 – 722,406 |
-| 🔷 Blocky (Go) | 142,715 | 1.53ms | 142,473 – 144,368 |
-| 🛡️ AdGuard Home | 88,985 | 3.81ms | 87,448 – 98,437 |
-| 🕳️ Pi-hole | 8,248 | 2.99ms | 7,219 – 8,939 |
+    The upstream is a local stub rather than a public resolver on purpose. A working set this size is larger than any of these caches, so there is a permanent stream of misses; sending it to `8.8.8.8` measures the round-trip time to Google instead of the server. An earlier version of this harness did exactly that and recorded ferrous-dns at 5,498 q/s with 120 ms average latency.
 
-**ferrous-dns, Unbound and PowerDNS Recursor land in the same performance tier.** The spread between the three is small enough to sit inside run-to-run variance on this host, so read the top of the table as a tie rather than a ranking. What is not in doubt is the distance to the feature-comparable servers: 6.3× Blocky, 10.1× AdGuard Home, 109× Pi-hole.
+### Scenario A — cache on, blocking off, query log off
 
-That tie is the point. Unbound and PowerDNS are purpose-built pure recursive resolvers written in C and C++, with no REST API, no Web UI, no database, and no blocking engine. ferrous-dns keeps pace with them while running all of that in the same single-process binary.
+| Server | Median QPS | QPS spread (min–max) | Median Avg Lat | Loss |
+|:-------|-----------:|:---------------------|:--------------:|-----:|
+| 🦀 **ferrous-dns** | **847,711** | 841,742 – 931,400 | 1.02ms | 0.00% |
+| ⚡ Unbound (C) | 592,083 | 583,062 – 788,116 | 1.00ms | 0.01% |
+| ⚡ PowerDNS (C++) | 388,147 | 328,582 – 416,177 | 2.38ms | 0.00% |
+| 🛡️ AdGuard Home | 118,312 | 112,482 – 119,342 | 2.08ms | 0.14% |
+| 🔷 Blocky (Go) | 85,443 | 85,244 – 86,666 | 2.40ms | 0.19% |
+| 🕳️ Pi-hole | 19,530 | 14,001 – 26,632 | 6.22ms | 0.85% |
+
+ferrous-dns, Unbound and PowerDNS Recursor land in the same performance tier. Unbound and PowerDNS are purpose-built pure recursive resolvers written in C and C++, with no REST API, no Web UI, no database and no blocking engine; ferrous-dns keeps pace with them while running all of that in the same single-process binary. Against the feature-comparable ad-blocking servers the distance is not in doubt: 9.9× Blocky, 7.2× AdGuard Home, 43× Pi-hole.
+
+Pi-hole's loss rate reflects its architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than one core regardless of the CPU budget.
+
+### Scenario B — cache on, blocking on (1M rules), query log off
+
+| Server | Median QPS | QPS spread (min–max) | Median Avg Lat | Loss |
+|:-------|-----------:|:---------------------|:--------------:|-----:|
+| 🦀 **ferrous-dns** | **834,485** | 758,298 – 835,344 | 0.98ms | 0.00% |
+| 🛡️ AdGuard Home | 111,238 | 108,034 – 115,277 | 2.26ms | 0.14% |
+| 🔷 Blocky (Go) | 97,947 | 97,801 – 98,256 | 2.16ms | 0.16% |
+
+### Scenario C — cache on, blocking on (1M rules), query log on
+
+| Server | Median QPS | QPS spread (min–max) | Median Avg Lat | Loss |
+|:-------|-----------:|:---------------------|:--------------:|-----:|
+| 🦀 **ferrous-dns** | **262,298** | 259,843 – 263,859 | 3.74ms | 0.00% |
+| 🛡️ AdGuard Home | 102,497 | 70,774 – 107,752 | 2.61ms | 0.16% |
+| 🔷 Blocky (Go) | 98,027 | 97,850 – 98,674 | 2.14ms | 0.16% |
+
+### What each feature costs
+
+| Scenario | ferrous-dns median QPS | vs. scenario A |
+|:--|--:|--:|
+| A — cache only | 847,711 | — |
+| B — + blocking, 1M rules | 834,485 | -1.6% |
+| C — + query log | 262,298 | -69.1% |
+
+!!! warning "The query log is where ferrous-dns pays"
+    Blocking itself is close to free: it costs **1.6%** of throughput against the identical 1,000,000-rule list that AdGuard Home and Blocky load, which ferrous-dns outruns by 7.5× and 8.5× in that scenario.
+
+    The query log costs **69%** (834,485 → 262,298 q/s), and it is not lossless: this run recorded **144,447 dropped entries**. The producer uses a non-blocking `try_send` on a bounded channel and returns `Ok` when the channel is full, so rows are discarded silently under saturation. Scenario C therefore measures the cost of logging *what fit* — a lossless log on this workload would cost more.
+
+    Earlier published runs put scenario B at 41,276 q/s, behind both competitors. That was a block-decision-cache eviction bug — the cache scanned all 100,000 entries to pick a victim on every insert once full, so a working set larger than the cache put it in permanent eviction. It was a real defect on the path that matters most for an ad-blocking resolver, and it only became visible once the benchmark stopped using a 187-domain working set that every cache in the system could hold.
 
 !!! note "Read the median, not a single run"
-    Run-to-run variance on this host is real: ~10–15% for ferrous-dns and up to ~30% for Unbound, which had one low outlier. With 3 samples and a gap that size, the ordering of the top three is not statistically meaningful — ferrous-dns did come out ahead in all 3 runs, but we do not present that as a lead. The numbers above are the median of 3 end-to-end runs, with the min–max spread shown so you can judge the noise yourself.
+    Run-to-run variance on this host is real: ~10–15% for ferrous-dns and up to ~30% for Unbound. With 3 samples and a gap that size, the ordering of the top three in scenario A is not presented as a ranking. The min–max spread is shown so you can judge the noise yourself. Percentiles across three runs would be noise dressed up as precision, so the report gives p5/p95 over the per-second samples *within* runs instead.
 
-Pi-hole's loss rate (~2%) reflects its architectural ceiling: FTL v6 is mostly single-threaded and cannot use more than one core regardless of the CPU budget.
+!!! warning "The published image is not this build"
+    These numbers come from a build with `-C target-cpu=native`, which lets the compiler use every instruction set extension the benchmark host has. The published Docker image is built generically so it runs on any x86-64 machine, and will measure lower on the same hardware.
 
-Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms** | Hit rate: **~95%**
+Cache hit P99: **~10–20µs** | Cache miss P99: **~1–3ms**
 
-Full benchmark report and methodology: [`bench/benchmark-results.md`](https://github.com/andersonviudes/ferrous-dns/blob/main/bench/benchmark-results.md)
+Full report, canary results and methodology: [`bench/benchmark-results.md`](https://github.com/andersonviudes/ferrous-dns/blob/main/bench/benchmark-results.md)

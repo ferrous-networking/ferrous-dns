@@ -1,5 +1,6 @@
 # PowerDNS Recursor v5 — YAML config (ferrous-dns benchmark)
-# Fair comparison: same upstreams, cache enabled, log info, rate limiting disabled
+# Fair comparison: same upstream (the local stub), cache enabled, log info,
+# rate limiting disabled
 
 incoming:
   listen:
@@ -10,14 +11,20 @@ recursor:
   forward_zones_recurse:
     - zone: "."
       forwarders:
-        - "8.8.8.8"
-        - "1.1.1.1"
+        # Local catch-all stub (see stub-upstream.conf)
+        - "127.0.0.1:5300"
+
+outgoing:
+  # Recursor's default dont_query list includes 127.0.0.0/8, which would silently
+  # refuse every query to the stub upstream. Clearing it is required here and
+  # harmless: the only forwarder configured is the stub.
+  dont_query: []
 
 recordcache:
-  max_entries: 200000
+  max_entries: 500000
 
 packetcache:
-  max_entries: 200000
+  max_entries: 500000
 
 logging:
   loglevel: 5

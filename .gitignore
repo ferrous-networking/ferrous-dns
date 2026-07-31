@@ -337,6 +337,28 @@ env/
 # !.gitkeep
 
 # ============================================================================
+# Benchmark artefacts
+# ============================================================================
+# The workload is generated, not stored: generate-queries.py produces a ~45 MB
+# datafile and generate-blocklist.py a 30 MB blocklist. Both are deterministic
+# given --seed, so the generators are what belongs in git — their output does
+# not. See bench/README.md.
+bench/data/queries-*.txt
+bench/data/queries-*.txt.manifest.json
+bench/data/blocked-domains.txt
+bench/data/blocklist.txt
+bench/data/blocklist-advanced.txt
+bench/data/blocklist.manifest.json
+
+# Scratch state written during a run: rendered per-scenario configs, the
+# ferrous-dns database, AdGuard's mutated config, raw dnsperf output.
+bench/.run/
+
+# Aggregated per-scenario JSON. The markdown report IS tracked; these are the
+# raw numbers behind it, regenerated on every run.
+bench/results/
+
+# ============================================================================
 # End of .gitignore
 # ============================================================================
 
