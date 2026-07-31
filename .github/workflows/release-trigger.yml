@@ -62,10 +62,20 @@ jobs:
           echo "Version changed: ${OLD} → ${NEW}"
           echo "version=v${NEW}" >> $GITHUB_OUTPUT
 
+      # bump-version.sh also rewrites the "Current release" banners in docs/.
+      # Run the same gate the docs deploy runs, so a release that would ship
+      # stale documentation fails here instead of after the tag is pushed.
+      - name: Check docs match the new version
+        run: bash scripts/check-docs-version.sh
+
       - name: Commit, tag and push
         run: |
           git add Cargo.toml Cargo.lock
           for f in crates/*/Cargo.toml; do [ -f "$f" ] && git add "$f"; done
+          # The docs banners are part of the bump: staging only the manifests
+          # left them behind at the previous version and broke the docs build
+          # on the v0.9.8 release.
+          git add docs/
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
           git tag -a "${{ steps.version.outputs.version }}" -m "Release ${{ steps.version.outputs.version }}"
           git push origin main
