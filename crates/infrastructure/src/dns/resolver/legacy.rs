@@ -1,5 +1,5 @@
 use super::super::cache::DnsCache;
-use super::super::dnssec::TrustAnchorStore;
+use super::super::dnssec::{DnssecCache, TrustAnchorStore};
 use super::super::load_balancer::PoolManager;
 use super::builder::ResolverBuilder;
 use super::config::ResolverConfig;
@@ -22,6 +22,7 @@ struct BuilderState {
     pool_manager: Arc<PoolManager>,
     dnssec_pool_manager: Option<Arc<PoolManager>>,
     trust_anchors: Option<TrustAnchorStore>,
+    dnssec_cache: Option<Arc<DnssecCache>>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     cache_ttl: u32,
@@ -49,6 +50,7 @@ impl HickoryDnsResolver {
             pool_manager: pool_manager.clone(),
             dnssec_pool_manager: None,
             trust_anchors: None,
+            dnssec_cache: None,
             config: config.clone(),
             cache: None,
             cache_ttl: DEFAULT_CACHE_TTL,
@@ -77,6 +79,15 @@ impl HickoryDnsResolver {
 
     pub fn with_trust_anchors(mut self, trust_anchors: TrustAnchorStore) -> Self {
         self.builder_state.trust_anchors = Some(trust_anchors);
+        self.rebuild();
+        self
+    }
+
+    /// Supplies the DNSSEC validator cache. Required for its counters to
+    /// survive `rebuild()`, which otherwise recreates the validator — and its
+    /// cache — from scratch on every `with_*` call.
+    pub fn with_dnssec_cache(mut self, cache: Arc<DnssecCache>) -> Self {
+        self.builder_state.dnssec_cache = Some(cache);
         self.rebuild();
         self
     }
@@ -146,6 +157,10 @@ impl HickoryDnsResolver {
 
         if let Some(trust_anchors) = &self.builder_state.trust_anchors {
             builder = builder.with_trust_anchors(trust_anchors.clone());
+        }
+
+        if let Some(cache) = &self.builder_state.dnssec_cache {
+            builder = builder.with_dnssec_cache(Arc::clone(cache));
         }
 
         if let Some(cache) = &self.builder_state.cache {

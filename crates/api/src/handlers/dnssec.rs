@@ -33,6 +33,7 @@ pub async fn get_dnssec_stats(
         .unwrap_or(DEFAULT_PERIOD_HOURS);
 
     let stats = state.query.get_stats.execute_dnssec(period_hours).await?;
+    let validator = state.dns.dnssec_stats.validator_stats();
 
     Ok(Json(DnssecStatsResponse {
         total: stats.total,
@@ -41,5 +42,6 @@ pub async fn get_dnssec_stats(
         insecure: stats.insecure,
         bogus: stats.bogus,
         indeterminate: stats.indeterminate,
+        ds_denial_fail_opens: validator.ds_denial_fail_opens,
     }))
 }

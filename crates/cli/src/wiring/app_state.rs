@@ -216,6 +216,7 @@ pub async fn build_app_state(
                 dns_services.pool_manager.clone(),
                 dns_services.health_checker.clone(),
             )),
+            dnssec_stats: dns_services.dnssec_stats.clone(),
             reload_upstream: Arc::new(UpstreamReloadAdapter::new({
                 let mut managers = vec![
                     dns_services.pool_manager.clone(),

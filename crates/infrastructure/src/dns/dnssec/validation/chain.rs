@@ -1,3 +1,5 @@
+use super::authority as auth_check;
+use super::denial::prove_denial;
 use crate::dns::dnssec::cache::DnssecCache;
 use crate::dns::dnssec::crypto::SignatureVerifier;
 use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
@@ -7,8 +9,10 @@ use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DnssecStatus, DomainError, RecordType};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::dnssec::PublicKey;
-use hickory_proto::rr::{RData, Record};
+use hickory_proto::op::ResponseCode;
+use hickory_proto::rr::{Name, RData, Record};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
@@ -26,6 +30,21 @@ fn is_transient_error(e: &DomainError) -> bool {
             | DomainError::TransportConnectionReset { .. }
             | DomainError::IoError(_)
     )
+}
+
+/// Ceiling on how long a *proven* absence of DS is cached. The authority SOA
+/// can advertise a negative TTL of days; capping it bounds how long a delegation
+/// stays pinned to Insecure after the zone is signed.
+const MAX_NEGATIVE_DS_TTL: u32 = 3600;
+
+/// Builds an FQDN (trailing dot) hickory [`Name`], or `None` on parse error.
+fn to_fqdn(domain: &str) -> Option<Name> {
+    let fqdn = if domain.ends_with('.') {
+        domain.to_owned()
+    } else {
+        format!("{domain}.")
+    };
+    Name::from_str(&fqdn).ok()
 }
 
 /// Current UNIX time in seconds, clamped to `u32` (the RRSIG timestamp domain).
@@ -92,6 +111,17 @@ struct DsQueryResult {
     from_cache: bool,
     /// TTL to cache the authenticated DS set under, once validation succeeds.
     ttl: u32,
+    /// Authority section of the DS response, verbatim. Carries the NSEC/NSEC3
+    /// records (and their RRSIGs) that prove a *missing* DS RRset — without them
+    /// an empty answer cannot be told apart from a forged downgrade. Empty on a
+    /// cache hit, which was already proven on the original fetch.
+    authority: Vec<Record>,
+    /// Negative-caching TTL from the authority SOA (RFC 2308), used to cache a
+    /// *proven* absence of DS. `None` when the response carried no SOA.
+    negative_ttl: Option<u32>,
+    /// Response code of the DS answer, needed to pick the right denial proof
+    /// (NODATA vs NXDOMAIN). `NoError` for cache hits, which skip the proof.
+    rcode: ResponseCode,
 }
 
 pub struct ChainVerifier {
@@ -231,6 +261,7 @@ impl ChainVerifier {
         let ds_result = ds_result?;
 
         if ds_result.records.is_empty() {
+            self.confirm_ds_absence(parent_domain, child_domain, &ds_result)?;
             debug!(domain = %child_domain, "No DS records found (insecure delegation)");
             return Err(DomainError::InsecureDelegation);
         }
@@ -459,6 +490,97 @@ impl ChainVerifier {
         Ok(())
     }
 
+    /// Confirms that a *missing* DS RRset is genuine rather than a forged
+    /// downgrade, before the caller declares the delegation insecure.
+    ///
+    /// An empty DS answer carries no signature, so it costs an attacker nothing
+    /// to fabricate: winning one race against this query strips DNSSEC from a
+    /// signed zone, and every later answer for it is then served unvalidated.
+    /// RFC 4035 §5.2 requires the parent's authenticated denial (NSEC/NSEC3)
+    /// instead — which is signed, and which the parent's keys (already
+    /// established by the walk that got us here) can check.
+    ///
+    /// Deliberately fails open. Plenty of forwarders drop the authority section
+    /// entirely, leaving nothing to verify; SERVFAIL'ing those would break
+    /// resolution far more often than it would stop an attack. Only a proof that
+    /// is *present and contradicts* the empty answer is treated as an attack.
+    /// The fail-open path is counted (`record_ds_denial_fail_open`) so operators
+    /// can see whether their upstreams leave this check toothless.
+    fn confirm_ds_absence(
+        &self,
+        parent_domain: &str,
+        child_domain: &str,
+        ds_result: &DsQueryResult,
+    ) -> Result<(), DomainError> {
+        // Cached DS sets were proven on the fetch that populated them.
+        if ds_result.from_cache {
+            return Ok(());
+        }
+
+        let (nsec3s, nsecs) = auth_check::collect_verified_denial(
+            &ds_result.authority,
+            &self.crypto_verifier,
+            now_secs(),
+            &|zone| self.validated_keys.get(zone).cloned(),
+        );
+
+        if nsec3s.is_empty() && nsecs.is_empty() {
+            warn!(
+                parent = %parent_domain,
+                child = %child_domain,
+                "No authenticated NSEC/NSEC3 proving the DS RRset absent — \
+                 serving the delegation as insecure, uncached (fail-open)"
+            );
+            self.dnssec_cache.record_ds_denial_fail_open();
+            return Ok(());
+        }
+
+        let (Some(qname), Some(soa_name)) = (to_fqdn(child_domain), to_fqdn(parent_domain)) else {
+            return Ok(());
+        };
+
+        // The apex is the walk's `parent_domain`, not the owner of the SOA in the
+        // response: the former is already authenticated, the latter is attacker-
+        // supplied data we are in the middle of deciding whether to trust.
+        let result = prove_denial(
+            &qname,
+            hickory_proto::rr::RecordType::DS,
+            ds_result.rcode,
+            &soa_name,
+            &nsec3s,
+            &nsecs,
+        );
+
+        match result {
+            ValidationResult::Bogus => {
+                warn!(
+                    parent = %parent_domain,
+                    child = %child_domain,
+                    "DS RRset reported absent, but the signed denial contradicts it \
+                     — treating the delegation as forged"
+                );
+                Err(DomainError::InvalidDnsResponse(format!(
+                    "forged proof of DS absence for {child_domain}"
+                )))
+            }
+            // Only a conclusive proof earns a cache entry. `Insecure` conflates
+            // an NSEC3 opt-out with "the records present prove nothing", and the
+            // latter is exactly where a partial forgery lands — caching it would
+            // turn one won race into a downgrade that outlives the attack.
+            ValidationResult::Secure => {
+                if let Some(ttl) = ds_result.negative_ttl.filter(|ttl| *ttl > 0) {
+                    self.dnssec_cache.cache_ds(
+                        child_domain,
+                        Vec::new(),
+                        ttl.min(MAX_NEGATIVE_DS_TTL),
+                    );
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     async fn fetch_ds(
         cache: &DnssecCache,
         pool: &PoolManager,
@@ -476,6 +598,9 @@ impl ChainVerifier {
                 raw_records: vec![],
                 from_cache: true,
                 ttl: 0,
+                authority: vec![],
+                negative_ttl: None,
+                rcode: ResponseCode::NoError,
             });
         }
 
@@ -562,6 +687,9 @@ impl ChainVerifier {
                     raw_records,
                     from_cache: false,
                     ttl,
+                    authority: upstream_result.response.message.authorities.to_vec(),
+                    negative_ttl: upstream_result.response.negative_soa_ttl,
+                    rcode: upstream_result.response.rcode,
                 })
             }
             Err(e) => {
