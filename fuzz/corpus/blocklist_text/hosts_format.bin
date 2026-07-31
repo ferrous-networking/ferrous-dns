@@ -1,0 +1,6 @@
+# Title: seed hosts list
+0.0.0.0 ads.example.com
+0.0.0.0 tracker.example.net
+127.0.0.1 metrics.example.org
+0.0.0.0 localhost
+::1 ip6-localhost

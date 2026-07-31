@@ -1,5 +1,5 @@
 mod block_index;
-mod compiler;
+pub(crate) mod compiler;
 mod decision_cache;
 mod engine;
 mod suffix_trie;

@@ -1,0 +1,5 @@
+! seed adblock list
+||ads.example.com^
+||tracker.example.net^$third-party
+@@||allowed.example.com^
+||no-dot-here^

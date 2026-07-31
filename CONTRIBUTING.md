@@ -336,6 +336,25 @@ cargo tarpaulin --out Html
 - Infrastructure: >70%
 - Overall: >80%
 
+### Fuzzing
+
+Anything that parses bytes off the network is fuzzed. If you touch a wire-format
+parser, run the matching target before opening the PR — CI runs all of them for
+60 seconds each and the job gates merges.
+
+```bash
+rustup toolchain install nightly
+cargo install cargo-fuzz --version 0.13.2 --locked
+
+make fuzz TARGET=query_fast_path FUZZ_TIME=300   # one target
+make fuzz-short                                  # all targets, 60s each
+```
+
+When a target crashes, minimize the input with `cargo +nightly fuzz tmin` and
+add it as a named test in `crates/infrastructure/tests/fuzz_regressions.rs`
+before fixing the bug. See [`fuzz/README.md`](fuzz/README.md) for the target
+list and the surfaces it deliberately does not cover.
+
 ---
 
 ## 🤝 Community

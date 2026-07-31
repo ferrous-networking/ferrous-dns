@@ -9,6 +9,8 @@ members = [
     "crates/cli",
     "tests"
 ]
+# The fuzz crate needs nightly and libFuzzer; the workspace builds on stable.
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]

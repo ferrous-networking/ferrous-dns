@@ -7,6 +7,8 @@ pub mod ede;
 pub mod events;
 pub mod fast_path;
 pub mod forwarding;
+#[cfg(feature = "fuzzing")]
+pub mod fuzz_api;
 pub mod load_balancer;
 pub mod nxdomain_hijack;
 pub mod proxy_protocol;

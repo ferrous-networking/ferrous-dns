@@ -1,0 +1,67 @@
+# libFuzzer dictionary for the DNS wire-format targets.
+# Passed with -dict=fuzz/dict/dns.dict (paths are relative to the repo root).
+
+# Header flag words
+flags_query="\x01\x00"
+flags_response="\x81\x80"
+flags_nxdomain="\x81\x83"
+flags_servfail="\x81\x82"
+flags_truncated="\x83\x80"
+flags_ad_set="\x81\xa0"
+
+# Section counts
+one_question="\x00\x01"
+no_records="\x00\x00"
+
+# QTYPEs the fast path accepts
+qtype_a="\x00\x01"
+qtype_ns="\x00\x02"
+qtype_cname="\x00\x05"
+qtype_soa="\x00\x06"
+qtype_ptr="\x00\x0c"
+qtype_mx="\x00\x0f"
+qtype_txt="\x00\x10"
+qtype_aaaa="\x00\x1c"
+qtype_srv="\x00\x21"
+qtype_svcb="\x00\x40"
+qtype_https="\x00\x41"
+qtype_opt="\x00\x29"
+qtype_ds="\x00\x2b"
+qtype_rrsig="\x00\x2e"
+qtype_nsec="\x00\x2f"
+qtype_dnskey="\x00\x30"
+qtype_nsec3="\x00\x32"
+qclass_in="\x00\x01"
+
+# Name encoding
+root_label="\x00"
+compression_pointer="\xc0\x0c"
+bad_label_len="\x40"
+max_label_len="\x3f"
+label_www="\x03www"
+label_com="\x03com"
+label_example="\x07example"
+label_dotted="\x0fads.example.com"
+
+# EDNS0 OPT record: root name, type 41, 4096 payload, version 0
+opt_record="\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x00"
+opt_do_bit="\x00\x00\x29\x10\x00\x00\x00\x80\x00\x00\x00"
+edns_cookie_option="\x00\x0a"
+edns_bad_version="\x01"
+
+# PROXY protocol v2
+proxy_v2_signature="\r\n\r\n\x00\r\nQUIT\n"
+proxy_v2_proxy_tcp4="\x21\x11"
+proxy_v2_proxy_tcp6="\x21\x21"
+proxy_v2_local="\x20\x00"
+
+# Blocklist syntax
+hosts_null="0.0.0.0 "
+hosts_loopback="127.0.0.1 "
+abp_anchor="||"
+abp_separator="^"
+abp_exception="@@"
+wildcard_prefix="*."
+regex_rule="/.*/"
+comment_hash="#"
+comment_bang="!"

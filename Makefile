@@ -5,7 +5,7 @@
 # Usage: make [target]
 # ============================================================================
 
-.PHONY: help build test clean install run dev docker release
+.PHONY: help build test clean install run dev docker release fuzz fuzz-short fuzz-seeds
 
 # Default target
 .DEFAULT_GOAL := help
@@ -96,6 +96,38 @@ audit: ## Security audit
 	@echo "$(BLUE)Running security audit...$(NC)"
 	$(CARGO) audit
 	@echo "$(GREEN)✓ Security audit completed$(NC)"
+
+# ============================================================================
+# Fuzzing
+# ============================================================================
+# Requires nightly and cargo-fuzz:
+#   rustup toolchain install nightly && cargo install cargo-fuzz
+# `make ci` deliberately does NOT depend on these — the gate stays on stable.
+# `+nightly` is a rustup shim feature; on a distro-packaged Rust, point
+# CARGO_NIGHTLY at the rustup cargo, e.g.
+#   make fuzz-short CARGO_NIGHTLY="$$HOME/.cargo/bin/cargo +nightly"
+
+CARGO_NIGHTLY ?= $(CARGO) +nightly
+FUZZ_TARGETS := query_fast_path response_lowercase_0x20 dnssec_records proxy_protocol_v2 blocklist_text
+FUZZ_TIME ?= 60
+FUZZ_FLAGS := -dict=fuzz/dict/dns.dict -timeout=25 -rss_limit_mb=4096
+
+fuzz-short: ## Fuzz every target for FUZZ_TIME seconds each (default 60)
+	@echo "$(BLUE)Fuzzing all targets for $(FUZZ_TIME)s each...$(NC)"
+	@for target in $(FUZZ_TARGETS); do \
+		echo "$(BLUE)→ $$target$(NC)"; \
+		$(CARGO_NIGHTLY) fuzz run $$target -- $(FUZZ_FLAGS) -max_total_time=$(FUZZ_TIME) || exit 1; \
+	done
+	@echo "$(GREEN)✓ No crashes$(NC)"
+
+fuzz: ## Fuzz one target: make fuzz TARGET=query_fast_path [FUZZ_TIME=300]
+	@test -n "$(TARGET)" || { echo "$(RED)Set TARGET=<name>, one of: $(FUZZ_TARGETS)$(NC)"; exit 1; }
+	$(CARGO_NIGHTLY) fuzz run $(TARGET) -- $(FUZZ_FLAGS) -max_total_time=$(FUZZ_TIME)
+
+fuzz-seeds: ## Regenerate the versioned seed corpus under fuzz/corpus/
+	@echo "$(BLUE)Regenerating fuzz seed corpus...$(NC)"
+	python3 fuzz/seeds.py
+	@echo "$(GREEN)✓ Seed corpus written$(NC)"
 
 # ============================================================================
 # Running

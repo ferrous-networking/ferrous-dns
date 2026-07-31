@@ -1,0 +1,90 @@
+name: Fuzz (nightly)
+
+# The 60-second per-PR run lives in ci.yml, where it gates `ci-success`.
+# This workflow is the long run: it explores far past what a PR can afford and
+# feeds the corpus that the PR job restores from cache.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Seconds to fuzz each target'
+        required: false
+        default: '1800'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_FUZZ_VERSION: '0.13.2'
+  # Deliberately floating, unlike the pinned toolchain in ci.yml: this run is
+  # not blocking, so it doubles as the canary telling us a newer nightly is
+  # safe to pin.
+  FUZZ_NIGHTLY: 'nightly'
+
+jobs:
+  fuzz-long:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - query_fast_path
+          - response_lowercase_0x20
+          - dnssec_records
+          - proxy_protocol_v2
+          - blocklist_text
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.FUZZ_NIGHTLY }}
+
+      - name: Setup mold linker
+        uses: rui314/setup-mold@v1
+
+      - name: Cache cargo-fuzz binary
+        id: cache-cargo-fuzz
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: ${{ runner.os }}-cargo-fuzz-${{ env.CARGO_FUZZ_VERSION }}
+
+      - name: Install cargo-fuzz
+        if: steps.cache-cargo-fuzz.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz --version ${{ env.CARGO_FUZZ_VERSION }} --locked
+
+      - name: Restore corpus
+        uses: actions/cache@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- \
+            -dict=fuzz/dict/dns.dict \
+            -max_total_time=${{ github.event.inputs.duration || '1800' }} \
+            -timeout=25 \
+            -rss_limit_mb=4096
+
+      # Keeps the cached corpus from growing without bound: cmin drops inputs
+      # that add no coverage over the ones already kept.
+      - name: Minimize corpus
+        if: success()
+        run: cargo fuzz cmin ${{ matrix.target }}
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 90

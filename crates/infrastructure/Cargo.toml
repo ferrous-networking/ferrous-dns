@@ -11,6 +11,9 @@ dns-over-rustls = []
 dns-over-https = []
 dns-over-quic = ["dep:quinn"]
 dns-over-h3 = ["dep:h3", "dep:h3-quinn", "dep:quinn", "dep:http"]
+# Exposes `dns::fuzz_api`, a thin facade over parsers that are crate-private in
+# a normal build. Only the `fuzz/` crate turns this on.
+fuzzing = []
 
 [dependencies]
 ferrous-dns-domain.workspace = true

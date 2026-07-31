@@ -209,7 +209,7 @@ impl ResponseValidator {
 /// (a CNAME target, an RRSIG signer) are zone data we never influenced. Skipping
 /// keeps this independent of record types. Case changes preserve length, so it
 /// stays a byte fixup with no header, rdlength or pointer offsets to repair.
-fn lowercase_owner_names(wire: &Bytes) -> Option<Bytes> {
+pub(crate) fn lowercase_owner_names(wire: &Bytes) -> Option<Bytes> {
     const HEADER_LEN: usize = 12;
 
     let count = |at: usize| -> Option<usize> {

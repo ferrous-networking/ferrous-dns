@@ -1,0 +1,64 @@
+[package]
+name = "ferrous-dns-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+bytes = "1"
+futures = "0.3"
+hickory-proto = "=0.26.1"
+
+# `default-features = false` drops the QUIC/H3 transports, which no fuzz target
+# reaches. `fuzzing` exposes the private 0x20 decoder through `dns::fuzz_api`.
+[dependencies.ferrous-dns-infrastructure]
+path = "../crates/infrastructure"
+default-features = false
+features = ["fuzzing"]
+
+# Keeps `fuzz/` out of the parent workspace: it needs nightly + libFuzzer, while
+# `cargo clippy --workspace` and `cargo test --workspace` run on stable.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "query_fast_path"
+path = "fuzz_targets/query_fast_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "response_lowercase_0x20"
+path = "fuzz_targets/response_lowercase_0x20.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dnssec_records"
+path = "fuzz_targets/dnssec_records.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "proxy_protocol_v2"
+path = "fuzz_targets/proxy_protocol_v2.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "blocklist_text"
+path = "fuzz_targets/blocklist_text.rs"
+test = false
+doc = false
+bench = false
