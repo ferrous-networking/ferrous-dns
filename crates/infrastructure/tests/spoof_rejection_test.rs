@@ -168,6 +168,37 @@ async fn case_forged_qname_is_rejected_with_0x20() {
     );
 }
 
+#[tokio::test]
+async fn case_forged_qname_is_rejected_for_non_address_types() {
+    // These used to be exempt from 0x20 and cookies, so an off-path forger only
+    // had to guess the 16-bit transaction ID — against DS (the trust chain
+    // itself), MX (SPF/DKIM/DMARC) and HTTPS (ipv4hint/ipv6hint, ECH).
+    let addr = spawn_responder(Mode::FlipQnameCase).await;
+    let pm = manager_hardened(addr).await;
+    let domain: Arc<str> = Arc::from("example.com");
+
+    for rt in [RecordType::MX, RecordType::DS, RecordType::HTTPS] {
+        let result = pm.query(&domain, &rt, 2000, false).await;
+        assert!(
+            result.is_err(),
+            "{rt:?}: a case-flipped QNAME echo must be rejected, got {result:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn forged_cookie_is_rejected_for_non_address_types() {
+    let addr = spawn_responder(Mode::WrongCookie).await;
+    let pm = manager(addr).await;
+    let domain: Arc<str> = Arc::from("example.com");
+
+    let result = pm.query(&domain, &RecordType::MX, 2000, false).await;
+    assert!(
+        result.is_err(),
+        "an MX response echoing a cookie we never sent must be rejected, got {result:?}"
+    );
+}
+
 /// Spawns a UDP responder that always answers with TC=1 (truncated), paired with
 /// a TCP responder on the same port. The UDP TC=1 forces the truncation retry;
 /// the TCP side replies per `tcp_mode`, letting us assert the validator also runs

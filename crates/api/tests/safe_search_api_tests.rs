@@ -490,6 +490,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
                 config.clone(),
                 Arc::new(NullConfigRepository),
             )),
+            dnssec_stats: Arc::new(ferrous_dns_infrastructure::dns::dnssec::DnssecStatsAdapter::disabled()),
             upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(
                 pool_manager.clone(),
                 None,
@@ -1007,6 +1008,7 @@ async fn test_get_all_configs_after_toggle() {
             create_local_record: Arc::new(CreateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
             update_local_record: Arc::new(UpdateLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
             delete_local_record: Arc::new(DeleteLocalRecordUseCase::new(config.clone(), Arc::new(NullConfigRepository))),
+            dnssec_stats: Arc::new(ferrous_dns_infrastructure::dns::dnssec::DnssecStatsAdapter::disabled()),
             upstream_health: Arc::new(ferrous_dns_infrastructure::dns::UpstreamHealthAdapter::new(pool_manager.clone(), None)),
             reload_upstream: Arc::new(ferrous_dns_infrastructure::dns::UpstreamReloadAdapter::new(vec![pool_manager.clone(), pool_manager])),
         },

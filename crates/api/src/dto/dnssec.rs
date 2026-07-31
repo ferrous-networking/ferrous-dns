@@ -12,4 +12,8 @@ pub struct DnssecStatsResponse {
     pub insecure: u64,
     pub bogus: u64,
     pub indeterminate: u64,
+    /// Delegations served as Insecure because the upstream returned no
+    /// authenticated NSEC/NSEC3 proving the DS RRset absent. Unlike the fields
+    /// above this is a process-lifetime total, not scoped to the period.
+    pub ds_denial_fail_opens: u64,
 }

@@ -1,5 +1,5 @@
 use super::super::cache::{DnsCache, NegativeQueryTracker};
-use super::super::dnssec::TrustAnchorStore;
+use super::super::dnssec::{DnssecCache, TrustAnchorStore};
 use super::super::load_balancer::PoolManager;
 use super::cache_layer::CachedResolver;
 use super::config::ResolverConfig;
@@ -18,6 +18,7 @@ pub struct ResolverBuilder {
     pool_manager: Arc<PoolManager>,
     dnssec_pool_manager: Option<Arc<PoolManager>>,
     trust_anchors: Option<TrustAnchorStore>,
+    dnssec_cache: Option<Arc<DnssecCache>>,
     config: ResolverConfig,
     cache: Option<Arc<DnsCache>>,
     local_domain: Option<String>,
@@ -33,6 +34,7 @@ impl ResolverBuilder {
             pool_manager,
             dnssec_pool_manager: None,
             trust_anchors: None,
+            dnssec_cache: None,
             config: ResolverConfig::default(),
             cache: None,
             local_domain: None,
@@ -52,6 +54,13 @@ impl ResolverBuilder {
     /// IANA root anchors embedded in the binary.
     pub fn with_trust_anchors(mut self, trust_anchors: TrustAnchorStore) -> Self {
         self.trust_anchors = Some(trust_anchors);
+        self
+    }
+
+    /// Supplies the DNSKEY/DS cache for the validator instead of letting it
+    /// create its own, so the caller retains a handle for stats reporting.
+    pub fn with_dnssec_cache(mut self, cache: Arc<DnssecCache>) -> Self {
+        self.dnssec_cache = Some(cache);
         self
     }
 
@@ -124,12 +133,22 @@ impl ResolverBuilder {
                 .dnssec_pool_manager
                 .clone()
                 .unwrap_or_else(|| self.pool_manager.clone());
-            resolver = Arc::new(DnssecResolver::new(
-                resolver,
-                dnssec_pm,
-                self.config.query_timeout_ms,
-                self.trust_anchors.unwrap_or_default(),
-            ));
+            let trust_anchors = self.trust_anchors.unwrap_or_default();
+            resolver = Arc::new(match self.dnssec_cache {
+                Some(cache) => DnssecResolver::with_shared_cache(
+                    resolver,
+                    dnssec_pm,
+                    self.config.query_timeout_ms,
+                    trust_anchors,
+                    cache,
+                ),
+                None => DnssecResolver::new(
+                    resolver,
+                    dnssec_pm,
+                    self.config.query_timeout_ms,
+                    trust_anchors,
+                ),
+            });
         }
 
         // DNS64 sits below the cache: synthesized AAAA answers are stored as

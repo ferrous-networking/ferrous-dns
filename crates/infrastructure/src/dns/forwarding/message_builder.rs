@@ -23,10 +23,16 @@ const COOKIE_OPTION_CODE: u16 = 10;
 /// [`query_server`](crate::dns::load_balancer::query::query_server).
 pub const EDNS_MAX_PAYLOAD: u16 = 1232;
 
-/// Opt-in anti-spoofing measures for an upstream query. Only honored for A/AAAA
-/// queries (see [`MessageBuilder::build_query_hardened`]); ignored for other
-/// record types because their responses are cached/replayed as raw upstream wire
-/// and must not carry randomized case or our cookie.
+/// Anti-spoofing measures for an upstream query, applied to every record type.
+///
+/// They used to be restricted to A/AAAA because other types are cached and
+/// replayed to clients as raw upstream wire, which would have leaked our
+/// randomized QNAME case. That leak is now closed at the source — responses are
+/// canonicalized before they reach the cache (see
+/// [`ResponseValidator::canonicalize`](super::ResponseValidator::canonicalize))
+/// — so the restriction is gone. It mattered: DS/DNSKEY, MX/TXT (SPF/DKIM/DMARC)
+/// and HTTPS/SVCB (ipv4hint/ipv6hint, ECH) were the least-protected queries in
+/// the resolver.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HardeningOpts {
     /// Inject a random client DNS Cookie (RFC 7873, EDNS option 10) and validate
@@ -70,19 +76,18 @@ impl MessageBuilder {
     /// the wire bytes alongside a [`ResponseValidator`] capturing the per-query
     /// expectations (txid, question name/type, client cookie).
     ///
-    /// Cookie injection and 0x20 case randomization are applied **only** to A/AAAA
-    /// queries — for other record types the response is cached/replayed to clients
-    /// as raw upstream wire, so randomized case or our cookie must not appear in it.
-    /// Transaction-ID and question validation still apply to every query.
+    /// Both measures apply to every record type; `opts` alone decides. Cookies
+    /// are graceful (an upstream that does not echo one is accepted), so they are
+    /// always on; 0x20 stays opt-in because some upstreams normalize QNAME case.
+    /// Transaction-ID and question validation apply regardless.
     pub fn build_query_hardened(
         domain: &str,
         record_type: &RecordType,
         dnssec_ok: bool,
         opts: HardeningOpts,
     ) -> Result<(Vec<u8>, ResponseValidator), DomainError> {
-        let is_address = matches!(record_type, RecordType::A | RecordType::AAAA);
-        let use_cookie = opts.cookie && is_address;
-        let use_0x20 = opts.qname_0x20 && is_address;
+        let use_cookie = opts.cookie;
+        let use_0x20 = opts.qname_0x20;
 
         let name = if use_0x20 {
             Self::randomized_case_name(domain)?
@@ -118,29 +123,47 @@ impl MessageBuilder {
     /// Builds a `Name` whose ASCII letters have randomized case (0x20). Built from
     /// raw label bytes via `Name::from_labels` because `Name::from_str` lowercases.
     fn randomized_case_name(domain: &str) -> Result<Name, DomainError> {
-        let src = domain.trim_end_matches('.').as_bytes();
-        let mut rnd = vec![0u8; (src.len() / 8) + 1];
+        // Parse first, then randomize the parsed labels. Splitting the input on
+        // raw '.' instead would disagree with the non-randomized path on any name
+        // where a dot is not a separator: `to_utf8` hands us DNS escapes, so
+        // `a\.b.com` is two labels there and three here, and an IDN arrives as
+        // punycode only through the parser. Querying a *different* name than the
+        // caller asked for is invisible — the echo check compares against the same
+        // wrong name, so it passes, and the answer is cached under the right key.
+        let parsed = Name::from_str(domain).map_err(|e| {
+            DomainError::InvalidDomainName(format!("Invalid domain '{}': {}", domain, e))
+        })?;
+        // The root has no labels to randomize, and `from_labels` rejects the empty
+        // label a naive walk would produce. That matters more than it looks: the
+        // DNSSEC chain bootstraps with a DNSKEY query for ".", so failing here
+        // disables validation outright.
+        if parsed.is_root() {
+            return Ok(parsed);
+        }
+
+        let total: usize = parsed.iter().map(<[u8]>::len).sum();
+        let mut rnd = vec![0u8; (total / 8) + 1];
         Self::fill_random(&mut rnd);
 
         let mut bit = 0usize;
         let mut labels: Vec<Vec<u8>> = Vec::new();
-        let mut current: Vec<u8> = Vec::new();
-        for &b in src {
-            if b == b'.' {
-                labels.push(std::mem::take(&mut current));
-            } else if b.is_ascii_alphabetic() {
-                let uppercase = (rnd[bit / 8] >> (bit % 8)) & 1 == 1;
-                bit += 1;
-                current.push(if uppercase {
-                    b.to_ascii_uppercase()
+        for label in parsed.iter() {
+            let mut current: Vec<u8> = Vec::with_capacity(label.len());
+            for &b in label {
+                if b.is_ascii_alphabetic() {
+                    let uppercase = (rnd[bit / 8] >> (bit % 8)) & 1 == 1;
+                    bit += 1;
+                    current.push(if uppercase {
+                        b.to_ascii_uppercase()
+                    } else {
+                        b.to_ascii_lowercase()
+                    });
                 } else {
-                    b.to_ascii_lowercase()
-                });
-            } else {
-                current.push(b);
+                    current.push(b);
+                }
             }
+            labels.push(current);
         }
-        labels.push(current);
 
         Name::from_labels(labels).map_err(|e| {
             DomainError::InvalidDomainName(format!("Invalid domain '{}': {}", domain, e))

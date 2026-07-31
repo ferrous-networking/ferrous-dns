@@ -154,6 +154,51 @@ async fn zero_x20_randomizes_qname_on_the_wire_only() {
     assert_eq!(&*domain, "example.com");
 }
 
+/// Byte span of the question QNAME for `example.com.` — the 12-byte header, then
+/// `\x07example\x03com\x00`.
+const QNAME_SPAN: std::ops::Range<usize> = 12..12 + 1 + 7 + 1 + 3 + 1;
+
+#[tokio::test]
+async fn zero_x20_is_stripped_before_the_response_is_cacheable() {
+    // Non-address types are replayed to clients as raw upstream wire, straight
+    // from the cache — so the randomization has to be gone by the time the
+    // response leaves the upstream choke point, not patched on the way out.
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let addr = spawn_responder(seen.clone(), false).await;
+    let pm = manager(addr, true).await;
+
+    let domain: Arc<str> = Arc::from("example.com");
+    for _ in 0..16 {
+        let result = pm
+            .query(&domain, &RecordType::MX, 2000, false)
+            .await
+            .expect("faithful response must resolve");
+
+        let question = &result.response.raw_bytes[QNAME_SPAN];
+        assert!(
+            !question.iter().any(u8::is_ascii_uppercase),
+            "cacheable wire must carry the canonical QNAME, got {:?}",
+            String::from_utf8_lossy(question)
+        );
+
+        let parsed_upper = result.response.message.queries[0]
+            .name()
+            .iter()
+            .any(|label| label.iter().any(u8::is_ascii_uppercase));
+        assert!(!parsed_upper, "parsed question must be canonical too");
+    }
+
+    // Guard against the assertions above passing for the wrong reason: the
+    // upstream really did receive randomized case.
+    let observed = seen.lock().unwrap().clone();
+    assert!(
+        observed
+            .iter()
+            .any(|bytes| bytes.iter().any(u8::is_ascii_uppercase)),
+        "0x20 must still reach the upstream; saw {observed:?}"
+    );
+}
+
 /// Drives queries through the full cache stack (`CachedResolver` ->
 /// `CoreResolver` -> `PoolManager`) against a live UDP upstream. We always send a
 /// cookie (hardening on); `echo_cookie` toggles whether the upstream supports

@@ -22,7 +22,8 @@ pub struct PoolManager {
     pools: ArcSwap<Vec<PoolWithStrategy>>,
     health_checker: Option<Arc<HealthChecker>>,
     emitter: QueryEventEmitter,
-    /// Anti-spoofing hardening applied to A/AAAA upstream queries (DNS Cookies + 0x20).
+    /// Anti-spoofing hardening applied to upstream queries of every record type
+    /// (DNS Cookies + 0x20).
     hardening: HardeningOpts,
 }
 
@@ -66,7 +67,7 @@ impl PoolManager {
         })
     }
 
-    /// Overrides the anti-spoofing hardening applied to A/AAAA upstream queries.
+    /// Overrides the anti-spoofing hardening applied to upstream queries.
     /// Used by wiring to honor the `qname_case_randomization` config flag.
     pub fn with_hardening(mut self, hardening: HardeningOpts) -> Self {
         self.hardening = hardening;

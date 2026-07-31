@@ -1,19 +1,21 @@
 use anyhow::Context;
 use ferrous_dns_domain::Config;
-use ferrous_dns_infrastructure::dns::dnssec::TrustAnchorStore;
+use ferrous_dns_infrastructure::dns::dnssec::{DnssecCache, TrustAnchorStore};
 use ferrous_dns_infrastructure::dns::{HickoryDnsResolver, PoolManager};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::wiring::Repositories;
 
+/// Builds the resolver stack, returning the DNSSEC validator cache alongside it
+/// when validation is on, so the caller can report its counters.
 pub(super) fn build_resolver(
     pool_manager: Arc<PoolManager>,
     pool_manager_for_dnssec: Arc<PoolManager>,
     config: &Config,
     repos: &Repositories,
     timeout_ms: u64,
-) -> anyhow::Result<HickoryDnsResolver> {
+) -> anyhow::Result<(HickoryDnsResolver, Option<Arc<DnssecCache>>)> {
     let dnssec_mode = config.dns.effective_dnssec_mode();
     let dnssec_validates = dnssec_mode.validates();
 
@@ -31,13 +33,19 @@ pub(super) fn build_resolver(
     )
     .with_local_dns_server(config.dns.local_dns_server.clone());
 
-    if dnssec_validates {
+    let dnssec_cache = if dnssec_validates {
+        let cache = Arc::new(DnssecCache::new());
         resolver = resolver
             .with_dnssec_pool_manager(pool_manager_for_dnssec)
-            .with_trust_anchors(load_trust_anchors(config)?);
-    } else if config.dns.dnssec_trust_anchor_file.is_some() {
-        debug!("DNSSEC validation is off — dnssec_trust_anchor_file is ignored");
-    }
+            .with_trust_anchors(load_trust_anchors(config)?)
+            .with_dnssec_cache(Arc::clone(&cache));
+        Some(cache)
+    } else {
+        if config.dns.dnssec_trust_anchor_file.is_some() {
+            debug!("DNSSEC validation is off — dnssec_trust_anchor_file is ignored");
+        }
+        None
+    };
 
     // DNS64 (RFC 6147) — fail-soft: a malformed / non-/96 prefix disables the
     // feature with a warning rather than refusing to start.
@@ -64,7 +72,7 @@ pub(super) fn build_resolver(
         "DNS resolver created with all features"
     );
 
-    Ok(resolver)
+    Ok((resolver, dnssec_cache))
 }
 
 /// Loads the DNSSEC trust anchors: the operator's file when one is configured,
