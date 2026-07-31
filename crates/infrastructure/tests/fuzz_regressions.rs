@@ -5,7 +5,8 @@
 
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::wire_response;
-use hickory_proto::op::Message;
+use hickory_proto::op::{Message, Query};
+use hickory_proto::serialize::binary::{BinDecodable, BinDecoder};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 
@@ -37,6 +38,27 @@ fn query_packet(id: u16, labels: &[&[u8]], qtype: u16, edns_payload: Option<u16>
     }
 
     buf
+}
+
+/// Decodes the question the way the `query_fast_path` target does — question
+/// only, straight off the 12-byte header — and returns the cache key the slow
+/// path would derive from it.
+///
+/// The target stops at the question so the oracle never reaches hickory's
+/// rdata readers, where a TSIG record with a short RDLENGTH panics
+/// (`rdata/tsig.rs:387`, hickory-proto 0.26.1). Keeping the same decode here
+/// means the API the target depends on is compiled on stable too.
+fn hickory_question_key(packet: &[u8]) -> Option<String> {
+    let mut decoder = BinDecoder::new(packet);
+    decoder.read_slice(12).ok()?;
+    let question = Query::read(&mut decoder).ok()?;
+    Some(
+        question
+            .name()
+            .to_utf8()
+            .trim_end_matches('.')
+            .to_ascii_lowercase(),
+    )
 }
 
 /// The cache key is the label sequence flattened with `.`, so a single label
@@ -175,12 +197,7 @@ fn fast_path_key_matches_hickory_for_every_label_byte() {
             let Some(query) = fast_path::parse_query(&packet) else {
                 continue;
             };
-            let message = Message::from_vec(&packet).expect("hickory parses the same packet");
-            let expected = message.queries[0]
-                .name()
-                .to_utf8()
-                .trim_end_matches('.')
-                .to_ascii_lowercase();
+            let expected = hickory_question_key(&packet).expect("hickory decodes the question");
 
             assert_eq!(
                 query.domain(),
@@ -189,6 +206,35 @@ fn fast_path_key_matches_hickory_for_every_label_byte() {
             );
         }
     }
+}
+
+/// `crash-0fb15f6a` from the `query_fast_path` target: a query for `8we.com`
+/// carrying a TSIG record whose RDLENGTH (6) is shorter than the fixed TSIG
+/// preamble. Decoding that rdata panics inside hickory-proto 0.26.1 —
+/// `rdata/tsig.rs:387` evaluates `end_idx - decoder.index()` while building
+/// the `DecodeError` that reports the bad length, and it underflows.
+///
+/// The panic is upstream and on the error path; the shipped server builds with
+/// `overflow-checks = false`, so the value wraps into a field of an error that
+/// is returned rather than indexed with. What this pins is our side: the fast
+/// path keys the packet by its question and agrees with hickory's decode of
+/// that question, whatever the additional section carries.
+#[test]
+fn fast_path_handles_query_with_malformed_tsig_record() {
+    let packet: &[u8] = &[
+        0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x38, 0x77,
+        0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xfa, 0xff, 0xff,
+        0xd6, 0xfe, 0xf7, 0x00, 0x00, 0x06, 0x00, 0x00, 0x29, 0x10, 0x00, 0x06, 0x00, 0x01, 0x10,
+        0x00, 0x06, 0x00, 0x01, 0xcc, 0x8b, 0x01, 0x00,
+    ];
+
+    let query = fast_path::parse_query(packet).expect("the question itself is well formed");
+    assert_eq!(query.domain(), "8we.com");
+    assert_eq!(
+        hickory_question_key(packet).as_deref(),
+        Some("8we.com"),
+        "both paths must still agree on the name"
+    );
 }
 
 /// `build_cache_hit_response` writes into a fixed 523-byte stack buffer. A

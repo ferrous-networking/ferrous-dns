@@ -20,7 +20,8 @@
 use ferrous_dns_infrastructure::dns::fast_path;
 use ferrous_dns_infrastructure::dns::forwarding::record_type_map::RecordTypeMapper;
 use ferrous_dns_infrastructure::dns::wire_response;
-use hickory_proto::op::Message;
+use hickory_proto::op::Query;
+use hickory_proto::serialize::binary::{BinDecodable, BinDecoder};
 use libfuzzer_sys::fuzz_target;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -28,6 +29,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 const MAX_V4: u16 = 40;
 /// Enough AAAA records to cross it too (28 bytes each).
 const MAX_V6: u16 = 24;
+
+/// The 12-byte DNS header, which the question section follows.
+const HEADER_LEN: usize = 12;
 
 fuzz_target!(|packet: &[u8]| {
     let Some(query) = fast_path::parse_query(packet) else {
@@ -38,8 +42,22 @@ fuzz_target!(|packet: &[u8]| {
     // path accepts => hickory accepts") is deliberately not asserted: the AR
     // walk in `parse_query` tolerates a truncated additional section on
     // purpose, which hickory rejects.
-    if let Ok(message) = Message::from_vec(packet) {
-        if let Some(question) = message.queries.first() {
+    //
+    // Only the question is decoded, not the whole message. It is the part both
+    // paths key the cache on, and it keeps the oracle off hickory's rdata
+    // readers — one of which panics on input we cannot fix from here. A TSIG
+    // record whose RDLENGTH is shorter than the fixed preamble makes
+    // `rdata/tsig.rs:387` (hickory-proto 0.26.1) evaluate
+    // `end_idx - decoder.index()` while building its *error* value, which
+    // underflows. That upstream defect cannot panic the shipped server, where
+    // `[profile.release]` sets `overflow-checks = false` and the wrapped value
+    // only lands in a `DecodeError` field that is returned, never indexed
+    // with; under a fuzz build it aborts the run before any assertion is
+    // reached. `catch_unwind` is not an option: libfuzzer-sys installs a panic
+    // hook that aborts the process before unwinding.
+    let mut decoder = BinDecoder::new(packet);
+    if decoder.read_slice(HEADER_LEN).is_ok() {
+        if let Ok(question) = Query::read(&mut decoder) {
             let slow_path_domain = question.name().to_utf8();
             let slow_path_domain = slow_path_domain
                 .trim_end_matches('.')
