@@ -405,7 +405,9 @@ sqlite_mmap_size_mb = 64
 # Set require_valid_cookie = true for strict mode: queries without a valid cookie
 # are refused (REFUSED + EDE 25). Only enable on servers where all clients
 # support RFC 7873 (dig, modern resolvers). Default is permissive.
-[dns_cookies]
+#
+# The table is nested under [dns]; a top-level [dns_cookies] is ignored.
+[dns.dns_cookies]
 # enabled = true                                                                   # default: true
 server_secret = ""                                                                 # empty = ephemeral secret (regenerated each restart); set a unique 64-char hex via: openssl rand -hex 32
 # secret_rotation_secs = 3600                                                      # default: 3600
