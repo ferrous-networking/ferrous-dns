@@ -49,13 +49,11 @@ const MAX_UDP_RESPONSE_SIZE: usize = 4096;
 /// Receive datagrams on `socket` until one arrives from the expected server
 /// with the matching DNS message ID, or `timeout` elapses.
 ///
-/// A pooled UDP socket is reused across queries, so it can still hold a late
-/// response from a *previous* query, and an off-path attacker can inject
-/// spoofed datagrams. A datagram from the wrong source or with a non-matching
-/// message ID is therefore not our answer — it is drained and we keep waiting,
-/// rather than failing the in-flight query. This keeps response/request
-/// matching correct under socket reuse (the DNSSEC chain walk fires many
-/// concurrent DS/DNSKEY queries) while preserving the anti-spoofing checks.
+/// The socket comes from a pool and is not connected, so it may deliver a late
+/// response left over from a previous query on it, or a datagram from any
+/// other source. Both checks below reject such datagrams; a rejected datagram
+/// is dropped and the loop keeps waiting until the deadline, since it says
+/// nothing about the query currently in flight.
 async fn recv_matching(
     socket: &UdpSocket,
     query_bytes: &[u8],
