@@ -47,6 +47,9 @@ Via dashboard: **Blocklists > Add Blocklist** (or the REST API).
 !!! warning "Not configured via TOML"
     Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. The `custom_blocked` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect — use the dashboard or API instead.
 
+!!! warning "63 active blocklist sources maximum"
+    Each domain carries a 64-bit mask of the sources that contributed it, and one bit is reserved for manually added entries. If more than **63** blocklist sources are enabled, only the 63 oldest are compiled and the rest are silently skipped — the only signal is a `WARN` line at startup and after each refresh. Merge or disable lists to stay under the cap; a handful of large lists beats dozens of small ones.
+
 ### Supported Formats
 
 **Hosts file** (`0.0.0.0` or `127.0.0.1` format):
@@ -69,12 +72,23 @@ malware.example.net
 *.doubleclick.net
 ```
 
-**Regex** (for complex patterns):
+A `*.` rule covers every name **below** the base — `video.ads.example.com`, `a.b.ads.example.com` — but not the base itself. Add `ads.example.com` as its own line to block the apex too.
+
+**Adblock** (domain and everything under it):
 ```text
-/^ads\d+\.example\.com$/
-/^tracking\./
-/telemetry/
+||doubleclick.net^
 ```
+
+`||doubleclick.net^` blocks `doubleclick.net` *and* all of its subdomains. `@@` exception lines are ignored.
+
+**Substring** (literal text anywhere in the name):
+```text
+/telemetry/
+/-ads-/
+```
+
+!!! warning "`/.../` in a list is a literal substring, not a regex"
+    Text between slashes is matched literally, so `/^ads\d+\.example\.com$/` looks for a name containing the characters `^ads\d+…` and matches nothing. For real regular expressions use **Regex Filters** in the dashboard, which compile per client group with an allow or deny action.
 
 ### Recommended Blocklists
 

@@ -41,7 +41,7 @@ FERROUS_CONFIG=path/to/ferrous-dns.toml ferrous-dns
 | [`[dns.nxdomain_hijack]`](#nxdomain-hijack) | ISP NXDOMAIN hijack detection and reversal | [Malware Detection](../features/malware-detection.md#nxdomain-hijack-detection) |
 | [`[dns.response_ip_filter]`](#response-ip-filter) | Block responses resolving to known C2 IPs | [Malware Detection](../features/malware-detection.md#response-ip-filtering) |
 | [`[[dns.local_records]]`](#local-records) | Static A/AAAA records with auto-PTR | [DNS & Upstreams](dns.md#local-records) |
-| [`[dns_cookies]`](#dns-cookies) | DNS Cookies anti-spoofing (RFC 7873) | [Security](../features/security.md) |
+| [`[dns.dns_cookies]`](#dns-cookies) | DNS Cookies anti-spoofing (RFC 7873) | [Security](../features/security.md) |
 | [`[blocking]`](#blocking) | Ad and malware blocking via blocklists | [Blocking & Filtering](../features/blocking-filtering.md) |
 | [`[dns64]`](#dns64) | NAT64 AAAA synthesis for IPv6-only clients (RFC 6147) | [DNS64](../features/dns64.md) |
 | [`[logging]`](#logging) | Log level | — |
@@ -651,12 +651,12 @@ See [DNS64](../features/dns64.md).
 
 ---
 
-## `[dns_cookies]` {#dns-cookies}
+## `[dns.dns_cookies]` {#dns-cookies}
 
 DNS Cookies (RFC 7873) anti-spoofing. The server echoes an HMAC-SHA256 server cookie on every response so clients can verify they are talking to the same server, mitigating UDP spoofing and amplification abuse. Enabled by default.
 
 ```toml title="ferrous-dns.toml"
-[dns_cookies]
+[dns.dns_cookies]
 enabled              = true
 server_secret        = ""
 secret_rotation_secs = 3600
@@ -672,6 +672,9 @@ require_valid_cookie = false
 
 !!! warning "Do not commit a shared `server_secret`"
     Leave `server_secret` empty (ephemeral) or generate a unique value per deployment. A fixed secret baked into an image means every install shares the same cookie key, defeating the anti-spoofing guarantee.
+
+!!! warning "Nested under `[dns]`"
+    A top-level `[dns_cookies]` table is silently ignored — the section must be `[dns.dns_cookies]`.
 
 See [Security](../features/security.md).
 

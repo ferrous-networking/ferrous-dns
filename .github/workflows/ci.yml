@@ -11,6 +11,10 @@ env:
   RUST_BACKTRACE: 1
   TARPAULIN_VERSION: '0.27.0'
   AUDIT_VERSION: '0.22.2'
+  CARGO_FUZZ_VERSION: '0.13.2'
+  # cargo-fuzz needs nightly. Pinned on purpose: this job gates merges, so a
+  # compiler regression must not block unrelated PRs. Bump deliberately.
+  FUZZ_NIGHTLY: 'nightly-2026-07-01'
 
 jobs:
   quick-check:
@@ -276,6 +280,81 @@ jobs:
       - name: Run cargo audit
         run: cargo audit
 
+  fuzz-short:
+    name: Fuzz (${{ matrix.target }})
+    needs: quick-check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - query_fast_path
+          - response_lowercase_0x20
+          - dnssec_records
+          - proxy_protocol_v2
+          - blocklist_text
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.FUZZ_NIGHTLY }}
+
+      - name: Setup mold linker
+        uses: rui314/setup-mold@v1
+
+      - name: Cache cargo-fuzz binary
+        id: cache-cargo-fuzz
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: ${{ runner.os }}-cargo-fuzz-${{ env.CARGO_FUZZ_VERSION }}
+
+      - name: Install cargo-fuzz
+        if: steps.cache-cargo-fuzz.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz --version ${{ env.CARGO_FUZZ_VERSION }} --locked
+
+      - name: Cache fuzz build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            fuzz/target
+          key: ${{ runner.os }}-fuzz-build-${{ env.FUZZ_NIGHTLY }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-build-${{ env.FUZZ_NIGHTLY }}-
+
+      # The versioned seeds are always present; this only adds inputs the
+      # nightly run discovered since.
+      - name: Restore grown corpus
+        uses: actions/cache@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz for 60s
+        run: |
+          cargo fuzz run ${{ matrix.target }} -- \
+            -dict=fuzz/dict/dns.dict \
+            -max_total_time=60 \
+            -timeout=25 \
+            -rss_limit_mb=4096
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 30
+
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
@@ -293,6 +372,16 @@ jobs:
           fail-on-severity: critical
         continue-on-error: true
 
+  docs-consistency:
+    name: Docs Consistency (version + roadmap)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Check docs match the workspace version
+        run: bash scripts/check-docs-version.sh
+
   ci-success:
     name: CI Success
     needs:
@@ -300,6 +389,8 @@ jobs:
       - test
       - coverage
       - build
+      - fuzz-short
+      - docs-consistency
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -308,6 +399,8 @@ jobs:
           if [ "${{ needs.quick-check.result }}" != "success" ] || \
              [ "${{ needs.test.result }}" != "success" ] || \
              [ "${{ needs.coverage.result }}" != "success" ] || \
+             [ "${{ needs.fuzz-short.result }}" != "success" ] || \
+             [ "${{ needs.docs-consistency.result }}" != "success" ] || \
              [ "${{ needs.build.result }}" != "success" ]; then
             echo "❌ CI failed"
             exit 1

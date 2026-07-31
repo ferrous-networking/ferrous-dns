@@ -12,13 +12,8 @@ The full changelog is published with each release on GitHub:
 
 | Version | Highlights | Status |
 |:--------|:-----------|:------:|
-| v0.8.0 | Config export/import, query log export, Prometheus metrics, OpenAPI docs | In Progress |
-
-### v0.8.2 — DNS Cookies
-
-#### Added
-
-- RFC 7873 DNS Cookies (EDNS option 10) — server-side anti-spoofing and amplification protection with HMAC-SHA256 server cookies, secret rotation, and permissive/strict enforcement modes.
+| v0.9.x | Upstream anti-spoofing (0x20, DNS Cookies, response validation), DNSSEC validation enforcement + DS denial proofs, DoQ server listener, DNS64, TOTP/2FA + passkeys, custom sinkhole IP | Released |
+| v0.8.x | Config export/import, Prometheus metrics, OpenAPI docs, Extended DNS Errors (RFC 8914), DNS Cookies (RFC 7873), optimistic prefetch | Released |
 | v0.7.x | HTTPS, auth, API tokens, rate limiting, DNS tunneling detection, DGA detection, NXDomain hijack detection, response IP filtering (C2 blocking) | Released |
 | v0.6.x | In-flight coalescing, TSC timer, Pi-hole API compat, benchmark suite | Released |
 | v0.5.0 | DoH/DoT server-side, PROXY Protocol v2, auto PTR, DNS rebinding protection | Released |
@@ -27,4 +22,4 @@ The full changelog is published with each release on GitHub:
 | v0.2.0 | Blocklists, allowlists, client groups, wildcard/regex blocking | Released |
 | v0.1.0 | Foundation — DNS resolver, cache L1/L2, REST API, Web UI | Released |
 
-See the [Roadmap](roadmap.md) for upcoming features.
+Per-release detail is on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases); see the [Roadmap](roadmap.md) for upcoming features.

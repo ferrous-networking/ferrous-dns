@@ -58,7 +58,11 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+      check_paths: true
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
@@ -96,7 +100,9 @@ nav:
     - Client Management: features/client-management.md
     - Malware Detection: features/malware-detection.md
     - Security: features/security.md
+    - Security Hardening: features/security-hardening.md
     - Two-Factor Authentication: features/two-factor-auth.md
+    - Metrics & Monitoring: features/metrics.md
   - API & Integrations:
     - API Reference: api.md
     - Integrations: integrations.md
@@ -106,6 +112,7 @@ nav:
     - Crate Structure: architecture/crates.md
   - Performance:
     - Benchmarks: performance/benchmarks.md
+    - Internals: performance/internals.md
   - Troubleshooting: troubleshooting.md
   - Contributing: contributing.md
   - Changelog: changelog.md

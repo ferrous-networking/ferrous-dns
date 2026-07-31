@@ -496,12 +496,15 @@ DNS Cookies (RFC 7873) protect UDP-based DNS against two classes of attack: **so
 | `secret_rotation_secs` | `int` | `3600` | Seconds between secret rotations. The previous secret is still accepted for one full rotation window to allow in-flight clients to re-negotiate without errors |
 | `require_valid_cookie` | `bool` | `false` | Strict mode — reject queries with an absent or invalid server cookie with `REFUSED` + EDE 25. Default `false` = permissive mode (always respond, but echo a fresh server cookie) |
 
+!!! warning "The table is nested under `[dns]`"
+    The section is `[dns.dns_cookies]`, not a top-level `[dns_cookies]`. A top-level table is silently ignored and leaves every value at its default.
+
 ### Permissive mode (default)
 
 All queries are answered regardless of cookie status. The server always echoes a fresh HMAC-SHA256 server cookie in every response, so RFC-7873-capable clients learn and cache the cookie automatically.
 
 ```toml
-[dns_cookies]
+[dns.dns_cookies]
 enabled               = true
 server_secret         = ""
 secret_rotation_secs  = 3600
@@ -513,7 +516,7 @@ require_valid_cookie  = false
 Queries that arrive without a valid server cookie are rejected immediately, before any upstream lookup is performed.
 
 ```toml
-[dns_cookies]
+[dns.dns_cookies]
 enabled               = true
 server_secret         = "a1b2c3d4e5f6..."   # 64 hex chars (32 bytes)
 secret_rotation_secs  = 3600

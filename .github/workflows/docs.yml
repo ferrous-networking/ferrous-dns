@@ -8,6 +8,9 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "requirements.txt"
+      - "ROADMAP.md"
+      - "Cargo.toml"
+      - "scripts/check-docs-version.sh"
   workflow_dispatch:
 
 permissions:
@@ -37,6 +40,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Check docs match the workspace version
+        run: bash scripts/check-docs-version.sh
 
       - name: Build site
         run: mkdocs build --strict

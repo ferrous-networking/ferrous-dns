@@ -2,6 +2,8 @@
 
 Ferrous DNS includes several security mechanisms to protect your network from DNS-based attacks and data exposure.
 
+This page covers the dashboard and API surface plus the per-feature reference. For the resolver-side hardening — upstream response validation, 0x20, source-port rotation, DNSSEC downgrade detection — and an explicit list of what is *not* covered yet, see [Security Hardening](security-hardening.md).
+
 ---
 
 ## Authentication
@@ -465,12 +467,15 @@ Cache hits bypass the DNS Cookie guard entirely — a query served from L1 or L2
 ### Configuration
 
 ```toml
-[dns_cookies]
+[dns.dns_cookies]
 enabled               = true    # on by default
 server_secret         = ""      # empty = ephemeral secret (not for production)
 secret_rotation_secs  = 3600    # rotate every hour
 require_valid_cookie  = false   # permissive mode (recommended default)
 ```
+
+!!! warning "The section is nested under `[dns]`"
+    A top-level `[dns_cookies]` table is silently ignored — the settings look applied but the defaults stay in force. If `server_secret` seems not to take effect, check the nesting first.
 
 See [DNS Cookies configuration](../configuration/dns.md#dns-cookies-rfc-7873) for the full option reference and strict-mode setup.
 
@@ -483,6 +488,10 @@ The following are planned for future releases:
 | Feature | Description |
 |:--------|:------------|
 | **Read-Only Mode** | Disable config changes via a flag |
+| **API / login throttling** | `login_rate_limit_attempts` and `login_rate_limit_window_secs` are accepted and persisted today, but nothing enforces them — see [Security Hardening](security-hardening.md#what-is-not-hardened-yet) |
+| **EDNS Client Subnet handling** | Strip client ECS from upstream queries by default, with optional injection (RFC 7871) |
+| **Enforcing DS-denial checks** | Turn the current downgrade *detection* into an opt-in strict mode |
+| **RFC 5011 trust anchor rollover** | Track root key rolls without a new release |
 
 ---
 
@@ -490,7 +499,11 @@ The following are planned for future releases:
 
 | Mechanism | Status |
 |:----------|:-------|
-| DNSSEC validation | :white_check_mark: Active |
+| DNSSEC validation | :white_check_mark: Active — `permissive` by default, `strict` to SERVFAIL on Bogus |
+| DNSSEC downgrade (DS denial) | :warning: Detection only — fail-opens counted at `/api/dnssec/stats` |
+| Upstream response validation (txid + question + source) | :white_check_mark: Active on every transport |
+| Upstream source-port rotation | :white_check_mark: Active |
+| 0x20 QNAME case randomization | :grey_question: Opt-in — `qname_case_randomization`, off by default |
 | DNS tunneling detection | :white_check_mark: Active |
 | DNS rebinding protection | :white_check_mark: Active |
 | NXDomain hijack detection | :white_check_mark: Active |
@@ -506,3 +519,5 @@ The following are planned for future releases:
 | TCP/DoT connection limiting | :white_check_mark: Active |
 | TOTP / 2FA (authenticator app) | :white_check_mark: Active |
 | Passkeys / WebAuthn (second factor + passwordless) | :white_check_mark: Active |
+| API request rate limiting | :x: Not implemented |
+| Login attempt throttling / lockout | :x: Not implemented (config keys accepted but inert) |

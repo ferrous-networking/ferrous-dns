@@ -43,7 +43,8 @@ Nothing in this path allocates memory for cache hits. No global locks. No expens
 Each worker thread has its own private L1 cache. Because it is private to the thread, there is zero synchronization overhead.
 
 - No locks, no contention -- direct memory access
-- Holds the hottest ~100-500 entries per thread
+- Fixed at 1024 entries per worker thread, LRU — a compile-time constant, not sized by configuration
+- Holds **A/AAAA answers only**; CNAMEs, negative answers and other record types are served from L2
 - L1 hit overhead: ~1-3µs P99
 
 ### L2 — Shared, Sharded Cache
@@ -66,7 +67,9 @@ Under real-world load with hundreds of distinct active domains, contention is ef
 
 ### Why Two Levels?
 
-L1 absorbs the hottest queries (top ~0.1% of domains queried thousands of times per minute) without touching shared memory at all. L2 handles the long tail. Together they keep the cache hit rate above 95% for typical networks.
+L1 absorbs the hottest address lookups (top ~0.1% of domains queried thousands of times per minute) without touching shared memory at all. L2 handles the long tail and every non-address record type. Together they keep the cache hit rate above 95% for typical networks.
+
+Implementation details of both tiers, the block decision cache and the kernel-level plumbing are documented in [Internals](internals.md).
 
 ---
 

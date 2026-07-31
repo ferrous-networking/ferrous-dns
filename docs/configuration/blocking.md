@@ -93,8 +93,9 @@ All blocklist management is done via the dashboard or REST API — not the TOML 
 |:-------|:--------|
 | Hosts file | `0.0.0.0 ads.example.com` |
 | Domain list | `ads.example.com` |
-| Wildcard | `*.ads.example.com` |
-| Regex | `/^ads\d+\.example\.com$/` |
+| Wildcard (subdomains only) | `*.ads.example.com` |
+| Adblock (domain + subdomains) | <code>&#124;&#124;ads.example.com^</code> |
+| Substring, matched literally | `/telemetry/` |
 
 ### Blocklist URL Examples
 
@@ -116,9 +117,12 @@ https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt
 Ferrous DNS supports wildcard patterns for blocking entire subdomains:
 
 ```text
-*.ads.example.com    — blocks ads.example.com, video.ads.example.com, etc.
-*.doubleclick.net    — blocks all subdomains of doubleclick.net
+*.ads.example.com    — blocks video.ads.example.com, a.b.ads.example.com, …
+                       but NOT ads.example.com itself
+||doubleclick.net^   — blocks doubleclick.net AND every subdomain of it
 ```
+
+Use the adblock form (`||domain^`) when you want the apex included; use `*.domain` when you deliberately want the apex left resolvable.
 
 Wildcards can be added in the dashboard under **Blocklists > Custom Rules**.
 
@@ -126,12 +130,14 @@ Wildcards can be added in the dashboard under **Blocklists > Custom Rules**.
 
 ## Regex Support
 
-Regex patterns are supported in blocklists and custom rules:
+Regular expressions live in **Regex Filters**, a separate per-group rule set with an allow or deny action:
 
 ```text
 /^ads\d+\.example\.com$/     — matches ads1.example.com, ads42.example.com
-/tracker/                    — matches any domain containing "tracker"
 ```
+
+!!! warning "Slashes inside a blocklist file mean something else"
+    A `/tracker/` line in an imported blocklist is a **literal substring** match, not a regex — it blocks any name containing `tracker`, and regex metacharacters in it are matched literally. Only Regex Filters are compiled as regular expressions.
 
 ---
 

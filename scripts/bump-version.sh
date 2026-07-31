@@ -134,7 +134,34 @@ update_all_versions() {
         fi
     done
     
+    update_docs_version "$old_version" "$new_version"
+
     log_success "All versions updated to $new_version"
+}
+
+# Keep the "Current release: **vX.Y.Z**" banners in the published docs in sync.
+# scripts/check-docs-version.sh fails CI when they drift, so this is what keeps
+# a version bump from breaking the docs build.
+update_docs_version() {
+    local old_version=$1
+    local new_version=$2
+
+    local files
+    files=$(grep -rl "Current release: \*\*v${old_version}\*\*" docs/ 2>/dev/null || true)
+
+    if [[ -z "$files" ]]; then
+        log_info "No documentation version banners to update"
+        return 0
+    fi
+
+    while IFS= read -r doc; do
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/Current release: \*\*v${old_version}\*\*/Current release: **v${new_version}**/g" "$doc"
+        else
+            sed -i "s/Current release: \*\*v${old_version}\*\*/Current release: **v${new_version}**/g" "$doc"
+        fi
+        log_success "Updated: $doc"
+    done <<< "$files"
 }
 
 # ============================================================================

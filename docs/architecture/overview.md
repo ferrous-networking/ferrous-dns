@@ -124,7 +124,7 @@ If the channel is full (backpressure), entries are dropped and a warning is logg
 | Web server | Axum |
 | DNS protocol | Hickory DNS |
 | Cache | Two-level: per-thread L1 + sharded L2 |
-| Cache eviction | LFU-K sliding window |
+| Cache eviction | Hit-rate scoring by default (`lru` / `lfu` / `lfu-k` selectable) |
 | Database | SQLite (async, WAL mode) |
 | TLS/QUIC | rustls, QUIC (HTTP/3 + DoQ) |
 | Frontend | HTMX + Alpine.js + TailwindCSS |
