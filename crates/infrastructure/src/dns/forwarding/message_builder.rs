@@ -123,36 +123,47 @@ impl MessageBuilder {
     /// Builds a `Name` whose ASCII letters have randomized case (0x20). Built from
     /// raw label bytes via `Name::from_labels` because `Name::from_str` lowercases.
     fn randomized_case_name(domain: &str) -> Result<Name, DomainError> {
-        let src = domain.trim_end_matches('.').as_bytes();
-        // The root has nothing to randomize, and the walk below would build it as
-        // a single zero-length label, which `from_labels` rejects. That matters
-        // more than it looks: the DNSSEC chain bootstraps with a DNSKEY query for
-        // ".", so failing here disables validation outright.
-        if src.is_empty() {
-            return Ok(Name::root());
+        // Parse first, then randomize the parsed labels. Splitting the input on
+        // raw '.' instead would disagree with the non-randomized path on any name
+        // where a dot is not a separator: `to_utf8` hands us DNS escapes, so
+        // `a\.b.com` is two labels there and three here, and an IDN arrives as
+        // punycode only through the parser. Querying a *different* name than the
+        // caller asked for is invisible — the echo check compares against the same
+        // wrong name, so it passes, and the answer is cached under the right key.
+        let parsed = Name::from_str(domain).map_err(|e| {
+            DomainError::InvalidDomainName(format!("Invalid domain '{}': {}", domain, e))
+        })?;
+        // The root has no labels to randomize, and `from_labels` rejects the empty
+        // label a naive walk would produce. That matters more than it looks: the
+        // DNSSEC chain bootstraps with a DNSKEY query for ".", so failing here
+        // disables validation outright.
+        if parsed.is_root() {
+            return Ok(parsed);
         }
-        let mut rnd = vec![0u8; (src.len() / 8) + 1];
+
+        let total: usize = parsed.iter().map(<[u8]>::len).sum();
+        let mut rnd = vec![0u8; (total / 8) + 1];
         Self::fill_random(&mut rnd);
 
         let mut bit = 0usize;
         let mut labels: Vec<Vec<u8>> = Vec::new();
-        let mut current: Vec<u8> = Vec::new();
-        for &b in src {
-            if b == b'.' {
-                labels.push(std::mem::take(&mut current));
-            } else if b.is_ascii_alphabetic() {
-                let uppercase = (rnd[bit / 8] >> (bit % 8)) & 1 == 1;
-                bit += 1;
-                current.push(if uppercase {
-                    b.to_ascii_uppercase()
+        for label in parsed.iter() {
+            let mut current: Vec<u8> = Vec::with_capacity(label.len());
+            for &b in label {
+                if b.is_ascii_alphabetic() {
+                    let uppercase = (rnd[bit / 8] >> (bit % 8)) & 1 == 1;
+                    bit += 1;
+                    current.push(if uppercase {
+                        b.to_ascii_uppercase()
+                    } else {
+                        b.to_ascii_lowercase()
+                    });
                 } else {
-                    b.to_ascii_lowercase()
-                });
-            } else {
-                current.push(b);
+                    current.push(b);
+                }
             }
+            labels.push(current);
         }
-        labels.push(current);
 
         Name::from_labels(labels).map_err(|e| {
             DomainError::InvalidDomainName(format!("Invalid domain '{}': {}", domain, e))

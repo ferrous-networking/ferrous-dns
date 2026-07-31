@@ -114,10 +114,13 @@ fn nsec3_matching_with_ds_bit_contradicts_the_empty_answer() {
 }
 
 #[test]
-fn nsec3_matching_from_the_child_side_is_rejected() {
-    // SOA in the bitmap makes this the *child's* own apex NSEC3. The child is
-    // not authoritative for its DS RRset, so it cannot prove it absent —
-    // accepting it would let a signed zone strip its own delegation.
+fn nsec3_matching_from_the_child_side_is_unusable_not_bogus() {
+    // SOA in the bitmap makes this the *child's* own apex NSEC3. RFC 6840 §4.4:
+    // the child is not authoritative for its DS RRset, so this cannot prove the
+    // DS absent — but it is not evidence of forgery either. Some servers really
+    // do answer DS from the child side, so the record is discarded as unusable
+    // and the verdict falls through to Insecure. Returning Bogus here would
+    // SERVFAIL those legitimate zones.
     let rec = nsec3(
         false,
         hash("zzz.example.com."),
@@ -127,7 +130,7 @@ fn nsec3_matching_from_the_child_side_is_rejected() {
         owner_label: label_of(&hash(CHILD)),
         data: &rec,
     }];
-    assert_eq!(prove_ds_absence_nsec3(&nsec3s), ValidationResult::Bogus);
+    assert_eq!(prove_ds_absence_nsec3(&nsec3s), ValidationResult::Insecure);
 }
 
 #[test]
@@ -189,7 +192,7 @@ fn nsec_matching_with_ds_bit_contradicts_the_empty_answer() {
 }
 
 #[test]
-fn nsec_matching_from_the_child_side_is_rejected() {
+fn nsec_matching_from_the_child_side_is_unusable_not_bogus() {
     // RFC 6840 §4.4 — same wrong-side-of-the-delegation rule as NSEC3.
     let rec = NSEC::new(
         n("zzz.example.com."),
@@ -200,7 +203,31 @@ fn nsec_matching_from_the_child_side_is_rejected() {
         owner: &owner,
         data: &rec,
     }];
-    assert_eq!(prove_ds_absence_nsec(&nsecs), ValidationResult::Bogus);
+    assert_eq!(prove_ds_absence_nsec(&nsecs), ValidationResult::Insecure);
+}
+
+#[test]
+fn a_child_side_nsec_does_not_shadow_a_valid_parent_side_one() {
+    // Order must not decide the outcome: the unusable child-side record is
+    // skipped, so the parent-side proof behind it still lands. Returning on the
+    // first same-owner match made this depend on upstream record ordering.
+    let child_side = NSEC::new(
+        n("zzz.example.com."),
+        [RecordType::SOA, RecordType::NS, RecordType::DNSKEY],
+    );
+    let parent_side = NSEC::new(n("zzz.example.com."), [RecordType::NS, RecordType::RRSIG]);
+    let owner = n(CHILD);
+    let nsecs = vec![
+        VerifiedNsec {
+            owner: &owner,
+            data: &child_side,
+        },
+        VerifiedNsec {
+            owner: &owner,
+            data: &parent_side,
+        },
+    ];
+    assert_eq!(prove_ds_absence_nsec(&nsecs), ValidationResult::Secure);
 }
 
 #[test]

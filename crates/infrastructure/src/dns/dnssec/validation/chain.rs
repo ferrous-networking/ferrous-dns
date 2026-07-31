@@ -260,7 +260,13 @@ impl ChainVerifier {
 
         let ds_result = ds_result?;
 
-        if ds_result.records.is_empty() {
+        // `records` has SHA-1 digests dropped (RFC 8624), so it goes empty for a
+        // delegation that publishes *only* SHA-1 — a DS that genuinely exists.
+        // Asking the parent to prove absence there would meet a signed NSEC/NSEC3
+        // with the DS bit set and flag a legitimate zone Bogus. Absence is about
+        // the RRset as received; unusable-but-present falls through to the
+        // algorithm check below, which yields Insecure.
+        if ds_result.raw_records.is_empty() {
             self.confirm_ds_absence(parent_domain, child_domain, &ds_result)?;
             debug!(domain = %child_domain, "No DS records found (insecure delegation)");
             return Err(DomainError::InsecureDelegation);

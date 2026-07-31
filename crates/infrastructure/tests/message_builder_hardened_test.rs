@@ -14,6 +14,13 @@ fn hardened() -> HardeningOpts {
     }
 }
 
+fn plain() -> HardeningOpts {
+    HardeningOpts {
+        cookie: false,
+        qname_0x20: false,
+    }
+}
+
 fn udp() -> DnsProtocol {
     DnsProtocol::Udp {
         addr: UpstreamAddr::Resolved("8.8.8.8:53".parse().unwrap()),
@@ -153,6 +160,49 @@ fn root_dnskey_query_survives_0x20() {
         let msg = Message::from_vec(&bytes).unwrap();
         assert!(msg.queries[0].name().is_root(), "question must be the root");
         assert_eq!(msg.queries[0].query_type(), HRecordType::DNSKEY);
+    }
+}
+
+#[test]
+fn zero_x20_queries_the_same_name_as_the_plain_path() {
+    // Regression: the randomizer used to split the input on raw '.', which is not
+    // how DNS names parse. Callers hand it `Name::to_utf8` output, where a dot
+    // inside a label is escaped and an IDN is punycode — so 0x20 built a
+    // *different* name than the caller asked for. Invisible, too: the echo check
+    // compares against that same wrong name, so validation passes.
+    for domain in [
+        "example.com",
+        "a\\.b.com",
+        "xn--caf-dma.com",
+        "sub.domain.example.co.uk",
+        "1.0.0.127.in-addr.arpa",
+        "_dmarc.example.com",
+    ] {
+        let (plain_bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::TXT, false, plain())
+                .expect("plain query must build");
+        let (rnd_bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::TXT, true, hardened())
+                .expect("0x20 query must build");
+
+        let plain_name = Message::from_vec(&plain_bytes).unwrap().queries[0]
+            .name()
+            .clone();
+        let rnd_name = Message::from_vec(&rnd_bytes).unwrap().queries[0]
+            .name()
+            .clone();
+
+        // hickory's Name comparison is case-insensitive, which is exactly the
+        // question: same name, differing only in case.
+        assert_eq!(
+            plain_name, rnd_name,
+            "0x20 changed which name is queried for {domain}"
+        );
+        assert_eq!(
+            plain_name.num_labels(),
+            rnd_name.num_labels(),
+            "label boundaries moved for {domain}"
+        );
     }
 }
 
