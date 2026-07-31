@@ -223,12 +223,21 @@ fn nsec3_nodata(
 
     // §8.5 / §8.6 — an NSEC3 matching QNAME with QTYPE and CNAME absent.
     if let Some(record) = nsec3_find_matching(nsec3s, &q_label) {
-        let has_type = record.data.type_bit_maps().any(|t| t == qtype);
-        let has_cname = record.data.type_bit_maps().any(|t| t == RecordType::CNAME);
-        if has_type || has_cname {
-            return ValidationResult::Bogus;
+        // RFC 6840 §4.4: an NSEC3 from the *child* side of a delegation cannot
+        // deny a DS, because the DS lives in the parent. Some servers answer DS
+        // from the child side anyway, so such a record is unusable as proof —
+        // not evidence of forgery. Fall through to the remaining proofs instead
+        // of returning Bogus, which would SERVFAIL a legitimate zone.
+        let usable =
+            !(qtype == RecordType::DS && wrong_side_of_delegation(record.data.type_bit_maps()));
+        if usable {
+            let has_type = record.data.type_bit_maps().any(|t| t == qtype);
+            let has_cname = record.data.type_bit_maps().any(|t| t == RecordType::CNAME);
+            if has_type || has_cname {
+                return ValidationResult::Bogus;
+            }
+            return ValidationResult::Secure;
         }
-        return ValidationResult::Secure;
     }
 
     // §8.6 — DS NODATA via opt-out: covering NSEC3 with the opt-out bit set.
@@ -314,17 +323,37 @@ fn nsec1_covers(owner: &Name, next: &Name, target: &Name) -> bool {
     }
 }
 
+/// RFC 6840 §4.4 — a DS NODATA proof must come from the *parent* side of the
+/// delegation. An NSEC/NSEC3 whose bitmap carries SOA is the child zone's own
+/// apex record, and the child is not authoritative for its DS RRset, so it
+/// cannot prove that RRset absent. Without this check a signed child could strip
+/// the DS of its own delegation and downgrade itself to Insecure.
+///
+/// Note the converse is deliberately *not* required: a matching record without
+/// the NS bit simply means the name is not a zone cut, which is a legitimate
+/// "no DS here" for the intermediate labels the chain walk steps through.
+fn wrong_side_of_delegation(mut type_bit_maps: impl Iterator<Item = RecordType>) -> bool {
+    type_bit_maps.any(|t| t == RecordType::SOA)
+}
+
 fn nsec1_nodata(qname: &Name, qtype: RecordType, nsecs: &[VerifiedNsec<'_>]) -> ValidationResult {
     // Direct match: an NSEC owned by QNAME with QTYPE and CNAME absent.
     for n in nsecs {
-        if n.owner == qname {
-            let has_type = n.data.type_bit_maps().any(|t| t == qtype);
-            let has_cname = n.data.type_bit_maps().any(|t| t == RecordType::CNAME);
-            if has_type || has_cname {
-                return ValidationResult::Bogus;
-            }
-            return ValidationResult::Secure;
+        if n.owner != qname {
+            continue;
         }
+        // RFC 6840 §4.4 — see `nsec3_nodata`. Skipping rather than returning
+        // also keeps this independent of record order: a child-side NSEC listed
+        // ahead of a valid parent-side one must not decide the outcome.
+        if qtype == RecordType::DS && wrong_side_of_delegation(n.data.type_bit_maps()) {
+            continue;
+        }
+        let has_type = n.data.type_bit_maps().any(|t| t == qtype);
+        let has_cname = n.data.type_bit_maps().any(|t| t == RecordType::CNAME);
+        if has_type || has_cname {
+            return ValidationResult::Bogus;
+        }
+        return ValidationResult::Secure;
     }
     // No NSEC matched the name — cannot prove this NODATA. Fail open.
     ValidationResult::Insecure

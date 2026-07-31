@@ -1,3 +1,4 @@
+use super::super::dnssec::DnssecCache;
 use super::super::dnssec::DnssecValidatorPool;
 use super::super::dnssec::TrustAnchorStore;
 use super::super::load_balancer::PoolManager;
@@ -20,6 +21,24 @@ impl DnssecResolver {
         query_timeout_ms: u64,
         trust_store: TrustAnchorStore,
     ) -> Self {
+        Self::with_shared_cache(
+            inner,
+            pool_manager,
+            query_timeout_ms,
+            trust_store,
+            Arc::new(DnssecCache::new()),
+        )
+    }
+
+    /// Like [`new`](Self::new), but over a caller-owned validator cache so the
+    /// wiring can read its counters.
+    pub fn with_shared_cache(
+        inner: Arc<dyn DnsResolver>,
+        pool_manager: Arc<PoolManager>,
+        query_timeout_ms: u64,
+        trust_store: TrustAnchorStore,
+        cache: Arc<DnssecCache>,
+    ) -> Self {
         let pool_size = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
@@ -28,11 +47,12 @@ impl DnssecResolver {
 
         Self {
             inner,
-            validator: Arc::new(DnssecValidatorPool::new(
+            validator: Arc::new(DnssecValidatorPool::with_shared_cache(
                 pool_manager,
                 query_timeout_ms,
                 pool_size,
                 trust_store,
+                cache,
             )),
         }
     }

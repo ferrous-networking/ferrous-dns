@@ -121,7 +121,13 @@ impl DnssecCache {
             total_dnskey_misses: self.stats.total_dnskey_misses(),
             total_ds_hits: self.stats.total_ds_hits(),
             total_ds_misses: self.stats.total_ds_misses(),
+            total_ds_denial_fail_opens: self.stats.total_ds_denial_fail_opens(),
         }
+    }
+
+    /// See [`CacheStats::record_ds_denial_fail_open`].
+    pub fn record_ds_denial_fail_open(&self) {
+        self.stats.record_ds_denial_fail_open();
     }
 
     pub fn clear(&self) {

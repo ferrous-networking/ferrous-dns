@@ -235,47 +235,32 @@ impl DnsServerHandler {
             resp.add_query(q.clone());
         }
 
-        // Copies a record, lowercasing its owner name when `canonicalize` is set,
-        // so any 0x20-randomized case the upstream echoed is stripped before serving.
-        fn copy_record(record: &Record, canonicalize: bool) -> Record {
-            if !canonicalize {
-                return record.clone();
-            }
-            let mut copy = record.clone();
-            let lower = copy.name.to_lowercase();
-            copy.name = lower;
-            copy
-        }
-
         if addresses.is_empty() {
             if let Some(ref wire_data) = resolution.upstream_wire_data {
-                // A/AAAA queries may have been 0x20 case-randomized, so the upstream
-                // echoes mixed-case names. Rebuild the reply from the client's
-                // question (already on `resp`) and canonicalize copied record owner
-                // names, so our randomization never reaches the client. Non-address
-                // types are never randomized, so they keep the raw-bytes fast path
-                // (unless a cookie must be injected, which already rebuilds from the
-                // client question).
-                let is_address_type = matches!(our_rt, RecordType::A | RecordType::AAAA);
+                // 0x20 case randomization no longer reaches this far: responses are
+                // canonicalized at the upstream choke point, before they enter the
+                // cache (see ResponseValidator::canonicalize). So the only reason
+                // left to rebuild from the client's question is injecting our
+                // server cookie; everything else keeps the raw-bytes fast path.
                 let has_cookie_to_inject = dns_request
                     .edns_cookie
                     .as_ref()
                     .is_some_and(|c| c.len() >= 8);
 
-                if is_address_type || has_cookie_to_inject {
+                if has_cookie_to_inject {
                     match Message::from_vec(wire_data) {
                         Ok(upstream_msg) => {
                             resp.metadata.response_code = upstream_msg.response_code;
                             for record in &upstream_msg.answers {
-                                resp.add_answer(copy_record(record, is_address_type));
+                                resp.add_answer(record.clone());
                             }
                             for record in &upstream_msg.authorities {
-                                resp.add_authority(copy_record(record, is_address_type));
+                                resp.add_authority(record.clone());
                             }
                             for record in &upstream_msg.additionals {
                                 // skip existing OPT — we add our own below
                                 if record.record_type() != hickory_proto::rr::RecordType::OPT {
-                                    resp.add_additional(copy_record(record, is_address_type));
+                                    resp.add_additional(record.clone());
                                 }
                             }
                             // fall through to EDNS/cookie handling + encode resp below
@@ -292,7 +277,12 @@ impl DnsServerHandler {
                         }
                     }
                 } else {
-                    // Non-address type with no cookie — raw bytes fast path unchanged.
+                    // No cookie to inject — raw bytes fast path. Note this hands
+                    // the upstream's own OPT to the client verbatim, including the
+                    // COOKIE option echoed back at us. Harmless (RFC 7873 §5.3 has
+                    // clients ignore unsolicited cookies; ours is random per query
+                    // and the server cookie is bound to our IP), and pre-existing —
+                    // every upstream query has carried an OPT all along.
                     let mut response = wire_data.to_vec();
                     if response.len() >= 2 {
                         response[0] = (query_id >> 8) as u8;

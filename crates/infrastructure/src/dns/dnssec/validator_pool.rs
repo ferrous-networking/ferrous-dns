@@ -11,6 +11,7 @@ use tracing::debug;
 pub struct DnssecValidatorPool {
     validators: Vec<Mutex<DnssecValidator>>,
     next: AtomicUsize,
+    cache: Arc<DnssecCache>,
 }
 
 impl DnssecValidatorPool {
@@ -20,7 +21,25 @@ impl DnssecValidatorPool {
         size: usize,
         trust_store: TrustAnchorStore,
     ) -> Self {
-        let cache = Arc::new(DnssecCache::new());
+        Self::with_shared_cache(
+            pool_manager,
+            timeout_ms,
+            size,
+            trust_store,
+            Arc::new(DnssecCache::new()),
+        )
+    }
+
+    /// Builds the pool over a caller-owned cache, so the wiring can keep a
+    /// handle for stats reporting and so the counters survive the resolver-stack
+    /// rebuilds that `HickoryDnsResolver` performs on every `with_*` call.
+    pub fn with_shared_cache(
+        pool_manager: Arc<PoolManager>,
+        timeout_ms: u64,
+        size: usize,
+        trust_store: TrustAnchorStore,
+        cache: Arc<DnssecCache>,
+    ) -> Self {
         let validators = (0..size)
             .map(|_| {
                 Mutex::new(
@@ -43,7 +62,12 @@ impl DnssecValidatorPool {
         Self {
             validators,
             next: AtomicUsize::new(0),
+            cache,
         }
+    }
+
+    pub fn cache(&self) -> &Arc<DnssecCache> {
+        &self.cache
     }
 
     pub async fn validate_query(

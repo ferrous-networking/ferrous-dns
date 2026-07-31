@@ -4,7 +4,7 @@ mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{
-    CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, NxdomainHijackIpStore,
+    CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
     ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore,
 };
@@ -14,9 +14,10 @@ use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
-    cache::DnsCache, cache_maintenance::DnsCacheMaintenance, events::QueryEventEmitter,
-    resolver::LocalPtrResolver, DgaDetector, HealthChecker, HickoryDnsResolver,
-    NxdomainHijackDetector, PoolManager, ResponseIpFilterDetector, TunnelingDetector,
+    cache::DnsCache, cache_maintenance::DnsCacheMaintenance, dnssec::DnssecStatsAdapter,
+    events::QueryEventEmitter, resolver::LocalPtrResolver, DgaDetector, HealthChecker,
+    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, ResponseIpFilterDetector,
+    TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
@@ -31,6 +32,9 @@ pub struct DnsServices {
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
     pub pool_manager: Arc<PoolManager>,
     pub dnssec_pool_manager: Arc<PoolManager>,
+    /// Live counters from the DNSSEC validator cache. Reports zeros when DNSSEC
+    /// validation is disabled.
+    pub dnssec_stats: Arc<dyn DnssecStatsPort>,
     /// Pool manager backing the cache optimistic-refresh resolver, when that
     /// path is enabled. Kept so hot upstream reloads also reach it.
     pub maintenance_pool_manager: Option<Arc<PoolManager>>,
@@ -80,13 +84,17 @@ impl DnsServices {
         pool::start_health_checker_task(dnssec_health_checker, &pool_manager_for_dnssec, config);
         let dnssec_pool_manager_clone = Arc::clone(&pool_manager_for_dnssec);
 
-        let mut dns_resolver = resolver::build_resolver(
+        let (mut dns_resolver, dnssec_cache) = resolver::build_resolver(
             pool_manager,
             pool_manager_for_dnssec,
             config,
             repos,
             timeout_ms,
         )?;
+        let dnssec_stats: Arc<dyn DnssecStatsPort> = Arc::new(match dnssec_cache {
+            Some(cache) => DnssecStatsAdapter::new(cache),
+            None => DnssecStatsAdapter::disabled(),
+        });
         let dns_cache = cache::build_cache(config);
 
         if config.dns.cache_enabled {
@@ -342,6 +350,7 @@ impl DnsServices {
             handler_use_case,
             pool_manager: pool_manager_clone,
             dnssec_pool_manager: dnssec_pool_manager_clone,
+            dnssec_stats,
             maintenance_pool_manager,
             health_checker: stored_health_checker,
             cache_maintenance,

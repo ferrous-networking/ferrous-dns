@@ -6,8 +6,31 @@ use tokio::net::UdpSocket;
 use tokio::sync::Semaphore;
 use tracing::info;
 
+/// Queries one source port serves before it is retired.
+///
+/// A pooled socket otherwise keeps its ephemeral port for the life of the
+/// process, so the handful of ports an upstream ever sees is fixed. An attacker
+/// who learns one — by probing the resolver for open UDP ports, or by being the
+/// upstream — can reuse that knowledge indefinitely, leaving off-path forgery to
+/// guess the 16-bit transaction ID alone. Rotating bounds how long a discovered
+/// port stays worth anything. 1000 is often enough for that and rare enough that
+/// the `socket()`/`bind()` cost stays noise next to the upstream RTT.
+const PORT_ROTATION_QUERIES: u32 = 1000;
+
+/// ±25% spread on [`PORT_ROTATION_QUERIES`], drawn per socket so the sockets of
+/// one upstream do not all turn over at the same instant.
+const PORT_ROTATION_JITTER: u32 = PORT_ROTATION_QUERIES / 4;
+
+/// A socket parked in the pool, carrying the wear it has already accumulated so
+/// that reuse counts survive the round trip through the pool.
+struct PooledEntry {
+    socket: Arc<UdpSocket>,
+    uses: u32,
+    budget: u32,
+}
+
 pub struct UdpSocketPool {
-    pools: DashMap<SocketAddr, Vec<Arc<UdpSocket>>>,
+    pools: DashMap<SocketAddr, Vec<PooledEntry>>,
 
     max_per_server: usize,
 
@@ -16,6 +39,8 @@ pub struct UdpSocketPool {
     total_created: AtomicU64,
 
     total_reused: AtomicU64,
+
+    total_retired: AtomicU64,
 }
 
 impl UdpSocketPool {
@@ -28,16 +53,24 @@ impl UdpSocketPool {
             semaphore: Arc::new(Semaphore::new(total_limit)),
             total_created: AtomicU64::new(0),
             total_reused: AtomicU64::new(0),
+            total_retired: AtomicU64::new(0),
         }
+    }
+
+    /// Queries this socket may serve before its port is rotated out.
+    fn rotation_budget() -> u32 {
+        PORT_ROTATION_QUERIES - PORT_ROTATION_JITTER + fastrand::u32(0..2 * PORT_ROTATION_JITTER)
     }
 
     pub async fn acquire(&self, server: SocketAddr) -> Result<PooledUdpSocket<'_>, std::io::Error> {
         if let Some(mut entry) = self.pools.get_mut(&server) {
-            if let Some(socket) = entry.pop() {
+            if let Some(pooled) = entry.pop() {
                 self.total_reused.fetch_add(1, Ordering::Relaxed);
 
                 return Ok(PooledUdpSocket {
-                    socket,
+                    socket: pooled.socket,
+                    uses: pooled.uses.saturating_add(1),
+                    budget: pooled.budget,
                     server,
                     pool: self,
                     _permit: None,
@@ -53,6 +86,8 @@ impl UdpSocketPool {
 
         Ok(PooledUdpSocket {
             socket: Arc::new(socket),
+            uses: 1,
+            budget: Self::rotation_budget(),
             server,
             pool: self,
             _permit: permit,
@@ -89,11 +124,11 @@ impl UdpSocketPool {
         UdpSocket::from_std(std_socket)
     }
 
-    fn release(&self, server: SocketAddr, socket: Arc<UdpSocket>) {
+    fn release(&self, server: SocketAddr, pooled: PooledEntry) {
         let mut entry = self.pools.entry(server).or_default();
 
         if entry.len() < self.max_per_server {
-            entry.push(socket);
+            entry.push(pooled);
         }
     }
 
@@ -103,6 +138,7 @@ impl UdpSocketPool {
         PoolStats {
             total_created: self.total_created.load(Ordering::Relaxed),
             total_reused: self.total_reused.load(Ordering::Relaxed),
+            total_retired: self.total_retired.load(Ordering::Relaxed),
             total_pooled,
             servers: self.pools.len(),
         }
@@ -121,6 +157,10 @@ impl UdpSocketPool {
 
 pub struct PooledUdpSocket<'a> {
     socket: Arc<UdpSocket>,
+    /// Queries served on this socket, including the one it was acquired for.
+    uses: u32,
+    /// Use count at which this socket's port is retired rather than pooled.
+    budget: u32,
     server: SocketAddr,
     pool: &'a UdpSocketPool,
     _permit: Option<tokio::sync::OwnedSemaphorePermit>,
@@ -143,9 +183,23 @@ impl<'a> PooledUdpSocket<'a> {
 
 impl<'a> Drop for PooledUdpSocket<'a> {
     fn drop(&mut self) {
-        if !self.poisoned {
-            self.pool.release(self.server, self.socket.clone());
+        if self.poisoned {
+            return;
         }
+        // Dropping instead of parking retires the source port: the next acquire
+        // binds a fresh one. See PORT_ROTATION_QUERIES.
+        if self.uses >= self.budget {
+            self.pool.total_retired.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        self.pool.release(
+            self.server,
+            PooledEntry {
+                socket: self.socket.clone(),
+                uses: self.uses,
+                budget: self.budget,
+            },
+        );
     }
 }
 
@@ -154,6 +208,9 @@ pub struct PoolStats {
     pub total_created: u64,
 
     pub total_reused: u64,
+
+    /// Sockets dropped on release because their port hit the rotation budget.
+    pub total_retired: u64,
 
     pub total_pooled: usize,
 

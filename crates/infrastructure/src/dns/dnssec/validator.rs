@@ -1,7 +1,7 @@
 use super::cache::DnssecCache;
 use super::crypto::SignatureVerifier;
 use super::trust_anchor::TrustAnchorStore;
-use super::types::RrsigRecord;
+use super::validation::authority as auth_check;
 use super::validation::denial::{
     prove_denial, prove_wildcard_expansion, VerifiedNsec, VerifiedNsec3,
 };
@@ -11,7 +11,6 @@ use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DomainError, RecordType};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::op::ResponseCode;
-use hickory_proto::rr::domain::Label;
 use hickory_proto::rr::{Name, RData, Record};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -440,15 +439,7 @@ impl DnssecValidator {
     /// encloses `qname`. Label comparison is the DNS-canonical (case-folded)
     /// equality of [`Name`].
     fn name_encloses(zone: &Name, qname: &Name) -> bool {
-        let (zone_labels, qname_labels) = (zone.num_labels(), qname.num_labels());
-        if zone_labels > qname_labels {
-            return false;
-        }
-        let mut ancestor = qname.clone();
-        for _ in 0..(qname_labels - zone_labels) {
-            ancestor = ancestor.base_name();
-        }
-        &ancestor == zone
+        auth_check::name_encloses(zone, qname)
     }
 
     /// True when the `rrset` (every record sharing `owner` + `rtype`) is covered
@@ -464,59 +455,9 @@ impl DnssecValidator {
         crypto: &SignatureVerifier,
         now_secs: u32,
     ) -> bool {
-        let mut outcome = "no-rrsig";
-
-        for sig in sigs {
-            let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &sig.data else {
-                continue;
-            };
-            if &sig.name != owner {
-                continue;
-            }
-            let input = rrsig.input();
-            if input.type_covered != rtype {
-                continue;
-            }
-            // RFC 4035 §5.3.1: the RRSIG's signer name must be the apex of the
-            // zone authoritative for the RRset, i.e. it MUST enclose the owner
-            // name. The signature math does not bind signer⊇owner — only the key
-            // identity — so without this check an attacker who controls *any*
-            // validly-signed zone (which chains to root, so its keys land in
-            // `validated_keys` once `extract_signer_zones` drives a walk for it)
-            // could sign a forged RRset for an unrelated victim name with their
-            // own key and have it accepted as Secure / AD=1.
-            if !Self::name_encloses(&input.signer_name, owner) {
-                outcome = "signer-not-enclosing";
-                continue;
-            }
-            let Some(type_covered) = RecordTypeMapper::from_hickory(input.type_covered) else {
-                continue;
-            };
-            let rr = RrsigRecord {
-                type_covered,
-                algorithm: u8::from(input.algorithm),
-                labels: input.num_labels,
-                original_ttl: input.original_ttl,
-                signature_expiration: input.sig_expiration.get(),
-                signature_inception: input.sig_inception.get(),
-                key_tag: input.key_tag,
-                signer_name: input.signer_name.to_string(),
-                signature: rrsig.sig().to_vec(),
-            };
-            let Some(keys) = self.chain_verifier.get_zone_keys(&rr.signer_name) else {
-                outcome = "no-keys";
-                continue;
-            };
-            for key in keys.iter() {
-                match crypto.verify_rrsig_with_name(&rr, key, owner, rrset, now_secs) {
-                    Ok(true) => return true,
-                    Ok(false) => outcome = "sig-false",
-                    Err(_) => outcome = "sig-err",
-                }
-            }
-        }
-        debug!(owner = %owner, ?rtype, outcome, "rrset not authentic");
-        false
+        auth_check::rrset_is_authentic(owner, rtype, rrset, sigs, crypto, now_secs, &|zone| {
+            self.chain_verifier.get_zone_keys(zone).cloned()
+        })
     }
 
     /// Collects the cryptographically-authentic NSEC3 and NSEC records from an
@@ -527,52 +468,9 @@ impl DnssecValidator {
         crypto: &SignatureVerifier,
         now_secs: u32,
     ) -> (Vec<VerifiedNsec3<'a>>, Vec<VerifiedNsec<'a>>) {
-        let mut nsec3s: Vec<VerifiedNsec3<'a>> = Vec::new();
-        let mut nsecs: Vec<VerifiedNsec<'a>> = Vec::new();
-
-        for record in authority {
-            match &record.data {
-                RData::DNSSEC(DNSSECRData::NSEC3(nsec3))
-                    if self.rrset_is_authentic(
-                        &record.name,
-                        record.record_type(),
-                        std::slice::from_ref(record),
-                        authority,
-                        crypto,
-                        now_secs,
-                    ) =>
-                {
-                    if let Some(label) = record
-                        .name
-                        .iter()
-                        .next()
-                        .and_then(|first| Label::from_raw_bytes(first).ok())
-                    {
-                        nsec3s.push(VerifiedNsec3 {
-                            owner_label: label,
-                            data: nsec3,
-                        });
-                    }
-                }
-                RData::DNSSEC(DNSSECRData::NSEC(nsec))
-                    if self.rrset_is_authentic(
-                        &record.name,
-                        record.record_type(),
-                        std::slice::from_ref(record),
-                        authority,
-                        crypto,
-                        now_secs,
-                    ) =>
-                {
-                    nsecs.push(VerifiedNsec {
-                        owner: &record.name,
-                        data: nsec,
-                    });
-                }
-                _ => {}
-            }
-        }
-        (nsec3s, nsecs)
+        auth_check::collect_verified_denial(authority, crypto, now_secs, &|zone| {
+            self.chain_verifier.get_zone_keys(zone).cloned()
+        })
     }
 
     /// Validates an authenticated denial of existence (NXDOMAIN / NODATA) using

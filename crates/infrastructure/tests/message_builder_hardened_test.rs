@@ -14,6 +14,13 @@ fn hardened() -> HardeningOpts {
     }
 }
 
+fn plain() -> HardeningOpts {
+    HardeningOpts {
+        cookie: false,
+        qname_0x20: false,
+    }
+}
+
 fn udp() -> DnsProtocol {
     DnsProtocol::Udp {
         addr: UpstreamAddr::Resolved("8.8.8.8:53".parse().unwrap()),
@@ -109,34 +116,115 @@ fn aaaa_query_carries_cookie_and_randomizes_qname_case() {
 }
 
 #[test]
-fn non_address_query_is_plain() {
-    for rt in [RecordType::MX, RecordType::TXT] {
+fn non_address_queries_are_hardened_too() {
+    // These used to be exempt, which left the resolver's least-protected queries
+    // exactly where it hurt: DS/DNSKEY (the trust chain itself), MX/TXT
+    // (SPF/DKIM/DMARC) and HTTPS/SVCB (ipv4hint/ipv6hint, ECH).
+    for rt in [
+        RecordType::MX,
+        RecordType::TXT,
+        RecordType::DS,
+        RecordType::DNSKEY,
+        RecordType::HTTPS,
+        RecordType::NS,
+    ] {
+        let mut saw_upper = false;
         for _ in 0..16 {
             let (bytes, _) =
                 MessageBuilder::build_query_hardened("example.com", &rt, false, hardened())
                     .unwrap();
             let msg = Message::from_vec(&bytes).unwrap();
-            assert!(cookie_of(&msg).is_none(), "{rt:?} must not carry a cookie");
-            assert!(
-                !has_upper(&labels(&msg)),
-                "{rt:?} must not be case-randomized"
+            assert_eq!(
+                cookie_of(&msg).map(|c| c.len()),
+                Some(8),
+                "{rt:?} query must carry an 8-byte client cookie"
             );
+            saw_upper |= has_upper(&labels(&msg));
         }
+        // 0x20 is random per query; over 16 queries at least one QNAME must
+        // carry an uppercase letter (all-lowercase odds per query are ~2^-10).
+        assert!(saw_upper, "{rt:?} qname must be 0x20 case-randomized");
     }
 }
 
 #[test]
-fn a_query_is_plain_when_opts_disabled() {
-    let (bytes, _) = MessageBuilder::build_query_hardened(
+fn root_dnskey_query_survives_0x20() {
+    // Regression: the 0x20 walk built the root as one zero-length label, which
+    // `Name::from_labels` rejects. The DNSSEC chain bootstraps with exactly this
+    // query, so the error disabled validation for every domain — silently, since
+    // the walk just reported Indeterminate.
+    for domain in [".", ""] {
+        let (bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::DNSKEY, true, hardened())
+                .expect("root DNSKEY query must build under 0x20");
+        let msg = Message::from_vec(&bytes).unwrap();
+        assert!(msg.queries[0].name().is_root(), "question must be the root");
+        assert_eq!(msg.queries[0].query_type(), HRecordType::DNSKEY);
+    }
+}
+
+#[test]
+fn zero_x20_queries_the_same_name_as_the_plain_path() {
+    // Regression: the randomizer used to split the input on raw '.', which is not
+    // how DNS names parse. Callers hand it `Name::to_utf8` output, where a dot
+    // inside a label is escaped and an IDN is punycode — so 0x20 built a
+    // *different* name than the caller asked for. Invisible, too: the echo check
+    // compares against that same wrong name, so validation passes.
+    for domain in [
         "example.com",
-        &RecordType::A,
-        false,
-        HardeningOpts::default(),
-    )
-    .unwrap();
-    let msg = Message::from_vec(&bytes).unwrap();
-    assert!(cookie_of(&msg).is_none());
-    assert!(!has_upper(&labels(&msg)));
+        "a\\.b.com",
+        "xn--caf-dma.com",
+        "sub.domain.example.co.uk",
+        "1.0.0.127.in-addr.arpa",
+        "_dmarc.example.com",
+    ] {
+        let (plain_bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::TXT, false, plain())
+                .expect("plain query must build");
+        let (rnd_bytes, _) =
+            MessageBuilder::build_query_hardened(domain, &RecordType::TXT, true, hardened())
+                .expect("0x20 query must build");
+
+        let plain_name = Message::from_vec(&plain_bytes).unwrap().queries[0]
+            .name()
+            .clone();
+        let rnd_name = Message::from_vec(&rnd_bytes).unwrap().queries[0]
+            .name()
+            .clone();
+
+        // hickory's Name comparison is case-insensitive, which is exactly the
+        // question: same name, differing only in case.
+        assert_eq!(
+            plain_name, rnd_name,
+            "0x20 changed which name is queried for {domain}"
+        );
+        assert_eq!(
+            plain_name.num_labels(),
+            rnd_name.num_labels(),
+            "label boundaries moved for {domain}"
+        );
+    }
+}
+
+#[test]
+fn hardening_follows_the_opts_for_every_type() {
+    // The flags alone decide now — no record type is silently exempt, and none
+    // is silently forced on.
+    for rt in [RecordType::A, RecordType::MX, RecordType::DNSKEY] {
+        let (bytes, _) = MessageBuilder::build_query_hardened(
+            "example.com",
+            &rt,
+            false,
+            HardeningOpts::default(),
+        )
+        .unwrap();
+        let msg = Message::from_vec(&bytes).unwrap();
+        assert!(cookie_of(&msg).is_none(), "{rt:?} must honor cookie=false");
+        assert!(
+            !has_upper(&labels(&msg)),
+            "{rt:?} must honor qname_0x20=false"
+        );
+    }
 }
 
 #[test]
