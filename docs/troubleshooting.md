@@ -102,6 +102,40 @@ Check the dashboard at **Settings > System Status > Upstream Health**. If all up
 
 ---
 
+## A Domain Is Blocked and You Want It Allowed
+
+### Symptom
+
+A domain you need answers with `0.0.0.0` (or `NXDOMAIN`, depending on `block_mode`), and it is not on any blocklist you added.
+
+### Cause
+
+Find the real reason before changing anything. Open **Queries**, locate the domain, and read its **block source**:
+
+| Block source | What matched |
+|:-------------|:-------------|
+| `blocklist` | A downloaded blocklist, or a domain you blocked by hand |
+| `managed_domain` / `regex_filter` | A rule in **DNS Filter** |
+| `schedule` | A time-based `BlockAll` window for the client's group |
+| `dns_tunneling`, `dga_detection`, `dns_rebinding`, `nxdomain_hijack`, `response_ip_filter` | One of the five [malware detection](features/malware-detection.md) engines — a heuristic, so this is where false positives live |
+
+### Solution
+
+Click **Allow** next to the domain in the query log, or add it under **DNS Filter > Managed Domains** with the `allow` action.
+
+That single step covers every row in the table above. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
+
+```bash
+curl -X POST http://localhost:8080/api/managed-domains \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"needed by build agent","domain":"cdn.example.com","action":"allow","group_id":1}'
+```
+
+!!! warning "Pausing blocking will not do it"
+    Disabling blocking releases downloaded blocklists only. A domain blocked by a rule you wrote by hand stays blocked — remove the rule instead. See [What a manual rule outranks](features/blocking-filtering.md#what-a-manual-rule-outranks).
+
+---
+
 ## Dashboard Not Loading
 
 ### Check the web port

@@ -42,10 +42,16 @@ const MANAGED_DENIED: &str = "managed.deny-example.test";
 /// Denied by an imported blocklist source — the non-manual tier.
 const DOWNLOAD_DENIED: &str = "downloaded.deny-example.test";
 
+/// On the imported list *and* matched by a deny regex. The manual rule has to
+/// win, or pausing blocking would release it.
+const OVERLAPPING_DENIED: &str = "overlap.deny-example.test";
+
 /// No rule of any kind names this one.
 const UNRULED: &str = "nothing.knows-example.test";
 
-const LIST: &str = "# manual-priority fixture\ndownloaded.deny-example.test\n";
+const LIST: &str = "# manual-priority fixture\n\
+downloaded.deny-example.test\n\
+overlap.deny-example.test\n";
 
 /// Serves a blocklist over HTTP for as long as it is alive. Blocklist sources
 /// are fetched by URL, so this is the only way to get a rule into the index that
@@ -152,6 +158,18 @@ async fn seed_rules(pool: &SqlitePool, list_url: &str) {
     .expect("seed allow regex row");
 
     sqlx::query(
+        "INSERT INTO regex_filters
+             (name, pattern, action, group_id, enabled, created_at, updated_at)
+         VALUES ('deny-regex-fixture', ?, 'deny', ?, 1,
+                 '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z')",
+    )
+    .bind(format!("^{}$", OVERLAPPING_DENIED.replace('.', "\\.")))
+    .bind(DEFAULT_GROUP_ID)
+    .execute(pool)
+    .await
+    .expect("seed deny regex row");
+
+    sqlx::query(
         "INSERT INTO blocklist_sources (name, url, group_id, enabled)
          VALUES ('manual-priority-fixture', ?, ?, 1)",
     )
@@ -252,6 +270,28 @@ async fn manual_rules_apply_with_no_override_in_force() {
         h.check(DOWNLOAD_DENIED),
         FilterDecision::Block(BlockSource::Blocklist),
         "an imported list entry must be blocked"
+    );
+}
+
+/// A domain covered by both a downloaded list and a deny regex used to come back
+/// as a plain list block, because the regex scan ran only after the list lookup
+/// missed. Pausing blocking then released it, discarding the manual rule.
+#[tokio::test]
+async fn a_deny_regex_outranks_the_list_it_overlaps() {
+    let h = build_harness().await;
+
+    assert_eq!(
+        h.check(OVERLAPPING_DENIED),
+        FilterDecision::Block(BlockSource::RegexFilter),
+        "the manual regex must be the reported source, not the imported list"
+    );
+
+    h.engine.set_blocking_enabled(false);
+    assert_eq!(
+        h.check(OVERLAPPING_DENIED),
+        FilterDecision::Block(BlockSource::RegexFilter),
+        "pausing blocking must not release a domain a deny regex names, even \
+         though an imported list also covers it"
     );
 }
 

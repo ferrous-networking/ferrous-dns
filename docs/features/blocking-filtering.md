@@ -6,35 +6,46 @@ Ferrous DNS provides multi-layer DNS filtering with support for blocklists, wild
 
 ## How Blocking Works
 
-When a DNS query arrives, Ferrous DNS checks it through several filtering layers before forwarding to an upstream:
+Rules you wrote yourself are resolved first and win outright. Everything else — the global blocking toggle, schedule overrides, downloaded blocklists — is only consulted once no manual rule matches:
 
 ```text
 Query: ads.doubleclick.net
          │
          ▼
-  1. Allowlist check ──► in allowlist? → ALLOW (skip all blocking)
-         │ no
+  1. Manual rules ──────► allowlist, managed domain, regex filter,
+         │                or manually added blocked domain?
+         │                ├─ allow → ALLOW, final
+         │                └─ deny  → BLOCK, final
+         │ no manual rule
          ▼
-  2. Quick pre-check ──────► definitely not blocked? → skip lookup
+  2. Blocking toggle ───► blocking paused? → ALLOW
+         │ blocking on
+         ▼
+  3. Schedule override ─► group in a BlockAll / AllowAll window? → apply it
+         │ no override
+         ▼
+  4. Quick pre-check ───► definitely not blocked? → skip lookup
          │ possible match
          ▼
-  3. Exact domain match ─► in blocklist? → BLOCK
+  5. Exact domain match ─► in a downloaded blocklist? → BLOCK
          │ no
          ▼
-  4. Wildcard match ────► matches *.ads.com? → BLOCK
+  6. Wildcard match ────► matches *.ads.com? → BLOCK
          │ no
          ▼
-  5. Regex match ───────► matches pattern? → BLOCK
+  7. Substring / adblock rule ─► matches? → BLOCK
          │ no
          ▼
-  6. Upstream resolution
+  8. Upstream resolution
          │
          ▼
-  7. CNAME cloaking ────► CNAME points to blocked domain? → BLOCK
+  9. CNAME cloaking ────► CNAME points to blocked domain? → BLOCK
          │ clean
          ▼
      Return response
 ```
+
+A domain allowed at step 1 also skips the five [malware detection](malware-detection.md) engines, which otherwise run around steps 4 and 8.
 
 ---
 
@@ -111,6 +122,31 @@ Manage the allowlist via the dashboard (**DNS Filter > Managed Domains**) or the
 
 !!! warning "Not configured via TOML"
     The `whitelist` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect. Use the dashboard or API to allow-list domains.
+
+### What counts as a manual rule
+
+Four sources are treated as rules you wrote by hand, and all four sit in the top tier:
+
+| Source | Where | Allow | Deny |
+|:-------|:------|:------|:-----|
+| Allowlist | **DNS Filter > Managed Domains**, or one click from the query log | :white_check_mark: | — |
+| Managed domains | **DNS Filter > Managed Domains** | :white_check_mark: | :white_check_mark: |
+| Regex filters | **DNS Filter > Regex Filters** | :white_check_mark: | :white_check_mark: |
+| Manually blocked domains | one click from the query log | — | :white_check_mark: |
+
+Domains that arrived from a **downloaded blocklist source** are not manual, and stay subject to the toggle and to schedules.
+
+### What a manual rule outranks
+
+| A manual rule beats | Meaning |
+|:--------------------|:--------|
+| The global blocking toggle | Pausing blocking (`POST /api/dns/blocking`, or the Pi-hole toggle) releases downloaded blocklists but **not** a domain you denied by hand |
+| Schedule overrides | A `BlockAll` window does not override an allow; an `AllowAll` window or bypass timer does not release a manual deny |
+| Blockable services | A service blocked for the group is overridden by an explicit allow for one of its domains |
+| Malware detection | All five detection engines skip an explicitly allowed domain — see below |
+
+!!! tip "Clearing a false positive"
+    If a domain you need is being blocked by DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
 
 ---
 

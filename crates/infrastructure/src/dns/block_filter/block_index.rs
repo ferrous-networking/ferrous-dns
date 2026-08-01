@@ -187,6 +187,20 @@ impl BlockIndex {
                     return Verdict::ManualDeny(BlockSource::ManagedDomain);
                 }
             }
+
+            // Deny regexes are hand-written rules, so they have to resolve
+            // ahead of the downloaded lists: a domain that matches both used to
+            // come back as a plain `Block`, which the blocking toggle and any
+            // bypass window would then release despite the manual rule. The
+            // scan is not free, but `evaluate` runs once per domain per group
+            // and is then memoized by the decision cache.
+            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
+                for rule in regexes {
+                    if rule.regex.is_match(domain).unwrap_or(false) {
+                        return Verdict::ManualDeny(BlockSource::RegexFilter);
+                    }
+                }
+            }
         }
 
         // The bloom filter is built from exact entries only, so it can vouch
@@ -207,16 +221,6 @@ impl BlockIndex {
         if self.has_suffix_or_substring_rules() {
             if let Some(matched) = self.check_wildcard_and_patterns(domain, mask) {
                 return classify_deny(BlockSource::Blocklist, matched);
-            }
-        }
-
-        if has_advanced {
-            if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
-                for rule in regexes {
-                    if rule.regex.is_match(domain).unwrap_or(false) {
-                        return Verdict::ManualDeny(BlockSource::RegexFilter);
-                    }
-                }
             }
         }
 
