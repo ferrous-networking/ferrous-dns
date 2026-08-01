@@ -57,6 +57,7 @@ pub async fn search_domain(
             ("deny", kind, format!("{block_source:?}"), true)
         }
         FilterDecision::Allow => ("allow", "exact", "allowed".to_string(), false),
+        FilterDecision::ExplicitAllow => ("allow", "exact", "allowlist".to_string(), false),
     };
 
     let results = vec![SearchResult {

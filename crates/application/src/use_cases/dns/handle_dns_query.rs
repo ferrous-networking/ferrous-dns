@@ -410,7 +410,8 @@ impl HandleDnsQueryUseCase {
         let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
 
-        if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
+        let filter_decision = self.block_filter.check(domain, group_id);
+        if let FilterDecision::Block(_) = filter_decision {
             return None;
         }
 
@@ -418,15 +419,19 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        if let Some(ref store) = self.tunneling_flag_store {
-            if store.is_flagged(domain) {
-                return None;
+        // An explicitly allowed domain is exempt from the heuristic detectors —
+        // clearing their false positives is what the allowlist is for.
+        if !matches!(filter_decision, FilterDecision::ExplicitAllow) {
+            if let Some(ref store) = self.tunneling_flag_store {
+                if store.is_flagged(domain) {
+                    return None;
+                }
             }
-        }
 
-        if let Some(ref store) = self.dga_flag_store {
-            if store.is_flagged(domain) {
-                return None;
+            if let Some(ref store) = self.dga_flag_store {
+                if store.is_flagged(domain) {
+                    return None;
+                }
             }
         }
 
@@ -471,7 +476,8 @@ impl HandleDnsQueryUseCase {
         let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
 
-        if let FilterDecision::Block(_) = self.block_filter.check(domain, group_id) {
+        let filter_decision = self.block_filter.check(domain, group_id);
+        if let FilterDecision::Block(_) = filter_decision {
             return None;
         }
 
@@ -479,15 +485,21 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        if let Some(ref store) = self.tunneling_flag_store {
-            if store.is_flagged(domain) {
-                return None;
-            }
-        }
+        let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
 
-        if let Some(ref store) = self.dga_flag_store {
-            if store.is_flagged(domain) {
-                return None;
+        // An explicitly allowed domain is exempt from the heuristic detectors —
+        // clearing their false positives is what the allowlist is for.
+        if !explicitly_allowed {
+            if let Some(ref store) = self.tunneling_flag_store {
+                if store.is_flagged(domain) {
+                    return None;
+                }
+            }
+
+            if let Some(ref store) = self.dga_flag_store {
+                if store.is_flagged(domain) {
+                    return None;
+                }
             }
         }
 
@@ -495,11 +507,13 @@ impl HandleDnsQueryUseCase {
         if resolution.addresses.is_empty() {
             return None;
         }
-        if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
-            return None; // fall through to execute() for logging
-        }
-        if self.response_ip_filter_guard.has_blocked_ip(&resolution) {
-            return None; // fall through to execute() for logging
+        if !explicitly_allowed {
+            if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
+                return None; // fall through to execute() for logging
+            }
+            if self.response_ip_filter_guard.has_blocked_ip(&resolution) {
+                return None; // fall through to execute() for logging
+            }
         }
 
         if self.log_queries {
@@ -585,59 +599,12 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        if let TunnelingVerdict::Detected {
-            signal,
-            measured,
-            threshold,
-        } = self
-            .tunneling_guard
-            .check(&request.domain, request.record_type, request.client_ip)
-        {
-            tracing::debug!(
-                domain = %request.domain,
-                signal,
-                measured,
-                threshold,
-                "Tunneling phase-1 signal"
-            );
-            self.apply_tunneling_action(request, signal, elapsed_us(), group_id)?;
-        }
-
-        if let Some(ref store) = self.tunneling_flag_store {
-            if store.is_flagged(&request.domain) {
-                self.apply_tunneling_action(request, "flagged_domain", elapsed_us(), group_id)?;
-            }
-        }
-
-        // DGA Detection — Phase 1 (hot-path guard)
-        if let DgaVerdict::Detected {
-            signal,
-            measured,
-            threshold,
-        } = self.dga_guard.check(&request.domain, request.client_ip)
-        {
-            tracing::debug!(
-                domain = %request.domain,
-                signal,
-                measured,
-                threshold,
-                "DGA phase-1 signal"
-            );
-            self.apply_dga_action(request, signal, elapsed_us(), group_id)?;
-        }
-
-        // DGA Detection — Phase 2 (flagged check)
-        if let Some(ref store) = self.dga_flag_store {
-            if store.is_flagged(&request.domain) {
-                self.apply_dga_action(request, "flagged_domain", elapsed_us(), group_id)?;
-            }
-        }
-
-        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
-
-        if let FilterDecision::Block(block_source) =
-            self.block_filter.check(&request.domain, group_id)
-        {
+        // The filter runs ahead of the heuristic detectors for two reasons: an
+        // explicit allow has to be able to clear their false positives, and a
+        // domain that is both blocklisted and DGA-shaped should be attributed to
+        // the list that names it rather than to the heuristic.
+        let filter_decision = self.block_filter.check(&request.domain, group_id);
+        if let FilterDecision::Block(block_source) = filter_decision {
             self.log(&QueryLog {
                 blocked: true,
                 response_status: Some("BLOCKED"),
@@ -646,6 +613,59 @@ impl HandleDnsQueryUseCase {
             });
             return Err(DomainError::Blocked);
         }
+        let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
+
+        if !explicitly_allowed {
+            if let TunnelingVerdict::Detected {
+                signal,
+                measured,
+                threshold,
+            } =
+                self.tunneling_guard
+                    .check(&request.domain, request.record_type, request.client_ip)
+            {
+                tracing::debug!(
+                    domain = %request.domain,
+                    signal,
+                    measured,
+                    threshold,
+                    "Tunneling phase-1 signal"
+                );
+                self.apply_tunneling_action(request, signal, elapsed_us(), group_id)?;
+            }
+
+            if let Some(ref store) = self.tunneling_flag_store {
+                if store.is_flagged(&request.domain) {
+                    self.apply_tunneling_action(request, "flagged_domain", elapsed_us(), group_id)?;
+                }
+            }
+
+            // DGA Detection — Phase 1 (hot-path guard)
+            if let DgaVerdict::Detected {
+                signal,
+                measured,
+                threshold,
+            } = self.dga_guard.check(&request.domain, request.client_ip)
+            {
+                tracing::debug!(
+                    domain = %request.domain,
+                    signal,
+                    measured,
+                    threshold,
+                    "DGA phase-1 signal"
+                );
+                self.apply_dga_action(request, signal, elapsed_us(), group_id)?;
+            }
+
+            // DGA Detection — Phase 2 (flagged check)
+            if let Some(ref store) = self.dga_flag_store {
+                if store.is_flagged(&request.domain) {
+                    self.apply_dga_action(request, "flagged_domain", elapsed_us(), group_id)?;
+                }
+            }
+        }
+
+        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
 
         if let Some(cname_target) = self
             .safe_search
@@ -666,8 +686,9 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if cached.has_response_data() {
-                if self.nxdomain_hijack_guard.is_hijacked_response(&cached)
-                    || self.response_ip_filter_guard.has_blocked_ip(&cached)
+                if !explicitly_allowed
+                    && (self.nxdomain_hijack_guard.is_hijacked_response(&cached)
+                        || self.response_ip_filter_guard.has_blocked_ip(&cached))
                 {
                     // Fall through to full resolve path for logging and action.
                 } else {
@@ -702,9 +723,10 @@ impl HandleDnsQueryUseCase {
                     });
                     return Err(DomainError::Blocked);
                 }
-                if self
-                    .rebinding_guard
-                    .is_rebinding_attempt(&request.domain, &resolution)
+                if !explicitly_allowed
+                    && self
+                        .rebinding_guard
+                        .is_rebinding_attempt(&request.domain, &resolution)
                 {
                     self.log(&QueryLog {
                         blocked: true,
@@ -714,7 +736,9 @@ impl HandleDnsQueryUseCase {
                     });
                     return Err(DomainError::Blocked);
                 }
-                if self.nxdomain_hijack_guard.is_hijacked_response(&resolution) {
+                if !explicitly_allowed
+                    && self.nxdomain_hijack_guard.is_hijacked_response(&resolution)
+                {
                     match self.nxdomain_hijack_guard.action() {
                         NxdomainHijackAction::Block => {
                             self.log(&QueryLog {
@@ -733,7 +757,8 @@ impl HandleDnsQueryUseCase {
                         }
                     }
                 }
-                if self.response_ip_filter_guard.has_blocked_ip(&resolution) {
+                if !explicitly_allowed && self.response_ip_filter_guard.has_blocked_ip(&resolution)
+                {
                     match self.response_ip_filter_guard.action() {
                         ResponseIpFilterAction::Block => {
                             self.log(&QueryLog {
@@ -772,8 +797,10 @@ impl HandleDnsQueryUseCase {
                 } else {
                     Some("NOERROR")
                 };
-                self.emit_tunneling_event(request, false);
-                self.emit_dga_event(request);
+                if !explicitly_allowed {
+                    self.emit_tunneling_event(request, false);
+                    self.emit_dga_event(request);
+                }
                 self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
                     dnssec_status: resolution.dnssec_status,
@@ -796,8 +823,10 @@ impl HandleDnsQueryUseCase {
             Err(e) => {
                 let response_status = match &e {
                     DomainError::NxDomain => {
-                        self.emit_tunneling_event(request, true);
-                        self.emit_dga_event(request);
+                        if !explicitly_allowed {
+                            self.emit_tunneling_event(request, true);
+                            self.emit_dga_event(request);
+                        }
                         "NXDOMAIN"
                     }
                     DomainError::QueryTimeout => "TIMEOUT",

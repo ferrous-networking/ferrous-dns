@@ -5,7 +5,16 @@ use std::net::IpAddr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterDecision {
     Block(BlockSource),
+    /// Not blocked, but no rule spoke for the domain either way.
     Allow,
+    /// Allowed by a rule the operator wrote themselves — the allowlist, an
+    /// allow-type managed domain or an allow regex filter.
+    ///
+    /// Callers that run their own heuristics on top of the filter (tunneling,
+    /// DGA, rebinding, NXDOMAIN hijack, response-IP filtering) must skip them
+    /// for these domains: an explicit allow is how the operator clears a false
+    /// positive, and it would be pointless if a detector could override it.
+    ExplicitAllow,
 }
 
 #[async_trait]

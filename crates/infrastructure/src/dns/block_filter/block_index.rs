@@ -18,6 +18,31 @@ pub const MANUAL_SOURCE_BIT: u64 = 1u64 << 63;
 /// Bit index reserved for the global manual blocklist.
 pub const MANUAL_SOURCE_BIT_INDEX: usize = 63;
 
+/// How the compiled index classifies a domain.
+///
+/// The `Manual*` variants come from rules the operator wrote themselves — the
+/// allowlist, managed domains, regex filters and the manual blocklist. They form
+/// a tier of their own because they outrank the global blocking toggle and every
+/// schedule override; a hit from a downloaded blocklist does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    ManualAllow,
+    ManualDeny(BlockSource),
+    Block(BlockSource),
+    NoMatch,
+}
+
+/// A hit carrying the manual-blocklist bit was typed in by the operator, so it
+/// belongs to the manual tier; anything else came from a downloaded list.
+#[inline]
+fn classify_deny(source: BlockSource, matched_bits: SourceBitSet) -> Verdict {
+    if matched_bits & MANUAL_SOURCE_BIT != 0 {
+        Verdict::ManualDeny(source)
+    } else {
+        Verdict::Block(source)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceMeta {
     pub group_id: i64,
@@ -131,10 +156,12 @@ impl BlockIndex {
             .unwrap_or(MANUAL_SOURCE_BIT)
     }
 
+    /// Classifies `domain` for `group_id`, keeping rules the operator wrote
+    /// themselves in a tier of their own (see [`Verdict`]).
     #[inline]
-    pub fn is_blocked(&self, domain: &str, group_id: i64) -> Option<BlockSource> {
+    pub fn evaluate(&self, domain: &str, group_id: i64) -> Verdict {
         if self.allowlists.is_allowed(domain, group_id) {
-            return None;
+            return Verdict::ManualAllow;
         }
 
         let mask = self.group_mask(group_id);
@@ -144,20 +171,20 @@ impl BlockIndex {
             if let Some(regexes) = self.allow_regex_patterns.get(&group_id) {
                 for rule in regexes {
                     if rule.regex.is_match(domain).unwrap_or(false) {
-                        return None;
+                        return Verdict::ManualAllow;
                     }
                 }
             }
 
             if let Some(set) = self.managed_denies.get(&group_id) {
                 if set.contains(domain) {
-                    return Some(BlockSource::ManagedDomain);
+                    return Verdict::ManualDeny(BlockSource::ManagedDomain);
                 }
             }
 
             if let Some(trie) = self.managed_deny_wildcards.get(&group_id) {
                 if trie.lookup(domain) != 0 {
-                    return Some(BlockSource::ManagedDomain);
+                    return Verdict::ManualDeny(BlockSource::ManagedDomain);
                 }
             }
         }
@@ -170,15 +197,16 @@ impl BlockIndex {
         // exact entry.
         if self.bloom.check(&domain) {
             if let Some(entry) = self.exact.get(domain) {
-                if entry.value() & mask != 0 {
-                    return Some(BlockSource::Blocklist);
+                let matched = entry.value() & mask;
+                if matched != 0 {
+                    return classify_deny(BlockSource::Blocklist, matched);
                 }
             }
         }
 
         if self.has_suffix_or_substring_rules() {
-            if let Some(hit) = self.check_wildcard_and_patterns(domain, mask) {
-                return Some(hit);
+            if let Some(matched) = self.check_wildcard_and_patterns(domain, mask) {
+                return classify_deny(BlockSource::Blocklist, matched);
             }
         }
 
@@ -186,13 +214,13 @@ impl BlockIndex {
             if let Some(regexes) = self.block_regex_patterns.get(&group_id) {
                 for rule in regexes {
                     if rule.regex.is_match(domain).unwrap_or(false) {
-                        return Some(BlockSource::RegexFilter);
+                        return Verdict::ManualDeny(BlockSource::RegexFilter);
                     }
                 }
             }
         }
 
-        None
+        Verdict::NoMatch
     }
 
     /// Whether the compiled index holds any rule that the exact-entry bloom
@@ -204,16 +232,23 @@ impl BlockIndex {
         !self.wildcard.is_empty() || !self.patterns.is_empty()
     }
 
+    /// Returns the source bits that matched, so the caller can tell a manual
+    /// entry apart from a downloaded one. `None` means no rule matched.
     #[inline]
-    fn check_wildcard_and_patterns(&self, domain: &str, mask: SourceBitSet) -> Option<BlockSource> {
-        let wildcard_bits = self.wildcard.lookup(domain);
-        if wildcard_bits & mask != 0 {
-            return Some(BlockSource::Blocklist);
+    fn check_wildcard_and_patterns(
+        &self,
+        domain: &str,
+        mask: SourceBitSet,
+    ) -> Option<SourceBitSet> {
+        let wildcard_bits = self.wildcard.lookup(domain) & mask;
+        if wildcard_bits != 0 {
+            return Some(wildcard_bits);
         }
 
         for (ac, source_mask) in &self.patterns {
-            if source_mask & mask != 0 && ac.is_match(domain) {
-                return Some(BlockSource::Blocklist);
+            let matched = source_mask & mask;
+            if matched != 0 && ac.is_match(domain) {
+                return Some(matched);
             }
         }
 

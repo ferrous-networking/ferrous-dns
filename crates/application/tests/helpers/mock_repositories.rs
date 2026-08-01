@@ -1573,6 +1573,7 @@ pub struct MockBlockFilterEngine {
     should_fail_reload: Arc<RwLock<bool>>,
     blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     cname_blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
+    explicitly_allowed_domains: Arc<std::sync::RwLock<HashSet<String>>>,
 }
 
 impl MockBlockFilterEngine {
@@ -1582,6 +1583,7 @@ impl MockBlockFilterEngine {
             should_fail_reload: Arc::new(RwLock::new(false)),
             blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             cname_blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
+            explicitly_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
         }
     }
 
@@ -1595,6 +1597,15 @@ impl MockBlockFilterEngine {
 
     pub fn block_domain(&self, domain: &str) {
         self.blocked_domains
+            .write()
+            .unwrap()
+            .insert(domain.to_string());
+    }
+
+    /// Marks `domain` as allowed by a rule the operator wrote themselves, which
+    /// is what exempts it from the heuristic detectors.
+    pub fn allow_domain(&self, domain: &str) {
+        self.explicitly_allowed_domains
             .write()
             .unwrap()
             .insert(domain.to_string());
@@ -1618,6 +1629,14 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
     }
 
     fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {
+        if self
+            .explicitly_allowed_domains
+            .read()
+            .unwrap()
+            .contains(domain)
+        {
+            return FilterDecision::ExplicitAllow;
+        }
         if self.cname_blocked_domains.read().unwrap().contains(domain) {
             return FilterDecision::Block(BlockSource::CnameCloaking);
         }

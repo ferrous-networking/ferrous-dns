@@ -1,4 +1,4 @@
-use super::block_index::BlockIndex;
+use super::block_index::{BlockIndex, Verdict};
 use super::compiler::{compile_block_index, parse_list_text, ParsedEntry};
 use super::decision_cache::{
     decision_key, decision_l0_clear, decision_l0_get_by_key, decision_l0_set_by_key,
@@ -169,6 +169,30 @@ impl BlockFilterEngine {
 
         Ok(())
     }
+
+    /// Resolves the compiled verdict for `domain`, consulting the thread-local
+    /// L0 cache and then the shared L1 cache before touching the index. Split out
+    /// of `check` so the precedence rules there read as precedence rules.
+    #[inline]
+    fn resolve_verdict(&self, domain: &str, group_id: i64, key: u64, skip_cache: bool) -> Verdict {
+        if !skip_cache {
+            if let Some(cached) = decision_l0_get_by_key(key) {
+                return cached;
+            }
+
+            if let Some(cached) = self.decision_cache.get_by_key(key) {
+                decision_l0_set_by_key(key, cached);
+                return cached;
+            }
+        }
+
+        let verdict = self.index.load().evaluate(domain, group_id);
+
+        self.decision_cache.set_by_key(key, verdict);
+        decision_l0_set_by_key(key, verdict);
+
+        verdict
+    }
 }
 
 #[async_trait]
@@ -200,64 +224,59 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
+        // The schedule override is read here but applied three tiers down: a rule
+        // the operator wrote themselves outranks both the global toggle and every
+        // schedule slot, so neither may short-circuit the lookup any more. The
+        // O(1) is_empty() guard keeps the cost at zero when no schedules exist.
+        // Not cached per-domain — schedule state changes every minute, not per
+        // query.
+        let schedule_override = if self.schedule_state.is_empty() {
+            None
+        } else {
+            self.schedule_state.get(group_id)
+        };
+
+        // A bypass window that has just lapsed must not read back the verdict
+        // memoized while it was still in force.
+        let skip_decision_cache = matches!(
+            schedule_override,
+            Some(GroupOverride::TimedBypassUntil(t)) if coarse_now_secs() >= t
+        );
+
+        let key = decision_key(domain, group_id);
+        let verdict = self.resolve_verdict(domain, group_id, key, skip_decision_cache);
+
+        // Tier 1 — manual allow/deny. Highest priority in the whole pipeline:
+        // this is the operator overruling everything else, including themselves
+        // having paused blocking or scheduled a bypass.
+        match verdict {
+            Verdict::ManualAllow => return FilterDecision::ExplicitAllow,
+            Verdict::ManualDeny(source) => return FilterDecision::Block(source),
+            Verdict::Block(_) | Verdict::NoMatch => {}
+        }
+
+        // Tier 2 — global blocking toggle.
         if !self.blocking_enabled.load(Ordering::Acquire) {
             return FilterDecision::Allow;
         }
 
-        // Schedule override check: O(1) is_empty() guard keeps cost zero when
-        // no schedules are configured. Not cached per-domain — schedule state
-        // changes every minute, not per query.
-        let mut skip_decision_cache = false;
-
-        if !self.schedule_state.is_empty() {
-            match self.schedule_state.get(group_id) {
-                Some(GroupOverride::BlockAll) => {
-                    return FilterDecision::Block(BlockSource::Schedule);
-                }
-                Some(GroupOverride::AllowAll) => {
-                    return FilterDecision::Allow;
-                }
-                Some(GroupOverride::TimedBypassUntil(t)) if coarse_now_secs() < t => {
-                    return FilterDecision::Allow;
-                }
-                Some(GroupOverride::TimedBypassUntil(_)) => {
-                    skip_decision_cache = true;
-                }
-                Some(GroupOverride::TimedBlockUntil(t)) if coarse_now_secs() < t => {
-                    return FilterDecision::Block(BlockSource::Schedule);
-                }
-                _ => {} // expired or no override — fall through to normal check
+        // Tier 3 — schedule overrides.
+        match schedule_override {
+            Some(GroupOverride::BlockAll) => return FilterDecision::Block(BlockSource::Schedule),
+            Some(GroupOverride::AllowAll) => return FilterDecision::Allow,
+            Some(GroupOverride::TimedBypassUntil(t)) if coarse_now_secs() < t => {
+                return FilterDecision::Allow;
             }
+            Some(GroupOverride::TimedBlockUntil(t)) if coarse_now_secs() < t => {
+                return FilterDecision::Block(BlockSource::Schedule);
+            }
+            _ => {} // expired or no override — fall through to the compiled rules
         }
 
-        let key = decision_key(domain, group_id);
-
-        if !skip_decision_cache {
-            if let Some(cached_source) = decision_l0_get_by_key(key) {
-                return match cached_source {
-                    Some(source) => FilterDecision::Block(source),
-                    None => FilterDecision::Allow,
-                };
-            }
-
-            if let Some(cached_source) = self.decision_cache.get_by_key(key) {
-                decision_l0_set_by_key(key, cached_source);
-                return match cached_source {
-                    Some(source) => FilterDecision::Block(source),
-                    None => FilterDecision::Allow,
-                };
-            }
-        }
-
-        let guard = self.index.load();
-        let block_source = guard.is_blocked(domain, group_id);
-
-        self.decision_cache.set_by_key(key, block_source);
-        decision_l0_set_by_key(key, block_source);
-
-        match block_source {
-            Some(source) => FilterDecision::Block(source),
-            None => FilterDecision::Allow,
+        // Tier 4 — downloaded blocklists.
+        match verdict {
+            Verdict::Block(source) => FilterDecision::Block(source),
+            _ => FilterDecision::Allow,
         }
     }
 
@@ -339,10 +358,12 @@ impl BlockFilterEnginePort for BlockFilterEngine {
     #[inline]
     fn store_cname_decision(&self, domain: &str, group_id: i64, ttl_secs: u64) {
         let key = decision_key(domain, group_id);
-        let source = Some(ferrous_dns_domain::BlockSource::CnameCloaking);
+        // Not a manual rule: a CNAME-derived block still yields to the blocking
+        // toggle and to schedule overrides.
+        let verdict = Verdict::Block(BlockSource::CnameCloaking);
         self.decision_cache
-            .set_by_key_with_ttl(key, source, ttl_secs);
-        decision_l0_set_by_key(key, source);
+            .set_by_key_with_ttl(key, verdict, ttl_secs);
+        decision_l0_set_by_key(key, verdict);
     }
 
     async fn reload(&self) -> Result<(), DomainError> {
