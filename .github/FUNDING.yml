@@ -1,3 +1,1 @@
-custom:
-  - "https://ferrous-networking.github.io/ferrous-dns/"
-  - "lightning:vastgrit566@walletofsatoshi.com"
+custom: ["https://ferrous-networking.github.io/ferrous-dns/"]
