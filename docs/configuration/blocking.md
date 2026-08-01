@@ -26,6 +26,9 @@ block_ttl = 60
 !!! warning "Domains are not configured here"
     The `[blocking]` section also accepts `custom_blocked` and `whitelist` arrays, but **they are not consulted by the DNS query pipeline** — listing domains there has no effect on what is blocked or allowed. Blocked domains and allow-listed domains are managed via the dashboard or REST API and persisted in the SQLite database, not in this TOML file. See [Blocklist Management](#blocklist-management-dashboard) and [Allow/Block from Query Log](#allowblock-from-query-log) below.
 
+!!! note "`enabled = false` does not release manual rules"
+    Turning blocking off — here, or at runtime via `POST /api/dns/blocking` — stops downloaded blocklists from being applied. Domains you denied by hand (managed domains, deny regex filters, or **Block** from the query log) keep being blocked, because a manual rule outranks the toggle. Remove the rule to release the domain. See [What a manual rule outranks](../features/blocking-filtering.md#what-a-manual-rule-outranks).
+
 ---
 
 ## Block Response Mode
@@ -199,3 +202,5 @@ See [Client Management](../features/client-management.md) for details.
 ## Allow/Block from Query Log
 
 Any domain in the query log can be instantly added to the allowlist or blocklist by clicking the Allow or Block button next to it. Changes take effect immediately without a server restart.
+
+Both buttons create a **manual rule**, which is the highest-priority verdict in the pipeline: **Allow** also exempts the domain from all five [malware detection](../features/malware-detection.md) engines, and **Block** survives pausing blocking and any schedule bypass window.

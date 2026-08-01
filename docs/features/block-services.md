@@ -13,19 +13,27 @@ DNS query: graph.facebook.com
   1. Identify client group ──► "Kids"
          │
          ▼
-  2. Check schedule state ──► is there an active schedule override?
-         │                    ├─ BlockAll  → BLOCK immediately
-         │                    ├─ AllowAll  → ALLOW immediately
+  2. Check manual rules ────► allowlist / managed domain / regex filter?
+         │                    ├─ allow → ALLOW, final (beats the schedule)
+         │                    ├─ deny  → BLOCK, final (beats the schedule)
+         │                    └─ none  → continue
+         ▼
+  3. Check schedule state ──► is there an active schedule override?
+         │                    ├─ BlockAll  → BLOCK
+         │                    ├─ AllowAll  → ALLOW
          │                    └─ No override → continue
          ▼
-  3. Check blocked services ─► is "facebook" blocked for "Kids"?
+  4. Check blocked services ─► is "facebook" blocked for "Kids"?
          │                     ├─ YES → BLOCK (NXDOMAIN)
          │                     └─ NO  → continue
          ▼
-  4. Normal blocking pipeline (blocklists, regex, CNAME cloaking…)
+  5. Normal blocking pipeline (blocklists, substring rules, CNAME cloaking…)
 ```
 
 Block Services work **on top of** the standard [Blocking & Filtering](blocking-filtering.md) pipeline. They add managed domains from the service catalog to the block filter engine — no manual domain lists needed.
+
+!!! note "An explicit allow wins over a schedule"
+    Step 2 is final. A domain you allowed by hand is served even inside a `BlockAll` window, and a domain you denied by hand stays blocked through an `AllowAll` window or a bypass timer. This is how you carve one exception out of an otherwise blanket schedule — see [What a manual rule outranks](blocking-filtering.md#what-a-manual-rule-outranks).
 
 ---
 
