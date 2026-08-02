@@ -127,6 +127,10 @@ pub struct QueryLog {
     pub dnssec_status: Option<&'static str>,
     /// `true` when the AAAA answer was synthesized by DNS64 (RFC 6147).
     pub dns64_synthesized: bool,
+    /// Resolved A/AAAA addresses of the answer. `None` for blocked queries and
+    /// for record types that carry no address answer. Only the first few are
+    /// persisted (see `MAX_LOGGED_ANSWERS` in the query log writer).
+    pub answers: Option<Arc<Vec<IpAddr>>>,
     pub upstream_server: Option<Arc<str>>,
     pub upstream_pool: Option<Arc<str>>,
     pub response_status: Option<&'static str>,

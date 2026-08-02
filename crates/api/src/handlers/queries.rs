@@ -76,6 +76,10 @@ pub async fn get_queries(
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
             dns64_synthesized: q.dns64_synthesized,
+            answers: q
+                .answers
+                .map(|a| a.iter().map(|ip| ip.to_string()).collect())
+                .unwrap_or_default(),
             upstream_server: q.upstream_server,
             upstream_pool: q.upstream_pool,
             query_source: q.query_source.as_str(),

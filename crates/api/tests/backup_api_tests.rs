@@ -510,6 +510,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             blocked_by TEXT,
             upstream TEXT,
             dns64_synthesized INTEGER NOT NULL DEFAULT 0,
+            answers TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         "#,

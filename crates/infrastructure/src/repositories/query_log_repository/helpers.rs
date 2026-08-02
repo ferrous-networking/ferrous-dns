@@ -3,6 +3,7 @@ use ferrous_dns_application::ports::TimeGranularity;
 use ferrous_dns_domain::{BlockSource, QueryLog, QuerySource, RecordType};
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -71,6 +72,16 @@ fn to_static_response_status(s: &str) -> Option<&'static str> {
     }
 }
 
+/// Parses the comma-separated `answers` column back into addresses. Unparseable
+/// entries are skipped; an empty result is treated as "no answers logged".
+fn parse_answers(raw: Option<String>) -> Option<Arc<Vec<IpAddr>>> {
+    let addresses: Vec<IpAddr> = raw?
+        .split(',')
+        .filter_map(|s| s.parse::<IpAddr>().ok())
+        .collect();
+    (!addresses.is_empty()).then(|| Arc::new(addresses))
+}
+
 pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
     let client_ip_str: String = row.get("client_ip");
     let record_type_str: String = row.get("record_type");
@@ -124,6 +135,7 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
             .try_get::<i64, _>("dns64_synthesized")
             .map(|v| v != 0)
             .unwrap_or(false),
+        answers: parse_answers(row.try_get::<Option<String>, _>("answers").ok().flatten()),
         upstream_server: row
             .get::<Option<String>, _>("upstream_server")
             .map(|s| Arc::from(s.as_str())),

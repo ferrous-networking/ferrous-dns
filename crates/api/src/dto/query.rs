@@ -64,6 +64,9 @@ pub struct QueryResponse {
     pub dnssec_status: Option<&'static str>,
     /// `true` when the AAAA answer was synthesized by DNS64 (RFC 6147).
     pub dns64_synthesized: bool,
+    /// Resolved A/AAAA addresses of the answer, capped at the first few that
+    /// were persisted. Empty for blocked queries and non-address record types.
+    pub answers: Vec<String>,
     #[schema(value_type = Option<String>)]
     pub upstream_server: Option<Arc<str>>,
     #[schema(value_type = Option<String>)]

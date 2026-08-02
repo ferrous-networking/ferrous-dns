@@ -124,6 +124,7 @@ impl DnsCacheMaintenance {
                         cache_refresh: true,
                         dnssec_status: resolution.dnssec_status,
                         dns64_synthesized: false,
+                        answers: Some(Arc::clone(&resolution.addresses)),
                         upstream_server: resolution.upstream_server.clone(),
                         upstream_pool: resolution.upstream_pool.clone(),
                         response_status: Some("NOERROR"),

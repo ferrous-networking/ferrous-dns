@@ -22,7 +22,7 @@ pub(super) async fn get_recent(
     let cutoff = hours_ago_cutoff(period_hours);
     let rows = sqlx::query(
         "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                q.cache_hit, q.cache_refresh, q.dnssec_status, q.upstream_server,
+                q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
                 q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                 datetime(q.created_at) as created_at, c.hostname
          FROM query_log q
@@ -152,7 +152,7 @@ pub(super) async fn get_recent_paged(
             if let Some(cursor_id) = cursor {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.upstream_server,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q
@@ -170,7 +170,7 @@ pub(super) async fn get_recent_paged(
             } else {
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
-                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.upstream_server,
+                            q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
                             q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q

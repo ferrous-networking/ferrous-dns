@@ -157,6 +157,7 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
             dns64_synthesized INTEGER NOT NULL DEFAULT 0,
+            answers TEXT,
             upstream_server TEXT,
             upstream_pool TEXT,
             response_status TEXT,
