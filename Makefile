@@ -5,7 +5,7 @@
 # Usage: make [target]
 # ============================================================================
 
-.PHONY: help build test clean install run dev docker release fuzz fuzz-short fuzz-seeds
+.PHONY: help build test clean install run dev docker release fuzz fuzz-short fuzz-seeds disk prune
 
 # Default target
 .DEFAULT_GOAL := help
@@ -16,6 +16,9 @@ DOCKER := docker
 DOCKER_COMPOSE := docker-compose
 IMAGE_NAME := ferrous-dns
 VERSION := $(shell grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+# Artifacts untouched for this many days are dropped by `make prune`
+PRUNE_DAYS ?= 14
 
 # Colors for output
 BLUE := \033[0;34m
@@ -167,6 +170,16 @@ clean: ## Clean build artifacts
 	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
 	$(CARGO) clean
 	@echo "$(GREEN)✓ Clean completed$(NC)"
+
+disk: ## Show what the build cache is currently costing on disk
+	@du -sh target 2>/dev/null || echo "no target/ yet"
+	@du -sh target/debug/deps target/debug/incremental target/release 2>/dev/null || true
+
+prune: ## Drop incremental caches and build artifacts unused for $(PRUNE_DAYS) days
+	@echo "$(BLUE)Pruning build cache (older than $(PRUNE_DAYS) days)...$(NC)"
+	@rm -rf target/debug/incremental target/dev-opt/incremental
+	@find target -mindepth 2 -path '*/deps/*' -type f -mtime +$(PRUNE_DAYS) -delete 2>/dev/null || true
+	@echo "$(GREEN)✓ Pruned — target/ is now $$(du -sh target 2>/dev/null | cut -f1)$(NC)"
 
 clean-all: clean ## Clean all generated files
 	@echo "$(BLUE)Cleaning all generated files...$(NC)"

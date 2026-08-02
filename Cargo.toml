@@ -117,6 +117,14 @@ inherits = "release"
 debug = true
 strip = "none"
 
+# The workspace has ~160 integration-test files, i.e. ~160 statically linked
+# test binaries. Full DWARF embedded in each one is what made target/debug grow
+# into the tens of GB. Line tables still give file:line in backtraces, and split
+# debuginfo keeps the DWARF out of every linked binary.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
 [profile.dev-opt]
 inherits = "dev"
 opt-level = 2
