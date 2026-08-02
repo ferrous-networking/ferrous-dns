@@ -12,6 +12,7 @@ pub struct QueryLogBuilder {
     response_time_us: Option<u64>,
     cache_hit: bool,
     cache_refresh: bool,
+    answers: Option<Arc<Vec<IpAddr>>>,
     block_source: Option<BlockSource>,
     query_source: QuerySource,
 }
@@ -26,6 +27,7 @@ impl QueryLogBuilder {
             response_time_us: Some(10),
             cache_hit: false,
             cache_refresh: false,
+            answers: None,
             block_source: None,
             query_source: QuerySource::Client,
         }
@@ -56,6 +58,16 @@ impl QueryLogBuilder {
         self
     }
 
+    pub fn answers(mut self, addresses: &[&str]) -> Self {
+        self.answers = Some(Arc::new(
+            addresses
+                .iter()
+                .map(|ip| IpAddr::from_str(ip).expect("Invalid IP address"))
+                .collect(),
+        ));
+        self
+    }
+
     pub fn block_source(mut self, src: BlockSource) -> Self {
         self.block_source = Some(src);
         self
@@ -79,6 +91,7 @@ impl QueryLogBuilder {
             cache_refresh: self.cache_refresh,
             dnssec_status: None,
             dns64_synthesized: false,
+            answers: self.answers,
             upstream_server: None,
             upstream_pool: None,
             response_status: None,

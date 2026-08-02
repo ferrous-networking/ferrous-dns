@@ -78,6 +78,7 @@ impl QueryEventLogger {
                 cache_refresh: false,
                 dnssec_status: None,
                 dns64_synthesized: false,
+                answers: None,
                 upstream_server: Some(Arc::clone(&event.upstream_server)),
                 upstream_pool: event.pool_name.clone(),
                 response_status: Some(if event.success { "NOERROR" } else { "NXDOMAIN" }),

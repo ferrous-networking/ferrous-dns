@@ -1,8 +1,10 @@
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::config::DatabaseConfig;
-use ferrous_dns_domain::{QueryCategory, QueryLogFilter};
+use ferrous_dns_domain::{QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType};
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::SqlitePoolOptions;
+use std::net::IpAddr;
+use std::sync::Arc;
 
 async fn create_test_db() -> sqlx::SqlitePool {
     let pool = SqlitePoolOptions::new()
@@ -23,6 +25,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             cache_refresh INTEGER NOT NULL DEFAULT 0,
             dnssec_status TEXT,
             dns64_synthesized INTEGER NOT NULL DEFAULT 0,
+            answers TEXT,
             upstream_server TEXT,
             upstream_pool TEXT,
             response_status TEXT,
@@ -1378,4 +1381,117 @@ async fn test_cursor_pagination_with_client_filter() {
     let ids1: Vec<_> = page1.queries.iter().filter_map(|q| q.id).collect();
     let ids2: Vec<_> = page2.queries.iter().filter_map(|q| q.id).collect();
     assert!(ids1.iter().all(|id| !ids2.contains(id)));
+}
+
+async fn insert_answers_row(pool: &sqlx::SqlitePool, domain: &str, answers: Option<&str>) {
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, response_status, answers)
+         VALUES (?, 'A', '10.0.0.1', 0, 100, 0, 'client', 'NOERROR', ?)",
+    )
+    .bind(domain)
+    .bind(answers)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_answers_round_trip_from_sqlite() {
+    let pool = create_test_db().await;
+
+    insert_answers_row(
+        &pool,
+        "multi.example.com",
+        Some("93.184.216.34,2606:2800:220:1:248:1893:25c8:1946"),
+    )
+    .await;
+    insert_answers_row(&pool, "none.example.com", None).await;
+    insert_answers_row(&pool, "garbage.example.com", Some("not-an-ip")).await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let page = repo
+        .get_recent_paged(100, 0, 24.0, None, &no_filter())
+        .await
+        .unwrap();
+    let row = |domain: &str| {
+        page.queries
+            .iter()
+            .find(|q| &*q.domain == domain)
+            .unwrap_or_else(|| panic!("{domain} missing from the page"))
+    };
+
+    let answers = row("multi.example.com")
+        .answers
+        .as_ref()
+        .expect("stored addresses must round-trip");
+    assert_eq!(answers.len(), 2);
+    assert_eq!(answers[0].to_string(), "93.184.216.34");
+    assert_eq!(answers[1].to_string(), "2606:2800:220:1:248:1893:25c8:1946");
+
+    assert!(row("none.example.com").answers.is_none());
+    // Unparseable text is dropped rather than surfacing a bogus address.
+    assert!(row("garbage.example.com").answers.is_none());
+}
+
+#[tokio::test]
+async fn test_logged_answers_are_capped() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    let addresses: Vec<IpAddr> = (1..=6u8).map(|n| IpAddr::from([192, 0, 2, n])).collect();
+    repo.log_query(&QueryLog {
+        id: None,
+        domain: "cdn.example.com".into(),
+        record_type: RecordType::A,
+        client_ip: "10.0.0.1".parse().unwrap(),
+        client_hostname: None,
+        blocked: false,
+        response_time_us: Some(100),
+        cache_hit: false,
+        cache_refresh: false,
+        dnssec_status: None,
+        dns64_synthesized: false,
+        answers: Some(Arc::new(addresses)),
+        upstream_server: None,
+        upstream_pool: None,
+        response_status: Some("NOERROR"),
+        timestamp: None,
+        query_source: QuerySource::Client,
+        group_id: None,
+        block_source: None,
+    })
+    .await
+    .unwrap();
+
+    // Writes are batched; the flush task ticks every 100 ms by default.
+    let mut stored = None;
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if let Some(row) =
+            sqlx::query_scalar::<_, Option<String>>("SELECT answers FROM query_log LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap()
+        {
+            stored = row;
+            break;
+        }
+    }
+
+    assert_eq!(
+        stored.as_deref(),
+        Some("192.0.2.1,192.0.2.2,192.0.2.3,192.0.2.4"),
+        "only the first four addresses are persisted"
+    );
 }

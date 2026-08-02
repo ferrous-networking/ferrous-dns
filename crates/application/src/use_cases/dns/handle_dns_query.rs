@@ -348,6 +348,7 @@ impl HandleDnsQueryUseCase {
             cache_refresh: false,
             dnssec_status: None,
             dns64_synthesized: false,
+            answers: None,
             upstream_server: None,
             upstream_pool: None,
             response_status: Some("NOERROR"),
@@ -454,6 +455,7 @@ impl HandleDnsQueryUseCase {
                 cache_refresh: false,
                 dnssec_status: resolution.dnssec_status,
                 dns64_synthesized: false,
+                answers: None,
                 upstream_server: None,
                 upstream_pool: None,
                 response_status: Some("NOERROR"),
@@ -531,6 +533,7 @@ impl HandleDnsQueryUseCase {
                 cache_refresh: false,
                 dnssec_status: resolution.dnssec_status,
                 dns64_synthesized: self.is_dns64_synthesized(record_type, &resolution.addresses),
+                answers: Some(Arc::clone(&resolution.addresses)),
                 upstream_server: None,
                 upstream_pool: None,
                 response_status: Some("NOERROR"),
@@ -695,6 +698,7 @@ impl HandleDnsQueryUseCase {
                     self.log(&QueryLog {
                         cache_hit: true,
                         dnssec_status: cached.dnssec_status,
+                        answers: Some(Arc::clone(&cached.addresses)),
                         ..Self::base_query_log(request, elapsed_us(), group_id)
                     });
                     return Ok(cached);
@@ -806,6 +810,7 @@ impl HandleDnsQueryUseCase {
                     dnssec_status: resolution.dnssec_status,
                     dns64_synthesized: self
                         .is_dns64_synthesized(request.record_type, &resolution.addresses),
+                    answers: Some(Arc::clone(&resolution.addresses)),
                     upstream_server: resolution.upstream_server.clone(),
                     upstream_pool: resolution.upstream_pool.clone(),
                     response_status,

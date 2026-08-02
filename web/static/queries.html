@@ -146,6 +146,7 @@
                 <th class="col-type" style="width:70px">TYPE</th>
                 <th class="col-client">CLIENT</th>
                 <th class="col-source">SOURCE</th>
+                <th class="col-answer">ANSWER</th>
                 <th class="col-rt" style="width:110px">RESPONSE TIME</th>
                 <th class="col-action" style="width:80px">ACTION</th>
             </tr>
@@ -202,6 +203,21 @@
                               :title="query.upstream_pool && query.upstream_server
                                 ? query.upstream_pool + ':' + query.upstream_server
                                 : ''"></span>
+                    </td>
+                    <td class="col-answer">
+                        <template x-if="!query.answers || !query.answers.length">
+                            <span style="color:var(--text-secondary)">—</span>
+                        </template>
+                        <template x-if="query.answers && query.answers.length">
+                            <div class="answer-tip" :data-tooltip="query.answers.join('\n')">
+                                <template x-for="(ip, i) in query.answers.slice(0, 2)" :key="i">
+                                    <div x-text="ip" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+                                </template>
+                                <template x-if="query.answers.length > 2">
+                                    <span class="answer-more" x-text="'+' + (query.answers.length - 2)"></span>
+                                </template>
+                            </div>
+                        </template>
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
                     <td class="col-action">

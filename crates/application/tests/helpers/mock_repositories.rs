@@ -1358,6 +1358,7 @@ mod tests {
             cache_refresh: false,
             dnssec_status: None,
             dns64_synthesized: false,
+            answers: None,
             upstream_server: None,
             upstream_pool: None,
             response_status: None,
