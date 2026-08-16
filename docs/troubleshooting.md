@@ -290,6 +290,42 @@ UDP DNS is not affected — PROXY Protocol only applies to TCP and DoT listeners
 
 ---
 
+## Docker Container Restart Loop on Startup
+
+### Symptom
+
+The container never finishes booting and `docker logs` repeats:
+
+```text
+No config found at /data/config/ferrous-dns.toml — copying default...
+cp: can't create '/data/config/ferrous-dns.toml/ferrous-dns.toml': Permission denied
+```
+
+### Cause
+
+The doubled path is the tell: `/data/config/ferrous-dns.toml` is a **directory**, so `cp` wrote *into* it. Docker creates the source of a bind mount as a root-owned directory whenever the host path does not exist yet, so a mount like `-v ./ferrous-dns.toml:/data/config/ferrous-dns.toml` pointing at a file you never created produces a directory the container cannot write — it runs as uid 1000. The entrypoint exits, and `restart: always` turns that into a loop.
+
+### Solution
+
+Stop the container, remove the directory Docker created, and drop the bind mount — the image bootstraps its own default config into the `/data` volume:
+
+```bash
+docker compose down          # or: docker rm -f ferrous-dns
+rm -rf ./ferrous-dns.toml    # the directory Docker created, not a real config
+```
+
+To keep the config on the host instead, create the file and give it to uid 1000 **before** starting the container:
+
+```bash
+curl -fsSL -o ferrous-dns.toml \
+  https://raw.githubusercontent.com/ferrous-networking/ferrous-dns/main/ferrous-dns.toml
+chown 1000:1000 ferrous-dns.toml
+```
+
+The same applies to a config that is owned by another user: the mount must be writable by uid 1000 (and not `:ro`), or the setup wizard, `POST /config` and backup restore cannot persist changes.
+
+---
+
 ## Docker Networking Issues
 
 ### Host network mode (recommended)

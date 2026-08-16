@@ -19,11 +19,18 @@ services:
       - NET_BIND_SERVICE
 
     # Must stay writable (not `:ro`): the first-run setup wizard, POST /config from
-    # the dashboard, and backup restore all persist changes back to this file
-    # (TomlConfigFilePersistence writes directly to the path in FERROUS_CONFIG).
+    # The entrypoint bootstraps the bundled default ferrous-dns.toml into
+    # /data/config/ inside this volume on first run, so no host file is required.
+    # To keep the config on the host instead, create ./ferrous-dns.toml FIRST and
+    # chown it to 1000:1000, then uncomment the bind mount below — Docker creates a
+    # root-owned *directory* at any bind-mount source that does not exist yet, which
+    # the non-root container then cannot write. It must also stay writable (no
+    # `:ro`): the setup wizard, POST /config from the dashboard, and backup restore
+    # all persist changes back to this file (TomlConfigFilePersistence writes
+    # directly to the path in FERROUS_CONFIG).
     volumes:
       - ferrous-data:/data
-      - ./ferrous-dns.toml:/data/config/ferrous-dns.toml
+      # - ./ferrous-dns.toml:/data/config/ferrous-dns.toml
 
     environment:
       - FERROUS_CONFIG=/data/config/ferrous-dns.toml
