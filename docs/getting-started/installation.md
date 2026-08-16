@@ -18,14 +18,13 @@ docker run -d \
   --user 1000:1000 \
   -e TZ=America/Sao_Paulo \
   -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
-  -v /path/to/ferrous-dns.toml:/data/config/ferrous-dns.toml \
   -v ferrous-data:/data/ \
   --dns 10.0.0.1 \
   --cap-add NET_BIND_SERVICE \
   ferrousnetworking/ferrous-dns:latest
 ```
 
-Ports, bind address, database path, and log level are all set inside the mounted `ferrous-dns.toml`, and can be overridden with the `FERROUS_*` environment variables below — the Docker image's entrypoint script translates them into the matching CLI flags at startup. The bind mount must stay writable (no `:ro`): the first-run setup wizard, `POST /config` from the dashboard, and backup restore all persist changes back to this file.
+No host config file is needed to start: on first run the entrypoint copies the bundled default `ferrous-dns.toml` into `/data/config/` inside the `ferrous-data` volume. Ports, bind address, database path, and log level are all set inside that file, and can be overridden with the `FERROUS_*` environment variables below — the Docker image's entrypoint script translates them into the matching CLI flags at startup.
 
 #### Environment Variables
 
@@ -42,6 +41,25 @@ Access the dashboard at `http://localhost:8080`
 
 !!! note "Network mode"
     `--network host` is required so Ferrous DNS can bind to port 53 and detect client IPs/MACs correctly. It is also required for **mDNS device discovery** (`mdns_enabled`): multicast on UDP 5353 does not traverse Docker bridge port mapping, so the listener only works in host mode. On macOS, host networking is not available in Docker Desktop — use a Linux VM or Docker Compose with explicit port mappings.
+
+#### Keeping the config file on the host (optional)
+
+Editing `ferrous-dns.toml` by hand is easier when the file lives on the host rather than inside the volume. Bind-mounting it takes two extra steps, both mandatory:
+
+```bash
+curl -fsSL -o ferrous-dns.toml \
+  https://raw.githubusercontent.com/ferrous-networking/ferrous-dns/main/ferrous-dns.toml
+chown 1000:1000 ferrous-dns.toml
+```
+
+Only then add the mount:
+
+```bash
+  -v "$PWD/ferrous-dns.toml:/data/config/ferrous-dns.toml" \
+```
+
+!!! warning "Create the file before mounting it"
+    Docker creates the source of a bind mount as a **root-owned directory** when the host path does not exist. Mounting a path you have not created yet therefore puts a directory at `/data/config/ferrous-dns.toml`, and the container — which runs as uid 1000 — cannot write it, so it exits and `--restart always` turns that into a restart loop. Keep the mount writable too (no `:ro`): the first-run setup wizard, `POST /config` from the dashboard, and backup restore all persist changes back to this file.
 
 ---
 
@@ -65,12 +83,13 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     volumes:
-      - ./ferrous-dns.toml:/data/config/ferrous-dns.toml
       - ferrous-data:/data/
 
 volumes:
   ferrous-data:
 ```
+
+To keep the config on the host, follow [Keeping the config file on the host](#keeping-the-config-file-on-the-host-optional) first, then add `- ./ferrous-dns.toml:/data/config/ferrous-dns.toml` to `volumes:`.
 
 Then start it:
 
@@ -150,7 +169,6 @@ Docker Desktop — use explicit port mappings instead of `--network host`:
 docker run -d --name ferrous-dns --restart always \
   -p 53:53/udp -p 53:53/tcp -p 8080:8080 \
   -e FERROUS_CONFIG=/data/config/ferrous-dns.toml \
-  -v /path/to/ferrous-dns.toml:/data/config/ferrous-dns.toml \
   -v ferrous-data:/data/ \
   ferrousnetworking/ferrous-dns:latest
 ```
