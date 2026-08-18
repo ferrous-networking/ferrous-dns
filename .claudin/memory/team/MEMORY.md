@@ -1,5 +1,5 @@
 # Team Memory Index
 
-Memórias compartilhadas do time ferrous-dns (uma por arquivo, com frontmatter `name`/`description`/`type`).
+Shared memories for the ferrous-dns team (one file per fact, with `name`/`description`/`type` frontmatter).
 
-<!-- Adicione uma linha por memória: - [Título](arquivo.md) — resumo em uma linha -->
+<!-- Add one line per memory: - [Title](file.md) — one-line hook -->

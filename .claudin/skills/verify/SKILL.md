@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Runs the full ferrous-dns local CI gate (fmt-check, clippy with -D warnings, all tests, doc tests) and reports failures. Use before marking implementation work done, before committing, or when the user asks to verify changes.
+description: The canonical day-to-day local gate for ferrous-dns — superset of `make ci` (fmt-check, clippy -D warnings, tests) plus doc tests, with failures reported for root-cause fixes. Use before marking implementation work done, before committing, or when the user asks to verify changes.
 ---
 
 Run the local CI gate for ferrous-dns, in this order, and stop at the first failing step to report it:

@@ -23,4 +23,4 @@ Mirror of `.github/workflows/ci.yml` for local runs. Run the checks in the order
 
 ## Last: PR title
 
-Remind the user the PR title must follow Conventional Commits (`feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `chore`, ...) — CI validates it on the PR itself, not on local commits.
+Remind the user the PR title must follow the conventions in `.claudin/rules/pr-titles.md` — CI validates it on the PR itself, not on local commits.
