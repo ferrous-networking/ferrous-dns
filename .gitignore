@@ -363,10 +363,20 @@ bench/results/
 # ============================================================================
 
 # ============================================================================
-# Claude Code
+# Claude Code / Claudin
 # ============================================================================
 CLAUDE.md
+CLAUDE.local.md
 .claude/*
+
+# Claudin: rules/, skills/ e memory/team/ são compartilhados (vão no commit);
+# todo o resto em .claudin/ é arquivo local do usuário
+.claudin/*
+!.claudin/rules/
+!.claudin/skills/
+!.claudin/memory/
+.claudin/memory/*
+!.claudin/memory/team/
 
 # ============================================================================
 # Crush / AI Agents
@@ -374,6 +384,5 @@ CLAUDE.md
 .crush/
 .agents/
 .crushignore
-AGENTS.md
 AGENT-*.md
 
