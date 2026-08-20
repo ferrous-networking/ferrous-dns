@@ -1,14 +1,23 @@
 use crate::{
-    dto::{CacheMetricsResponse, CacheStatsQuery, CacheStatsResponse},
+    dto::{
+        CacheEntriesQuery, CacheEntryResponse, CacheMetricsResponse, CacheStatsQuery,
+        CacheStatsResponse, DeleteCacheEntryQuery, PaginatedCacheEntries,
+    },
     errors::ApiError,
     state::AppState,
     utils::{parse_period, validate_period},
 };
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     Json,
 };
+use ferrous_dns_application::ports::{CacheEntryQuery, CacheEntrySnapshot};
+use ferrous_dns_domain::{DomainError, RecordType};
 use tracing::{debug, instrument};
+
+/// Upper bound on how many cache entries a single listing request may return.
+const MAX_CACHE_ENTRIES_LIMIT: u32 = 500;
 
 #[utoipa::path(
     get,
@@ -94,4 +103,119 @@ pub async fn get_cache_metrics(State(state): State<AppState>) -> Json<CacheMetri
         hit_rate: snapshot.hit_rate,
         transient_upstream_errors: snapshot.transient_upstream_errors,
     })
+}
+
+#[utoipa::path(
+    get,
+    path = "/cache/entries",
+    tag = "cache",
+    params(CacheEntriesQuery),
+    responses(
+        (status = 200, description = "Cached DNS entries", body = PaginatedCacheEntries),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
+#[instrument(skip(state), name = "api_get_cache_entries")]
+pub async fn get_cache_entries(
+    State(state): State<AppState>,
+    Query(params): Query<CacheEntriesQuery>,
+) -> Json<PaginatedCacheEntries> {
+    let limit = params.limit.clamp(1, MAX_CACHE_ENTRIES_LIMIT);
+
+    let query = CacheEntryQuery {
+        domain: params.domain.filter(|domain| !domain.is_empty()),
+        record_type: params
+            .record_type
+            .as_deref()
+            .and_then(|value| value.parse::<RecordType>().ok()),
+        sort: params
+            .sort
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_default(),
+        order: params
+            .order
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_default(),
+        limit: limit as usize,
+        offset: params.offset as usize,
+    };
+
+    let page = state.dns.cache.list_entries(&query);
+
+    debug!(
+        returned = page.entries.len(),
+        total = page.total,
+        records_total = page.records_total,
+        "Cache entries listed"
+    );
+
+    Json(PaginatedCacheEntries {
+        data: page.entries.iter().map(to_entry_response).collect(),
+        total: page.total,
+        records_total: page.records_total,
+        limit,
+        offset: params.offset,
+    })
+}
+
+#[utoipa::path(
+    delete,
+    path = "/cache/entries",
+    tag = "cache",
+    params(DeleteCacheEntryQuery),
+    responses(
+        (status = 204, description = "Cache entry removed"),
+        (status = 400, description = "Unknown record type"),
+        (status = 404, description = "Cache entry not found"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
+#[instrument(skip(state), name = "api_delete_cache_entry")]
+pub async fn delete_cache_entry(
+    State(state): State<AppState>,
+    Query(params): Query<DeleteCacheEntryQuery>,
+) -> Result<StatusCode, ApiError> {
+    let record_type = params.record_type.parse::<RecordType>().map_err(|_| {
+        DomainError::InvalidInput(format!("unknown record type: {}", params.record_type))
+    })?;
+
+    if !state.dns.cache.remove_record(&params.domain, &record_type) {
+        return Err(ApiError(DomainError::NotFound(format!(
+            "cache entry {} {}",
+            params.domain,
+            record_type.as_str()
+        ))));
+    }
+
+    debug!(domain = %params.domain, record_type = %record_type, "Cache entry removed");
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn to_entry_response(entry: &CacheEntrySnapshot) -> CacheEntryResponse {
+    CacheEntryResponse {
+        domain: entry.domain.clone(),
+        record_type: entry.record_type.as_str(),
+        answers: entry
+            .answers
+            .iter()
+            .map(|address| address.to_string())
+            .collect(),
+        canonical_name: entry.canonical_name.clone(),
+        dnssec_status: entry.dnssec_status.map(|status| status.as_str()),
+        ttl: entry.ttl,
+        remaining_ttl: entry.remaining_ttl,
+        cached_at: entry.cached_at_secs,
+        expires_at: if entry.is_permanent {
+            None
+        } else {
+            Some(entry.expires_at_secs)
+        },
+        hits: entry.hits,
+        last_access: entry.last_access_secs,
+        permanent: entry.is_permanent,
+        stale: entry.is_stale,
+    }
 }

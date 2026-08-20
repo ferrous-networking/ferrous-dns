@@ -56,7 +56,10 @@ pub use config_file_port::ConfigFilePersistence;
 pub use config_repository::ConfigRepository;
 pub use custom_service_repository::CustomServiceRepository;
 pub use dga_flag_store::{DgaEvictionTarget, DgaFlagStore};
-pub use dns_cache_port::{CacheMetricsSnapshot, DnsCachePort};
+pub use dns_cache_port::{
+    CacheEntryOrder, CacheEntryPage, CacheEntryQuery, CacheEntrySnapshot, CacheEntrySort,
+    CacheMetricsSnapshot, DnsCachePort,
+};
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use dnssec_stats_port::{DnssecStatsPort, DnssecValidatorStats};
 pub use group_repository::GroupRepository;

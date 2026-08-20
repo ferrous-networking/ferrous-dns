@@ -148,6 +148,8 @@ impl Modify for SecurityAddon {
         // cache
         dto::CacheStatsResponse,
         dto::CacheMetricsResponse,
+        dto::CacheEntryResponse,
+        dto::PaginatedCacheEntries,
         // clients
         dto::ClientResponse,
         dto::ClientStatsResponse,

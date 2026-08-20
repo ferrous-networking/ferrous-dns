@@ -534,6 +534,35 @@ GET /api/cache/metrics
 
 Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, hit rate.
 
+### List Cache Entries
+
+```http
+GET /api/cache/entries?limit=25&offset=0&sort=cached_at&order=desc
+```
+
+Returns the entries currently held in the positive cache, with filtering, ordering, and pagination.
+
+| Parameter | Type | Description |
+|:----------|:-----|:------------|
+| `limit` | integer | Max results (default: 25, max: 500) |
+| `offset` | integer | Pagination offset |
+| `domain` | string | Case-insensitive substring match on the cached domain |
+| `type` | string | Record type name, e.g. `A`, `AAAA`, `CNAME` |
+| `sort` | string | `hits`, `cached_at`, `expires_at`, `domain`, or `type` (default: `cached_at`) |
+| `order` | string | `asc` or `desc` (default: `desc`) |
+
+The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "offset": 0 }`, where `total` counts the entries matching the filters and `records_total` counts every entry in the cache. Each item carries `domain`, `type`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries.
+
+`hits` counts only lookups served from the shared cache — queries absorbed by the per-thread L1 cache are not included, so hot A/AAAA records report fewer hits than they actually served.
+
+### Delete Cache Entry
+
+```http
+DELETE /api/cache/entries?domain=example.com&type=A
+```
+
+Removes a single cache entry. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
+
 ---
 
 ## Upstream Health
