@@ -37,6 +37,10 @@ pub fn create_api_router_with_openapi(state: AppState) -> (Router, utoipa::opena
         .routes(routes!(handlers::cache::get_cache_stats))
         .routes(routes!(handlers::cache::get_cache_metrics))
         .routes(routes!(
+            handlers::cache::get_cache_entries,
+            handlers::cache::delete_cache_entry
+        ))
+        .routes(routes!(
             handlers::config::get::get_config,
             handlers::config::update::update_config
         ))

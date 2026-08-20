@@ -80,6 +80,14 @@ Multi-tab filtering management:
 - Automatic PTR generation from A records
 - Conditional forwarding configuration
 
+### Cache Control
+
+- Lists the entries currently held in the DNS cache: insertion time, remaining TTL, domain (with DNSSEC validation status), record type, answer, and hit count
+- Search by domain substring
+- Sort by clicking any column header (repeat click reverses the direction)
+- Paginated listing with a configurable page size
+- **Remove** — drop an individual entry from the cache
+
 ### Settings
 
 - **System Status** — hostname, kernel, CPU load, memory usage, uptime

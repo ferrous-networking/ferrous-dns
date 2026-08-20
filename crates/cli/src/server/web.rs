@@ -176,6 +176,8 @@ fn create_app(
         .route("/static/dashboard.js", get(dashboard_js_handler))
         .route("/static/queries.css", get(queries_css_handler))
         .route("/static/queries.js", get(queries_js_handler))
+        .route("/static/cache-control.css", get(cache_control_css_handler))
+        .route("/static/cache-control.js", get(cache_control_js_handler))
         .route("/static/dnssec.css", get(dnssec_css_handler))
         .route("/static/dnssec.js", get(dnssec_js_handler))
         .route("/static/clients.css", get(clients_css_handler))
@@ -205,6 +207,7 @@ fn create_app(
         .route("/login.html", get(login_handler))
         .route("/dashboard.html", get(dashboard_handler))
         .route("/queries.html", get(queries_handler))
+        .route("/cache-control.html", get(cache_control_handler))
         .route("/dnssec.html", get(dnssec_handler))
         .route("/clients.html", get(clients_handler))
         .route("/groups.html", get(groups_handler))
@@ -300,6 +303,10 @@ async fn queries_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/queries.html"))
 }
 
+async fn cache_control_handler() -> Html<&'static str> {
+    Html(include_str!("../../../../web/static/cache-control.html"))
+}
+
 async fn dnssec_handler() -> Html<&'static str> {
     Html(include_str!("../../../../web/static/dnssec.html"))
 }
@@ -362,6 +369,14 @@ css_handler!(
 js_handler!(dashboard_js_handler, "../../../../web/static/dashboard.js");
 css_handler!(queries_css_handler, "../../../../web/static/queries.css");
 js_handler!(queries_js_handler, "../../../../web/static/queries.js");
+css_handler!(
+    cache_control_css_handler,
+    "../../../../web/static/cache-control.css"
+);
+js_handler!(
+    cache_control_js_handler,
+    "../../../../web/static/cache-control.js"
+);
 css_handler!(dnssec_css_handler, "../../../../web/static/dnssec.css");
 js_handler!(dnssec_js_handler, "../../../../web/static/dnssec.js");
 css_handler!(clients_css_handler, "../../../../web/static/clients.css");

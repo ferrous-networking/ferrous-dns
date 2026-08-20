@@ -379,6 +379,9 @@ impl DnsCache {
         if self.cache.remove(&key).is_some() {
             self.permanent_keys.remove(&key);
             self.metrics.evictions.fetch_add(1, AtomicOrdering::Relaxed);
+            // The per-thread L1 keeps serving a removed record until it
+            // expires locally, so bump the generation like `clear()` does.
+            l1_clear();
             info!(domain = %domain, record_type = %record_type, "Removed record from cache");
             true
         } else {
@@ -733,6 +736,13 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
 
     fn remove_record(&self, domain: &str, record_type: &ferrous_dns_domain::RecordType) -> bool {
         self.remove(domain, record_type)
+    }
+
+    fn list_entries(
+        &self,
+        query: &ferrous_dns_application::ports::CacheEntryQuery,
+    ) -> ferrous_dns_application::ports::CacheEntryPage {
+        DnsCache::list_entries(self, query)
     }
 }
 

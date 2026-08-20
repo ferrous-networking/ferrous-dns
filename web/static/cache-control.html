@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Query Log</title>
+    <title>Ferrous DNS - Cache Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
@@ -11,7 +11,7 @@
     <script src="/ferrous-config.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
-    <link rel="stylesheet" href="/static/queries.css">
+    <link rel="stylesheet" href="/static/cache-control.css">
 </head>
 <body x-data="app()" x-init="init()">
 <div class="mobile-header">
@@ -44,7 +44,7 @@
         <div class="nav-section">
             <div class="nav-section-title">MAIN</div>
             <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item active"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
@@ -69,9 +69,8 @@
         <div class="nav-section">
             <div class="nav-section-title">DNS CONTROL</div>
             <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
-            <a href="/settings.html" class="nav-item"><i data-lucide="settings"
-                                                         class="nav-icon"></i><span>Settings</span></a>
+            <a href="/cache-control.html" class="nav-item active"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
     <div id="server-version" style="font-size:11px;color:var(--text-tertiary);padding:0 24px 4px"></div>
@@ -84,15 +83,17 @@
 <main style="padding:24px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Query Log</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">DNS query history — last 24h</p>
+            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">Cache Control</h2>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">
+                Entries currently held in the DNS cache — <span x-text="recordsTotal"></span> total
+            </p>
         </div>
     </div>
     <div class="card" style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
-                <select x-model.number="pageSize" @change="currentPage=1;_cursors={};loadQueries()"
+                <select x-model.number="pageSize" @change="currentPage=1;loadEntries()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="10">10</option>
                     <option value="25">25</option>
@@ -102,32 +103,9 @@
             </div>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Domain:</label>
-                <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;_cursors={};loadQueries()"
+                <input type="text" x-model="searchDomain" @input.debounce.400ms="currentPage=1;loadEntries()"
                        placeholder="Search domain..."
                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Client:</label>
-                <select x-model="searchClient" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px;width:200px">
-                    <option value="">All Clients</option>
-                    <template x-for="client in clients" :key="client.ip_address">
-                        <option :value="client.ip_address" x-text="clientLabel(client)"></option>
-                    </template>
-                </select>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Category:</label>
-                <select x-model="category" @change="currentPage=1;_cursors={};loadQueries()"
-                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
-                    <option value="">All Queries</option>
-                    <option value="allowed">Allowed</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="cache">Cache Hits</option>
-                    <option value="upstream">Upstream</option>
-                    <option value="rate-limited">Rate Limited</option>
-                    <option value="malware">Malware Detection</option>
-                </select>
             </div>
             <div style="margin-left:auto">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -142,99 +120,97 @@
         <table>
             <thead>
             <tr>
-                <th class="col-time">TIME</th>
-                <th>DOMAIN</th>
-                <th class="col-type" style="width:70px">TYPE</th>
-                <th class="col-client">CLIENT</th>
-                <th class="col-source">SOURCE</th>
+                <th class="col-time th-sort" @click="sortBy('cached_at')" title="Sort by insertion time">TIME<span
+                        class="sort-arrow" x-text="sortArrow('cached_at')"></span></th>
+                <th class="th-sort" @click="sortBy('domain')" title="Sort by domain">DOMAIN<span class="sort-arrow"
+                        x-text="sortArrow('domain')"></span></th>
+                <th class="col-type th-sort" style="width:70px" @click="sortBy('type')" title="Sort by record type">TYPE<span
+                        class="sort-arrow" x-text="sortArrow('type')"></span></th>
                 <th class="col-answer">ANSWER</th>
-                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
-                <th class="col-action" style="width:80px">ACTION</th>
+                <th class="col-ttl th-sort" @click="sortBy('expires_at')" title="Sort by remaining TTL">TTL<span
+                        class="sort-arrow" x-text="sortArrow('expires_at')"></span></th>
+                <th class="col-hit th-sort" @click="sortBy('hits')"
+                    title="Hits served from the shared cache. Lookups absorbed by the per-thread L1 cache are not counted.">
+                    HIT<span class="sort-arrow" x-text="sortArrow('hits')"></span></th>
+                <th class="col-action" style="width:90px">ACTION</th>
             </tr>
             </thead>
             <tbody>
-            <template x-for="query in paginatedQueries" :key="query.id||Math.random()">
-                <tr :class="(query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection') ? 'row-malware' : (query.response_status === 'RATE_LIMITED' || query.response_status === 'RATE_LIMITED_TC') ? 'row-rate-limited' : query.blocked ? 'row-blocked' : 'row-allowed'">
-                    <td style="font-size:12px" x-text="formatTime(query.timestamp)"></td>
+            <template x-for="entry in entries" :key="entry.domain + '|' + entry.type">
+                <tr>
+                    <td style="font-size:12px" x-text="formatCachedAt(entry.cached_at)"></td>
                     <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
                         <div style="display:flex;align-items:center;gap:5px;overflow:hidden">
-                            <template x-if="query.dnssec_status === 'Secure'">
+                            <template x-if="entry.dnssec_status === 'Secure'">
                                 <span class="dnssec-icon" data-tooltip="SECURE">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
-                            <template x-if="query.dnssec_status === 'Insecure'">
+                            <template x-if="entry.dnssec_status === 'Insecure'">
                                 <span class="dnssec-icon" data-tooltip="INSECURE">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EAB308" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
-                            <template x-if="query.dnssec_status === 'Bogus'">
+                            <template x-if="entry.dnssec_status === 'Bogus'">
                                 <span class="dnssec-icon" data-tooltip="BOGUS">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
                             </template>
-                            <template x-if="!['Secure','Insecure','Bogus'].includes(query.dnssec_status)">
+                            <template x-if="!['Secure','Insecure','Bogus'].includes(entry.dnssec_status)">
                                 <span class="dnssec-icon" data-tooltip="NOT VALIDATED">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                                 </span>
                             </template>
-                            <span x-text="query.domain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="query.domain"></span>
+                            <span x-text="entry.domain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="entry.domain"></span>
                         </div>
                     </td>
                     <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
-                              x-text="query.type"></span></td>
-                    <td class="col-client" style="font-size:13px"
-                        x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></td>
-                    <td style="max-width:0;overflow:hidden">
-                        <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                              :style="query.cache_hit
-                                ? 'background:rgba(168,85,247,0.1);color:#A855F7'
-                                : (query.block_source === 'dns_tunneling' || query.block_source === 'dns_rebinding' || query.block_source === 'nxdomain_hijack' || query.block_source === 'response_ip_filter' || query.block_source === 'dga_detection')
-                                  ? 'background:rgba(245,158,11,0.1);color:#F59E0B'
-                                  : query.block_source === 'blocklist'
-                                    ? 'background:rgba(239,68,68,0.1);color:#ef4444'
-                                    : query.block_source === 'managed_domain'
-                                      ? 'background:rgba(249,115,22,0.1);color:#f97316'
-                                      : query.block_source === 'regex_filter'
-                                        ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
-                                        : query.response_status === 'LOCAL_DNS'
-                                          ? 'background:rgba(34,197,94,0.1);color:#22C55E'
-                                          : 'background:rgba(59,130,246,0.1);color:#3B82F6'"
-                              x-html="formatSource(query)"
-                              :title="query.upstream_pool && query.upstream_server
-                                ? query.upstream_pool + ':' + query.upstream_server
-                                : ''"></span>
-                    </td>
+                              x-text="entry.type"></span></td>
                     <td class="col-answer">
-                        <template x-if="!query.answers || !query.answers.length">
-                            <span style="color:var(--text-secondary)">—</span>
-                        </template>
-                        <template x-if="query.answers && query.answers.length">
-                            <div class="answer-tip" :data-tooltip="query.answers.join('\n')">
-                                <template x-for="(ip, i) in query.answers.slice(0, 2)" :key="i">
+                        <template x-if="entry.answers && entry.answers.length">
+                            <div class="answer-tip" :data-tooltip="entry.answers.join('\n')">
+                                <template x-for="(ip, i) in entry.answers.slice(0, 2)" :key="i">
                                     <div x-text="ip" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
                                 </template>
-                                <template x-if="query.answers.length > 2">
-                                    <span class="answer-more" x-text="'+' + (query.answers.length - 2)"></span>
+                                <template x-if="entry.answers.length > 2">
+                                    <span class="answer-more" x-text="'+' + (entry.answers.length - 2)"></span>
                                 </template>
                             </div>
                         </template>
+                        <template x-if="(!entry.answers || !entry.answers.length) && entry.canonical_name">
+                            <div x-text="entry.canonical_name" :title="entry.canonical_name"
+                                 style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+                        </template>
+                        <template x-if="(!entry.answers || !entry.answers.length) && !entry.canonical_name">
+                            <span style="color:var(--text-secondary)">—</span>
+                        </template>
                     </td>
-                    <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
+                    <td class="col-ttl" style="font-size:13px">
+                        <span x-text="formatTtl(entry)"></span>
+                        <template x-if="entry.stale">
+                            <span class="badge-stale">stale</span>
+                        </template>
+                    </td>
+                    <td class="col-hit" style="font-size:13px" x-text="entry.hits"></td>
                     <td class="col-action">
-                        <button type="button" class="btn-action"
-                            :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
-                            @click="handleDomainAction(query)"
-                            x-text="query.blocked ? 'Allow' : 'Block'">
+                        <button type="button" class="btn-action btn-action-remove"
+                            :disabled="removing === entry.domain + '|' + entry.type"
+                            @click="removeEntry(entry)">Remove
                         </button>
                     </td>
+                </tr>
+            </template>
+            <template x-if="entries.length === 0">
+                <tr>
+                    <td colspan="7" style="text-align:center;color:var(--text-secondary);padding:32px 0"
+                        x-text="searchDomain ? 'No cached entries match this domain.' : 'No entries in the cache yet.'"></td>
                 </tr>
             </template>
             </tbody>
         </table>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
             <div style="font-size:14px;color:var(--text-secondary)">
-                Showing <span x-text="(currentPage-1)*pageSize+1"></span> to <span
+                Showing <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> to <span
                     x-text="Math.min(currentPage*pageSize,total)"></span> of <span
                     x-text="total"></span>
             </div>
@@ -243,14 +219,14 @@
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
                         :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
                 </button>
-                <button @click="changePage(1)" :disabled="!_hasMore"
+                <button @click="changePage(1)" :disabled="!hasMore"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''">Next
+                        :style="!hasMore?'opacity:0.5;cursor:not-allowed':''">Next
                 </button>
             </div>
         </div>
     </div>
 </main>
-<script src="/static/queries.js"></script>
+<script src="/static/cache-control.js"></script>
 </body>
 </html>
