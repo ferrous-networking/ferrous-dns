@@ -101,7 +101,7 @@ docker compose up -d
 
 ## Windows (WSL2)
 
-There is no native Windows build. Ferrous DNS's UDP hot path relies on Linux-only socket APIs (`SO_REUSEPORT` for the per-core listeners, `IP_PKTINFO` for source-address selection, `recvmmsg` for batched receives), so on Windows it runs inside **WSL2** — either the Linux binary directly or the Docker image via Docker Desktop's WSL2 backend.
+There is no native Windows build. Ferrous DNS's UDP hot path relies on Linux-only socket APIs (`SO_REUSEPORT` for the per-core listeners, `IPV6_PKTINFO` for source-address selection, `recvmmsg` for batched receives), so on Windows it runs inside **WSL2** — either the Linux binary directly or the Docker image via Docker Desktop's WSL2 backend.
 
 The catch is networking, not the build: by default WSL2 sits behind NAT with its own IP, so devices on your LAN cannot reach port 53 inside it. `netsh interface portproxy` does **not** solve this — it forwards TCP only, and DNS is primarily UDP. Network-wide blocking therefore requires WSL's *mirrored* networking mode.
 

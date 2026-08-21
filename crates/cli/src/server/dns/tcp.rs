@@ -1,4 +1,5 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
+use super::pktinfo;
 use ferrous_dns_infrastructure::dns::proxy_protocol::{
     read_proxy_v2_client_ip, ProxyProtocolError,
 };
@@ -38,6 +39,9 @@ pub(super) async fn run_tcp_worker(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                // The dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`;
+                // normalise so limits, groups, and logs see real IPv4.
+                let peer_addr = pktinfo::unmap_socket_addr(peer_addr);
                 let guard = match conn_limiter.try_acquire(peer_addr.ip()) {
                     Some(g) => g,
                     None => {
