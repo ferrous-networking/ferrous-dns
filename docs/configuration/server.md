@@ -18,8 +18,41 @@ metrics_enabled = false
 |:-------|:--------|:------------|
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
-| `bind_address` | `0.0.0.0` | Network interface to bind to. Use a specific IP to restrict access |
+| `bind_address` | `0.0.0.0` | Default address every listener binds to. Use a specific IP to restrict access, or `[::]` for dual-stack |
 | `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
+
+### Dual-stack (IPv4 + IPv6) {#dual-stack}
+
+`bind_address = "[::]"` makes every listener — Do53 (UDP and TCP), DoT, DoH, DoQ, and the web dashboard — serve IPv4 and IPv6 clients on a single dual-stack socket:
+
+```toml
+[server]
+bind_address = "[::]"
+```
+
+IPv4 clients arrive on that socket in v4-mapped form (`::ffff:192.168.1.10`). Ferrous DNS normalises them back to plain IPv4 before anything client-facing sees them, so client groups, per-client rules, the per-IP connection limit, and the query log key a device the same way whichever protocol and address family it used.
+
+A bare `bind_address = "::"` works too; the brackets are added automatically when the listen address is built.
+
+!!! note "IPv6 must exist in the kernel"
+    All DNS listeners are created as `AF_INET6` sockets, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them. IPv6 does not need to be configured on the network — it only needs to be available in the kernel.
+
+### Per-listener bind addresses {#per-listener-bind}
+
+Each encrypted-DNS listener can override `bind_address`, which is useful when the protocols should not all be exposed on the same interface:
+
+```toml
+[server]
+bind_address = "0.0.0.0"            # Do53 and the dashboard stay on IPv4
+
+[server.encrypted_dns]
+dot_enabled      = true
+dot_bind_address = "[::]"           # DoT is dual-stack
+doq_enabled      = true
+doq_bind_address = "192.168.1.10"   # DoQ only on the LAN address
+```
+
+See [Encrypted DNS](#encrypted-dns) for the full list of options.
 
 ---
 
@@ -162,10 +195,13 @@ tls_key_path  = "/data/key.pem"
 |:-------|:--------|:------------|
 | `dot_enabled` | `false` | Enable DoT listener |
 | `dot_port` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
+| `dot_bind_address` | — | Address for the DoT listener; inherits `[server].bind_address` when omitted |
 | `doh_enabled` | `false` | Enable DoH endpoint (`/dns-query`) |
 | `doh_port` | — | Dedicated HTTPS port for DoH; omit to co-host on `web_port` |
+| `doh_bind_address` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted |
 | `doq_enabled` | `false` | Enable DoQ listener |
 | `doq_port` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
+| `doq_bind_address` | — | Address for the DoQ listener; inherits `[server].bind_address` when omitted |
 | `tls_cert_path` | `/data/cert.pem` | Path to TLS certificate (PEM) |
 | `tls_key_path` | `/data/key.pem` | Path to TLS private key (PEM) |
 
