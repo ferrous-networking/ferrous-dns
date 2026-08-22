@@ -31,12 +31,7 @@ pub async fn start_dns_server(
     // sockaddr_in6 / in6_pktinfo; `set_only_v6(false)` (in create_*_socket) lets
     // a `[::]` bind answer both families. A mapped IPv4 bind preserves v4-only
     // behaviour for that single address.
-    let socket_addr: SocketAddr = match parsed {
-        SocketAddr::V4(v4) => {
-            SocketAddr::new(std::net::IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port())
-        }
-        SocketAddr::V6(_) => parsed,
-    };
+    let socket_addr = pktinfo::v6_mapped_bind_addr(parsed);
     let domain = Domain::IPV6;
 
     info!(bind_address = %socket_addr, num_workers, "Starting DNS server with SO_REUSEPORT");

@@ -1,4 +1,5 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
+use super::pktinfo;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use quinn::crypto::rustls::QuicServerConfig;
 use quinn::VarInt;
@@ -65,7 +66,9 @@ pub async fn serve_doq(
     doq_conn_limiter: ConnectionLimiter,
 ) {
     while let Some(incoming) = endpoint.accept().await {
-        let peer_addr = incoming.remote_address();
+        // A dual-stack endpoint reports IPv4 peers as `::ffff:a.b.c.d`;
+        // normalise so limits, groups, and logs see real IPv4.
+        let peer_addr = pktinfo::unmap_socket_addr(incoming.remote_address());
         let guard = match doq_conn_limiter.try_acquire(peer_addr.ip()) {
             Some(g) => g,
             None => {
@@ -83,7 +86,7 @@ async fn handle_doq_connection(
     handler: Arc<DnsServerHandler>,
     _guard: ConnectionGuard,
 ) {
-    let peer_addr = incoming.remote_address();
+    let peer_addr = pktinfo::unmap_socket_addr(incoming.remote_address());
 
     let connection = match incoming.await {
         Ok(c) => c,
@@ -94,7 +97,7 @@ async fn handle_doq_connection(
     };
 
     debug!(client = %peer_addr, "DoQ connection accepted");
-    let client_ip = connection.remote_address().ip();
+    let client_ip = pktinfo::unmap_socket_addr(connection.remote_address()).ip();
 
     loop {
         let (send_stream, recv_stream) = match connection.accept_bi().await {

@@ -1,4 +1,5 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
+use super::pktinfo;
 use ferrous_dns_infrastructure::dns::proxy_protocol::{
     read_proxy_v2_client_ip, ProxyProtocolError,
 };
@@ -12,11 +13,15 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
-pub fn create_dot_listener(domain: Domain, addr: SocketAddr) -> anyhow::Result<TcpListener> {
-    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
-    if addr.is_ipv6() {
-        socket.set_only_v6(false)?;
-    }
+/// Binds the DoT listener on `bind_addr`. Like the Do53 listeners, the socket
+/// is always AF_INET6 with `only_v6` off: an IPv4 `bind_addr` is bound in
+/// v4-mapped form and keeps its v4-only behaviour, while `[::]` serves both
+/// families on one socket. Binding is synchronous, so the returned listener is
+/// ready to accept immediately.
+pub fn bind_dot_listener(bind_addr: &str) -> anyhow::Result<TcpListener> {
+    let addr = pktinfo::v6_mapped_bind_addr(bind_addr.parse()?);
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+    socket.set_only_v6(false)?;
     socket.set_reuse_address(true)?;
     #[cfg(unix)]
     socket.set_reuse_port(true)?;
@@ -35,18 +40,32 @@ pub async fn start_dot_server(
     proxy_protocol_enabled: bool,
     dot_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
-    let addr: SocketAddr = bind_addr.parse()?;
-    let domain = if addr.is_ipv4() {
-        Domain::IPV4
-    } else {
-        Domain::IPV6
-    };
+    let listener = Arc::new(bind_dot_listener(&bind_addr)?);
+    info!(bind_address = %listener.local_addr()?, "Starting DoT server (DNS-over-TLS, RFC 7858)");
+    serve_dot(
+        listener,
+        tls_config,
+        handler,
+        num_workers,
+        proxy_protocol_enabled,
+        dot_conn_limiter,
+    )
+    .await;
+    Ok(())
+}
+
+/// Runs the accept loops for an already-bound DoT listener. Split from
+/// `start_dot_server` so tests can bind on an ephemeral port, read the
+/// resolved address, and drive the loop without a bind race.
+pub async fn serve_dot(
+    listener: Arc<TcpListener>,
+    tls_config: Arc<rustls::ServerConfig>,
+    handler: Arc<DnsServerHandler>,
+    num_workers: usize,
+    proxy_protocol_enabled: bool,
+    dot_conn_limiter: ConnectionLimiter,
+) {
     let acceptor = TlsAcceptor::from(tls_config);
-
-    info!(bind_address = %addr, "Starting DoT server (DNS-over-TLS, RFC 7858)");
-
-    let listener = Arc::new(create_dot_listener(domain, addr)?);
-
     let mut handles = Vec::with_capacity(num_workers);
     for _ in 0..num_workers {
         handles.push(tokio::spawn(run_dot_accept_loop(
@@ -58,11 +77,12 @@ pub async fn start_dot_server(
         )));
     }
 
-    info!("DoT server ready on {}", addr);
+    if let Ok(addr) = listener.local_addr() {
+        info!("DoT server ready on {}", addr);
+    }
     for handle in handles {
         let _ = handle.await;
     }
-    Ok(())
 }
 
 async fn run_dot_accept_loop(
@@ -75,6 +95,9 @@ async fn run_dot_accept_loop(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                // The dual-stack listener reports IPv4 peers as `::ffff:a.b.c.d`;
+                // normalise so limits, groups, and logs see real IPv4.
+                let peer_addr = pktinfo::unmap_socket_addr(peer_addr);
                 let guard = match conn_limiter.try_acquire(peer_addr.ip()) {
                     Some(g) => g,
                     None => {

@@ -5,196 +5,22 @@
 //! upstream DoQ client setup in
 //! `ferrous_dns_infrastructure::dns::transport::quic`.
 
-use async_trait::async_trait;
+mod common;
+
+use common::{
+    build_a_query, dual_stack_loopback_available, handler_with_canned_addresses,
+    SkipServerVerification,
+};
 use ferrous_dns::server::{
     bind_doq_endpoint, load_server_tls_config, serve_doq, ConnectionLimiter,
 };
-use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, CacheStats, DnsResolution, DnsResolver, FilterDecision,
-    PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket, TlsCertificatePort,
-};
-use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{
-    BlockResponseMode, DnsQuery, DnssecStats, DomainError, QueryLog, QueryLogFilter, QueryStats,
-};
-use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
+use ferrous_dns_application::ports::TlsCertificatePort;
 use ferrous_dns_infrastructure::tls::TlsCertificateService;
-use hickory_proto::op::{Message, MessageType, OpCode, Query as WireQuery};
-use hickory_proto::rr::{DNSClass, Name, RData, RecordType as HickoryRecordType};
-use hickory_proto::serialize::binary::{BinEncodable, BinEncoder};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use hickory_proto::op::Message;
+use hickory_proto::rr::RData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-
-// ── Minimal port doubles (hand-rolled per crate test-placement convention —
-// application crate mocks aren't reachable from the cli crate's test binary) ──
-
-/// Resolver whose cache always hits with a fixed set of addresses, regardless
-/// of the query's domain/type.
-struct CannedAddressResolver {
-    addresses: Vec<IpAddr>,
-    ttl: u32,
-}
-
-#[async_trait]
-impl DnsResolver for CannedAddressResolver {
-    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
-        unimplemented!("cache hit only")
-    }
-
-    fn try_cache(&self, _query: &DnsQuery) -> Option<DnsResolution> {
-        let mut res = DnsResolution::new(self.addresses.clone(), true);
-        res.min_ttl = Some(self.ttl);
-        Some(res)
-    }
-}
-
-/// Allows every domain; assigns the default group.
-struct AllowAllFilter;
-
-#[async_trait]
-impl BlockFilterEnginePort for AllowAllFilter {
-    fn resolve_group(&self, _ip: IpAddr) -> i64 {
-        0
-    }
-    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
-        FilterDecision::Allow
-    }
-    fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
-    async fn reload(&self) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn load_client_groups(&self) -> Result<(), DomainError> {
-        Ok(())
-    }
-    fn compiled_domain_count(&self) -> usize {
-        0
-    }
-    fn is_blocking_enabled(&self) -> bool {
-        false
-    }
-    fn set_blocking_enabled(&self, _enabled: bool) {}
-}
-
-/// Drops every logged query.
-struct NoopQueryLog;
-
-#[async_trait]
-impl QueryLogRepository for NoopQueryLog {
-    async fn log_query(&self, _query: &QueryLog) -> Result<(), DomainError> {
-        Ok(())
-    }
-    async fn get_recent(
-        &self,
-        _limit: u32,
-        _period_hours: f32,
-    ) -> Result<Vec<QueryLog>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_recent_paged(
-        &self,
-        _limit: u32,
-        _offset: u32,
-        _period_hours: f32,
-        _cursor: Option<i64>,
-        _filter: &QueryLogFilter,
-    ) -> Result<PagedQueryResult, DomainError> {
-        unimplemented!()
-    }
-    async fn get_stats(&self, _period_hours: f32) -> Result<QueryStats, DomainError> {
-        unimplemented!()
-    }
-    async fn get_dnssec_stats(&self, _period_hours: f32) -> Result<DnssecStats, DomainError> {
-        unimplemented!()
-    }
-    async fn get_timeline(
-        &self,
-        _period_hours: u32,
-        _granularity: TimeGranularity,
-    ) -> Result<Vec<TimelineBucket>, DomainError> {
-        unimplemented!()
-    }
-    async fn count_queries_since(&self, _seconds_ago: i64) -> Result<u64, DomainError> {
-        unimplemented!()
-    }
-    async fn get_cache_stats(&self, _period_hours: f32) -> Result<CacheStats, DomainError> {
-        unimplemented!()
-    }
-    async fn get_top_blocked_domains(
-        &self,
-        _limit: u32,
-        _period_hours: f32,
-    ) -> Result<Vec<(String, u64)>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_top_allowed_domains(
-        &self,
-        _limit: u32,
-        _period_hours: f32,
-    ) -> Result<Vec<(String, u64)>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_distinct_recent_domains(
-        &self,
-        _limit: u32,
-        _period_hours: f32,
-    ) -> Result<Vec<(String, u64)>, DomainError> {
-        unimplemented!()
-    }
-    async fn get_top_clients(
-        &self,
-        _limit: u32,
-        _period_hours: f32,
-    ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
-        unimplemented!()
-    }
-    async fn delete_older_than(&self, _days: u32) -> Result<u64, DomainError> {
-        unimplemented!()
-    }
-}
-
-/// Builds a handler that always resolves to `addresses` with the given TTL.
-fn handler_with_canned_addresses(addresses: Vec<IpAddr>, ttl: u32) -> Arc<DnsServerHandler> {
-    let resolver: Arc<dyn DnsResolver> = Arc::new(CannedAddressResolver { addresses, ttl });
-    let use_case = Arc::new(HandleDnsQueryUseCase::new(
-        resolver,
-        Arc::new(AllowAllFilter),
-        Arc::new(NoopQueryLog),
-    ));
-    Arc::new(DnsServerHandler::new(
-        use_case,
-        BlockPolicy {
-            mode: BlockResponseMode::NullIp,
-            ttl: 60,
-            sinkhole_ipv4: None,
-            sinkhole_ipv6: None,
-        },
-    ))
-}
-
-/// Builds a valid wire-format A-record query for `name`.
-fn build_a_query(name: &str) -> Vec<u8> {
-    let fqdn = if name.ends_with('.') {
-        name.to_string()
-    } else {
-        format!("{name}.")
-    };
-    let mut query = WireQuery::new();
-    query.set_name(Name::from_str(&fqdn).unwrap());
-    query.set_query_type(HickoryRecordType::A);
-    query.set_query_class(DNSClass::IN);
-
-    let mut message = Message::new(fastrand::u16(..), MessageType::Query, OpCode::Query);
-    message.metadata.recursion_desired = true;
-    message.add_query(query);
-
-    let mut buf = Vec::with_capacity(64);
-    let mut encoder = BinEncoder::new(&mut buf);
-    message.emit(&mut encoder).unwrap();
-    buf
-}
 
 /// Starts a DoQ listener on an ephemeral loopback port with a fresh
 /// self-signed cert and the given connection limiter. The endpoint is bound
@@ -230,64 +56,6 @@ async fn start_test_doq_server_on(bind: &str, conn_limiter: ConnectionLimiter) -
         handler_with_canned_addresses(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))], 300);
     tokio::spawn(serve_doq(endpoint, handler, conn_limiter));
     addr
-}
-
-/// Dummy certificate verifier that accepts any certificate — the test server
-/// uses a throwaway self-signed cert, so there's nothing to chain to a root.
-#[derive(Debug)]
-struct SkipServerVerification(Arc<rustls::crypto::CryptoProvider>);
-
-impl SkipServerVerification {
-    fn new() -> Arc<Self> {
-        Arc::new(Self(
-            Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
-        ))
-    }
-}
-
-impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &CertificateDer<'_>,
-        _intermediates: &[CertificateDer<'_>],
-        _server_name: &ServerName<'_>,
-        _ocsp: &[u8],
-        _now: UnixTime,
-    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls12_signature(
-            message,
-            cert,
-            dss,
-            &self.0.signature_verification_algorithms,
-        )
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &rustls::DigitallySignedStruct,
-    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls13_signature(
-            message,
-            cert,
-            dss,
-            &self.0.signature_verification_algorithms,
-        )
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        self.0.signature_verification_algorithms.supported_schemes()
-    }
 }
 
 /// Builds a `quinn` client endpoint configured for DoQ (ALPN `doq`) that
@@ -353,6 +121,49 @@ async fn round_trip_returns_expected_answer() {
     match &msg.answers[0].data {
         RData::A(a) => assert_eq!(a.0, Ipv4Addr::new(93, 184, 216, 34)),
         other => panic!("expected an A record, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn ipv4_client_on_a_dual_stack_bind_is_keyed_as_plain_ipv4() {
+    // Needs a `[::]` socket that actually receives IPv4 — the whole point of
+    // the test is the v4-mapped peer address a dual-stack bind produces.
+    if !dual_stack_loopback_available() {
+        eprintln!(
+            "skipping ipv4_client_on_a_dual_stack_bind_is_keyed_as_plain_ipv4: \
+             no dual-stack loopback available"
+        );
+        return;
+    }
+
+    let limiter = ConnectionLimiter::new(1);
+    let bound = start_test_doq_server_on("[::]:0", limiter.clone()).await;
+
+    // Take the single slot for plain 127.0.0.1. An IPv4 client reaching the
+    // dual-stack endpoint arrives at the socket as ::ffff:127.0.0.1: unless
+    // the accept path unmaps it, the limiter keys it separately and hands out
+    // a slot of its own instead of refusing.
+    let _held = limiter
+        .try_acquire(IpAddr::V4(Ipv4Addr::LOCALHOST))
+        .expect("the single slot for 127.0.0.1 should be free");
+
+    let target = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), bound.port());
+    let endpoint = build_test_client_endpoint();
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        endpoint.connect(target, "localhost").unwrap(),
+    )
+    .await;
+
+    match outcome {
+        Ok(Ok(_conn)) => panic!(
+            "the IPv4 client was keyed as ::ffff:127.0.0.1 instead of 127.0.0.1, \
+             so the per-IP limit did not apply and it got a second slot"
+        ),
+        Ok(Err(_refused)) => { /* refused as expected: the peer was unmapped */ }
+        Err(_elapsed) => {
+            panic!("refused connection should resolve promptly, not hang past the timeout")
+        }
     }
 }
 
