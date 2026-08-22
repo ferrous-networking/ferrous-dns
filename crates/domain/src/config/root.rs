@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 
 use super::auth::AuthConfig;
 use super::blocking::BlockingConfig;
@@ -87,6 +88,32 @@ impl Config {
             return Err(ConfigError::Validation("DNS port cannot be 0".to_string()));
         }
 
+        // Every listener parses its address only when it binds, and the
+        // encrypted ones bind inside a spawned task — so without this an
+        // unparseable address takes a listener down with a single log line
+        // while the process stays up. Check them all up front instead. A
+        // listener that falls back to `bind_address` is already covered by
+        // the first check, so only an explicit override is named separately.
+        check_listen_address("server.bind_address", &self.server.dns_listen_address())?;
+        let encrypted = &self.server.encrypted_dns;
+        if encrypted.dot_enabled && encrypted.dot_bind_address.is_some() {
+            check_listen_address(
+                "server.encrypted_dns.dot_bind_address",
+                &self.server.dot_listen_address(),
+            )?;
+        }
+        if encrypted.doq_enabled && encrypted.doq_bind_address.is_some() {
+            check_listen_address(
+                "server.encrypted_dns.doq_bind_address",
+                &self.server.doq_listen_address(),
+            )?;
+        }
+        if encrypted.doh_enabled && encrypted.doh_bind_address.is_some() {
+            if let Some(addr) = self.server.doh_listen_address() {
+                check_listen_address("server.encrypted_dns.doh_bind_address", &addr)?;
+            }
+        }
+
         if self.dns.pools.is_empty() && self.dns.upstream_servers.is_empty() {
             return Err(ConfigError::Validation(
                 "No upstream servers configured".to_string(),
@@ -123,4 +150,15 @@ pub struct CliOverrides {
     pub bind_address: Option<String>,
     pub database_path: Option<String>,
     pub log_level: Option<String>,
+}
+
+/// Rejects a listen address the listeners could not bind. `field` names the
+/// configuration key so the operator knows which one to fix.
+fn check_listen_address(field: &str, addr: &str) -> Result<(), ConfigError> {
+    if addr.parse::<SocketAddr>().is_ok() {
+        return Ok(());
+    }
+    Err(ConfigError::Validation(format!(
+        "{field} yields the invalid listen address '{addr}'; it must be an IPv4 or IPv6 literal, not a hostname"
+    )))
 }
