@@ -111,7 +111,15 @@ fn extract_source_ip(
                 additional[14],
                 additional[15],
             ];
-            Ok(IpAddr::V6(Ipv6Addr::from(octets)))
+            // A dual-stack frontend encodes an IPv4 client as TCP6 with a
+            // v4-mapped address. Normalise it, so a client keyed as
+            // `10.0.0.1` on the direct path is not keyed as
+            // `::ffff:10.0.0.1` behind the proxy.
+            let v6 = Ipv6Addr::from(octets);
+            Ok(match v6.to_ipv4_mapped() {
+                Some(v4) => IpAddr::V4(v4),
+                None => IpAddr::V6(v6),
+            })
         }
         FAMILY_UNSPEC => Ok(peer_addr),
         _ => Ok(peer_addr),
