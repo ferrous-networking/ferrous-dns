@@ -5,7 +5,7 @@ mod web_tls;
 
 pub use dns::connection_limiter::ConnectionLimiter;
 pub use dns::doq::{bind_doq_endpoint, serve_doq, start_doq_server};
-pub use dns::dot::start_dot_server;
+pub use dns::dot::{bind_dot_listener, serve_dot, start_dot_server};
 pub use dns::start_dns_server;
 pub use dns::start_mdns_listener;
 pub use dns::tls_config::load_server_tls_config;

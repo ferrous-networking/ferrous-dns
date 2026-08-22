@@ -586,6 +586,17 @@ pub(super) fn unmap_socket_addr(addr: SocketAddr) -> SocketAddr {
     }
 }
 
+/// Rewrites an IPv4 bind address into its v4-mapped form (`::ffff:a.b.c.d`) so
+/// every listener can be created on an AF_INET6 socket. An IPv6 bind is left
+/// alone: combined with `set_only_v6(false)`, a `[::]` bind then serves both
+/// families on a single socket, while a mapped IPv4 bind stays v4-only.
+pub(super) fn v6_mapped_bind_addr(addr: SocketAddr) -> SocketAddr {
+    match addr {
+        SocketAddr::V4(v4) => SocketAddr::new(IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port()),
+        SocketAddr::V6(_) => addr,
+    }
+}
+
 pub(super) fn sockaddr_in6_to_socket_addr(addr: &libc::sockaddr_in6) -> SocketAddr {
     let v6 = Ipv6Addr::from(addr.sin6_addr.s6_addr);
     let port = u16::from_be(addr.sin6_port);
@@ -679,5 +690,20 @@ mod tests {
         );
         let v6: SocketAddr = "[2001:db8::1]:4242".parse().unwrap();
         assert_eq!(unmap_socket_addr(v6), v6);
+    }
+
+    #[test]
+    fn v6_mapped_bind_addr_maps_ipv4_binds() {
+        let v4: SocketAddr = "192.0.2.1:853".parse().unwrap();
+        assert_eq!(
+            v6_mapped_bind_addr(v4),
+            "[::ffff:192.0.2.1]:853".parse::<SocketAddr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn v6_mapped_bind_addr_keeps_ipv6_binds() {
+        let wildcard: SocketAddr = "[::]:853".parse().unwrap();
+        assert_eq!(v6_mapped_bind_addr(wildcard), wildcard);
     }
 }

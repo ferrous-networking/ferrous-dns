@@ -70,6 +70,20 @@ async fn test_proxy_v2_tcp6_returns_real_client_ip() {
 }
 
 #[tokio::test]
+async fn test_proxy_v2_tcp6_unmaps_a_v4_mapped_client_ip() {
+    // A dual-stack frontend forwards an IPv4 client as TCP6 with
+    // `::ffff:10.0.0.100`. It has to key the same as the direct path.
+    let src_ip = Ipv4Addr::new(10, 0, 0, 100).to_ipv6_mapped().octets();
+    let header = build_tcp6_header(src_ip, [0; 16], 54321, 853);
+
+    let peer_addr: IpAddr = "::1".parse().unwrap();
+    let mut stream = header.as_slice();
+    let result = read_proxy_v2_client_ip(&mut stream, peer_addr).await;
+
+    assert_eq!(result.unwrap(), IpAddr::V4(Ipv4Addr::new(10, 0, 0, 100)));
+}
+
+#[tokio::test]
 async fn test_proxy_v2_local_command_returns_peer_addr() {
     let header = build_local_header();
 

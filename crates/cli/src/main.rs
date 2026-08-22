@@ -140,7 +140,7 @@ async fn async_main() -> anyhow::Result<()> {
     )
     .await;
 
-    let dns_addr = format!("{}:{}", config.server.bind_address, config.server.dns_port);
+    let dns_addr = config.server.dns_listen_address();
     let handler_use_case = dns_services.handler_use_case;
     let tcp_conn_limiter = dns_services.tcp_conn_limiter;
     let dot_conn_limiter = dns_services.dot_conn_limiter;
@@ -193,10 +193,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     if config.server.encrypted_dns.dot_enabled {
         if let Some(tls_cfg) = tls_config.clone() {
-            let dot_addr = format!(
-                "{}:{}",
-                config.server.bind_address, config.server.encrypted_dns.dot_port
-            );
+            let dot_addr = config.server.dot_listen_address();
             let dot_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
@@ -226,10 +223,7 @@ async fn async_main() -> anyhow::Result<()> {
             &[b"doq"],
         )?;
         if let Some(tls_cfg) = doq_tls_config {
-            let doq_addr = format!(
-                "{}:{}",
-                config.server.bind_address, config.server.encrypted_dns.doq_port
-            );
+            let doq_addr = config.server.doq_listen_address();
             let doq_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
@@ -245,11 +239,10 @@ async fn async_main() -> anyhow::Result<()> {
     }
 
     let doh_handler = if config.server.encrypted_dns.doh_enabled {
-        if let Some(doh_port) = config.server.encrypted_dns.doh_port {
+        if let Some(doh_bind_addr) = config.server.doh_listen_address() {
             if tls_config.is_some() {
-                let doh_addr: SocketAddr = format!("{}:{}", config.server.bind_address, doh_port)
-                    .parse()
-                    .context("Invalid DoH bind address")?;
+                let doh_addr: SocketAddr =
+                    doh_bind_addr.parse().context("Invalid DoH bind address")?;
                 let dedicated_doh_handler = Arc::new(DnsServerHandler::new(
                     handler_use_case.clone(),
                     block_policy,
@@ -280,7 +273,9 @@ async fn async_main() -> anyhow::Result<()> {
         None
     };
 
-    let web_addr: SocketAddr = format!("{}:{}", config.server.bind_address, config.server.web_port)
+    let web_addr: SocketAddr = config
+        .server
+        .web_listen_address()
         .parse()
         .expect("Invalid address");
 

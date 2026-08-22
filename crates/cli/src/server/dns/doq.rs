@@ -1,8 +1,10 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
+use super::pktinfo;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use quinn::crypto::rustls::QuicServerConfig;
 use quinn::VarInt;
-use std::net::{IpAddr, SocketAddr};
+use socket2::{Domain, Protocol, Socket, Type};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -25,12 +27,15 @@ const DOQ_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// on `bind_addr`, advertising whatever ALPN the supplied `tls_config` carries
 /// (the caller sets `doq`). Binding is synchronous, so the returned endpoint is
 /// ready to accept connections immediately.
+///
+/// Like the Do53 and DoT listeners, the socket is always AF_INET6 with
+/// `only_v6` off: an IPv4 `bind_addr` is bound in v4-mapped form and keeps its
+/// v4-only behaviour, while `[::]` serves both families on one socket.
 pub fn bind_doq_endpoint(
     bind_addr: &str,
     tls_config: Arc<rustls::ServerConfig>,
 ) -> anyhow::Result<quinn::Endpoint> {
-    let addr: SocketAddr = bind_addr.parse()?;
-
+    let addr = pktinfo::v6_mapped_bind_addr(bind_addr.parse()?);
     let quic_crypto = QuicServerConfig::try_from(tls_config)?;
     let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(quic_crypto));
     // A freshly built ServerConfig uniquely owns its transport config, so this
@@ -41,7 +46,18 @@ pub fn bind_doq_endpoint(
     transport_config.keep_alive_interval(Some(DOQ_KEEP_ALIVE_INTERVAL));
     transport_config.max_concurrent_bidi_streams(VarInt::from_u32(DOQ_MAX_CONCURRENT_BIDI_STREAMS));
 
-    Ok(quinn::Endpoint::server(server_config, addr)?)
+    let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_only_v6(false)?;
+    socket.bind(&addr.into())?;
+    socket.set_nonblocking(true)?;
+    let runtime = quinn::default_runtime()
+        .ok_or_else(|| anyhow::anyhow!("no async runtime available for the DoQ endpoint"))?;
+    Ok(quinn::Endpoint::new(
+        quinn::EndpointConfig::default(),
+        Some(server_config),
+        socket.into(),
+        runtime,
+    )?)
 }
 
 pub async fn start_doq_server(
@@ -51,7 +67,10 @@ pub async fn start_doq_server(
     doq_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let endpoint = bind_doq_endpoint(&bind_addr, tls_config)?;
-    info!(bind_address = %endpoint.local_addr()?, "Starting DoQ server (DNS-over-QUIC, RFC 9250)");
+    // `local_addr` reports the v4-mapped form of an IPv4 bind; report the
+    // address the operator configured.
+    let local_addr = pktinfo::unmap_socket_addr(endpoint.local_addr()?);
+    info!(bind_address = %local_addr, "Starting DoQ server (DNS-over-QUIC, RFC 9250)");
     serve_doq(endpoint, handler, doq_conn_limiter).await;
     Ok(())
 }
@@ -65,7 +84,9 @@ pub async fn serve_doq(
     doq_conn_limiter: ConnectionLimiter,
 ) {
     while let Some(incoming) = endpoint.accept().await {
-        let peer_addr = incoming.remote_address();
+        // A dual-stack endpoint reports IPv4 peers as `::ffff:a.b.c.d`;
+        // normalise so limits, groups, and logs see real IPv4.
+        let peer_addr = pktinfo::unmap_socket_addr(incoming.remote_address());
         let guard = match doq_conn_limiter.try_acquire(peer_addr.ip()) {
             Some(g) => g,
             None => {
@@ -83,7 +104,7 @@ async fn handle_doq_connection(
     handler: Arc<DnsServerHandler>,
     _guard: ConnectionGuard,
 ) {
-    let peer_addr = incoming.remote_address();
+    let peer_addr = pktinfo::unmap_socket_addr(incoming.remote_address());
 
     let connection = match incoming.await {
         Ok(c) => c,
@@ -94,7 +115,7 @@ async fn handle_doq_connection(
     };
 
     debug!(client = %peer_addr, "DoQ connection accepted");
-    let client_ip = connection.remote_address().ip();
+    let client_ip = pktinfo::unmap_socket_addr(connection.remote_address()).ip();
 
     loop {
         let (send_stream, recv_stream) = match connection.accept_bi().await {

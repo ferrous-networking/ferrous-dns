@@ -67,7 +67,7 @@ metrics_enabled          = false
 |:-------|:-----|:--------|:------------|
 | `dns_port` | `int` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `int` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
-| `bind_address` | `str` | `"0.0.0.0"` | Network interface to bind to; `0.0.0.0` listens on all interfaces |
+| `bind_address` | `str` | `"0.0.0.0"` | Default address every listener binds to; `"0.0.0.0"` is all IPv4 interfaces, `"[::]"` is dual-stack (IPv4 + IPv6) |
 | `pihole_compat` | `bool` | `false` | Expose Pi-hole v6 compatible API at `/api/*`; Ferrous DNS native API moves to `/ferrous/api/*` |
 | `proxy_protocol_enabled` | `bool` | `false` | Enable PROXY Protocol v2 on TCP DNS and DoT listeners |
 | `metrics_enabled` | `bool` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port |
@@ -122,10 +122,13 @@ tls_key_path  = "/data/key.pem"
 |:-------|:-----|:--------|:------------|
 | `dot_enabled` | `bool` | `false` | Enable DNS-over-TLS listener |
 | `dot_port` | `int` | `853` | TCP port for DoT (RFC 7858 standard: 853) |
+| `dot_bind_address` | `str` | — | Address for the DoT listener; inherits `bind_address` when omitted |
 | `doh_enabled` | `bool` | `false` | Enable the `/dns-query` DoH endpoint |
 | `doh_port` | `int` | — | Dedicated HTTPS port for DoH; omit to co-host on `web_port` |
+| `doh_bind_address` | `str` | — | Address for the dedicated DoH listener; ignored when `doh_port` is omitted |
 | `doq_enabled` | `bool` | `false` | Enable the DNS-over-QUIC listener |
 | `doq_port` | `int` | `853` | UDP port for DoQ (RFC 9250 standard: 853) |
+| `doq_bind_address` | `str` | — | Address for the DoQ listener; inherits `bind_address` when omitted |
 | `tls_cert_path` | `str` | `"/data/cert.pem"` | Path to the PEM-encoded TLS certificate |
 | `tls_key_path` | `str` | `"/data/key.pem"` | Path to the PEM-encoded TLS private key |
 

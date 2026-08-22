@@ -8,7 +8,7 @@
 [server]
 dns_port = 53                           # UDP/TCP port for DNS queries
 web_port = 8080                         # HTTP port for the web dashboard and REST API
-bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on all interfaces
+bind_address = "0.0.0.0"                # Default address every listener binds to; "0.0.0.0" is all IPv4 interfaces, "[::]" is dual-stack (IPv4 + IPv6)
 
 # Enables the Pi-hole v6 compatible API at /api/* so third-party dashboards,
 # plugins, and automations that expect the Pi-hole API continue to work.
@@ -49,10 +49,13 @@ tls_key_path  = "/data/key.pem"
 # [server.encrypted_dns]
 # dot_enabled   = true                    # Enable DoT listener on dot_port
 # dot_port      = 853                     # TCP port for DNS-over-TLS (standard: 853)
+# dot_bind_address = "[::]"               # Address for the DoT listener (omit to inherit [server].bind_address)
 # doh_enabled   = true                    # Enable /dns-query endpoint on web_port or doh_port
 # doh_port      = 443                     # Dedicated port for DoH (omit to co-host on web_port)
+# doh_bind_address = "[::]"               # Address for the dedicated DoH listener (ignored when doh_port is omitted)
 # doq_enabled   = true                    # Enable DoQ listener on doq_port
 # doq_port      = 853                     # UDP port for DNS-over-QUIC (standard: 853; no collision with TCP dot_port)
+# doq_bind_address = "[::]"               # Address for the DoQ listener (omit to inherit [server].bind_address)
 # tls_cert_path = "/data/cert.pem"
 # tls_key_path  = "/data/key.pem"
 
