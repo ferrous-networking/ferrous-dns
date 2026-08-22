@@ -41,7 +41,10 @@ pub async fn start_dot_server(
     dot_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
     let listener = Arc::new(bind_dot_listener(&bind_addr)?);
-    info!(bind_address = %listener.local_addr()?, "Starting DoT server (DNS-over-TLS, RFC 7858)");
+    // `local_addr` reports the v4-mapped form of an IPv4 bind; report the
+    // address the operator configured.
+    let local_addr = pktinfo::unmap_socket_addr(listener.local_addr()?);
+    info!(bind_address = %local_addr, "Starting DoT server (DNS-over-TLS, RFC 7858)");
     serve_dot(
         listener,
         tls_config,
@@ -78,7 +81,7 @@ pub async fn serve_dot(
     }
 
     if let Ok(addr) = listener.local_addr() {
-        info!("DoT server ready on {}", addr);
+        info!("DoT server ready on {}", pktinfo::unmap_socket_addr(addr));
     }
     for handle in handles {
         let _ = handle.await;

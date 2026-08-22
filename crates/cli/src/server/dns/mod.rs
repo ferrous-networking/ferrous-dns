@@ -34,7 +34,8 @@ pub async fn start_dns_server(
     let socket_addr = pktinfo::v6_mapped_bind_addr(parsed);
     let domain = Domain::IPV6;
 
-    info!(bind_address = %socket_addr, num_workers, "Starting DNS server with SO_REUSEPORT");
+    // Report the address as configured, not the v4-mapped form it is bound as.
+    info!(bind_address = %parsed, num_workers, "Starting DNS server with SO_REUSEPORT");
 
     let handler = Arc::new(handler);
     let mut join_set: JoinSet<()> = JoinSet::new();

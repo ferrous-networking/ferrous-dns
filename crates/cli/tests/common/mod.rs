@@ -252,10 +252,12 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
 }
 
 /// True when a `[::]` socket also receives IPv4 traffic. Guards the dual-stack
-/// tests: a host with `net.ipv6.bindv6only=1`, or no IPv6 at all, cannot
-/// exercise the v4-mapped peer path.
+/// tests: a host with no IPv6 in the kernel cannot exercise the v4-mapped peer
+/// path. The probe binds the way the listeners do — AF_INET6 with `only_v6`
+/// explicitly off — so `net.ipv6.bindv6only=1` does not skip a test that would
+/// in fact have run.
 pub fn dual_stack_loopback_available() -> bool {
-    let Ok(server) = std::net::UdpSocket::bind("[::]:0") else {
+    let Some(server) = bind_dual_stack_probe_socket() else {
         return false;
     };
     let Ok(local) = server.local_addr() else {
@@ -278,4 +280,30 @@ pub fn dual_stack_loopback_available() -> bool {
     }
     let mut buf = [0u8; 8];
     server.recv_from(&mut buf).is_ok()
+}
+
+fn bind_dual_stack_probe_socket() -> Option<std::net::UdpSocket> {
+    let socket = socket2::Socket::new(
+        socket2::Domain::IPV6,
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    )
+    .ok()?;
+    socket.set_only_v6(false).ok()?;
+    let addr: std::net::SocketAddr = "[::]:0".parse().ok()?;
+    socket.bind(&addr.into()).ok()?;
+    Some(socket.into())
+}
+
+/// Normalises the address a listener reports back to the family it was asked
+/// to bind. The listeners are AF_INET6, so an IPv4 bind resolves to
+/// `::ffff:127.0.0.1`, which an IPv4 client socket cannot send to.
+pub fn unmap_addr(addr: std::net::SocketAddr) -> std::net::SocketAddr {
+    match addr.ip() {
+        std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => std::net::SocketAddr::new(std::net::IpAddr::V4(v4), addr.port()),
+            None => addr,
+        },
+        std::net::IpAddr::V4(_) => addr,
+    }
 }

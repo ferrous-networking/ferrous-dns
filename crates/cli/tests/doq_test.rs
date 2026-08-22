@@ -51,7 +51,7 @@ async fn start_test_doq_server_on(bind: &str, conn_limiter: ConnectionLimiter) -
     .unwrap();
 
     let endpoint = bind_doq_endpoint(bind, tls_config).unwrap();
-    let addr = endpoint.local_addr().unwrap();
+    let addr = common::unmap_addr(endpoint.local_addr().unwrap());
     let handler =
         handler_with_canned_addresses(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))], 300);
     tokio::spawn(serve_doq(endpoint, handler, conn_limiter));

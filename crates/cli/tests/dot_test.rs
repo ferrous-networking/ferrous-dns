@@ -55,7 +55,7 @@ async fn start_test_dot_server_on(bind: &str, conn_limiter: ConnectionLimiter) -
     .unwrap();
 
     let listener = Arc::new(bind_dot_listener(bind).unwrap());
-    let addr = listener.local_addr().unwrap();
+    let addr = common::unmap_addr(listener.local_addr().unwrap());
     let handler =
         handler_with_canned_addresses(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))], 300);
     // `tls_config` already holds the parsed cert and key, so the temp dir can
