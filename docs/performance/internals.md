@@ -25,15 +25,15 @@ Tokio's runtime threads are pinned round-robin to cores as well.
 
 On Linux the UDP path reads and writes datagrams in batches of **64** using `recvmmsg` and `sendmmsg`, amortizing the syscall over up to 64 queries. All buffers and control-message storage are allocated once per worker and reused, so a batch costs no allocations.
 
-This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with identical behaviour and lower throughput.
+This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with the same behaviour and lower throughput. Every target needs dual-stack `AF_INET6` sockets (IPv4 is handled as v4-mapped addresses); platforms without them, such as kernels built without IPv6, are not supported.
 
 ---
 
-## Correct source address on multi-homed hosts (IP_PKTINFO)
+## Correct source address on multi-homed hosts (IPV6_PKTINFO)
 
-A server bound to `0.0.0.0` on a machine with several addresses can answer from the *wrong* source IP, and clients will drop such replies. Ferrous DNS enables `IP_PKTINFO` on its UDP sockets, records the destination address of each incoming query from the control message, and writes it back as a control message on the reply — so the answer always leaves from the address the client sent to.
+A server bound to a wildcard address on a machine with several addresses can answer from the *wrong* source IP, and clients will drop such replies. Ferrous DNS enables `IPV6_RECVPKTINFO` on its UDP sockets, records the destination address of each incoming query from the control message, and writes it back as a control message on the reply — so the answer always leaves from the address the client sent to.
 
-Only IPv4 `IP_PKTINFO` is handled today; there is no `IPV6_RECVPKTINFO` path.
+The DNS sockets are dual-stack `AF_INET6`: an IPv4 `bind_address` is bound in v4-mapped form (`::ffff:a.b.c.d`) and IPv4 clients arrive the same way, so a single `IPV6_PKTINFO` path covers both families. Client addresses are normalised back to plain IPv4 before they reach logging, grouping, and blocking.
 
 ---
 

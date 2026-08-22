@@ -25,12 +25,19 @@ pub async fn start_dns_server(
     core_ids: Vec<core_affinity::CoreId>,
     tcp_conn_limiter: ConnectionLimiter,
 ) -> anyhow::Result<()> {
-    let socket_addr: SocketAddr = bind_addr.parse()?;
-    let domain = if socket_addr.is_ipv4() {
-        Domain::IPV4
-    } else {
-        Domain::IPV6
+    let parsed: SocketAddr = bind_addr.parse()?;
+    // Unify the UDP/TCP path on a dual-stack AF_INET6 socket. IPv4 binds are
+    // mapped to `::ffff:a.b.c.d` so the pktinfo plumbing can always assume
+    // sockaddr_in6 / in6_pktinfo; `set_only_v6(false)` (in create_*_socket) lets
+    // a `[::]` bind answer both families. A mapped IPv4 bind preserves v4-only
+    // behaviour for that single address.
+    let socket_addr: SocketAddr = match parsed {
+        SocketAddr::V4(v4) => {
+            SocketAddr::new(std::net::IpAddr::V6(v4.ip().to_ipv6_mapped()), v4.port())
+        }
+        SocketAddr::V6(_) => parsed,
     };
+    let domain = Domain::IPV6;
 
     info!(bind_address = %socket_addr, num_workers, "Starting DNS server with SO_REUSEPORT");
 
