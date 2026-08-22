@@ -30,12 +30,17 @@ metrics_enabled = false
 bind_address = "[::]"
 ```
 
-IPv4 clients arrive on that socket in v4-mapped form (`::ffff:192.168.1.10`). Ferrous DNS normalises them back to plain IPv4 before anything client-facing sees them, so client groups, per-client rules, the per-IP connection limit, and the query log key a device the same way whichever protocol and address family it used.
+IPv4 clients arrive on that socket in v4-mapped form (`::ffff:192.168.1.10`). Do53, DoT, and DoQ normalise them back to plain IPv4 before anything client-facing sees them, so client groups, per-client rules, the per-IP connection limit, and the query log key a device the same way whichever of those protocols it used. The same normalisation is applied to the address a PROXY protocol v2 header carries.
+
+DoH is the exception: it never looks at the socket peer. It reads the client from the `X-Real-IP` / `X-Forwarded-For` headers its reverse proxy sets, so what a DoH client is keyed as depends on what the proxy sends.
+
+!!! note "Upgrading from a release that stored mapped addresses"
+    Earlier releases stored the v4-mapped form for DoT and DoQ clients, so a device could end up with two client rows. A migration runs once on first start and rewrites them: `::ffff:10.0.0.1` becomes `10.0.0.1`, a mapped row is merged into its plain twin (query counts add up, and a group assigned to the mapped row is kept unless the plain row already had one), the query log follows, and a subnet written as `::ffff:10.0.0.0/104` becomes `10.0.0.0/8`. Nothing needs to be done by hand.
 
 A bare `bind_address = "::"` works too; the brackets are added automatically when the listen address is built.
 
 !!! note "IPv6 must exist in the kernel"
-    All DNS listeners are created as `AF_INET6` sockets, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them. IPv6 does not need to be configured on the network — it only needs to be available in the kernel.
+    The DNS listeners — Do53 (UDP and TCP), DoT, and DoQ — are created as `AF_INET6` sockets with `IPV6_V6ONLY` off, even for an IPv4-only `bind_address` (which is bound in v4-mapped form). A kernel booted with `ipv6.disable=1` or built without `CONFIG_IPV6` cannot create them, and those listeners will fail to start. IPv6 does not need to be configured on the network — it only needs to be available in the kernel. The dedicated DoH listener and the web dashboard bind the address as given, so they are unaffected.
 
 ### Per-listener bind addresses {#per-listener-bind}
 

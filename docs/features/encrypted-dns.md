@@ -86,6 +86,17 @@ tls_cert_path = "/data/cert.pem"   # certificate for the DoT and DoQ listeners
 tls_key_path  = "/data/key.pem"    # private key for the DoT and DoQ listeners
 ```
 
+Each listener binds to `[server].bind_address`. To put one on a different interface, give it its own address:
+
+```toml
+[server.encrypted_dns]
+dot_bind_address = "[::]"           # DoT dual-stack on every interface
+doq_bind_address = "192.168.1.10"   # DoQ only on the LAN address
+doh_bind_address = "127.0.0.1"      # DoH reachable only from the local reverse proxy
+```
+
+`doh_bind_address` is ignored when `doh_port` is omitted, since `/dns-query` is then co-hosted on `web_port`. See [Per-listener bind addresses](../configuration/server.md#per-listener-bind) for the details.
+
 !!! note "DoH TLS termination"
     `tls_cert_path` / `tls_key_path` apply to the DoT listener. The DoH endpoint (`/dns-query`) is served over plain HTTP — put it behind a reverse proxy that terminates TLS and forwards to `doh_port` (or to `web_port` if `doh_port` is omitted). The cert/key must still load successfully for DoH to start.
 
