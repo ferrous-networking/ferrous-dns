@@ -5,6 +5,8 @@
 //!   `client_max_size` extraction (its input);
 //! - `DnsServerHandler::try_fast_path_wire` end-to-end (defers when the cached
 //!   answer exceeds the buffer, serves it when it fits).
+//! - `DnsServerHandler::handle_raw_udp_fallback` (the slow path truncates for
+//!   plain UDP only — every other transport frames its own length).
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -292,4 +294,57 @@ fn wire_fast_path_serves_when_answer_fits_client_buffer() {
     assert_eq!(ttl, 60);
     assert_eq!(bytes.len(), 600);
     assert_eq!(&bytes[0..2], &[0x12, 0x34], "query id must be patched");
+}
+
+// ── handle_raw_udp_fallback: the 512-byte limit is plain-UDP only ───────────
+
+/// Bit 1 of the second flags byte — TC, set when an answer was truncated.
+const TC_FLAG: u8 = 0x02;
+
+/// Runs the slow path over `protocol` for a query with no EDNS (so the UDP
+/// buffer is the 512-byte default) whose cached answer is 600 bytes.
+async fn slow_path_answer_over(protocol: ClientProtocol) -> Vec<u8> {
+    let handler = handler_with_cached_wire(600);
+    let raw = build_a_query_with_arcount("mail.example.com", 0);
+    handler
+        .handle_raw_udp_fallback(&raw, IpAddr::V4(Ipv4Addr::LOCALHOST), protocol)
+        .await
+        .expect("the slow path must produce an answer")
+}
+
+#[tokio::test]
+async fn slow_path_truncates_an_oversized_answer_over_plain_udp() {
+    let response = slow_path_answer_over(ClientProtocol::Udp).await;
+    assert!(
+        response.len() < 600,
+        "a 600-byte answer must not be sent whole to a 512-byte UDP client"
+    );
+    assert_eq!(
+        response[2] & TC_FLAG,
+        TC_FLAG,
+        "TC must be set so the client retries over TCP"
+    );
+}
+
+#[tokio::test]
+async fn slow_path_does_not_truncate_over_doq() {
+    // DoQ rides on UDP, so a check that keyed on the socket rather than on the
+    // transport would cap this at 512 and strand the answer behind a TC=1 retry
+    // a QUIC client has no reason to make (RFC 9250 frames its own length).
+    let response = slow_path_answer_over(ClientProtocol::Doq).await;
+    assert_eq!(response.len(), 600);
+    assert_eq!(response[2] & TC_FLAG, 0, "TC must stay clear over DoQ");
+}
+
+#[tokio::test]
+async fn slow_path_does_not_truncate_over_the_stream_transports() {
+    for protocol in [
+        ClientProtocol::Tcp,
+        ClientProtocol::Dot,
+        ClientProtocol::Doh,
+    ] {
+        let response = slow_path_answer_over(protocol).await;
+        assert_eq!(response.len(), 600, "{protocol} must not be truncated");
+        assert_eq!(response[2] & TC_FLAG, 0, "{protocol} must not set TC");
+    }
 }

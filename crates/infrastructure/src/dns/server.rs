@@ -126,9 +126,9 @@ impl DnsServerHandler {
             .unwrap_or(false);
         // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
         // the response size; larger answers must be truncated with TC=1 so the
-        // client retries over TCP. Not applicable to TCP/DoT/DoH.
-        // DoQ rides on UDP but frames responses with an explicit length (RFC
-        // 9250), so it is not subject to the 512-byte limit either.
+        // client retries over TCP. TCP, DoT and DoH carry their own length
+        // framing, and DoQ rides on UDP but frames responses explicitly (RFC
+        // 9250), so none of them is subject to the limit.
         let udp_limit: Option<usize> = if matches!(protocol, ClientProtocol::Udp) {
             Some(
                 query_msg

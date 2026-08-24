@@ -1,30 +1,3 @@
-    /* Inbound transports, keyed by the `protocol` field of a query log row.
-       Icons are the Lucide glyphs used by the Protocol Reference card in
-       settings.html, inlined as SVG because Alpine re-renders these rows on
-       every poll while Lucide only substitutes `<i data-lucide>` once. */
-    const PROTOCOL_BADGES = {
-        udp: {
-            label: 'UDP', color: '#6B7280', bg: 'rgba(107,114,128,0.15)',
-            icon: '<path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/>'
-        },
-        tcp: {
-            label: 'TCP', color: '#6B7280', bg: 'rgba(107,114,128,0.15)',
-            icon: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>'
-        },
-        dot: {
-            label: 'DoT', color: '#10B981', bg: 'rgba(16,185,129,0.12)',
-            icon: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
-        },
-        doh: {
-            label: 'DoH', color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',
-            icon: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'
-        },
-        doq: {
-            label: 'DoQ', color: '#A855F7', bg: 'rgba(168,85,247,0.12)',
-            icon: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>'
-        }
-    };
-
     function app() {
         return {
             theme: 'light',
@@ -220,17 +193,6 @@
                 if (!timestamp) return '-';
                 const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
                 return new Date(utc).toLocaleTimeString();
-            },
-
-            /* Static markup built from PROTOCOL_BADGES — no query data is
-               interpolated, so this is safe to render with `x-html`. */
-            formatProtocol(query) {
-                const badge = PROTOCOL_BADGES[query.protocol];
-                if (!badge) return '<span style="color:var(--text-secondary)">—</span>';
-                return `<span class="badge" style="background:${badge.bg};color:${badge.color}" title="${badge.label}">`
-                    + '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"'
-                    + ' fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"'
-                    + ` stroke-linejoin="round" style="flex-shrink:0">${badge.icon}</svg>${badge.label}</span>`;
             },
 
             formatResponseTime(query) {

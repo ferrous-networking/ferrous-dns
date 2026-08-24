@@ -141,15 +141,6 @@ impl ClientProtocol {
             ClientProtocol::Doq => "doq",
         }
     }
-
-    /// Returns `true` when the transport carries the query inside an encrypted
-    /// tunnel.
-    pub fn is_encrypted(&self) -> bool {
-        matches!(
-            self,
-            ClientProtocol::Dot | ClientProtocol::Doh | ClientProtocol::Doq
-        )
-    }
 }
 
 impl std::fmt::Display for ClientProtocol {

@@ -33,7 +33,7 @@ impl QueryLogBuilder {
             answers: None,
             block_source: None,
             query_source: QuerySource::Client,
-            protocol: Some(ClientProtocol::Udp),
+            protocol: None,
         }
     }
 

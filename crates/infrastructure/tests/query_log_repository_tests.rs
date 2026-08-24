@@ -1617,16 +1617,20 @@ async fn test_logged_protocol_is_persisted() {
     let mut stored = None;
     for _ in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        if let Some(row) =
+        // The row landing is the signal to stop; whatever protocol it carries
+        // is then the answer, so a NULL fails the assert instead of looking
+        // like a flush that never happened.
+        if let Some(protocol) =
             sqlx::query_scalar::<_, Option<String>>("SELECT protocol FROM query_log LIMIT 1")
                 .fetch_optional(&pool)
                 .await
                 .unwrap()
         {
-            stored = row;
+            stored = Some(protocol);
             break;
         }
     }
 
+    let stored = stored.expect("the batched write never reached the database");
     assert_eq!(stored.as_deref(), Some("doq"));
 }
