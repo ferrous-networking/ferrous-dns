@@ -1,6 +1,8 @@
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
-use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, EvictionStrategy};
+use ferrous_dns_infrastructure::dns::{
+    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshSenders,
+};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -29,11 +31,29 @@ fn make_cname_data(name: &str) -> CachedData {
     CachedData::CanonicalName(Arc::from(name))
 }
 
+/// Wires only the stale queue, which is the one serve-stale hits feed. The
+/// optimistic sender is still required, so it gets a receiver the test keeps
+/// alive by returning it.
+fn wire_stale_queue(
+    cache: &DnsCache,
+    capacity: usize,
+) -> (
+    mpsc::Receiver<RefreshRequest>,
+    mpsc::Receiver<RefreshRequest>,
+) {
+    let (stale_tx, stale_rx) = mpsc::channel(capacity);
+    let (optimistic_tx, optimistic_rx) = mpsc::channel(capacity);
+    cache.set_refresh_senders(RefreshSenders {
+        stale: stale_tx,
+        optimistic: optimistic_tx,
+    });
+    (stale_rx, optimistic_rx)
+}
+
 #[test]
 fn test_stale_entry_sends_to_refresh_channel() {
     let cache = create_stale_cache();
-    let (tx, mut rx) = mpsc::channel(16);
-    cache.set_stale_refresh_sender(tx);
+    let (mut rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "stale-chan.com",
@@ -67,8 +87,7 @@ fn test_stale_entry_sends_to_refresh_channel() {
 #[test]
 fn test_stale_refresh_only_fires_once() {
     let cache = create_stale_cache();
-    let (tx, mut rx) = mpsc::channel(16);
-    cache.set_stale_refresh_sender(tx);
+    let (mut rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "once.com",
@@ -105,9 +124,7 @@ fn test_stale_refresh_only_fires_once() {
 #[test]
 fn test_stale_refresh_channel_full_does_not_block() {
     let cache = create_stale_cache();
-    let (tx, _rx) = mpsc::channel(1);
-
-    cache.set_stale_refresh_sender(tx);
+    let (_rx, _optimistic_rx) = wire_stale_queue(&cache, 1);
 
     cache.insert(
         "full-a.com",
@@ -166,8 +183,7 @@ fn test_stale_get_without_sender_still_works() {
 #[test]
 fn test_expired_beyond_grace_not_served_stale() {
     let cache = create_stale_cache();
-    let (tx, _rx) = mpsc::channel(16);
-    cache.set_stale_refresh_sender(tx);
+    let (_rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "expired.com",

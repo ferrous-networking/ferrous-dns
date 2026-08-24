@@ -55,10 +55,10 @@ impl CacheMaintenanceJob {
                                 if outcome.candidates_found > 0 {
                                     info!(
                                         candidates = outcome.candidates_found,
-                                        refreshed = outcome.refreshed,
-                                        failed = outcome.failed,
+                                        enqueued = outcome.enqueued,
+                                        dropped = outcome.dropped,
                                         cache_size = outcome.cache_size,
-                                        "Cache refresh cycle completed"
+                                        "Cache refresh cycle queued candidates"
                                     );
                                 }
                             }

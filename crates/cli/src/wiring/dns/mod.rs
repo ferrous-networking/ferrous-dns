@@ -16,8 +16,8 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, dnssec::DnssecStatsAdapter,
     events::QueryEventEmitter, resolver::LocalPtrResolver, DgaDetector, HealthChecker,
-    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, ResponseIpFilterDetector,
-    TunnelingDetector,
+    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, RefreshSenders,
+    ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
@@ -379,8 +379,18 @@ impl DnsServices {
             return Ok((None, None));
         }
 
-        let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(256);
-        cache.set_stale_refresh_sender(stale_tx);
+        // The optimistic queue is the per-cycle backlog bound: a cycle offers
+        // every candidate and whatever does not fit is released and retried
+        // next cycle. The stale queue is deliberately shallow — those items are
+        // latency-sensitive, and a deep backlog of them is meaningless because
+        // the client interaction is over long before it drains. 32 covers one
+        // full batch of in-flight refreshes plus a little slack.
+        let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(32);
+        let (optimistic_tx, optimistic_rx) = tokio::sync::mpsc::channel(256);
+        cache.set_refresh_senders(RefreshSenders {
+            stale: stale_tx,
+            optimistic: optimistic_tx,
+        });
 
         let pool_manager_for_maintenance = Arc::new(
             PoolManager::new(
@@ -402,20 +412,18 @@ impl DnsServices {
                 None,
             )?);
 
-        DnsCacheMaintenance::start_stale_listener(
+        DnsCacheMaintenance::start_refresh_worker(
             cache.clone(),
-            Arc::clone(&resolver_for_maintenance),
+            resolver_for_maintenance,
             Some(repos.query_log.clone()),
             stale_rx,
+            optimistic_rx,
+            config.dns.cache_max_refresh_per_sec,
         );
 
         Ok((
-            Some(Arc::new(DnsCacheMaintenance::new(
-                cache.clone(),
-                resolver_for_maintenance,
-                Some(repos.query_log.clone()),
-                60,
-            )) as Arc<dyn CacheMaintenancePort>),
+            Some(Arc::new(DnsCacheMaintenance::new(cache.clone(), 60))
+                as Arc<dyn CacheMaintenancePort>),
             Some(maintenance_pool_manager),
         ))
     }

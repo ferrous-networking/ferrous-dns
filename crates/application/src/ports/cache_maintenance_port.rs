@@ -2,11 +2,18 @@ use async_trait::async_trait;
 use ferrous_dns_domain::DomainError;
 
 /// Outcome of a cache refresh cycle.
+///
+/// A cycle scans for candidates and hands them to the shared refresh queue; the
+/// refreshes themselves happen asynchronously on the queue worker. So these
+/// counts describe the handoff, not completed upstream work.
 #[derive(Debug, Default, Clone)]
 pub struct CacheRefreshOutcome {
     pub candidates_found: usize,
-    pub refreshed: usize,
-    pub failed: usize,
+    /// Candidates accepted by the refresh queue.
+    pub enqueued: usize,
+    /// Candidates rejected because the queue was full; they stay eligible for
+    /// a later cycle.
+    pub dropped: usize,
     pub cache_size: usize,
 }
 

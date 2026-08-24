@@ -136,8 +136,8 @@ async fn test_cache_maintenance_job_with_custom_intervals() {
         MockCacheMaintenancePort::new()
             .with_refresh_outcome(CacheRefreshOutcome {
                 candidates_found: 5,
-                refreshed: 3,
-                failed: 1,
+                enqueued: 3,
+                dropped: 1,
                 cache_size: 100,
             })
             .with_compaction_outcome(CacheCompactionOutcome {

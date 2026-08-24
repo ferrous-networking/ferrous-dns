@@ -58,6 +58,24 @@ const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
 const STALE_SERVE_TTL: u32 = 2;
 
+/// Message carried by a refresh queue.
+pub type RefreshRequest = (Arc<str>, RecordType);
+
+/// The two background-refresh queues, wired up by cache maintenance.
+///
+/// They are deliberately separate channels rather than one queue with a tag:
+/// the optimistic stream is rate-paced, and a paced stream sharing a FIFO with
+/// an unpaced one drags the unpaced one down to its rate. A serve-stale repair
+/// queued behind a cycle's worth of prefetches would wait for the whole backlog
+/// to drain, which is exactly the latency serving stale is meant to avoid.
+pub struct RefreshSenders {
+    /// Serve-stale repairs: a client already holds a stale answer and is
+    /// waiting on the real one. Never paced.
+    pub stale: mpsc::Sender<RefreshRequest>,
+    /// Best-effort pre-expiry prefetches produced by a maintenance cycle.
+    pub optimistic: mpsc::Sender<RefreshRequest>,
+}
+
 pub struct DnsCacheConfig {
     pub max_entries: usize,
     pub eviction_strategy: EvictionStrategy,
@@ -96,7 +114,7 @@ pub struct DnsCache {
     permanent_keys: Arc<DashSet<CacheKey, FxBuildHasher>>,
     min_ttl: u32,
     max_ttl: u32,
-    stale_refresh_tx: OnceLock<mpsc::Sender<(Arc<str>, RecordType)>>,
+    refresh_senders: OnceLock<RefreshSenders>,
 }
 
 impl DnsCache {
@@ -147,7 +165,7 @@ impl DnsCache {
             permanent_keys: Arc::new(DashSet::with_hasher(FxBuildHasher)),
             min_ttl: config.min_ttl,
             max_ttl: config.max_ttl,
-            stale_refresh_tx: OnceLock::new(),
+            refresh_senders: OnceLock::new(),
         }
     }
 
@@ -220,9 +238,12 @@ impl DnsCache {
                     .fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 self.bloom.refresh(&borrowed);
-                if let Some(tx) = self.stale_refresh_tx.get() {
+                if let Some(senders) = self.refresh_senders.get() {
                     if record.try_set_refreshing()
-                        && tx.try_send((Arc::from(domain), key.record_type)).is_err()
+                        && senders
+                            .stale
+                            .try_send((Arc::from(domain), key.record_type))
+                            .is_err()
                     {
                         record.clear_refreshing();
                     }
@@ -471,10 +492,17 @@ impl DnsCache {
         self.access_window_secs
     }
 
-    pub fn set_stale_refresh_sender(&self, tx: mpsc::Sender<(Arc<str>, RecordType)>) {
-        if self.stale_refresh_tx.set(tx).is_err() {
-            tracing::warn!("Stale refresh sender already configured — second sender dropped");
+    pub fn set_refresh_senders(&self, senders: RefreshSenders) {
+        if self.refresh_senders.set(senders).is_err() {
+            tracing::warn!("Refresh senders already configured — second pair dropped");
         }
+    }
+
+    /// Sender for the paced queue, once maintenance has wired one up. The
+    /// maintenance cycle enqueues its candidates here rather than keeping a
+    /// second copy of the sender.
+    pub(crate) fn optimistic_refresh_sender(&self) -> Option<&mpsc::Sender<RefreshRequest>> {
+        self.refresh_senders.get().map(|s| &s.optimistic)
     }
 
     pub fn refresh_record(

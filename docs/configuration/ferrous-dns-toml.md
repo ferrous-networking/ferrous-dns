@@ -358,6 +358,7 @@ cache_optimistic_refresh  = true
 cache_refresh_threshold   = 0.75
 cache_min_hit_rate        = 2.0
 cache_min_frequency       = 10
+cache_max_refresh_per_sec = 4.0
 cache_access_window_secs  = 43200
 ```
 
@@ -367,6 +368,7 @@ cache_access_window_secs  = 43200
 | `cache_refresh_threshold` | `float` | `0.75` | Schedule a refresh when this fraction of the original TTL has been consumed |
 | `cache_min_hit_rate` | `float` | `2.0` | Minimum hits per minute for an entry to qualify for refresh |
 | `cache_min_frequency` | `int` | `10` | Minimum total hits before an entry is eligible for refresh |
+| `cache_max_refresh_per_sec` | `float` | `4.0` | Rate ceiling for draining the background refresh queue; `0` = unpaced. Does not apply to serve-stale refreshes |
 | `cache_access_window_secs` | `int` | `43200` | Access window in seconds for refresh eligibility (43200 = 12 hours) |
 
 ### LFU-K eviction parameters

@@ -22,4 +22,4 @@ pub use metrics::CacheMetrics;
 pub use negative_ttl::{NegativeQueryTracker, TrackerStats};
 pub use port::DnsCacheAccess;
 pub use record::CachedRecord;
-pub use storage::{DnsCache, DnsCacheConfig};
+pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest, RefreshSenders};

@@ -147,6 +147,7 @@ impl ImportConfigUseCase {
         new_config.dns.cache_compaction_interval = sc.dns.cache_compaction_interval;
         new_config.dns.cache_refresh_threshold = sc.dns.cache_refresh_threshold;
         new_config.dns.cache_optimistic_refresh = sc.dns.cache_optimistic_refresh;
+        new_config.dns.cache_max_refresh_per_sec = sc.dns.cache_max_refresh_per_sec;
         new_config.dns.cache_adaptive_thresholds = sc.dns.cache_adaptive_thresholds;
         new_config.dns.cache_access_window_secs = sc.dns.cache_access_window_secs;
         new_config.dns.cache_min_ttl = sc.dns.cache_min_ttl;
