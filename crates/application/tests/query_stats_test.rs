@@ -2,7 +2,7 @@ use ferrous_dns_application::{
     ports::QueryLogRepository,
     use_cases::queries::{GetQueryStatsUseCase, GetRecentQueriesUseCase},
 };
-use ferrous_dns_domain::{BlockSource, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{BlockSource, ClientProtocol, QueryLog, QuerySource, RecordType};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -38,6 +38,7 @@ fn make_log_with_upstream(
         response_status: Some("NOERROR"),
         timestamp: None,
         query_source: QuerySource::Client,
+        protocol: Some(ClientProtocol::Udp),
         group_id: None,
         block_source,
     }

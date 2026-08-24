@@ -14,8 +14,8 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockResponseMode, DnsQuery, DnssecStats, DomainError, QueryLog, QueryLogFilter, QueryStats,
-    RecordType,
+    BlockResponseMode, ClientProtocol, DnsQuery, DnssecStats, DomainError, QueryLog,
+    QueryLogFilter, QueryStats, RecordType,
 };
 use ferrous_dns_infrastructure::dns::fast_path::parse_query;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
@@ -259,8 +259,14 @@ fn wire_fast_path_defers_when_answer_exceeds_client_buffer() {
     let client_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
     // 600-byte cached answer vs a 512 buffer → must defer (None) so the slow
     // path can truncate it with TC=1 instead of serving oversized wire.
-    let result =
-        handler.try_fast_path_wire("mail.example.com", RecordType::MX, client_ip, 0x1234, 512);
+    let result = handler.try_fast_path_wire(
+        "mail.example.com",
+        RecordType::MX,
+        client_ip,
+        0x1234,
+        512,
+        ClientProtocol::Udp,
+    );
     assert!(
         result.is_none(),
         "oversized wire-data hit must defer to the slow path"
@@ -274,7 +280,14 @@ fn wire_fast_path_serves_when_answer_fits_client_buffer() {
     // Same 600-byte answer, but the client advertised 4096 → it fits, so the
     // fast path serves it verbatim with the query id patched in.
     let (bytes, ttl) = handler
-        .try_fast_path_wire("mail.example.com", RecordType::MX, client_ip, 0x1234, 4096)
+        .try_fast_path_wire(
+            "mail.example.com",
+            RecordType::MX,
+            client_ip,
+            0x1234,
+            4096,
+            ClientProtocol::Udp,
+        )
         .expect("answer within the client buffer must be served on the fast path");
     assert_eq!(ttl, 60);
     assert_eq!(bytes.len(), 600);

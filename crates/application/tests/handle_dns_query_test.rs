@@ -1,7 +1,7 @@
 mod helpers;
 
 use ferrous_dns_application::{ports::DnsResolution, use_cases::HandleDnsQueryUseCase};
-use ferrous_dns_domain::{BlockSource, DnsRequest, DomainError, RecordType};
+use ferrous_dns_domain::{BlockSource, ClientProtocol, DnsRequest, DomainError, RecordType};
 use helpers::{
     DnsResolutionBuilder, MockBlockFilterEngine, MockClientRepository, MockDnsResolver,
     MockQueryLogRepository,
@@ -246,7 +246,8 @@ async fn test_try_cache_direct_returns_none_on_miss() {
 
     let use_case = make_use_case(resolver, filter, log.clone());
 
-    let result = use_case.try_cache_direct("google.com", RecordType::A, CLIENT_IP);
+    let result =
+        use_case.try_cache_direct("google.com", RecordType::A, CLIENT_IP, ClientProtocol::Udp);
 
     assert!(result.is_none());
     assert_eq!(log.sync_log_count(), 0);
@@ -262,7 +263,8 @@ async fn test_try_cache_direct_returns_addresses_and_logs_on_hit() {
 
     let use_case = make_use_case(resolver, filter, log.clone());
 
-    let result = use_case.try_cache_direct("google.com", RecordType::A, CLIENT_IP);
+    let result =
+        use_case.try_cache_direct("google.com", RecordType::A, CLIENT_IP, ClientProtocol::Udp);
 
     assert!(result.is_some());
     let (addresses, _ttl) = result.unwrap();
@@ -274,6 +276,71 @@ async fn test_try_cache_direct_returns_addresses_and_logs_on_hit() {
     assert!(logs[0].cache_hit);
     assert_eq!(logs[0].response_status, Some("NOERROR"));
     assert_eq!(logs[0].client_ip, CLIENT_IP);
+    assert_eq!(logs[0].protocol, Some(ClientProtocol::Udp));
+}
+
+/// The fast path must log whatever transport it was handed rather than
+/// assuming UDP, so a future non-UDP caller is labelled correctly.
+#[tokio::test]
+async fn test_try_cache_direct_logs_the_protocol_it_was_given() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    resolver.set_cached_response("google.com", cached_resolution("8.8.8.8"));
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+
+    let result =
+        use_case.try_cache_direct("google.com", RecordType::A, CLIENT_IP, ClientProtocol::Dot);
+
+    assert!(result.is_some());
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].protocol, Some(ClientProtocol::Dot));
+}
+
+/// The slow path carries the transport from the `DnsRequest` the listener
+/// built, and leaves it unset when no listener recorded one.
+#[tokio::test]
+async fn test_execute_logs_the_request_protocol() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    resolver
+        .set_response("google.com", upstream_resolution("8.8.8.8"))
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request =
+        DnsRequest::new("google.com", RecordType::A, CLIENT_IP).with_protocol(ClientProtocol::Doq);
+
+    assert!(use_case.execute(&request).await.is_ok());
+
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].protocol, Some(ClientProtocol::Doq));
+}
+
+#[tokio::test]
+async fn test_execute_leaves_protocol_unset_when_request_has_none() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    resolver
+        .set_response("google.com", upstream_resolution("8.8.8.8"))
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("google.com", RecordType::A, CLIENT_IP);
+
+    assert!(use_case.execute(&request).await.is_ok());
+
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].protocol, None);
 }
 
 #[tokio::test]
@@ -287,7 +354,8 @@ async fn test_try_cache_direct_returns_none_when_cached_addresses_empty() {
 
     let use_case = make_use_case(resolver, filter, log.clone());
 
-    let result = use_case.try_cache_direct("empty.com", RecordType::A, CLIENT_IP);
+    let result =
+        use_case.try_cache_direct("empty.com", RecordType::A, CLIENT_IP, ClientProtocol::Udp);
 
     assert!(result.is_none());
     assert_eq!(log.sync_log_count(), 0);
@@ -479,7 +547,12 @@ async fn test_try_cache_direct_returns_none_when_domain_blocked() {
 
     let use_case = make_use_case(resolver, filter, log.clone());
 
-    let result = use_case.try_cache_direct("analytics.seusite.com", RecordType::A, CLIENT_IP);
+    let result = use_case.try_cache_direct(
+        "analytics.seusite.com",
+        RecordType::A,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+    );
 
     assert!(result.is_none());
     assert_eq!(log.sync_log_count(), 0);
@@ -495,7 +568,12 @@ fn try_cache_wire_direct_returns_none_on_cache_miss() {
 
     let use_case = make_use_case(resolver, filter, log);
 
-    let result = use_case.try_cache_wire_direct("example.com", RecordType::MX, CLIENT_IP);
+    let result = use_case.try_cache_wire_direct(
+        "example.com",
+        RecordType::MX,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+    );
 
     assert!(result.is_none());
 }
@@ -526,7 +604,12 @@ fn try_cache_wire_direct_returns_wire_bytes_on_cache_hit() {
 
     let use_case = make_use_case(resolver, filter, log);
 
-    let result = use_case.try_cache_wire_direct("mail.example.com", RecordType::MX, CLIENT_IP);
+    let result = use_case.try_cache_wire_direct(
+        "mail.example.com",
+        RecordType::MX,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+    );
 
     assert!(result.is_some());
     let (bytes, ttl) = result.unwrap();
@@ -548,7 +631,12 @@ fn try_cache_wire_direct_returns_none_when_cached_resolution_has_no_wire_data() 
 
     let use_case = make_use_case(resolver, filter, log);
 
-    let result = use_case.try_cache_wire_direct("example.com", RecordType::MX, CLIENT_IP);
+    let result = use_case.try_cache_wire_direct(
+        "example.com",
+        RecordType::MX,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+    );
 
     assert!(result.is_none());
 }
@@ -580,7 +668,12 @@ fn try_cache_wire_direct_returns_none_when_domain_blocked() {
 
     let use_case = make_use_case(resolver, filter, log);
 
-    let result = use_case.try_cache_wire_direct("blocked.example.com", RecordType::MX, CLIENT_IP);
+    let result = use_case.try_cache_wire_direct(
+        "blocked.example.com",
+        RecordType::MX,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+    );
 
     assert!(result.is_none());
 }

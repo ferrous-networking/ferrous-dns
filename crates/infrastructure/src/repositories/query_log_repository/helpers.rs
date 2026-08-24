@@ -1,6 +1,6 @@
 use chrono::Utc;
 use ferrous_dns_application::ports::TimeGranularity;
-use ferrous_dns_domain::{BlockSource, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{BlockSource, ClientProtocol, QueryLog, QuerySource, RecordType};
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
 use std::net::IpAddr;
@@ -99,6 +99,12 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         .unwrap_or_else(|| "client".to_string());
     let query_source = QuerySource::from_str(&query_source_str).unwrap_or(QuerySource::Client);
 
+    let protocol: Option<ClientProtocol> = row
+        .try_get::<Option<String>, _>("protocol")
+        .ok()
+        .flatten()
+        .and_then(|s| ClientProtocol::from_str(&s).ok());
+
     let block_source: Option<BlockSource> =
         row.get::<Option<String>, _>("block_source")
             .and_then(|s| match s.as_str() {
@@ -147,6 +153,7 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         response_status,
         timestamp: Some(row.get("created_at")),
         query_source,
+        protocol,
         group_id: row.get("group_id"),
         block_source,
     })

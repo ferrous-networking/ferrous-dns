@@ -23,6 +23,9 @@ pub struct QueryParams {
     /// Filter by DNS64 synthesis: `true` keeps only synthesized AAAA answers,
     /// `false` only non-synthesized rows.
     pub dns64: Option<bool>,
+    /// Filter by the transport the client used: `udp`, `tcp`, `dot`, `doh` or
+    /// `doq` (case-insensitive).
+    pub protocol: Option<String>,
 }
 
 fn default_limit() -> u32 {
@@ -73,6 +76,10 @@ pub struct QueryResponse {
     pub upstream_pool: Option<Arc<str>>,
     #[schema(value_type = String)]
     pub query_source: &'static str,
+    /// Transport the client used to reach the resolver: `udp`, `tcp`, `dot`,
+    /// `doh` or `doq`. `null` for rows logged before this was recorded.
+    #[schema(value_type = Option<String>)]
+    pub protocol: Option<&'static str>,
     #[schema(value_type = Option<String>)]
     pub block_source: Option<&'static str>,
     #[schema(value_type = Option<String>)]

@@ -1,6 +1,8 @@
 use ferrous_dns_application::ports::{QueryLogRepository, TimeGranularity};
 use ferrous_dns_domain::config::DatabaseConfig;
-use ferrous_dns_domain::{QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType};
+use ferrous_dns_domain::{
+    ClientProtocol, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
+};
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::net::IpAddr;
@@ -30,6 +32,7 @@ async fn create_test_db() -> sqlx::SqlitePool {
             upstream_pool TEXT,
             response_status TEXT,
             query_source TEXT NOT NULL DEFAULT 'client',
+            protocol TEXT,
             group_id INTEGER,
             block_source TEXT,
             created_at DATETIME NOT NULL DEFAULT (datetime('now'))
@@ -1295,6 +1298,7 @@ async fn test_combined_all_filters() {
         upstream: Some("8.8.8.8".to_string()),
         dnssec_status: None,
         dns64_synthesized: None,
+        protocol: None,
     };
     let result = repo
         .get_recent_paged(100, 0, 24.0, None, &filter)
@@ -1468,6 +1472,7 @@ async fn test_logged_answers_are_capped() {
         response_status: Some("NOERROR"),
         timestamp: None,
         query_source: QuerySource::Client,
+        protocol: Some(ClientProtocol::Udp),
         group_id: None,
         block_source: None,
     })
@@ -1494,4 +1499,134 @@ async fn test_logged_answers_are_capped() {
         Some("192.0.2.1,192.0.2.2,192.0.2.3,192.0.2.4"),
         "only the first four addresses are persisted"
     );
+}
+
+// ── client protocol ────────────────────────────────────────────────────────
+
+async fn insert_log_with_protocol(pool: &sqlx::SqlitePool, domain: &str, protocol: Option<&str>) {
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, protocol)
+         VALUES (?, 'A', '192.168.1.1', 0, 100, 0, 'client', ?)",
+    )
+    .bind(domain)
+    .bind(protocol)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_protocol_reads_back_and_is_none_for_pre_migration_rows() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    insert_log_with_protocol(&pool, "udp.example.com", Some("udp")).await;
+    insert_log_with_protocol(&pool, "dot.example.com", Some("dot")).await;
+    // A row written before the column existed reads back as NULL.
+    insert_log_with_protocol(&pool, "legacy.example.com", None).await;
+
+    let page = repo
+        .get_recent_paged(100, 0, 24.0, None, &no_filter())
+        .await
+        .unwrap();
+    assert_eq!(page.queries.len(), 3);
+
+    let protocol_of = |domain: &str| {
+        page.queries
+            .iter()
+            .find(|q| q.domain.as_ref() == domain)
+            .unwrap_or_else(|| panic!("{domain} must be in the page"))
+            .protocol
+    };
+    assert_eq!(protocol_of("udp.example.com"), Some(ClientProtocol::Udp));
+    assert_eq!(protocol_of("dot.example.com"), Some(ClientProtocol::Dot));
+    assert_eq!(protocol_of("legacy.example.com"), None);
+}
+
+#[tokio::test]
+async fn test_protocol_filter_keeps_only_matching_rows() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    insert_log_with_protocol(&pool, "udp.example.com", Some("udp")).await;
+    insert_log_with_protocol(&pool, "dot.example.com", Some("dot")).await;
+    insert_log_with_protocol(&pool, "legacy.example.com", None).await;
+
+    let filter = QueryLogFilter {
+        protocol: Some(ClientProtocol::Dot),
+        ..Default::default()
+    };
+    let page = repo
+        .get_recent_paged(100, 0, 24.0, None, &filter)
+        .await
+        .unwrap();
+
+    assert_eq!(page.queries.len(), 1);
+    assert_eq!(page.queries[0].domain.as_ref(), "dot.example.com");
+    assert_eq!(page.records_filtered, 1);
+    // The unfiltered total is unaffected by the protocol filter.
+    assert_eq!(page.records_total, 3);
+}
+
+#[tokio::test]
+async fn test_logged_protocol_is_persisted() {
+    let pool = create_test_db().await;
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &DatabaseConfig::default(),
+    );
+
+    repo.log_query(&QueryLog {
+        id: None,
+        domain: "quic.example.com".into(),
+        record_type: RecordType::A,
+        client_ip: "10.0.0.1".parse().unwrap(),
+        client_hostname: None,
+        blocked: false,
+        response_time_us: Some(100),
+        cache_hit: false,
+        cache_refresh: false,
+        dnssec_status: None,
+        dns64_synthesized: false,
+        answers: None,
+        upstream_server: None,
+        upstream_pool: None,
+        response_status: Some("NOERROR"),
+        timestamp: None,
+        query_source: QuerySource::Client,
+        protocol: Some(ClientProtocol::Doq),
+        group_id: None,
+        block_source: None,
+    })
+    .await
+    .unwrap();
+
+    // Writes are batched; the flush task ticks every 100 ms by default.
+    let mut stored = None;
+    for _ in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        if let Some(row) =
+            sqlx::query_scalar::<_, Option<String>>("SELECT protocol FROM query_log LIMIT 1")
+                .fetch_optional(&pool)
+                .await
+                .unwrap()
+        {
+            stored = row;
+            break;
+        }
+    }
+
+    assert_eq!(stored.as_deref(), Some("doq"));
 }

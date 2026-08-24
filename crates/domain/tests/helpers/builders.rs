@@ -1,5 +1,7 @@
 #![allow(dead_code)]
-use ferrous_dns_domain::{BlockSource, DnsProtocol, DnsRecord, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{
+    BlockSource, ClientProtocol, DnsProtocol, DnsRecord, QueryLog, QuerySource, RecordType,
+};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -15,6 +17,7 @@ pub struct QueryLogBuilder {
     answers: Option<Arc<Vec<IpAddr>>>,
     block_source: Option<BlockSource>,
     query_source: QuerySource,
+    protocol: Option<ClientProtocol>,
 }
 
 impl QueryLogBuilder {
@@ -30,6 +33,7 @@ impl QueryLogBuilder {
             answers: None,
             block_source: None,
             query_source: QuerySource::Client,
+            protocol: Some(ClientProtocol::Udp),
         }
     }
 
@@ -78,6 +82,11 @@ impl QueryLogBuilder {
         self
     }
 
+    pub fn protocol(mut self, protocol: Option<ClientProtocol>) -> Self {
+        self.protocol = protocol;
+        self
+    }
+
     pub fn build(self) -> QueryLog {
         QueryLog {
             id: None,
@@ -97,6 +106,7 @@ impl QueryLogBuilder {
             response_status: None,
             timestamp: None,
             query_source: self.query_source,
+            protocol: self.protocol,
             group_id: None,
             block_source: self.block_source,
         }

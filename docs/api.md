@@ -178,6 +178,10 @@ Returns recent DNS queries with filtering support.
 |:----------|:-----|:------------|
 | `limit` | integer | Max results (default: 100) |
 | `offset` | integer | Pagination offset |
+| `protocol` | string | Transport the client used: `udp`, `tcp`, `dot`, `doh` or `doq` |
+
+Each entry carries a `protocol` field with the same values, or `null` for rows
+logged before the transport was recorded.
 
 ---
 

@@ -1,6 +1,6 @@
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_application::use_cases::{GetQueryRateUseCase, RateUnit};
-use ferrous_dns_domain::{QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{ClientProtocol, QueryLog, QuerySource, RecordType};
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -47,6 +47,7 @@ async fn test_get_query_rate_with_data() {
             response_status: None,
             timestamp: None,
             query_source: QuerySource::Client,
+            protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
         };
@@ -88,6 +89,7 @@ async fn test_get_query_rate_formatted_with_k() {
             response_status: None,
             timestamp: None,
             query_source: QuerySource::Client,
+            protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
         };
@@ -129,6 +131,7 @@ async fn test_get_query_rate_different_units() {
             response_status: None,
             timestamp: None,
             query_source: QuerySource::Client,
+            protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
         };

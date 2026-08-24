@@ -162,6 +162,7 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             upstream_pool TEXT,
             response_status TEXT,
             query_source TEXT NOT NULL DEFAULT 'client',
+            protocol TEXT,
             group_id INTEGER,
             block_source TEXT,
             created_at DATETIME NOT NULL DEFAULT (datetime('now'))

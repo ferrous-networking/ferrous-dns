@@ -28,6 +28,8 @@ pub struct QueryLogFilter {
     /// `Some(true)` keeps only DNS64-synthesized AAAA answers, `Some(false)`
     /// only non-synthesized rows; `None` does not filter.
     pub dns64_synthesized: Option<bool>,
+    /// Exact match on the transport the client used to reach the resolver.
+    pub protocol: Option<ClientProtocol>,
 }
 
 /// Category filter for query log pagination.
@@ -113,6 +115,79 @@ impl FromStr for QuerySource {
     }
 }
 
+/// Transport a client used to reach the resolver.
+///
+/// Covers the five inbound listeners only; the upstream side is described by
+/// [`crate::DnsProtocol`], which carries an address and is a different concern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientProtocol {
+    Udp,
+    Tcp,
+    /// DNS over TLS (RFC 7858).
+    Dot,
+    /// DNS over HTTPS (RFC 8484).
+    Doh,
+    /// DNS over QUIC (RFC 9250).
+    Doq,
+}
+
+impl ClientProtocol {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ClientProtocol::Udp => "udp",
+            ClientProtocol::Tcp => "tcp",
+            ClientProtocol::Dot => "dot",
+            ClientProtocol::Doh => "doh",
+            ClientProtocol::Doq => "doq",
+        }
+    }
+
+    /// Returns `true` when the transport carries the query inside an encrypted
+    /// tunnel.
+    pub fn is_encrypted(&self) -> bool {
+        matches!(
+            self,
+            ClientProtocol::Dot | ClientProtocol::Doh | ClientProtocol::Doq
+        )
+    }
+}
+
+impl std::fmt::Display for ClientProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug)]
+pub struct ParseClientProtocolError {
+    invalid: String,
+}
+
+impl std::fmt::Display for ParseClientProtocolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid client protocol: '{}'", self.invalid)
+    }
+}
+
+impl std::error::Error for ParseClientProtocolError {}
+
+impl FromStr for ClientProtocol {
+    type Err = ParseClientProtocolError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "udp" => Ok(ClientProtocol::Udp),
+            "tcp" => Ok(ClientProtocol::Tcp),
+            "dot" => Ok(ClientProtocol::Dot),
+            "doh" => Ok(ClientProtocol::Doh),
+            "doq" => Ok(ClientProtocol::Doq),
+            _ => Err(ParseClientProtocolError {
+                invalid: s.to_string(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueryLog {
     pub id: Option<i64>,
@@ -137,6 +212,10 @@ pub struct QueryLog {
     pub timestamp: Option<String>,
 
     pub query_source: QuerySource,
+
+    /// Transport the client used. `None` for internally generated queries and
+    /// for rows written before the column existed.
+    pub protocol: Option<ClientProtocol>,
 
     pub group_id: Option<i64>,
     pub block_source: Option<BlockSource>,

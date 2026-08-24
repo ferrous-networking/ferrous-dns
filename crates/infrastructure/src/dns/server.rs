@@ -2,7 +2,9 @@ use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::forwarding::RecordTypeMapper;
 use crate::dns::wire_response;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{BlockResponseMode, DnssecStatus, DomainError, RecordType};
+use ferrous_dns_domain::{
+    BlockResponseMode, ClientProtocol, DnssecStatus, DomainError, RecordType,
+};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::{RData, Record};
@@ -61,9 +63,10 @@ impl DnsServerHandler {
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
+        protocol: ClientProtocol,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
         self.use_case
-            .try_cache_direct(domain, record_type, client_ip)
+            .try_cache_direct(domain, record_type, client_ip, protocol)
     }
 
     /// Returns a ready-to-send cached wire response for non-IP record types (NS,
@@ -78,10 +81,11 @@ impl DnsServerHandler {
         client_ip: IpAddr,
         query_id: u16,
         client_max_size: u16,
+        protocol: ClientProtocol,
     ) -> Option<(Vec<u8>, u32)> {
-        let (wire, ttl) = self
-            .use_case
-            .try_cache_wire_direct(domain, record_type, client_ip)?;
+        let (wire, ttl) =
+            self.use_case
+                .try_cache_wire_direct(domain, record_type, client_ip, protocol)?;
         // Oversized-for-UDP hits bail to the slow path (handle_raw_udp_fallback),
         // which sets TC=1 — mirrors build_cache_hit_response for A/AAAA.
         if !wire_response::wire_fits_udp_buffer(wire.len(), client_max_size) {
@@ -95,7 +99,7 @@ impl DnsServerHandler {
         &self,
         raw: &[u8],
         client_ip: IpAddr,
-        is_udp: bool,
+        protocol: ClientProtocol,
     ) -> Option<Vec<u8>> {
         let query_msg = Message::from_vec(raw).ok()?;
 
@@ -123,7 +127,9 @@ impl DnsServerHandler {
         // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
         // the response size; larger answers must be truncated with TC=1 so the
         // client retries over TCP. Not applicable to TCP/DoT/DoH.
-        let udp_limit: Option<usize> = if is_udp {
+        // DoQ rides on UDP but frames responses with an explicit length (RFC
+        // 9250), so it is not subject to the 512-byte limit either.
+        let udp_limit: Option<usize> = if matches!(protocol, ClientProtocol::Udp) {
             Some(
                 query_msg
                     .edns
@@ -151,7 +157,8 @@ impl DnsServerHandler {
 
         let dns_request = {
             let base = ferrous_dns_domain::DnsRequest::new(domain, our_rt, client_ip)
-                .with_checking_disabled(cd);
+                .with_checking_disabled(cd)
+                .with_protocol(protocol);
             if let Some(c) = edns_cookie {
                 base.with_cookie(c)
             } else {

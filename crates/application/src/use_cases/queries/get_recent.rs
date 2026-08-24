@@ -1,5 +1,7 @@
 use crate::ports::{PagedQueryResult, QueryLogRepository};
-use ferrous_dns_domain::query_log::{DnssecStatus, QueryCategory, QueryLog, QueryLogFilter};
+use ferrous_dns_domain::query_log::{
+    ClientProtocol, DnssecStatus, QueryCategory, QueryLog, QueryLogFilter,
+};
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::sync::Arc;
 
@@ -24,6 +26,8 @@ pub struct PagedQueryInput<'a> {
     /// `Some(true)` → only DNS64-synthesized answers; `Some(false)` → only
     /// non-synthesized; `None` → no filter.
     pub dns64: Option<bool>,
+    /// Transport filter: `udp`, `tcp`, `dot`, `doh` or `doq`.
+    pub protocol: Option<&'a str>,
 }
 
 /// Validates and normalises a DNSSEC status filter value to the casing stored
@@ -86,6 +90,13 @@ impl GetRecentQueriesUseCase {
             .transpose()
             .map_err(DomainError::InvalidInput)?;
 
+        let parsed_protocol = input
+            .protocol
+            .filter(|p| !p.is_empty())
+            .map(|p| p.to_ascii_lowercase().parse::<ClientProtocol>())
+            .transpose()
+            .map_err(|e| DomainError::InvalidInput(e.to_string()))?;
+
         let filter = QueryLogFilter {
             domain: input.domain.filter(|d| !d.is_empty()).map(String::from),
             category: parsed_category,
@@ -94,6 +105,7 @@ impl GetRecentQueriesUseCase {
             upstream: input.upstream.filter(|u| !u.is_empty()).map(String::from),
             dnssec_status: parsed_dnssec_status,
             dns64_synthesized: input.dns64,
+            protocol: parsed_protocol,
         };
 
         self.repository

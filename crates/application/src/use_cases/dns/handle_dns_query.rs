@@ -13,9 +13,9 @@ use crate::ports::{
     SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest, DnssecStatus,
-    DomainError, Nat64Prefix, NxdomainHijackAction, NxdomainHijackConfig, QueryLog, QuerySource,
-    RecordType, ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction,
+    BlockSource, ClientProtocol, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest,
+    DnssecStatus, DomainError, Nat64Prefix, NxdomainHijackAction, NxdomainHijackConfig, QueryLog,
+    QuerySource, RecordType, ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction,
     TunnelingDetectionConfig,
 };
 use lru::LruCache;
@@ -354,6 +354,7 @@ impl HandleDnsQueryUseCase {
             response_status: Some("NOERROR"),
             timestamp: None,
             query_source: QuerySource::Client,
+            protocol: request.protocol,
             group_id: Some(group_id),
             block_source: None,
         }
@@ -407,6 +408,7 @@ impl HandleDnsQueryUseCase {
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
+        protocol: ClientProtocol,
     ) -> Option<(bytes::Bytes, u32)> {
         let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
@@ -461,6 +463,7 @@ impl HandleDnsQueryUseCase {
                 response_status: Some("NOERROR"),
                 timestamp: None,
                 query_source: QuerySource::Client,
+                protocol: Some(protocol),
                 group_id: Some(group_id),
                 block_source: None,
             });
@@ -474,6 +477,7 @@ impl HandleDnsQueryUseCase {
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
+        protocol: ClientProtocol,
     ) -> Option<(Arc<Vec<IpAddr>>, u32)> {
         let tsc_start = tsc_timer::now();
         let group_id = self.block_filter.resolve_group(client_ip);
@@ -539,6 +543,7 @@ impl HandleDnsQueryUseCase {
                 response_status: Some("NOERROR"),
                 timestamp: None,
                 query_source: QuerySource::Client,
+                protocol: Some(protocol),
                 group_id: Some(group_id),
                 block_source: None,
             });

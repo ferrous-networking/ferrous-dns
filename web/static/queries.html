@@ -129,6 +129,18 @@
                     <option value="malware">Malware Detection</option>
                 </select>
             </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Protocol:</label>
+                <select x-model="protocol" @change="currentPage=1;_cursors={};loadQueries()"
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                    <option value="">All Protocols</option>
+                    <option value="udp">UDP</option>
+                    <option value="tcp">TCP</option>
+                    <option value="dot">DoT</option>
+                    <option value="doh">DoH</option>
+                    <option value="doq">DoQ</option>
+                </select>
+            </div>
             <div style="margin-left:auto">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" x-model="autoRefresh"
@@ -145,6 +157,7 @@
                 <th class="col-time">TIME</th>
                 <th>DOMAIN</th>
                 <th class="col-type" style="width:70px">TYPE</th>
+                <th class="col-proto">PROTOCOL</th>
                 <th class="col-client">CLIENT</th>
                 <th class="col-source">SOURCE</th>
                 <th class="col-answer">ANSWER</th>
@@ -183,6 +196,7 @@
                     </td>
                     <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
                               x-text="query.type"></span></td>
+                    <td class="col-proto" x-html="formatProtocol(query)"></td>
                     <td class="col-client" style="font-size:13px"
                         x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></td>
                     <td style="max-width:0;overflow:hidden">
