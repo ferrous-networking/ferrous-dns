@@ -200,6 +200,11 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
         );
         set_val(
             t,
+            "cache_max_refresh_per_sec",
+            toml_edit::Value::from(config.dns.cache_max_refresh_per_sec),
+        );
+        set_val(
+            t,
             "cache_lfuk_history_size",
             toml_edit::Value::from(config.dns.cache_lfuk_history_size as i64),
         );

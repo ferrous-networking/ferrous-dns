@@ -94,6 +94,9 @@ cache_optimistic_refresh = true         # Refresh entries in the background befo
 cache_refresh_threshold = 0.75          # Fraction of TTL remaining at which a background refresh is triggered
 cache_min_hit_rate = 2.0                # Minimum hit rate (hits/min) to keep an entry alive via refresh
 cache_min_frequency = 10                # Minimum total hits before an entry is eligible for refresh
+# Rate ceiling (refreshes/second) for draining the background refresh queue; 0 = unpaced.
+# Serve-stale refreshes always bypass this.
+cache_max_refresh_per_sec = 4.0
 # Time window (seconds) since last access within which an entry is eligible for refresh.
 # e.g. 7200 = 2h, 43200 = 12h, 86400 = 24h
 cache_access_window_secs = 43200

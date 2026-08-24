@@ -99,6 +99,7 @@ cache_optimistic_refresh = true
 cache_refresh_threshold = 0.75
 cache_min_hit_rate = 2.0
 cache_min_frequency = 10
+cache_max_refresh_per_sec = 4.0
 cache_access_window_secs = 43200
 ```
 
@@ -108,9 +109,15 @@ cache_access_window_secs = 43200
 | `cache_refresh_threshold` | `0.75` | When remaining TTL fraction falls below this, schedule a refresh |
 | `cache_min_hit_rate` | `2.0` | Minimum hits/minute to keep an entry alive via refresh |
 | `cache_min_frequency` | `10` | Minimum total hits before an entry is eligible for refresh |
+| `cache_max_refresh_per_sec` | `4.0` | Rate ceiling for draining the refresh queue; `0` = unpaced |
 | `cache_access_window_secs` | `43200` | Time window (seconds) since last access for refresh eligibility (43200 = 12h) |
 
 **How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold x original_ttl`, and the entry meets the minimum hit rate and frequency thresholds, a background task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes -- zero latency impact for clients.
+
+**Why the rate ceiling matters**: a refresh cycle only scans the cache and enqueues its candidates -- the refreshes themselves run on a shared background worker. Without pacing, that worker empties the backlog as fast as the upstream answers, so the effective brake is upstream latency. A slow DoH upstream never drains the queue, but point ferrous-dns at a fast local resolver and each cycle renews the entire eligible working set at once. On a large cache that generates far more internal resolutions than client queries, and the CPU and database write pressure shows up as higher cache-hit latency. `cache_max_refresh_per_sec` spreads a cycle's backlog across the interval instead of firing it as a burst. Candidates that do not fit in the queue are not marked as refreshing, so they stay eligible for a later cycle; any that expire first are simply re-fetched on demand.
+
+!!! note "Serve-stale is never paced"
+    The ceiling applies only to background pre-expiry refreshes. When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a refresh is queued -- those bypass the pacer entirely, because someone is already waiting on the fresh result.
 
 !!! note
     `cache_min_ttl` should be >= 240 seconds so the refresh job has time to act before expiry.

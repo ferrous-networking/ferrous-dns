@@ -60,6 +60,10 @@ pub struct SnapshotDnsConfig {
     pub cache_compaction_interval: u64,
     pub cache_refresh_threshold: f64,
     pub cache_optimistic_refresh: bool,
+    /// Absent in snapshots taken before pacing existed; `0` there means
+    /// unpaced, which is exactly how those installs behaved.
+    #[serde(default)]
+    pub cache_max_refresh_per_sec: f64,
     pub cache_adaptive_thresholds: bool,
     pub cache_access_window_secs: u64,
     pub cache_min_ttl: u32,
