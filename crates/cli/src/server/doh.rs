@@ -3,6 +3,7 @@ use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use base64::Engine;
+use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::forwarding::EDNS_MAX_PAYLOAD;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query as DnsQuery};
@@ -63,7 +64,7 @@ pub async fn dns_query_handler(
     };
 
     match handler
-        .handle_raw_udp_fallback(&wire, client_ip, false)
+        .handle_raw_udp_fallback(&wire, client_ip, ClientProtocol::Doh)
         .await
     {
         Some(response_bytes) if json_response => match wire_to_dns_json(&response_bytes) {

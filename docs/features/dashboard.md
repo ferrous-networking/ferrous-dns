@@ -39,9 +39,11 @@ Live query log with:
 
 - Domain name, query type (A, AAAA, CNAME, MX, etc.)
 - Client IP and hostname
+- Transport the client used to reach the resolver (UDP, TCP, DoT, DoH, DoQ)
 - Response status (allowed, blocked, cached, rate-limited)
 - Response time
 - Filter by category: allowed, blocked, rate-limited
+- Filter by protocol: UDP, TCP, DoT, DoH, DoQ
 - **Quick actions**: Block or Allow a domain with one click
 
 ### Clients

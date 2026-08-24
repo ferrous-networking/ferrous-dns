@@ -20,6 +20,7 @@
         }
 
         .col-time { width: 120px }
+        .col-proto { width: 104px }
         .col-client { width: 130px }
         .col-source { width: 200px }
         .col-answer {
@@ -85,6 +86,7 @@
 
         @media (max-width: 820px) {
             .col-type { display: none }
+            .col-proto { display: none }
         }
 
         /* Phones: drop the table min-width and the CLIENT column, and shrink

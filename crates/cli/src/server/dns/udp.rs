@@ -1,3 +1,4 @@
+use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
@@ -121,6 +122,7 @@ async fn run_udp_worker_batch(
                                 fast_query.domain(),
                                 fast_query.record_type,
                                 client_ip,
+                                ClientProtocol::Udp,
                             ) {
                                 if let Some((wire, wire_len)) =
                                     wire_response::build_cache_hit_response(
@@ -148,6 +150,7 @@ async fn run_udp_worker_batch(
                                 client_ip,
                                 fast_query.id,
                                 fast_query.client_max_size,
+                                ClientProtocol::Udp,
                             ) {
                                 pending_wire.push(pktinfo::PendingWireResponse {
                                     data: patched,
@@ -189,7 +192,10 @@ async fn run_udp_worker_batch(
                 let h = handler.clone();
                 let s = socket.clone();
                 tokio::spawn(async move {
-                    if let Some(resp) = h.handle_raw_udp_fallback(&buf, cip, true).await {
+                    if let Some(resp) = h
+                        .handle_raw_udp_fallback(&buf, cip, ClientProtocol::Udp)
+                        .await
+                    {
                         let _ = pktinfo::try_send_with_src_ip(s.get_ref(), &resp, from, dst_ip);
                     }
                 });
@@ -229,6 +235,7 @@ async fn run_udp_worker_single(
                                     fast_query.domain(),
                                     fast_query.record_type,
                                     client_ip,
+                                    ClientProtocol::Udp,
                                 ) {
                                     if let Some((wire, wire_len)) =
                                         wire_response::build_cache_hit_response(
@@ -255,6 +262,7 @@ async fn run_udp_worker_single(
                                     client_ip,
                                     fast_query.id,
                                     fast_query.client_max_size,
+                                    ClientProtocol::Udp,
                                 ) {
                                     let _ = pktinfo::try_send_with_src_ip(
                                         socket.get_ref(),
@@ -273,7 +281,7 @@ async fn run_udp_worker_single(
                     let owned_buf: Arc<[u8]> = Arc::from(query_buf);
                     tokio::spawn(async move {
                         if let Some(response) = handler_clone
-                            .handle_raw_udp_fallback(&owned_buf, client_ip, true)
+                            .handle_raw_udp_fallback(&owned_buf, client_ip, ClientProtocol::Udp)
                             .await
                         {
                             let _ = pktinfo::try_send_with_src_ip(

@@ -2,7 +2,7 @@ use super::helpers::{
     days_ago_cutoff, get_uptime, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff,
 };
 use ferrous_dns_application::ports::PagedQueryResult;
-use ferrous_dns_domain::query_log::{DnssecStats, QueryCategory, QueryLogFilter};
+use ferrous_dns_domain::query_log::{ClientProtocol, DnssecStats, QueryCategory, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::Duration;
@@ -23,7 +23,7 @@ pub(super) async fn get_recent(
     let rows = sqlx::query(
         "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                 q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
-                q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
+                q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source,
                 datetime(q.created_at) as created_at, c.hostname
          FROM query_log q
          LEFT JOIN clients c ON q.client_ip = c.ip_address
@@ -121,6 +121,15 @@ pub(super) async fn get_recent_paged(
         Some(false) => " AND q.dns64_synthesized = 0",
         None => "",
     };
+    // Closed enum, so each arm is a static fragment too — no bind needed.
+    let protocol_clause = match filter.protocol {
+        Some(ClientProtocol::Udp) => " AND q.protocol = 'udp'",
+        Some(ClientProtocol::Tcp) => " AND q.protocol = 'tcp'",
+        Some(ClientProtocol::Dot) => " AND q.protocol = 'dot'",
+        Some(ClientProtocol::Doh) => " AND q.protocol = 'doh'",
+        Some(ClientProtocol::Doq) => " AND q.protocol = 'doq'",
+        None => "",
+    };
 
     // Binds the conditional filter parameters in a fixed order.
     macro_rules! bind_filters {
@@ -153,14 +162,14 @@ pub(super) async fn get_recent_paged(
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                             q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
-                            q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
+                            q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q
                      LEFT JOIN clients c ON q.client_ip = c.ip_address
                      WHERE q.id < ?
                        AND q.query_source = 'client'
                        AND q.created_at >= ?
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}{protocol_clause}
                      ORDER BY q.id DESC
                      LIMIT ?"
                 );
@@ -171,13 +180,13 @@ pub(super) async fn get_recent_paged(
                 let sql = format!(
                     "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                             q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
-                            q.upstream_pool, q.response_status, q.query_source, q.group_id, q.block_source,
+                            q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source,
                             datetime(q.created_at) as created_at, c.hostname
                      FROM query_log q
                      LEFT JOIN clients c ON q.client_ip = c.ip_address
                      WHERE q.created_at >= ?
                        AND q.query_source = 'client'
-                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}
+                       {domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}{protocol_clause}
                      ORDER BY q.created_at DESC
                      LIMIT ? OFFSET ?"
                 );
@@ -193,7 +202,7 @@ pub(super) async fn get_recent_paged(
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
-                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}"
+                 WHERE q.query_source = 'client' AND q.created_at >= ?{domain_clause}{category_clause}{client_clause}{type_clause}{upstream_clause}{dnssec_clause}{dns64_clause}{protocol_clause}"
             );
             let q = sqlx::query(&count_sql).bind(&cutoff);
             let q = bind_filters!(q, filter);

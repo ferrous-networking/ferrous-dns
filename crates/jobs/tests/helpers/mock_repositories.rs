@@ -442,6 +442,7 @@ impl MockQueryLogRepository {
             response_status: None,
             timestamp: Some(timestamp.to_string()),
             query_source: Default::default(),
+            protocol: None,
             group_id: None,
             block_source: None,
         };

@@ -1,5 +1,6 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use super::pktinfo;
+use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use quinn::crypto::rustls::QuicServerConfig;
 use quinn::VarInt;
@@ -158,7 +159,7 @@ async fn handle_doq_stream(
     }
 
     if let Some(resp) = handler
-        .handle_raw_udp_fallback(&dns_buf, client_ip, false)
+        .handle_raw_udp_fallback(&dns_buf, client_ip, ClientProtocol::Doq)
         .await
     {
         let resp_len = (resp.len() as u16).to_be_bytes();

@@ -1364,6 +1364,7 @@ mod tests {
             response_status: None,
             timestamp: None,
             query_source: Default::default(),
+            protocol: None,
             group_id: None,
             block_source: None,
         };

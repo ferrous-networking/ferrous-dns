@@ -7,6 +7,7 @@
             pageSize: 25,
             currentPage: 1,
             category: '',
+            protocol: '',
             searchDomain: '',
             searchClient: '',
             clients: [],
@@ -56,8 +57,11 @@
                     const categoryParam = this.category
                         ? `&category=${encodeURIComponent(this.category)}`
                         : '';
+                    const protocolParam = this.protocol
+                        ? `&protocol=${encodeURIComponent(this.protocol)}`
+                        : '';
                     const res = await fetch(
-                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${clientParam}${categoryParam}`,
+                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${clientParam}${categoryParam}${protocolParam}`,
                         {signal: this._ctrl.queries.signal}
                     );
                     if (res.ok) {

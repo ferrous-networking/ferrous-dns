@@ -1,4 +1,5 @@
 use crate::dns_record::RecordType;
+use crate::ClientProtocol;
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -63,6 +64,9 @@ pub struct DnsRequest {
     /// the client wants to perform its own DNSSEC validation, so the resolver
     /// must not enforce SERVFAIL on Bogus results for this query.
     pub checking_disabled: bool,
+    /// Transport the query arrived on. `None` for requests built outside a
+    /// client listener (internal resolution, tests).
+    pub protocol: Option<ClientProtocol>,
 }
 
 impl DnsRequest {
@@ -73,6 +77,7 @@ impl DnsRequest {
             client_ip,
             edns_cookie: None,
             checking_disabled: false,
+            protocol: None,
         }
     }
 
@@ -85,6 +90,12 @@ impl DnsRequest {
     /// Sets the client's CD (Checking Disabled) bit.
     pub fn with_checking_disabled(mut self, cd: bool) -> Self {
         self.checking_disabled = cd;
+        self
+    }
+
+    /// Records the transport the query arrived on.
+    pub fn with_protocol(mut self, protocol: ClientProtocol) -> Self {
+        self.protocol = Some(protocol);
         self
     }
 }

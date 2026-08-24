@@ -130,6 +130,7 @@ impl DnsCacheMaintenance {
                         response_status: Some("NOERROR"),
                         timestamp: None,
                         query_source: QuerySource::Internal,
+                        protocol: None,
                         group_id: None,
                         block_source: None,
                     };
