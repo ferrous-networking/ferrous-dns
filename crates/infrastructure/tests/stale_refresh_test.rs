@@ -1,7 +1,8 @@
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
-    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshSenders,
+    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshScanOptions,
+    RefreshSenders,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -202,4 +203,60 @@ fn test_expired_beyond_grace_not_served_stale() {
         result.is_none(),
         "Entry expired beyond grace period must not be served"
     );
+}
+
+#[test]
+fn test_queued_for_optimistic_still_schedules_stale_repair() {
+    // Uma entrada reivindicada por uma varredura de manutenção pode ficar na
+    // fila optimistic por boa parte de um ciclo. Enquanto espera, um cliente
+    // que a encontra stale precisa conseguir agendar o reparo rápido pelo canal
+    // não pausado — é para isso que a flag de fila é separada da flag de voo.
+    // Com uma flag só, `try_set_refreshing` falhava e o reparo nunca era
+    // enfileirado: o cliente recebia stale com TTL 2, voltava a perguntar, e a
+    // entrada morria no fim do grace period.
+    let cache = create_stale_cache();
+    let (mut stale_rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
+
+    // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros
+    // testes do binário chamam `tick()` em paralelo, então uma janela de 2 s
+    // deixa pouca folga se esta thread for desescalonada entre o sleep e a
+    // varredura. Em 3,2 s a entrada está expirada com quase 3 s de folga.
+    cache.insert(
+        "queued-stale.com",
+        RecordType::CNAME,
+        make_cname_data("alias.queued-stale.com"),
+        3,
+        None,
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(3200));
+    coarse_clock::tick();
+
+    // A varredura reivindica a entrada para a fila optimistic.
+    let claimed = cache.get_refresh_candidates(&RefreshScanOptions {
+        min_lead_secs: 0,
+        min_hit_rate: 0.0,
+        min_frequency: 0,
+    });
+    assert!(
+        claimed.iter().any(|(d, _)| d == "queued-stale.com"),
+        "PRECONDIÇÃO FALHOU: a varredura deveria ter reivindicado a entrada"
+    );
+
+    // Agora o cliente chega e encontra a entrada stale.
+    let result = cache.get(&Arc::from("queued-stale.com"), &RecordType::CNAME);
+    assert!(
+        result.is_some(),
+        "PRECONDIÇÃO FALHOU: a entrada deveria ser servida como stale"
+    );
+
+    let msg = stale_rx.try_recv();
+    assert!(
+        msg.is_ok(),
+        "Entrada já reivindicada para a fila optimistic ainda deve poder agendar \
+         o reparo serve-stale no canal rápido"
+    );
+    let (domain, record_type) = msg.expect("mensagem de reparo stale ausente");
+    assert_eq!(&*domain, "queued-stale.com");
+    assert_eq!(record_type, RecordType::CNAME);
 }
