@@ -1,6 +1,6 @@
 # Roadmap
 
-Current release: **v0.9.13**
+Current release: **v0.9.14**
 
 The milestone list below is included verbatim from [`ROADMAP.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/ROADMAP.md) in the repository root, which is the single source of truth for what is shipped. Edit that file — this page cannot drift from it, and the docs build fails if the include is removed or the version above stops matching `Cargo.toml`.
 
