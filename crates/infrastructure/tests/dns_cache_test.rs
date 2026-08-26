@@ -5,10 +5,23 @@ use ferrous_dns_infrastructure::dns::cache::eviction::{
 };
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, DnsCache, DnsCacheConfig,
-    EvictionStrategy,
+    EvictionStrategy, RefreshScanOptions,
 };
 use std::net::IpAddr;
 use std::sync::Arc;
+
+/// Opções de varredura "neutras": nenhuma entrada é classificada como fria e o
+/// piso de antecedência fica desligado (`min_lead_secs = 0` só dispara para
+/// `ttl > 0`... e a comparação `expires_at - now <= 0` praticamente nunca é
+/// verdadeira antes da expiração). Serve para os testes que só querem o
+/// comportamento antigo de "tudo elegível".
+fn permissive_scan() -> RefreshScanOptions {
+    RefreshScanOptions {
+        min_lead_secs: 0,
+        min_hit_rate: 0.0,
+        min_frequency: 0,
+    }
+}
 
 /// Cria um cache com refresh_threshold=0.0 (qualquer entrada passa o filtro de tempo)
 /// e access_window_secs configurável para testes de refresh.
@@ -332,7 +345,7 @@ fn test_refresh_candidates_includes_entries_within_access_window() {
         None,
     );
 
-    let candidates = cache.get_refresh_candidates();
+    let candidates = cache.get_refresh_candidates(&permissive_scan());
     assert!(
         candidates.iter().any(|(d, _)| d == "never-hit.com"),
         "Entrada dentro da access window deve ser candidata mesmo sem hits; candidates={:?}",
@@ -358,7 +371,7 @@ fn test_refresh_candidates_with_recent_access() {
     // Simular um cache hit (vai para L2 pois CNAME não está em L1)
     cache.get(&Arc::from("popular.com"), &RecordType::CNAME);
 
-    let candidates = cache.get_refresh_candidates();
+    let candidates = cache.get_refresh_candidates(&permissive_scan());
     assert!(
         candidates.iter().any(|(d, _)| d == "popular.com"),
         "Entrada com hit deve ser candidata; candidates={:?}",
@@ -380,7 +393,7 @@ fn test_refresh_candidates_access_window_zero_includes_same_tick_entries() {
         None,
     );
 
-    let candidates = cache_no_window.get_refresh_candidates();
+    let candidates = cache_no_window.get_refresh_candidates(&permissive_scan());
     assert!(
         candidates.iter().any(|(d, _)| d == "zero-window.com"),
         "Entry inserida no mesmo tick deve ser candidata com window=0; candidates={:?}",
@@ -451,7 +464,7 @@ fn test_refresh_record_preserves_hit_count_for_subsequent_candidates() {
     cache.get(&Arc::from("keep-alive.com"), &RecordType::CNAME); // hit_count = 1
 
     // Antes do refresh: deve ser candidata
-    let before = cache.get_refresh_candidates();
+    let before = cache.get_refresh_candidates(&permissive_scan());
     assert!(
         before.iter().any(|(d, _)| d == "keep-alive.com"),
         "Entrada deve ser candidata antes do refresh; candidates={:?}",
@@ -468,7 +481,7 @@ fn test_refresh_record_preserves_hit_count_for_subsequent_candidates() {
     );
 
     // Depois do refresh_record: AINDA deve ser candidata porque hit_count foi preservado
-    let after = cache.get_refresh_candidates();
+    let after = cache.get_refresh_candidates(&permissive_scan());
     assert!(
         after.iter().any(|(d, _)| d == "keep-alive.com"),
         "Entrada deve continuar candidata após refresh_record (hit_count preservado); candidates={:?}",
@@ -503,6 +516,360 @@ fn test_access_window_secs_getter() {
 
     let cache2 = create_refresh_cache(86400);
     assert_eq!(cache2.access_window_secs(), 86400);
+}
+
+// ─── Testes do piso de antecedência (min_lead_secs) ──────────────────────────
+
+#[test]
+fn test_should_refresh_lead_floor_fires_before_proportional_threshold() {
+    // Um candidato espera até um ciclo para ser varrido e até mais um para ser
+    // drenado, então o limiar proporcional sozinho perde qualquer entrada cuja
+    // vida restante seja menor que isso. Com TTL 300 e threshold 0.75, o limiar
+    // proporcional só dispararia com 75 s de vida restante — tarde demais para
+    // um piso de 120 s.
+    let record = CachedRecord::new(
+        make_ip_data("1.2.3.4"),
+        300,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+    let inserted = record.inserted_at_secs;
+    let min_lead = 120;
+
+    // 180 s decorridos: restam 120 s. O proporcional ainda não disparou
+    // (0.75 × 300 = 225 s), mas o piso sim.
+    assert!(
+        !record.should_refresh(0.75, inserted + 180, 0),
+        "Sem piso, 180 s de 300 ainda não atinge o limiar proporcional de 225 s"
+    );
+    assert!(
+        record.should_refresh(0.75, inserted + 180, min_lead),
+        "Com piso de 120 s, restando exatamente 120 s a entrada já deve ser candidata"
+    );
+
+    // 179 s decorridos: restam 121 s, um segundo antes do piso.
+    assert!(
+        !record.should_refresh(0.75, inserted + 179, min_lead),
+        "Restando 121 s o piso de 120 s ainda não deve disparar"
+    );
+}
+
+#[test]
+fn test_should_refresh_lead_floor_skipped_for_ttl_shorter_than_floor() {
+    // Renovar antes da expiração é impossível quando o TTL inteiro cabe dentro
+    // do piso. Se o piso valesse aqui, a entrada seria elegível desde o
+    // instante da inserção e nunca sairia da fila.
+    let record = CachedRecord::new(
+        make_ip_data("1.2.3.4"),
+        30,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+    let inserted = record.inserted_at_secs;
+
+    assert!(
+        !record.should_refresh(0.75, inserted, 120),
+        "TTL 30 recém-inserido não pode ser candidato só porque cabe no piso de 120 s"
+    );
+    assert!(
+        !record.should_refresh(0.75, inserted + 20, 120),
+        "Com 20 s de 30 decorridos o proporcional (22,5 s) ainda não disparou"
+    );
+    assert!(
+        record.should_refresh(0.75, inserted + 23, 120),
+        "Passado o limiar proporcional a entrada de TTL curto vira candidata normalmente"
+    );
+}
+
+#[test]
+fn test_should_refresh_long_ttl_still_governed_by_threshold() {
+    // Para TTL longo o piso é irrelevante: o proporcional dispara muito antes.
+    let record = CachedRecord::new(
+        make_ip_data("1.2.3.4"),
+        3600,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+    let inserted = record.inserted_at_secs;
+
+    assert!(
+        !record.should_refresh(0.75, inserted + 2699, 120),
+        "Antes de 0.75 × 3600 = 2700 s a entrada não é candidata"
+    );
+    assert!(
+        record.should_refresh(0.75, inserted + 2700, 120),
+        "No limiar proporcional a entrada vira candidata, com 900 s de folga — \
+         muito antes dos 120 s do piso"
+    );
+}
+
+#[test]
+fn test_refresh_deadline_ranks_by_death_not_by_expiry() {
+    // `expires_at_secs` sozinho classificaria errado: a entrada de TTL 3600
+    // expira antes, mas sobrevive mais 3600 s servida como stale, enquanto a de
+    // TTL 60 morre 60 s depois de expirar.
+    let mut short = CachedRecord::new(
+        make_ip_data("1.1.1.1"),
+        60,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+    let mut long = CachedRecord::new(
+        make_ip_data("2.2.2.2"),
+        3600,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+
+    let now = short.inserted_at_secs;
+    short.expires_at_secs = now + 10;
+    long.expires_at_secs = now + 30;
+
+    assert!(
+        long.expires_at_secs > short.expires_at_secs,
+        "Pré-condição: a de TTL longo expira depois"
+    );
+    assert!(
+        short.refresh_deadline_secs() < long.refresh_deadline_secs(),
+        "A entrada que morre primeiro deve vir primeiro: short={} long={}",
+        short.refresh_deadline_secs(),
+        long.refresh_deadline_secs()
+    );
+    assert_eq!(
+        short.refresh_deadline_secs(),
+        now + 10 + 60,
+        "O prazo de morte é expires_at + ttl"
+    );
+}
+
+// ─── Testes de elegibilidade e prioridade da varredura ───────────────────────
+
+#[test]
+fn test_refresh_candidates_skips_permanent_entries() {
+    // `refresh_record` recusa permanentes, então enfileirar uma gastaria um
+    // slot de drenagem num no-op garantido. Com refresh_threshold = 0.0 ela
+    // passaria em todos os outros filtros.
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert_permanent("forever.com", RecordType::A, make_ip_data("10.0.0.1"), None);
+    cache.insert(
+        "ephemeral.com",
+        RecordType::A,
+        make_ip_data("10.0.0.2"),
+        300,
+        None,
+    );
+
+    let candidates = cache.get_refresh_candidates(&permissive_scan());
+
+    assert!(
+        candidates.iter().any(|(d, _)| d == "ephemeral.com"),
+        "Pré-condição: a entrada normal deve ser candidata; candidates={candidates:?}"
+    );
+    assert!(
+        !candidates.iter().any(|(d, _)| d == "forever.com"),
+        "Entrada permanente nunca pode ser candidata; candidates={candidates:?}"
+    );
+}
+
+#[test]
+fn test_refresh_candidates_scan_claims_queue_flag_not_inflight_flag() {
+    // A varredura reivindica a fila, não a resolução. Enquanto o item espera,
+    // um hit de cliente no caminho stale ainda precisa conseguir agendar o
+    // reparo rápido — que testa a flag de voo, não a de fila.
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "claimed.com",
+        RecordType::A,
+        make_ip_data("7.7.7.7"),
+        300,
+        None,
+    );
+
+    let first = cache.get_refresh_candidates(&permissive_scan());
+    assert!(
+        first.iter().any(|(d, _)| d == "claimed.com"),
+        "Primeira varredura deve reivindicar a entrada; candidates={first:?}"
+    );
+
+    // A flag de fila deduplica entre ciclos: a segunda varredura não repete.
+    let second = cache.get_refresh_candidates(&permissive_scan());
+    assert!(
+        !second.iter().any(|(d, _)| d == "claimed.com"),
+        "Entrada já enfileirada não pode ser oferecida de novo; candidates={second:?}"
+    );
+
+    // Liberada a reivindicação de fila, ela volta a ser elegível.
+    cache.reset_refresh_queued("claimed.com", &RecordType::A);
+    let third = cache.get_refresh_candidates(&permissive_scan());
+    assert!(
+        third.iter().any(|(d, _)| d == "claimed.com"),
+        "Após reset_refresh_queued a entrada volta ao conjunto; candidates={third:?}"
+    );
+}
+
+#[test]
+fn test_refresh_candidates_order_puts_hot_before_cold() {
+    // A lista só é truncada quando o backlog não cabe, e nessa hora o que
+    // importa não é quem morre antes, mas quem custa mais caro perder.
+    let cache = create_refresh_cache(u64::MAX);
+
+    // Inserida primeiro e sem hits: fria.
+    cache.insert(
+        "cold.com",
+        RecordType::CNAME,
+        make_cname_data("alias.cold.com"),
+        300,
+        None,
+    );
+    // Inserida depois e com hit: quente. CNAME evita o L1, então get() chega
+    // ao L2 e incrementa hit_count.
+    cache.insert(
+        "hot.com",
+        RecordType::CNAME,
+        make_cname_data("alias.hot.com"),
+        300,
+        None,
+    );
+    cache.get(&Arc::from("hot.com"), &RecordType::CNAME);
+
+    let opts = RefreshScanOptions {
+        min_lead_secs: 0,
+        min_hit_rate: 2.0,
+        min_frequency: 0,
+    };
+    let candidates = cache.get_refresh_candidates(&opts);
+
+    let hot_pos = candidates.iter().position(|(d, _)| d == "hot.com");
+    let cold_pos = candidates.iter().position(|(d, _)| d == "cold.com");
+
+    assert!(
+        hot_pos.is_some() && cold_pos.is_some(),
+        "Ambas devem ser candidatas; candidates={candidates:?}"
+    );
+    assert!(
+        hot_pos < cold_pos,
+        "A entrada quente deve vir antes da fria, independentemente da ordem de \
+         inserção; candidates={candidates:?}"
+    );
+}
+
+// ─── Testes da janela de taxa de hits por renovação ──────────────────────────
+
+#[test]
+fn test_hits_per_minute_counts_only_hits_since_last_refresh() {
+    // `refresh_record` reseta `inserted_at_secs` mas não `hit_count`, que as
+    // políticas de evicção leem como total de vida. Sem `hits_at_last_refresh`
+    // a taxa dispararia a cada renovação e qualquer teste de "está sendo
+    // usada?" aprovaria qualquer entrada antiga.
+    let mut record = CachedRecord::new(
+        make_ip_data("1.2.3.4"),
+        300,
+        RecordType::A,
+        Some(CachedDnssecStatus::Unknown),
+    );
+    for _ in 0..120 {
+        record.record_hit();
+    }
+
+    let inserted = record.inserted_at_secs;
+    // 120 hits em 60 s = 120 hits/min.
+    let before = record.hits_per_minute_since_refresh(inserted + 60);
+    assert!(
+        (before - 120.0).abs() < 0.001,
+        "Antes da renovação a taxa cobre toda a vida da entrada; got {before}"
+    );
+
+    // Simula o que `refresh_record` faz: rebaseia a janela e o instante de
+    // inserção juntos.
+    record.note_refreshed();
+    record.inserted_at_secs = inserted + 60;
+
+    let right_after = record.hits_per_minute_since_refresh(inserted + 120);
+    assert_eq!(
+        right_after, 0.0,
+        "Sem hits novos após a renovação a taxa deve ser zero, não o total acumulado"
+    );
+
+    // 6 hits nos 60 s seguintes = 6 hits/min, e não (126 × 60 / 60) = 126.
+    for _ in 0..6 {
+        record.record_hit();
+    }
+    let after = record.hits_per_minute_since_refresh(inserted + 120);
+    assert!(
+        (after - 6.0).abs() < 0.001,
+        "A taxa deve refletir só a janela desde a renovação; got {after}"
+    );
+    assert_eq!(
+        record
+            .counters
+            .hit_count
+            .load(std::sync::atomic::Ordering::Relaxed),
+        126,
+        "O total de vida continua intacto para as políticas de evicção"
+    );
+}
+
+#[test]
+fn test_refresh_record_rebases_the_hit_rate_window() {
+    // Integração do mesmo efeito pela API do cache: depois de `refresh_record`
+    // a entrada volta a contar do zero e passa a ser classificada como fria,
+    // perdendo a prioridade para uma que não foi renovada.
+    let cache = create_refresh_cache(u64::MAX);
+
+    cache.insert(
+        "renewed.com",
+        RecordType::CNAME,
+        make_cname_data("alias.renewed.com"),
+        300,
+        None,
+    );
+    cache.insert(
+        "untouched.com",
+        RecordType::CNAME,
+        make_cname_data("alias.untouched.com"),
+        300,
+        None,
+    );
+
+    // Ambas ficam quentes.
+    for _ in 0..5 {
+        cache.get(&Arc::from("renewed.com"), &RecordType::CNAME);
+        cache.get(&Arc::from("untouched.com"), &RecordType::CNAME);
+    }
+
+    // Só uma é renovada, o que zera a janela de taxa dela.
+    assert!(
+        cache.refresh_record(
+            "renewed.com",
+            &RecordType::CNAME,
+            Some(300),
+            make_cname_data("alias.renewed.com"),
+            None,
+        ),
+        "Pré-condição: a renovação deve ter sido aplicada"
+    );
+
+    let opts = RefreshScanOptions {
+        min_lead_secs: 0,
+        min_hit_rate: 2.0,
+        min_frequency: 0,
+    };
+    let candidates = cache.get_refresh_candidates(&opts);
+
+    let renewed_pos = candidates.iter().position(|(d, _)| d == "renewed.com");
+    let untouched_pos = candidates.iter().position(|(d, _)| d == "untouched.com");
+
+    assert!(
+        renewed_pos.is_some() && untouched_pos.is_some(),
+        "Ambas devem seguir candidatas; candidates={candidates:?}"
+    );
+    assert!(
+        untouched_pos < renewed_pos,
+        "A recém-renovada tem zero hits na janela nova e deve ser classificada \
+         como fria; candidates={candidates:?}"
+    );
 }
 
 // ─── Testes de refactoring SOLID das estratégias de eviction ─────────────────
@@ -1336,7 +1703,7 @@ fn test_stale_record_is_refresh_candidate_after_client_access() {
         return;
     }
 
-    let candidates = cache.get_refresh_candidates();
+    let candidates = cache.get_refresh_candidates(&permissive_scan());
     assert!(
         candidates.iter().any(|(d, _)| d == "stale-refresh.com"),
         "Stale record must appear in refresh candidates after get(); candidates={candidates:?}"

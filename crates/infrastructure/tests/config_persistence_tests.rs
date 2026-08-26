@@ -113,6 +113,40 @@ fn save_and_reparse(config: &Config, input: &str) -> toml_edit::DocumentMut {
     output.parse::<toml_edit::DocumentMut>().unwrap()
 }
 
+// ── Chave removida: cache_max_refresh_per_sec ────────────────────────────
+
+/// `default_config_toml()` com a chave já removida do produto ainda presente,
+/// simulando um arquivo escrito por uma versão anterior.
+fn config_toml_with_legacy_refresh_rate() -> String {
+    default_config_toml().replace(
+        "cache_refresh_threshold = 0.75",
+        "cache_refresh_threshold = 0.75\ncache_max_refresh_per_sec = 4.0",
+    )
+}
+
+#[test]
+fn test_load_config_with_legacy_refresh_rate_key_succeeds() {
+    // Não há `deny_unknown_fields`, então serde ignora a chave: um
+    // ferrous-dns.toml escrito antes da remoção continua carregando.
+    let config = load_config(&config_toml_with_legacy_refresh_rate());
+
+    assert_eq!(config.dns.cache_refresh_threshold, 0.75);
+}
+
+#[test]
+fn test_save_drops_legacy_refresh_rate_key_from_file() {
+    let input = config_toml_with_legacy_refresh_rate();
+    let config = load_config(&input);
+
+    let doc = save_and_reparse(&config, &input);
+    let dns = doc.get("dns").unwrap().as_table().unwrap();
+
+    assert!(
+        dns.get("cache_max_refresh_per_sec").is_none(),
+        "a chave removida deve sair do arquivo no primeiro save"
+    );
+}
+
 // ── Pool serialization ───────────────────────────────────────────────────
 
 #[test]

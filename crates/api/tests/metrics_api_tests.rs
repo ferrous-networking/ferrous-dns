@@ -25,6 +25,8 @@ fn sample_cache() -> CacheMetricsSnapshot {
         batch_evictions: 8,
         hit_rate: 62.5,
         transient_upstream_errors: 9,
+        stale_refresh_drops: 11,
+        optimistic_refresh_shed: 13,
     }
 }
 

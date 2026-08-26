@@ -35,6 +35,10 @@ pub struct CacheMetricsResponse {
     pub batch_evictions: u64,
     pub hit_rate: f64,
     pub transient_upstream_errors: u64,
+    /// Serve-stale repairs dropped because the stale refresh queue was full.
+    pub stale_refresh_drops: u64,
+    /// Optimistic refresh candidates a cycle cut for lack of queue room.
+    pub optimistic_refresh_shed: u64,
 }
 
 #[derive(Deserialize, Debug, IntoParams)]

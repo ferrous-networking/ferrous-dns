@@ -99,7 +99,6 @@ cache_optimistic_refresh = true
 cache_refresh_threshold = 0.75
 cache_min_hit_rate = 2.0
 cache_min_frequency = 10
-cache_max_refresh_per_sec = 4.0
 cache_access_window_secs = 43200
 ```
 
@@ -107,17 +106,21 @@ cache_access_window_secs = 43200
 |:-------|:--------|:------------|
 | `cache_optimistic_refresh` | `true` | Enable background refresh |
 | `cache_refresh_threshold` | `0.75` | When remaining TTL fraction falls below this, schedule a refresh |
-| `cache_min_hit_rate` | `2.0` | Minimum hits/minute to keep an entry alive via refresh |
-| `cache_min_frequency` | `10` | Minimum total hits before an entry is eligible for refresh |
-| `cache_max_refresh_per_sec` | `4.0` | Rate ceiling for draining the refresh queue; `0` = unpaced |
+| `cache_min_hit_rate` | `2.0` | Hits/minute below which an entry ranks cold when candidates must be trimmed |
+| `cache_min_frequency` | `10` | Lifetime hits below which an entry ranks cold when candidates must be trimmed |
 | `cache_access_window_secs` | `43200` | Time window (seconds) since last access for refresh eligibility (43200 = 12h) |
 
-**How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold x original_ttl`, and the entry meets the minimum hit rate and frequency thresholds, a background task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes -- zero latency impact for clients.
+**How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold x original_ttl`, a background task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes -- zero latency impact for clients.
 
-**Why the rate ceiling matters**: a refresh cycle only scans the cache and enqueues its candidates -- the refreshes themselves run on a shared background worker. Without pacing, that worker empties the backlog as fast as the upstream answers, so the effective brake is upstream latency. A slow DoH upstream never drains the queue, but point ferrous-dns at a fast local resolver and each cycle renews the entire eligible working set at once. On a large cache that generates far more internal resolutions than client queries, and the CPU and database write pressure shows up as higher cache-hit latency. `cache_max_refresh_per_sec` spreads a cycle's backlog across the interval instead of firing it as a burst. Candidates that do not fit in the queue are not marked as refreshing, so they stay eligible for a later cycle; any that expire first are simply re-fetched on demand.
+**Pacing is automatic**: a refresh cycle only scans the cache and enqueues its candidates -- the refreshes themselves run on a shared background worker. That worker spreads each cycle's backlog evenly across the cycle interval, draining at a period of `cycle interval / backlog`, so a cycle never fires as a burst of internal queries. There is nothing to configure: the rate follows the backlog, and the ceiling on simultaneous upstream work remains the worker's 16-way concurrency limit.
+
+**Renewal is guaranteed ahead of expiry**, not merely likely. The proportional threshold alone is not enough: a candidate waits up to one cycle to be scanned and up to one more to be drained, so an entry whose remaining life is shorter than two cycle intervals would lapse before its turn. Alongside the threshold, an entry is therefore also taken as soon as less than `2 x cycle interval` (120 seconds at the fixed 60-second cycle) of its TTL remains, whichever fires first. Entries whose whole TTL is shorter than that window cannot be renewed ahead of expiry at all and are left to the serve-stale path.
+
+!!! note "Minimum Hit Rate and Minimum Frequency rank, they do not exclude"
+    Every eligible entry is queued for renewal. `cache_min_hit_rate` and `cache_min_frequency` only come into play when a cycle finds more candidates than the queue can hold: candidates are ordered by how much their loss would cost -- entries that clear both thresholds first, and within each group the ones closest to being unusable -- and the tail is dropped. On a healthy deployment nothing is dropped and neither threshold has any effect on refresh. Watch `cache_optimistic_refresh_shed` on `/metrics`: a sustained non-zero value means the working set has outgrown the queue, which is sized from `cache_max_entries`.
 
 !!! note "Serve-stale is never paced"
-    The ceiling applies only to background pre-expiry refreshes. When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a refresh is queued -- those bypass the pacer entirely, because someone is already waiting on the fresh result.
+    Pacing applies only to background pre-expiry refreshes. When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a refresh is queued -- those bypass the pacer entirely, because someone is already waiting on the fresh result.
 
 !!! note
     `cache_min_ttl` should be >= 240 seconds so the refresh job has time to act before expiry.
@@ -279,4 +282,3 @@ With 500,000 entries and aggressive prefetch enabled, the effective cache hit ra
 | Mini PC (2–4 GB) | 50,000 | `hit_rate` | auto | ~25 MB |
 | Home server (4–8 GB) | 100,000 | `hit_rate` | auto | ~50 MB |
 | Server (16+ GB) | 500,000 | `hit_rate` | 256 | ~250 MB |
-

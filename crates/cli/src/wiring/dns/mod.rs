@@ -16,11 +16,12 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
     cache::DnsCache, cache_maintenance::DnsCacheMaintenance, dnssec::DnssecStatsAdapter,
     events::QueryEventEmitter, resolver::LocalPtrResolver, DgaDetector, HealthChecker,
-    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, RefreshSenders,
+    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, RefreshScanOptions, RefreshSenders,
     ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
+    DEFAULT_REFRESH_INTERVAL_SECS,
 };
 use std::sync::Arc;
 use tracing::info;
@@ -379,18 +380,33 @@ impl DnsServices {
             return Ok((None, None));
         }
 
-        // The optimistic queue is the per-cycle backlog bound: a cycle offers
-        // every candidate and whatever does not fit is released and retried
-        // next cycle. The stale queue is deliberately shallow — those items are
-        // latency-sensitive, and a deep backlog of them is meaningless because
-        // the client interaction is over long before it drains. 32 covers one
-        // full batch of in-flight refreshes plus a little slack.
-        let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(32);
-        let (optimistic_tx, optimistic_rx) = tokio::sync::mpsc::channel(256);
+        // The optimistic queue holds one cycle's backlog. A cycle produces
+        // roughly `entries * interval / ttl` candidates, so it is sized off the
+        // cache rather than fixed: a constant that fits a small deployment
+        // silently caps how much of a large one can stay warm. The clamp keeps
+        // both ends sane — the upper bound is ~0.8 MB of queued keys.
+        let optimistic_capacity = (config.dns.cache_max_entries / 4).clamp(1024, 32_768);
+        // The stale queue is shallower on purpose: those items are
+        // latency-sensitive and drained unpaced, so it only has to absorb a
+        // burst, not a backlog — the client interaction is over long before a
+        // deep one would drain.
+        let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(128);
+        let (optimistic_tx, optimistic_rx) = tokio::sync::mpsc::channel(optimistic_capacity);
+        let (pace_tx, pace_rx) = tokio::sync::watch::channel(None);
         cache.set_refresh_senders(RefreshSenders {
             stale: stale_tx,
             optimistic: optimistic_tx,
         });
+
+        // A candidate waits up to one cycle to be scanned and up to one more to
+        // be drained, so anything with less life than that left would expire
+        // before its turn. Taking it early is what makes "renewed before the
+        // TTL lapses" hold rather than merely tend to hold.
+        let scan_opts = RefreshScanOptions {
+            min_lead_secs: DEFAULT_REFRESH_INTERVAL_SECS * 2,
+            min_hit_rate: config.dns.cache_min_hit_rate,
+            min_frequency: config.dns.cache_min_frequency,
+        };
 
         let pool_manager_for_maintenance = Arc::new(
             PoolManager::new(
@@ -418,12 +434,17 @@ impl DnsServices {
             Some(repos.query_log.clone()),
             stale_rx,
             optimistic_rx,
-            config.dns.cache_max_refresh_per_sec,
+            pace_rx,
+            scan_opts.min_lead_secs,
         );
 
         Ok((
-            Some(Arc::new(DnsCacheMaintenance::new(cache.clone(), 60))
-                as Arc<dyn CacheMaintenancePort>),
+            Some(Arc::new(DnsCacheMaintenance::new(
+                cache.clone(),
+                DEFAULT_REFRESH_INTERVAL_SECS,
+                scan_opts,
+                pace_tx,
+            )) as Arc<dyn CacheMaintenancePort>),
             Some(maintenance_pool_manager),
         ))
     }

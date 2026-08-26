@@ -13,7 +13,7 @@ pub mod tunneling_eviction;
 pub mod wal_checkpoint;
 
 pub use blocklist_sync::BlocklistSyncJob;
-pub use cache_maintenance::CacheMaintenanceJob;
+pub use cache_maintenance::{CacheMaintenanceJob, DEFAULT_REFRESH_INTERVAL_SECS};
 pub use client_sync::ClientSyncJob;
 pub use dga_eviction::DgaEvictionJob;
 pub use nxdomain_hijack_eviction::NxdomainHijackEvictionJob;

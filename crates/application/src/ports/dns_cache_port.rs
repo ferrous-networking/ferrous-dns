@@ -20,6 +20,11 @@ pub struct CacheMetricsSnapshot {
     /// reset, no healthy servers, invalid response, etc.) and therefore NOT
     /// cached as NXDOMAIN. Helps operators diagnose upstream instability.
     pub transient_upstream_errors: u64,
+    /// Serve-stale repairs dropped because the stale queue was full. A client
+    /// got a stale answer with no renewal scheduled behind it.
+    pub stale_refresh_drops: u64,
+    /// Optimistic candidates a maintenance cycle cut for lack of queue room.
+    pub optimistic_refresh_shed: u64,
 }
 
 /// Snapshot of a single positive cache entry, as listed by the admin UI.
