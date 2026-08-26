@@ -246,6 +246,9 @@ impl DnsCache {
                             .is_err()
                     {
                         record.clear_refreshing();
+                        self.metrics
+                            .stale_refresh_drops
+                            .fetch_add(1, AtomicOrdering::Relaxed);
                     }
                 }
                 return Some((
@@ -505,6 +508,52 @@ impl DnsCache {
         self.refresh_senders.get().map(|s| &s.optimistic)
     }
 
+    /// Counts candidates a cycle had to cut for lack of queue room.
+    pub(crate) fn note_refresh_shed(&self, count: u64) {
+        self.metrics
+            .optimistic_refresh_shed
+            .fetch_add(count, AtomicOrdering::Relaxed);
+    }
+
+    /// Converts a queue claim into an in-flight claim, or declines the item.
+    ///
+    /// Called when the worker pulls an optimistic candidate. The entry may have
+    /// sat in the queue for most of a cycle, during which a serve-stale repair
+    /// may already have renewed it or taken it over — so this re-checks the
+    /// entry instead of spending an upstream query on faith. Returning `false`
+    /// means the caller must not resolve and must not clear any flag: either
+    /// nothing is held, or the holder is someone else.
+    pub(crate) fn claim_queued_for_refresh(
+        &self,
+        domain: &str,
+        record_type: &RecordType,
+        min_lead_secs: u64,
+    ) -> bool {
+        let key = CacheKey::new(domain, *record_type);
+        let Some(entry) = self.cache.get(&key) else {
+            return false;
+        };
+        let record = entry.value();
+
+        // The queue claim is spent either way: this item has left the queue.
+        record.clear_refresh_queued();
+
+        if record.is_permanent() || record.is_marked_for_deletion() {
+            return false;
+        }
+
+        let now = coarse_now_secs();
+        if record.is_expired_at_secs(now) {
+            if !record.is_stale_usable_at_secs(now) {
+                return false;
+            }
+        } else if !record.should_refresh(self.refresh_threshold, now, min_lead_secs) {
+            return false;
+        }
+
+        record.try_set_refreshing()
+    }
+
     pub fn refresh_record(
         &self,
         domain: &str,
@@ -530,7 +579,11 @@ impl DnsCache {
             if let Some(ds) = dnssec_status {
                 record.dnssec_status = ds;
             }
+            // The rate window and the flags all key off this renewal, so they
+            // move together with `inserted_at_secs` above.
+            record.note_refreshed();
             record.clear_refreshing();
+            record.clear_refresh_queued();
 
             let maybe_l1_addresses = if let CachedData::IpAddresses(ref entry) = new_data {
                 Some(Arc::clone(&entry.addresses))
@@ -746,6 +799,10 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
             hit_rate: metrics.hit_rate(),
             transient_upstream_errors: metrics
                 .transient_upstream_errors
+                .load(AtomicOrdering::Relaxed),
+            stale_refresh_drops: metrics.stale_refresh_drops.load(AtomicOrdering::Relaxed),
+            optimistic_refresh_shed: metrics
+                .optimistic_refresh_shed
                 .load(AtomicOrdering::Relaxed),
         }
     }

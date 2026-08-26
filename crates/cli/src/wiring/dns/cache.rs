@@ -21,7 +21,11 @@ pub(super) fn build_cache(config: &Config) -> Arc<DnsCache> {
         Arc::new(DnsCache::new(DnsCacheConfig {
             max_entries: config.dns.cache_max_entries,
             eviction_strategy,
-            min_threshold: config.dns.cache_min_hit_rate,
+            // Seeded neutral, not from `cache_min_hit_rate`: this feeds the
+            // adaptive EWMA, which blends it with an eviction score bounded by
+            // 1.0, while `cache_min_hit_rate` is a hits-per-minute figure. The
+            // EWMA converges on the observed worst score on its own.
+            min_threshold: 0.0,
             refresh_threshold: config.dns.cache_refresh_threshold,
             batch_eviction_percentage: config.dns.cache_batch_eviction_percentage,
             adaptive_thresholds: config.dns.cache_adaptive_thresholds,

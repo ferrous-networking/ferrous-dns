@@ -1,4 +1,6 @@
-use super::cache::{coarse_clock, CachedAddresses, CachedData, DnsCache, RefreshRequest};
+use super::cache::{
+    coarse_clock, CachedAddresses, CachedData, DnsCache, RefreshRequest, RefreshScanOptions,
+};
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
@@ -10,13 +12,22 @@ use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
-use tokio::time::MissedTickBehavior;
+use tokio::sync::{mpsc, watch};
 use tracing::{debug, info};
 
 /// Minimum bloom rotation interval in refresh cycles. Rotation re-seeds every
 /// live key, so this only bounds how often that `O(entries)` pass runs.
 const MIN_BLOOM_ROTATION_CYCLES: u64 = 3;
+
+/// Below this the pacer stops trying. The timer cannot honour sub-millisecond
+/// sleeps anyway, and a backlog needing that rate is already spread far finer
+/// than the concurrency limit that actually bounds upstream load.
+const MIN_PACER_PERIOD: Duration = Duration::from_millis(1);
+
+/// Channel carrying the current drain period to the refresh worker. `None`
+/// means drain freely.
+pub type RefreshPace = Option<Duration>;
+
 /// Why an entry reached the worker, derived from which queue it arrived on.
 ///
 /// The two service levels are not interchangeable: `Stale` means a client has
@@ -28,20 +39,26 @@ enum RefreshOrigin {
     Optimistic,
 }
 
-/// Waits for the pacer to grant a slot, then takes the next optimistic item.
+/// Waits out the current pacing period, then takes the next optimistic item.
 ///
-/// The order matters twice over. Ticking *before* receiving keeps the arm
+/// The order matters twice over. Sleeping *before* receiving keeps the arm
 /// cancel-safe: `select!` may drop this future when a stale item wins, and the
-/// worst that costs is one unused tick, never a dropped message. Ticking
+/// worst that costs is one abandoned sleep, never a dropped message. Sleeping
 /// *inside* the arm's future rather than after the item is in hand is what
-/// keeps the stale arm responsive — the pacer wait happens as part of arm
-/// selection, so `select!` is still polling the stale receiver throughout it.
+/// keeps the stale arm responsive — the wait happens as part of arm selection,
+/// so `select!` is still polling the stale receiver throughout it.
+///
+/// The period is re-read on every call, so a cycle that publishes a new one
+/// takes effect from the next item rather than at the end of the backlog.
 async fn paced_recv(
-    pacer: &mut Option<tokio::time::Interval>,
+    pace: &watch::Receiver<RefreshPace>,
     rx: &mut mpsc::Receiver<RefreshRequest>,
 ) -> Option<RefreshRequest> {
-    if let Some(pacer) = pacer.as_mut() {
-        pacer.tick().await;
+    // Copied out before the await: the borrow guard is not `Send`, and holding
+    // it across the sleep would make the whole worker task non-`Send`.
+    let period = *pace.borrow();
+    if let Some(period) = period {
+        tokio::time::sleep(period).await;
     }
     rx.recv().await
 }
@@ -53,10 +70,22 @@ pub struct DnsCacheMaintenance {
     bloom_cycle_counter: AtomicU64,
     /// Number of refresh cycles between bloom rotations.
     bloom_rotation_cycles: u64,
+    /// How often a cycle runs. Load-bearing: it is the window a cycle's backlog
+    /// is spread across, so it must match what actually drives the job.
+    refresh_interval_secs: u64,
+    /// Eligibility and priority knobs handed to each scan.
+    scan_opts: RefreshScanOptions,
+    /// Publishes the drain period the worker should honour.
+    pace_tx: watch::Sender<RefreshPace>,
 }
 
 impl DnsCacheMaintenance {
-    pub fn new(cache: Arc<DnsCache>, refresh_interval_secs: u64) -> Self {
+    pub fn new(
+        cache: Arc<DnsCache>,
+        refresh_interval_secs: u64,
+        scan_opts: RefreshScanOptions,
+        pace_tx: watch::Sender<RefreshPace>,
+    ) -> Self {
         // Rotation only governs how quickly bits left behind by removed keys
         // are purged: `rotate_bloom` re-seeds every live entry into the new
         // slot, so an entry's visibility no longer depends on this cadence.
@@ -77,6 +106,9 @@ impl DnsCacheMaintenance {
             cache,
             bloom_cycle_counter: AtomicU64::new(0),
             bloom_rotation_cycles,
+            refresh_interval_secs: interval,
+            scan_opts,
+            pace_tx,
         }
     }
 
@@ -175,10 +207,12 @@ impl DnsCacheMaintenance {
 
     /// Spawns the background worker that drains both refresh queues.
     ///
-    /// `max_refresh_per_sec` paces **only** the optimistic queue. Those items
-    /// arrive in bulk from a maintenance cycle and are best-effort, so draining
-    /// them as fast as the upstream answers is exactly what turns one cycle
-    /// into a burst of internal queries. `0` disables pacing entirely.
+    /// Pacing applies **only** to the optimistic queue, and its period is set
+    /// by the maintenance cycle rather than configured: a cycle divides its own
+    /// interval by the backlog it just produced, so the work lands evenly
+    /// across the interval instead of as a burst — at whatever rate the backlog
+    /// actually requires. What bounds instantaneous upstream load is
+    /// `MAX_CONCURRENT_REFRESHES`, not the pacing.
     ///
     /// The stale queue is drained unpaced and is polled first on every
     /// iteration, so a serve-stale repair never waits behind an optimistic
@@ -189,28 +223,18 @@ impl DnsCacheMaintenance {
         query_log: Option<Arc<dyn QueryLogRepository>>,
         mut stale_rx: mpsc::Receiver<RefreshRequest>,
         mut optimistic_rx: mpsc::Receiver<RefreshRequest>,
-        max_refresh_per_sec: f64,
+        pace: watch::Receiver<RefreshPace>,
+        min_lead_secs: u64,
     ) {
         const MAX_CONCURRENT_REFRESHES: usize = 16;
-        /// Ceiling on the pacer period. A rate low enough to exceed it is
-        /// already indistinguishable from "off", and this keeps the period
-        /// inside what `Duration::from_secs_f64` can represent.
-        const MAX_PACER_PERIOD_SECS: f64 = 3600.0;
 
         let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_REFRESHES));
-
-        let mut pacer = (max_refresh_per_sec > 0.0).then(|| {
-            let period = (1.0 / max_refresh_per_sec).min(MAX_PACER_PERIOD_SECS);
-            let mut interval = tokio::time::interval(Duration::from_secs_f64(period));
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-            interval
-        });
 
         tokio::spawn(async move {
             loop {
                 // `biased` polls the stale arm first, so a ready serve-stale
                 // repair always wins over an optimistic item — including one
-                // whose pacer slot came due in the same wakeup.
+                // whose pacing period elapsed in the same wakeup.
                 let (domain, record_type, origin) = tokio::select! {
                     biased;
 
@@ -218,7 +242,7 @@ impl DnsCacheMaintenance {
                         (domain, record_type, RefreshOrigin::Stale)
                     }
 
-                    Some((domain, record_type)) = paced_recv(&mut pacer, &mut optimistic_rx) => {
+                    Some((domain, record_type)) = paced_recv(&pace, &mut optimistic_rx) => {
                         (domain, record_type, RefreshOrigin::Optimistic)
                     }
 
@@ -227,6 +251,18 @@ impl DnsCacheMaintenance {
                         break;
                     }
                 };
+
+                // A stale item already holds the in-flight claim, taken by the
+                // lookup that queued it. An optimistic one only holds a queue
+                // claim, and may have spent most of a cycle waiting — long
+                // enough for a serve-stale repair to have renewed it already.
+                // Converting the claim here is what keeps that from becoming a
+                // second, pointless upstream query.
+                if origin == RefreshOrigin::Optimistic
+                    && !cache.claim_queued_for_refresh(&domain, &record_type, min_lead_secs)
+                {
+                    continue;
+                }
 
                 let permit = match semaphore.clone().acquire_owned().await {
                     Ok(p) => p,
@@ -274,6 +310,22 @@ impl DnsCacheMaintenance {
             }
         });
     }
+
+    /// Period that spreads `backlog` items evenly across one cycle interval.
+    ///
+    /// This is the whole pacing policy: a cycle's work is stretched over the
+    /// window before the next cycle produces more, so the queue drains steadily
+    /// instead of emptying in a burst and then idling. Because the divisor is
+    /// the real backlog, throughput follows demand rather than a fixed ceiling.
+    fn pace_for(&self, backlog: usize) -> RefreshPace {
+        let backlog = u32::try_from(backlog).unwrap_or(u32::MAX);
+        if backlog == 0 {
+            return None;
+        }
+
+        let period = Duration::from_secs(self.refresh_interval_secs) / backlog;
+        (period >= MIN_PACER_PERIOD).then_some(period)
+    }
 }
 
 #[async_trait]
@@ -308,12 +360,14 @@ impl CacheMaintenancePort for DnsCacheMaintenance {
         }
 
         let cache_for_scan = Arc::clone(&self.cache);
-        let candidates =
-            tokio::task::spawn_blocking(move || cache_for_scan.get_refresh_candidates())
+        let scan_opts = self.scan_opts;
+        let mut candidates =
+            tokio::task::spawn_blocking(move || cache_for_scan.get_refresh_candidates(&scan_opts))
                 .await
                 .unwrap_or_default();
 
         if candidates.is_empty() {
+            self.pace_tx.send_replace(None);
             return Ok(CacheRefreshOutcome {
                 cache_size: self.cache.size(),
                 ..Default::default()
@@ -329,14 +383,29 @@ impl CacheMaintenancePort for DnsCacheMaintenance {
             // No worker wired up, so nothing would ever drain the queue —
             // release the flags rather than stranding the entries.
             for (domain, record_type) in &candidates {
-                self.cache.reset_refreshing(domain, record_type);
+                self.cache.reset_refresh_queued(domain, record_type);
             }
+            self.pace_tx.send_replace(None);
             return Ok(CacheRefreshOutcome {
                 candidates_found: candidate_count,
                 cache_size: self.cache.size(),
                 ..Default::default()
             });
         };
+
+        // The queue is the per-cycle bound. `get_refresh_candidates` already
+        // ordered the list so that the tail is what costs least to lose, so
+        // cutting it here beats letting `try_send` reject in arrival order.
+        let free = tx.capacity();
+        let mut shed = 0usize;
+        if candidates.len() > free {
+            for (domain, record_type) in &candidates[free..] {
+                self.cache.reset_refresh_queued(domain, record_type);
+            }
+            shed = candidates.len() - free;
+            self.cache.note_refresh_shed(shed as u64);
+            candidates.truncate(free);
+        }
 
         let mut enqueued = 0;
         let mut dropped = 0;
@@ -348,22 +417,36 @@ impl CacheMaintenancePort for DnsCacheMaintenance {
             {
                 enqueued += 1;
             } else {
-                // Queue full: the backlog already outruns the drain rate, so
-                // clear the flag and let a later cycle pick the entry up.
-                self.cache.reset_refreshing(domain, record_type);
+                // Lost a race with another producer for the slot we counted on;
+                // release the claim and let a later cycle pick the entry up.
+                self.cache.reset_refresh_queued(domain, record_type);
                 dropped += 1;
             }
         }
 
+        // Everything now sitting in the queue, including whatever the worker
+        // has yet to drain from the previous cycle, gets spread across the
+        // interval before this cycle runs again.
+        let backlog = tx.max_capacity().saturating_sub(tx.capacity());
+        let pace = self.pace_for(backlog);
+        self.pace_tx.send_replace(pace);
+
         debug!(
             candidate_count,
-            enqueued, dropped, "Optimistic refresh candidates handed to the paced queue"
+            enqueued,
+            dropped,
+            shed,
+            backlog,
+            period_ms = pace.map(|p| p.as_millis()),
+            "Optimistic refresh candidates handed to the paced queue"
         );
 
         Ok(CacheRefreshOutcome {
             candidates_found: candidate_count,
             enqueued,
             dropped,
+            shed,
+            paced_period_ms: pace.map(|p| p.as_millis() as u64),
             cache_size: self.cache.size(),
         })
     }

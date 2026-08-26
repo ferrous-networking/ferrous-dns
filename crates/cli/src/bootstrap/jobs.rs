@@ -4,6 +4,7 @@ use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, DgaEvictionJob, JobRunner,
     NxdomainHijackEvictionJob, QueryLogRetentionJob, ResponseIpFilterEvictionJob, RetentionJob,
     ScheduleEvaluatorJob, SessionCleanupJob, TunnelingEvictionJob, WalCheckpointJob,
+    DEFAULT_REFRESH_INTERVAL_SECS,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -44,10 +45,11 @@ pub fn build_job_runner(
         .with_session_cleanup(SessionCleanupJob::new(repos.session.clone()).with_interval(3600));
 
     if let Some(maintenance) = cache_maintenance {
-        runner = runner.with_cache_maintenance(
-            CacheMaintenanceJob::new(maintenance)
-                .with_intervals(60, config.dns.cache_compaction_interval),
-        );
+        runner =
+            runner.with_cache_maintenance(CacheMaintenanceJob::new(maintenance).with_intervals(
+                DEFAULT_REFRESH_INTERVAL_SECS,
+                config.dns.cache_compaction_interval,
+            ));
     }
 
     if let Some(eviction) = tunneling_eviction {

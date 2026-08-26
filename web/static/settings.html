@@ -1212,7 +1212,7 @@
                             <h4 style="font-size:16px;font-weight:600;margin:0">Optimistic Refresh</h4>
                         </div>
                         <p style="font-size:13px;color:var(--text-secondary);margin:0">Proactively re-fetches cache entries in the background before they expire, so clients always receive a fresh response with zero added latency. Triggered when a cached entry has consumed more than the configured Refresh Threshold of its TTL.</p>
-                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Only applies to entries that meet the Minimum Hit Rate and Minimum Frequency thresholds below.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Every eligible entry is renewed, at a rate derived from how many are due — there is no fixed ceiling to tune. The thresholds below only decide who is dropped first if a cycle produces more candidates than the queue can hold.</p>
                     </div>
                     <div @click="config.dns.cache_optimistic_refresh=!config.dns.cache_optimistic_refresh"
                          :class="config.dns.cache_optimistic_refresh?'active':''" class="toggle-switch">
@@ -1243,7 +1243,7 @@
                                 <i data-lucide="bar-chart-2" style="width:20px;height:20px;color:var(--color-primary)"></i>
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Hit Rate</h4>
                             </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Minimum cache hits per minute an entry must receive to qualify for optimistic refresh. Entries accessed less frequently are allowed to expire normally and are only re-fetched on the next client request.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Cache hits per minute, counted since the entry's last renewal, below which an entry ranks as cold. Cold entries are still refreshed normally; they are simply the first to be dropped when a refresh cycle produces more candidates than fit in the queue.</p>
                         </div>
                         <div style="flex-shrink:0;width:150px">
                             <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" style="width:100%;text-align:right">
@@ -1259,7 +1259,7 @@
                                 <i data-lucide="hash" style="width:20px;height:20px;color:var(--color-primary)"></i>
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Frequency</h4>
                             </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Minimum total number of hits an entry must accumulate before it is eligible for optimistic refresh. Prevents very recently added entries from being immediately scheduled for background re-fetches.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Lifetime hits below which an entry ranks as cold, alongside Minimum Hit Rate. Keeps a burst of newly inserted entries from displacing an established working set when a cycle's candidates have to be trimmed.</p>
                         </div>
                         <div style="flex-shrink:0;width:150px">
                             <input type="number" x-model.number="config.dns.cache_min_frequency" min="1" style="width:100%;text-align:right">

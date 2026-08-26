@@ -87,7 +87,7 @@ pub fn render_metrics(
     let mut registry = Registry::with_prefix("ferrousdns");
 
     // --- Cache counters (monotonic since process start) ---
-    let cache_counters: [(&str, &str, u64); 10] = [
+    let cache_counters: [(&str, &str, u64); 12] = [
         ("cache_hits", "DNS cache hits", cache.hits),
         ("cache_misses", "DNS cache misses", cache.misses),
         ("cache_insertions", "DNS cache insertions", cache.insertions),
@@ -121,6 +121,16 @@ pub fn render_metrics(
             "cache_transient_upstream_errors",
             "Upstream failures classified as transient (not cached as NXDOMAIN)",
             cache.transient_upstream_errors,
+        ),
+        (
+            "cache_stale_refresh_drops",
+            "Serve-stale repairs dropped because the stale refresh queue was full",
+            cache.stale_refresh_drops,
+        ),
+        (
+            "cache_optimistic_refresh_shed",
+            "Optimistic refresh candidates a cycle cut for lack of queue room",
+            cache.optimistic_refresh_shed,
         ),
     ];
     for (name, help, value) in cache_counters {

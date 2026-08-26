@@ -138,6 +138,8 @@ async fn test_cache_maintenance_job_with_custom_intervals() {
                 candidates_found: 5,
                 enqueued: 3,
                 dropped: 1,
+                shed: 1,
+                paced_period_ms: Some(20_000),
                 cache_size: 100,
             })
             .with_compaction_outcome(CacheCompactionOutcome {

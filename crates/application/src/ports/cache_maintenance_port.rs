@@ -11,9 +11,19 @@ pub struct CacheRefreshOutcome {
     pub candidates_found: usize,
     /// Candidates accepted by the refresh queue.
     pub enqueued: usize,
-    /// Candidates rejected because the queue was full; they stay eligible for
-    /// a later cycle.
+    /// Candidates the queue rejected outright; they stay eligible for a later
+    /// cycle. Distinct from `shed`: this only happens on a lost race for a slot
+    /// the cycle had already counted as free.
     pub dropped: usize,
+    /// Candidates the cycle cut before offering them, because the backlog did
+    /// not fit in the queue. The list is ordered by what its loss costs, so
+    /// these are the cheapest ones. A sustained non-zero value means the
+    /// working set has outgrown the queue.
+    pub shed: usize,
+    /// Interval between optimistic drains this cycle asked the worker for.
+    /// `None` when there is nothing queued, or when the backlog is large enough
+    /// that pacing it adds nothing.
+    pub paced_period_ms: Option<u64>,
     pub cache_size: usize,
 }
 

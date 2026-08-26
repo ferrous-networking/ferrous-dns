@@ -25,9 +25,9 @@ pub use block_filter::BlockFilterEngine;
 pub use cache::{
     CacheKey, CacheMetrics, CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord,
     DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, NegativeQueryTracker,
-    RefreshRequest, RefreshSenders,
+    RefreshRequest, RefreshScanOptions, RefreshSenders,
 };
-pub use cache_maintenance::DnsCacheMaintenance;
+pub use cache_maintenance::{DnsCacheMaintenance, RefreshPace};
 pub use dga_detection::DgaDetector;
 pub use events::{QueryEvent, QueryEventEmitter};
 pub use load_balancer::{
