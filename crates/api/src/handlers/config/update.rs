@@ -170,9 +170,6 @@ pub async fn update_config(
         if let Some(refresh) = dns_update.cache_optimistic_refresh {
             new_config.dns.cache_optimistic_refresh = refresh;
         }
-        if let Some(rate) = dns_update.cache_max_refresh_per_sec {
-            new_config.dns.cache_max_refresh_per_sec = rate;
-        }
         if let Some(adaptive) = dns_update.cache_adaptive_thresholds {
             new_config.dns.cache_adaptive_thresholds = adaptive;
         }

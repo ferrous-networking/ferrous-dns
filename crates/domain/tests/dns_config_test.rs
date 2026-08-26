@@ -18,7 +18,6 @@ fn test_config_default_values() {
     assert_eq!(config.cache_min_frequency, 10);
     assert_eq!(config.cache_min_lfuk_score, 1.5);
     assert_eq!(config.cache_refresh_threshold, 0.75);
-    assert_eq!(config.cache_max_refresh_per_sec, 4.0);
     assert_eq!(config.cache_lfuk_history_size, 10);
     assert!((config.cache_batch_eviction_percentage - 0.1).abs() < f64::EPSILON);
     assert_eq!(config.cache_compaction_interval, 300);
@@ -112,7 +111,6 @@ fn test_config_deserialization_with_all_fields() {
         cache_min_frequency = 20
         cache_min_lfuk_score = 2.0
         cache_refresh_threshold = 0.5
-        cache_max_refresh_per_sec = 10.0
         cache_lfuk_history_size = 5
         cache_batch_eviction_percentage = 0.2
         cache_compaction_interval = 120
@@ -136,7 +134,6 @@ fn test_config_deserialization_with_all_fields() {
     assert_eq!(config.cache_min_hit_rate, 3.0);
     assert_eq!(config.cache_min_frequency, 20);
     assert_eq!(config.cache_min_lfuk_score, 2.0);
-    assert_eq!(config.cache_max_refresh_per_sec, 10.0);
     assert!(config.cache_adaptive_thresholds);
     assert_eq!(config.cache_access_window_secs, 3600);
     assert!(!config.block_private_ptr);
@@ -147,17 +144,18 @@ fn test_config_deserialization_with_all_fields() {
 }
 
 #[test]
-fn test_cache_max_refresh_per_sec_defaults_when_absent() {
-    // Configs written before pacing existed must still load, picking up the
-    // default rate rather than failing to deserialize.
-    let config: DnsConfig = toml::from_str("query_timeout = 3").unwrap();
-    assert_eq!(config.cache_max_refresh_per_sec, 4.0);
-}
+fn test_removed_cache_max_refresh_per_sec_key_is_ignored() {
+    // A chave saiu do produto quando o pacer passou a derivar o ritmo do
+    // backlog. Não existe `deny_unknown_fields`, então um arquivo escrito por
+    // uma versão anterior continua carregando em vez de falhar.
+    let toml_str = r#"
+        query_timeout = 3
+        cache_max_refresh_per_sec = 4.0
+    "#;
 
-#[test]
-fn test_cache_max_refresh_per_sec_zero_means_unpaced() {
-    let config: DnsConfig = toml::from_str("cache_max_refresh_per_sec = 0.0").unwrap();
-    assert_eq!(config.cache_max_refresh_per_sec, 0.0);
+    let config: DnsConfig = toml::from_str(toml_str).unwrap();
+
+    assert_eq!(config.query_timeout, 3);
 }
 
 #[test]

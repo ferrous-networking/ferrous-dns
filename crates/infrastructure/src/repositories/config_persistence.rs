@@ -27,6 +27,12 @@ fn set_val(table: &mut toml_edit::Table, key: &str, new_val: toml_edit::Value) {
     }
 }
 
+/// Drops a key that is no longer part of the config surface, so a file written
+/// by an older version stops carrying it after the next save.
+fn remove_val(table: &mut toml_edit::Table, key: &str) {
+    let _ = table.remove(key);
+}
+
 /// Converts a slice of strings into a TOML inline array value.
 fn str_array(values: &[String]) -> toml_edit::Value {
     let mut arr = toml_edit::Array::new();
@@ -198,11 +204,9 @@ pub fn save_config_to_file(config: &Config, path: &str) -> Result<(), ConfigErro
             "cache_refresh_threshold",
             toml_edit::Value::from(config.dns.cache_refresh_threshold),
         );
-        set_val(
-            t,
-            "cache_max_refresh_per_sec",
-            toml_edit::Value::from(config.dns.cache_max_refresh_per_sec),
-        );
+        // Removed once refresh pacing became a function of the cycle backlog.
+        // Older files still carry it; drop it instead of leaving a dead key.
+        remove_val(t, "cache_max_refresh_per_sec");
         set_val(
             t,
             "cache_lfuk_history_size",

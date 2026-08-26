@@ -68,21 +68,6 @@ pub struct DnsConfig {
     #[serde(default = "default_cache_refresh_threshold")]
     pub cache_refresh_threshold: f64,
 
-    /// Rate ceiling, in refreshes per second, for draining the background
-    /// optimistic-refresh queue. `0` disables pacing and lets the worker drain
-    /// as fast as its 16-way concurrency allows (the previous behaviour).
-    ///
-    /// A refresh cycle only scans and enqueues; without pacing the worker then
-    /// empties that backlog as fast as the upstream answers, so a fast local
-    /// resolver turns each cycle into a burst of internal queries. At the
-    /// default 4/s a cycle's backlog is spread across the 60 s interval
-    /// instead.
-    ///
-    /// This does **not** throttle serve-stale refreshes: those mean a client
-    /// was just handed a stale answer, and they always bypass the pacer.
-    #[serde(default = "default_cache_max_refresh_per_sec")]
-    pub cache_max_refresh_per_sec: f64,
-
     #[serde(default = "default_cache_lfuk_history_size")]
     pub cache_lfuk_history_size: usize,
     #[serde(default = "default_cache_batch_eviction_percentage")]
@@ -193,7 +178,6 @@ impl Default for DnsConfig {
             cache_min_frequency: default_cache_min_frequency(),
             cache_min_lfuk_score: default_cache_min_lfuk_score(),
             cache_refresh_threshold: default_cache_refresh_threshold(),
-            cache_max_refresh_per_sec: default_cache_max_refresh_per_sec(),
             cache_lfuk_history_size: default_cache_lfuk_history_size(),
             cache_batch_eviction_percentage: default_cache_batch_eviction_percentage(),
             cache_compaction_interval: default_cache_compaction_interval(),
@@ -266,10 +250,6 @@ fn default_cache_eviction_strategy() -> String {
 
 fn default_cache_optimistic_refresh() -> bool {
     true
-}
-
-fn default_cache_max_refresh_per_sec() -> f64 {
-    4.0
 }
 
 fn default_cache_min_hit_rate() -> f64 {
