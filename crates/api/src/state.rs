@@ -185,6 +185,10 @@ pub struct AppState {
     pub config_file_persistence: Arc<dyn ConfigFilePersistence>,
     pub config_path: Option<Arc<str>>,
     pub tls_cert: Arc<dyn TlsCertificatePort>,
+    /// Whether the web server is actually serving HTTPS. Drives the session
+    /// cookie's `Secure` attribute, so it must not be taken from the
+    /// `[server.web_tls] enabled` flag: that one stays `true` when the
+    /// certificate is missing and the server falls back to plain HTTP.
     pub tls_enabled: bool,
     /// Whether `[auth.webauthn]` is populated (passkeys usable).
     pub webauthn_configured: bool,

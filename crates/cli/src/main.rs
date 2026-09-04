@@ -131,12 +131,28 @@ async fn async_main() -> anyhow::Result<()> {
         effective_config_path.clone(),
     );
 
+    // The session cookie's `Secure` flag must follow the transport actually in
+    // use, so the web TLS material is loaded before the state is built: with
+    // `enabled = true` and no certificate on disk the server falls back to
+    // plain HTTP, and a `Secure` cookie would then be dropped by the browser.
+    let web_tls_config = if config.server.web_tls.enabled {
+        server::load_server_tls_config(
+            &config.server.web_tls.tls_cert_path,
+            &config.server.web_tls.tls_key_path,
+            "Web HTTPS",
+            &[],
+        )?
+    } else {
+        None
+    };
+
     let app_state = wiring::build_app_state(
         use_cases,
         &repos,
         &dns_services,
         config_arc,
         effective_config_path,
+        web_tls_config.is_some(),
     )
     .await;
 
@@ -258,17 +274,6 @@ async fn async_main() -> anyhow::Result<()> {
         } else {
             tls_config.map(|_| Arc::new(DnsServerHandler::new(handler_use_case, block_policy)))
         }
-    } else {
-        None
-    };
-
-    let web_tls_config = if config.server.web_tls.enabled {
-        server::load_server_tls_config(
-            &config.server.web_tls.tls_cert_path,
-            &config.server.web_tls.tls_key_path,
-            "Web HTTPS",
-            &[],
-        )?
     } else {
         None
     };

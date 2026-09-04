@@ -751,3 +751,25 @@ fn extract_user_agent(request: &Request) -> String {
         .unwrap_or("unknown")
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::session_cookie;
+
+    #[test]
+    fn test_session_cookie_omits_secure_over_plain_http() {
+        let cookie = session_cookie("session-id", 86400, false);
+
+        assert!(!cookie.contains("Secure"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Strict"));
+        assert!(cookie.contains("Max-Age=86400"));
+    }
+
+    #[test]
+    fn test_session_cookie_sets_secure_over_https() {
+        let cookie = session_cookie("session-id", 86400, true);
+
+        assert!(cookie.contains("; Secure"));
+    }
+}
