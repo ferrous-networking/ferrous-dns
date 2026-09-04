@@ -30,9 +30,11 @@ pihole_compat = true
 # ── Web HTTPS (TLS for Dashboard / API) ──────────────────────────────────────
 # When enabled, the web dashboard and REST API are served over HTTPS on the
 # same web_port (8080). If cert/key files are missing, falls back to HTTP.
+# No certificate ships with the image: generate one from the dashboard under
+# Settings > Security > HTTPS / TLS, then set enabled = true and restart.
 
 [server.web_tls]
-enabled       = true
+enabled       = false
 tls_cert_path = "/data/cert.pem"
 tls_key_path  = "/data/key.pem"
 

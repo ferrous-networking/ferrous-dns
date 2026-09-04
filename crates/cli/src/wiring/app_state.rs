@@ -27,12 +27,18 @@ use tokio::sync::RwLock;
 
 use super::{DnsServices, Repositories, UseCases};
 
+/// Builds the shared API state.
+///
+/// `https_active` must reflect whether the web server really serves HTTPS, not
+/// the `[server.web_tls] enabled` flag: it drives the session cookie's `Secure`
+/// attribute, and a browser stores such a cookie only over a secure origin.
 pub async fn build_app_state(
     use_cases: UseCases,
     repos: &Repositories,
     dns_services: &DnsServices,
     config: Arc<RwLock<Config>>,
     config_path: Option<Arc<str>>,
+    https_active: bool,
 ) -> AppState {
     let effective_path = config_path
         .as_deref()
@@ -47,8 +53,6 @@ pub async fn build_app_state(
         let cfg = config.read().await;
         Arc::new(cfg.auth.clone())
     };
-
-    let tls_enabled = config.read().await.server.web_tls.enabled;
 
     let config_persistence: Arc<dyn ConfigFilePersistence> = Arc::new(TomlConfigFilePersistence);
 
@@ -293,7 +297,7 @@ pub async fn build_app_state(
         },
         auth,
         backup,
-        tls_enabled,
+        tls_enabled: https_active,
         config,
         config_file_persistence: config_persistence,
         config_path,
