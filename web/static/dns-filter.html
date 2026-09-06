@@ -166,6 +166,20 @@
     </div>
 
     <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--border-color)">
+            <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0">Blocklist Sources</h2>
+            <button class="btn btn-secondary" @click="syncSources()" :disabled="syncSubmitting"
+                    :style="syncSubmitting?'opacity:0.5;cursor:not-allowed':''">
+                <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
+                <span x-text="syncSubmitting ? 'Syncing…' : 'Sync Now'">Sync Now</span>
+            </button>
+        </div>
+
+        <div x-show="syncMessage" x-text="syncMessage"
+             style="margin:16px 16px 0;padding:12px;background:rgba(59,130,246,0.1);color:var(--color-primary);border-radius:8px;font-size:14px"></div>
+        <div x-show="syncError" x-text="syncError"
+             style="margin:16px 16px 0;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
+
         <table class="table">
             <thead>
             <tr>
@@ -174,6 +188,7 @@
                 <th>Status</th>
                 <th>Comment</th>
                 <th>Group</th>
+                <th>Last Sync</th>
                 <th>Actions</th>
             </tr>
             </thead>
@@ -230,6 +245,10 @@
                         </div>
                     </td>
                     <td>
+                        <span style="color:var(--text-secondary);font-size:14px"
+                              x-text="formatSyncDate(source.last_synced_at)"></span>
+                    </td>
+                    <td>
                         <div style="display:flex;gap:4px">
                             <button @click="editSource(source)" class="btn-icon" title="Edit">
                                 <i data-lucide="edit-2" style="width:16px;height:16px"></i>
@@ -243,13 +262,13 @@
                 </tr>
             </template>
             <tr x-show="sources.length === 0 && !loading">
-                <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
                     <i data-lucide="shield-off" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
                     <p style="margin:0">No blocklist sources found. Add one to get started.</p>
                 </td>
             </tr>
             <tr x-show="loading">
-                <td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
                     Loading...
                 </td>
             </tr>
@@ -330,6 +349,7 @@
                     <th>Status</th>
                     <th>Comment</th>
                     <th>Group</th>
+                    <th>Last Sync</th>
                     <th>Actions</th>
                 </tr>
                 </thead>
@@ -386,6 +406,10 @@
                             </div>
                         </td>
                         <td>
+                            <span style="color:var(--text-secondary);font-size:14px"
+                                  x-text="formatSyncDate(source.last_synced_at)"></span>
+                        </td>
+                        <td>
                             <div style="display:flex;gap:4px">
                                 <button @click="wEditSource(source)" class="btn-icon" title="Edit">
                                     <i data-lucide="edit-2" style="width:16px;height:16px"></i>
@@ -399,13 +423,13 @@
                     </tr>
                 </template>
                 <tr x-show="wSources.length === 0 && !wLoading">
-                    <td colspan="6" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
                         <i data-lucide="shield-check" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;color:var(--color-success)"></i>
                         <p style="margin:0">No allowlist sources found. Add one to always allow specific domains.</p>
                     </td>
                 </tr>
                 <tr x-show="wLoading">
-                    <td colspan="6" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
                         Loading...
                     </td>
                 </tr>

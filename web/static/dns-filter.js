@@ -17,6 +17,9 @@
                 enabled: true
             },
             formError: '',
+            syncSubmitting: false,
+            syncMessage: '',
+            syncError: '',
 
             // --- ALLOWLIST ---
             wSources: [],
@@ -126,6 +129,29 @@
                 }
             },
 
+            async syncSources() {
+                if (this.syncSubmitting) return;
+                this.syncMessage = '';
+                this.syncError = '';
+                this.syncSubmitting = true;
+                try {
+                    const res = await fetch(`${API_BASE}/blocklist-sources/sync`, {method: 'POST'});
+                    if (res.status === 202) {
+                        this.syncMessage = 'Sync started. Lists are downloading in the background; large lists can take a minute.';
+                    } else if (res.status === 409) {
+                        this.syncMessage = 'A sync is already running.';
+                    } else {
+                        const errorText = await res.text();
+                        this.syncError = errorText || `Failed to start sync (HTTP ${res.status})`;
+                    }
+                } catch (e) {
+                    console.error('Error starting blocklist sync:', e);
+                    this.syncError = 'Network error: ' + e.message;
+                } finally {
+                    this.syncSubmitting = false;
+                }
+            },
+
             defaultGroupId() {
                 const def = this.groups.find(g => g.is_default);
                 return def ? def.id : (this.groups.length > 0 ? this.groups[0].id : 1);
@@ -134,6 +160,10 @@
             groupName(gid) {
                 const g = this.groups.find(g => g.id === gid);
                 return g ? g.name : '?';
+            },
+
+            formatSyncDate(value) {
+                return value ? new Date(value).toLocaleString() : '—';
             },
 
             async toggleGroup(source, groupId, add) {
