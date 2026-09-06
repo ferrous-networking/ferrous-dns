@@ -252,6 +252,11 @@ Server A: probe every 30s
 
 The health checker runs independently of query traffic, so a flaky server is detected and removed without clients ever seeing a failed response — the pool routes around it transparently.
 
+The current state of every pool and server is shown on the dashboard under
+**Settings > System Status**:
+
+![Settings — the System Status tab with server and performance metrics, upstream pool health, and the cache overview](../assets/dashboard/dashboard-settings.png)
+
 ---
 
 ## Global Fallback Upstreams

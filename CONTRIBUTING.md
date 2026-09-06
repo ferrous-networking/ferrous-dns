@@ -2,339 +2,209 @@
 
 Thanks for your interest in contributing! 🎉
 
+Ferrous DNS is a security-focused, DNSSEC-validating DNS resolver and content
+filter. It resolves real traffic for real people, so the bar for correctness is
+high — but the workflow below is short, and CI tells you exactly what it wants.
+
 ---
 
-## 🚀 Quick Start
-
-### 1. Fork & Clone
+## Getting set up
 
 ```bash
 # Fork the repo on GitHub, then:
 git clone https://github.com/YOUR_USERNAME/ferrous-dns.git
 cd ferrous-dns
 
-# Add upstream
-git remote add upstream https://github.com/ferrousnetworking/ferrous-dns.git
+# Add the upstream remote
+git remote add upstream https://github.com/ferrous-networking/ferrous-dns.git
+
+# Build and run the test suite once to confirm the toolchain is happy
+make build-dev
+make test
 ```
 
-### 2. Create Branch
+To run the server locally, point it at the config in the repo root:
 
 ```bash
-# Sync with main
+cargo run --release --bin ferrous-dns -- --config ferrous-dns.toml
+```
+
+If it refuses to start, check the ports (53 needs privileges), the config path,
+and file permissions before anything else.
+
+---
+
+## The local gate
+
+**`make ci` is the gate.** It runs exactly what CI runs — formatting check,
+clippy with `-D warnings`, and the full test suite:
+
+```bash
+make ci          # fmt-check + clippy -D warnings + test — run before every commit
+make pre-commit  # same, but formats in place instead of only checking
+```
+
+Other targets worth knowing (`make help` lists them all):
+
+| Command | What it does |
+|:--|:--|
+| `make build` / `make build-dev` | Release / debug build |
+| `make test` | Full workspace test suite |
+| `make audit` | `cargo audit` — run this before adding or bumping a dependency |
+| `make bench` | Criterion benchmarks |
+| `make doc` | `cargo doc` for the workspace |
+| `make fuzz-short` | Every fuzz target, 60 seconds each |
+
+Coverage has no Make target; use `cargo tarpaulin --workspace --out Html`.
+
+---
+
+## Branches and commits
+
+Create a branch from an up-to-date `main` — never commit to `main` directly:
+
+```bash
 git fetch upstream
 git checkout main
 git merge upstream/main
-
-# Create feature branch
-git checkout -b feature/your-feature-name
+git checkout -b fix/cache-key-truncation
 ```
 
-**Branch naming:**
+**Branch prefixes:** `feat/`, `fix/`, `docs/`, `refactor/`, `perf/`, `test/`,
+`chore/` — the same words as the commit types, not `feature/`.
 
-- `feature/` - New features
-- `fix/` - Bug fixes
-- `docs/` - Documentation
-- `refactor/` - Code refactoring
-- `test/` - Tests
-
-### 3. Make Changes
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```bash
-# Code...
+git commit -m "fix(cache): stop corrupting non-ASCII bytes in oversized keys
 
-# Format
-cargo fmt
-
-# Lint
-cargo clippy -- -D warnings
-
-# Test
-cargo test
-```
-
-### 4. Commit
-
-Use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```bash
-git commit -m "feat: add DNS caching
-
-- Implement LRU cache
-- Add TTL support
-- Include tests
+Truncating the key at a byte offset split multi-byte UTF-8 sequences, so
+a cached answer for an IDN domain came back mangled. Truncate on a char
+boundary instead.
 
 Closes #123"
 ```
 
-**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
-
-### 5. Push & PR
-
-```bash
-git push origin feature/your-feature-name
-```
-
-Then create a Pull Request on GitHub.
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`,
+`ci`, `build`.
 
 ---
 
-## 📝 Commit Messages
+## Opening a pull request
 
-### Format
+### The title is validated by CI
+
+`.github/workflows/pr-validation.yml` runs
+[`action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request)
+against the **PR title**, not your commits — a bad title fails the build even
+with a spotless branch.
+
+Format is `type(scope): description`, scope optional:
 
 ```
-<type>: <description>
-
-[optional body]
-
-[optional footer]
+fix(cache): stop corrupting non-ASCII bytes in oversized cache keys
+feat(query-log): record and display the client protocol on each query
+docs: rewrite the contributor guide
 ```
 
-### Examples
+- Lowercase description, written as a full sentence — not `fix: cache bug`.
+- Scope is the subsystem: `dns`, `dnssec`, `cache`, `auth`, `api`, `query-log`,
+  `block-filter`, `docker`, `config`. Omit it only for repo-wide changes.
+- `build(deps): …` is reserved for Dependabot; `ci: …` is for workflow changes.
+- Marking a change breaking demands a CHANGELOG entry, a migration guide, and a
+  MAJOR bump — don't do it by accident.
+- `size/*` labels are applied automatically. Never set them by hand.
 
-```bash
-# Simple
-git commit -m "feat: add blocklist import"
+### The body
 
-# With scope
-git commit -m "fix(dns): resolve memory leak"
+Fill in [the template](.github/PULL_REQUEST_TEMPLATE/pull_request_template.md):
+**Summary**, **Related issues**, **Test plan**, **Known follow-ups / out of scope**.
 
-# With body
-git commit -m "feat(api): add pagination
+The Summary leads with the behavior change, not the file list, and splits into
+named sub-sections when the change spans several areas. The Test plan carries
+evidence — the test count, the test files you added, the command you actually
+ran and what it printed — rather than intentions.
+[PR #219](https://github.com/ferrous-networking/ferrous-dns/pull/219) is the
+worked example.
 
-- Add limit and offset parameters
-- Update API docs
-- Include tests"
+### Before you push
 
-# Breaking change
-git commit -m "feat!: change API response format
-
-BREAKING CHANGE: timestamps now ISO 8601"
-```
+- [ ] `make ci` green
+- [ ] Tests added for new behavior
+- [ ] `docs/` and `ferrous-dns.toml` updated if you added a feature or a config key
+- [ ] `make audit` clean if you touched dependencies
+- [ ] Branch synced with `upstream/main`
 
 ---
 
-## 🔍 Pull Request
+## Code review
 
-### Checklist
-
-- [ ] `cargo fmt` - Code formatted
-- [ ] `cargo clippy` - No warnings
-- [ ] `cargo test` - All tests pass
-- [ ] Tests added for new features
-- [ ] Documentation updated
-- [ ] Conventional commits
-- [ ] Synced with upstream/main
-
-### Template
-
-```markdown
-## What
-
-Brief description of changes.
-
-## Why
-
-Why this change is needed.
-
-## How
-
-Technical implementation details.
-
-## Testing
-
-How you tested this.
-
-Closes #123
-```
-
----
-
-## 💬 Code Review
-
-### For Contributors
-
-**Receiving feedback:**
-
-- Be open - reviews improve code quality
-- Ask questions if unclear
-- Respond promptly
-- Thank reviewers
-
-**Good responses:**
+**Receiving feedback:** reviews improve the code, not judge you. Ask when
+something is unclear, and say what you changed rather than just "done".
 
 ```
-✅ "Good catch! Fixed in commit abc123"
-✅ "I chose X because Y, but happy to discuss alternatives"
-
+✅ "Good catch! Fixed in abc123."
+✅ "I chose X because Y, but happy to discuss alternatives."
 ❌ "Done"
-❌ [No response]
 ```
 
-### For Reviewers
-
-**Be constructive:**
+**Giving feedback:** be specific, explain why, and cite the line.
 
 ```
-✅ "Consider HashSet for O(1) lookups. Large blocklists 
-   would benefit from better performance."
-
-❌ "This is slow."
-```
-
-**Explain why:**
-
-```
-✅ "Validate domain here - malformed input could panic 
-   in the DNS parser (line 45)."
-
+✅ "Validate the domain here — malformed input panics in the DNS parser (parser.rs:45)."
 ❌ "Add validation."
 ```
 
-**Mark severity:**
+Mark severity so the author knows what actually blocks the merge:
 
 ```
-❗ Required: "This panics if vector is empty - must fix"
-💡 Optional: "Nit: extract helper function for readability"
+❗ Required: "This panics when the vector is empty."
+💡 Optional: "Nit: this would read better as a helper."
 ```
+
+The full reviewing standard, including how to classify a regression, lives in
+[`.claudin/rules/pr-review.md`](.claudin/rules/pr-review.md).
 
 ---
 
-## ✅ Code Standards
+## Architecture
 
-### Formatting
+The workspace follows Clean Architecture, and each crate's `Cargo.toml`
+enforces the dependency direction:
 
-```rust
-// ✅ Good
-pub struct DnsRecord {
-    domain: DomainName,
-    ttl: u32,
-}
-
-// ❌ Bad
-pub struct DnsRecord {
-    domain: DomainName,
-    ttl: u32
-}
+```
+cli → api / api-pihole / jobs → infrastructure → application → domain
 ```
 
-### Naming
+- **`domain`** — entities and pure business rules. Zero workspace deps and zero
+  `async fn`; no tokio, no sqlx.
+- **`application`** — depends on `domain` only. Owns every port trait
+  (`src/ports/`) and use case (`src/use_cases/<context>/`).
+- **`infrastructure`** — implements the ports: repositories in
+  `src/repositories/`, resolver/cache/block-filter in `src/dns/`.
+- **`api` / `api-pihole`** — thin handlers over concrete use cases.
+- **`cli`** — the only crate that may depend on all others; manual DI in
+  `src/wiring/`.
 
-```rust
-// ✅ Good
-pub fn resolve_dns_query() {}
-const MAX_CACHE_SIZE: usize = 10_000;
-
-// ❌ Bad
-pub fn rslv() {}
-const MCS: usize = 10000;
-```
-
-### Error Handling
-
-```rust
-// ✅ Good
-pub fn parse(input: &str) -> Result<Domain, Error> {
-    if input.is_empty() {
-        return Err(Error::Empty);
-    }
-    Ok(Domain::new(input))
-}
-
-// ❌ Bad
-pub fn parse(input: &str) -> Domain {
-    if input.is_empty() {
-        panic!("Empty!");  // Don't panic!
-    }
-    Domain::new(input)
-}
-```
-
-### Documentation
-
-```rust
-/// Resolves DNS query.
-///
-/// # Arguments
-/// * `domain` - Domain to resolve
-///
-/// # Returns
-/// `Ok(Record)` on success, `Err` on failure
-///
-/// # Example
-/// ```
-/// let record = resolve("example.com")?;
-/// ```
-pub async fn resolve(&self, domain: &str) -> Result<Record> {
-    // ...
-}
-```
-
-### Testing
-
-```rust
-#[test]
-fn test_valid_domain_accepted() {
-    let result = Domain::new("example.com");
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn test_resolver_queries_upstream() {
-    let resolver = Resolver::new();
-    let record = resolver.resolve("example.com").await;
-    assert!(record.is_ok());
-}
-```
+A new capability is a port trait plus a `XxxUseCase` plus an infrastructure
+adapter. Everything returns `Result<_, DomainError>`; `anyhow` is allowed in
+`cli` only. Details and the naming conventions are in
+[`.claudin/rules/architecture.md`](.claudin/rules/architecture.md), with code
+and web standards alongside it in the same directory.
 
 ---
 
-## 🏗️ Architecture
+## Testing
 
-Follow **Clean Architecture**:
+Name tests after the behavior they pin down, not the function they call:
 
-**Domain** (`crates/domain`)
-
-- ✅ Pure business logic
-- ✅ Zero external deps (except `thiserror`)
-- ❌ No I/O, no frameworks
-
-**Application** (`crates/application`)
-
-- ✅ Use cases
-- ✅ Ports (traits)
-- ❌ No infrastructure details
-
-**Infrastructure** (`crates/infrastructure`)
-
-- ✅ Database, cache, DNS adapters
-- ✅ Implements application ports
-
----
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-cargo test
-
-# Run specific crate
-cargo test -p ferrous-dns-domain
-
-# With logging
-RUST_LOG=debug cargo test
-
-# Coverage
-cargo install cargo-tarpaulin
-cargo tarpaulin --out Html
+```
+cache_hit_returns_cached_record_without_upstream_call
+create_blocklist_source_fails_when_name_already_exists
 ```
 
-**Coverage targets:**
-
-- Domain: >90%
-- Application: >85%
-- Infrastructure: >70%
-- Overall: >80%
+Coverage targets: domain 90%, application 85%, api 75%, infrastructure 70%,
+overall 80%.
 
 ### Fuzzing
 
@@ -352,19 +222,26 @@ make fuzz-short                                  # all targets, 60s each
 
 When a target crashes, minimize the input with `cargo +nightly fuzz tmin` and
 add it as a named test in `crates/infrastructure/tests/fuzz_regressions.rs`
-before fixing the bug. See [`fuzz/README.md`](fuzz/README.md) for the target
+**before** fixing the bug. See [`fuzz/README.md`](fuzz/README.md) for the target
 list and the surfaces it deliberately does not cover.
 
 ---
 
-## 🤝 Community
+## Documentation
 
-- **Issues** - Bug reports, feature requests
-- **Discussions** - Questions, ideas
-- **Discord** - Coming soon
+The site is [MkDocs](https://www.mkdocs.org/) — sources in `docs/`, nav in
+`mkdocs.yml`. `site/` is a build artifact; never edit it by hand.
+
+Dashboard screenshots live in `docs/assets/<area>/`, captured at a **1920x1080
+viewport in the light theme** so the set stays visually consistent. Give every
+image descriptive alt text.
 
 ---
 
-## 🎉 Thank You!
+## Getting help
 
-Every contribution matters! Happy coding! 🦀
+- **Issues** — [github.com/ferrous-networking/ferrous-dns/issues](https://github.com/ferrous-networking/ferrous-dns/issues)
+- **Discussions** — [github.com/ferrous-networking/ferrous-dns/discussions](https://github.com/ferrous-networking/ferrous-dns/discussions)
+- **Security** — do not open an issue; see [SECURITY.md](.github/SECURITY.md)
+
+Every contribution matters. Happy coding! 🦀

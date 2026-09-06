@@ -55,6 +55,8 @@ A domain allowed at step 1 also skips the five [malware detection](malware-detec
 
 Via dashboard: **Blocklists > Add Blocklist** (or the REST API).
 
+![DNS Filter — the add-source form and the blocklist table, each source showing its status and the groups it applies to](../assets/dashboard/dashboard-dns-filter.png)
+
 !!! warning "Not configured via TOML"
     Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. The `custom_blocked` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect — use the dashboard or API instead.
 

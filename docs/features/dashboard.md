@@ -33,6 +33,8 @@ The landing page shows a real-time overview of your DNS server:
 - **Top clients** — most active clients by query count
 - **Block filter stats** — blocklist size, total entries
 
+![Main dashboard — counter cards, cache performance, the queries-over-time chart, and the query type and source breakdowns](../assets/dashboard/dashboard-overview.png)
+
 ### Queries
 
 Live query log with:
@@ -46,6 +48,21 @@ Live query log with:
 - Filter by protocol: UDP, TCP, DoT, DoH, DoQ
 - **Quick actions**: Block or Allow a domain with one click
 
+![Query log — one row per query with type, protocol, client, source, answer and response time; blocked rows are highlighted](../assets/dashboard/dashboard-queries.png)
+
+### DNSSEC
+
+Validation outcomes for the last 24 hours, summarised and then listed per query:
+
+- **Validated** — how many answers went through validation, and what share of all queries that is
+- **Secure** — signed and cryptographically verified
+- **Insecure** — the zone is unsigned, so there was nothing to verify
+- **Bogus** — validation failed; under `dnssec_mode = "Strict"` these answers become SERVFAIL
+- **Indeterminate** — the chain of trust could not be resolved either way
+- Filter the listing by status, and follow it live with **Live update**
+
+![DNSSEC page — validated, secure, insecure, bogus and indeterminate counters above a per-query listing](../assets/dashboard/dashboard-dnssec.png)
+
 ### Clients
 
 - Auto-detected clients with IP, MAC address, and hostname
@@ -54,11 +71,15 @@ Live query log with:
 - Manual client creation
 - Client subnet rules (auto-assign by CIDR range)
 
+![Clients page — the add client/subnet form above the known-clients table with hostname, group and query count](../assets/dashboard/dashboard-clients.png)
+
 ### Groups
 
 - Create and manage client groups (Kids, Work, IoT, Guest)
 - Assign clients to groups
 - Each group can have independent blocking policies
+
+![Groups page — the Protected default group plus Guest, IoT, Kids and Work, each with its client count](../assets/dashboard/dashboard-groups.png)
 
 ### DNS Filter
 
@@ -69,6 +90,8 @@ Multi-tab filtering management:
 - **Managed Domains** — individual block/allow domains
 - **Regex Filters** — pattern-based blocking rules
 
+![DNS Filter — the add-source form and the blocklist table, each source showing its status and the groups it applies to](../assets/dashboard/dashboard-dns-filter.png)
+
 ### Block Services
 
 - **Service Catalog** — 1-click block/unblock of pre-defined service categories (Social Media, Ads, Tracking, Gambling, Adult Content)
@@ -76,11 +99,15 @@ Multi-tab filtering management:
 - **Safe Search** — enforce safe search per group (Google, Bing, YouTube, DuckDuckGo, Yandex, Brave, Ecosia)
 - **Schedule Profiles** — time-based blocking with day/time slot management
 
+![Block Services — services blocked for the selected group above the searchable service catalog, blocked entries highlighted](../assets/dashboard/dashboard-block-services.png)
+
 ### Local DNS
 
 - Manage static A/AAAA records
 - Automatic PTR generation from A records
 - Conditional forwarding configuration
+
+![Local DNS — the add-record form above the table of static records with FQDN, IP, type and TTL](../assets/dashboard/dashboard-local-dns.png)
 
 ### Cache Control
 
@@ -89,6 +116,8 @@ Multi-tab filtering management:
 - Sort by clicking any column header (repeat click reverses the direction)
 - Paginated listing with a configurable page size
 - **Remove** — drop an individual entry from the cache
+
+![Cache Control — cached entries with insertion time, domain, type, answer, remaining TTL, hit count and a per-entry Remove action](../assets/dashboard/dashboard-cache-control.png)
 
 ### Settings
 
@@ -101,6 +130,8 @@ Multi-tab filtering management:
 - **API Key** — generate, save, or remove the API key
 - **Dashboard Session Key** — authenticate the dashboard for API key-protected servers
 - **Pi-hole Compatibility** — toggle Pi-hole v6 API mode
+
+![Settings — the System Status tab with server and performance metrics, upstream pool health, and the cache overview](../assets/dashboard/dashboard-settings.png)
 
 ---
 
