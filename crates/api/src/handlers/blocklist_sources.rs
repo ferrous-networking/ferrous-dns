@@ -16,6 +16,7 @@ use crate::{
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_all_blocklist_sources, create_blocklist_source))
+        .routes(routes!(sync_blocklist_sources))
         .routes(routes!(
             get_blocklist_source_by_id,
             update_blocklist_source,
@@ -46,6 +47,25 @@ async fn get_all_blocklist_sources(
             .map(BlocklistSourceResponse::from_source)
             .collect(),
     ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/blocklist-sources/sync",
+    tag = "blocklist_sources",
+    responses(
+        (status = 202, description = "Sync started; sources download in the background"),
+        (status = 409, description = "A sync is already running"),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
+async fn sync_blocklist_sources(State(state): State<AppState>) -> Result<StatusCode, ApiError> {
+    let started = state.blocking.sync_blocklist_sources.execute().await?;
+    Ok(if started {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::CONFLICT
+    })
 }
 
 #[utoipa::path(

@@ -1,12 +1,13 @@
 use ferrous_dns_domain::{BlocklistSource, DomainError};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
-use crate::ports::{BlocklistSourceRepository, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, BlocklistSourceRepository, GroupRepository};
 
 pub struct UpdateBlocklistSourceUseCase {
     repo: Arc<dyn BlocklistSourceRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Option<Arc<dyn BlockFilterEnginePort>>,
 }
 
 impl UpdateBlocklistSourceUseCase {
@@ -14,7 +15,16 @@ impl UpdateBlocklistSourceUseCase {
         repo: Arc<dyn BlocklistSourceRepository>,
         group_repo: Arc<dyn GroupRepository>,
     ) -> Self {
-        Self { repo, group_repo }
+        Self {
+            repo,
+            group_repo,
+            block_filter_engine: None,
+        }
+    }
+
+    pub fn with_block_filter(mut self, engine: Arc<dyn BlockFilterEnginePort>) -> Self {
+        self.block_filter_engine = Some(engine);
+        self
     }
 
     #[instrument(skip(self))]
@@ -66,6 +76,12 @@ impl UpdateBlocklistSourceUseCase {
             enabled = %updated.enabled,
             "Blocklist source updated successfully"
         );
+
+        if let Some(ref engine) = self.block_filter_engine {
+            if let Err(e) = engine.reload().await {
+                error!(error = %e, "Failed to reload block filter after blocklist source update");
+            }
+        }
 
         Ok(updated)
     }
