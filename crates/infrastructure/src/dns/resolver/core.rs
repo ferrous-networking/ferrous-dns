@@ -86,7 +86,11 @@ impl CoreResolver {
                         upstream_pool: None,
                         min_ttl: response.min_ttl,
                         negative_soa_ttl: response.negative_soa_ttl,
-                        upstream_wire_data: None,
+                        // Relay the local server's full answer, exactly as the pool path
+                        // does. Without this, non-address answers (PTR for LAN clients,
+                        // SRV/TXT/MX under the local domain) were parsed into an empty
+                        // `addresses` and reached the client as an empty response.
+                        upstream_wire_data: Some(response.raw_bytes),
                     });
                 }
                 Ok(_) => {
