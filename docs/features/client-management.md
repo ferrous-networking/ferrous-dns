@@ -128,6 +128,12 @@ The Clients section of the dashboard shows:
 - **Group membership**
 - **Last seen** timestamp and hostname
 
+![Clients page — the add client/subnet form above the known-clients table with hostname, group and query count](../assets/dashboard/dashboard-clients.png)
+
+Groups themselves are managed one level up, under **Groups**:
+
+![Groups page — the Protected default group plus Guest, IoT, Kids and Work, each with its client count](../assets/dashboard/dashboard-groups.png)
+
 ---
 
 ## PROXY Protocol v2

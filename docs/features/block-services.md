@@ -59,6 +59,8 @@ The built-in catalog contains hundreds of services organized into categories. Ea
 
     Navigate to **Services > Service Catalog** tab. Use the category pills to filter and the search bar to find specific services.
 
+    ![Block Services — services blocked for the selected group above the searchable service catalog, blocked entries highlighted](../assets/dashboard/dashboard-block-services.png)
+
 === "REST API"
 
     ```bash

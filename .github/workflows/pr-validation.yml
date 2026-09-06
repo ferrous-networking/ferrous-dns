@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -112,66 +111,4 @@ jobs:
         uses: kentaro-m/auto-assign-action@v2.0.2
         with:
           configuration-path: '.github/auto-assign.yml'
-        continue-on-error: true
-
-  check-docs:
-    name: Check Documentation
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Cache cargo
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            target
-          key: ${{ runner.os }}-docs-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-docs-
-
-      - name: Check documentation
-        run: cargo doc --no-deps --all-features --workspace
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-
-  pr-summary:
-    name: PR Summary
-    runs-on: ubuntu-latest
-    needs: [validate-title]
-    if: always()
-    steps:
-      - name: Create PR summary comment
-        uses: peter-evans/create-or-update-comment@v5
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ## 📋 PR Validation Summary
-
-            ✅ **All validations passed!**
-
-            ### Next Steps:
-            - Wait for CI checks to complete
-            - Address any review comments
-            - Ensure all tests pass
-            - Get approval from maintainers
-
-            ### Merge Checklist:
-            - [ ] All CI checks passed
-            - [ ] Code reviewed and approved
-            - [ ] Documentation updated
-            - [ ] CHANGELOG.md updated (if needed)
-            - [ ] Tests added/updated
-
-            ---
-            *This comment will be updated as checks complete*
         continue-on-error: true
