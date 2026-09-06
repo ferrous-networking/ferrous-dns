@@ -17,6 +17,9 @@
                 enabled: true
             },
             formError: '',
+            syncingId: null,
+            syncMessage: '',
+            syncError: '',
 
             // --- ALLOWLIST ---
             wSources: [],
@@ -126,6 +129,41 @@
                 }
             },
 
+            async syncSource(source) {
+                if (this.syncingId !== null) return;
+                this.syncMessage = '';
+                this.syncError = '';
+                this.syncingId = source.id;
+                try {
+                    const res = await fetch(`${API_BASE}/blocklist-sources/${source.id}/sync`, {method: 'POST'});
+                    if (res.status === 202) {
+                        this.syncMessage = `Refreshing "${source.name}". Rebuilding the index re-downloads every enabled list, so this can take a minute; Last Sync updates when it finishes.`;
+                        this.pollForSync(source.id, source.last_synced_at);
+                    } else if (res.status === 409) {
+                        this.syncMessage = 'A sync is already running.';
+                    } else {
+                        const errorText = await res.text();
+                        this.syncError = errorText || `Failed to start sync (HTTP ${res.status})`;
+                    }
+                } catch (e) {
+                    console.error('Error starting blocklist sync:', e);
+                    this.syncError = 'Network error: ' + e.message;
+                } finally {
+                    this.syncingId = null;
+                }
+            },
+
+            // The sync answers 202 before the rebuild finishes, so poll until the
+            // row's stamp moves rather than leaving a stale Last Sync on screen.
+            async pollForSync(id, previous) {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await this.loadSources();
+                    const current = this.sources.find(s => s.id === id);
+                    if (current && current.last_synced_at !== previous) return;
+                }
+            },
+
             defaultGroupId() {
                 const def = this.groups.find(g => g.is_default);
                 return def ? def.id : (this.groups.length > 0 ? this.groups[0].id : 1);
@@ -134,6 +172,10 @@
             groupName(gid) {
                 const g = this.groups.find(g => g.id === gid);
                 return g ? g.name : '?';
+            },
+
+            formatSyncDate(value) {
+                return value ? new Date(value).toLocaleString() : '—';
             },
 
             async toggleGroup(source, groupId, add) {

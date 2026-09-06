@@ -856,6 +856,7 @@ impl BlocklistSourceRepository for MockBlocklistSourceRepository {
             enabled,
             created_at: Some("2026-01-01 00:00:00".to_string()),
             updated_at: Some("2026-01-01 00:00:00".to_string()),
+            last_synced_at: None,
         };
 
         sources.push(source.clone());
@@ -1174,6 +1175,7 @@ impl WhitelistSourceRepository for MockWhitelistSourceRepository {
             enabled,
             created_at: Some("2026-01-01 00:00:00".to_string()),
             updated_at: Some("2026-01-01 00:00:00".to_string()),
+            last_synced_at: None,
         };
 
         sources.push(source.clone());

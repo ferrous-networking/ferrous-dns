@@ -287,6 +287,37 @@ async fn fetch_sources_parallel(
     source_entries
 }
 
+/// Records `at` as the last successful sync for `ids` in `table`.
+///
+/// `table` is interpolated into the statement, so it must never come from user
+/// input — the only callers pass the literals `"blocklist_sources"` and
+/// `"whitelist_sources"`. The ids themselves are bound.
+pub async fn mark_sources_synced(
+    pool: &SqlitePool,
+    table: &str,
+    ids: &[i64],
+    at: &str,
+) -> Result<(), DomainError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let placeholders = vec!["?"; ids.len()].join(",");
+    let sql = format!("UPDATE {table} SET last_synced_at = ? WHERE id IN ({placeholders})");
+
+    let mut query = sqlx::query(&sql).bind(at);
+    for id in ids {
+        query = query.bind(id);
+    }
+
+    query
+        .execute(pool)
+        .await
+        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+    Ok(())
+}
+
 struct ManagedDomainEntry {
     domain: String,
     action: String,
@@ -332,6 +363,7 @@ async fn load_manual_domains(pool: &SqlitePool) -> Result<Vec<String>, DomainErr
 
 struct BlockIndexData {
     total_exact: usize,
+    total_wildcard: usize,
     bloom: AtomicBloom,
     exact: DashMap<CompactString, SourceBitSet, FxBuildHasher>,
     wildcard: SuffixTrie,
@@ -433,8 +465,11 @@ fn build_exact_and_wildcard(
         }
     }
 
+    let total_wildcard = wildcard.len();
+
     BlockIndexData {
         total_exact: exact.len(),
+        total_wildcard,
         bloom,
         exact,
         wildcard,
@@ -514,12 +549,32 @@ pub async fn compile_block_index(
 
     let group_masks = build_group_masks(&sources, &all_group_ids);
     let source_entries = fetch_sources_parallel(url_tasks, client).await;
+
+    // Only the sources that actually downloaded get a fresh stamp; a failed
+    // fetch keeps its previous one, so a date that stops advancing is the
+    // staleness signal in the dashboard.
+    let synced_source_ids: Vec<i64> = source_entries
+        .keys()
+        .filter_map(|bit| bit_to_source[*bit as usize].as_ref().map(|s| s.id))
+        .collect();
+    if let Err(e) = mark_sources_synced(
+        pool,
+        "blocklist_sources",
+        &synced_source_ids,
+        &chrono::Utc::now().to_rfc3339(),
+    )
+    .await
+    {
+        warn!(error = %e, "Failed to record blocklist source sync timestamps");
+    }
+
     let manual_domains = load_manual_domains(pool).await?;
     let managed_domain_entries = load_managed_domains_for_index(pool).await?;
     let regex_filter_maps = load_regex_filters_for_index(pool).await?;
 
     let BlockIndexData {
         total_exact,
+        total_wildcard,
         bloom,
         exact,
         wildcard,
@@ -552,7 +607,7 @@ pub async fn compile_block_index(
 
     info!(
         exact = total_exact,
-        wildcards = "built",
+        wildcards = total_wildcard,
         pattern_automata = patterns.len(),
         "Block index compiled"
     );
@@ -576,7 +631,10 @@ pub async fn compile_block_index(
 
     Ok(BlockIndex {
         group_masks,
-        total_blocked_domains: total_exact,
+        // An adblock-syntax entry (`||example.com^`) lands in both halves — an
+        // exact apex rule and a subdomain rule — so it counts twice here. Hosts
+        // lists (all exact) and wildcard lists (all wildcard) are unaffected.
+        total_blocked_domains: total_exact + total_wildcard,
         exact,
         bloom,
         wildcard,
@@ -646,10 +704,17 @@ async fn build_allowlist_index(
 
     // Deduplicate URLs: each URL is fetched once, applied to all associated groups
     let mut url_to_groups: HashMap<String, Vec<i64>> = HashMap::new();
+    // The dedup above drops the source id, so keep it here to stamp the sync.
+    let mut url_to_source_ids: HashMap<String, Vec<i64>> = HashMap::new();
     for row in &ws_rows {
         if let Some(url) = row.get::<Option<String>, _>("url") {
             let group_id: i64 = row.get("group_id");
-            url_to_groups.entry(url).or_default().push(group_id);
+            let source_id: i64 = row.get("source_id");
+            url_to_groups.entry(url.clone()).or_default().push(group_id);
+            let source_ids = url_to_source_ids.entry(url).or_default();
+            if !source_ids.contains(&source_id) {
+                source_ids.push(source_id);
+            }
         }
     }
 
@@ -685,8 +750,12 @@ async fn build_allowlist_index(
             .collect()
     };
 
+    let mut synced_source_ids: Vec<i64> = Vec::new();
     for (url, text_opt) in fetched {
         if let Some(text) = text_opt {
+            if let Some(source_ids) = url_to_source_ids.get(&url) {
+                synced_source_ids.extend(source_ids.iter().copied());
+            }
             let entries = parse_list_text(&text);
             let group_ids = url_to_groups.get(&url).cloned().unwrap_or_default();
             for group_id in group_ids {
@@ -713,6 +782,17 @@ async fn build_allowlist_index(
                 }
             }
         }
+    }
+
+    if let Err(e) = mark_sources_synced(
+        pool,
+        "whitelist_sources",
+        &synced_source_ids,
+        &chrono::Utc::now().to_rfc3339(),
+    )
+    .await
+    {
+        warn!(error = %e, "Failed to record allowlist source sync timestamps");
     }
 
     Ok(allowlists)

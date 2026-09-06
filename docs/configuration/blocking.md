@@ -87,8 +87,13 @@ All blocklist management is done via the dashboard or REST API — not the TOML 
 1. Go to **Blocklists** in the sidebar
 2. Click **Add Blocklist**
 3. Enter a name and URL
-4. Select the format (hosts, domains, or regex)
-5. Click **Save**, then **Sync**
+4. Click **Save**
+
+There is no format to pick — each line is recognised on its own, so a single
+source can mix hosts, domain, wildcard and adblock syntax. Saving downloads the
+list and rebuilds the block index immediately. The refresh icon in a row's
+**Actions** re-downloads that list on demand; the index is rebuilt as a whole,
+so every enabled list is refreshed with it.
 
 ### Supported Formats
 
@@ -109,8 +114,8 @@ https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 # Domain list
 https://small.oisd.nl/domainswild
 
-# Regex-capable
-https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt
+# Wildcard list
+https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt
 ```
 
 ---

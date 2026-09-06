@@ -502,6 +502,9 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         },
         blocking: BlockingUseCases {
+            sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(Arc::new(
+                NullBlockFilterEngine,
+            ))),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
             ))),

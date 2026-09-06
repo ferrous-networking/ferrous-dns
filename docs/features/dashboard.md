@@ -85,12 +85,17 @@ Validation outcomes for the last 24 hours, summarised and then listed per query:
 
 Multi-tab filtering management:
 
-- **Blocklist Sources** — add, sync, enable/disable external blocklist URLs
+- **Blocklist Sources** — add, enable/disable and remove external blocklist URLs; each row carries a refresh action that re-downloads it on demand
 - **Whitelist Sources** — add external allowlist URLs
 - **Managed Domains** — individual block/allow domains
 - **Regex Filters** — pattern-based blocking rules
 
-![DNS Filter — the add-source form and the blocklist table, each source showing its status and the groups it applies to](../assets/dashboard/dashboard-dns-filter.png)
+Both source tabs carry a **Last Sync** column recording when each URL was last
+downloaded successfully. An empty value means the source has never been fetched
+without error — which is how a dead URL becomes visible, since a failed download
+is otherwise only written to the log.
+
+![DNS Filter — the add-source form and the blocklist table, each source showing its status, Last Sync timestamp, groups and per-row refresh action](../assets/dashboard/dashboard-dns-filter.png)
 
 ### Block Services
 

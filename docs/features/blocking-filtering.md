@@ -55,7 +55,7 @@ A domain allowed at step 1 also skips the five [malware detection](malware-detec
 
 Via dashboard: **Blocklists > Add Blocklist** (or the REST API).
 
-![DNS Filter — the add-source form and the blocklist table, each source showing its status and the groups it applies to](../assets/dashboard/dashboard-dns-filter.png)
+![DNS Filter — the add-source form and the blocklist table, each source showing its status, Last Sync timestamp, groups and per-row refresh action](../assets/dashboard/dashboard-dns-filter.png)
 
 !!! warning "Not configured via TOML"
     Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. The `custom_blocked` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect — use the dashboard or API instead.
@@ -110,8 +110,8 @@ A `*.` rule covers every name **below** the base — `video.ads.example.com`, `a
 | Steven Black Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | ~120k | Ads + Malware |
 | OISD (small) | `https://small.oisd.nl/domainswild` | ~50k | Balanced |
 | OISD (big) | `https://big.oisd.nl/domainswild` | ~200k | Comprehensive |
-| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt` | ~500k | Comprehensive |
-| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt` | ~1M | Security |
+| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt` | ~225k | Comprehensive |
+| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt` | ~2.1M | Security |
 | EasyList | `https://easylist.to/easylist/easylist.txt` | ~80k | Ads |
 
 ---
