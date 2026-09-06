@@ -748,10 +748,13 @@ POST /api/blocklist-sources
 ```json
 {
   "name": "HaGeZi Pro",
-  "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt",
+  "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt",
   "enabled": true
 }
 ```
+
+The new source is downloaded and the block index rebuilt as part of the request,
+so it takes effect on the next query.
 
 ### Get Source
 
@@ -770,6 +773,18 @@ PUT /api/blocklist-sources/{id}
 ```http
 DELETE /api/blocklist-sources/{id}
 ```
+
+### Sync Sources
+
+```http
+POST /api/blocklist-sources/sync
+```
+
+Forces a re-download of every enabled source and rebuilds the block index.
+Returns `202 Accepted` as soon as the rebuild starts; it then runs in the
+background, since refreshing large lists can take minutes.
+
+**Error codes:** `409 Conflict` (a sync is already running), `401 Unauthorized`
 
 ---
 

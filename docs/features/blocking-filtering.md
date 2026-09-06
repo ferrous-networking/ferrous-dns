@@ -108,8 +108,8 @@ A `*.` rule covers every name **below** the base — `video.ads.example.com`, `a
 | Steven Black Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | ~120k | Ads + Malware |
 | OISD (small) | `https://small.oisd.nl/domainswild` | ~50k | Balanced |
 | OISD (big) | `https://big.oisd.nl/domainswild` | ~200k | Comprehensive |
-| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt` | ~500k | Comprehensive |
-| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt` | ~1M | Security |
+| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt` | ~225k | Comprehensive |
+| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt` | ~2.1M | Security |
 | EasyList | `https://easylist.to/easylist/easylist.txt` | ~80k | Ads |
 
 ---

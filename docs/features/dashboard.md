@@ -64,10 +64,15 @@ Live query log with:
 
 Multi-tab filtering management:
 
-- **Blocklist Sources** — add, sync, enable/disable external blocklist URLs
+- **Blocklist Sources** — add, enable/disable and remove external blocklist URLs; **Sync Now** forces a re-download of every source
 - **Whitelist Sources** — add external allowlist URLs
 - **Managed Domains** — individual block/allow domains
 - **Regex Filters** — pattern-based blocking rules
+
+Both source tabs carry a **Last Sync** column recording when each URL was last
+downloaded successfully. An empty value means the source has never been fetched
+without error — which is how a dead URL becomes visible, since a failed download
+is otherwise only written to the log.
 
 ### Block Services
 
