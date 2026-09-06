@@ -366,7 +366,8 @@ async fn create_test_db() -> sqlx::SqlitePool {
             comment     TEXT,
             enabled     BOOLEAN NOT NULL DEFAULT 1,
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_synced_at TEXT
         )
         "#,
     )
@@ -397,7 +398,8 @@ async fn create_test_db() -> sqlx::SqlitePool {
             comment    TEXT,
             enabled    BOOLEAN NOT NULL DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_synced_at TEXT
         )
         "#,
     )
@@ -1103,4 +1105,34 @@ async fn test_get_whitelist_endpoint() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert!(json.is_array());
+}
+
+#[tokio::test]
+async fn test_create_whitelist_source_has_null_last_synced_at() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload =
+        json!({ "name": "Never Synced Allowlist", "url": "https://example.com/allow.txt" });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/whitelist-sources")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // The key must exist so a rename cannot pass silently, and it must be null
+    // because the source has never been fetched.
+    assert!(json.get("last_synced_at").is_some());
+    assert!(json["last_synced_at"].is_null());
 }
