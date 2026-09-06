@@ -34,6 +34,17 @@ const LIST: &str = "# regression fixture\n\
 /substring-marker/\n\
 exact-example.test\n";
 
+/// A list made of wildcard rules only. Nothing in it lands in `exact`, which is
+/// the shape that used to report zero compiled domains.
+const WILDCARD_ONLY_LIST: &str = "# wildcard-only fixture\n\
+*.counted-a-example.test\n\
+*.counted-b-example.test\n";
+
+/// Carries the same suffix the manual blocklist also holds, so one trie
+/// terminal ends up reachable from two different source bits.
+const DUPLICATE_SUFFIX_LIST: &str = "# duplicate-suffix fixture\n\
+*.duplicated-example.test\n";
+
 /// Serves a blocklist over HTTP for as long as it is alive. Blocklist sources
 /// are fetched by URL, so this is the only way to exercise wildcard and
 /// substring rules through the real compile path.
@@ -263,5 +274,46 @@ async fn manual_wildcard_entry_blocks_subdomains() {
         &engine,
         "unrelated.example.test",
         "a domain with no matching rule must be allowed",
+    );
+}
+
+#[tokio::test]
+async fn wildcard_only_list_reports_its_rules_in_the_compiled_count() {
+    let server = serve_list(WILDCARD_ONLY_LIST).await;
+    let (engine, _dir) = build_engine(Some(&server.url), &[]).await;
+
+    // The count used to be the exact-entry total alone, so a list of this shape
+    // reported 0 domains loaded on the dashboard and in the Pi-hole stats even
+    // though every rule was live — which is what made a working sync look
+    // broken while diagnosing issue #216.
+    assert_eq!(
+        engine.compiled_domain_count(),
+        2,
+        "a wildcard-only list must report its rules, not zero"
+    );
+    assert_blocked(
+        &engine,
+        "ads.counted-a-example.test",
+        "the counted rules must also be the rules that block",
+    );
+}
+
+#[tokio::test]
+async fn a_suffix_reached_from_two_sources_is_counted_once() {
+    let server = serve_list(DUPLICATE_SUFFIX_LIST).await;
+    let (engine, _dir) = build_engine(Some(&server.url), &["*.duplicated-example.test"]).await;
+
+    // The manual entry and the imported list insert the same suffix under two
+    // different source bits. They share one trie terminal, so the rule count
+    // must move only the first time — the exact map deduplicates the same way.
+    assert_eq!(
+        engine.compiled_domain_count(),
+        1,
+        "one suffix carrying two source bits is one rule, not two"
+    );
+    assert_blocked(
+        &engine,
+        "ads.duplicated-example.test",
+        "a suffix claimed by two sources must still block",
     );
 }
