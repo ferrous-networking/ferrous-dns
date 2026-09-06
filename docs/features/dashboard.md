@@ -64,7 +64,7 @@ Live query log with:
 
 Multi-tab filtering management:
 
-- **Blocklist Sources** — add, enable/disable and remove external blocklist URLs; **Sync Now** forces a re-download of every source
+- **Blocklist Sources** — add, enable/disable and remove external blocklist URLs; each row carries a refresh action that re-downloads it on demand
 - **Whitelist Sources** — add external allowlist URLs
 - **Managed Domains** — individual block/allow domains
 - **Regex Filters** — pattern-based blocking rules

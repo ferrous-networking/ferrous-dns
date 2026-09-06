@@ -16,7 +16,7 @@ use crate::{
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_all_blocklist_sources, create_blocklist_source))
-        .routes(routes!(sync_blocklist_sources))
+        .routes(routes!(sync_blocklist_source))
         .routes(routes!(
             get_blocklist_source_by_id,
             update_blocklist_source,
@@ -51,15 +51,36 @@ async fn get_all_blocklist_sources(
 
 #[utoipa::path(
     post,
-    path = "/blocklist-sources/sync",
+    path = "/blocklist-sources/{id}/sync",
     tag = "blocklist_sources",
+    params(("id" = i64, Path, description = "Source ID")),
     responses(
-        (status = 202, description = "Sync started; sources download in the background"),
+        (status = 202, description = "Rebuild started in the background"),
+        (status = 404, description = "Source not found"),
         (status = 409, description = "A sync is already running"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
-async fn sync_blocklist_sources(State(state): State<AppState>) -> Result<StatusCode, ApiError> {
+/// Refreshes `id`, which rebuilds the whole block index: the compiled index is
+/// a single snapshot keyed by a global source bitset, so one list cannot be
+/// re-downloaded on its own. The route takes an id anyway so the dashboard can
+/// offer the action per row and report which list the operator asked for.
+async fn sync_blocklist_source(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .blocking
+        .get_blocklist_sources
+        .get_by_id(id)
+        .await?
+        .ok_or_else(|| {
+            ApiError(DomainError::NotFound(format!(
+                "Blocklist source {} not found",
+                id
+            )))
+        })?;
+
     let started = state.blocking.sync_blocklist_sources.execute().await?;
     Ok(if started {
         StatusCode::ACCEPTED

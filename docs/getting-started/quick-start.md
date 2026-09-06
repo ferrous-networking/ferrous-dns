@@ -76,8 +76,9 @@ nameserver 192.168.1.100
 4. Paste a blocklist URL (see suggestions below) and click **Save**
 
 Saving downloads the list and rebuilds the block index straight away, so it takes
-effect on the next query. **Sync Now**, on the same tab, forces a re-download of
-every source whenever you want one.
+effect on the next query. The refresh icon in a row's **Actions** re-downloads
+that list on demand; because the index is rebuilt as a whole, every enabled list
+is refreshed along with it.
 
 ### Recommended Blocklists
 

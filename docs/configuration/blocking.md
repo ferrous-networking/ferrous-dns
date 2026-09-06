@@ -91,8 +91,9 @@ All blocklist management is done via the dashboard or REST API — not the TOML 
 
 There is no format to pick — each line is recognised on its own, so a single
 source can mix hosts, domain, wildcard and adblock syntax. Saving downloads the
-list and rebuilds the block index immediately; **Sync Now** forces a re-download
-of every source whenever you want one.
+list and rebuilds the block index immediately. The refresh icon in a row's
+**Actions** re-downloads that list on demand; the index is rebuilt as a whole,
+so every enabled list is refreshed with it.
 
 ### Supported Formats
 

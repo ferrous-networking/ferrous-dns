@@ -17,7 +17,7 @@
                 enabled: true
             },
             formError: '',
-            syncSubmitting: false,
+            syncingId: null,
             syncMessage: '',
             syncError: '',
 
@@ -129,15 +129,16 @@
                 }
             },
 
-            async syncSources() {
-                if (this.syncSubmitting) return;
+            async syncSource(source) {
+                if (this.syncingId !== null) return;
                 this.syncMessage = '';
                 this.syncError = '';
-                this.syncSubmitting = true;
+                this.syncingId = source.id;
                 try {
-                    const res = await fetch(`${API_BASE}/blocklist-sources/sync`, {method: 'POST'});
+                    const res = await fetch(`${API_BASE}/blocklist-sources/${source.id}/sync`, {method: 'POST'});
                     if (res.status === 202) {
-                        this.syncMessage = 'Sync started. Lists are downloading in the background; large lists can take a minute.';
+                        this.syncMessage = `Refreshing "${source.name}". Rebuilding the index re-downloads every enabled list, so this can take a minute; Last Sync updates when it finishes.`;
+                        this.pollForSync(source.id, source.last_synced_at);
                     } else if (res.status === 409) {
                         this.syncMessage = 'A sync is already running.';
                     } else {
@@ -148,7 +149,18 @@
                     console.error('Error starting blocklist sync:', e);
                     this.syncError = 'Network error: ' + e.message;
                 } finally {
-                    this.syncSubmitting = false;
+                    this.syncingId = null;
+                }
+            },
+
+            // The sync answers 202 before the rebuild finishes, so poll until the
+            // row's stamp moves rather than leaving a stale Last Sync on screen.
+            async pollForSync(id, previous) {
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await this.loadSources();
+                    const current = this.sources.find(s => s.id === id);
+                    if (current && current.last_synced_at !== previous) return;
                 }
             },
 

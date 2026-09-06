@@ -777,14 +777,20 @@ DELETE /api/blocklist-sources/{id}
 ### Sync Sources
 
 ```http
-POST /api/blocklist-sources/sync
+POST /api/blocklist-sources/{id}/sync
 ```
 
-Forces a re-download of every enabled source and rebuilds the block index.
+Refreshes the given source. The compiled index is a single snapshot keyed by a
+global source bitset, so one list cannot be re-downloaded on its own: this
+rebuilds the index and therefore re-downloads **every** enabled source. The id
+records which list the operator asked for and yields `404` when it does not
+exist.
+
 Returns `202 Accepted` as soon as the rebuild starts; it then runs in the
 background, since refreshing large lists can take minutes.
 
-**Error codes:** `409 Conflict` (a sync is already running), `401 Unauthorized`
+**Error codes:** `404 Not Found`, `409 Conflict` (a sync is already running),
+`401 Unauthorized`
 
 ---
 

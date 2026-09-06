@@ -1093,14 +1093,27 @@ async fn test_get_all_sources_after_create() {
     assert_eq!(json.as_array().unwrap().len(), 2);
 }
 
+/// Inserts a source directly so the sync tests have an id to address without
+/// going through the create endpoint, which triggers a reload of its own.
+async fn seed_source(pool: &sqlx::SqlitePool, name: &str) -> i64 {
+    sqlx::query("INSERT INTO blocklist_sources (name, url) VALUES (?, ?)")
+        .bind(name)
+        .bind("https://example.com/list.txt")
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_rowid()
+}
+
 #[tokio::test]
 async fn test_sync_sources_returns_accepted() {
-    let (app, _pool) = create_test_app().await;
+    let (app, pool) = create_test_app().await;
+    let id = seed_source(&pool, "Syncable List").await;
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/sync")
+                .uri(format!("/blocklist-sources/{id}/sync"))
                 .method("POST")
                 .body(Body::empty())
                 .unwrap(),
@@ -1113,14 +1126,15 @@ async fn test_sync_sources_returns_accepted() {
 
 #[tokio::test]
 async fn test_sync_route_is_not_shadowed_by_id_route() {
-    // `/blocklist-sources/sync` must reach the sync handler rather than
-    // `/blocklist-sources/{id}`, where "sync" would fail to parse as an i64.
-    let (app, _pool) = create_test_app().await;
+    // `/blocklist-sources/{id}/sync` must reach the sync handler rather than
+    // being swallowed by `/blocklist-sources/{id}`, which has no sub-path.
+    let (app, pool) = create_test_app().await;
+    let id = seed_source(&pool, "Routed List").await;
 
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/sync")
+                .uri(format!("/blocklist-sources/{id}/sync"))
                 .method("POST")
                 .body(Body::empty())
                 .unwrap(),
@@ -1134,6 +1148,24 @@ async fn test_sync_route_is_not_shadowed_by_id_route() {
 }
 
 #[tokio::test]
+async fn test_sync_unknown_source_returns_not_found() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/blocklist-sources/999/sync")
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_sync_sources_conflicts_while_running() {
     let started = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
@@ -1142,13 +1174,14 @@ async fn test_sync_sources_conflicts_while_running() {
         release: release.clone(),
     });
 
-    let (app, _pool) = create_test_app_with_sync_engine(engine).await;
+    let (app, pool) = create_test_app_with_sync_engine(engine).await;
+    let id = seed_source(&pool, "Contended List").await;
 
     let first = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/sync")
+                .uri(format!("/blocklist-sources/{id}/sync"))
                 .method("POST")
                 .body(Body::empty())
                 .unwrap(),
@@ -1165,7 +1198,7 @@ async fn test_sync_sources_conflicts_while_running() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/blocklist-sources/sync")
+                .uri(format!("/blocklist-sources/{id}/sync"))
                 .method("POST")
                 .body(Body::empty())
                 .unwrap(),

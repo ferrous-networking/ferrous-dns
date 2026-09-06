@@ -166,15 +166,6 @@
     </div>
 
     <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--border-color)">
-            <h2 style="font-size:16px;font-weight:700;color:var(--text-primary);margin:0">Blocklist Sources</h2>
-            <button class="btn btn-secondary" @click="syncSources()" :disabled="syncSubmitting"
-                    :style="syncSubmitting?'opacity:0.5;cursor:not-allowed':''">
-                <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
-                <span x-text="syncSubmitting ? 'Syncing…' : 'Sync Now'">Sync Now</span>
-            </button>
-        </div>
-
         <div x-show="syncMessage" x-text="syncMessage"
              style="margin:16px 16px 0;padding:12px;background:rgba(59,130,246,0.1);color:var(--color-primary);border-radius:8px;font-size:14px"></div>
         <div x-show="syncError" x-text="syncError"
@@ -250,6 +241,12 @@
                     </td>
                     <td>
                         <div style="display:flex;gap:4px">
+                            <button @click="syncSource(source)" class="btn-icon"
+                                    :disabled="syncingId !== null"
+                                    :style="syncingId !== null ? 'opacity:0.5;cursor:not-allowed' : ''"
+                                    title="Re-download now. Rebuilds the block index, so every enabled list is refreshed.">
+                                <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
+                            </button>
                             <button @click="editSource(source)" class="btn-icon" title="Edit">
                                 <i data-lucide="edit-2" style="width:16px;height:16px"></i>
                             </button>
