@@ -57,6 +57,11 @@ Other targets worth knowing (`make help` lists them all):
 
 Coverage has no Make target; use `cargo tarpaulin --workspace --out Html`.
 
+If you use an AI coding agent in this repo, `.claudin/skills/` carries `/verify`
+and `/pre-pr`, which mirror the same checks (`/pre-pr` adds `cargo audit` and the
+docs version check). They are a convenience, not a substitute — `make ci` is
+still what CI runs.
+
 ---
 
 ## Branches and commits
@@ -162,8 +167,10 @@ Mark severity so the author knows what actually blocks the merge:
 💡 Optional: "Nit: this would read better as a helper."
 ```
 
-The full reviewing standard, including how to classify a regression, lives in
-[`.claudin/rules/pr-review.md`](.claudin/rules/pr-review.md).
+Classify before you weigh: something that **breaks existing behavior** blocks a
+merge, something that merely **changes** it is worth writing down, and a
+**pre-existing gap the PR widens** should be named as pre-existing rather than
+charged to the author.
 
 ---
 
