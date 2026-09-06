@@ -16,10 +16,11 @@ use ferrous_dns_application::use_cases::{
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
     GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedDomainsUseCase,
     GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    SyncArpCacheUseCase, SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase,
+    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateBlocklistSourceUseCase,
+    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -58,6 +59,7 @@ pub struct UseCases {
     pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,
     pub update_blocklist_source: Arc<UpdateBlocklistSourceUseCase>,
     pub delete_blocklist_source: Arc<DeleteBlocklistSourceUseCase>,
+    pub sync_blocklist_sources: Arc<SyncBlocklistSourcesUseCase>,
     pub get_whitelist: Arc<GetWhitelistUseCase>,
     pub get_whitelist_sources: Arc<GetWhitelistSourcesUseCase>,
     pub create_whitelist_source: Arc<CreateWhitelistSourceUseCase>,
@@ -172,16 +174,26 @@ impl UseCases {
             get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(
                 repos.blocklist_source.clone(),
             )),
-            create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(
-                repos.blocklist_source.clone(),
-                repos.group.clone(),
-            )),
-            update_blocklist_source: Arc::new(UpdateBlocklistSourceUseCase::new(
-                repos.blocklist_source.clone(),
-                repos.group.clone(),
-            )),
-            delete_blocklist_source: Arc::new(DeleteBlocklistSourceUseCase::new(
-                repos.blocklist_source.clone(),
+            create_blocklist_source: Arc::new(
+                CreateBlocklistSourceUseCase::new(
+                    repos.blocklist_source.clone(),
+                    repos.group.clone(),
+                )
+                .with_block_filter(repos.block_filter_engine.clone()),
+            ),
+            update_blocklist_source: Arc::new(
+                UpdateBlocklistSourceUseCase::new(
+                    repos.blocklist_source.clone(),
+                    repos.group.clone(),
+                )
+                .with_block_filter(repos.block_filter_engine.clone()),
+            ),
+            delete_blocklist_source: Arc::new(
+                DeleteBlocklistSourceUseCase::new(repos.blocklist_source.clone())
+                    .with_block_filter(repos.block_filter_engine.clone()),
+            ),
+            sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(
+                repos.block_filter_engine.clone(),
             )),
             get_whitelist: Arc::new(GetWhitelistUseCase::new(repos.whitelist.clone())),
             get_whitelist_sources: Arc::new(GetWhitelistSourcesUseCase::new(

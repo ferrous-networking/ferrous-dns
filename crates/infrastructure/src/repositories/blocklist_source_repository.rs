@@ -13,6 +13,7 @@ type BlocklistSourceRow = (
     i64,
     String,
     String,
+    Option<String>,
 );
 
 pub struct SqliteBlocklistSourceRepository {
@@ -25,7 +26,7 @@ impl SqliteBlocklistSourceRepository {
     }
 
     fn row_to_source(row: BlocklistSourceRow, group_ids: Vec<i64>) -> BlocklistSource {
-        let (id, name, url, comment, enabled, created_at, updated_at) = row;
+        let (id, name, url, comment, enabled, created_at, updated_at, last_synced_at) = row;
         BlocklistSource {
             id: Some(id),
             name: Arc::from(name.as_str()),
@@ -35,6 +36,7 @@ impl SqliteBlocklistSourceRepository {
             enabled: enabled != 0,
             created_at: Some(created_at),
             updated_at: Some(updated_at),
+            last_synced_at,
         }
     }
 
@@ -78,7 +80,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
         let row = sqlx::query_as::<_, BlocklistSourceRow>(
             "INSERT INTO blocklist_sources (name, url, group_id, comment, enabled, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)
-             RETURNING id, name, url, comment, enabled, created_at, updated_at",
+             RETURNING id, name, url, comment, enabled, created_at, updated_at, last_synced_at",
         )
         .bind(&name)
         .bind(&url)
@@ -126,7 +128,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<BlocklistSource>, DomainError> {
         let row = sqlx::query_as::<_, BlocklistSourceRow>(
-            "SELECT id, name, url, comment, enabled, created_at, updated_at
+            "SELECT id, name, url, comment, enabled, created_at, updated_at, last_synced_at
              FROM blocklist_sources WHERE id = ?",
         )
         .bind(id)
@@ -149,7 +151,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<BlocklistSource>, DomainError> {
         let rows = sqlx::query_as::<_, BlocklistSourceRow>(
-            "SELECT id, name, url, comment, enabled, created_at, updated_at
+            "SELECT id, name, url, comment, enabled, created_at, updated_at, last_synced_at
              FROM blocklist_sources ORDER BY name ASC",
         )
         .fetch_all(&self.pool)
@@ -204,7 +206,7 @@ impl BlocklistSourceRepository for SqliteBlocklistSourceRepository {
             "UPDATE blocklist_sources
              SET name = ?, url = ?, group_id = ?, comment = ?, enabled = ?, updated_at = ?
              WHERE id = ?
-             RETURNING id, name, url, comment, enabled, created_at, updated_at",
+             RETURNING id, name, url, comment, enabled, created_at, updated_at, last_synced_at",
         )
         .bind(&final_name)
         .bind(&final_url)

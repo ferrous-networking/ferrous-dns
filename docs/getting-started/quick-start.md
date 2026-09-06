@@ -74,7 +74,11 @@ nameserver 192.168.1.100
 2. Go to **Blocklists** in the sidebar
 3. Click **Add Blocklist**
 4. Paste a blocklist URL (see suggestions below) and click **Save**
-5. Click **Sync** to download and activate it
+
+Saving downloads the list and rebuilds the block index straight away, so it takes
+effect on the next query. The refresh icon in a row's **Actions** re-downloads
+that list on demand; because the index is rebuilt as a whole, every enabled list
+is refreshed along with it.
 
 ### Recommended Blocklists
 
@@ -82,8 +86,8 @@ nameserver 192.168.1.100
 |:-----|:----|:------|
 | Steven Black Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | Ads + Malware |
 | OISD (small) | `https://small.oisd.nl/domainswild` | Balanced |
-| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt` | Comprehensive |
-| Hagezi Threat Intelligence | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt` | Security |
+| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt` | Comprehensive |
+| Hagezi Threat Intelligence | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt` | Security |
 
 ---
 

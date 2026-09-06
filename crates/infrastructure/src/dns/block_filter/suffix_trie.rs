@@ -21,12 +21,14 @@ impl TrieNode {
 #[derive(Default)]
 pub struct SuffixTrie {
     root: TrieNode,
+    len: usize,
 }
 
 impl SuffixTrie {
     pub fn new() -> Self {
         Self {
             root: TrieNode::new(),
+            len: 0,
         }
     }
 
@@ -37,13 +39,24 @@ impl SuffixTrie {
         self.root.children.is_empty()
     }
 
+    /// Number of distinct suffixes carrying a rule. The same pattern arriving
+    /// from two sources counts once, matching how `exact` deduplicates.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     pub fn insert_wildcard(&mut self, pattern: &str, source_mask: u64) {
         let domain = pattern.strip_prefix("*.").unwrap_or(pattern);
         let mut node = &mut self.root;
         for label in domain.split('.').rev() {
             node = node.children.entry(CompactString::new(label)).or_default();
         }
+        let is_new = node.wildcard_mask == 0;
         node.wildcard_mask |= source_mask;
+        if is_new {
+            self.len += 1;
+        }
     }
 
     #[inline]

@@ -526,6 +526,9 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         },
         blocking: BlockingUseCases {
+            sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(Arc::new(
+                NullBlockFilterEngine,
+            ))),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(
                     pool.clone(),
@@ -1030,6 +1033,9 @@ async fn test_get_all_configs_after_toggle() {
             subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         },
         blocking: BlockingUseCases {
+            sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(Arc::new(
+                NullBlockFilterEngine,
+            ))),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone())))),
             get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())))),
             create_blocklist_source: Arc::new(CreateBlocklistSourceUseCase::new(Arc::new(ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository::new(pool.clone())), group_repo.clone())),

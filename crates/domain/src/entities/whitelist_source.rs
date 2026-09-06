@@ -12,6 +12,7 @@ pub struct WhitelistSource {
     pub enabled: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub last_synced_at: Option<String>,
 }
 
 impl WhitelistSource {
@@ -32,6 +33,7 @@ impl WhitelistSource {
             enabled,
             created_at: None,
             updated_at: None,
+            last_synced_at: None,
         }
     }
 

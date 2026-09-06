@@ -12,6 +12,7 @@ pub struct BlocklistSourceResponse {
     pub enabled: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    pub last_synced_at: Option<String>,
 }
 
 impl BlocklistSourceResponse {
@@ -25,6 +26,7 @@ impl BlocklistSourceResponse {
             enabled: source.enabled,
             created_at: source.created_at,
             updated_at: source.updated_at,
+            last_synced_at: source.last_synced_at,
         }
     }
 }

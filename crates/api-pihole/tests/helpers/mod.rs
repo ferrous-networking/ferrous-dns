@@ -216,7 +216,8 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             comment     TEXT,
             enabled     BOOLEAN NOT NULL DEFAULT 1,
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_synced_at TEXT
         )",
     )
     .execute(&pool)
@@ -243,7 +244,8 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             comment    TEXT,
             enabled    BOOLEAN NOT NULL DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_synced_at TEXT
         )",
     )
     .execute(&pool)

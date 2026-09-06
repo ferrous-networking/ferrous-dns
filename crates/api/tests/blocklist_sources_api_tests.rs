@@ -46,6 +46,42 @@ impl BlockFilterEnginePort for NullBlockFilterEngine {
     fn set_blocking_enabled(&self, _enabled: bool) {}
 }
 
+/// Engine whose `reload` parks until the test releases it.
+///
+/// `NullBlockFilterEngine::reload` returns immediately, so the sync guard would
+/// clear before a second request could observe it and the 409 assertion would
+/// race. This double keeps the guard held for as long as the test needs.
+struct BlockingReloadEngine {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait::async_trait]
+impl BlockFilterEnginePort for BlockingReloadEngine {
+    fn resolve_group(&self, _ip: std::net::IpAddr) -> i64 {
+        1
+    }
+    fn check(&self, _domain: &str, _group_id: i64) -> FilterDecision {
+        FilterDecision::Allow
+    }
+    async fn reload(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        self.started.notify_one();
+        self.release.notified().await;
+        Ok(())
+    }
+    async fn load_client_groups(&self) -> Result<(), ferrous_dns_domain::DomainError> {
+        Ok(())
+    }
+    fn compiled_domain_count(&self) -> usize {
+        0
+    }
+    fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
+    fn is_blocking_enabled(&self) -> bool {
+        true
+    }
+    fn set_blocking_enabled(&self, _enabled: bool) {}
+}
+
 struct NullBlockedServiceRepository;
 
 #[async_trait::async_trait]
@@ -364,7 +400,8 @@ async fn create_test_db() -> sqlx::SqlitePool {
             comment     TEXT,
             enabled     BOOLEAN NOT NULL DEFAULT 1,
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_synced_at TEXT
         )
         "#,
     )
@@ -408,6 +445,12 @@ async fn create_test_db() -> sqlx::SqlitePool {
 }
 
 async fn create_test_app() -> (Router, sqlx::SqlitePool) {
+    create_test_app_with_sync_engine(Arc::new(NullBlockFilterEngine)).await
+}
+
+async fn create_test_app_with_sync_engine(
+    sync_engine: Arc<dyn BlockFilterEnginePort>,
+) -> (Router, sqlx::SqlitePool) {
     let pool = create_test_db().await;
 
     let client_repo = Arc::new(SqliteClientRepository::new(
@@ -512,6 +555,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
             subnet_matcher: Arc::new(SubnetMatcherService::new(subnet_repo.clone())),
         },
         blocking: BlockingUseCases {
+            sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(sync_engine)),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
             ))),
@@ -1047,4 +1091,150 @@ async fn test_get_all_sources_after_create() {
 
     assert!(json.is_array());
     assert_eq!(json.as_array().unwrap().len(), 2);
+}
+
+/// Inserts a source directly so the sync tests have an id to address without
+/// going through the create endpoint, which triggers a reload of its own.
+async fn seed_source(pool: &sqlx::SqlitePool, name: &str) -> i64 {
+    sqlx::query("INSERT INTO blocklist_sources (name, url) VALUES (?, ?)")
+        .bind(name)
+        .bind("https://example.com/list.txt")
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_rowid()
+}
+
+#[tokio::test]
+async fn test_sync_sources_returns_accepted() {
+    let (app, pool) = create_test_app().await;
+    let id = seed_source(&pool, "Syncable List").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/blocklist-sources/{id}/sync"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn test_sync_route_is_not_shadowed_by_id_route() {
+    // `/blocklist-sources/{id}/sync` must reach the sync handler rather than
+    // being swallowed by `/blocklist-sources/{id}`, which has no sub-path.
+    let (app, pool) = create_test_app().await;
+    let id = seed_source(&pool, "Routed List").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/blocklist-sources/{id}/sync"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_ne!(response.status(), StatusCode::BAD_REQUEST);
+    assert_ne!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn test_sync_unknown_source_returns_not_found() {
+    let (app, _pool) = create_test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/blocklist-sources/999/sync")
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_sync_sources_conflicts_while_running() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let engine = Arc::new(BlockingReloadEngine {
+        started: started.clone(),
+        release: release.clone(),
+    });
+
+    let (app, pool) = create_test_app_with_sync_engine(engine).await;
+    let id = seed_source(&pool, "Contended List").await;
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/blocklist-sources/{id}/sync"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::ACCEPTED);
+
+    // Wait until the spawned reload is parked, so the guard is provably held
+    // when the second request lands.
+    started.notified().await;
+
+    let second = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/blocklist-sources/{id}/sync"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::CONFLICT);
+
+    release.notify_one();
+}
+
+#[tokio::test]
+async fn test_create_source_has_null_last_synced_at() {
+    let (app, _pool) = create_test_app().await;
+
+    let payload = json!({ "name": "Never Synced List", "url": "https://example.com/a.txt" });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/blocklist-sources")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // The key must exist so a rename cannot pass silently, and it must be null
+    // because the source has never been fetched.
+    assert!(json.get("last_synced_at").is_some());
+    assert!(json["last_synced_at"].is_null());
 }

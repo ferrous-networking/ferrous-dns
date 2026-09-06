@@ -225,7 +225,8 @@ Add your Pi-hole blocklist URLs via the Ferrous DNS dashboard:
 
 1. Open `http://<server>:8080`
 2. Go to **DNS Filter > Blocklist Sources**
-3. Add each URL and click **Sync**
+3. Add each URL and click **Save** — every list is downloaded and activated as
+   soon as it is saved
 
 ### Step 4: Update DNS on Your Network
 

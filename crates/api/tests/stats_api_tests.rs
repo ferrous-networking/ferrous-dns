@@ -503,6 +503,9 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
             ))),
         },
         blocking: BlockingUseCases {
+            sync_blocklist_sources: Arc::new(ferrous_dns_application::use_cases::SyncBlocklistSourcesUseCase::new(Arc::new(
+                NullBlockFilterEngine,
+            ))),
             get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
                 ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository::new(pool.clone()),
             ))),

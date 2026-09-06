@@ -46,7 +46,7 @@ pub use blocked_services::{
 pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
     CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,
-    UpdateBlocklistSourceUseCase,
+    SyncBlocklistSourcesUseCase, UpdateBlocklistSourceUseCase,
 };
 pub use cache::GetCacheStatsUseCase;
 pub use client_subnets::{

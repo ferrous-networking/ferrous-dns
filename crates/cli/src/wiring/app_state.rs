@@ -174,14 +174,17 @@ pub async fn build_app_state(
                 repos.group.clone(),
                 repos.blocklist_source.clone(),
             )),
-            import: Arc::new(ImportConfigUseCase::new(
-                config.clone(),
-                config_persistence.clone(),
-                resolved_path,
-                group_creator,
-                blocklist_source_creator,
-                local_record_creator,
-            )),
+            import: Arc::new(
+                ImportConfigUseCase::new(
+                    config.clone(),
+                    config_persistence.clone(),
+                    resolved_path,
+                    group_creator,
+                    blocklist_source_creator,
+                    local_record_creator,
+                )
+                .with_block_filter(repos.block_filter_engine.clone()),
+            ),
         }
     };
 
@@ -255,6 +258,7 @@ pub async fn build_app_state(
             create_blocklist_source: use_cases.create_blocklist_source,
             update_blocklist_source: use_cases.update_blocklist_source,
             delete_blocklist_source: use_cases.delete_blocklist_source,
+            sync_blocklist_sources: use_cases.sync_blocklist_sources,
             get_whitelist: use_cases.get_whitelist,
             get_whitelist_sources: use_cases.get_whitelist_sources,
             create_whitelist_source: use_cases.create_whitelist_source,

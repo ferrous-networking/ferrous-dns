@@ -5,7 +5,8 @@ use tokio::sync::RwLock;
 use tracing::{error, info, instrument, warn};
 
 use crate::ports::{
-    BlocklistSourceCreator, ConfigFilePersistence, GroupCreator, LocalRecordCreator,
+    BlockFilterEnginePort, BlocklistSourceCreator, ConfigFilePersistence, GroupCreator,
+    LocalRecordCreator,
 };
 
 use super::snapshot::{BackupSnapshot, ImportSummary};
@@ -33,6 +34,7 @@ pub struct ImportConfigUseCase {
     group_creator: Arc<dyn GroupCreator>,
     blocklist_source_creator: Arc<dyn BlocklistSourceCreator>,
     local_record_creator: Arc<dyn LocalRecordCreator>,
+    block_filter_engine: Option<Arc<dyn BlockFilterEnginePort>>,
 }
 
 impl ImportConfigUseCase {
@@ -51,7 +53,13 @@ impl ImportConfigUseCase {
             group_creator,
             blocklist_source_creator,
             local_record_creator,
+            block_filter_engine: None,
         }
+    }
+
+    pub fn with_block_filter(mut self, engine: Arc<dyn BlockFilterEnginePort>) -> Self {
+        self.block_filter_engine = Some(engine);
+        self
     }
 
     #[instrument(skip(self, snapshot), name = "import_config")]
@@ -71,6 +79,16 @@ impl ImportConfigUseCase {
 
         let (blocklist_sources_imported, blocklist_sources_skipped) =
             self.import_blocklist_sources(&snapshot, &mut errors).await;
+
+        // The creator above deliberately skips the per-source reload, so the
+        // whole batch costs one block index rebuild instead of one each.
+        if blocklist_sources_imported > 0 {
+            if let Some(ref engine) = self.block_filter_engine {
+                if let Err(e) = engine.reload().await {
+                    error!(error = %e, "Failed to reload block filter after backup import");
+                }
+            }
+        }
 
         let (local_records_imported, local_records_skipped) =
             self.import_local_records(&snapshot, &mut errors).await;

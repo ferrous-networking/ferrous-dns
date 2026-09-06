@@ -1,13 +1,16 @@
 use async_trait::async_trait;
 use ferrous_dns_domain::{BlocklistSource, DomainError};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
-use crate::ports::{BlocklistSourceCreator, BlocklistSourceRepository, GroupRepository};
+use crate::ports::{
+    BlockFilterEnginePort, BlocklistSourceCreator, BlocklistSourceRepository, GroupRepository,
+};
 
 pub struct CreateBlocklistSourceUseCase {
     repo: Arc<dyn BlocklistSourceRepository>,
     group_repo: Arc<dyn GroupRepository>,
+    block_filter_engine: Option<Arc<dyn BlockFilterEnginePort>>,
 }
 
 impl CreateBlocklistSourceUseCase {
@@ -15,11 +18,39 @@ impl CreateBlocklistSourceUseCase {
         repo: Arc<dyn BlocklistSourceRepository>,
         group_repo: Arc<dyn GroupRepository>,
     ) -> Self {
-        Self { repo, group_repo }
+        Self {
+            repo,
+            group_repo,
+            block_filter_engine: None,
+        }
+    }
+
+    pub fn with_block_filter(mut self, engine: Arc<dyn BlockFilterEnginePort>) -> Self {
+        self.block_filter_engine = Some(engine);
+        self
     }
 
     #[instrument(skip(self))]
     pub async fn execute(
+        &self,
+        name: String,
+        url: Option<String>,
+        group_ids: Vec<i64>,
+        comment: Option<String>,
+        enabled: bool,
+    ) -> Result<BlocklistSource, DomainError> {
+        let source = self.persist(name, url, group_ids, comment, enabled).await?;
+
+        if let Some(ref engine) = self.block_filter_engine {
+            if let Err(e) = engine.reload().await {
+                error!(error = %e, "Failed to reload block filter after blocklist source creation");
+            }
+        }
+
+        Ok(source)
+    }
+
+    async fn persist(
         &self,
         name: String,
         url: Option<String>,
@@ -68,6 +99,8 @@ impl BlocklistSourceCreator for CreateBlocklistSourceUseCase {
         comment: Option<String>,
         enabled: bool,
     ) -> Result<BlocklistSource, DomainError> {
-        self.execute(name, url, group_ids, comment, enabled).await
+        // Backup import drives this in a loop, and a reload re-downloads every
+        // list, so the batch caller reloads once instead of once per source.
+        self.persist(name, url, group_ids, comment, enabled).await
     }
 }
