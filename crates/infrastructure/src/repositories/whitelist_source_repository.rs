@@ -13,6 +13,7 @@ type WhitelistSourceRow = (
     i64,
     String,
     String,
+    Option<String>,
 );
 
 pub struct SqliteWhitelistSourceRepository {
@@ -25,7 +26,7 @@ impl SqliteWhitelistSourceRepository {
     }
 
     fn row_to_source(row: WhitelistSourceRow, group_ids: Vec<i64>) -> WhitelistSource {
-        let (id, name, url, comment, enabled, created_at, updated_at) = row;
+        let (id, name, url, comment, enabled, created_at, updated_at, last_synced_at) = row;
         WhitelistSource {
             id: Some(id),
             name: Arc::from(name.as_str()),
@@ -35,6 +36,7 @@ impl SqliteWhitelistSourceRepository {
             enabled: enabled != 0,
             created_at: Some(created_at),
             updated_at: Some(updated_at),
+            last_synced_at,
         }
     }
 
@@ -77,7 +79,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
         let row = sqlx::query_as::<_, WhitelistSourceRow>(
             "INSERT INTO whitelist_sources (name, url, group_id, comment, enabled, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?)
-             RETURNING id, name, url, comment, enabled, created_at, updated_at",
+             RETURNING id, name, url, comment, enabled, created_at, updated_at, last_synced_at",
         )
         .bind(&name)
         .bind(&url)
@@ -125,7 +127,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
     #[instrument(skip(self))]
     async fn get_by_id(&self, id: i64) -> Result<Option<WhitelistSource>, DomainError> {
         let row = sqlx::query_as::<_, WhitelistSourceRow>(
-            "SELECT id, name, url, comment, enabled, created_at, updated_at
+            "SELECT id, name, url, comment, enabled, created_at, updated_at, last_synced_at
              FROM whitelist_sources WHERE id = ?",
         )
         .bind(id)
@@ -148,7 +150,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
     #[instrument(skip(self))]
     async fn get_all(&self) -> Result<Vec<WhitelistSource>, DomainError> {
         let rows = sqlx::query_as::<_, WhitelistSourceRow>(
-            "SELECT id, name, url, comment, enabled, created_at, updated_at
+            "SELECT id, name, url, comment, enabled, created_at, updated_at, last_synced_at
              FROM whitelist_sources ORDER BY name ASC",
         )
         .fetch_all(&self.pool)
@@ -203,7 +205,7 @@ impl WhitelistSourceRepository for SqliteWhitelistSourceRepository {
             "UPDATE whitelist_sources
              SET name = ?, url = ?, group_id = ?, comment = ?, enabled = ?, updated_at = ?
              WHERE id = ?
-             RETURNING id, name, url, comment, enabled, created_at, updated_at",
+             RETURNING id, name, url, comment, enabled, created_at, updated_at, last_synced_at",
         )
         .bind(&final_name)
         .bind(&final_url)
