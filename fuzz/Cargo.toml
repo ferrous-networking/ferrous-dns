@@ -11,7 +11,11 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4.13"
 bytes = "1"
 futures = "0.3"
-hickory-proto = "=0.26.1"
+# Deliberately a range, not the `=` pin the workspace uses: `fuzz/` is its own
+# workspace, so Dependabot never bumps this line. Duplicating the pin makes
+# every hickory patch release unresolvable here. The path dependency below
+# already pins the exact version, and Cargo unifies the two.
+hickory-proto = "0.26"
 
 # `default-features = false` drops the QUIC/H3 transports, which no fuzz target
 # reaches. `fuzzing` exposes the private 0x20 decoder through `dns::fuzz_api`.
