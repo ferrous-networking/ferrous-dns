@@ -51,8 +51,8 @@ anyhow = "1.0.102"
 clap = { version = "4", features = ["derive"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "sqlite", "migrate", "macros"], default-features = false }
 chrono = "0.4.44"
-hickory-server = "=0.26.1"
-hickory-proto = { version = "=0.26.1", features = ["dnssec-ring"] }
+hickory-server = "=0.26.2"
+hickory-proto = { version = "=0.26.2", features = ["dnssec-ring"] }
 toml = "1.0.6"
 toml_edit = "0.25.4"
 dashmap = "6.1"
