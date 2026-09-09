@@ -39,7 +39,12 @@ RUN find crates -name "*.rs" -exec touch {} + && \
 
 FROM alpine:3.24
 
-RUN apk add --no-cache \
+# Upgrade first: the alpine:3.24 tag is rebuilt less often than its package
+# repository, so a fresh pull still ships stale packages (libssl3/libcrypto3
+# 3.5.7-r0 while v3.24/main already has 3.5.8-r0). Those are exactly what the
+# release Trivy scan reports as CVEs against the published image.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache \
     ca-certificates \
     libcap \
     tzdata && \
