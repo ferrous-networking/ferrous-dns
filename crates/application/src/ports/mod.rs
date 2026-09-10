@@ -39,6 +39,7 @@ mod user_repository;
 mod webauthn_service;
 mod whitelist_repository;
 mod whitelist_source_repository;
+mod wildcard_record_registry;
 
 pub use api_token_repository::ApiTokenRepository;
 pub use arp_reader::{ArpReader, ArpTable};
@@ -91,5 +92,6 @@ pub use user_repository::{CreateUserInput, PasswordHasher, UserProvider, UserRep
 pub use webauthn_service::{AuthenticatedCredential, RegisteredCredential, WebauthnService};
 pub use whitelist_repository::WhitelistRepository;
 pub use whitelist_source_repository::WhitelistSourceRepository;
+pub use wildcard_record_registry::WildcardRecordRegistry;
 
 pub use ferrous_dns_domain::DnsQuery;

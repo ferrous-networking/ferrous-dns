@@ -4,13 +4,16 @@ use async_trait::async_trait;
 use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord, RecordType};
 use tokio::sync::RwLock;
 
-use crate::ports::{ConfigRepository, DnsCachePort, LocalRecordCreator, PtrRecordRegistry};
+use crate::ports::{
+    ConfigRepository, DnsCachePort, LocalRecordCreator, PtrRecordRegistry, WildcardRecordRegistry,
+};
 
 pub struct CreateLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
     config_repo: Arc<dyn ConfigRepository>,
     ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
     dns_cache: Option<Arc<dyn DnsCachePort>>,
+    wildcard_registry: Option<Arc<dyn WildcardRecordRegistry>>,
 }
 
 impl CreateLocalRecordUseCase {
@@ -20,6 +23,7 @@ impl CreateLocalRecordUseCase {
             config_repo,
             ptr_registry: None,
             dns_cache: None,
+            wildcard_registry: None,
         }
     }
 
@@ -37,6 +41,17 @@ impl CreateLocalRecordUseCase {
         self
     }
 
+    /// Attaches the live wildcard index so that a newly created wildcard record
+    /// answers queries immediately. Wildcards never enter the DNS cache — its
+    /// keys are matched exactly, so a `*.example.com` entry there is dead weight.
+    pub fn with_wildcard_registry(
+        mut self,
+        registry: Option<Arc<dyn WildcardRecordRegistry>>,
+    ) -> Self {
+        self.wildcard_registry = registry;
+        self
+    }
+
     pub async fn execute(
         &self,
         hostname: String,
@@ -45,6 +60,11 @@ impl CreateLocalRecordUseCase {
         record_type: String,
         ttl: Option<u32>,
     ) -> Result<(LocalDnsRecord, usize), DomainError> {
+        LocalDnsRecord::validate_hostname(&hostname).map_err(DomainError::InvalidDomainName)?;
+        if let Some(ref domain) = domain {
+            LocalDnsRecord::validate_domain(domain).map_err(DomainError::InvalidDomainName)?;
+        }
+
         let parsed_ip = ip
             .parse::<std::net::IpAddr>()
             .map_err(|_| DomainError::InvalidIpAddress("Invalid IP address".to_string()))?;
@@ -69,6 +89,17 @@ impl CreateLocalRecordUseCase {
         };
 
         let mut config = self.config.write().await;
+
+        if new_record.is_wildcard()
+            && new_record
+                .wildcard_suffix(&config.dns.local_domain)
+                .is_none()
+        {
+            return Err(DomainError::InvalidDomainName(
+                "A wildcard record needs a domain to anchor it: set the domain field or dns.local_domain".to_string(),
+            ));
+        }
+
         config.dns.local_records.push(new_record.clone());
         let new_index = config.dns.local_records.len() - 1;
 
@@ -78,6 +109,18 @@ impl CreateLocalRecordUseCase {
                 "Failed to save configuration: {}",
                 e
             )));
+        }
+
+        if let Some(suffix) = new_record.wildcard_suffix(&config.dns.local_domain) {
+            if let Some(ref registry) = self.wildcard_registry {
+                registry.register(
+                    &suffix,
+                    parsed_record_type,
+                    parsed_ip,
+                    new_record.ttl_or_default(),
+                );
+            }
+            return Ok((new_record, new_index));
         }
 
         let fqdn = new_record.fqdn(&config.dns.local_domain);

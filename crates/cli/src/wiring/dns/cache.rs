@@ -69,8 +69,17 @@ pub(super) fn preload_local_records_into_cache(
 
     let mut success_count = 0;
     let mut error_count = 0;
+    let mut wildcard_count = 0;
 
     for record in records {
+        // Wildcards are served by `LocalWildcardResolver` above the cache: a
+        // cache key is matched exactly, so `*.home.lan` here would be an entry
+        // no query could ever reach.
+        if record.is_wildcard() {
+            wildcard_count += 1;
+            continue;
+        }
+
         let fqdn = record.fqdn(default_domain);
 
         let ip: std::net::IpAddr = match record.ip.parse() {
@@ -139,6 +148,7 @@ pub(super) fn preload_local_records_into_cache(
         info!(
             count = success_count,
             errors = error_count,
+            wildcards = wildcard_count,
             "✓ Preloaded {} local DNS record(s) into permanent cache",
             success_count
         );

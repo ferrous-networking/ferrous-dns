@@ -9,6 +9,7 @@ use super::dnssec_layer::DnssecResolver;
 use super::filtered_resolver::FilteredResolver;
 use super::filters::QueryFilters;
 use super::local_ptr::{LocalPtrResolver, PtrMap};
+use super::local_wildcard::{LocalWildcardResolver, WildcardMap};
 use ferrous_dns_application::ports::DnsResolver;
 use std::net::Ipv6Addr;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ pub struct ResolverBuilder {
     local_dns_server: Option<String>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
+    local_wildcards: Option<Arc<WildcardMap>>,
     dns64_prefix: Option<Ipv6Addr>,
 }
 
@@ -41,6 +43,7 @@ impl ResolverBuilder {
             local_dns_server: None,
             filters: None,
             local_ptr_map: None,
+            local_wildcards: None,
             dns64_prefix: None,
         }
     }
@@ -101,6 +104,14 @@ impl ResolverBuilder {
         self
     }
 
+    /// Attaches the live wildcard index, adding `LocalWildcardResolver` just
+    /// above the cache. Always attach it, even empty: it is what lets a
+    /// wildcard added at runtime answer without a restart.
+    pub fn with_local_wildcards(mut self, map: Arc<WildcardMap>) -> Self {
+        self.local_wildcards = Some(map);
+        self
+    }
+
     /// Enables DNS64 (RFC 6147) AAAA synthesis using the given `/96` NAT64
     /// network prefix. The layer is placed just below the cache so synthesized
     /// answers are cached and served consistently.
@@ -115,6 +126,7 @@ impl ResolverBuilder {
             cache = self.cache.is_some(),
             filters = self.filters.is_some(),
             local_ptr = self.local_ptr_map.is_some(),
+            wildcards = self.local_wildcards.as_ref().map_or(0, |m| m.len()),
             "Building DNS resolver"
         );
 
@@ -170,6 +182,13 @@ impl ResolverBuilder {
             );
 
             resolver = Arc::new(cached);
+        }
+
+        // Wildcard local records answer above the cache. A cache key is matched
+        // exactly, so an expansion of `*.home.lan` stored under a concrete name
+        // could never be found again to invalidate when the wildcard is deleted.
+        if let Some(map) = self.local_wildcards {
+            resolver = Arc::new(LocalWildcardResolver::new(resolver, map));
         }
 
         if let Some(filters) = self.filters {

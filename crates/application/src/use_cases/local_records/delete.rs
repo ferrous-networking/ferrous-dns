@@ -4,13 +4,14 @@ use ferrous_dns_domain::{Config, DomainError, LocalDnsRecord, RecordType};
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::ports::{ConfigRepository, DnsCachePort, PtrRecordRegistry};
+use crate::ports::{ConfigRepository, DnsCachePort, PtrRecordRegistry, WildcardRecordRegistry};
 
 pub struct DeleteLocalRecordUseCase {
     config: Arc<RwLock<Config>>,
     config_repo: Arc<dyn ConfigRepository>,
     ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
     dns_cache: Option<Arc<dyn DnsCachePort>>,
+    wildcard_registry: Option<Arc<dyn WildcardRecordRegistry>>,
 }
 
 impl DeleteLocalRecordUseCase {
@@ -20,6 +21,7 @@ impl DeleteLocalRecordUseCase {
             config_repo,
             ptr_registry: None,
             dns_cache: None,
+            wildcard_registry: None,
         }
     }
 
@@ -34,6 +36,16 @@ impl DeleteLocalRecordUseCase {
     /// removes the forward record (A/AAAA) from the cache without requiring a server restart.
     pub fn with_dns_cache(mut self, cache: Option<Arc<dyn DnsCachePort>>) -> Self {
         self.dns_cache = cache;
+        self
+    }
+
+    /// Attaches the live wildcard index so that deleting a wildcard record stops
+    /// it answering on the next query, without a server restart.
+    pub fn with_wildcard_registry(
+        mut self,
+        registry: Option<Arc<dyn WildcardRecordRegistry>>,
+    ) -> Self {
+        self.wildcard_registry = registry;
         self
     }
 
@@ -56,6 +68,20 @@ impl DeleteLocalRecordUseCase {
                 "Failed to save configuration: {}",
                 e
             )));
+        }
+
+        if let Some(suffix) = removed_record.wildcard_suffix(&config.dns.local_domain) {
+            if let Some(ref registry) = self.wildcard_registry {
+                if let Ok(record_type) = removed_record.record_type.parse::<RecordType>() {
+                    registry.unregister(&suffix, record_type);
+                } else {
+                    warn!(
+                        record_type = %removed_record.record_type,
+                        "Wildcard registry: unrecognised record type on removed record, skipping removal"
+                    );
+                }
+            }
+            return Ok(removed_record);
         }
 
         if let Some(ref registry) = self.ptr_registry {
