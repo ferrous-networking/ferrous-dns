@@ -183,6 +183,21 @@ pub async fn delete_cache_entry(
         DomainError::InvalidInput(format!("unknown record type: {}", params.record_type))
     })?;
 
+    // A permanent entry is a local DNS record, and nothing reloads it: evicting
+    // it here would silently unpublish the name until the next restart. Send the
+    // operator to the page that owns the record instead.
+    if state
+        .dns
+        .cache
+        .is_permanent_record(&params.domain, &record_type)
+    {
+        return Err(ApiError(DomainError::InvalidInput(format!(
+            "{} {} is a local DNS record — remove it in Local DNS settings",
+            params.domain,
+            record_type.as_str()
+        ))));
+    }
+
     if !state.dns.cache.remove_record(&params.domain, &record_type) {
         return Err(ApiError(DomainError::NotFound(format!(
             "cache entry {} {}",

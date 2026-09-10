@@ -85,13 +85,20 @@ fn test_ttl_within_bounds_unchanged() {
 #[test]
 fn test_permanent_records_ignore_bounds() {
     let cache = make_cache();
-    cache.insert_permanent("example.com", RecordType::A, make_ip_data("1.2.3.4"), None);
+    // A week, well past the cache's 86400 max_ttl.
+    let configured_ttl = 604_800;
+    cache.insert_permanent(
+        "example.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        configured_ttl,
+        None,
+    );
     let ttl = cache.get_ttl("example.com", &RecordType::A);
-    let permanent_ttl = 365u32 * 24 * 60 * 60;
     assert_eq!(
         ttl,
-        Some(permanent_ttl),
-        "Permanent records should retain their large TTL"
+        Some(configured_ttl),
+        "Permanent records keep their configured TTL, unclamped"
     );
 }
 

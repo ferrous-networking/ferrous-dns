@@ -131,7 +131,7 @@ pub(super) fn preload_local_records_into_cache(
 
         let ttl = record.ttl.unwrap_or(300);
 
-        cache.insert_permanent(&fqdn, record_type, data, None);
+        cache.insert_permanent(&fqdn, record_type, data, ttl, None);
 
         info!(
             fqdn = %fqdn,

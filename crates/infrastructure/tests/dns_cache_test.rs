@@ -651,7 +651,13 @@ fn test_refresh_candidates_skips_permanent_entries() {
     // passaria em todos os outros filtros.
     let cache = create_refresh_cache(u64::MAX);
 
-    cache.insert_permanent("forever.com", RecordType::A, make_ip_data("10.0.0.1"), None);
+    cache.insert_permanent(
+        "forever.com",
+        RecordType::A,
+        make_ip_data("10.0.0.1"),
+        300,
+        None,
+    );
     cache.insert(
         "ephemeral.com",
         RecordType::A,

@@ -181,6 +181,7 @@ impl UpdateLocalRecordUseCase {
                     &new_fqdn,
                     new_parsed_record_type,
                     vec![new_parsed_ip],
+                    updated_record.ttl_or_default(),
                 );
             }
         }

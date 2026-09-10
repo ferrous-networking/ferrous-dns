@@ -134,7 +134,12 @@ impl CreateLocalRecordUseCase {
         }
 
         if let Some(ref cache) = self.dns_cache {
-            cache.insert_permanent_record(&fqdn, parsed_record_type, vec![parsed_ip]);
+            cache.insert_permanent_record(
+                &fqdn,
+                parsed_record_type,
+                vec![parsed_ip],
+                new_record.ttl_or_default(),
+            );
         }
 
         Ok((new_record, new_index))

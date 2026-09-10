@@ -142,7 +142,12 @@ pub trait DnsCachePort: Send + Sync {
         domain: &str,
         record_type: RecordType,
         addresses: Vec<IpAddr>,
+        ttl: u32,
     );
     fn remove_record(&self, domain: &str, record_type: &RecordType) -> bool;
+    /// Whether the entry is permanent — a local DNS record, not a cached
+    /// upstream answer. Nothing reloads a permanent entry once it is removed,
+    /// so callers that expose eviction to users need to know the difference.
+    fn is_permanent_record(&self, domain: &str, record_type: &RecordType) -> bool;
     fn list_entries(&self, query: &CacheEntryQuery) -> CacheEntryPage;
 }

@@ -331,6 +331,7 @@ fn test_list_entries_permanent_entry_has_no_remaining_ttl() {
         "printer.lan",
         RecordType::A,
         make_ip_data("192.168.1.50"),
+        300,
         None,
     );
     cache.insert(
