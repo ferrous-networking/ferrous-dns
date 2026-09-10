@@ -193,10 +193,16 @@
                     </td>
                     <td class="col-hit" style="font-size:13px" x-text="entry.hits"></td>
                     <td class="col-action">
-                        <button type="button" class="btn-action btn-action-remove"
-                            :disabled="removing === entry.domain + '|' + entry.type"
-                            @click="removeEntry(entry)">Remove
-                        </button>
+                        <template x-if="!entry.permanent">
+                            <button type="button" class="btn-action btn-action-remove"
+                                :disabled="removing === entry.domain + '|' + entry.type"
+                                @click="removeEntry(entry)">Remove
+                            </button>
+                        </template>
+                        <template x-if="entry.permanent">
+                            <span style="color:var(--text-secondary);font-size:12px"
+                                  title="Local DNS record — remove it in Local DNS settings">local record</span>
+                        </template>
                     </td>
                 </tr>
             </template>

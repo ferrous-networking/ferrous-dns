@@ -160,6 +160,7 @@ pub async fn build_app_state(
         let local_record_creator_for_import = Arc::new(
             CreateLocalRecordUseCase::new(config.clone(), config_repo.clone())
                 .with_ptr_registry(dns_services.ptr_registry.clone())
+                .with_wildcard_registry(Some(dns_services.wildcard_registry.clone()))
                 .with_dns_cache(Some(dns_services.cache.clone()
                     as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
         );
@@ -204,18 +205,21 @@ pub async fn build_app_state(
             create_local_record: Arc::new(
                 CreateLocalRecordUseCase::new(config.clone(), config_repo.clone())
                     .with_ptr_registry(dns_services.ptr_registry.clone())
+                    .with_wildcard_registry(Some(dns_services.wildcard_registry.clone()))
                     .with_dns_cache(Some(dns_services.cache.clone()
                         as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),
             update_local_record: Arc::new(
                 UpdateLocalRecordUseCase::new(config.clone(), config_repo.clone())
                     .with_ptr_registry(dns_services.ptr_registry.clone())
+                    .with_wildcard_registry(Some(dns_services.wildcard_registry.clone()))
                     .with_dns_cache(Some(dns_services.cache.clone()
                         as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),
             delete_local_record: Arc::new(
                 DeleteLocalRecordUseCase::new(config.clone(), config_repo)
                     .with_ptr_registry(dns_services.ptr_registry.clone())
+                    .with_wildcard_registry(Some(dns_services.wildcard_registry.clone()))
                     .with_dns_cache(Some(dns_services.cache.clone()
                         as Arc<dyn ferrous_dns_application::ports::DnsCachePort>)),
             ),

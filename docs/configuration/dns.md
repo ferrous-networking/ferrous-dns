@@ -158,6 +158,45 @@ ttl = 300
 | `record_type` | `"A"` for IPv4, `"AAAA"` for IPv6 |
 | `ttl` | Time-to-live in seconds |
 
+### Wildcard Records
+
+Set `hostname` to `*` to answer for every subdomain of `domain`, instead of
+listing them one by one:
+
+```toml
+[[dns.local_records]]
+hostname = "*"
+domain = "home.lan"
+ip = "192.168.1.10"
+record_type = "A"
+ttl = 300
+```
+
+`anything.home.lan` and `deeper.still.home.lan` both resolve to `192.168.1.10`.
+
+The rules:
+
+- **The domain itself is not covered.** `*.home.lan` does not answer for
+  `home.lan` (RFC 4592). Add an exact record for the apex if you need one.
+- **An exact record wins.** With both `*.home.lan → 192.168.1.10` and
+  `nas.home.lan → 192.168.1.50`, a query for `nas.home.lan` gets `192.168.1.50`.
+- **The most specific wildcard wins.** `*.dev.home.lan` beats `*.home.lan` for
+  `api.dev.home.lan`.
+- **A type the wildcard does not carry is answered as NODATA** — an empty
+  `NOERROR`, not a query sent upstream. With only an A record defined, an `AAAA`
+  for `anything.home.lan` returns no answer instead of leaking the internal name
+  to your upstream resolver.
+- **Wildcards are matched before the cache and never cached**, so adding or
+  deleting one from the dashboard takes effect on the next query.
+- **No PTR is generated.** A wildcard has no single name for an address to
+  reverse to, so [Auto PTR Generation](#local-records) skips it.
+- `*` is accepted only as the leftmost label: `*` or `*.dev` in `hostname`, never
+  inside `domain`. Anything else is rejected with a `400`.
+
+A wildcard needs something to anchor it: set `domain`, or a global
+`dns.local_domain`. A bare `*` with neither is refused rather than stored as a
+record that would cover every query.
+
 ### Auto PTR Generation
 
 When you define a local A record, Ferrous DNS automatically creates a PTR record. For example, `server.local → 192.168.1.100` also creates `100.1.168.192.in-addr.arpa → server.local`.

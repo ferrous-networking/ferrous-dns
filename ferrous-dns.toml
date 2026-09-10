@@ -239,6 +239,12 @@ success_threshold = 2                   # Consecutive successes to mark a server
 
 # ── Local DNS Records ────────────────────────────────────────────────────────
 # Static A/AAAA records served directly from cache, bypassing upstream resolution.
+#
+# Set hostname = "*" to cover every subdomain of `domain`. A wildcard answers for
+# anything below the domain (including deeper names such as `a.b.home.lan`) but
+# never for the domain itself, and an exact record always beats it. A query type
+# the wildcard does not carry — AAAA when only an A is defined — is answered as
+# an empty NOERROR rather than being forwarded upstream.
 
 [[dns.local_records]]
 hostname = "viudes"
@@ -253,6 +259,13 @@ domain = "server"
 ip = "10.0.1.1"
 record_type = "A"
 ttl = 300
+
+# [[dns.local_records]]
+# hostname = "*"
+# domain = "home.lan"
+# ip = "10.0.10.1"
+# record_type = "A"
+# ttl = 300
 
 [[dns.pools]]
 name = "pool1"

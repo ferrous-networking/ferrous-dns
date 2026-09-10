@@ -45,6 +45,12 @@ impl LocalPtrResolver {
         let mut count = 0usize;
 
         for record in records {
+            // A wildcard covers a whole subtree, so there is no single name an
+            // address could reverse to. Skip it rather than inventing one.
+            if record.is_wildcard() {
+                continue;
+            }
+
             match record.ip.parse::<IpAddr>() {
                 Ok(ip) => {
                     let fqdn = record.fqdn(default_domain);

@@ -5,6 +5,7 @@ use super::builder::ResolverBuilder;
 use super::config::ResolverConfig;
 use super::filters::QueryFilters;
 use super::local_ptr::PtrMap;
+use super::local_wildcard::WildcardMap;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DomainError};
@@ -30,6 +31,7 @@ struct BuilderState {
     local_dns_server: Option<String>,
     filters: Option<QueryFilters>,
     local_ptr_map: Option<Arc<PtrMap>>,
+    local_wildcards: Option<Arc<WildcardMap>>,
     dns64_prefix: Option<Ipv6Addr>,
 }
 
@@ -58,6 +60,7 @@ impl HickoryDnsResolver {
             local_dns_server: None,
             filters: None,
             local_ptr_map: None,
+            local_wildcards: None,
             dns64_prefix: None,
         };
 
@@ -137,6 +140,14 @@ impl HickoryDnsResolver {
         self
     }
 
+    /// Attaches the live wildcard index so that wildcard local records answer,
+    /// and so that one added at runtime takes effect without a restart.
+    pub fn with_local_wildcards(mut self, map: Arc<WildcardMap>) -> Self {
+        self.builder_state.local_wildcards = Some(map);
+        self.rebuild();
+        self
+    }
+
     /// Enables DNS64 (RFC 6147) AAAA synthesis using the given `/96` NAT64
     /// network prefix.
     pub fn with_dns64(mut self, prefix: Ipv6Addr) -> Self {
@@ -173,6 +184,10 @@ impl HickoryDnsResolver {
 
         if let Some(map) = &self.builder_state.local_ptr_map {
             builder = builder.with_local_ptr_map(Arc::clone(map));
+        }
+
+        if let Some(map) = &self.builder_state.local_wildcards {
+            builder = builder.with_local_wildcards(Arc::clone(map));
         }
 
         if let Some(prefix) = self.builder_state.dns64_prefix {

@@ -6,7 +6,7 @@ use crate::server::dns::connection_limiter::ConnectionLimiter;
 use ferrous_dns_application::ports::{
     CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
-    ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore,
+    ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore, WildcardRecordRegistry,
 };
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
@@ -14,10 +14,13 @@ use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::{
-    cache::DnsCache, cache_maintenance::DnsCacheMaintenance, dnssec::DnssecStatsAdapter,
-    events::QueryEventEmitter, resolver::LocalPtrResolver, DgaDetector, HealthChecker,
-    HickoryDnsResolver, NxdomainHijackDetector, PoolManager, RefreshScanOptions, RefreshSenders,
-    ResponseIpFilterDetector, TunnelingDetector,
+    cache::DnsCache,
+    cache_maintenance::DnsCacheMaintenance,
+    dnssec::DnssecStatsAdapter,
+    events::QueryEventEmitter,
+    resolver::{LocalPtrResolver, LocalWildcardResolver, WildcardRegistry},
+    DgaDetector, HealthChecker, HickoryDnsResolver, NxdomainHijackDetector, PoolManager,
+    RefreshScanOptions, RefreshSenders, ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
@@ -42,6 +45,9 @@ pub struct DnsServices {
     pub health_checker: Option<Arc<HealthChecker>>,
     pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     pub ptr_registry: Option<Arc<dyn PtrRecordRegistry>>,
+    /// Live wildcard index. Always present, even with no wildcard configured,
+    /// so the first one added from the admin UI answers without a restart.
+    pub wildcard_registry: Arc<dyn WildcardRecordRegistry>,
     pub tcp_conn_limiter: ConnectionLimiter,
     pub dot_conn_limiter: ConnectionLimiter,
     pub doq_conn_limiter: ConnectionLimiter,
@@ -143,6 +149,17 @@ impl DnsServices {
             } else {
                 None
             };
+
+        // Unconditional, unlike the PTR map above: an empty index costs one
+        // `is_empty()` check per query, and it is what lets a wildcard created
+        // from the admin UI take effect on the next query.
+        let wildcard_map = LocalWildcardResolver::map_from_local_records(
+            &config.dns.local_records,
+            &config.dns.local_domain,
+        );
+        dns_resolver = dns_resolver.with_local_wildcards(Arc::clone(&wildcard_map));
+        let wildcard_registry: Arc<dyn WildcardRecordRegistry> =
+            Arc::new(WildcardRegistry::new(wildcard_map));
 
         let resolver = Arc::new(dns_resolver);
 
@@ -356,6 +373,7 @@ impl DnsServices {
             health_checker: stored_health_checker,
             cache_maintenance,
             ptr_registry,
+            wildcard_registry,
             tcp_conn_limiter,
             dot_conn_limiter,
             doq_conn_limiter,

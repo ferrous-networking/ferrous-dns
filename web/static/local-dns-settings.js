@@ -53,6 +53,39 @@
             get form() {
                 return this.editingRecord ?? this.newRecord;
             },
+            // Mirrors the server-side validator so a malformed hostname is caught
+            // before the round trip. Anything the browser cannot know — whether
+            // dns.local_domain can anchor a bare `*` — is left to the API.
+            validateRecord(record) {
+                const hostname = (record.hostname || '').trim();
+                const domain = (record.domain || '').trim();
+                const labels = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
+
+                if (!hostname || !record.ip) {
+                    return 'Hostname and IP address are required.';
+                }
+                if (hostname.includes('*') && hostname !== '*' && !hostname.startsWith('*.')) {
+                    return "Wildcard must be the leftmost label: use '*' or '*.sub'.";
+                }
+                if (hostname !== '*' && !labels.test(hostname.replace(/^\*\./, ''))) {
+                    return 'Hostname may only contain letters, digits, hyphens and underscores.';
+                }
+                if (domain.includes('*')) {
+                    return "Domain cannot contain a wildcard: put the '*' in the hostname.";
+                }
+                if (domain && !labels.test(domain)) {
+                    return 'Domain may only contain letters, digits, hyphens and underscores.';
+                }
+                return '';
+            },
+            async errorText(response, fallback) {
+                try {
+                    const body = await response.json();
+                    return body.error || fallback;
+                } catch (e) {
+                    return fallback;
+                }
+            },
             async loadRecords() {
                 try {
                     const r = await fetch(`${API_BASE}/local-records`);
@@ -78,11 +111,8 @@
                 this.addError = '';
             },
             async updateRecord() {
-                this.addError = '';
-                if (!this.editingRecord.hostname || !this.editingRecord.ip) {
-                    this.addError = 'Hostname and IP address are required.';
-                    return;
-                }
+                this.addError = this.validateRecord(this.editingRecord);
+                if (this.addError) return;
                 try {
                     const r = await fetch(`${API_BASE}/local-records/${this.editingRecord.id}`, {
                         method: 'PUT',
@@ -100,7 +130,7 @@
                         await this.loadRecords();
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        this.addError = await r.text() || 'Failed to update record';
+                        this.addError = await this.errorText(r, 'Failed to update record');
                     }
                 } catch (e) {
                     console.error(e);
@@ -108,11 +138,8 @@
                 }
             },
             async addRecord() {
-                this.addError = '';
-                if (!this.newRecord.hostname || !this.newRecord.ip) {
-                    this.addError = 'Hostname and IP address are required.';
-                    return;
-                }
+                this.addError = this.validateRecord(this.newRecord);
+                if (this.addError) return;
                 try {
                     const r = await fetch(`${API_BASE}/local-records`, {
                         method: 'POST',
@@ -130,7 +157,7 @@
                         this.newRecord = {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300};
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        this.addError = await r.text() || 'Failed to add record';
+                        this.addError = await this.errorText(r, 'Failed to add record');
                     }
                 } catch (e) {
                     console.error(e);

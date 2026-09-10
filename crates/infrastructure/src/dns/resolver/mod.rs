@@ -8,6 +8,7 @@ pub mod filtered_resolver;
 pub mod filters;
 pub mod legacy;
 pub mod local_ptr;
+pub mod local_wildcard;
 
 pub use builder::ResolverBuilder;
 pub use cache_layer::CachedResolver;
@@ -19,3 +20,4 @@ pub use filtered_resolver::FilteredResolver;
 pub use filters::QueryFilters;
 pub use legacy::HickoryDnsResolver;
 pub use local_ptr::LocalPtrResolver;
+pub use local_wildcard::{LocalWildcardResolver, WildcardAnswer, WildcardMap, WildcardRegistry};

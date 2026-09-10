@@ -123,6 +123,7 @@ fn rotation_reseeds_permanent_entries() {
         "printer.lan",
         RecordType::A,
         make_cname_data("printer.local"),
+        300,
         None,
     );
 

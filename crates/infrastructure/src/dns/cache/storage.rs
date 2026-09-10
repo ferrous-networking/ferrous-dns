@@ -55,7 +55,6 @@ impl Ord for EvictionCandidate {
 }
 
 const BLOOM_TARGET_FP_RATE: f64 = 0.01;
-const PERMANENT_TTL_SECS: u32 = 365 * 24 * 60 * 60;
 const STALE_SERVE_TTL: u32 = 2;
 
 /// Message carried by a refresh queue.
@@ -268,7 +267,15 @@ impl DnsCache {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 record.record_hit();
                 self.bloom.refresh(&borrowed);
-                let remaining_ttl = record.expires_at_secs.saturating_sub(now_secs) as u32;
+                // A permanent entry never expires, so the distance to
+                // `expires_at_secs` (u64::MAX) is meaningless — serve the TTL the
+                // record was configured with instead, or the client is told to
+                // hold the answer for the next eighty years.
+                let remaining_ttl = if record.is_permanent() {
+                    record.ttl
+                } else {
+                    record.expires_at_secs.saturating_sub(now_secs) as u32
+                };
                 self.promote_to_l1(domain, record_type, record, now_secs);
                 return Some((
                     record.data.clone(),
@@ -362,6 +369,7 @@ impl DnsCache {
         domain: &str,
         record_type: RecordType,
         data: CachedData,
+        ttl: u32,
         _dnssec_status: Option<CachedDnssecStatus>,
     ) {
         let domain = normalize_domain(domain);
@@ -380,19 +388,30 @@ impl DnsCache {
             None
         };
 
-        let record = CachedRecord::permanent(data, PERMANENT_TTL_SECS, record_type);
+        let record = CachedRecord::permanent(data, ttl, record_type);
         self.cache.insert(key, record);
 
         if let Some(addresses) = maybe_l1_addresses {
             // Permanent (local DNS / hosts) entries are not DNSSEC-validated.
+            // L1 gets a real expiry so the TTL it reports is the configured one;
+            // when it lapses the entry is simply promoted again from L2, which
+            // still holds it forever.
             l1_insert(
                 domain,
                 &record_type,
                 addresses,
                 CachedDnssecStatus::Unknown,
-                u64::MAX,
+                coarse_now_secs() + ttl as u64,
             );
         }
+    }
+
+    /// Whether `domain`/`record_type` is held as a permanent entry — a local DNS
+    /// record preloaded from config, not something resolved from upstream.
+    pub fn is_permanent(&self, domain: &str, record_type: &RecordType) -> bool {
+        let domain = normalize_domain(domain);
+        let key = CacheKey::new(domain.as_ref(), *record_type);
+        self.permanent_keys.contains(&key)
     }
 
     pub fn remove(&self, domain: &str, record_type: &RecordType) -> bool {
@@ -414,6 +433,24 @@ impl DnsCache {
     }
 
     pub fn clear(&self) {
+        // Permanent entries are configuration, not cached upstream answers:
+        // local DNS records live here and nothing reloads them, so dropping them
+        // would leave every one of them unanswerable until the next restart.
+        let preserved: Vec<(CacheKey, CachedData, u32, RecordType)> = self
+            .permanent_keys
+            .iter()
+            .filter_map(|key| {
+                let entry = self.cache.get(key.key())?;
+                let record = entry.value();
+                Some((
+                    key.key().clone(),
+                    record.data.clone(),
+                    record.ttl,
+                    record.record_type,
+                ))
+            })
+            .collect();
+
         self.cache.clear();
         self.bloom.clear();
         self.negative.clear();
@@ -422,7 +459,19 @@ impl DnsCache {
         self.metrics.hits.store(0, AtomicOrdering::Relaxed);
         self.metrics.misses.store(0, AtomicOrdering::Relaxed);
         self.metrics.evictions.store(0, AtomicOrdering::Relaxed);
-        info!("Cache cleared (L1 generation bumped for cross-thread invalidation)");
+
+        let restored = preserved.len();
+        for (key, data, ttl, record_type) in preserved {
+            self.bloom.set(&key);
+            self.permanent_keys.insert(key.clone());
+            self.cache
+                .insert(key, CachedRecord::permanent(data, ttl, record_type));
+        }
+
+        info!(
+            restored,
+            "Cache cleared (L1 generation bumped for cross-thread invalidation)"
+        );
     }
 
     pub fn metrics(&self) -> Arc<CacheMetrics> {
@@ -624,12 +673,19 @@ impl DnsCache {
             if record.expires_at_secs <= now_secs {
                 return;
             }
+            // Same reason as in `get`: a permanent entry's `expires_at_secs` is
+            // u64::MAX, which L1 would turn into an absurd remaining TTL.
+            let expires_secs = if record.is_permanent() {
+                now_secs + record.ttl as u64
+            } else {
+                record.expires_at_secs
+            };
             l1_insert(
                 domain,
                 record_type,
                 Arc::clone(&entry.addresses),
                 record.dnssec_status,
-                record.expires_at_secs,
+                expires_secs,
             );
         }
     }
@@ -812,15 +868,24 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
         domain: &str,
         record_type: ferrous_dns_domain::RecordType,
         addresses: Vec<std::net::IpAddr>,
+        ttl: u32,
     ) {
         let data = CachedData::IpAddresses(super::data::CachedAddresses {
             addresses: Arc::new(addresses),
         });
-        self.insert_permanent(domain, record_type, data, None);
+        self.insert_permanent(domain, record_type, data, ttl, None);
     }
 
     fn remove_record(&self, domain: &str, record_type: &ferrous_dns_domain::RecordType) -> bool {
         self.remove(domain, record_type)
+    }
+
+    fn is_permanent_record(
+        &self,
+        domain: &str,
+        record_type: &ferrous_dns_domain::RecordType,
+    ) -> bool {
+        self.is_permanent(domain, record_type)
     }
 
     fn list_entries(
