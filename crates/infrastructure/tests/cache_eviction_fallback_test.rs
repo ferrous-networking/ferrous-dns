@@ -135,7 +135,10 @@ fn test_fallback_eviction_keeps_permanent_entries() {
 #[test]
 fn test_fallback_eviction_terminates_when_every_entry_is_permanent() {
     let cache = make_cache(8);
-    for (domain, ip) in [("nas.home.lan", "10.0.0.5"), ("printer.home.lan", "10.0.0.6")] {
+    for (domain, ip) in [
+        ("nas.home.lan", "10.0.0.5"),
+        ("printer.home.lan", "10.0.0.6"),
+    ] {
         cache.insert_permanent(domain, RecordType::A, make_ip_data(ip), 300, None);
     }
 

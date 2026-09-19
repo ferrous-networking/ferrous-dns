@@ -714,12 +714,42 @@ impl DnsCache {
         }
     }
 
-    fn evict_random_entry(&self) {
-        if let Some(entry) = self.cache.iter().next() {
-            let key = entry.key().clone();
-            drop(entry);
-            self.cache.remove(&key);
-            self.metrics.evictions.fetch_add(1, AtomicOrdering::Relaxed);
+    /// Removes up to `count` entries without scoring them — the cheap path for
+    /// a cache that already sits below half its capacity.
+    ///
+    /// The keys are collected into a `Vec` that **ends the statement**: a
+    /// dashmap `Iter` holds the read guard of the shard it is walking, and
+    /// `remove` needs the write guard of that same shard. `parking_lot`'s
+    /// `RawRwLock` is not reentrant, so removing while the iterator is alive
+    /// deadlocks the thread for good (issue #228).
+    ///
+    /// Permanent entries are skipped for the same reason [`Self::evict_by_strategy`]
+    /// skips them: they are local DNS records loaded from config, nothing
+    /// reloads them, and dropping one here would leave `permanent_records`
+    /// claiming a name the backing map no longer holds.
+    fn evict_arbitrary_entries(&self, count: usize) {
+        let keys: Vec<CacheKey> = self
+            .cache
+            .iter()
+            .filter(|entry| {
+                let record = entry.value();
+                !record.is_permanent() && !record.is_marked_for_deletion()
+            })
+            .map(|entry| entry.key().clone())
+            .take(count)
+            .collect();
+
+        let mut evicted = 0u64;
+        for key in &keys {
+            if self.cache.remove(key).is_some() {
+                evicted += 1;
+            }
+        }
+
+        if evicted > 0 {
+            self.metrics
+                .evictions
+                .fetch_add(evicted, AtomicOrdering::Relaxed);
         }
     }
 
@@ -730,9 +760,7 @@ impl DnsCache {
         if self.use_probabilistic_eviction && self.cache.len() > self.max_entries / 2 {
             self.evict_by_strategy(num_to_evict);
         } else {
-            for _ in 0..num_to_evict {
-                self.evict_random_entry();
-            }
+            self.evict_arbitrary_entries(num_to_evict);
         }
     }
 
