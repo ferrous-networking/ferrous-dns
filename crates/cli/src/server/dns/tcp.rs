@@ -1,5 +1,6 @@
 use super::connection_limiter::{ConnectionGuard, ConnectionLimiter};
 use super::pktinfo;
+use bytes::Buf;
 use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::proxy_protocol::{
     read_proxy_v2_client_ip, ProxyProtocolError,
@@ -9,7 +10,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, warn};
 
@@ -75,6 +76,11 @@ async fn handle_tcp_connection(
 ) {
     debug!(client = %peer_addr, "TCP DNS connection accepted");
 
+    // Pipelined answers must not wait for the ACK of the previous one (Nagle).
+    if let Err(e) = stream.set_nodelay(true) {
+        warn!(client = %peer_addr, error = %e, "Failed to set TCP_NODELAY for TCP DNS");
+    }
+
     let client_ip = if proxy_protocol_enabled {
         match tokio::time::timeout(
             Duration::from_secs(5),
@@ -120,15 +126,23 @@ async fn handle_tcp_connection(
             .handle_raw_udp_fallback(&dns_buf, client_ip, ClientProtocol::Tcp)
             .await
         {
-            let resp_len = (resp.len() as u16).to_be_bytes();
-            if stream.write_all(&resp_len).await.is_err() {
-                break;
-            }
-            if stream.write_all(&resp).await.is_err() {
+            if write_framed(&mut stream, &resp).await.is_err() {
                 break;
             }
         }
     }
 
     debug!(client = %peer_addr, "TCP DNS connection closed");
+}
+
+/// Writes an RFC 1035 §4.2.2 length-prefixed message in one vectored write,
+/// so the prefix and payload leave in one segment (or one TLS record).
+pub(super) async fn write_framed<S>(stream: &mut S, message: &[u8]) -> std::io::Result<()>
+where
+    S: AsyncWrite + Unpin,
+{
+    let prefix = (message.len() as u16).to_be_bytes();
+    stream
+        .write_all_buf(&mut Buf::chain(&prefix[..], message))
+        .await
 }

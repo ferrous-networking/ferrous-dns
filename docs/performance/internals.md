@@ -12,11 +12,15 @@ Sockets use `SO_REUSEADDR` and 4 MB send/receive buffers to absorb bursts. Runti
 
 The worker count defaults to Tokio's available parallelism. Set `TOKIO_WORKER_THREADS` to a positive integer to override it; DNS listener count follows the actual runtime count. There is no `workers` TOML key. Use container CPU limits or `taskset` when process-level placement is required.
 
+TCP DNS and DoT listeners write each answer's length prefix and payload in one vectored write, so an answer leaves as one TCP segment or one TLS record. Written separately, the payload waited behind Nagle's algorithm for the client's delayed ACK of the 2-byte prefix, stalling even cached answers by tens of milliseconds at low query rates. The listeners also enable `TCP_NODELAY`, so an answer to a pipelined query does not wait for the ACK of the one before it. This does not change UDP processing or require a configuration option.
+
 ---
 
 ## Batched syscalls: recvmmsg / sendmmsg
 
 On Linux the UDP path reads and writes datagrams in batches of **64** using `recvmmsg` and `sendmmsg`, amortizing the syscall over up to 64 queries. Receive buffers and control-message storage are allocated once per worker and reused.
+
+Receives are nonblocking: a single available query is processed immediately, without waiting to fill the batch. Sparse-query latency should be measured with idle gaps between requests, not inferred from a saturated throughput benchmark.
 
 This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with the same behaviour and lower throughput. Every target needs dual-stack `AF_INET6` sockets (IPv4 is handled as v4-mapped addresses); platforms without them, such as kernels built without IPv6, are not supported.
 

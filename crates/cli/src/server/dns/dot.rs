@@ -9,7 +9,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
@@ -136,6 +136,11 @@ async fn handle_dot_connection(
 ) {
     debug!(client = %peer_addr, "DoT connection accepted");
 
+    // Pipelined answers must not wait for the ACK of the previous one (Nagle).
+    if let Err(e) = stream.set_nodelay(true) {
+        warn!(client = %peer_addr, error = %e, "Failed to set TCP_NODELAY for DoT");
+    }
+
     let client_ip = if proxy_protocol_enabled {
         match tokio::time::timeout(
             Duration::from_secs(5),
@@ -188,11 +193,10 @@ async fn handle_dot_connection(
             .handle_raw_udp_fallback(&dns_buf, client_ip, ClientProtocol::Dot)
             .await
         {
-            let resp_len = (resp.len() as u16).to_be_bytes();
-            if tls_stream.write_all(&resp_len).await.is_err() {
-                break;
-            }
-            if tls_stream.write_all(&resp).await.is_err() {
+            if super::tcp::write_framed(&mut tls_stream, &resp)
+                .await
+                .is_err()
+            {
                 break;
             }
         }
