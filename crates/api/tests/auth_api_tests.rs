@@ -116,12 +116,23 @@ impl UserProvider for TestUserProvider {
 
 struct TestPasswordHasher;
 
+#[async_trait::async_trait]
 impl PasswordHasher for TestPasswordHasher {
-    fn hash(&self, _password: &str) -> Result<String, DomainError> {
+    async fn hash(&self, _password: &str) -> Result<String, DomainError> {
         Ok("$hashed$".to_string())
     }
-    fn verify(&self, password: &str, _hash: &str) -> Result<bool, DomainError> {
+    async fn verify(&self, password: &str, _hash: &str) -> Result<bool, DomainError> {
         Ok(password == "correct-password")
+    }
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError> {
+        Ok(passwords.iter().map(|_| "$hashed$".to_string()).collect())
+    }
+    async fn verify_any(
+        &self,
+        password: &str,
+        hashes: Vec<Arc<str>>,
+    ) -> Result<Option<usize>, DomainError> {
+        Ok((password == "correct-password" && !hashes.is_empty()).then_some(0))
     }
 }
 
@@ -417,15 +428,17 @@ async fn validate_session_fails_for_unknown_id() {
     assert!(result.is_err());
 }
 
-/// Stateful MFA repository double: TOTP enrolled, challenge held in memory.
+/// Stateful MFA repository double: TOTP enrolled, challenges and recovery codes in memory.
 struct TotpEnrolledMfaRepository {
     challenge: std::sync::Mutex<Option<MfaChallenge>>,
+    recovery_codes: std::sync::Mutex<Vec<RecoveryCode>>,
 }
 
 impl TotpEnrolledMfaRepository {
     fn new() -> Self {
         Self {
             challenge: std::sync::Mutex::new(None),
+            recovery_codes: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
@@ -450,13 +463,27 @@ impl MfaRepository for TotpEnrolledMfaRepository {
     async fn delete_all(&self, _u: &str) -> Result<(), DomainError> {
         Ok(())
     }
-    async fn replace_recovery_codes(&self, _u: &str, _h: &[String]) -> Result<(), DomainError> {
+    async fn replace_recovery_codes(&self, u: &str, hashes: &[String]) -> Result<(), DomainError> {
+        *self.recovery_codes.lock().unwrap() = hashes
+            .iter()
+            .enumerate()
+            .map(|(index, hash)| RecoveryCode {
+                id: index as i64 + 10,
+                username: Arc::from(u),
+                code_hash: Arc::from(hash.as_str()),
+                used_at: None,
+            })
+            .collect();
         Ok(())
     }
     async fn list_unused_recovery_codes(&self, _u: &str) -> Result<Vec<RecoveryCode>, DomainError> {
-        Ok(vec![])
+        Ok(self.recovery_codes.lock().unwrap().clone())
     }
-    async fn mark_recovery_code_used(&self, _id: i64) -> Result<(), DomainError> {
+    async fn mark_recovery_code_used(&self, id: i64) -> Result<(), DomainError> {
+        self.recovery_codes
+            .lock()
+            .unwrap()
+            .retain(|code| code.id != id);
         Ok(())
     }
     async fn create_challenge(&self, c: &MfaChallenge) -> Result<(), DomainError> {
@@ -520,16 +547,19 @@ impl ferrous_dns_application::ports::TotpService for FixedTotpService {
 }
 
 /// Full two-phase flow: password login yields an MFA challenge; a correct TOTP
-/// code then mints the session.
+/// or recovery code mints a session, and recovery codes cannot be reused.
 #[tokio::test]
-async fn totp_enrolled_login_requires_and_accepts_second_factor() {
+async fn totp_enrolled_login_accepts_totp_and_single_use_recovery_codes() {
     use ferrous_dns_application::use_cases::VerifyMfaUseCase;
+    use ferrous_dns_infrastructure::auth::Argon2PasswordHasher;
+
+    let hasher: Arc<dyn PasswordHasher> = Arc::new(Argon2PasswordHasher::new());
+    let password_hash = hasher.hash("correct-password").await.unwrap();
 
     let user_provider: Arc<dyn UserProvider> = Arc::new(TestUserProvider {
-        admin: make_admin_user("$hashed$"),
+        admin: make_admin_user(&password_hash),
     });
     let session_repo: Arc<dyn SessionRepository> = Arc::new(InMemorySessionRepository::new());
-    let hasher: Arc<dyn PasswordHasher> = Arc::new(TestPasswordHasher);
     let mfa_repo: Arc<dyn MfaRepository> = Arc::new(TotpEnrolledMfaRepository::new());
     let totp: Arc<dyn ferrous_dns_application::ports::TotpService> = Arc::new(FixedTotpService);
     let config = Arc::new(AuthConfig {
@@ -566,7 +596,7 @@ async fn totp_enrolled_login_requires_and_accepts_second_factor() {
     let verify_uc = VerifyMfaUseCase::new(
         mfa_repo.clone(),
         totp,
-        hasher,
+        hasher.clone(),
         user_provider,
         session_repo.clone(),
         config,
@@ -586,6 +616,41 @@ async fn totp_enrolled_login_requires_and_accepts_second_factor() {
     assert_eq!(session.username.as_ref(), "admin");
     assert!(session.remember_me);
     assert_eq!(session_repo.get_all_active().await.unwrap().len(), 1);
+
+    let hashes = hasher
+        .hash_many(&["1111-222222".to_owned(), "abcd-ef1234".to_owned()])
+        .await
+        .unwrap();
+    mfa_repo
+        .replace_recovery_codes("admin", &hashes)
+        .await
+        .unwrap();
+
+    // Match the later hash, reject its reuse, and leave the earlier code usable.
+    for (code, accepted) in [
+        ("  ABCD-EF1234 ", true),
+        ("abcd-ef1234", false),
+        ("1111-222222", true),
+    ] {
+        let LoginOutcome::MfaRequired {
+            challenge_token, ..
+        } = login_uc
+            .execute("admin", "correct-password", false, "127.0.0.1", "agent")
+            .await
+            .unwrap()
+        else {
+            panic!("expected MFA challenge");
+        };
+        let result = verify_uc
+            .execute(&challenge_token, code, "127.0.0.1", "agent")
+            .await;
+        if accepted {
+            assert_eq!(result.unwrap().username.as_ref(), "admin");
+        } else {
+            assert!(matches!(result, Err(DomainError::InvalidMfaCode)));
+        }
+    }
+    assert_eq!(session_repo.get_all_active().await.unwrap().len(), 3);
 }
 
 /// WebAuthn service double that reports "not configured" (rp_id/rp_origin unset).

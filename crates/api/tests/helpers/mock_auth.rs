@@ -94,12 +94,26 @@ impl UserProvider for NullUserProvider {
 
 pub struct NullPasswordHasher;
 
+#[async_trait::async_trait]
 impl PasswordHasher for NullPasswordHasher {
-    fn hash(&self, _password: &str) -> Result<String, DomainError> {
+    async fn hash(&self, _password: &str) -> Result<String, DomainError> {
         Ok("$argon2id$test".to_string())
     }
-    fn verify(&self, _password: &str, _hash: &str) -> Result<bool, DomainError> {
+    async fn verify(&self, _password: &str, _hash: &str) -> Result<bool, DomainError> {
         Ok(false)
+    }
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError> {
+        Ok(passwords
+            .iter()
+            .map(|_| "$argon2id$test".to_string())
+            .collect())
+    }
+    async fn verify_any(
+        &self,
+        _password: &str,
+        _hashes: Vec<Arc<str>>,
+    ) -> Result<Option<usize>, DomainError> {
+        Ok(None)
     }
 }
 

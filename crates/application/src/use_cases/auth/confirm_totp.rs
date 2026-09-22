@@ -56,10 +56,7 @@ impl ConfirmTotpUseCase {
         self.mfa_repo.enable(username).await?;
 
         let codes = generate_recovery_codes()?;
-        let mut hashes = Vec::with_capacity(codes.len());
-        for c in &codes {
-            hashes.push(self.password_hasher.hash(c)?);
-        }
+        let hashes = self.password_hasher.hash_many(&codes).await?;
         self.mfa_repo
             .replace_recovery_codes(username, &hashes)
             .await?;

@@ -104,12 +104,23 @@ impl UserProvider for TestUserProvider {
 
 struct TestPasswordHasher;
 
+#[async_trait::async_trait]
 impl PasswordHasher for TestPasswordHasher {
-    fn hash(&self, _: &str) -> Result<String, DomainError> {
+    async fn hash(&self, _: &str) -> Result<String, DomainError> {
         Ok("$hashed$".to_string())
     }
-    fn verify(&self, password: &str, _: &str) -> Result<bool, DomainError> {
+    async fn verify(&self, password: &str, _: &str) -> Result<bool, DomainError> {
         Ok(password == "correct-password")
+    }
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError> {
+        Ok(passwords.iter().map(|_| "$hashed$".to_string()).collect())
+    }
+    async fn verify_any(
+        &self,
+        password: &str,
+        hashes: Vec<Arc<str>>,
+    ) -> Result<Option<usize>, DomainError> {
+        Ok((password == "correct-password" && !hashes.is_empty()).then_some(0))
     }
 }
 

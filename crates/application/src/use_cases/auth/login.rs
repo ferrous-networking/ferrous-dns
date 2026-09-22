@@ -72,7 +72,10 @@ impl LoginUseCase {
             return Err(DomainError::InvalidCredentials);
         }
 
-        let valid = self.password_hasher.verify(password, &user.password_hash)?;
+        let valid = self
+            .password_hasher
+            .verify(password, &user.password_hash)
+            .await?;
 
         if !valid {
             warn!(username = username, "Failed login attempt");

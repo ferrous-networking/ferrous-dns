@@ -35,7 +35,11 @@ impl DisableMfaUseCase {
             .await?
             .ok_or(DomainError::InvalidCredentials)?;
 
-        if !self.password_hasher.verify(password, &user.password_hash)? {
+        if !self
+            .password_hasher
+            .verify(password, &user.password_hash)
+            .await?
+        {
             warn!(username = username, "Failed MFA disable (bad password)");
             return Err(DomainError::InvalidCredentials);
         }

@@ -106,11 +106,11 @@ impl VerifyMfaUseCase {
     async fn consume_recovery_code(&self, username: &str, code: &str) -> Result<bool, DomainError> {
         let normalized = code.trim().to_lowercase();
         let codes = self.mfa_repo.list_unused_recovery_codes(username).await?;
-        for rc in codes {
-            if self.password_hasher.verify(&normalized, &rc.code_hash)? {
-                self.mfa_repo.mark_recovery_code_used(rc.id).await?;
-                return Ok(true);
-            }
+        let (ids, hashes): (Vec<_>, Vec<_>) =
+            codes.into_iter().map(|rc| (rc.id, rc.code_hash)).unzip();
+        if let Some(index) = self.password_hasher.verify_any(&normalized, hashes).await? {
+            self.mfa_repo.mark_recovery_code_used(ids[index]).await?;
+            return Ok(true);
         }
         Ok(false)
     }

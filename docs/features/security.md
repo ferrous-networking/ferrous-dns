@@ -18,6 +18,8 @@ On first launch (when no password is configured), Ferrous DNS shows a setup wiza
 
 Users authenticate with username and password via the login page. On success, a session cookie (`ferrous_session`) is issued.
 
+Password and recovery-code hashing runs off Tokio workers, with at most two admitted cryptographic jobs process-wide. Recovery-code batches occupy one job; disconnecting a client does not release its capacity until the computation finishes.
+
 ```http
 POST /api/auth/login
 Content-Type: application/json

@@ -55,14 +55,26 @@ pub trait UserProvider: Send + Sync {
 
 /// Port for hashing and verifying passwords with Argon2id.
 ///
-/// Implementations must offload CPU-intensive hashing to a blocking thread
-/// (`tokio::task::spawn_blocking`) to avoid starving the async runtime.
+/// Implementations must bound and offload CPU-intensive work, including each
+/// recovery-code batch, without releasing admission when the caller is cancelled.
+#[async_trait]
 pub trait PasswordHasher: Send + Sync {
     /// Hash a plaintext password. Returns the full Argon2id PHC string.
-    fn hash(&self, password: &str) -> Result<String, DomainError>;
+    async fn hash(&self, password: &str) -> Result<String, DomainError>;
 
     /// Verify a plaintext password against a stored hash.
-    fn verify(&self, password: &str, hash: &str) -> Result<bool, DomainError>;
+    async fn verify(&self, password: &str, hash: &str) -> Result<bool, DomainError>;
+
+    /// Hash a batch in one blocking submission, preserving input order.
+    async fn hash_many(&self, passwords: &[String]) -> Result<Vec<String>, DomainError>;
+
+    /// Return the first matching hash's index, or `None`, in one blocking submission.
+    /// Invalid hashes encountered before a match return an error, as with `verify`.
+    async fn verify_any(
+        &self,
+        password: &str,
+        hashes: Vec<Arc<str>>,
+    ) -> Result<Option<usize>, DomainError>;
 }
 
 /// Input for creating a new database user via use case.

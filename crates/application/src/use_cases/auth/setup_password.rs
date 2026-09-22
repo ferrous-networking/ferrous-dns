@@ -42,7 +42,7 @@ impl SetupPasswordUseCase {
 
         User::validate_password(password).map_err(DomainError::InvalidPassword)?;
 
-        let hash = self.password_hasher.hash(password)?;
+        let hash = self.password_hasher.hash(password).await?;
         self.user_provider
             .update_password(&self.admin_username, &hash)
             .await?;

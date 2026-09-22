@@ -40,7 +40,7 @@ impl CreateUserUseCase {
             return Err(DomainError::DuplicateUsername(input.username.to_string()));
         }
 
-        let password_hash = self.password_hasher.hash(&input.password)?;
+        let password_hash = self.password_hasher.hash(&input.password).await?;
 
         let user = self
             .user_repo

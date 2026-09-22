@@ -36,7 +36,8 @@ impl ChangePasswordUseCase {
 
         let valid = self
             .password_hasher
-            .verify(current_password, &user.password_hash)?;
+            .verify(current_password, &user.password_hash)
+            .await?;
 
         if !valid {
             return Err(DomainError::InvalidCredentials);
@@ -44,7 +45,7 @@ impl ChangePasswordUseCase {
 
         User::validate_password(new_password).map_err(DomainError::InvalidPassword)?;
 
-        let new_hash = self.password_hasher.hash(new_password)?;
+        let new_hash = self.password_hasher.hash(new_password).await?;
         self.user_provider
             .update_password(username, &new_hash)
             .await?;
