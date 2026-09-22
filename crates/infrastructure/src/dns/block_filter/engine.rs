@@ -254,17 +254,8 @@ impl BlockFilterEnginePort for BlockFilterEngine {
 
     #[inline]
     fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
-        // The schedule override is read here but applied three tiers down: a rule
-        // the operator wrote themselves outranks both the global toggle and every
-        // schedule slot, so neither may short-circuit the lookup any more. The
-        // O(1) is_empty() guard keeps the cost at zero when no schedules exist.
-        // Not cached per-domain — schedule state changes every minute, not per
-        // query.
-        let schedule_override = if self.schedule_state.is_empty() {
-            None
-        } else {
-            self.schedule_state.get(group_id)
-        };
+        // Schedule changes must not be memoized with per-domain decisions.
+        let schedule_override = self.schedule_state.get(group_id);
 
         // A bypass window that has just lapsed must not read back the verdict
         // memoized while it was still in force.
