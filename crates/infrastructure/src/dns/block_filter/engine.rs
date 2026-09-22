@@ -21,7 +21,8 @@ use std::collections::HashSet;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
+use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
 /// Cached entry: (group_id, expiry_secs, epoch_at_insert).
@@ -43,6 +44,12 @@ thread_local! {
 
 pub struct BlockFilterEngine {
     index: ArcSwap<BlockIndex>,
+    /// Reload tickets issued so far. A build covers every ticket its Acquire load observes.
+    reload_tickets: AtomicU64,
+    /// Newest ticket covered by a published index; held for a whole build.
+    published_ticket: Mutex<u64>,
+    /// Lets `reload` run its build detached from a cancellable caller.
+    this: Weak<Self>,
     decision_cache: BlockDecisionCache,
     client_groups: Arc<DashMap<IpAddr, i64, FxBuildHasher>>,
     subnet_matcher: ArcSwap<Option<SubnetMatcher>>,
@@ -69,8 +76,11 @@ impl BlockFilterEngine {
             .build()
             .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;
 
-        let engine = Arc::new(Self {
+        let engine = Arc::new_cyclic(|this| Self {
             index: ArcSwap::from_pointee(BlockIndex::empty()),
+            reload_tickets: AtomicU64::new(0),
+            published_ticket: Mutex::new(0),
+            this: this.clone(),
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
             subnet_matcher: ArcSwap::from_pointee(None),
@@ -84,26 +94,46 @@ impl BlockFilterEngine {
         engine.load_client_groups_inner().await?;
 
         info!("BlockFilterEngine initialized; blocklist compilation starting in background");
+        let ticket = engine.issue_reload_ticket();
         let background_engine = Arc::clone(&engine);
         tokio::spawn(async move {
-            match compile_block_index(&background_engine.pool, &background_engine.http_client).await
-            {
-                Ok(new_index) => {
-                    background_engine.index.store(Arc::new(new_index));
-                    background_engine.decision_cache.clear();
-                    decision_l0_clear();
-                    info!("Block filter compilation completed");
-                }
-                Err(e) => {
-                    error!(
-                        error = %e,
-                        "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
-                    );
-                }
+            if let Err(e) = background_engine.rebuild_through(ticket).await {
+                error!(
+                    error = %e,
+                    "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
+                );
             }
         });
 
         Ok(engine)
+    }
+
+    /// Issued after the caller's database changes are committed.
+    fn issue_reload_ticket(&self) -> u64 {
+        // Release: a build whose Acquire load observes this ticket also observes those changes.
+        self.reload_tickets.fetch_add(1, Ordering::Release) + 1
+    }
+
+    /// Publishes an index loaded after `ticket` was issued, building one only
+    /// if no build that started later has already been published.
+    async fn rebuild_through(&self, ticket: u64) -> Result<(), DomainError> {
+        let mut published = self.published_ticket.lock().await;
+        if *published >= ticket {
+            return Ok(());
+        }
+        let covered = self.reload_tickets.load(Ordering::Acquire);
+
+        info!("Block filter reload started");
+        let new_index = compile_block_index(&self.pool, &self.http_client)
+            .await
+            .inspect_err(|e| error!(error = %e, "Block filter reload failed"))?;
+
+        self.index.store(Arc::new(new_index));
+        self.decision_cache.clear();
+        decision_l0_clear();
+        *published = covered;
+        info!("Block filter reload completed");
+        Ok(())
     }
 
     fn resolve_group_uncached(&self, ip: IpAddr) -> i64 {
@@ -367,22 +397,18 @@ impl BlockFilterEnginePort for BlockFilterEngine {
     }
 
     async fn reload(&self) -> Result<(), DomainError> {
-        info!("Block filter reload started");
-
-        let new_index = compile_block_index(&self.pool, &self.http_client)
+        let ticket = self.issue_reload_ticket();
+        let engine = self.this.upgrade().ok_or_else(|| {
+            DomainError::BlockFilterCompileError("block filter engine is shutting down".into())
+        })?;
+        // Detached so a client disconnecting cannot drop the reload its committed change needs.
+        tokio::spawn(async move { engine.rebuild_through(ticket).await })
             .await
             .map_err(|e| {
-                error!(error = %e, "Block filter reload failed");
-                e
-            })?;
-
-        self.index.store(Arc::new(new_index));
-
-        self.decision_cache.clear();
-        decision_l0_clear();
-
-        info!("Block filter reload completed");
-        Ok(())
+                DomainError::BlockFilterCompileError(format!(
+                    "block filter reload task failed: {e}"
+                ))
+            })?
     }
 
     async fn load_client_groups(&self) -> Result<(), DomainError> {

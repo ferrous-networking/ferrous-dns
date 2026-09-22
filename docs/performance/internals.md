@@ -82,6 +82,10 @@ UDP fallback processing has a shared limit of **4096 in-flight queries**, indepe
 
 Enabled blocklist sources are compiled into a matcher where each domain carries a `u64` bitmask of the sources that contributed it, which is what makes "why is this blocked?" answerable without re-querying every list.
 
+Downloads are limited to four concurrent requests per build. HTTP and database operations stay asynchronous; parsing, regex compilation, and index construction run as one blocking job on the bounded build pool.
+
+Startup, periodic, and mutation-triggered rebuilds are serialized per engine. A mutation arriving during a build queues another reload so its changes cannot be lost to an older publication. Reloads queued behind the same build are coalesced: one build that starts after all of them satisfies every waiter, so a burst of mutations costs at most two rebuilds rather than one per request. A reload runs detached from the request that triggered it, so a client that disconnects mid-build does not leave its committed change unpublished until the next periodic sync. The periodic job waits one full interval before its first reload because the engine already compiles at startup.
+
 !!! warning "63 active sources maximum"
     One bit is reserved for manually added entries, leaving **63 downloaded sources**. If more than 63 sources are enabled, the 63 lowest-numbered ones are compiled and the rest are **silently skipped** — the only signal is a `WARN` line at startup and after each blocklist refresh. It is a soft cap: the UI and API will happily let you create more.
 

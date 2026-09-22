@@ -36,7 +36,10 @@ impl BlocklistSyncJob {
         );
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(self.interval_secs));
+            // The engine owns startup compilation; the job starts one period later.
+            let period = Duration::from_secs(self.interval_secs);
+            let mut interval =
+                tokio::time::interval_at(tokio::time::Instant::now() + period, period);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
             loop {

@@ -9,10 +9,10 @@ use compact_str::CompactString;
 use dashmap::{DashMap, DashSet};
 use fancy_regex::Regex;
 use ferrous_dns_domain::DomainError;
-use futures::future::join_all;
+use futures::{stream, StreamExt};
 use rayon::prelude::*;
 use rustc_hash::FxBuildHasher;
-use sqlx::{Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use tracing::{info, warn};
@@ -27,6 +27,8 @@ static BLOCKLIST_BUILD_POOL: LazyLock<rayon::ThreadPool> = LazyLock::new(|| {
         .build()
         .expect("blocklist rayon pool")
 });
+
+const MAX_CONCURRENT_DOWNLOADS: usize = 4;
 
 #[derive(Debug)]
 pub enum ParsedEntry {
@@ -125,7 +127,6 @@ async fn fetch_url(url: &str, client: &reqwest::Client) -> Result<String, String
 }
 
 struct SourceLoad {
-    default_group_id: i64,
     sources: Vec<SourceMeta>,
     url_tasks: Vec<(u8, String)>,
     all_group_ids: Vec<i64>,
@@ -134,13 +135,6 @@ struct SourceLoad {
 }
 
 async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
-    let default_group_id: i64 = sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| DomainError::DatabaseError(e.to_string()))?
-        .map(|row| row.get::<i64, _>("id"))
-        .unwrap_or(1);
-
     // Step 1: Load distinct enabled sources for bit assignment (max 63)
     let source_rows =
         sqlx::query("SELECT id, name, url FROM blocklist_sources WHERE enabled = 1 ORDER BY id")
@@ -217,7 +211,6 @@ async fn load_sources(pool: &SqlitePool) -> Result<SourceLoad, DomainError> {
         .collect();
 
     Ok(SourceLoad {
-        default_group_id,
         sources,
         url_tasks,
         all_group_ids,
@@ -242,49 +235,27 @@ fn build_group_masks(sources: &[SourceMeta], all_group_ids: &[i64]) -> HashMap<i
     group_masks
 }
 
-async fn fetch_sources_parallel(
+async fn fetch_sources(
     url_tasks: Vec<(u8, String)>,
     client: &reqwest::Client,
-) -> HashMap<u8, Vec<ParsedEntry>> {
-    struct FetchResult {
-        bit: u8,
-        text: Option<String>,
-    }
-
-    let tasks: Vec<_> = url_tasks
-        .into_iter()
-        .map(|(bit, u)| {
-            let client = client.clone();
-            tokio::spawn(async move {
-                let text = match fetch_url(&u, &client).await {
-                    Ok(t) => {
-                        info!(url = %u, "Fetched blocklist source");
-                        Some(t)
-                    }
-                    Err(e) => {
-                        warn!(url = %u, error = %e, "Failed to fetch blocklist source");
-                        None
-                    }
-                };
-                FetchResult { bit, text }
-            })
-        })
-        .collect();
-
-    let mut source_entries: HashMap<u8, Vec<ParsedEntry>> = HashMap::new();
-    for result in join_all(tasks).await {
-        match result {
-            Ok(fr) => {
-                if let Some(text) = fr.text {
-                    source_entries.insert(fr.bit, parse_list_text(&text));
+) -> HashMap<u8, String> {
+    stream::iter(url_tasks)
+        .map(|(bit, url)| async move {
+            match fetch_url(&url, client).await {
+                Ok(text) => {
+                    info!(url = %url, "Fetched blocklist source");
+                    Some((bit, text))
+                }
+                Err(e) => {
+                    warn!(url = %url, error = %e, "Failed to fetch blocklist source");
+                    None
                 }
             }
-            Err(e) => {
-                warn!(error = %e, "Fetch task panicked");
-            }
-        }
-    }
-    source_entries
+        })
+        .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
+        .filter_map(std::future::ready)
+        .collect()
+        .await
 }
 
 /// Records `at` as the last successful sync for `ids` in `table`.
@@ -322,43 +293,6 @@ struct ManagedDomainEntry {
     domain: String,
     action: String,
     group_id: i64,
-}
-
-async fn load_managed_domains_for_index(
-    pool: &SqlitePool,
-) -> Result<Vec<ManagedDomainEntry>, DomainError> {
-    let rows =
-        sqlx::query("SELECT domain, action, group_id FROM managed_domains WHERE enabled = 1")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-
-    let entries: Vec<ManagedDomainEntry> = rows
-        .iter()
-        .map(|row| ManagedDomainEntry {
-            domain: row.get::<String, _>("domain").to_ascii_lowercase(),
-            action: row.get::<String, _>("action"),
-            group_id: row.get::<i64, _>("group_id"),
-        })
-        .collect();
-
-    info!(count = entries.len(), "Loaded managed domain entries");
-    Ok(entries)
-}
-
-async fn load_manual_domains(pool: &SqlitePool) -> Result<Vec<String>, DomainError> {
-    let rows = sqlx::query("SELECT domain FROM blocklist")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-
-    let domains: Vec<String> = rows
-        .iter()
-        .map(|row| row.get::<String, _>("domain").to_ascii_lowercase())
-        .collect();
-
-    info!(count = domains.len(), "Loaded manual blocklist entries");
-    Ok(domains)
 }
 
 struct BlockIndexData {
@@ -407,20 +341,17 @@ fn build_exact_and_wildcard(
             .or_insert(MANUAL_SOURCE_BIT);
     }
 
-    BLOCKLIST_BUILD_POOL.install(|| {
-        source_entries.par_iter().for_each(|(bit, entries)| {
-            let source_bit: SourceBitSet = 1u64 << *bit;
-            for entry in entries {
-                if let ParsedEntry::Exact(domain) | ParsedEntry::DomainAndSubdomains(domain) = entry
-                {
-                    bloom.set(domain);
-                    exact
-                        .entry(CompactString::new(domain))
-                        .and_modify(|bits| *bits |= source_bit)
-                        .or_insert(source_bit);
-                }
+    source_entries.par_iter().for_each(|(bit, entries)| {
+        let source_bit: SourceBitSet = 1u64 << *bit;
+        for entry in entries {
+            if let ParsedEntry::Exact(domain) | ParsedEntry::DomainAndSubdomains(domain) = entry {
+                bloom.set(domain);
+                exact
+                    .entry(CompactString::new(domain))
+                    .and_modify(|bits| *bits |= source_bit)
+                    .or_insert(source_bit);
             }
-        });
+        }
     });
 
     for (bit, entries) in source_entries {
@@ -482,18 +413,11 @@ struct RegexFilterMaps {
     allow_patterns: HashMap<i64, Vec<RegexRule>>,
 }
 
-async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMaps, DomainError> {
-    let rows = sqlx::query(
-        "SELECT id, name, pattern, action, group_id FROM regex_filters WHERE enabled = 1",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-
+fn build_regex_filters(rows: &[SqliteRow]) -> RegexFilterMaps {
     let mut block_patterns: HashMap<i64, Vec<RegexRule>> = HashMap::new();
     let mut allow_patterns: HashMap<i64, Vec<RegexRule>> = HashMap::new();
 
-    for row in &rows {
+    for row in rows {
         let id: i64 = row.get("id");
         let name: String = row.get("name");
         let pattern: String = row.get("pattern");
@@ -529,31 +453,26 @@ async fn load_regex_filters_for_index(pool: &SqlitePool) -> Result<RegexFilterMa
         "Loaded regex filter patterns"
     );
 
-    Ok(RegexFilterMaps {
+    RegexFilterMaps {
         block_patterns,
         allow_patterns,
-    })
+    }
 }
 
-pub async fn compile_block_index(
+pub(super) async fn compile_block_index(
     pool: &SqlitePool,
     client: &reqwest::Client,
 ) -> Result<BlockIndex, DomainError> {
     let SourceLoad {
-        default_group_id,
         sources,
         url_tasks,
         all_group_ids,
         bit_to_source,
     } = load_sources(pool).await?;
+    let source_texts = fetch_sources(url_tasks, client).await;
 
-    let group_masks = build_group_masks(&sources, &all_group_ids);
-    let source_entries = fetch_sources_parallel(url_tasks, client).await;
-
-    // Only the sources that actually downloaded get a fresh stamp; a failed
-    // fetch keeps its previous one, so a date that stops advancing is the
-    // staleness signal in the dashboard.
-    let synced_source_ids: Vec<i64> = source_entries
+    // Failed downloads retain their previous timestamp as a staleness signal.
+    let synced_source_ids: Vec<i64> = source_texts
         .keys()
         .filter_map(|bit| bit_to_source[*bit as usize].as_ref().map(|s| s.id))
         .collect();
@@ -568,109 +487,193 @@ pub async fn compile_block_index(
         warn!(error = %e, "Failed to record blocklist source sync timestamps");
     }
 
-    let manual_domains = load_manual_domains(pool).await?;
-    let managed_domain_entries = load_managed_domains_for_index(pool).await?;
-    let regex_filter_maps = load_regex_filters_for_index(pool).await?;
-
-    let BlockIndexData {
-        total_exact,
-        total_wildcard,
-        bloom,
-        exact,
-        wildcard,
-        patterns,
-    } = tokio::task::spawn_blocking(move || {
-        build_exact_and_wildcard(&manual_domains, &source_entries)
-    })
-    .await
-    .map_err(|e| {
-        DomainError::BlockFilterCompileError(format!("block index build task panicked: {e}"))
-    })?;
-
-    let mut managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>> = HashMap::new();
-    let mut managed_deny_wildcards: HashMap<i64, SuffixTrie> = HashMap::new();
-    for entry in &managed_domain_entries {
-        if entry.action == "deny" {
-            if entry.domain.starts_with("*.") {
-                managed_deny_wildcards
-                    .entry(entry.group_id)
-                    .or_default()
-                    .insert_wildcard(&entry.domain, 1u64);
-            } else {
-                managed_denies
-                    .entry(entry.group_id)
-                    .or_insert_with(|| DashSet::with_hasher(FxBuildHasher))
-                    .insert(CompactString::new(&entry.domain));
-            }
-        }
-    }
-
-    info!(
-        exact = total_exact,
-        wildcards = total_wildcard,
-        pattern_automata = patterns.len(),
-        "Block index compiled"
-    );
-
-    let allowlists =
-        build_allowlist_index(pool, client, default_group_id, &managed_domain_entries).await?;
-
-    let mut groups_with_advanced_rules = std::collections::HashSet::new();
-    for gid in managed_denies.keys() {
-        groups_with_advanced_rules.insert(*gid);
-    }
-    for gid in managed_deny_wildcards.keys() {
-        groups_with_advanced_rules.insert(*gid);
-    }
-    for gid in regex_filter_maps.allow_patterns.keys() {
-        groups_with_advanced_rules.insert(*gid);
-    }
-    for gid in regex_filter_maps.block_patterns.keys() {
-        groups_with_advanced_rules.insert(*gid);
-    }
-
-    Ok(BlockIndex {
-        group_masks,
-        // An adblock-syntax entry (`||example.com^`) lands in both halves — an
-        // exact apex rule and a subdomain rule — so it counts twice here. Hosts
-        // lists (all exact) and wildcard lists (all wildcard) are unaffected.
-        total_blocked_domains: total_exact + total_wildcard,
-        exact,
-        bloom,
-        wildcard,
-        patterns,
-        allowlists,
-        managed_denies,
-        managed_deny_wildcards,
-        allow_regex_patterns: regex_filter_maps.allow_patterns,
-        block_regex_patterns: regex_filter_maps.block_patterns,
-        groups_with_advanced_rules,
-        bit_to_source,
-    })
-}
-
-async fn build_allowlist_index(
-    pool: &SqlitePool,
-    client: &reqwest::Client,
-    _default_group_id: i64,
-    managed_entries: &[ManagedDomainEntry],
-) -> Result<AllowlistIndex, DomainError> {
-    let whitelist_rows = sqlx::query("SELECT domain FROM whitelist")
+    let manual_rows = sqlx::query("SELECT domain FROM blocklist")
         .fetch_all(pool)
         .await
         .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    let managed_rows =
+        sqlx::query("SELECT domain, action, group_id FROM managed_domains WHERE enabled = 1")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    let regex_rows = sqlx::query(
+        "SELECT id, name, pattern, action, group_id FROM regex_filters WHERE enabled = 1",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    let allowlist_load = load_allowlists(pool, client).await?;
 
+    tokio::task::spawn_blocking(move || {
+        BLOCKLIST_BUILD_POOL.install(move || {
+            let group_masks = build_group_masks(&sources, &all_group_ids);
+            let source_entries = source_texts
+                .into_par_iter()
+                .map(|(bit, text)| (bit, parse_list_text(&text)))
+                .collect();
+            let manual_domains: Vec<String> = manual_rows
+                .iter()
+                .map(|row| row.get::<String, _>("domain").to_ascii_lowercase())
+                .collect();
+            let managed_entries: Vec<ManagedDomainEntry> = managed_rows
+                .iter()
+                .map(|row| ManagedDomainEntry {
+                    domain: row.get::<String, _>("domain").to_ascii_lowercase(),
+                    action: row.get("action"),
+                    group_id: row.get("group_id"),
+                })
+                .collect();
+            let regex_filters = build_regex_filters(&regex_rows);
+            let BlockIndexData {
+                total_exact,
+                total_wildcard,
+                bloom,
+                exact,
+                wildcard,
+                patterns,
+            } = build_exact_and_wildcard(&manual_domains, &source_entries);
+
+            let mut managed_denies: HashMap<i64, DashSet<CompactString, FxBuildHasher>> =
+                HashMap::new();
+            let mut managed_deny_wildcards: HashMap<i64, SuffixTrie> = HashMap::new();
+            for entry in &managed_entries {
+                if entry.action == "deny" {
+                    if entry.domain.starts_with("*.") {
+                        managed_deny_wildcards
+                            .entry(entry.group_id)
+                            .or_default()
+                            .insert_wildcard(&entry.domain, 1u64);
+                    } else {
+                        managed_denies
+                            .entry(entry.group_id)
+                            .or_insert_with(|| DashSet::with_hasher(FxBuildHasher))
+                            .insert(CompactString::new(&entry.domain));
+                    }
+                }
+            }
+            let allowlists = build_allowlist_index(allowlist_load, &managed_entries);
+            let groups_with_advanced_rules = managed_denies
+                .keys()
+                .chain(managed_deny_wildcards.keys())
+                .chain(regex_filters.allow_patterns.keys())
+                .chain(regex_filters.block_patterns.keys())
+                .copied()
+                .collect();
+
+            info!(
+                exact = total_exact,
+                wildcards = total_wildcard,
+                pattern_automata = patterns.len(),
+                "Block index compiled"
+            );
+            BlockIndex {
+                group_masks,
+                // Adblock `||example.com^` counts both its apex and suffix rule.
+                total_blocked_domains: total_exact + total_wildcard,
+                exact,
+                bloom,
+                wildcard,
+                patterns,
+                allowlists,
+                managed_denies,
+                managed_deny_wildcards,
+                allow_regex_patterns: regex_filters.allow_patterns,
+                block_regex_patterns: regex_filters.block_patterns,
+                groups_with_advanced_rules,
+                bit_to_source,
+            }
+        })
+    })
+    .await
+    .map_err(|e| {
+        DomainError::BlockFilterCompileError(format!("block index build task failed: {e}"))
+    })
+}
+
+struct AllowlistLoad {
+    manual_rows: Vec<SqliteRow>,
+    sources: Vec<(Vec<i64>, String)>,
+}
+
+async fn load_allowlists(
+    pool: &SqlitePool,
+    client: &reqwest::Client,
+) -> Result<AllowlistLoad, DomainError> {
+    let manual_rows = sqlx::query("SELECT domain FROM whitelist")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+    let source_rows = sqlx::query(
+        "SELECT wsg.source_id, wsg.group_id, ws.url
+         FROM whitelist_source_groups wsg
+         JOIN whitelist_sources ws ON ws.id = wsg.source_id
+         WHERE ws.enabled = 1 AND ws.url IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
+
+    // Fetch a URL once, retaining every group assignment and owning source id.
+    let mut urls: HashMap<String, (Vec<i64>, Vec<i64>)> = HashMap::new();
+    for row in source_rows {
+        let url: String = row.get("url");
+        let (groups, source_ids) = urls.entry(url).or_default();
+        groups.push(row.get("group_id"));
+        let source_id: i64 = row.get("source_id");
+        if !source_ids.contains(&source_id) {
+            source_ids.push(source_id);
+        }
+    }
+
+    let fetched: Vec<_> = stream::iter(urls)
+        .map(|(url, (groups, source_ids))| async move {
+            match fetch_url(&url, client).await {
+                Ok(text) => Some((groups, source_ids, text)),
+                Err(e) => {
+                    warn!(url = %url, error = %e, "Failed to fetch whitelist source");
+                    None
+                }
+            }
+        })
+        .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
+        .filter_map(std::future::ready)
+        .collect()
+        .await;
+    let synced_source_ids: Vec<i64> = fetched
+        .iter()
+        .flat_map(|(_, ids, _)| ids.iter().copied())
+        .collect();
+    if let Err(e) = mark_sources_synced(
+        pool,
+        "whitelist_sources",
+        &synced_source_ids,
+        &chrono::Utc::now().to_rfc3339(),
+    )
+    .await
+    {
+        warn!(error = %e, "Failed to record allowlist source sync timestamps");
+    }
+
+    Ok(AllowlistLoad {
+        manual_rows,
+        sources: fetched
+            .into_iter()
+            .map(|(groups, _, text)| (groups, text))
+            .collect(),
+    })
+}
+
+fn build_allowlist_index(
+    loaded: AllowlistLoad,
+    managed_entries: &[ManagedDomainEntry],
+) -> AllowlistIndex {
     let mut allowlists = AllowlistIndex::new();
-
-    for row in &whitelist_rows {
-        let domain: String = row.get("domain");
-        let domain_lc = domain.to_ascii_lowercase();
-        if domain_lc.starts_with("*.") {
-            allowlists.global_wildcard.insert_wildcard(&domain_lc, 1u64);
+    for row in loaded.manual_rows {
+        let domain = row.get::<String, _>("domain").to_ascii_lowercase();
+        if domain.starts_with("*.") {
+            allowlists.global_wildcard.insert_wildcard(&domain, 1u64);
         } else {
-            allowlists
-                .global_exact
-                .insert(CompactString::new(domain_lc));
+            allowlists.global_exact.insert(CompactString::new(domain));
         }
     }
 
@@ -692,108 +695,30 @@ async fn build_allowlist_index(
         }
     }
 
-    let ws_rows = sqlx::query(
-        "SELECT wsg.source_id, wsg.group_id, ws.url
-         FROM whitelist_source_groups wsg
-         JOIN whitelist_sources ws ON ws.id = wsg.source_id
-         WHERE ws.enabled = 1 AND ws.url IS NOT NULL",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-
-    // Deduplicate URLs: each URL is fetched once, applied to all associated groups
-    let mut url_to_groups: HashMap<String, Vec<i64>> = HashMap::new();
-    // The dedup above drops the source id, so keep it here to stamp the sync.
-    let mut url_to_source_ids: HashMap<String, Vec<i64>> = HashMap::new();
-    for row in &ws_rows {
-        if let Some(url) = row.get::<Option<String>, _>("url") {
-            let group_id: i64 = row.get("group_id");
-            let source_id: i64 = row.get("source_id");
-            url_to_groups.entry(url.clone()).or_default().push(group_id);
-            let source_ids = url_to_source_ids.entry(url).or_default();
-            if !source_ids.contains(&source_id) {
-                source_ids.push(source_id);
-            }
-        }
-    }
-
-    let deduped_tasks: Vec<(i64, String)> = url_to_groups
-        .keys()
-        .map(|url| (0i64, url.clone()))
-        .collect();
-
-    // Fetch each unique URL once; we'll re-map to group_ids after
-    let fetched: Vec<(String, Option<String>)> = {
-        let tasks: Vec<_> = deduped_tasks
-            .into_iter()
-            .map(|(_, url)| {
-                let client = client.clone();
-                let url_clone = url.clone();
-                let url_for_task = url.clone();
-                tokio::spawn(async move {
-                    let text = match fetch_url(&url_for_task, &client).await {
-                        Ok(t) => Some(t),
-                        Err(e) => {
-                            tracing::warn!(url = %url_for_task, error = %e, "Failed to fetch whitelist source");
-                            None
-                        }
-                    };
-                    (url_clone, text)
-                })
-            })
-            .collect();
-        join_all(tasks)
-            .await
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .collect()
-    };
-
-    let mut synced_source_ids: Vec<i64> = Vec::new();
-    for (url, text_opt) in fetched {
-        if let Some(text) = text_opt {
-            if let Some(source_ids) = url_to_source_ids.get(&url) {
-                synced_source_ids.extend(source_ids.iter().copied());
-            }
-            let entries = parse_list_text(&text);
-            let group_ids = url_to_groups.get(&url).cloned().unwrap_or_default();
-            for group_id in group_ids {
-                let exact_set = allowlists
-                    .group_exact
-                    .entry(group_id)
-                    .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
-                let trie = allowlists.group_wildcard.entry(group_id).or_default();
-
-                for entry in &entries {
-                    match entry {
-                        ParsedEntry::Exact(domain) => {
-                            exact_set.insert(CompactString::new(domain));
-                        }
-                        ParsedEntry::Wildcard(pattern) => {
-                            trie.insert_wildcard(pattern, 1u64);
-                        }
-                        ParsedEntry::DomainAndSubdomains(domain) => {
-                            exact_set.insert(CompactString::new(domain));
-                            trie.insert_wildcard(domain, 1u64);
-                        }
-                        ParsedEntry::Pattern(_) => {}
+    for (group_ids, text) in loaded.sources {
+        let entries = parse_list_text(&text);
+        for group_id in group_ids {
+            let exact_set = allowlists
+                .group_exact
+                .entry(group_id)
+                .or_insert_with(|| DashSet::with_hasher(FxBuildHasher));
+            let trie = allowlists.group_wildcard.entry(group_id).or_default();
+            for entry in &entries {
+                match entry {
+                    ParsedEntry::Exact(domain) => {
+                        exact_set.insert(CompactString::new(domain));
                     }
+                    ParsedEntry::Wildcard(pattern) => {
+                        trie.insert_wildcard(pattern, 1u64);
+                    }
+                    ParsedEntry::DomainAndSubdomains(domain) => {
+                        exact_set.insert(CompactString::new(domain));
+                        trie.insert_wildcard(domain, 1u64);
+                    }
+                    ParsedEntry::Pattern(_) => {}
                 }
             }
         }
     }
-
-    if let Err(e) = mark_sources_synced(
-        pool,
-        "whitelist_sources",
-        &synced_source_ids,
-        &chrono::Utc::now().to_rfc3339(),
-    )
-    .await
-    {
-        warn!(error = %e, "Failed to record allowlist source sync timestamps");
-    }
-
-    Ok(allowlists)
+    allowlists
 }
