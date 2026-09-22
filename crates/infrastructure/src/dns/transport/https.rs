@@ -1,10 +1,9 @@
 use super::{doh_response_too_large, DnsTransport, TransportResponse, MAX_DOH_MESSAGE_SIZE};
 use async_trait::async_trait;
 use bytes::BytesMut;
-use dashmap::DashMap;
 use ferrous_dns_domain::DomainError;
 use std::net::SocketAddr;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 use tracing::debug;
 
@@ -18,17 +17,13 @@ static SHARED_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .unwrap_or_else(|_| reqwest::Client::new())
 });
 
-const CLIENT_TTL: Duration = Duration::from_secs(300);
-
-static HTTPS_CLIENT_POOL: LazyLock<DashMap<String, (reqwest::Client, Instant)>> =
-    LazyLock::new(DashMap::new);
-
 const DNS_MESSAGE_CONTENT_TYPE: &str = "application/dns-message";
 
 pub struct HttpsTransport {
     url: String,
     hostname: String,
     resolved_addrs: Vec<SocketAddr>,
+    client: OnceLock<reqwest::Client>,
 }
 
 impl HttpsTransport {
@@ -37,33 +32,26 @@ impl HttpsTransport {
             url,
             hostname,
             resolved_addrs,
+            client: OnceLock::new(),
         }
     }
 
-    fn get_or_create_client(hostname: &str, addrs: &[SocketAddr]) -> reqwest::Client {
-        if let Some(entry) = HTTPS_CLIENT_POOL.get(hostname) {
-            let (client, created_at) = entry.value();
-            if created_at.elapsed() < CLIENT_TTL {
-                return client.clone();
+    fn get_or_create_client(&self) -> &reqwest::Client {
+        // The transport cache keys resolved addresses too; client lifetime follows that snapshot.
+        self.client.get_or_init(|| {
+            if self.resolved_addrs.is_empty() {
+                return SHARED_CLIENT.clone();
             }
-            drop(entry);
-            HTTPS_CLIENT_POOL.remove(hostname);
-        }
 
-        let client = reqwest::Client::builder()
-            .use_rustls_tls()
-            .pool_max_idle_per_host(4)
-            .http2_prior_knowledge()
-            .tcp_keepalive(Duration::from_secs(15))
-            .resolve_to_addrs(hostname, addrs)
-            .build()
-            .unwrap_or_else(|_| SHARED_CLIENT.clone());
-
-        HTTPS_CLIENT_POOL
-            .entry(hostname.to_string())
-            .or_insert((client, Instant::now()))
-            .clone()
-            .0
+            reqwest::Client::builder()
+                .use_rustls_tls()
+                .pool_max_idle_per_host(4)
+                .http2_prior_knowledge()
+                .tcp_keepalive(Duration::from_secs(15))
+                .resolve_to_addrs(&self.hostname, &self.resolved_addrs)
+                .build()
+                .unwrap_or_else(|_| SHARED_CLIENT.clone())
+        })
     }
 }
 
@@ -82,11 +70,7 @@ impl DnsTransport for HttpsTransport {
 
         let start = Instant::now();
 
-        let client = if self.resolved_addrs.is_empty() {
-            SHARED_CLIENT.clone()
-        } else {
-            Self::get_or_create_client(&self.hostname, &self.resolved_addrs)
-        };
+        let client = self.get_or_create_client();
 
         let mut response = tokio::time::timeout(
             timeout,
@@ -177,10 +161,10 @@ impl DnsTransport for HttpsTransport {
 
 #[cfg(test)]
 mod tests {
-    use super::{DnsTransport, HttpsTransport, HTTPS_CLIENT_POOL};
+    use super::{DnsTransport, HttpsTransport};
     use bytes::Bytes;
     use ferrous_dns_domain::DomainError;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     async fn loopback_response(response: Vec<u8>) -> Result<Bytes, DomainError> {
@@ -192,12 +176,12 @@ mod tests {
             .http1_only()
             .build()
             .unwrap();
-        HTTPS_CLIENT_POOL.insert(hostname.clone(), (client, Instant::now()));
         let transport = HttpsTransport::new(
             format!("http://{addr}/dns-query"),
             hostname.clone(),
             vec![addr],
         );
+        transport.client.set(client).unwrap();
         let (consumed_tx, consumed_rx) = tokio::sync::oneshot::channel();
         let server = async {
             let (mut socket, _) = listener.accept().await.unwrap();
@@ -220,7 +204,6 @@ mod tests {
             tokio::join!(server, client).1
         })
         .await;
-        HTTPS_CLIENT_POOL.remove(&hostname);
         result.expect(
             "DoH response handling must finish without waiting for EOF or the request timeout",
         )

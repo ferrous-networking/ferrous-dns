@@ -98,6 +98,13 @@ impl DnsResolver for LocalPtrResolver {
         None
     }
 
+    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+        if record_type != RecordType::PTR {
+            return self.inner.try_cache_str(domain, record_type);
+        }
+        None
+    }
+
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         if query.record_type != RecordType::PTR {
             return self.inner.resolve(query).await;

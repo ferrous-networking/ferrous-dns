@@ -1,5 +1,6 @@
 use super::{DnsTransport, TransportResponse};
 use async_trait::async_trait;
+use bytes::Buf;
 use dashmap::DashMap;
 use ferrous_dns_domain::{DomainError, UpstreamAddr};
 use std::net::SocketAddr;
@@ -163,15 +164,11 @@ pub(crate) async fn send_with_length_prefix<S>(
 where
     S: AsyncWriteExt + Unpin,
 {
-    let length = message_bytes.len() as u16;
-    let length_bytes = length.to_be_bytes();
+    let length_bytes = (message_bytes.len() as u16).to_be_bytes();
 
+    // One vectored write keeps the prefix and query in one segment or TLS record.
     stream
-        .write_all(&length_bytes)
-        .await
-        .map_err(|e| DomainError::IoError(format!("Failed to write length prefix: {}", e)))?;
-    stream
-        .write_all(message_bytes)
+        .write_all_buf(&mut Buf::chain(&length_bytes[..], message_bytes))
         .await
         .map_err(|e| DomainError::IoError(format!("Failed to write DNS message: {}", e)))?;
     stream

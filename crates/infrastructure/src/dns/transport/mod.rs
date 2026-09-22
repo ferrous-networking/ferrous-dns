@@ -101,10 +101,9 @@ pub fn get_or_create_transport(protocol: &DnsProtocol) -> Result<Arc<Transport>,
         return Ok(Arc::clone(t.value()));
     }
     let t = Arc::new(create_transport(protocol)?);
-    TRANSPORT_CACHE
-        .entry(protocol.clone())
-        .or_insert(Arc::clone(&t));
-    Ok(t)
+    // Concurrent creators must share the cached winner's connection pools.
+    let entry = TRANSPORT_CACHE.entry(protocol.clone()).or_insert(t);
+    Ok(Arc::clone(entry.value()))
 }
 
 fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {

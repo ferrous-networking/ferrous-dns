@@ -16,6 +16,14 @@ TCP DNS and DoT listeners write each answer's length prefix and payload in one v
 
 ---
 
+## Upstream connection reuse
+
+Upstream TCP and DoT queries are framed the same way, with the length prefix and query in one vectored write, and the sockets enable `TCP_NODELAY` so a query on a reused connection does not wait for the ACK of the previous exchange. DoT enables it before the TLS handshake, which also sends the handshake flights without delay; certificate verification and query deadlines are unchanged.
+
+Each DoH transport retains its HTTP client instead of discarding healthy connection pools at a fixed age. Transports are keyed by the endpoint and its resolved addresses, so an upstream address change gets its own client rather than reusing the previous destination. HTTP pool idle expiry and server-initiated connection closure still apply.
+
+---
+
 ## Batched syscalls: recvmmsg / sendmmsg
 
 On Linux the UDP path reads and writes datagrams in batches of **64** using `recvmmsg` and `sendmmsg`, amortizing the syscall over up to 64 queries. Receive buffers and control-message storage are allocated once per worker and reused.
@@ -77,6 +85,8 @@ Entries are keyed on `(domain, group_id)` — the same domain can be blocked for
 ## Fast path for cache hits
 
 For a cache-hit A/AAAA query, the response is built directly from wire bytes — no full DNS message construction — and queued inline for the next `sendmmsg` batch. Queries with the DNSSEC OK (DO) bit set skip the fast path and take the regular resolution route, since they need the full record set.
+
+The resolver wrappers preserve borrowed domain lookups through the local-PTR and filter layers, avoiding a temporary owned `DnsQuery` allocation on each cache probe. PTR interception, local-domain rewriting, and authoritative local NODATA behavior remain on their existing paths.
 
 UDP fallback processing has a shared limit of **4096 in-flight queries**, independent of worker count and per-client rate limits. Admission happens before packet allocation and task creation. When full, additional fallback datagrams are dropped rather than queued; clients can retry. Shedding logs a `UDP fallback capacity exhausted` warning at most once per second, with the datagrams shed since the previous warning (`shed`) and since startup (`total_shed`), so it can be told apart from packet loss. Inline cache hits remain serviceable while fallback capacity is exhausted.
 

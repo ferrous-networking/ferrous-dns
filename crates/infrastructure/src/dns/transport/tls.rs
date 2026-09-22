@@ -97,6 +97,14 @@ impl TlsTransport {
                 ))
             })?;
 
+        // A query on a reused connection must not wait for the ACK of the previous one.
+        tcp_stream.set_nodelay(true).map_err(|e| {
+            DomainError::IoError(format!(
+                "Failed to set TCP_NODELAY on {}: {}",
+                server_addr, e
+            ))
+        })?;
+
         let sock_ref = socket2::SockRef::from(&tcp_stream);
         let keepalive = socket2::TcpKeepalive::new()
             .with_time(std::time::Duration::from_secs(15))

@@ -8,7 +8,7 @@ use super::local_ptr::PtrMap;
 use super::local_wildcard::WildcardMap;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, QueryLogRepository};
-use ferrous_dns_domain::{DnsQuery, DomainError};
+use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use std::net::Ipv6Addr;
 use std::sync::Arc;
 
@@ -202,6 +202,10 @@ impl HickoryDnsResolver {
 impl DnsResolver for HickoryDnsResolver {
     fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
         self.inner.try_cache(query)
+    }
+
+    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+        self.inner.try_cache_str(domain, record_type)
     }
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
