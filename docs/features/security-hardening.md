@@ -103,7 +103,7 @@ Details worth knowing before enabling it:
 
 ## Source-port rotation
 
-Upstream UDP sockets are pooled — 4 sockets per upstream server, 64 in total — and each socket is retired and re-bound after roughly 1000 queries, with ±25% jitter so rotations do not synchronize. A source port an attacker has discovered goes stale on its own, and the pooling keeps this from costing a socket per query.
+Upstream UDP sockets are pooled, retaining up to 4 idle sockets per upstream server and admitting at most 64 simultaneous checked-out exchanges across the default pool. Both fresh and reused sockets consume admission capacity. Waiting for capacity spends the same query timeout as the exchange itself, and a wait that runs out is reported as a transport timeout, so the query fails over to the next pool like any other unreachable upstream. Each socket is retired and re-bound after roughly 1000 queries, with ±25% jitter so rotations do not synchronize. A source port an attacker has discovered goes stale on its own, and pooling avoids creating a socket per query.
 
 ---
 

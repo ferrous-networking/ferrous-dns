@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use tokio::net::UdpSocket;
+use tokio::time::Instant;
 use tracing::debug;
 
 static DEFAULT_UDP_POOL: LazyLock<Arc<UdpSocketPool>> =
@@ -47,7 +48,7 @@ fn validate_response_source(from: SocketAddr, expected: SocketAddr) -> Result<()
 const MAX_UDP_RESPONSE_SIZE: usize = 4096;
 
 /// Receive datagrams on `socket` until one arrives from the expected server
-/// with the matching DNS message ID, or `timeout` elapses.
+/// with the matching DNS message ID, or `deadline` passes.
 ///
 /// The socket comes from a pool and is not connected, so it may deliver a late
 /// response left over from a previous query on it, or a datagram from any
@@ -58,13 +59,12 @@ async fn recv_matching(
     socket: &UdpSocket,
     query_bytes: &[u8],
     server_addr: SocketAddr,
-    timeout: Duration,
+    deadline: Instant,
 ) -> Result<bytes::Bytes, DomainError> {
-    let deadline = tokio::time::Instant::now() + timeout;
     let mut recv_buf = [0u8; MAX_UDP_RESPONSE_SIZE];
 
     loop {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
             return Err(DomainError::IoError(format!(
                 "Timeout waiting for UDP response from {}",
@@ -145,15 +145,21 @@ impl UdpTransport {
     ) -> Result<TransportResponse, DomainError> {
         let server_addr = self.resolved_addr()?;
 
-        if let Some(ref pool) = self.pool {
-            let mut pooled = pool.acquire(server_addr).await.map_err(|e| {
-                DomainError::IoError(format!("Failed to acquire UDP socket: {}", e))
-            })?;
+        if let Some(pool) = &self.pool {
+            // Admission, send, and receive share the caller's single query budget.
+            let deadline = Instant::now() + timeout;
+            let mut pooled = tokio::time::timeout_at(deadline, pool.acquire(server_addr))
+                .await
+                // Local saturation must stay failover-eligible, like any transport timeout.
+                .map_err(|_| DomainError::TransportTimeout {
+                    server: server_addr.to_string(),
+                })?
+                .map_err(|e| DomainError::IoError(format!("Failed to acquire UDP socket: {e}")))?;
 
             let socket = pooled.socket();
 
             let bytes_sent =
-                tokio::time::timeout(timeout, socket.send_to(message_bytes, server_addr))
+                tokio::time::timeout_at(deadline, socket.send_to(message_bytes, server_addr))
                     .await
                     .map_err(|_| {
                         DomainError::IoError(format!(
@@ -178,7 +184,7 @@ impl UdpTransport {
             // On any failure (incl. timeout) the socket may still have our
             // response in flight, so poison it rather than returning it to the
             // pool where it would corrupt the next query.
-            let bytes = match recv_matching(socket, message_bytes, server_addr, timeout).await {
+            let bytes = match recv_matching(socket, message_bytes, server_addr, deadline).await {
                 Ok(bytes) => bytes,
                 Err(e) => {
                     pooled.poison();
@@ -208,6 +214,7 @@ impl UdpTransport {
         timeout: Duration,
     ) -> Result<TransportResponse, DomainError> {
         let server_addr = self.resolved_addr()?;
+        let deadline = Instant::now() + timeout;
 
         let bind_addr: SocketAddr = if server_addr.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
@@ -219,17 +226,18 @@ impl UdpTransport {
             .await
             .map_err(|e| DomainError::IoError(format!("Failed to bind UDP socket: {}", e)))?;
 
-        let bytes_sent = tokio::time::timeout(timeout, socket.send_to(message_bytes, server_addr))
-            .await
-            .map_err(|_| {
-                DomainError::IoError(format!("Timeout sending UDP query to {}", server_addr))
-            })?
-            .map_err(|e| {
-                DomainError::IoError(format!(
-                    "Failed to send UDP query to {}: {}",
-                    server_addr, e
-                ))
-            })?;
+        let bytes_sent =
+            tokio::time::timeout_at(deadline, socket.send_to(message_bytes, server_addr))
+                .await
+                .map_err(|_| {
+                    DomainError::IoError(format!("Timeout sending UDP query to {}", server_addr))
+                })?
+                .map_err(|e| {
+                    DomainError::IoError(format!(
+                        "Failed to send UDP query to {}: {}",
+                        server_addr, e
+                    ))
+                })?;
 
         debug!(
             server = %server_addr,
@@ -238,7 +246,7 @@ impl UdpTransport {
             "UDP query sent"
         );
 
-        let bytes = recv_matching(&socket, message_bytes, server_addr, timeout).await?;
+        let bytes = recv_matching(&socket, message_bytes, server_addr, deadline).await?;
 
         debug!(
             server = %server_addr,

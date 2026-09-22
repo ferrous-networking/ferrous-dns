@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, SemaphorePermit};
 use tracing::info;
 
 /// Queries one source port serves before it is retired.
@@ -34,7 +34,7 @@ pub struct UdpSocketPool {
 
     max_per_server: usize,
 
-    semaphore: Arc<Semaphore>,
+    semaphore: Semaphore,
 
     total_created: AtomicU64,
 
@@ -44,13 +44,14 @@ pub struct UdpSocketPool {
 }
 
 impl UdpSocketPool {
+    /// Bounds idle sockets per server and simultaneous checked-out exchanges.
     pub fn new(max_per_server: usize, total_limit: usize) -> Self {
         info!(max_per_server, total_limit, "Initializing UDP socket pool");
 
         Self {
             pools: DashMap::new(),
             max_per_server,
-            semaphore: Arc::new(Semaphore::new(total_limit)),
+            semaphore: Semaphore::new(total_limit),
             total_created: AtomicU64::new(0),
             total_reused: AtomicU64::new(0),
             total_retired: AtomicU64::new(0),
@@ -63,6 +64,12 @@ impl UdpSocketPool {
     }
 
     pub async fn acquire(&self, server: SocketAddr) -> Result<PooledUdpSocket<'_>, std::io::Error> {
+        let permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(std::io::Error::other)?;
+
         if let Some(mut entry) = self.pools.get_mut(&server) {
             if let Some(pooled) = entry.pop() {
                 self.total_reused.fetch_add(1, Ordering::Relaxed);
@@ -73,13 +80,11 @@ impl UdpSocketPool {
                     budget: pooled.budget,
                     server,
                     pool: self,
-                    _permit: None,
+                    _permit: permit,
                     poisoned: false,
                 });
             }
         }
-
-        let permit = self.semaphore.clone().acquire_owned().await.ok();
 
         let socket = self.create_socket(server).await?;
         self.total_created.fetch_add(1, Ordering::Relaxed);
@@ -163,7 +168,7 @@ pub struct PooledUdpSocket<'a> {
     budget: u32,
     server: SocketAddr,
     pool: &'a UdpSocketPool,
-    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    _permit: SemaphorePermit<'a>,
     poisoned: bool,
 }
 
