@@ -80,7 +80,6 @@ h3-quinn = "0.0.10"
 http = "1"
 bytes = "1"
 mimalloc = { version = "0.1", default-features = false }
-core_affinity = "0.8"
 libc = "0.2.183"
 
 # OpenAPI documentation

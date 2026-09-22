@@ -16,7 +16,6 @@ use super::pktinfo;
 pub(super) fn create_udp_socket(
     domain: Domain,
     socket_addr: SocketAddr,
-    cpu_id: usize,
 ) -> anyhow::Result<AsyncFd<std::net::UdpSocket>> {
     let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))?;
     if socket_addr.is_ipv6() {
@@ -30,10 +29,6 @@ pub(super) fn create_udp_socket(
     socket.set_send_buffer_size(4 * 1024 * 1024)?;
     socket.bind(&socket_addr.into())?;
     pktinfo::enable_pktinfo(&socket);
-
-    // SO_BUSY_POLL + SO_INCOMING_CPU: perf hints, Linux only.
-    #[cfg(target_os = "linux")]
-    pktinfo::set_udp_perf_opts(socket.as_raw_fd(), cpu_id);
 
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();

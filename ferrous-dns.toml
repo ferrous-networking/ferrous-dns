@@ -9,6 +9,8 @@
 dns_port = 53                           # UDP/TCP port for DNS queries
 web_port = 8080                         # HTTP port for the web dashboard and REST API
 bind_address = "0.0.0.0"                # Default address every listener binds to; "0.0.0.0" is all IPv4 interfaces, "[::]" is dual-stack (IPv4 + IPv6)
+# Runtime workers default to available parallelism; override with TOKIO_WORKER_THREADS.
+# CPU placement follows the process cpuset rather than pinning individual threads.
 
 # Enables the Pi-hole v6 compatible API at /api/* so third-party dashboards,
 # plugins, and automations that expect the Pi-hole API continue to work.

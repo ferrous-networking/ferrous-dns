@@ -8,7 +8,6 @@ use clap::Parser;
 use ferrous_dns_domain::CliOverrides;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
@@ -21,24 +20,8 @@ use ferrous_dns::server;
 fn main() -> anyhow::Result<()> {
     ferrous_dns::install_crypto_provider();
 
-    let core_ids = core_affinity::get_core_ids().unwrap_or_default();
-    let num_workers = core_ids.len().max(1);
-    let core_ids = Arc::new(core_ids);
-    let counter = Arc::new(AtomicUsize::new(0));
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_workers)
         .thread_name("ferrous-dns-worker")
-        .on_thread_start({
-            let core_ids = core_ids.clone();
-            let counter = counter.clone();
-            move || {
-                if !core_ids.is_empty() {
-                    let idx = counter.fetch_add(1, Ordering::Relaxed) % core_ids.len();
-                    core_affinity::set_for_current(core_ids[idx]);
-                }
-            }
-        })
         .enable_all()
         .max_blocking_threads(16)
         .build()
@@ -168,8 +151,7 @@ async fn async_main() -> anyhow::Result<()> {
         sinkhole_ipv6: config.blocking.sinkhole_ipv6,
     };
     let dns_handler = DnsServerHandler::new(handler_use_case.clone(), block_policy);
-    let core_ids_for_dns = core_affinity::get_core_ids().unwrap_or_default();
-    let num_dns_workers = core_ids_for_dns.len().max(1);
+    let num_dns_workers = tokio::runtime::Handle::current().metrics().num_workers();
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
     tokio::spawn(async move {
@@ -178,7 +160,6 @@ async fn async_main() -> anyhow::Result<()> {
             dns_handler,
             num_dns_workers,
             proxy_protocol_enabled,
-            core_ids_for_dns,
             tcp_conn_limiter,
         )
         .await

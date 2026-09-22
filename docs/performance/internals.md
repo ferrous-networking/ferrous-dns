@@ -4,20 +4,13 @@
 
 ---
 
-## Listener: one worker per core, SO_REUSEPORT
+## Listeners and runtime workers
 
-At startup Ferrous DNS detects the number of CPU cores and spawns that many **independent** UDP sockets and TCP listeners, all bound to the same address with `SO_REUSEPORT`. The kernel hashes each incoming datagram to one socket, so workers never contend on a shared receive queue and there is no single-threaded accept loop to saturate.
+Ferrous DNS creates one UDP socket and TCP listener per Tokio worker, all bound to the same address with `SO_REUSEPORT`. The kernel hashes incoming datagrams across sockets, avoiding a shared receive queue.
 
-Each socket is also configured with:
+Sockets use `SO_REUSEADDR` and 4 MB send/receive buffers to absorb bursts. Runtime and blocking-pool threads are not pinned to individual CPUs; the OS schedules them within the process's cpuset. Busy polling and per-socket CPU hints are not enabled.
 
-- `SO_REUSEADDR` and 4 MB send/receive buffers, to survive bursts without dropping datagrams.
-- `SO_INCOMING_CPU`, pinning a worker's traffic to the core it runs on so packet processing stays on one cache hierarchy.
-- `SO_BUSY_POLL` at 50 µs, trading a little CPU for lower wake-up latency (best-effort; ignored by kernels that do not support it).
-
-Tokio's runtime threads are pinned round-robin to cores as well.
-
-!!! note "Worker count is not configurable"
-    There is no `workers` key. The count is always the number of detected cores. On a container with a restricted cpuset, the cpuset determines it. If you need fewer workers, restrict the cpuset.
+The worker count defaults to Tokio's available parallelism. Set `TOKIO_WORKER_THREADS` to a positive integer to override it; DNS listener count follows the actual runtime count. There is no `workers` TOML key. Use container CPU limits or `taskset` when process-level placement is required.
 
 ---
 
@@ -109,6 +102,6 @@ Enabled blocklist sources are compiled into a matcher where each domain carries 
 | Optimistic refresh | `[dns] cache_optimistic_refresh` and `cache_refresh_*` | on |
 | Query log batching | `[database] query_log_*` | 2000-row batches, 200 ms flush |
 
-Everything else on this page — worker count, batch size, L1 size, block decision cache, socket options — is fixed at compile time.
+Batch size, L1 size, block decision cache size, and socket buffers are fixed at compile time. Worker count can be overridden through `TOKIO_WORKER_THREADS`.
 
 See [Cache Configuration](../configuration/cache.md) for the full reference of the tunable half.

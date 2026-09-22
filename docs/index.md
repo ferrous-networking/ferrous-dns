@@ -28,7 +28,7 @@ With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — 
     - **Smart eviction** — hit-rate scoring by default, with `lru`, `lfu` and `lfu-k` as alternatives
     - **In-flight coalescing** — deduplicates concurrent queries to a single upstream request
     - **Optimistic prefetch** — refreshes popular entries before they expire
-    - **One listener per core** — `SO_REUSEPORT` sockets with CPU-pinned workers, batched `recvmmsg`/`sendmmsg` (64 datagrams per syscall) on Linux
+    - **One listener per worker** — `SO_REUSEPORT` sockets with batched `recvmmsg`/`sendmmsg` (64 datagrams per syscall) on Linux
     - **Block decision cache** — thread-local + sharded cache of `(domain, group)` verdicts, so blocklist matching stays off the hot path
     - **848K cache-hit queries/second** with blocking off (median of 3, ~10–15% run-to-run variance) — same tier as the C/C++ resolvers, 7.2x AdGuard Home, 43x Pi-hole
     - With a 1M-rule blocklist enabled this holds at 834K q/s (blocking costs 1.6%); enabling the query log drops it to 262K — see [Benchmarks](performance/benchmarks.md#benchmark-results)

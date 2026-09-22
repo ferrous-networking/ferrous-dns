@@ -34,37 +34,6 @@ pub fn enable_pktinfo(socket: &Socket) {
     }
 }
 
-// ── SO_BUSY_POLL + SO_INCOMING_CPU (Linux only) ──────────────────────────────
-
-/// Sets SO_BUSY_POLL (50µs spin-poll before epoll sleep) and SO_INCOMING_CPU
-/// (RFS hint to steer packets to the correct core) on the given socket fd.
-///
-/// Both options are best-effort hints: the kernel silently ignores them on
-/// kernels/drivers that don't support them, so no error is returned.
-#[cfg(target_os = "linux")]
-pub(super) fn set_udp_perf_opts(fd: RawFd, cpu_id: usize) {
-    let busy_poll: libc::c_int = 50; // 50 µs
-    let cpu = cpu_id as libc::c_int;
-    // SAFETY: fd is valid; both values are stack-allocated c_int.
-    // setsockopt failures are intentionally ignored — these are perf hints only.
-    unsafe {
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_BUSY_POLL,
-            &busy_poll as *const libc::c_int as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        );
-        libc::setsockopt(
-            fd,
-            libc::SOL_SOCKET,
-            libc::SO_INCOMING_CPU,
-            &cpu as *const libc::c_int as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        );
-    }
-}
-
 // ── RecvBatch — heap-allocated batch recv state (Linux only) ─────────────────
 
 /// Owns all heap storage for one `recvmmsg` call.
