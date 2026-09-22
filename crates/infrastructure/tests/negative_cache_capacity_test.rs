@@ -28,20 +28,15 @@ fn should_preserve_configured_max_entries_above_legacy_cap() {
 
 #[test]
 fn should_evict_when_configured_limit_reached() {
-    // Small bounds keep this debug-build test fast: each over-limit insert
-    // triggers a DashMap scan looking for expired entries (none here), so
-    // cost is O(limit) per over-limit insert.
-    let cache = NegativeDnsCache::new(8);
+    // More live entries than the expiration scan budget exercises fallback
+    // eviction without requiring a full-cache scan.
+    const CAPACITY: usize = 256;
+    let cache = NegativeDnsCache::new(CAPACITY);
 
-    for i in 0..12 {
+    for i in 0..CAPACITY + 4 {
         let domain = format!("bad{i}.example.com");
         cache.insert(&domain, RecordType::A, 600);
+        assert!(cache.get(&domain, &RecordType::A).is_some());
+        assert_eq!(cache.len(), (i + 1).min(CAPACITY));
     }
-
-    assert!(
-        cache.len() <= 8,
-        "negative cache must enforce the configured max_entries after inserts \
-         exceed the limit (got {})",
-        cache.len()
-    );
 }

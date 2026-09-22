@@ -10,7 +10,7 @@ impl DnsCache {
             !record.is_marked_for_deletion()
                 && (!record.is_expired_at_secs(now) || record.is_stale_usable_at_secs(now))
         });
-        let removed = before.saturating_sub(self.cache.len());
+        let removed = before.saturating_sub(self.cache.len()) + self.negative.purge_expired(now);
 
         if removed > 0 {
             self.metrics

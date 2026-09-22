@@ -5,6 +5,7 @@ use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 
+/// Maximum entries inspected for expiration per full-cache insert.
 const EVICTION_BATCH_SIZE: usize = 64;
 
 /// Minimum TTL applied to negative cache entries. Upstream resolvers sometimes
@@ -89,9 +90,9 @@ impl NegativeDnsCache {
             let expired: SmallVec<[CacheKey; EVICTION_BATCH_SIZE]> = self
                 .cache
                 .iter()
+                .take(EVICTION_BATCH_SIZE)
                 .filter(|e| now >= e.value().expires_at_secs)
                 .map(|e| e.key().clone())
-                .take(EVICTION_BATCH_SIZE)
                 .collect();
             for k in &expired {
                 self.cache.remove(k);
@@ -122,6 +123,20 @@ impl NegativeDnsCache {
         self.cache.clear();
     }
 
+    /// Removes every entry expired at `now_secs` and returns how many went.
+    ///
+    /// The insert path only samples a bounded prefix of the map, so expired
+    /// entries elsewhere would otherwise hold capacity until read again.
+    pub fn purge_expired(&self, now_secs: u64) -> usize {
+        let mut removed = 0;
+        self.cache.retain(|_, entry| {
+            let live = now_secs < entry.expires_at_secs;
+            removed += usize::from(!live);
+            live
+        });
+        removed
+    }
+
     pub fn len(&self) -> usize {
         self.cache.len()
     }
@@ -132,5 +147,39 @@ impl NegativeDnsCache {
 
     pub fn max_entries(&self) -> usize {
         self.max_entries
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eviction_stays_bounded_and_compaction_reclaims_the_rest() {
+        let capacity = EVICTION_BATCH_SIZE * 2;
+        let cache = NegativeDnsCache::new(capacity);
+        for i in 0..capacity {
+            cache.cache.insert(
+                CacheKey::new(&format!("zone{i}.example"), RecordType::A),
+                NegativeEntry { expires_at_secs: 0 },
+            );
+        }
+        // Keep the sampled prefix live and leave the rest expired. Updating
+        // values preserves iteration order; release every guard before insert.
+        for mut entry in cache.cache.iter_mut().take(EVICTION_BATCH_SIZE) {
+            entry.value_mut().expires_at_secs = u64::MAX;
+        }
+
+        cache.insert("new.example", RecordType::A, 600);
+
+        // A bounded scan finds no expired entries and evicts one fallback key.
+        // Filtering before taking the budget would remove the expired suffix.
+        assert_eq!(cache.len(), capacity);
+        assert!(cache.get("new.example", &RecordType::A).is_some());
+
+        // The expired suffix the insert did not inspect is reclaimed by the sweep.
+        assert_eq!(cache.purge_expired(1), capacity - EVICTION_BATCH_SIZE);
+        assert_eq!(cache.len(), EVICTION_BATCH_SIZE);
+        assert!(cache.get("new.example", &RecordType::A).is_some());
     }
 }

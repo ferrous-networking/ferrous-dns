@@ -11,9 +11,8 @@ use tracing::{debug, trace};
 /// DNSKEY entry. The real namespace a recursor touches is far smaller than this.
 const MAX_ENTRIES: usize = 50_000;
 
-/// How many expired entries to sweep per over-capacity insert before falling
-/// back to evicting an arbitrary entry. Bounds the work done while holding the
-/// insert path open, mirroring the main negative cache.
+/// Maximum entries inspected for expiration per full-cache insert before
+/// falling back to evicting an arbitrary entry.
 const EVICTION_BATCH_SIZE: usize = 32;
 
 pub struct DnssecCache {
@@ -143,9 +142,9 @@ impl Default for DnssecCache {
     }
 }
 
-/// Keeps `map` under [`MAX_ENTRIES`] before an insert. Sweeps up to
-/// [`EVICTION_BATCH_SIZE`] expired entries first (cheap, preserves live keys);
-/// if the map is still full of live entries it drops one arbitrary entry so the
+/// Makes room in a full `map` before an insert. Inspects at most
+/// [`EVICTION_BATCH_SIZE`] entries for expiration first;
+/// if the map is still full it drops one arbitrary entry so the
 /// insert cannot grow the map past the ceiling. Hot zones (root, common TLDs)
 /// re-populate on the next miss, so worst case is extra churn, never unbounded
 /// growth.
@@ -159,9 +158,9 @@ where
 
     let expired: Vec<Arc<str>> = map
         .iter()
+        .take(EVICTION_BATCH_SIZE)
         .filter(|e| is_expired(e.value()))
         .map(|e| e.key().clone())
-        .take(EVICTION_BATCH_SIZE)
         .collect();
     for k in &expired {
         map.remove(k);
@@ -171,6 +170,31 @@ where
         let fallback = map.iter().next().map(|e| e.key().clone());
         if let Some(k) = fallback {
             map.remove(&k);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn eviction_bounds_inspections_and_makes_room() {
+        for expired in [false, true] {
+            let map: DashMap<Arc<str>, bool> = (0..MAX_ENTRIES)
+                .map(|i| (Arc::from(format!("zone{i}.example")), expired))
+                .collect();
+            let inspected = Cell::new(0);
+
+            evict_if_full(&map, |expired| {
+                inspected.set(inspected.get() + 1);
+                *expired
+            });
+
+            assert_eq!(inspected.get(), EVICTION_BATCH_SIZE);
+            let removed = if expired { EVICTION_BATCH_SIZE } else { 1 };
+            assert_eq!(map.len(), MAX_ENTRIES - removed);
         }
     }
 }

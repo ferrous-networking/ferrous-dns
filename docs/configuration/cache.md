@@ -87,6 +87,8 @@ cache_adaptive_thresholds = false
 
 For most home and office deployments, `"hit_rate"` gives the best results as it preserves entries for frequently visited sites regardless of recency.
 
+The negative-response and DNSSEC-material caches use bounded expiration sampling when full, falling back to an arbitrary eviction if the sample finds no expired entries. Inserting a new entry does not scan the entire live cache. Because the sample covers a fixed slice of the map, expired negative entries elsewhere are reclaimed by the `cache_compaction_interval` sweep instead. DNSSEC material has no periodic sweep: it is keyed per zone, so a re-validated zone replaces its own entry, and only zones that are never queried again keep expired keys until they are evicted.
+
 ---
 
 ## Optimistic Refresh
