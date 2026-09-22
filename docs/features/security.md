@@ -157,6 +157,8 @@ The **AD** (Authenticated Data) bit is set only when a response validates as `Se
 
 The `queries_dnssec_bogus` counter (dashboard + Prometheus `ferrousdns_queries_dnssec_bogus`) tracks how many responses failed validation.
 
+Concurrent validations use a bounded validator pool. Requests wait in admission order and lease whichever validator is free, rather than waiting behind a particular busy slot. Completing or cancelling validation returns the validator before admitting the next waiter.
+
 **Standards**: RFC 4035, RFC 6840, RFC 8914 (EDE)
 
 !!! note "Performance impact"

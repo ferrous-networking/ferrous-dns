@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError};
 use hickory_proto::op::Message;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -40,10 +41,12 @@ impl DnssecResolver {
         cache: Arc<DnssecCache>,
     ) -> Self {
         let pool_size = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
+            .unwrap_or(NonZeroUsize::new(4).unwrap_or(NonZeroUsize::MIN));
 
-        info!(pool_size, "DNSSEC validation layer enabled");
+        info!(
+            pool_size = pool_size.get(),
+            "DNSSEC validation layer enabled"
+        );
 
         Self {
             inner,
