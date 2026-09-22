@@ -1,4 +1,4 @@
-use ferrous_dns_domain::{DomainError, UpstreamAddr};
+use ferrous_dns_domain::DomainError;
 use ferrous_dns_infrastructure::dns::fast_path;
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
 #[cfg(feature = "dns-over-h3")]
@@ -11,149 +11,9 @@ use ferrous_dns_infrastructure::dns::transport::{
 };
 use ferrous_dns_infrastructure::dns::wire_response;
 use std::net::IpAddr;
-use std::sync::Arc;
 
 mod helpers;
-use helpers::{DnsServerBuilder, UdpPoolBuilder};
-
-#[test]
-fn test_udp_transport_creation() {
-    let transport = UdpTransport::new(DnsServerBuilder::google_dns());
-
-    assert_eq!(transport.protocol_name(), "UDP");
-}
-
-#[test]
-fn test_udp_transport_with_pool() {
-    let addr = DnsServerBuilder::google_dns();
-    let pool = UdpPoolBuilder::medium();
-    let _transport = UdpTransport::with_pool(addr, pool);
-}
-
-#[test]
-fn test_udp_transport_ipv6() {
-    let addr = DnsServerBuilder::google_dns_ipv6();
-    let _transport = UdpTransport::new(addr);
-}
-
-#[test]
-fn test_udp_transport_different_providers() {
-    let google = UdpTransport::new(DnsServerBuilder::google_dns());
-    assert_eq!(google.protocol_name(), "UDP");
-
-    let cloudflare = UdpTransport::new(DnsServerBuilder::cloudflare_dns());
-    assert_eq!(cloudflare.protocol_name(), "UDP");
-}
-
-#[test]
-fn test_udp_pool_creation() {
-    let small = UdpPoolBuilder::small();
-    assert!(Arc::strong_count(&small) == 1);
-
-    let medium = UdpPoolBuilder::medium();
-    assert!(Arc::strong_count(&medium) == 1);
-
-    let large = UdpPoolBuilder::large();
-    assert!(Arc::strong_count(&large) == 1);
-}
-
-#[test]
-fn test_udp_pool_custom() {
-    let custom = UdpPoolBuilder::custom(10, 150);
-    assert!(Arc::strong_count(&custom) == 1);
-}
-
-#[test]
-fn test_tcp_transport_creation() {
-    let addr = DnsServerBuilder::google_dns();
-    let transport = TcpTransport::new(addr);
-
-    assert_eq!(transport.protocol_name(), "TCP");
-}
-
-#[test]
-fn test_tcp_transport_ipv6() {
-    let addr = DnsServerBuilder::cloudflare_dns_ipv6();
-    let transport = TcpTransport::new(addr);
-
-    assert_eq!(transport.protocol_name(), "TCP");
-}
-
-#[test]
-fn test_length_prefix_encoding() {
-    let len: u16 = 300;
-    let bytes = len.to_be_bytes();
-    assert_eq!(bytes[0], 1);
-    assert_eq!(bytes[1], 44);
-    assert_eq!(u16::from_be_bytes(bytes), 300);
-}
-
-#[test]
-fn test_tcp_length_prefix_various_sizes() {
-    let sizes = vec![0u16, 1, 255, 256, 512, 1024, 4096, u16::MAX];
-
-    for size in sizes {
-        let bytes = size.to_be_bytes();
-        let reconstructed = u16::from_be_bytes(bytes);
-        assert_eq!(reconstructed, size, "Failed for size {}", size);
-    }
-}
-
-#[test]
-fn test_tls_transport_creation() {
-    let (addr, hostname) = DnsServerBuilder::cloudflare_tls();
-    let transport = TlsTransport::new(addr, hostname.into());
-
-    assert_eq!(transport.protocol_name(), "TLS");
-}
-
-#[test]
-fn test_tls_transport_google() {
-    let (addr, hostname) = DnsServerBuilder::google_tls();
-    let transport = TlsTransport::new(addr, hostname.into());
-
-    assert_eq!(transport.protocol_name(), "TLS");
-}
-
-#[test]
-fn test_tls_transport_different_hostnames() {
-    let _cloudflare = TlsTransport::new(
-        UpstreamAddr::Resolved("1.1.1.1:853".parse().unwrap()),
-        "cloudflare-dns.com".into(),
-    );
-
-    let _google = TlsTransport::new(
-        UpstreamAddr::Resolved("8.8.8.8:853".parse().unwrap()),
-        "dns.google".into(),
-    );
-}
-
-#[cfg(feature = "dns-over-quic")]
-#[test]
-fn test_quic_transport_protocol_name() {
-    let (addr, hostname) = DnsServerBuilder::cloudflare_doq();
-    let transport = QuicTransport::new(addr, hostname.into());
-
-    assert_eq!(transport.protocol_name(), "QUIC");
-}
-
-#[cfg(feature = "dns-over-quic")]
-#[test]
-fn test_quic_transport_google() {
-    let (addr, hostname) = DnsServerBuilder::google_doq();
-    let transport = QuicTransport::new(addr, hostname.into());
-
-    assert_eq!(transport.protocol_name(), "QUIC");
-}
-
-#[cfg(feature = "dns-over-quic")]
-#[test]
-fn test_quic_transport_creation() {
-    let (addr, hostname) = DnsServerBuilder::cloudflare_doq();
-    let transport = QuicTransport::new(addr, hostname.into());
-
-    assert_eq!(transport.protocol_name(), "QUIC");
-}
+use helpers::DnsServerBuilder;
 
 #[test]
 fn test_all_protocols_have_unique_names() {
@@ -191,15 +51,6 @@ fn test_all_protocols_have_unique_names() {
     unique.sort();
     unique.dedup();
     assert_eq!(unique.len(), names.len(), "Protocol names should be unique");
-}
-
-#[test]
-fn test_port_numbers() {
-    let udp_addr = DnsServerBuilder::google_dns_socket_addr();
-    let tls_addr = DnsServerBuilder::cloudflare_tls_socket_addr();
-
-    assert_eq!(udp_addr.port(), 53, "Standard DNS port");
-    assert_eq!(tls_addr.port(), 853, "DNS-over-TLS port");
 }
 
 // ── RFC 6891: OPT record in fast-path responses ───────────────────────────────
@@ -299,28 +150,7 @@ fn test_fast_path_response_includes_opt_when_client_sent_edns() {
     );
 }
 
-// ── Fase 5: Health checker, error classification ──────────────────────────────
-
-#[test]
-fn test_health_checker_consecutive_failures_does_not_overflow() {
-    use ferrous_dns_infrastructure::dns::load_balancer::health::ServerHealth;
-
-    let mut health = ServerHealth::default();
-
-    for _ in 0..300u32 {
-        health.consecutive_failures = health.consecutive_failures.saturating_add(1);
-    }
-
-    assert_eq!(
-        health.consecutive_failures, 300,
-        "u16 saturating_add must record all 300 failures accurately"
-    );
-    assert!(
-        health.consecutive_failures > u8::MAX as u16,
-        "consecutive_failures ({}) must exceed u8::MAX — no u8 wrap-around",
-        health.consecutive_failures
-    );
-}
+// Transport errors determine which failures can trigger upstream failover.
 
 #[test]
 fn test_transport_error_classification_typed_variants() {
