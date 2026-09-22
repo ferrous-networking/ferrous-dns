@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod database;
 pub mod dns;
+pub mod drop_counter;
 pub mod repositories;
 pub mod schedule;
 pub mod service_catalog;

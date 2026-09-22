@@ -1121,6 +1121,7 @@ dependencies = [
  "toml_edit",
  "totp-rs",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "webauthn-rs",
  "webpki-roots 1.0.9",

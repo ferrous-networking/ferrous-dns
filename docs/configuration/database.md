@@ -27,6 +27,8 @@ client_tracking_interval = 60
 
 The query log uses an async write pipeline to avoid blocking the DNS hot path. Queries are buffered in a channel and flushed to disk in batches.
 
+Full queues drop new entries rather than delaying DNS responses. Overflow warnings are emitted at most once per second, not for every dropped entry: `dropped` counts the entries lost since the previous warning and `total_dropped` counts every entry lost since startup. The first drop of each overload episode warns immediately. Counts are shared by clones of the internal event emitter; the persistence queue maintains its own count. This avoids turning an overloaded log pipeline into synchronous warning traffic.
+
 ```toml
 [database]
 query_log_channel_capacity = 10000

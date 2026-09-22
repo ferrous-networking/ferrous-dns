@@ -3,6 +3,8 @@ mod reader;
 mod timeline;
 mod writer;
 
+use crate::dns::cache::coarse_clock::coarse_now_secs;
+use crate::drop_counter::DropCounter;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
@@ -23,6 +25,7 @@ pub struct SqliteQueryLogRepository {
     sender: mpsc::Sender<QueryLogEntry>,
     sample_rate: u32,
     sample_counter: AtomicU64,
+    dropped: DropCounter,
     timeline_cache: TimelineCache,
     /// Built once at startup, so this is when the server started serving.
     started_at: Instant,
@@ -59,6 +62,7 @@ impl SqliteQueryLogRepository {
             sender,
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
+            dropped: DropCounter::new(),
             timeline_cache: TimelineCache::new(),
             started_at: Instant::now(),
         }
@@ -83,7 +87,14 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         match self.sender.try_send(entry) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
-                warn!("Query log channel full, dropping entry");
+                // At most one warning per second keeps overload from becoming log I/O.
+                if let Some(report) = self.dropped.record(coarse_now_secs()) {
+                    warn!(
+                        dropped = report.since_last,
+                        total_dropped = report.total,
+                        "Query log channel full; entries dropped"
+                    );
+                }
                 Ok(())
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {

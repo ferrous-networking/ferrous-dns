@@ -1,7 +1,9 @@
 use ferrous_dns_domain::ClientProtocol;
+use ferrous_dns_infrastructure::dns::cache::coarse_clock::coarse_now_secs;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
+use ferrous_dns_infrastructure::drop_counter::DropCounter;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -9,12 +11,42 @@ use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use tokio::io::unix::AsyncFd;
 use tokio::io::Interest;
-use tokio::sync::Semaphore;
-use tracing::error;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tracing::{error, warn};
 
 use super::pktinfo;
 
 const PACKETS_BEFORE_YIELD: usize = 256;
+
+/// Admission shared by every listener for queries that leave the inline cache path.
+pub(super) struct FallbackAdmission {
+    slots: Arc<Semaphore>,
+    shed: DropCounter,
+}
+
+impl FallbackAdmission {
+    pub(super) fn new(limit: usize) -> Self {
+        Self {
+            slots: Arc::new(Semaphore::new(limit)),
+            shed: DropCounter::new(),
+        }
+    }
+
+    fn try_admit(&self) -> Option<OwnedSemaphorePermit> {
+        let permit = Arc::clone(&self.slots).try_acquire_owned().ok();
+        if permit.is_none() {
+            // Distinguishes deliberate shedding from packet loss for operators.
+            if let Some(report) = self.shed.record(coarse_now_secs()) {
+                warn!(
+                    shed = report.since_last,
+                    total_shed = report.total,
+                    "UDP fallback capacity exhausted; queries dropped"
+                );
+            }
+        }
+        permit
+    }
+}
 
 pub(super) fn create_udp_socket(
     domain: Domain,
@@ -44,7 +76,7 @@ pub(super) fn create_udp_socket(
 pub(super) async fn run_udp_worker(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
     handler: Arc<DnsServerHandler>,
-    admission: Arc<Semaphore>,
+    admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
     #[cfg(target_os = "linux")]
@@ -57,13 +89,13 @@ pub(super) async fn run_udp_worker(
 fn spawn_fallback(
     socket: &Arc<AsyncFd<std::net::UdpSocket>>,
     handler: &Arc<DnsServerHandler>,
-    admission: &Arc<Semaphore>,
+    admission: &FallbackAdmission,
     query: &[u8],
     peer: SocketAddr,
     source: IpAddr,
 ) {
     // Shed UDP overload before allocating a packet or creating a waiting task.
-    let Ok(permit) = admission.clone().try_acquire_owned() else {
+    let Some(permit) = admission.try_admit() else {
         return;
     };
     let query = query.to_vec();
@@ -86,7 +118,7 @@ fn spawn_fallback(
 async fn run_udp_worker_batch(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
     handler: Arc<DnsServerHandler>,
-    admission: Arc<Semaphore>,
+    admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
     // Pre-allocate batch state once per worker — reused across all iterations.
@@ -220,7 +252,7 @@ async fn run_udp_worker_batch(
 async fn run_udp_worker_single(
     socket: Arc<AsyncFd<std::net::UdpSocket>>,
     handler: Arc<DnsServerHandler>,
-    admission: Arc<Semaphore>,
+    admission: Arc<FallbackAdmission>,
     worker_id: usize,
 ) {
     let mut recv_buf = [0u8; 4096];
@@ -369,7 +401,7 @@ mod tests {
         let worker = tokio::spawn(run_udp_worker(
             socket,
             test_support::handler_with_resolver(resolver.clone()),
-            Arc::new(Semaphore::new(1)),
+            Arc::new(FallbackAdmission::new(1)),
             0,
         ));
 

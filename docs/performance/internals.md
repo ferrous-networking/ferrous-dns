@@ -74,7 +74,7 @@ Entries are keyed on `(domain, group_id)` — the same domain can be blocked for
 
 For a cache-hit A/AAAA query, the response is built directly from wire bytes — no full DNS message construction — and queued inline for the next `sendmmsg` batch. Queries with the DNSSEC OK (DO) bit set skip the fast path and take the regular resolution route, since they need the full record set.
 
-UDP fallback processing has a shared limit of **4096 in-flight queries**, independent of worker count and per-client rate limits. Admission happens before packet allocation and task creation. When full, additional fallback datagrams are dropped rather than queued; clients can retry. Inline cache hits remain serviceable while fallback capacity is exhausted.
+UDP fallback processing has a shared limit of **4096 in-flight queries**, independent of worker count and per-client rate limits. Admission happens before packet allocation and task creation. When full, additional fallback datagrams are dropped rather than queued; clients can retry. Shedding logs a `UDP fallback capacity exhausted` warning at most once per second, with the datagrams shed since the previous warning (`shed`) and since startup (`total_shed`), so it can be told apart from packet loss. Inline cache hits remain serviceable while fallback capacity is exhausted.
 
 ---
 
