@@ -14,8 +14,11 @@ use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use socket2::Domain;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tracing::info;
+
+const MAX_IN_FLIGHT_UDP_QUERIES: usize = 4096;
 
 pub async fn start_dns_server(
     bind_addr: String,
@@ -37,13 +40,15 @@ pub async fn start_dns_server(
     info!(bind_address = %parsed, num_workers, "Starting DNS server with SO_REUSEPORT");
 
     let handler = Arc::new(handler);
+    let udp_admission = Arc::new(Semaphore::new(MAX_IN_FLIGHT_UDP_QUERIES));
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for i in 0..num_workers {
         let udp_socket = Arc::new(udp::create_udp_socket(domain, socket_addr)?);
         let handler_udp = handler.clone();
+        let admission = udp_admission.clone();
         join_set.spawn(async move {
-            udp::run_udp_worker(udp_socket, handler_udp, i).await;
+            udp::run_udp_worker(udp_socket, handler_udp, admission, i).await;
         });
 
         let tcp_listener = Arc::new(tcp::create_tcp_listener(domain, socket_addr)?);

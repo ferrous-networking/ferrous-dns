@@ -16,9 +16,11 @@ The worker count defaults to Tokio's available parallelism. Set `TOKIO_WORKER_TH
 
 ## Batched syscalls: recvmmsg / sendmmsg
 
-On Linux the UDP path reads and writes datagrams in batches of **64** using `recvmmsg` and `sendmmsg`, amortizing the syscall over up to 64 queries. All buffers and control-message storage are allocated once per worker and reused, so a batch costs no allocations.
+On Linux the UDP path reads and writes datagrams in batches of **64** using `recvmmsg` and `sendmmsg`, amortizing the syscall over up to 64 queries. Receive buffers and control-message storage are allocated once per worker and reused.
 
 This is selected at compile time (`#[cfg(target_os = "linux")]`), not by a feature flag or config key. On non-Linux targets the server falls back to a single-datagram loop with the same behaviour and lower throughput. Every target needs dual-stack `AF_INET6` sockets (IPv4 is handled as v4-mapped addresses); platforms without them, such as kernels built without IPv6, are not supported.
+
+Workers yield at batch boundaries after processing 256 datagrams, so a continuously readable socket cannot monopolize a Tokio worker. The non-Linux loop uses the same packet budget.
 
 ---
 
@@ -71,6 +73,8 @@ Entries are keyed on `(domain, group_id)` — the same domain can be blocked for
 ## Fast path for cache hits
 
 For a cache-hit A/AAAA query, the response is built directly from wire bytes — no full DNS message construction — and queued inline for the next `sendmmsg` batch. Queries with the DNSSEC OK (DO) bit set skip the fast path and take the regular resolution route, since they need the full record set.
+
+UDP fallback processing has a shared limit of **4096 in-flight queries**, independent of worker count and per-client rate limits. Admission happens before packet allocation and task creation. When full, additional fallback datagrams are dropped rather than queued; clients can retry. Inline cache hits remain serviceable while fallback capacity is exhausted.
 
 ---
 

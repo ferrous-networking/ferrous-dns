@@ -154,7 +154,10 @@ impl QueryLogRepository for NoopQueryLog {
 
 /// Builds a handler that always resolves to `addresses` with the given TTL.
 pub fn handler_with_canned_addresses(addresses: Vec<IpAddr>, ttl: u32) -> Arc<DnsServerHandler> {
-    let resolver: Arc<dyn DnsResolver> = Arc::new(CannedAddressResolver { addresses, ttl });
+    handler_with_resolver(Arc::new(CannedAddressResolver { addresses, ttl }))
+}
+
+pub fn handler_with_resolver(resolver: Arc<dyn DnsResolver>) -> Arc<DnsServerHandler> {
     let use_case = Arc::new(HandleDnsQueryUseCase::new(
         resolver,
         Arc::new(AllowAllFilter),
