@@ -386,7 +386,27 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20260923000001_create_query_log_rollups.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
+}
+
+/// Stats read the minute rollups; rebuild them from the raw fixture rows with
+/// the production backfill.
+async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
+    sqlx::raw_sql(concat!(
+        "DELETE FROM query_log_minute; DELETE FROM query_log_minute_record_type;",
+        "DELETE FROM query_log_minute_block_source; DELETE FROM query_log_minute_upstream;",
+        include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+    ))
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 async fn create_test_app(pool: sqlx::SqlitePool) -> Router {
@@ -662,6 +682,7 @@ async fn insert_query_log(
     .execute(pool)
     .await
     .unwrap();
+    rebuild_rollups(pool).await;
 }
 
 #[tokio::test]
@@ -765,6 +786,7 @@ async fn test_get_stats_period_parameter() {
     .execute(&pool)
     .await
     .unwrap();
+    rebuild_rollups(&pool).await;
 
     let app = create_test_app(pool).await;
 

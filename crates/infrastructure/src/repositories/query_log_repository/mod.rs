@@ -1,5 +1,6 @@
 mod helpers;
 mod reader;
+mod rollup;
 mod timeline;
 mod writer;
 
@@ -14,7 +15,6 @@ use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QuerySta
 use sqlx::SqlitePool;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
-use timeline::TimelineCache;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use writer::QueryLogEntry;
@@ -26,7 +26,6 @@ pub struct SqliteQueryLogRepository {
     sample_rate: u32,
     sample_counter: AtomicU64,
     dropped: DropCounter,
-    timeline_cache: TimelineCache,
     /// Built once at startup, so this is when the server started serving.
     started_at: Instant,
 }
@@ -63,7 +62,6 @@ impl SqliteQueryLogRepository {
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
             dropped: DropCounter::new(),
-            timeline_cache: TimelineCache::new(),
             started_at: Instant::now(),
         }
     }
@@ -136,13 +134,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         period_hours: u32,
         granularity: TimeGranularity,
     ) -> Result<Vec<TimelineBucket>, DomainError> {
-        timeline::get_timeline(
-            &self.read_pool,
-            &self.timeline_cache,
-            period_hours,
-            granularity,
-        )
-        .await
+        timeline::get_timeline(&self.read_pool, period_hours, granularity).await
     }
 
     async fn count_queries_since(&self, seconds_ago: i64) -> Result<u64, DomainError> {

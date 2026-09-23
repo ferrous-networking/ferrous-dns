@@ -48,6 +48,24 @@ impl BlockSource {
         }
     }
 
+    /// Threat-detection verdicts, as opposed to policy blocks. Dashboards count
+    /// these as "malware detected"; exhaustive so a new source must be classified.
+    pub fn is_malware(self) -> bool {
+        match self {
+            BlockSource::DnsRebinding
+            | BlockSource::DnsTunneling
+            | BlockSource::NxdomainHijack
+            | BlockSource::ResponseIpFilter
+            | BlockSource::DgaDetection => true,
+            BlockSource::Blocklist
+            | BlockSource::ManagedDomain
+            | BlockSource::RegexFilter
+            | BlockSource::CnameCloaking
+            | BlockSource::Schedule
+            | BlockSource::RateLimit => false,
+        }
+    }
+
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             0 => Some(BlockSource::Blocklist),

@@ -107,12 +107,14 @@ Channel (10k capacity)
     ▼
 Background flush task
     │
-    │ single INSERT transaction
+    │ one transaction: raw rows + per-minute rollup upserts
     ▼
 SQLite (WAL mode)
 ```
 
 If the channel is full (backpressure), entries are dropped and a warning is logged. The DNS response is never delayed.
+
+Each flush aggregates its batch in memory and upserts a handful of rows into the `query_log_minute*` rollup tables in the same transaction as the raw rows, so the two never disagree. Dashboard summaries, cache and DNSSEC stats and the timeline read the rollups; the raw `query_log` keeps a single `(query_source, created_at, blocked)` index for the log view, top-N lists, the query rate and retention. Retention prunes both.
 
 ---
 

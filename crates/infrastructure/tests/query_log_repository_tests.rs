@@ -65,7 +65,29 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::raw_sql(ROLLUP_SCHEMA).execute(&pool).await.unwrap();
+
     pool
+}
+
+const ROLLUP_SCHEMA: &str =
+    include_str!("../../../migrations/20260923000001_create_query_log_rollups.sql");
+const ROLLUP_BACKFILL: &str =
+    include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql");
+
+/// Rebuilds the rollups from the raw rows with the production backfill, which
+/// `query_log_rollup_test` proves equal to what the writer maintains.
+async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
+    sqlx::raw_sql(
+        "DELETE FROM query_log_minute;
+         DELETE FROM query_log_minute_record_type;
+         DELETE FROM query_log_minute_block_source;
+         DELETE FROM query_log_minute_upstream;",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::raw_sql(ROLLUP_BACKFILL).execute(pool).await.unwrap();
 }
 
 async fn insert_log(
@@ -96,6 +118,7 @@ async fn insert_log(
     .execute(pool)
     .await
     .unwrap();
+    rebuild_rollups(pool).await;
 }
 
 fn no_filter() -> QueryLogFilter {
@@ -322,10 +345,12 @@ async fn test_get_timeline_returns_buckets() {
 }
 
 #[tokio::test]
-async fn test_get_timeline_cache_hit_returns_stale_data() {
+async fn test_timeline_and_stats_agree_on_malware() {
     let pool = create_test_db().await;
 
-    insert_log(&pool, false, false, None, "client", None).await;
+    insert_log(&pool, false, true, Some("dns_rebinding"), "client", None).await;
+    insert_log(&pool, false, true, Some("dga_detection"), "client", None).await;
+    insert_log(&pool, false, true, Some("blocklist"), "client", None).await;
 
     let repo = SqliteQueryLogRepository::new(
         pool.clone(),
@@ -333,17 +358,15 @@ async fn test_get_timeline_cache_hit_returns_stale_data() {
         pool.clone(),
         &DatabaseConfig::default(),
     );
+    let stats = repo.get_stats(24.0).await.unwrap();
+    let timeline = repo.get_timeline(24, TimeGranularity::Day).await.unwrap();
 
-    let first_result = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
-    assert_eq!(first_result.len(), 1);
-    assert_eq!(first_result[0].total, 1);
-
-    insert_log(&pool, false, false, None, "client", None).await;
-
-    let cached_result = repo.get_timeline(24, TimeGranularity::Hour).await.unwrap();
-
-    assert_eq!(cached_result.len(), first_result.len());
-    assert_eq!(cached_result[0].total, first_result[0].total);
+    assert_eq!(stats.queries_malware_detected, 2);
+    assert_eq!(
+        timeline.iter().map(|b| b.malware_detected).sum::<u64>(),
+        2,
+        "the chart must count the same threat verdicts as the summary"
+    );
 }
 
 async fn insert_log_with_domain(

@@ -126,6 +126,11 @@ query timeline, top blocked domains, top clients and the query-type breakdown.
 Use the optional `period_hours` parameter to change the look-back window
 (defaults to 24 hours).
 
+Summary counts, cache stats, DNSSEC stats and the timeline are served from
+per-minute rollups, so their windows are minute-aligned: a window includes the
+whole minute it starts in. The query log, top-N lists and the query rate read
+the raw log and use the exact cutoff.
+
 ### Summary Stats
 
 ```http

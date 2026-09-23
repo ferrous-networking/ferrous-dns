@@ -1,97 +1,71 @@
-use super::helpers::{granularity_to_sql, hours_ago_cutoff};
-use dashmap::DashMap;
+use super::helpers::window_start_bucket;
 use ferrous_dns_application::ports::{TimeGranularity, TimelineBucket};
 use ferrous_dns_domain::DomainError;
 use sqlx::{Row, SqlitePool};
-use std::time::Instant;
 use tracing::{debug, error, instrument};
 
-pub(super) struct TimelineCache {
-    cache: DashMap<(u32, &'static str), (Vec<TimelineBucket>, Instant)>,
-    refresh_lock: tokio::sync::Mutex<()>,
-}
-
-impl TimelineCache {
-    pub fn new() -> Self {
-        Self {
-            cache: DashMap::new(),
-            refresh_lock: tokio::sync::Mutex::new(()),
-        }
+/// Every width divides a UTC day, so epoch-aligned buckets match wall-clock ones.
+fn bucket_width_secs(granularity: TimeGranularity) -> i64 {
+    match granularity {
+        TimeGranularity::Minute => 60,
+        TimeGranularity::TenMinutes => 600,
+        TimeGranularity::QuarterHour => 900,
+        TimeGranularity::Hour => 3_600,
+        TimeGranularity::Day => 86_400,
     }
 }
 
-fn build_timeline_sql(bucket_expr: &'static str) -> String {
-    format!(
-        "SELECT {bucket_expr} as time_bucket, \
-         COUNT(*) as total, \
-         COALESCE(SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END), 0) as blocked, \
-         COALESCE(SUM(CASE WHEN blocked = 0 THEN 1 ELSE 0 END), 0) as unblocked, \
-         COALESCE(SUM(CASE WHEN response_status IN ('TUNNELING_BLOCKED', 'DGA_BLOCKED', 'NXDOMAIN_HIJACK', 'RESPONSE_IP_BLOCKED') THEN 1 ELSE 0 END), 0) as malware_detected \
-         FROM query_log \
-         WHERE created_at >= ? \
-           AND query_source = 'client' \
-         GROUP BY time_bucket \
-         ORDER BY time_bucket ASC"
-    )
+fn format_bucket(unix_secs: i64) -> String {
+    chrono::DateTime::from_timestamp(unix_secs, 0)
+        .unwrap_or_default()
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
 }
 
-#[instrument(skip(pool, timeline_cache))]
+#[instrument(skip(pool))]
 pub(super) async fn get_timeline(
     pool: &SqlitePool,
-    timeline_cache: &TimelineCache,
     period_hours: u32,
     granularity: TimeGranularity,
 ) -> Result<Vec<TimelineBucket>, DomainError> {
-    const TIMELINE_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+    let width = bucket_width_secs(granularity);
+    let since = window_start_bucket(period_hours as f32);
 
-    let bucket_expr = granularity_to_sql(granularity);
-    let cache_key = (period_hours, bucket_expr);
-
-    if let Some(entry) = timeline_cache.cache.get(&cache_key) {
-        let (ref cached_buckets, cached_at) = *entry;
-        if cached_at.elapsed() < TIMELINE_CACHE_TTL {
-            debug!(period_hours, "Timeline served from cache");
-            return Ok(cached_buckets.clone());
-        }
-    }
-
-    let _lock = timeline_cache.refresh_lock.lock().await;
-
-    if let Some(entry) = timeline_cache.cache.get(&cache_key) {
-        let (ref cached_buckets, cached_at) = *entry;
-        if cached_at.elapsed() < TIMELINE_CACHE_TTL {
-            return Ok(cached_buckets.clone());
-        }
-    }
-
-    debug!(period_hours, "Fetching query timeline");
-
-    let sql = build_timeline_sql(bucket_expr);
-    let cutoff = hours_ago_cutoff(period_hours as f32);
-
-    let rows = sqlx::query(&sql)
-        .bind(cutoff)
-        .fetch_all(pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to fetch timeline");
-            DomainError::DatabaseError(e.to_string())
-        })?;
+    let rows = sqlx::query(
+        "SELECT bucket - (bucket % ?) AS time_bucket,
+                SUM(total) AS total,
+                SUM(blocked) AS blocked,
+                SUM(malware) AS malware
+         FROM query_log_minute
+         WHERE bucket >= ?
+           AND query_source = 'client'
+         GROUP BY time_bucket
+         ORDER BY time_bucket ASC",
+    )
+    .bind(width)
+    .bind(since)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        error!(error = %e, "Failed to fetch timeline");
+        DomainError::DatabaseError(e.to_string())
+    })?;
 
     let timeline: Vec<TimelineBucket> = rows
         .into_iter()
-        .map(|row| TimelineBucket {
-            timestamp: row.get("time_bucket"),
-            total: row.get::<i64, _>("total") as u64,
-            blocked: row.get::<i64, _>("blocked") as u64,
-            unblocked: row.get::<i64, _>("unblocked") as u64,
-            malware_detected: row.get::<i64, _>("malware_detected") as u64,
+        .map(|row| {
+            let total = row.get::<i64, _>("total") as u64;
+            let blocked = row.get::<i64, _>("blocked") as u64;
+            TimelineBucket {
+                timestamp: format_bucket(row.get("time_bucket")),
+                total,
+                blocked,
+                unblocked: total.saturating_sub(blocked),
+                malware_detected: row.get::<i64, _>("malware") as u64,
+            }
         })
         .collect();
 
-    debug!(buckets = timeline.len(), "Timeline fetched successfully");
-    timeline_cache
-        .cache
-        .insert(cache_key, (timeline.clone(), Instant::now()));
+    debug!(buckets = timeline.len(), "Timeline fetched");
     Ok(timeline)
 }

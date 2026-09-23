@@ -55,6 +55,13 @@ async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .unwrap();
 
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/20260923000001_create_query_log_rollups.sql"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+
     pool
 }
 
@@ -65,6 +72,16 @@ async fn insert(pool: &sqlx::SqlitePool, dnssec_status: Option<&str>, query_sour
     )
     .bind(dnssec_status)
     .bind(query_source)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Aggregates come from the rollups; rebuild them with the production backfill.
+    sqlx::raw_sql(concat!(
+        "DELETE FROM query_log_minute; DELETE FROM query_log_minute_record_type;",
+        "DELETE FROM query_log_minute_block_source; DELETE FROM query_log_minute_upstream;",
+        include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+    ))
     .execute(pool)
     .await
     .unwrap();

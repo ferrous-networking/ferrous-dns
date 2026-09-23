@@ -213,12 +213,14 @@ DNS handler (hot path)
         ▼
   Background flush task
         │
-        │  single INSERT transaction per batch
+        │  one transaction per batch: raw INSERT + per-minute rollup upserts
         ▼
   SQLite (WAL mode)
 ```
 
 Batching is critical: a single transaction with 2,000 rows is ~100x faster than 2,000 individual transactions. At very high query rates, `query_log_sample_rate` lets you log 1 in N queries to cap write volume without losing visibility.
+
+Dashboard aggregates read per-minute rollups maintained in that same transaction, so the raw table needs only one secondary index. Measured at the SQLite level on a synthetic 1M-row load (500-row batches, WAL, SQLite 3.53), replacing the previous five indexes with one cut insert time per batch from 2.29 ms to 0.85 ms and the database from 341 MiB to 135 MiB; the rollup upserts add about 20 µs per flush. Scenario C below predates this change.
 
 The drop on a full channel is not hypothetical at benchmark rates: scenario C below costs 69% of throughput and still discards entries. If you need a complete log under sustained load, raise `query_log_channel_capacity` or lower the sample rate rather than assuming every query is recorded.
 

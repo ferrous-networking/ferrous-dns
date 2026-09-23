@@ -1,5 +1,5 @@
+use super::rollup::minute_bucket;
 use chrono::Utc;
-use ferrous_dns_application::ports::TimeGranularity;
 use ferrous_dns_domain::{BlockSource, ClientProtocol, QueryLog, QuerySource, RecordType};
 use sqlx::sqlite::SqliteRow;
 use sqlx::Row;
@@ -7,22 +7,10 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
-pub fn granularity_to_sql(g: TimeGranularity) -> &'static str {
-    match g {
-        TimeGranularity::Minute => "strftime('%Y-%m-%d %H:%M:00', created_at)",
-        TimeGranularity::TenMinutes => {
-            "strftime('%Y-%m-%d %H:', created_at) || \
-            printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 10) * 10) || \
-            ':00'"
-        }
-        TimeGranularity::QuarterHour => {
-            "strftime('%Y-%m-%d %H:', created_at) || \
-            printf('%02d', (CAST(strftime('%M', created_at) AS INTEGER) / 15) * 15) || \
-            ':00'"
-        }
-        TimeGranularity::Hour => "strftime('%Y-%m-%d %H:00:00', created_at)",
-        TimeGranularity::Day => "strftime('%Y-%m-%d 00:00:00', created_at)",
-    }
+/// First rollup bucket of a window ending now. Rollup-backed reads are
+/// minute-aligned: they include the whole minute the window starts in.
+pub fn window_start_bucket(hours: f32) -> i64 {
+    minute_bucket(Utc::now().timestamp() - (hours * 3_600.0) as i64)
 }
 
 pub fn hours_ago_cutoff(hours: f32) -> String {
@@ -34,12 +22,6 @@ pub fn hours_ago_cutoff(hours: f32) -> String {
 
 pub fn seconds_ago_cutoff(seconds: i64) -> String {
     (Utc::now() - chrono::Duration::seconds(seconds))
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string()
-}
-
-pub fn days_ago_cutoff(days: u32) -> String {
-    (Utc::now() - chrono::Duration::days(days as i64))
         .format("%Y-%m-%d %H:%M:%S")
         .to_string()
 }

@@ -1,5 +1,7 @@
+use super::rollup::{minute_bucket, MinuteRollup};
+use chrono::Utc;
 use compact_str::{CompactString, ToCompactString};
-use ferrous_dns_domain::QueryLog;
+use ferrous_dns_domain::{BlockSource, QueryLog, QuerySource, RecordType};
 use sqlx::SqlitePool;
 use std::fmt::Write as _;
 use std::net::IpAddr;
@@ -8,7 +10,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-const COLS_PER_ROW: usize = 17;
+const COLS_PER_ROW: usize = 18;
 const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
 
 /// Upper bound on how many answer addresses are persisted per row. CDN domains
@@ -17,33 +19,33 @@ const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
 const MAX_LOGGED_ANSWERS: usize = 4;
 
 pub(super) struct QueryLogEntry {
-    domain: CompactString,
-    record_type: CompactString,
-    client_ip: CompactString,
-    blocked: bool,
-    response_time_ms: Option<i64>,
-    cache_hit: bool,
-    cache_refresh: bool,
-    dnssec_status: Option<&'static str>,
-    dns64_synthesized: bool,
-    answers: Option<Arc<Vec<IpAddr>>>,
-    upstream_server: Option<Arc<str>>,
-    upstream_pool: Option<Arc<str>>,
-    response_status: Option<&'static str>,
-    query_source: CompactString,
-    group_id: Option<i64>,
-    block_source: Option<&'static str>,
-    protocol: Option<&'static str>,
+    pub(super) domain: CompactString,
+    pub(super) record_type: RecordType,
+    pub(super) client_ip: CompactString,
+    pub(super) blocked: bool,
+    pub(super) response_time_us: Option<i64>,
+    pub(super) cache_hit: bool,
+    pub(super) cache_refresh: bool,
+    pub(super) dnssec_status: Option<&'static str>,
+    pub(super) dns64_synthesized: bool,
+    pub(super) answers: Option<Arc<Vec<IpAddr>>>,
+    pub(super) upstream_server: Option<Arc<str>>,
+    pub(super) upstream_pool: Option<Arc<str>>,
+    pub(super) response_status: Option<&'static str>,
+    pub(super) query_source: QuerySource,
+    pub(super) group_id: Option<i64>,
+    pub(super) block_source: Option<BlockSource>,
+    pub(super) protocol: Option<&'static str>,
 }
 
 impl QueryLogEntry {
     pub fn from_query_log(q: &QueryLog) -> Self {
         Self {
             domain: CompactString::from(q.domain.as_ref()),
-            record_type: CompactString::from(q.record_type.as_str()),
+            record_type: q.record_type,
             client_ip: q.client_ip.to_compact_string(),
             blocked: q.blocked,
-            response_time_ms: q.response_time_us.map(|t| t as i64),
+            response_time_us: q.response_time_us.map(|t| t as i64),
             cache_hit: q.cache_hit,
             cache_refresh: q.cache_refresh,
             dnssec_status: q.dnssec_status,
@@ -54,9 +56,9 @@ impl QueryLogEntry {
             upstream_server: q.upstream_server.clone(),
             upstream_pool: q.upstream_pool.clone(),
             response_status: q.response_status,
-            query_source: CompactString::from(q.query_source.as_str()),
+            query_source: q.query_source,
             group_id: q.group_id,
-            block_source: q.block_source.map(|s| s.to_str()),
+            block_source: q.block_source,
             protocol: q.protocol.map(|p| p.as_str()),
         }
     }
@@ -66,9 +68,9 @@ fn build_multi_insert_sql(n: usize) -> String {
     debug_assert!(n > 0 && n <= ROWS_PER_CHUNK);
     const HEADER: &str = "INSERT INTO query_log \
         (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-         cache_refresh, dnssec_status, dns64_synthesized, upstream_server, upstream_pool, response_status, query_source, group_id, block_source, answers, protocol) \
+         cache_refresh, dnssec_status, dns64_synthesized, upstream_server, upstream_pool, response_status, query_source, group_id, block_source, answers, protocol, created_at) \
         VALUES ";
-    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     let mut sql = String::with_capacity(HEADER.len() + n * (PLACEHOLDER.len() + 1));
     sql.push_str(HEADER);
     for i in 0..n {
@@ -138,6 +140,11 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
     }
 
     let start = std::time::Instant::now();
+    // One clock read stamps the raw rows and picks the rollup bucket, so the two
+    // can never disagree about which minute a row belongs to.
+    let now = Utc::now();
+    let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let bucket = minute_bucket(now.timestamp());
 
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
@@ -148,6 +155,7 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
         }
     };
 
+    let mut rollup = MinuteRollup::default();
     let mut inserted = 0usize;
     let mut errors = 0usize;
 
@@ -170,7 +178,7 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
                 .bind(entry.record_type.as_str())
                 .bind(entry.client_ip.as_str())
                 .bind(if entry.blocked { 1i64 } else { 0i64 })
-                .bind(entry.response_time_ms)
+                .bind(entry.response_time_us)
                 .bind(if entry.cache_hit { 1i64 } else { 0i64 })
                 .bind(if entry.cache_refresh { 1i64 } else { 0i64 })
                 .bind(entry.dnssec_status)
@@ -180,17 +188,31 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
                 .bind(entry.response_status)
                 .bind(entry.query_source.as_str())
                 .bind(entry.group_id)
-                .bind(entry.block_source)
+                .bind(entry.block_source.map(|s| s.to_str()))
                 .bind(answers.as_deref())
-                .bind(entry.protocol);
+                .bind(entry.protocol)
+                .bind(created_at.as_str());
         }
         match q.execute(&mut *tx).await {
-            Ok(r) => inserted += r.rows_affected() as usize,
+            Ok(r) => {
+                inserted += r.rows_affected() as usize;
+                // Only rows that landed are counted, so the rollup stays an
+                // exact aggregate of the raw table.
+                chunk.iter().for_each(|entry| rollup.add(entry));
+            }
             Err(e) => {
                 errors += chunk.len();
                 warn!(error = %e, chunk_size = chunk.len(), "Failed to insert query log chunk");
             }
         }
+    }
+
+    if let Err(e) = rollup.persist(&mut tx, bucket).await {
+        // Dropping `tx` rolls the raw rows back too: better to lose a batch than
+        // to leave dashboard counts disagreeing with the log.
+        error!(error = %e, count, "Failed to update query log rollups; batch discarded");
+        batch.clear();
+        return;
     }
 
     match tx.commit().await {

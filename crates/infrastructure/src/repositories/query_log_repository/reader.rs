@@ -1,10 +1,15 @@
-use super::helpers::{days_ago_cutoff, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff};
+use super::helpers::{hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff, window_start_bucket};
+use super::rollup;
+use chrono::Utc;
 use ferrous_dns_application::ports::PagedQueryResult;
 use ferrous_dns_domain::query_log::{ClientProtocol, DnssecStats, QueryCategory, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, instrument};
+
+/// SQL mirror of `BlockSource::is_malware`; the rollup backfill carries the same list.
+const MALWARE_FILTER: &str = " AND q.block_source IN ('dns_tunneling', 'dns_rebinding', 'nxdomain_hijack', 'response_ip_filter', 'dga_detection')";
 
 #[instrument(skip(pool))]
 pub(super) async fn get_recent(
@@ -82,7 +87,7 @@ pub(super) async fn get_recent_paged(
         Some(QueryCategory::Cache) => " AND q.cache_hit = 1",
         Some(QueryCategory::Upstream) => " AND q.cache_hit = 0 AND q.blocked = 0 AND (q.response_status IS NULL OR q.response_status NOT IN ('LOCAL_DNS', 'RATE_LIMITED', 'RATE_LIMITED_TC'))",
         Some(QueryCategory::RateLimited) => " AND q.response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC')",
-        Some(QueryCategory::Malware) => " AND q.block_source IN ('dns_tunneling', 'dns_rebinding', 'nxdomain_hijack', 'response_ip_filter', 'dga_detection')",
+        Some(QueryCategory::Malware) => MALWARE_FILTER,
         None => "",
     };
 
@@ -262,94 +267,86 @@ pub(super) async fn get_recent_paged(
     })
 }
 
+fn db_error(context: &'static str) -> impl FnOnce(sqlx::Error) -> DomainError {
+    move |e| {
+        error!(error = %e, "{context}");
+        DomainError::DatabaseError(e.to_string())
+    }
+}
+
+/// Mean of a microsecond sum over `n` samples, in milliseconds.
+fn mean_ms(sum_us: i64, n: i64) -> f64 {
+    if n > 0 {
+        sum_us as f64 / n as f64 / 1000.0
+    } else {
+        0.0
+    }
+}
+
 #[instrument(skip(pool))]
 pub(super) async fn get_stats(
     pool: &SqlitePool,
     period_hours: f32,
     started_at: Instant,
 ) -> Result<QueryStats, DomainError> {
-    debug!(period_hours, "Fetching query statistics");
+    let since = window_start_bucket(period_hours);
 
-    let cutoff = hours_ago_cutoff(period_hours);
+    let (totals, type_rows, block_source_rows, upstream_rows) = tokio::join!(
+        sqlx::query(
+            "SELECT COALESCE(SUM(total), 0) AS total,
+                    COALESCE(SUM(blocked), 0) AS blocked,
+                    COALESCE(SUM(rate_limited), 0) AS rate_limited,
+                    COALESCE(SUM(malware), 0) AS malware,
+                    COALESCE(SUM(dnssec_bogus), 0) AS dnssec_bogus,
+                    COALESCE(SUM(dns64_synthesized), 0) AS dns64_synthesized,
+                    COALESCE(SUM(cache_hits), 0) AS cache_hits,
+                    COALESCE(SUM(local_dns), 0) AS local_dns,
+                    COALESCE(SUM(timed), 0) AS timed,
+                    COALESCE(SUM(response_us_sum), 0) AS response_us_sum,
+                    COALESCE(SUM(cache_timed), 0) AS cache_timed,
+                    COALESCE(SUM(cache_response_us_sum), 0) AS cache_response_us_sum,
+                    COALESCE(SUM(upstream_timed), 0) AS upstream_timed,
+                    COALESCE(SUM(upstream_response_us_sum), 0) AS upstream_response_us_sum
+             FROM query_log_minute
+             WHERE bucket >= ? AND query_source = 'client'",
+        )
+        .bind(since)
+        .fetch_one(pool),
+        sqlx::query(
+            "SELECT record_type, SUM(count) AS count
+             FROM query_log_minute_record_type
+             WHERE bucket >= ?
+             GROUP BY record_type",
+        )
+        .bind(since)
+        .fetch_all(pool),
+        sqlx::query(
+            "SELECT block_source, SUM(count) AS count
+             FROM query_log_minute_block_source
+             WHERE bucket >= ?
+             GROUP BY block_source",
+        )
+        .bind(since)
+        .fetch_all(pool),
+        sqlx::query(
+            "SELECT upstream_pool, upstream_server, SUM(count) AS count
+             FROM query_log_minute_upstream
+             WHERE bucket >= ?
+             GROUP BY upstream_pool, upstream_server",
+        )
+        .bind(since)
+        .fetch_all(pool),
+    );
 
-    let (row_result, type_rows_result, block_source_rows_result, upstream_rows_result) =
-        tokio::join!(
-            sqlx::query(
-                "SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN blocked = 1 THEN 1 ELSE 0 END) as blocked,
-                    SUM(CASE WHEN response_status IN ('RATE_LIMITED', 'RATE_LIMITED_TC') THEN 1 ELSE 0 END) as rate_limited,
-                    SUM(CASE WHEN dnssec_status = 'Bogus' THEN 1 ELSE 0 END) as dnssec_bogus,
-                    SUM(CASE WHEN dns64_synthesized = 1 THEN 1 ELSE 0 END) as dns64_synthesized,
-                    SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END) as cache_hits,
-                    AVG(response_time_ms) as avg_time,
-                    AVG(CASE WHEN cache_hit = 1 THEN response_time_ms END) as avg_cache_time,
-                    AVG(CASE WHEN cache_hit = 0 AND blocked = 0 AND response_status != 'LOCAL_DNS' THEN response_time_ms END) as avg_upstream_time,
-                    SUM(CASE WHEN response_status = 'LOCAL_DNS' THEN 1 ELSE 0 END) as local_dns_count
-                 FROM query_log
-                 WHERE response_time_ms IS NOT NULL
-                   AND created_at >= ?
-                   AND query_source = 'client'",
-            )
-            .bind(&cutoff)
-            .fetch_one(pool),
-            sqlx::query(
-                "SELECT record_type, COUNT(*) as count
-                 FROM query_log
-                 WHERE created_at >= ?
-                   AND query_source = 'client'
-                 GROUP BY record_type",
-            )
-            .bind(&cutoff)
-            .fetch_all(pool),
-            sqlx::query(
-                "SELECT block_source, COUNT(*) as count
-                 FROM query_log
-                 WHERE blocked = 1
-                   AND block_source IS NOT NULL
-                   AND response_time_ms IS NOT NULL
-                   AND created_at >= ?
-                   AND query_source = 'client'
-                 GROUP BY block_source",
-            )
-            .bind(&cutoff)
-            .fetch_all(pool),
-            sqlx::query(
-                "SELECT
-                    COALESCE(upstream_pool, 'unknown') as pool,
-                    COALESCE(upstream_server, 'unknown') as server,
-                    COUNT(*) as count
-                 FROM query_log
-                 WHERE cache_hit = 0 AND blocked = 0
-                   AND (response_status IS NULL OR response_status != 'LOCAL_DNS')
-                   AND response_time_ms IS NOT NULL
-                   AND created_at >= ?
-                   AND query_source = 'client'
-                 GROUP BY upstream_pool, upstream_server",
-            )
-            .bind(&cutoff)
-            .fetch_all(pool),
-        );
+    let row = totals.map_err(db_error("Failed to fetch statistics"))?;
+    let type_rows = type_rows.map_err(db_error("Failed to fetch type distribution"))?;
+    let block_source_rows =
+        block_source_rows.map_err(db_error("Failed to fetch block source statistics"))?;
+    let upstream_rows = upstream_rows.map_err(db_error("Failed to fetch upstream statistics"))?;
 
-    let row = row_result.map_err(|e| {
-        error!(error = %e, "Failed to fetch statistics");
-        DomainError::DatabaseError(e.to_string())
-    })?;
-    let type_rows = type_rows_result.map_err(|e| {
-        error!(error = %e, "Failed to fetch type distribution");
-        DomainError::DatabaseError(e.to_string())
-    })?;
-    let block_source_rows = block_source_rows_result.map_err(|e| {
-        error!(error = %e, "Failed to fetch block source statistics");
-        DomainError::DatabaseError(e.to_string())
-    })?;
-    let upstream_rows = upstream_rows_result.map_err(|e| {
-        error!(error = %e, "Failed to fetch upstream statistics");
-        DomainError::DatabaseError(e.to_string())
-    })?;
-
-    let total = row.get::<i64, _>("total") as u64;
-    let cache_hits = row.get::<i64, _>("cache_hits") as u64;
+    let col = |name: &str| row.get::<i64, _>(name);
+    let total = col("total") as u64;
+    let cache_hits = col("cache_hits") as u64;
     let cache_hit_rate = if total > 0 {
         (cache_hits as f64 / total as f64) * 100.0
     } else {
@@ -359,56 +356,53 @@ pub(super) async fn get_stats(
     let mut queries_by_type = std::collections::HashMap::new();
     for type_row in type_rows {
         let type_str: String = type_row.get("record_type");
-        let count: i64 = type_row.get("count");
         if let Ok(record_type) = type_str.parse::<ferrous_dns_domain::RecordType>() {
-            queries_by_type.insert(record_type, count as u64);
+            queries_by_type.insert(record_type, type_row.get::<i64, _>("count") as u64);
         }
     }
 
     let mut source_stats = std::collections::HashMap::new();
     source_stats.insert("cache".to_string(), cache_hits);
-    source_stats.insert(
-        "local_dns".to_string(),
-        row.get::<i64, _>("local_dns_count") as u64,
-    );
+    source_stats.insert("local_dns".to_string(), col("local_dns") as u64);
     for upstream_row in upstream_rows {
-        let pool: String = upstream_row.get("pool");
-        let server: String = upstream_row.get("server");
         let count = upstream_row.get::<i64, _>("count") as u64;
-        if count > 0 {
-            source_stats.insert(format!("{pool}:{server}"), count);
+        if count == 0 {
+            continue;
         }
+        // '' is the rollup's encoding of an unrecorded pool/server.
+        let name = |column: &str| {
+            let value: String = upstream_row.get(column);
+            if value.is_empty() {
+                "unknown".to_string()
+            } else {
+                value
+            }
+        };
+        source_stats.insert(
+            format!("{}:{}", name("upstream_pool"), name("upstream_server")),
+            count,
+        );
     }
     for block_row in block_source_rows {
-        let key: String = block_row.get("block_source");
         let count = block_row.get::<i64, _>("count") as u64;
         if count > 0 {
-            source_stats.insert(key, count);
+            source_stats.insert(block_row.get("block_source"), count);
         }
     }
-
-    let malware_detected = source_stats.get("dns_tunneling").copied().unwrap_or(0)
-        + source_stats.get("dns_rebinding").copied().unwrap_or(0)
-        + source_stats.get("nxdomain_hijack").copied().unwrap_or(0)
-        + source_stats.get("response_ip_filter").copied().unwrap_or(0)
-        + source_stats.get("dga_detection").copied().unwrap_or(0);
 
     let stats = QueryStats {
         queries_total: total,
-        queries_blocked: row.get::<i64, _>("blocked") as u64,
-        queries_rate_limited: row.get::<i64, _>("rate_limited") as u64,
-        queries_malware_detected: malware_detected,
-        queries_dnssec_bogus: row.get::<i64, _>("dnssec_bogus") as u64,
-        queries_dns64_synthesized: row.get::<i64, _>("dns64_synthesized") as u64,
+        queries_blocked: col("blocked") as u64,
+        queries_rate_limited: col("rate_limited") as u64,
+        queries_malware_detected: col("malware") as u64,
+        queries_dnssec_bogus: col("dnssec_bogus") as u64,
+        queries_dns64_synthesized: col("dns64_synthesized") as u64,
         unique_clients: 0,
         uptime_seconds: started_at.elapsed().as_secs(),
         cache_hit_rate,
-        avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0) / 1000.0,
-        avg_cache_time_ms: row.get::<Option<f64>, _>("avg_cache_time").unwrap_or(0.0) / 1000.0,
-        avg_upstream_time_ms: row
-            .get::<Option<f64>, _>("avg_upstream_time")
-            .unwrap_or(0.0)
-            / 1000.0,
+        avg_query_time_ms: mean_ms(col("response_us_sum"), col("timed")),
+        avg_cache_time_ms: mean_ms(col("cache_response_us_sum"), col("cache_timed")),
+        avg_upstream_time_ms: mean_ms(col("upstream_response_us_sum"), col("upstream_timed")),
         source_stats,
         queries_by_type: std::collections::HashMap::new(),
         most_queried_type: None,
@@ -430,50 +424,34 @@ pub(super) async fn get_dnssec_stats(
     pool: &SqlitePool,
     period_hours: f32,
 ) -> Result<DnssecStats, DomainError> {
-    debug!(period_hours, "Fetching DNSSEC statistics");
-
-    let cutoff = hours_ago_cutoff(period_hours);
-
     let row = sqlx::query(
-        "SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN dnssec_status IS NOT NULL THEN 1 ELSE 0 END) as validated,
-            SUM(CASE WHEN dnssec_status = 'Secure' THEN 1 ELSE 0 END) as secure,
-            SUM(CASE WHEN dnssec_status = 'Insecure' THEN 1 ELSE 0 END) as insecure,
-            SUM(CASE WHEN dnssec_status = 'Bogus' THEN 1 ELSE 0 END) as bogus,
-            SUM(CASE WHEN dnssec_status = 'Indeterminate' THEN 1 ELSE 0 END) as indeterminate
-         FROM query_log
-         WHERE created_at >= ?
-           AND query_source = 'client'",
+        "SELECT COALESCE(SUM(total), 0) AS total,
+                COALESCE(SUM(dnssec_validated), 0) AS validated,
+                COALESCE(SUM(dnssec_secure), 0) AS secure,
+                COALESCE(SUM(dnssec_insecure), 0) AS insecure,
+                COALESCE(SUM(dnssec_bogus), 0) AS bogus,
+                COALESCE(SUM(dnssec_indeterminate), 0) AS indeterminate
+         FROM query_log_minute
+         WHERE bucket >= ? AND query_source = 'client'",
     )
-    .bind(&cutoff)
+    .bind(window_start_bucket(period_hours))
     .fetch_one(pool)
     .await
-    .map_err(|e| {
-        error!(error = %e, "Failed to fetch DNSSEC statistics");
-        DomainError::DatabaseError(e.to_string())
-    })?;
+    .map_err(db_error("Failed to fetch DNSSEC statistics"))?;
 
-    // SUM over zero rows is NULL; COALESCE to 0 via Option.
-    let count = |col: &str| row.get::<Option<i64>, _>(col).unwrap_or(0) as u64;
-    let stats = DnssecStats {
-        total: row.get::<i64, _>("total") as u64,
+    let count = |col: &str| row.get::<i64, _>(col) as u64;
+    Ok(DnssecStats {
+        total: count("total"),
         validated: count("validated"),
         secure: count("secure"),
         insecure: count("insecure"),
         bogus: count("bogus"),
         indeterminate: count("indeterminate"),
-    };
-
-    debug!(
-        total = stats.total,
-        validated = stats.validated,
-        bogus = stats.bogus,
-        "DNSSEC statistics fetched successfully"
-    );
-    Ok(stats)
+    })
 }
 
+/// Exact-to-the-second, so it reads the raw rows; the window index makes it an
+/// index-only range count.
 #[instrument(skip(pool))]
 pub(super) async fn count_queries_since(
     pool: &SqlitePool,
@@ -481,15 +459,12 @@ pub(super) async fn count_queries_since(
 ) -> Result<u64, DomainError> {
     let cutoff = seconds_ago_cutoff(seconds_ago);
     let row = sqlx::query(
-        "SELECT COUNT(*) as count FROM query_log WHERE query_source = 'client' AND created_at >= ?",
+        "SELECT COUNT(*) as count FROM query_log WHERE created_at >= ? AND query_source = 'client'",
     )
     .bind(cutoff)
     .fetch_one(pool)
     .await
-    .map_err(|e| {
-        error!(error = %e, "Failed to count queries");
-        DomainError::DatabaseError(e.to_string())
-    })?;
+    .map_err(db_error("Failed to count queries"))?;
 
     Ok(row.get::<i64, _>("count") as u64)
 }
@@ -499,25 +474,19 @@ pub(super) async fn get_cache_stats(
     pool: &SqlitePool,
     period_hours: f32,
 ) -> Result<ferrous_dns_application::ports::CacheStats, DomainError> {
-    debug!(period_hours, "Fetching cache statistics");
-
-    let cutoff = hours_ago_cutoff(period_hours);
+    // Refreshes are internal lookups, so only they are counted across sources.
     let row = sqlx::query(
-        "SELECT
-            SUM(CASE WHEN query_source = 'client' THEN 1 ELSE 0 END) as total_queries,
-            SUM(CASE WHEN cache_hit = 1 AND cache_refresh = 0 AND query_source = 'client' THEN 1 ELSE 0 END) as hits,
-            SUM(CASE WHEN cache_refresh = 1 THEN 1 ELSE 0 END) as refreshes,
-            SUM(CASE WHEN cache_hit = 0 AND cache_refresh = 0 AND blocked = 0 AND query_source = 'client' THEN 1 ELSE 0 END) as misses
-         FROM query_log
-         WHERE created_at >= ?",
+        "SELECT COALESCE(SUM(CASE WHEN query_source = 'client' THEN total END), 0) AS total_queries,
+                COALESCE(SUM(CASE WHEN query_source = 'client' THEN cache_hits END), 0) AS hits,
+                COALESCE(SUM(cache_refreshes), 0) AS refreshes,
+                COALESCE(SUM(CASE WHEN query_source = 'client' THEN cache_misses END), 0) AS misses
+         FROM query_log_minute
+         WHERE bucket >= ?",
     )
-    .bind(cutoff)
+    .bind(window_start_bucket(period_hours))
     .fetch_one(pool)
     .await
-    .map_err(|e| {
-        error!(error = %e, "Failed to fetch cache statistics");
-        DomainError::DatabaseError(e.to_string())
-    })?;
+    .map_err(db_error("Failed to fetch cache statistics"))?;
 
     let total_hits = row.get::<i64, _>("hits") as u64;
     let total_misses = row.get::<i64, _>("misses") as u64;
@@ -690,7 +659,8 @@ pub(super) async fn get_top_clients(
 }
 
 pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u64, DomainError> {
-    let cutoff = days_ago_cutoff(days);
+    let cutoff_at = Utc::now() - chrono::Duration::days(days as i64);
+    let cutoff = cutoff_at.format("%Y-%m-%d %H:%M:%S").to_string();
     let mut total_deleted: u64 = 0;
 
     loop {
@@ -713,9 +683,44 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    // A bucket straddling the cutoff goes whole, so `days = 0` clears everything.
+    rollup::prune_before(pool, cutoff_at.timestamp())
+        .await
+        .map_err(db_error("Failed to prune query log rollups"))?;
+
     info!(
         deleted = total_deleted,
         days, "Old query logs deleted (batched)"
     );
     Ok(total_deleted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MALWARE_FILTER;
+    use ferrous_dns_domain::BlockSource;
+    use std::collections::BTreeSet;
+
+    fn quoted_names(sql: &str) -> BTreeSet<&str> {
+        sql.split('\'').skip(1).step_by(2).collect()
+    }
+
+    #[test]
+    fn sql_malware_lists_match_block_source_classification() {
+        let expected: BTreeSet<&str> = (0..=u8::MAX)
+            .filter_map(BlockSource::from_u8)
+            .filter(|s| s.is_malware())
+            .map(|s| s.to_str())
+            .collect();
+        assert_eq!(quoted_names(MALWARE_FILTER), expected);
+
+        let backfill =
+            include_str!("../../../../../migrations/20260923000002_backfill_query_log_rollups.sql");
+        let list_start = backfill
+            .find("block_source IN (")
+            .expect("backfill classifies malware");
+        let list = &backfill[list_start..];
+        let list = &list[..list.find(')').expect("closed list")];
+        assert_eq!(quoted_names(list), expected);
+    }
 }
