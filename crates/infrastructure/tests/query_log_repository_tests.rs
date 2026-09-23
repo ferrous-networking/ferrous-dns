@@ -133,6 +133,38 @@ async fn test_get_stats_empty() {
 }
 
 #[tokio::test]
+async fn test_get_stats_uptime_counts_from_repository_creation() {
+    let pool = create_test_db().await;
+    let new_repo = || {
+        SqliteQueryLogRepository::new(
+            pool.clone(),
+            pool.clone(),
+            pool.clone(),
+            &DatabaseConfig::default(),
+        )
+    };
+
+    // The repository is built at startup, so the clock must already be
+    // running when the first stats request arrives.
+    let started = new_repo();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let stats = started.get_stats(24.0).await.unwrap();
+    assert!(
+        stats.uptime_seconds >= 1,
+        "uptime must count from startup, not from the first stats request; got {}",
+        stats.uptime_seconds
+    );
+
+    // A fresh instance stands for a restarted process: it starts from zero.
+    let restarted = new_repo();
+    let stats = restarted.get_stats(24.0).await.unwrap();
+    assert_eq!(
+        stats.uptime_seconds, 0,
+        "a restarted server must not inherit the previous uptime"
+    );
+}
+
+#[tokio::test]
 async fn test_get_stats_cache_hits_count() {
     let pool = create_test_db().await;
 
