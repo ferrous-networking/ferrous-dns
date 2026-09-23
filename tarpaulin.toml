@@ -1,0 +1,7 @@
+[coverage]
+workspace = true
+all-features = true
+timeout = "300s"
+# The DoH address-reload regression runs its scenario in a child test process.
+follow-exec = true
+exclude-files = ["**/tests/**", "**/benches/**", "**/examples/**"]

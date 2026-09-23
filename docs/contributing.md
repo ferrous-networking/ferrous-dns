@@ -55,7 +55,7 @@ RUST_LOG=debug cargo test --workspace
 
 # Code coverage (no Make target)
 cargo install cargo-tarpaulin
-cargo tarpaulin --workspace --out Html
+cargo tarpaulin --out html
 
 # Security audit — run before adding or bumping a dependency
 make audit
@@ -125,6 +125,10 @@ be swapped in without changing the calling code.
 | api | 75% |
 | infrastructure | 70% |
 | global | 80% |
+
+Local runs and CI share `tarpaulin.toml`: all workspace features, child-process
+collection, and production-only coverage. Test/helper, benchmark, and example
+files are excluded from the metric, not from execution.
 
 Anything that parses bytes off the network is additionally fuzzed, and the fuzz
 job gates merges — see the fuzzing section of

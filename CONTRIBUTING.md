@@ -55,7 +55,8 @@ Other targets worth knowing (`make help` lists them all):
 | `make doc` | `cargo doc` for the workspace |
 | `make fuzz-short` | Every fuzz target, 60 seconds each |
 
-Coverage has no Make target; use `cargo tarpaulin --workspace --out Html`.
+Coverage has no Make target; use `cargo tarpaulin --out html`. The shared
+`tarpaulin.toml` keeps local and CI collection settings aligned.
 
 If you use an AI coding agent in this repo, `.claudin/skills/` carries `/verify`
 and `/pre-pr`, which mirror the same checks (`/pre-pr` adds `cargo audit` and the
