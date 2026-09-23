@@ -743,6 +743,7 @@ async fn create_test_app() -> (Router, sqlx::SqlitePool) {
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
         webauthn_configured: false,
         tls_enabled: false,
+        restart_pending: Default::default(),
     };
 
     let app = create_api_routes(state);
@@ -1103,6 +1104,7 @@ async fn test_get_all_configs_after_toggle() {
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
         webauthn_configured: false,
         tls_enabled: false,
+        restart_pending: Default::default(),
     };
 
     let app = create_api_routes(state);

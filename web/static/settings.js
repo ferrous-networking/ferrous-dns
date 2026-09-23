@@ -101,7 +101,6 @@
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
-                this.restartRequired = isRestartRequired();
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
                 await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
@@ -132,6 +131,7 @@
                     this.loadHealthStatus();
                     this.loadStats();
                     this.loadSystemStatus();
+                    if (this.restartRequired) this.refreshRestartRequired();
                 }, 10000);
             },
             stopPolling() {
@@ -144,23 +144,19 @@
                 this._ctrl.stats = new AbortController();
                 try {
                     const r = await apiFetch(`${API_BASE}/stats`, {signal: this._ctrl.stats.signal});
-                    if (r.ok) {
-                        this.stats = await r.json();
-                        this.checkServerRestarted();
-                    }
+                    if (r.ok) this.stats = await r.json();
                 } catch (e) {
                     if (e.name !== 'AbortError') console.error(e)
                 }
             },
-            checkServerRestarted() {
-                const savedAt = parseInt(localStorage.getItem('ferrous_config_saved_at'), 10);
-                if (!savedAt || isNaN(savedAt)) return;
-                const uptime = this.stats.uptime;
-                if (!uptime || uptime <= 0) return;
-                const elapsedSinceSave = (Date.now() - savedAt) / 1000;
-                if (uptime < elapsedSinceSave) {
-                    this.restartRequired = false;
-                    clearRestartRequired();
+            // Lets the banner clear on its own once the server has restarted,
+            // without reloading the form (which would drop unsaved edits).
+            async refreshRestartRequired() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/config`);
+                    if (res.ok) this.restartRequired = !!(await res.json()).restart_required;
+                } catch (e) {
+                    // server unreachable (e.g. mid-restart): keep the banner until it answers
                 }
             },
             async loadConfig() {
@@ -169,6 +165,7 @@
                     const res = await apiFetch(`${API_BASE}/config`);
                     if (res.ok) {
                         const data = await res.json();
+                        this.restartRequired = !!data.restart_required;
                         this.config = {
                             ...this.config, ...data,
                             server: {
@@ -332,10 +329,7 @@
                         this.config.dns.pools = cleanedPools;
                         this._savedPoolsJson = this.normalizedPools(cleanedPools);
                         // Only upstream pools are hot-applied; honor the backend flag for everything else.
-                        if (data.restart_required) {
-                            this.restartRequired = true;
-                            markRestartRequired();
-                        }
+                        if (data.restart_required) this.restartRequired = true;
                         this.showAlert('success', data.message || 'Configuration saved.');
                         scheduleLucide(50);
                     } else {
@@ -354,9 +348,12 @@
                     });
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
-                        this.restartRequired = true;
-                        markRestartRequired();
-                        this.showAlert('success', 'DNS settings saved. Restart the server to apply changes.');
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            this.showAlert('success', 'DNS settings saved. Restart the server to apply changes.');
+                        } else {
+                            this.showAlert('success', 'DNS settings saved.');
+                        }
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
@@ -383,9 +380,12 @@
                     });
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
-                        this.restartRequired = true;
-                        markRestartRequired();
-                        this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
+                        if (data.restart_required) {
+                            this.restartRequired = true;
+                            this.showAlert('success', 'Pi-hole compatibility setting saved. Restart required.');
+                        } else {
+                            this.showAlert('success', 'Pi-hole compatibility setting saved.');
+                        }
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'))
@@ -783,10 +783,7 @@
                     const data = await r.json();
                     if (r.ok && data.success !== false) {
                         this.showAlert('success', 'HTTPS settings saved');
-                        if (data.restart_required) {
-                            this.restartRequired = true;
-                            markRestartRequired();
-                        }
+                        if (data.restart_required) this.restartRequired = true;
                     } else {
                         this.showAlert('error', 'Failed: ' + (data.error || data.message || 'Unknown error'));
                     }
@@ -808,10 +805,7 @@
                     if (data.success) {
                         this.showAlert('success', data.message);
                         await this.loadTlsStatus();
-                        if (data.restart_required) {
-                            this.restartRequired = true;
-                            markRestartRequired();
-                        }
+                        if (data.restart_required) this.restartRequired = true;
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', data.message || 'Upload failed');
@@ -826,10 +820,7 @@
                     if (data.success) {
                         this.showAlert('success', data.message);
                         await this.loadTlsStatus();
-                        if (data.restart_required) {
-                            this.restartRequired = true;
-                            markRestartRequired();
-                        }
+                        if (data.restart_required) this.restartRequired = true;
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', data.message || 'Generation failed');

@@ -129,19 +129,6 @@ function parseBrowser(ua) {
 
 // --- Global restart-required banner ---
 
-function isRestartRequired() {
-    return !!localStorage.getItem('ferrous_config_saved_at');
-}
-
-function markRestartRequired() {
-    localStorage.setItem('ferrous_config_saved_at', String(Date.now()));
-}
-
-function clearRestartRequired() {
-    localStorage.removeItem('ferrous_config_saved_at');
-    hideRestartBanner();
-}
-
 function showRestartBanner() {
     if (document.getElementById('global-restart-banner')) return;
     const main = document.querySelector('main');
@@ -153,11 +140,6 @@ function showRestartBanner() {
     main.insertBefore(banner, main.children[1] || null);
 }
 
-function hideRestartBanner() {
-    const banner = document.getElementById('global-restart-banner');
-    if (banner) banner.remove();
-}
-
 // --- Server version label (sidebar footer) ---
 
 function showServerVersion() {
@@ -165,35 +147,40 @@ function showServerVersion() {
     if (el && window.FERROUS_VERSION) el.textContent = 'v' + window.FERROUS_VERSION;
 }
 
-// --- Hide DNSSEC UI (sidebar item + dashboard "DNSSEC Bogus" card) when DNSSEC is disabled (mode = Off) ---
+// --- UI that follows the server config: the DNSSEC UI and the restart banner ---
 
-async function hideDnssecUiWhenDisabled() {
+async function applyServerConfigUi() {
     try {
         const res = await apiFetch(`${API_BASE}/config`);
         if (!res.ok) return;
-        const dns = (await res.json()).dns || {};
-        // `dnssec_enabled` is the server-derived "mode validates" flag (false when Off);
-        // fall back to the mode string for older payloads. Fail-open: only hide on a definite Off.
-        let disabled = false;
-        if (typeof dns.dnssec_enabled === 'boolean') {
-            disabled = !dns.dnssec_enabled;
-        } else if (typeof dns.dnssec_mode === 'string') {
-            disabled = dns.dnssec_mode.toLowerCase() === 'off';
-        }
-        if (!disabled) return;
-        // Sidebar item (every page) + the "DNSSEC Bogus" stat card (dashboard only).
-        document.querySelectorAll('a[href="/dnssec.html"], #dnssec-bogus-card')
-            .forEach(el => { el.style.display = 'none'; });
+        const config = await res.json();
+        hideDnssecUiWhenDisabled(config.dns || {});
+        // The server clears `restart_required` by restarting; Settings renders its own banner.
+        if (config.restart_required && document.body.dataset.page !== 'settings') showRestartBanner();
     } catch (e) {
-        // fail-open: keep the DNSSEC UI visible on any error
+        // fail-open: keep the DNSSEC UI visible and the banner hidden on any error
     }
+}
+
+// Hide DNSSEC UI (sidebar item + dashboard "DNSSEC Bogus" card) when DNSSEC is disabled (mode = Off).
+function hideDnssecUiWhenDisabled(dns) {
+    // `dnssec_enabled` is the server-derived "mode validates" flag (false when Off);
+    // fall back to the mode string for older payloads. Fail-open: only hide on a definite Off.
+    let disabled = false;
+    if (typeof dns.dnssec_enabled === 'boolean') {
+        disabled = !dns.dnssec_enabled;
+    } else if (typeof dns.dnssec_mode === 'string') {
+        disabled = dns.dnssec_mode.toLowerCase() === 'off';
+    }
+    if (!disabled) return;
+    // Sidebar item (every page) + the "DNSSEC Bogus" stat card (dashboard only).
+    document.querySelectorAll('a[href="/dnssec.html"], #dnssec-bogus-card')
+        .forEach(el => { el.style.display = 'none'; });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
     showServerVersion();
-    hideDnssecUiWhenDisabled();
-    if (document.body.dataset.page === 'settings') return;
-    if (isRestartRequired()) showRestartBanner();
+    applyServerConfigUi();
 });
 
 // --- Mobile sidebar toggle ---

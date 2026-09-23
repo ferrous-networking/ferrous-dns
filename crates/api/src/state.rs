@@ -32,6 +32,7 @@ use ferrous_dns_application::use_cases::{
     VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -193,6 +194,10 @@ pub struct AppState {
     pub tls_enabled: bool,
     /// Whether `[auth.webauthn]` is populated (passkeys usable).
     pub webauthn_configured: bool,
+    /// Set by a successful save that only takes effect after a restart. Kept
+    /// in memory on purpose: a restart starts a new process with it cleared,
+    /// which is exactly when the web UI's restart banner must go away.
+    pub restart_pending: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -207,5 +212,15 @@ impl AppState {
     /// Returns whether authentication is globally enabled.
     pub async fn auth_enabled(&self) -> bool {
         self.auth.get_auth_status.execute().await.auth_enabled
+    }
+
+    /// Records that a saved change only takes effect after a restart.
+    pub fn mark_restart_pending(&self) {
+        self.restart_pending.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether a saved change is still waiting for a restart.
+    pub fn is_restart_pending(&self) -> bool {
+        self.restart_pending.load(Ordering::Relaxed)
     }
 }

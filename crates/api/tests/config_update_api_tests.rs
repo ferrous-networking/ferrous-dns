@@ -658,6 +658,7 @@ async fn create_test_app(
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
         webauthn_configured: false,
         tls_enabled: false,
+        restart_pending: Default::default(),
     };
 
     (create_api_routes(state), pool_manager_handle, config_path)

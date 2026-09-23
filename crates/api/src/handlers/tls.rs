@@ -98,6 +98,7 @@ pub async fn upload_tls_certs(
         .save_certificates(&cert_bytes, &key_bytes, &cert_path, &key_path)
         .await?;
 
+    state.mark_restart_pending();
     info!("TLS certificate and key uploaded successfully");
 
     Ok(Json(TlsUploadResponse {
@@ -139,6 +140,7 @@ pub async fn generate_self_signed(
         .generate_self_signed(&cert_path, &key_path)
         .await?;
 
+    state.mark_restart_pending();
     info!("Self-signed TLS certificate generated successfully");
 
     Ok(Json(TlsUploadResponse {

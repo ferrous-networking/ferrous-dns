@@ -196,6 +196,8 @@ GET /api/config
 
 Returns the full current configuration including server, DNS, blocking, logging, and database settings.
 
+`restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /api/config` (anything but upstream pools), `POST /api/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
+
 ### Update Config
 
 ```http
@@ -264,6 +266,8 @@ POST /api/settings
 ```
 
 `sinkhole_ipv4` / `sinkhole_ipv6` set a custom block target for `null_ip` mode (empty string = the null address `0.0.0.0` / `::`). A non-empty value that is not a valid address of the matching family is rejected with `{ "success": false, "error": "Invalid IPv4 sinkhole address: …" }` and nothing is saved. See [Custom Sinkhole IP](configuration/blocking.md#custom-sinkhole-ip).
+
+The response carries `restart_required`: `true` when the save changed a setting (these only take effect after a restart), `false` when the form was saved unchanged.
 
 ---
 

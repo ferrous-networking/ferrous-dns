@@ -14,6 +14,8 @@ pub struct ConfigResponse {
     pub auth: AuthConfigResponse,
     pub config_path: Option<String>,
     pub writable: bool,
+    /// A saved change is waiting for a server restart to take effect.
+    pub restart_required: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]

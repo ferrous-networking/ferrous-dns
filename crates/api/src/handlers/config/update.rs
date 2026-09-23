@@ -3,8 +3,12 @@ use crate::{
     state::AppState,
 };
 use axum::{extract::State, Json};
-use ferrous_dns_domain::{DnsProtocol, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{Config, DnsProtocol, UpstreamPool, UpstreamStrategy};
 use tracing::{debug, error, info, instrument};
+
+fn config_differs(before: &Config, after: &Config) -> bool {
+    serde_json::to_value(before).ok() != serde_json::to_value(after).ok()
+}
 
 async fn get_writable_config_path(
     state: &crate::state::AppState,
@@ -303,7 +307,7 @@ pub async fn update_config(
         let mut after = new_config.clone();
         before.dns.pools.clear();
         after.dns.pools.clear();
-        serde_json::to_value(&before).ok() != serde_json::to_value(&after).ok()
+        config_differs(&before, &after)
     };
 
     let new_pools = new_config.dns.pools.clone();
@@ -333,6 +337,9 @@ pub async fn update_config(
     {
         Ok(_) => {
             *state.config.write().await = new_config;
+            if restart_required {
+                state.mark_restart_pending();
+            }
             info!("Configuration updated successfully");
 
             let message = if restart_required {
@@ -392,7 +399,8 @@ pub async fn update_settings(
         Err(e) => return e,
     };
 
-    let mut new_config = state.config.read().await.clone();
+    let original_config = state.config.read().await.clone();
+    let mut new_config = original_config.clone();
     new_config.dns.block_non_fqdn = request.never_forward_non_fqdn;
     new_config.dns.block_private_ptr = request.never_forward_reverse_lookups;
     new_config.dns.local_domain = if request.local_domain.is_empty() {
@@ -426,16 +434,24 @@ pub async fn update_settings(
             };
     }
 
+    // Like every non-pool field (see update_config), these only take effect
+    // after a restart, so any actual change leaves one pending.
+    let restart_required = config_differs(&original_config, &new_config);
+
     match state
         .config_file_persistence
         .save_config_to_file(&new_config, &config_path)
     {
         Ok(_) => {
             *state.config.write().await = new_config;
+            if restart_required {
+                state.mark_restart_pending();
+            }
             info!("DNS settings updated successfully");
             Json(serde_json::json!({
                 "success": true,
-                "message": "DNS settings saved successfully."
+                "message": "DNS settings saved successfully.",
+                "restart_required": restart_required
             }))
         }
         Err(e) => {

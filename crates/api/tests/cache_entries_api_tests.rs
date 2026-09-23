@@ -616,6 +616,7 @@ async fn create_test_app(pool: sqlx::SqlitePool) -> (Router, Arc<DnsCache>) {
         tls_cert: Arc::new(helpers::MockTlsCertificateService),
         webauthn_configured: false,
         tls_enabled: false,
+        restart_pending: Default::default(),
     };
 
     (create_api_routes(state), cache)

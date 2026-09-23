@@ -306,6 +306,7 @@ pub async fn build_app_state(
         auth,
         backup,
         tls_enabled: https_active,
+        restart_pending: Default::default(),
         config,
         config_file_persistence: config_persistence,
         config_path,
