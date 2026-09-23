@@ -25,6 +25,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 
 ## Bugs
 
+- [local_dns_server forwarder was unhardened](bugs/local-dns-forwarder-unhardened.md) — no 0x20, cookie or TXID check on local answers; fixed by #240 (2026-09-23)
 - [dashmap Iter holds the shard guard](bugs/cache-eviction-random-branch-deadlock.md) — collect keys into a let-statement before removing (issue #228, fixed 2026-09-19)
 - [Settings upstream health 404](bugs/settings-upstream-health-404.md) — `settings.js` calls `/health/upstreams`; the API serves `/upstream/health`
 - [Vendored OpenSSL blind spot](bugs/vendored-openssl-blind-spot.md) — webauthn-rs statically links OpenSSL 3.6.3 into the binary; Trivy and cargo audit both miss it

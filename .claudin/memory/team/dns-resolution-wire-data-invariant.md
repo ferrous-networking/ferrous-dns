@@ -31,4 +31,4 @@ A-record test passes either way and proves nothing. The hostname-display path is
 not a counter-example: `PtrHostnameResolver`
 (`crates/infrastructure/src/system/hostname_resolver.rs:76`) queries
 `local_dns_server` itself and reads `RData::PTR` out of `raw_answers`, never
-touching `upstream_wire_data`.
+touching `upstream_wire_data`. Related: [[local-dns-forwarder-unhardened]].
