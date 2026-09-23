@@ -1017,3 +1017,161 @@ async fn test_update_settings_rejects_invalid_dns64_prefix() {
         json["error"]
     );
 }
+
+async fn get_settings(app: Router) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/settings")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+async fn post_tls_generate(app: Router) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tls/generate?force=true")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+#[tokio::test]
+async fn test_restart_required_is_pending_until_the_server_restarts() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool.clone()).await;
+
+    let (status, json) = get_config(app.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        json["restart_required"], false,
+        "a freshly started server has no restart pending"
+    );
+
+    let (status, json) = post_config(
+        app.clone(),
+        serde_json::json!({ "server": { "pihole_compat": true } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["restart_required"], true);
+
+    // Every page asks the server, so any browser — not only the one that
+    // saved — must learn that a restart is pending.
+    let (_, json) = get_config(app).await;
+    assert_eq!(
+        json["restart_required"], true,
+        "GET /config must report the pending restart after the save"
+    );
+
+    // A restart is a new process with fresh in-memory state.
+    let (restarted, _pm, _path) = create_test_app(pool).await;
+    let (_, json) = get_config(restarted).await;
+    assert_eq!(
+        json["restart_required"], false,
+        "the pending restart must not outlive the restart itself"
+    );
+}
+
+#[tokio::test]
+async fn test_get_config_reports_no_restart_after_pool_only_change() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_config(
+        app.clone(),
+        serde_json::json!({
+            "dns": { "pools": [
+                { "name": "p1", "strategy": "parallel", "priority": 1,
+                  "servers": ["udp://9.9.9.9:53"] }
+            ] }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+
+    let (_, json) = get_config(app).await;
+    assert_eq!(
+        json["restart_required"], false,
+        "hot-applied pools must not leave a restart pending"
+    );
+}
+
+#[tokio::test]
+async fn test_update_settings_change_requires_restart() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_settings(
+        app.clone(),
+        serde_json::json!({
+            "never_forward_non_fqdn": false,
+            "never_forward_reverse_lookups": false,
+            "dns64_enabled": true,
+            "nat64_prefix": "64:ff9b::/96"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    assert_eq!(
+        json["restart_required"], true,
+        "changing a DNS setting must ask for a restart"
+    );
+
+    let (_, json) = get_config(app).await;
+    assert_eq!(json["restart_required"], true);
+}
+
+#[tokio::test]
+async fn test_update_settings_without_changes_requires_no_restart() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    // Saving the form exactly as loaded changes nothing.
+    let (status, current) = get_settings(app.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, json) = post_settings(app.clone(), current).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["success"], true);
+    assert_eq!(
+        json["restart_required"], false,
+        "an unchanged save must not ask for a restart"
+    );
+
+    let (_, json) = get_config(app).await;
+    assert_eq!(json["restart_required"], false);
+}
+
+#[tokio::test]
+async fn test_tls_certificate_generation_leaves_restart_pending() {
+    let pool = create_test_db().await;
+    let (app, _pm, _path) = create_test_app(pool).await;
+
+    let (status, json) = post_tls_generate(app.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["restart_required"], true);
+
+    let (_, json) = get_config(app).await;
+    assert_eq!(
+        json["restart_required"], true,
+        "a new certificate is only served after a restart"
+    );
+}
