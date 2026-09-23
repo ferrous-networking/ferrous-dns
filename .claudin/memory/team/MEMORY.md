@@ -15,6 +15,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Docs screenshot recipe](docs-screenshot-recipe.md) — how the ten dashboard screenshots were seeded and captured, and the conventions to keep
 - [Fuzz workspace is invisible to Dependabot](fuzz-workspace-excluded-from-dependabot.md) — duplicate exact pins in `fuzz/Cargo.toml` break every dependency-group bump
 - [Container CVE triage](container-cve-triage.md) — the alpine tag lags its own repo; runtime stages need `apk upgrade`, and the binary never loads the image's libssl
+- [Pi-hole compat auth](pihole-compat-auth.md) — read commit `81c1b7b` before changing auth in `crates/api-pihole`
 
 ## Decisions
 
