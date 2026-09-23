@@ -2,6 +2,8 @@
 name: cache-adaptive-refresh-pacer
 description: Why cache optimistic refresh is paced by backlog (PR #211) and why cache_max_refresh_per_sec was removed after PR #210
 type: project
+scope: cache/refresh
+impact: structural
 ---
 
 PR #210 (merged 2026-08, v0.9.13) moved optimistic refresh from an inline loop to a paced
