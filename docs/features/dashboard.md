@@ -47,6 +47,7 @@ Live query log with:
 - Filter by category: allowed, blocked, rate-limited
 - Filter by protocol: UDP, TCP, DoT, DoH, DoQ
 - **Quick actions**: Block or Allow a domain with one click
+- On narrower windows the response time, answer, then type and protocol columns are hidden in turn, so the domain name stays readable
 
 ![Query log — one row per query with type, protocol, client, source, answer and response time; blocked rows are highlighted](../assets/dashboard/dashboard-queries.png)
 
@@ -121,6 +122,7 @@ is otherwise only written to the log.
 - Sort by clicking any column header (repeat click reverses the direction)
 - Paginated listing with a configurable page size
 - **Remove** — drop an individual entry from the cache
+- On narrower windows the hit count, answer, then type columns are hidden in turn, so the domain name stays readable
 
 ![Cache Control — cached entries with insertion time, domain, type, answer, remaining TTL, hit count and a per-entry Remove action](../assets/dashboard/dashboard-cache-control.png)
 
