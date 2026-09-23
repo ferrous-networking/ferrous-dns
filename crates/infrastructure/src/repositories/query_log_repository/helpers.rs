@@ -6,7 +6,6 @@ use sqlx::Row;
 use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 pub fn granularity_to_sql(g: TimeGranularity) -> &'static str {
     match g {
@@ -157,11 +156,4 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         group_id: row.get("group_id"),
         block_source,
     })
-}
-
-static START_TIME: std::sync::OnceLock<SystemTime> = std::sync::OnceLock::new();
-
-pub fn get_uptime() -> u64 {
-    let start = START_TIME.get_or_init(SystemTime::now);
-    start.elapsed().unwrap_or_default().as_secs()
 }

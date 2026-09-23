@@ -11,6 +11,7 @@ use ferrous_dns_domain::query_log::{DnssecStats, QueryLogFilter};
 use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QueryStats};
 use sqlx::SqlitePool;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use timeline::TimelineCache;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -23,6 +24,8 @@ pub struct SqliteQueryLogRepository {
     sample_rate: u32,
     sample_counter: AtomicU64,
     timeline_cache: TimelineCache,
+    /// Built once at startup, so this is when the server started serving.
+    started_at: Instant,
 }
 
 impl SqliteQueryLogRepository {
@@ -57,6 +60,7 @@ impl SqliteQueryLogRepository {
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
             timeline_cache: TimelineCache::new(),
+            started_at: Instant::now(),
         }
     }
 }
@@ -109,7 +113,7 @@ impl QueryLogRepository for SqliteQueryLogRepository {
     }
 
     async fn get_stats(&self, period_hours: f32) -> Result<QueryStats, DomainError> {
-        reader::get_stats(&self.read_pool, period_hours).await
+        reader::get_stats(&self.read_pool, period_hours, self.started_at).await
     }
 
     async fn get_dnssec_stats(&self, period_hours: f32) -> Result<DnssecStats, DomainError> {

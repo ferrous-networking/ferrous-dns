@@ -1,11 +1,9 @@
-use super::helpers::{
-    days_ago_cutoff, get_uptime, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff,
-};
+use super::helpers::{days_ago_cutoff, hours_ago_cutoff, row_to_query_log, seconds_ago_cutoff};
 use ferrous_dns_application::ports::PagedQueryResult;
 use ferrous_dns_domain::query_log::{ClientProtocol, DnssecStats, QueryCategory, QueryLogFilter};
 use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, instrument};
 
 #[instrument(skip(pool))]
@@ -268,6 +266,7 @@ pub(super) async fn get_recent_paged(
 pub(super) async fn get_stats(
     pool: &SqlitePool,
     period_hours: f32,
+    started_at: Instant,
 ) -> Result<QueryStats, DomainError> {
     debug!(period_hours, "Fetching query statistics");
 
@@ -402,7 +401,7 @@ pub(super) async fn get_stats(
         queries_dnssec_bogus: row.get::<i64, _>("dnssec_bogus") as u64,
         queries_dns64_synthesized: row.get::<i64, _>("dns64_synthesized") as u64,
         unique_clients: 0,
-        uptime_seconds: get_uptime(),
+        uptime_seconds: started_at.elapsed().as_secs(),
         cache_hit_rate,
         avg_query_time_ms: row.get::<Option<f64>, _>("avg_time").unwrap_or(0.0) / 1000.0,
         avg_cache_time_ms: row.get::<Option<f64>, _>("avg_cache_time").unwrap_or(0.0) / 1000.0,
