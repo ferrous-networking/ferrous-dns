@@ -356,6 +356,9 @@ local_dns_server = "192.168.1.1:53"
 
 `local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for three distinct purposes.
 
+!!! note "Answers from the router are validated"
+    Queries to `local_dns_server` get the same anti-spoofing as upstream pools: the answer must come from the router's address and match the transaction ID, the question and the DNS Cookie, and a truncated answer is retried over TCP. With `qname_case_randomization = true` the query name's case is randomized here too — if your router rewrites the case of names, every answer fails that check and the log shows `Local DNS server query failed`; turn 0x20 off in that case. See [Security Hardening](../features/security-hardening.md#upstream-response-validation).
+
 ---
 
 ### 1. PTR Lookups — Reverse DNS for Clients

@@ -74,6 +74,12 @@ impl PoolManager {
         self
     }
 
+    /// The hardening applied to upstream queries — shared with the
+    /// `local_dns_server` forwarder so both honor the same flags.
+    pub fn hardening(&self) -> HardeningOpts {
+        self.hardening
+    }
+
     /// Rebuilds the pool set from `pools` and atomically swaps it into the live
     /// query path. New servers are usable immediately; the health-check probe loop
     /// reads the live set each tick, so they also start being probed without a restart.

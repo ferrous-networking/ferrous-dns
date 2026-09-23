@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 use ferrous_dns_domain::{DnsQuery, DomainError, PrivateIpFilter};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct CoreResolver {
     pool_manager: Arc<PoolManager>,
@@ -60,7 +60,7 @@ impl CoreResolver {
 
     async fn resolve_local_tld(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         if let Some(ref server) = self.local_dns_server {
-            let forwarder = DnsForwarder::new();
+            let forwarder = DnsForwarder::new().with_hardening(self.pool_manager.hardening());
             match forwarder
                 .query(
                     server,
@@ -101,7 +101,16 @@ impl CoreResolver {
                     );
                     return Err(DomainError::LocalNxDomain);
                 }
-                Err(_) => {}
+                // A router that rewrites the query name's case fails the 0x20
+                // check on every answer — surface it rather than a silent NXDOMAIN.
+                Err(e) => {
+                    warn!(
+                        domain = %query.domain,
+                        server = %server,
+                        error = %e,
+                        "Local DNS server query failed"
+                    );
+                }
             }
         }
 

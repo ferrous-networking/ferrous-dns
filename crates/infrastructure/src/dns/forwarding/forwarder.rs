@@ -1,11 +1,19 @@
-use super::message_builder::MessageBuilder;
+use super::message_builder::{HardeningOpts, MessageBuilder};
 use super::response_parser::{DnsResponse, ResponseParser};
-use ferrous_dns_domain::{DomainError, RecordType};
+use super::response_validator::ResponseValidator;
+use crate::dns::transport;
+use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType, UpstreamAddr};
 use std::net::SocketAddr;
-use std::time::Duration;
-use tokio::net::UdpSocket;
+use std::time::{Duration, Instant};
 
-pub struct DnsForwarder;
+/// Queries `local_dns_server` — the LAN router — for local names and private
+/// PTRs. Its answers are relayed to clients as raw wire bytes, so it gets the
+/// same anti-spoofing as the upstream pools: a hardened query, the shared UDP
+/// transport (which skips datagrams from another source or with another
+/// transaction ID), response validation, and a TCP retry on truncation.
+pub struct DnsForwarder {
+    hardening: HardeningOpts,
+}
 
 impl Default for DnsForwarder {
     fn default() -> Self {
@@ -14,8 +22,21 @@ impl Default for DnsForwarder {
 }
 
 impl DnsForwarder {
+    /// DNS Cookies on, 0x20 off — the upstream pools' default.
     pub fn new() -> Self {
-        Self
+        Self {
+            hardening: HardeningOpts {
+                cookie: true,
+                qname_0x20: false,
+            },
+        }
+    }
+
+    /// Applies the upstream pools' hardening, so `qname_case_randomization`
+    /// covers the local server too.
+    pub fn with_hardening(mut self, hardening: HardeningOpts) -> Self {
+        self.hardening = hardening;
+        self
     }
 
     pub async fn query(
@@ -28,31 +49,42 @@ impl DnsForwarder {
         let server_addr: SocketAddr = server
             .parse()
             .map_err(|e| DomainError::IoError(format!("Invalid server address: {}", e)))?;
-
-        let request_bytes = MessageBuilder::build_query(domain, record_type, false)?;
-
-        let socket = UdpSocket::bind("0.0.0.0:0")
-            .await
-            .map_err(|e| DomainError::IoError(format!("Failed to bind socket: {}", e)))?;
-
-        socket
-            .connect(server_addr)
-            .await
-            .map_err(|e| DomainError::IoError(format!("Failed to connect to server: {}", e)))?;
-
-        socket
-            .send(&request_bytes)
-            .await
-            .map_err(|e| DomainError::IoError(format!("Failed to send query: {}", e)))?;
-
-        let mut response_buf = [0u8; 4096];
+        let (query_bytes, validator) =
+            MessageBuilder::build_query_hardened(domain, record_type, false, self.hardening)?;
         let timeout = Duration::from_millis(timeout_ms);
+        let start = Instant::now();
 
-        let len = tokio::time::timeout(timeout, socket.recv(&mut response_buf))
-            .await
-            .map_err(|_| DomainError::QueryTimeout)?
-            .map_err(|e| DomainError::IoError(format!("Failed to receive response: {}", e)))?;
+        let udp = DnsProtocol::Udp {
+            addr: UpstreamAddr::Resolved(server_addr),
+        };
+        let response = exchange(&udp, &query_bytes, &validator, timeout).await?;
+        if !response.truncated {
+            return Ok(response);
+        }
 
-        ResponseParser::parse(&response_buf[..len])
+        let tcp = DnsProtocol::Tcp {
+            addr: UpstreamAddr::Resolved(server_addr),
+        };
+        let remaining = timeout
+            .checked_sub(start.elapsed())
+            .unwrap_or(Duration::from_millis(500));
+        exchange(&tcp, &query_bytes, &validator, remaining).await
     }
+}
+
+/// One validated round trip over `protocol`, with our 0x20 case stripped from
+/// the answer before anything downstream sees it.
+async fn exchange(
+    protocol: &DnsProtocol,
+    query_bytes: &[u8],
+    validator: &ResponseValidator,
+    timeout: Duration,
+) -> Result<DnsResponse, DomainError> {
+    let reply = transport::get_or_create_transport(protocol)?
+        .send(query_bytes, timeout)
+        .await?;
+    let mut response = ResponseParser::parse_bytes(reply.bytes)?;
+    validator.validate(&response, protocol)?;
+    validator.canonicalize(&mut response);
+    Ok(response)
 }

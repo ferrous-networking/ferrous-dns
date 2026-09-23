@@ -73,7 +73,7 @@ impl HostnameResolver for PtrHostnameResolver {
 
         if let Some(ref server) = self.local_dns_server {
             if Self::is_private_or_local(&ip) {
-                let forwarder = DnsForwarder::new();
+                let forwarder = DnsForwarder::new().with_hardening(self.pool_manager.hardening());
                 match forwarder
                     .query(server, &reverse_domain, &RecordType::PTR, timeout_ms)
                     .await

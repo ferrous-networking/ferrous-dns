@@ -52,6 +52,8 @@ Once parsed, the response passes through a single validation choke point before 
 
 Encrypted transports skip the cookie and case checks because TLS/QUIC already authenticates the upstream, and some providers normalize QNAME case on the way back.
 
+Both layers also cover queries to [`local_dns_server`](../configuration/dns.md#local-dns-server) — LAN names and private-range PTRs — whose answers are relayed to clients as-is. A failed answer there is logged as `Local DNS server query failed` and the client gets NXDOMAIN, since there is no second server to fail over to.
+
 ---
 
 ## DNS Cookies (RFC 7873)
@@ -97,6 +99,7 @@ Details worth knowing before enabling it:
 - It applies to **every record type**, not only A/AAAA.
 - The echoed name is compared **case-sensitively on plain DNS only**. On DoT/DoH/DoQ the comparison is case-insensitive.
 - The randomized name is canonicalized before the answer is cached, so clients and the query log never see mixed-case names.
+- It also applies to queries sent to `local_dns_server`. A router that rewrites name case fails validation on every local answer, logged as `Local DNS server query failed`.
 - It is off by default because a minority of upstreams normalize QNAME case, which would make every response from them fail validation. Enable it, then watch for a jump in upstream failures before leaving it on.
 
 ---
