@@ -16,6 +16,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Fuzz workspace is invisible to Dependabot](fuzz-workspace-excluded-from-dependabot.md) — duplicate exact pins in `fuzz/Cargo.toml` break every dependency-group bump
 - [Container CVE triage](container-cve-triage.md) — the alpine tag lags its own repo; runtime stages need `apk upgrade`, and the binary never loads the image's libssl
 - [Pi-hole compat auth](pihole-compat-auth.md) — read commit `81c1b7b` before changing auth in `crates/api-pihole`
+- [Don't share target/ across checkouts](shared-target-dir-across-checkouts.md) — building a worktree into the main `target/` leaves stale workspace rlibs; own CARGO_TARGET_DIR on disk (~18 GB, not tmpfs /tmp)
 
 ## Decisions
 
@@ -33,3 +34,5 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` rewrites restart-only settings but never sets `restart_pending` (left out of #234)
 - [Query Log DOMAIN column collapses](bugs/query-log-domain-column-collapse.md) — issue #235: fixed with container queries; widen every threshold when adding a column
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled
+- [Upstream rcode ignored on the pool path](bugs/upstream-rcode-ignored-on-pool-path.md) — upstream SERVFAIL/NXDOMAIN cached for `cache_ttl` and logged NOERROR; issue #244
+- [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha

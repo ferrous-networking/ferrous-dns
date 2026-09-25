@@ -110,9 +110,26 @@ A `*.` rule covers every name **below** the base — `video.ads.example.com`, `a
 | Steven Black Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | ~120k | Ads + Malware |
 | OISD (small) | `https://small.oisd.nl/domainswild` | ~50k | Balanced |
 | OISD (big) | `https://big.oisd.nl/domainswild` | ~200k | Comprehensive |
-| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt` | ~225k | Comprehensive |
-| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt` | ~2.1M | Security |
+| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt` | ~228k | Comprehensive |
+| HaGeZi Threat (mini) | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.mini.txt` | ~200k | Security |
+| HaGeZi Threat (medium) | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt` | ~870k | Security |
+| HaGeZi Threat | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.txt` | ~2.3M | Security |
 | EasyList | `https://easylist.to/easylist/easylist.txt` | ~80k | Ads |
+
+!!! tip "Use HaGeZi's Adblock format"
+    HaGeZi publishes each list in several formats. Use the `adblock/` files: each entry blocks the domain and all of its subdomains. The `wildcard/` files write entries as `*.domain`, which here blocks subdomains only, so every listed domain itself would still resolve.
+
+!!! warning "Large lists and memory"
+    A sync builds the new index while the old one keeps answering queries, so memory peaks at about twice the steady size. Measured on a 64-bit build with one list enabled:
+
+    | List | Loaded | Peak during a sync |
+    |:-----|:-------|:-------------------|
+    | HaGeZi Pro | ~100 MB | ~175 MB |
+    | HaGeZi Threat (mini) | ~85 MB | ~140 MB |
+    | HaGeZi Threat (medium) | ~195 MB | ~405 MB |
+    | HaGeZi Threat | ~510 MB | ~1.1 GB |
+
+    On a device with 1 GB of RAM, such as a Raspberry Pi 3, the full Threat list runs out of memory during a sync. Use the mini or medium variant instead.
 
 ---
 

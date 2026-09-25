@@ -1,9 +1,10 @@
 use super::block_index::{BlockIndex, Verdict};
-use super::compiler::{compile_block_index, parse_list_text, ParsedEntry};
+use super::compiler::{compile_block_index, parse_list_text, HeldLists, ListFetch, ParsedEntry};
 use super::decision_cache::{
     decision_key, decision_l0_clear, decision_l0_get_by_key, decision_l0_set_by_key,
     BlockDecisionCache,
 };
+use super::download::ListDownloader;
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use aho_corasick::AhoCorasick;
@@ -44,12 +45,19 @@ thread_local! {
         RefCell::new(LruCache::with_hasher(GROUP_L0_CAPACITY, FxBuildHasher));
 }
 
+/// Held for a whole build, which serializes builds.
+struct BuildState {
+    /// Newest ticket covered by a published index.
+    published_ticket: u64,
+    /// The lists the published index was built from, reused by later builds.
+    lists: HeldLists,
+}
+
 pub struct BlockFilterEngine {
     index: ArcSwap<BlockIndex>,
     /// Reload tickets issued so far. A build covers every ticket its Acquire load observes.
     reload_tickets: AtomicU64,
-    /// Newest ticket covered by a published index; held for a whole build.
-    published_ticket: Mutex<u64>,
+    build: Mutex<BuildState>,
     /// Lets `reload` run its build detached from a cancellable caller.
     this: Weak<Self>,
     decision_cache: BlockDecisionCache,
@@ -62,7 +70,7 @@ pub struct BlockFilterEngine {
     blocking_enabled: AtomicBool,
     default_group_id: i64,
     pool: SqlitePool,
-    http_client: reqwest::Client,
+    downloader: ListDownloader,
 }
 
 impl BlockFilterEngine {
@@ -72,16 +80,15 @@ impl BlockFilterEngine {
         schedule_state: Arc<dyn ScheduleStatePort>,
         blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
-        let http_client = reqwest::Client::builder()
-            .user_agent("ferrous-dns/1.0 (blocklist-sync)")
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;
+        let downloader = ListDownloader::new()?;
 
         let engine = Arc::new_cyclic(|this| Self {
             index: ArcSwap::from_pointee(BlockIndex::empty()),
             reload_tickets: AtomicU64::new(0),
-            published_ticket: Mutex::new(0),
+            build: Mutex::new(BuildState {
+                published_ticket: 0,
+                lists: HeldLists::new(),
+            }),
             this: this.clone(),
             decision_cache: BlockDecisionCache::new(),
             client_groups: Arc::new(DashMap::with_hasher(FxBuildHasher)),
@@ -90,7 +97,7 @@ impl BlockFilterEngine {
             blocking_enabled: AtomicBool::new(blocking_enabled),
             default_group_id,
             pool,
-            http_client,
+            downloader,
         });
 
         engine.load_client_groups_inner().await?;
@@ -99,7 +106,10 @@ impl BlockFilterEngine {
         let ticket = engine.issue_reload_ticket();
         let background_engine = Arc::clone(&engine);
         tokio::spawn(async move {
-            if let Err(e) = background_engine.rebuild_through(ticket).await {
+            if let Err(e) = background_engine
+                .rebuild_through(ticket, ListFetch::ReuseHeld)
+                .await
+            {
                 error!(
                     error = %e,
                     "Block filter initial compilation failed; DNS queries will not be filtered until next reload"
@@ -117,25 +127,41 @@ impl BlockFilterEngine {
     }
 
     /// Publishes an index loaded after `ticket` was issued, building one only
-    /// if no build that started later has already been published.
-    async fn rebuild_through(&self, ticket: u64) -> Result<(), DomainError> {
-        let mut published = self.published_ticket.lock().await;
-        if *published >= ticket {
+    /// if no build that started later has already been published. A redownload
+    /// always builds, because a published build may have reused held lists.
+    async fn rebuild_through(&self, ticket: u64, fetch: ListFetch) -> Result<(), DomainError> {
+        let mut build = self.build.lock().await;
+        if fetch == ListFetch::ReuseHeld && build.published_ticket >= ticket {
             return Ok(());
         }
         let covered = self.reload_tickets.load(Ordering::Acquire);
 
         info!("Block filter reload started");
-        let new_index = compile_block_index(&self.pool, &self.http_client)
+        let new_index = compile_block_index(&self.pool, &self.downloader, &mut build.lists, fetch)
             .await
             .inspect_err(|e| error!(error = %e, "Block filter reload failed"))?;
 
         self.index.store(Arc::new(new_index));
         self.decision_cache.clear();
         decision_l0_clear();
-        *published = covered;
+        build.published_ticket = covered;
         info!("Block filter reload completed");
         Ok(())
+    }
+
+    async fn rebuild_detached(&self, fetch: ListFetch) -> Result<(), DomainError> {
+        let ticket = self.issue_reload_ticket();
+        let engine = self.this.upgrade().ok_or_else(|| {
+            DomainError::BlockFilterCompileError("block filter engine is shutting down".into())
+        })?;
+        // Detached so a client disconnecting cannot drop the reload its committed change needs.
+        tokio::spawn(async move { engine.rebuild_through(ticket, fetch).await })
+            .await
+            .map_err(|e| {
+                DomainError::BlockFilterCompileError(format!(
+                    "block filter reload task failed: {e}"
+                ))
+            })?
     }
 
     fn resolve_group_uncached(&self, ip: IpAddr) -> i64 {
@@ -384,18 +410,11 @@ impl BlockFilterEnginePort for BlockFilterEngine {
     }
 
     async fn reload(&self) -> Result<(), DomainError> {
-        let ticket = self.issue_reload_ticket();
-        let engine = self.this.upgrade().ok_or_else(|| {
-            DomainError::BlockFilterCompileError("block filter engine is shutting down".into())
-        })?;
-        // Detached so a client disconnecting cannot drop the reload its committed change needs.
-        tokio::spawn(async move { engine.rebuild_through(ticket).await })
-            .await
-            .map_err(|e| {
-                DomainError::BlockFilterCompileError(format!(
-                    "block filter reload task failed: {e}"
-                ))
-            })?
+        self.rebuild_detached(ListFetch::ReuseHeld).await
+    }
+
+    async fn refresh_lists(&self) -> Result<(), DomainError> {
+        self.rebuild_detached(ListFetch::Redownload).await
     }
 
     async fn load_client_groups(&self) -> Result<(), DomainError> {

@@ -789,7 +789,7 @@ POST /api/blocklist-sources
 ```json
 {
   "name": "HaGeZi Pro",
-  "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt",
+  "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
   "enabled": true
 }
 ```
@@ -829,6 +829,13 @@ exist.
 
 Returns `202 Accepted` as soon as the rebuild starts; it then runs in the
 background, since refreshing large lists can take minutes.
+
+Every other change, to a source, managed domain, regex filter, service or group,
+rebuilds from the lists already downloaded and fetches only a list the server
+does not hold yet. This endpoint, the daily sync job and the Pi-hole
+`POST /api/action/gravity` download every list again. A list that fails to
+download keeps its previous copy in the index, and its `last_synced_at` does not
+change; the log line `Failed to fetch blocklist source` gives the reason.
 
 **Error codes:** `404 Not Found`, `409 Conflict` (a sync is already running),
 `401 Unauthorized`

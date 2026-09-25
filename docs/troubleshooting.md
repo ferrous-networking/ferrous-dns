@@ -136,6 +136,32 @@ curl -X POST http://localhost:8080/api/managed-domains \
 
 ---
 
+## Blocklist Not Updating
+
+### Symptom
+
+**Last Sync** on the **Blocklists** page does not change after you click the refresh icon, or a list you added blocks nothing.
+
+### Cause
+
+A failed download does not fail the sync. The index is rebuilt without that download: the list keeps the copy it last downloaded, or stays empty if it never downloaded, and **Last Sync** keeps its old value. The reason is in the log:
+
+```bash
+docker logs ferrous-dns 2>&1 | grep "blocklist source"
+```
+
+| Log line | Meaning |
+|:---------|:--------|
+| `Fetched blocklist source url=…` | The download worked |
+| `HTTP 404 for <url>` | The URL is wrong, or the list has moved |
+| `timed out after Ns` | The server stopped sending for 30 seconds, or the download ran past 5 minutes |
+
+### Solution
+
+Correct the URL, or check that the server can reach the list's host. If the container restarts during a sync, the list is too large for the device's memory. See [Check blocklist size](#check-blocklist-size).
+
+---
+
 ## Dashboard Not Loading
 
 ### Check the web port
@@ -202,9 +228,13 @@ Browsers reject DoH to servers with self-signed certificates. Options:
 
 ## High Memory Usage
 
+### Check blocklist size
+
+With large blocklists enabled, the block index can outgrow the DNS cache, and a sync briefly holds about twice as much. The measured sizes are in [large lists and memory](features/blocking-filtering.md#recommended-blocklists). On a device with 1 GB of RAM, use the mini or medium variant of HaGeZi's Threat Intelligence list rather than the full one.
+
 ### Check cache size
 
-The DNS cache is the largest in-memory structure. Reduce it if memory is constrained:
+Apart from the block index, the DNS cache is the largest in-memory structure. Reduce it if memory is constrained:
 
 ```toml
 [dns]

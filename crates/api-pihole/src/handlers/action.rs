@@ -17,7 +17,7 @@ use crate::{dto::action::ActionResponse, errors::PiholeApiError, state::PiholeAp
 pub async fn gravity(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<ActionResponse>, PiholeApiError> {
-    state.blocking.block_filter_engine.reload().await?;
+    state.blocking.block_filter_engine.refresh_lists().await?;
     Ok(Json(ActionResponse {
         status: "success",
         message: "Blocklist reload completed".to_string(),

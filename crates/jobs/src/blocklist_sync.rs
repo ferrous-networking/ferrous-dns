@@ -26,10 +26,10 @@ impl BlocklistSyncJob {
 
             loop {
                 interval.tick().await;
-                info!("BlocklistSyncJob: reloading blocklist sources");
-                match self.engine.reload().await {
-                    Ok(()) => info!("BlocklistSyncJob: reload completed successfully"),
-                    Err(e) => error!(error = %e, "BlocklistSyncJob: reload failed"),
+                info!("BlocklistSyncJob: downloading blocklist sources");
+                match self.engine.refresh_lists().await {
+                    Ok(()) => info!("BlocklistSyncJob: refresh completed successfully"),
+                    Err(e) => error!(error = %e, "BlocklistSyncJob: refresh failed"),
                 }
             }
         });

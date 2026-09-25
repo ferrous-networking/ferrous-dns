@@ -44,7 +44,13 @@ pub trait BlockFilterEnginePort: Send + Sync {
         regexes: &[String],
     ) -> Result<Vec<bool>, DomainError>;
     fn store_cname_decision(&self, domain: &str, group_id: i64, ttl_secs: u64);
+    /// Rebuilds the index from the database, reusing every list already
+    /// downloaded. Only a list not held yet, such as a new source, is fetched.
     async fn reload(&self) -> Result<(), DomainError>;
+    /// Downloads every list again, then rebuilds as [`Self::reload`] does.
+    async fn refresh_lists(&self) -> Result<(), DomainError> {
+        self.reload().await
+    }
     async fn load_client_groups(&self) -> Result<(), DomainError>;
     fn compiled_domain_count(&self) -> usize;
     fn is_blocking_enabled(&self) -> bool;
