@@ -46,4 +46,6 @@ To reach an authenticated session: `POST /api/auth/setup {"password": "..."}` re
 
 **Docs check:** `mkdocs build --strict -d <scratch dir>` — a plain `mkdocs build` rewrites the tracked `site/`.
 
+**Faking this machine's resolver without root:** run the binary under `unshare -rm` with a `resolv.conf` and an `nsswitch.conf` (`hosts: files dns`) bind-mounted over `/etc`. Mounting only `resolv.conf` does nothing here, because nss-resolve goes straight to systemd-resolved. The full recipe is in [[upstream-hostname-startup-only-resolution]]. Watch out for `pkill -f <pattern>`: the pattern also matches the shell running it, which kills your own command.
+
 **Secure-cookie behaviour cannot be reproduced on loopback:** curl and browsers both treat `127.0.0.1` as a secure context and accept a `Secure` cookie over plain HTTP. Bind to the host's LAN address (`--bind <lan-ip>`) to observe the real rejection. This is why [[web-tls-secure-cookie-invariant]] went unnoticed in local development.

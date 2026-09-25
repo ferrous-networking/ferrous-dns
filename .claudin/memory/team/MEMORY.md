@@ -37,4 +37,4 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled
 - [Upstream rcode ignored on the pool path](bugs/upstream-rcode-ignored-on-pool-path.md) — upstream SERVFAIL/NXDOMAIN cached for `cache_ttl` and logged NOERROR; issue #244
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
-- [Upstream hostnames resolve only at startup](bugs/upstream-hostname-startup-only-resolution.md) — a failed lookup kills a doq/tls/udp/tcp upstream until reload; documented in #255, unfixed
+- [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; IP refresh still open
