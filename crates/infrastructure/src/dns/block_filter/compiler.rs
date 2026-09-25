@@ -2,6 +2,7 @@ use super::block_index::{
     AllowlistIndex, BlockIndex, RegexRule, SourceBitSet, SourceDescriptor, SourceMeta,
     MANUAL_SOURCE_BIT,
 };
+use super::download::ListDownloader;
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::bloom::AtomicBloom;
 use aho_corasick::AhoCorasick;
@@ -113,27 +114,6 @@ pub fn parse_list_text(text: &str) -> Vec<ParsedEntry> {
     text.lines().filter_map(parse_list_line).collect()
 }
 
-async fn fetch_url(url: &str, client: &reqwest::Client) -> Result<String, DomainError> {
-    let response = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await
-        .map_err(|e| DomainError::BlockFilterFetchError(format!("{url}: {e}")))?;
-
-    if !response.status().is_success() {
-        return Err(DomainError::BlockFilterFetchError(format!(
-            "HTTP {} for {url}",
-            response.status().as_u16()
-        )));
-    }
-
-    response
-        .text()
-        .await
-        .map_err(|e| DomainError::BlockFilterFetchError(format!("reading {url}: {e}")))
-}
-
 struct SourceLoad {
     sources: Vec<SourceMeta>,
     url_tasks: Vec<(u8, String)>,
@@ -242,11 +222,11 @@ fn build_group_masks(sources: &[SourceMeta], all_group_ids: &[i64]) -> HashMap<i
 
 async fn fetch_sources(
     url_tasks: Vec<(u8, String)>,
-    client: &reqwest::Client,
+    downloader: &ListDownloader,
 ) -> HashMap<u8, String> {
     stream::iter(url_tasks)
         .map(|(bit, url)| async move {
-            match fetch_url(&url, client).await {
+            match downloader.fetch(&url).await {
                 Ok(text) => {
                     info!(url = %url, "Fetched blocklist source");
                     Some((bit, text))
@@ -491,7 +471,7 @@ fn parse_action(row: &SqliteRow) -> Option<DomainAction> {
 
 pub(super) async fn compile_block_index(
     pool: &SqlitePool,
-    client: &reqwest::Client,
+    downloader: &ListDownloader,
 ) -> Result<BlockIndex, DomainError> {
     let SourceLoad {
         sources,
@@ -499,7 +479,7 @@ pub(super) async fn compile_block_index(
         all_group_ids,
         bit_to_source,
     } = load_sources(pool).await?;
-    let source_texts = fetch_sources(url_tasks, client).await;
+    let source_texts = fetch_sources(url_tasks, downloader).await;
 
     // Failed downloads retain their previous timestamp as a staleness signal.
     let synced_source_ids: Vec<i64> = source_texts
@@ -532,7 +512,7 @@ pub(super) async fn compile_block_index(
     .fetch_all(pool)
     .await
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-    let allowlist_load = load_allowlists(pool, client).await?;
+    let allowlist_load = load_allowlists(pool, downloader).await?;
 
     let build = move || {
         let group_masks = build_group_masks(&sources, &all_group_ids);
@@ -634,7 +614,7 @@ struct AllowlistLoad {
 
 async fn load_allowlists(
     pool: &SqlitePool,
-    client: &reqwest::Client,
+    downloader: &ListDownloader,
 ) -> Result<AllowlistLoad, DomainError> {
     let manual_rows = sqlx::query("SELECT domain FROM whitelist")
         .fetch_all(pool)
@@ -664,7 +644,7 @@ async fn load_allowlists(
 
     let fetched: Vec<_> = stream::iter(urls)
         .map(|(url, (groups, source_ids))| async move {
-            match fetch_url(&url, client).await {
+            match downloader.fetch(&url).await {
                 Ok(text) => Some((groups, source_ids, text)),
                 Err(e) => {
                     warn!(url = %url, error = %e, "Failed to fetch whitelist source");

@@ -4,6 +4,7 @@ use super::decision_cache::{
     decision_key, decision_l0_clear, decision_l0_get_by_key, decision_l0_set_by_key,
     BlockDecisionCache,
 };
+use super::download::ListDownloader;
 use super::suffix_trie::SuffixTrie;
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use aho_corasick::AhoCorasick;
@@ -62,7 +63,7 @@ pub struct BlockFilterEngine {
     blocking_enabled: AtomicBool,
     default_group_id: i64,
     pool: SqlitePool,
-    http_client: reqwest::Client,
+    downloader: ListDownloader,
 }
 
 impl BlockFilterEngine {
@@ -72,11 +73,7 @@ impl BlockFilterEngine {
         schedule_state: Arc<dyn ScheduleStatePort>,
         blocking_enabled: bool,
     ) -> Result<Arc<Self>, DomainError> {
-        let http_client = reqwest::Client::builder()
-            .user_agent("ferrous-dns/1.0 (blocklist-sync)")
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| DomainError::BlockFilterCompileError(e.to_string()))?;
+        let downloader = ListDownloader::new()?;
 
         let engine = Arc::new_cyclic(|this| Self {
             index: ArcSwap::from_pointee(BlockIndex::empty()),
@@ -90,7 +87,7 @@ impl BlockFilterEngine {
             blocking_enabled: AtomicBool::new(blocking_enabled),
             default_group_id,
             pool,
-            http_client,
+            downloader,
         });
 
         engine.load_client_groups_inner().await?;
@@ -126,7 +123,7 @@ impl BlockFilterEngine {
         let covered = self.reload_tickets.load(Ordering::Acquire);
 
         info!("Block filter reload started");
-        let new_index = compile_block_index(&self.pool, &self.http_client)
+        let new_index = compile_block_index(&self.pool, &self.downloader)
             .await
             .inspect_err(|e| error!(error = %e, "Block filter reload failed"))?;
 
