@@ -40,4 +40,10 @@ To reach an authenticated session: `POST /api/auth/setup {"password": "..."}` re
 
 **Verifying blocklist behaviour:** query with `dig @127.0.0.1 -p 15353 <domain>`; under the default `block_mode = "null_ip"` a blocked name answers `0.0.0.0` with `EDE 15 (Blocked)`. The trustworthy "my list actually loaded" signal is the `Fetched blocklist source url=…` log line, **not** the `exact=` count in `Block index compiled` — a 224k-entry HaGeZi list logs `exact=0` because its entries parse as wildcards. A source whose URL 404s is only `warn!`-logged and the reload still reports success, so always check for the fetch line per URL. See [[issue-216-blocklist-sync]].
 
+**Scripting the API without a session:** with `[auth] enabled = false` every `/api/*` route answers plain curl, which is the quickest way to run a request matrix. Expected noise in the browser console then: a 401 on `/api/auth/2fa/status`, the known 404 on `/api/health/upstreams`, and the Tailwind CDN warning.
+
+**Saving pools from the Settings UI on this minimal config** (the pool editor is on the **DNS Advanced** tab) always returns "Restart the server for the changes to take effect", because that form sends every `dns` field and they differ from the stub file — so the "applied immediately" message never appears. Confirm the pool went live with `GET /api/upstream/health/detail` instead.
+
+**Docs check:** `mkdocs build --strict -d <scratch dir>` — a plain `mkdocs build` rewrites the tracked `site/`.
+
 **Secure-cookie behaviour cannot be reproduced on loopback:** curl and browsers both treat `127.0.0.1` as a secure context and accept a `Secure` cookie over plain HTTP. Bind to the host's LAN address (`--bind <lan-ip>`) to observe the real rejection. This is why [[web-tls-secure-cookie-invariant]] went unnoticed in local development.

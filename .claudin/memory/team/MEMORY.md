@@ -7,7 +7,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Cache refresh maximizes coverage](cache-refresh-maximize-coverage.md) — never cap total refresh throughput with a fixed rate; bound concurrency instead
 - [Web TLS Secure-cookie invariant](web-tls-secure-cookie-invariant.md) — the cookie's `Secure` flag follows the live transport, never the config flag
 - [DnsResolution wire-data invariant](dns-resolution-wire-data-invariant.md) — no `upstream_wire_data` means every non-A/AAAA answer reaches the client empty
-- [Runtime verification recipe](runtime-verification-recipe.md) — minimal standalone config to actually run the binary, plus the admin-username and loopback gotchas
+- [Runtime verification recipe](runtime-verification-recipe.md) — minimal config to run the binary; admin-username, loopback, auth-off curl and UI-save gotchas
 - [Issue #216 blocklist sync](issue-216-blocklist-sync.md) — three defects behind "blocklists not syncing", now fixed; plus why there is no per-source refresh
 - [Deadlock tests need a timeout guard](deadlock-tests-need-timeout-guard.md) — run the suspect call on a thread behind `recv_timeout`, so a hang fails CI instead of blocking it
 - [`/verify` name collision](verify-skill-name-collision.md) — the Skill tool loads the bundled runtime skill, not this repo's CI gate; run the steps or use `/pre-pr`
@@ -16,6 +16,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Fuzz workspace is invisible to Dependabot](fuzz-workspace-excluded-from-dependabot.md) — duplicate exact pins in `fuzz/Cargo.toml` break every dependency-group bump
 - [Container CVE triage](container-cve-triage.md) — the alpine tag lags its own repo; runtime stages need `apk upgrade`, and the binary never loads the image's libssl
 - [Pi-hole compat auth](pihole-compat-auth.md) — read commit `81c1b7b` before changing auth in `crates/api-pihole`
+- [Upstream URL parser has a JS mirror](upstream-url-parser-js-mirror.md) — change `DnsProtocol::from_str` and `settings.js` together; stricter parsing needs a legacy.rs pass
 - [Don't share target/ across checkouts](shared-target-dir-across-checkouts.md) — building a worktree into the main `target/` leaves stale workspace rlibs; own CARGO_TARGET_DIR on disk (~18 GB, not tmpfs /tmp)
 
 ## Decisions
@@ -36,3 +37,4 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled
 - [Upstream rcode ignored on the pool path](bugs/upstream-rcode-ignored-on-pool-path.md) — upstream SERVFAIL/NXDOMAIN cached for `cache_ttl` and logged NOERROR; issue #244
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
+- [Upstream hostnames resolve only at startup](bugs/upstream-hostname-startup-only-resolution.md) — a failed lookup kills a doq/tls/udp/tcp upstream until reload; documented in #255, unfixed
