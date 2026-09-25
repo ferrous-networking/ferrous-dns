@@ -128,7 +128,8 @@ fuzz_target!(|upstream: &[u8]| {
     }
     // The cache form keeps the DNSSEC RRs a DO client may ask for later, so it
     // walks exactly what relaying to a DO client walks; stripping them for this
-    // client may have skipped a malformed one.
+    // client may have skipped a malformed one. On top of that it declines a
+    // message whose names read TTL bytes, which aging would rewrite.
     let with_do = EdnsReply {
         dnssec_ok: true,
         cookie: None,
@@ -136,13 +137,17 @@ fuzz_target!(|upstream: &[u8]| {
     };
     let cached = wire_response::cache_form(upstream, u32::MAX, 0..=u32::MAX);
     let relays_with_do = wire_response::relay_with_edns(upstream, ID, rd, ad, Some(&with_do));
-    assert_eq!(
-        cached.is_some(),
-        relays_with_do.is_some(),
-        "cacheable iff relayable to a DO client"
-    );
-    let Some(cached) = cached else {
-        return;
+    let cached = match (cached, relays_with_do) {
+        (Some(cached), Some(_)) => cached,
+        (Some(_), None) => panic!("cached what a DO client cannot be relayed"),
+        (None, Some(_)) => {
+            assert!(
+                fuzz_api::cache_form_declines_names(upstream),
+                "relayable to a DO client but not cacheable"
+            );
+            return;
+        }
+        (None, None) => return,
     };
     let served = wire_response::relay_cached(&cached, ID, rd, edns, u32::MAX)
         .expect("relayed but not served from the cache");

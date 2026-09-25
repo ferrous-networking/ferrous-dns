@@ -356,21 +356,22 @@ const CACHE_OPT_HEAD: usize = OPT_RECORD.len() + 4 + 4;
 /// field and, last, their count. It is what lets [`relay_cached`] answer a
 /// client without walking the message. The upstream's options, among them
 /// the COOKIE it echoed back to us, are not kept. The header is the
-/// upstream's but for ARCOUNT. `None` where [`relay_with_edns`] would be, or
-/// for a message too long to address its TTLs in 16 bits.
+/// upstream's but for ARCOUNT. `None` where [`relay_with_edns`] would be, for
+/// a message too long to address its TTLs in 16 bits, or for one where a name
+/// reads the bytes of a TTL field ([`names_read_ttls`]).
 pub fn cache_form(upstream: &[u8], entry_ttl: u32, ttls: RangeInclusive<u32>) -> Option<Vec<u8>> {
     let Sections {
         mut out,
         extended_rcode,
         authenticating,
     } = resection(upstream, false)?;
-    let mut offsets = Vec::new();
-    for_each_ttl(&mut out, |ttl, at| {
+    let offsets = cacheable_ttl_offsets(&mut out)?;
+    for &at in &offsets {
+        let ttl: &mut [u8; 4] = out.get_mut(at..at + 4)?.try_into().ok()?;
         *ttl = u32::from_be_bytes(*ttl)
             .clamp(*ttls.start(), *ttls.end())
             .to_be_bytes();
-        offsets.push(at);
-    })?;
+    }
     let count = u16::try_from(offsets.len()).ok()?;
     let option_len = u16::try_from(4 + 2 * offsets.len() + 2).ok()?;
     out.extend_from_slice(&opt_head(
@@ -547,6 +548,95 @@ fn for_each_ttl(msg: &mut [u8], mut f: impl FnMut(&mut [u8; 4], usize)) -> Optio
         pos = fixed + 10 + usize::from(u16::from_be_bytes([*l0, *l1]));
     }
     (pos <= msg.len()).then_some(())
+}
+
+/// Whether decoding a name of `msg` reads a byte of a TTL field, at the
+/// ascending `ttls` offsets. Only a pointer RFC 1035 §4.1.4 forbids gets
+/// there, and such a name would change as the cache clamps and counts down
+/// the TTLs it runs through. `None` if the sections do not walk.
+fn names_read_ttls(msg: &[u8], ttls: &[usize]) -> Option<bool> {
+    let header = msg.get(..12)?;
+    let count = |i: usize| usize::from(u16::from_be_bytes([header[i], header[i + 1]]));
+    let reads_ttl = |from: usize, to: usize| {
+        let i = ttls.partition_point(|&at| at + 4 <= from);
+        ttls.get(i).is_some_and(|&at| at < to)
+    };
+    let mut read = false;
+    let mut pos = 12;
+    for _ in 0..count(4) {
+        pos = walk_name(msg, pos, &mut |from, to| read |= reads_ttl(from, to))? + 4;
+    }
+    for _ in 0..count(6) + count(8) + count(10) {
+        let fixed = walk_name(msg, pos, &mut |from, to| read |= reads_ttl(from, to))?;
+        let f = msg.get(fixed..fixed + 10)?;
+        let rtype = u16::from_be_bytes([f[0], f[1]]);
+        let end = fixed + 10 + usize::from(u16::from_be_bytes([f[8], f[9]]));
+        let mut at = fixed + 10;
+        for field in rdata_fields(rtype) {
+            at = match *field {
+                Field::Fixed(len) => at + len,
+                Field::Text => at + 1 + usize::from(*msg.get(at)?),
+                Field::Name => walk_name(msg, at, &mut |from, to| read |= reads_ttl(from, to))?,
+            };
+        }
+        if at > end {
+            return None;
+        }
+        pos = end;
+    }
+    Some(read)
+}
+
+/// Decodes the name at `pos` as a client would, calling `read` with every
+/// byte range it reads, pointers followed; returns the offset past it where
+/// it is written.
+fn walk_name(msg: &[u8], mut pos: usize, read: &mut impl FnMut(usize, usize)) -> Option<usize> {
+    let mut end = None;
+    let mut len = 0usize;
+    loop {
+        let byte = *msg.get(pos)?;
+        match byte & 0xC0 {
+            0x00 => {
+                let next = pos + 1 + usize::from(byte);
+                msg.get(pos..next)?;
+                read(pos, next);
+                len += 1 + usize::from(byte);
+                if len > 255 {
+                    return None;
+                }
+                if byte == 0 {
+                    return Some(end.unwrap_or(next));
+                }
+                pos = next;
+            }
+            0xC0 => {
+                read(pos, pos + 2);
+                let target = usize::from(u16::from_be_bytes([byte & 0x3F, *msg.get(pos + 1)?]));
+                if target >= pos {
+                    return None;
+                }
+                end.get_or_insert(pos + 2);
+                pos = target;
+            }
+            _ => return None,
+        }
+    }
+}
+
+/// The offset of every TTL field of the re-sectioned `msg`, or `None` when
+/// the cache must decline it: its sections do not walk, or a name reads the
+/// bytes of a TTL field ([`names_read_ttls`]).
+fn cacheable_ttl_offsets(msg: &mut [u8]) -> Option<Vec<usize>> {
+    let mut offsets = Vec::new();
+    for_each_ttl(msg, |_, at| offsets.push(at))?;
+    (!names_read_ttls(msg, &offsets)?).then_some(offsets)
+}
+
+/// Whether [`cache_form`] declines `upstream` although it re-sections, which
+/// is to say for its names or TTLs alone.
+#[cfg(feature = "fuzzing")]
+pub(crate) fn cache_form_declines_names(upstream: &[u8]) -> bool {
+    resection(upstream, false).is_some_and(|mut s| cacheable_ttl_offsets(&mut s.out).is_none())
 }
 
 /// The fixed part of an OPT record: root owner, TYPE, our UDP payload size as

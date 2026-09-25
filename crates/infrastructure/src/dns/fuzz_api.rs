@@ -26,3 +26,9 @@ pub fn parse_list_text(text: &str) -> Vec<ParsedEntry> {
 pub fn rdata_has_names(rtype: u16) -> bool {
     crate::dns::wire_response::rdata_has_names(rtype)
 }
+
+/// See [`crate::dns::wire_response::cache_form`]: whether it declines a
+/// message that re-sections, for names that read TTL bytes or do not walk.
+pub fn cache_form_declines_names(upstream: &[u8]) -> bool {
+    crate::dns::wire_response::cache_form_declines_names(upstream)
+}

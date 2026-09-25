@@ -447,3 +447,48 @@ fn a_malformed_rrsig_is_stripped_for_plain_clients_but_never_cached() {
     assert!(wire_response::relay_with_edns(upstream, 1, true, false, Some(&with_do)).is_none());
     assert!(wire_response::cache_form(upstream, 60, 0..=u32::MAX).is_none());
 }
+
+/// `crash-4bdbba63` from the `upstream_relay` target: a glue owner whose
+/// pointer lands on the CLASS/TTL bytes of the record before it, so its labels
+/// are read out of that TTL. Counting the TTL down in the cache rewrote them,
+/// and the cache served the glue under another name than the upstream sent.
+/// A relay copies TTLs as they are; the cache now declines such a message.
+#[test]
+fn a_name_read_from_ttl_bytes_is_relayed_but_not_cached() {
+    let upstream = b"\x00\x00\x81\x80\x00\x01\x00\x01\x00\x00\x00\x02\x07example\x03czm\x01\x00\x00\
+                     \x00\x0f\x00\x01\
+                     \xc0\x0c\x00\x0f\x00\x01\x00\x00\x01\x2c\x00\x07\x00\x0a\x02ex\xc0\x0c\
+                     \x00\x20\x29\x04\xd0\x00\x00\x00\x00\x00\x1c\x00\x0a\x00\x0a\x00\x00\x00\x7c\x7c\x00\
+                     \x00\x00\x1c\x00\x0a\x0a\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02mx\
+                     \xc0\x35\x00\x01\x00\x01\x00\x00\x01\x2c\x00\x04\xc5\x00\x02\x26";
+    let plain = EdnsReply {
+        dnssec_ok: false,
+        cookie: None,
+        ede: None,
+    };
+    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&plain))
+        .expect("the relay copies the TTL the glue name is read from as is");
+    let source = Message::from_vec(upstream).unwrap();
+    let msg = Message::from_vec(&relayed).unwrap();
+    assert_eq!(msg.additionals[1].name, source.additionals[1].name);
+    assert!(wire_response::cache_form(upstream, 60, 0..=u32::MAX).is_none());
+}
+
+/// `crash-6a5a0cf7` from the `upstream_relay` target: an AFSDB whose name's
+/// first label runs past its RDATA. Nothing is dropped ahead of it, so the
+/// relay copies it as is; the cache form walks every name to find the TTLs
+/// they might read, cannot bound this one and declines. The harness had
+/// walked the DO relay instead, where our appended OPT ends the run cleanly.
+#[test]
+fn a_name_overrunning_its_rdata_is_relayed_but_not_cached() {
+    let upstream = b"\x00\x00\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00\x07example\x03com\x00\
+                     \x00\x12\x00\x01\
+                     \xc0\x0c\x00\x12\x00\x01\x00\x00\x01\x2c\x00\x05\x00\x0a\x05ab";
+    let plain = EdnsReply {
+        dnssec_ok: false,
+        cookie: None,
+        ede: None,
+    };
+    assert!(wire_response::relay_with_edns(upstream, 1, true, false, Some(&plain)).is_some());
+    assert!(wire_response::cache_form(upstream, 60, 0..=u32::MAX).is_none());
+}
