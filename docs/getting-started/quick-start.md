@@ -76,9 +76,11 @@ nameserver 192.168.1.100
 4. Paste a blocklist URL (see suggestions below) and click **Save**
 
 Saving downloads the list and rebuilds the block index straight away, so it takes
-effect on the next query. The refresh icon in a row's **Actions** re-downloads
-that list on demand; because the index is rebuilt as a whole, every enabled list
-is refreshed along with it.
+effect on the next query. The refresh icon in a row's **Actions** downloads the
+lists again on demand; because the index is rebuilt as a whole, every enabled list
+is refreshed along with it. Lists are also downloaded again once a day. Other
+changes, such as a managed domain or a regex filter, rebuild from the copies
+already downloaded.
 
 ### Recommended Blocklists
 
@@ -86,8 +88,12 @@ is refreshed along with it.
 |:-----|:----|:------|
 | Steven Black Unified | `https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts` | Ads + Malware |
 | OISD (small) | `https://small.oisd.nl/domainswild` | Balanced |
-| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt` | Comprehensive |
-| Hagezi Threat Intelligence | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.txt` | Security |
+| HaGeZi Pro | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt` | Comprehensive |
+| HaGeZi Threat Intelligence (medium) | `https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt` | Security |
+
+The full HaGeZi Threat Intelligence list needs more than 1 GB of memory while it
+syncs. See [large lists and memory](../features/blocking-filtering.md#recommended-blocklists)
+before adding it to a small device.
 
 ---
 

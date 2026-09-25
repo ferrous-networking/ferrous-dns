@@ -114,8 +114,8 @@ https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 # Domain list
 https://small.oisd.nl/domainswild
 
-# Wildcard list
-https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt
+# Adblock list
+https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt
 ```
 
 ---

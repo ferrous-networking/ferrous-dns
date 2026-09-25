@@ -104,6 +104,10 @@ Enabled blocklist sources are compiled into a matcher where each domain carries 
 
 Downloads are limited to four concurrent requests per build. HTTP and database operations stay asynchronous; parsing, regex compilation, and index construction run as one blocking job on the bounded build pool.
 
+A download fails after 10 seconds without a connection, 30 seconds without receiving data, or 5 minutes in total. A large list over a slow link can therefore finish, while a server that stops sending, or trickles bytes forever, cannot hold a build indefinitely.
+
+The engine keeps the text of every list it last downloaded, about the size of the list files in memory. A sync (the dashboard refresh action, `POST /api/blocklist-sources/{id}/sync`, or the Pi-hole gravity action) and the daily job download every list again. Any other rebuild reuses the held copies and downloads only a list it does not hold yet, such as a new source or a changed URL. A failed download keeps the held copy rather than dropping the list from the index.
+
 Startup, periodic, and mutation-triggered rebuilds are serialized per engine. A mutation arriving during a build queues another reload so its changes cannot be lost to an older publication. Reloads queued behind the same build are coalesced: one build that starts after all of them satisfies every waiter, so a burst of mutations costs at most two rebuilds rather than one per request. A reload runs detached from the request that triggered it, so a client that disconnects mid-build does not leave its committed change unpublished until the next periodic sync. The periodic job waits one full interval before its first reload because the engine already compiles at startup.
 
 !!! warning "63 active sources maximum"
