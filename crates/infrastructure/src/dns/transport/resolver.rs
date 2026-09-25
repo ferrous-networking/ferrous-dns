@@ -58,14 +58,18 @@ impl UpstreamHostResolver {
         port: u16,
     ) -> Result<Vec<SocketAddr>, DomainError> {
         let timeout_ms = LOCAL_LOOKUP_TIMEOUT.as_millis() as u64;
-        let (a, aaaa) = tokio::join!(
+        let lookup = |record_type| {
             self.forwarder
-                .query(server, hostname, &RecordType::A, timeout_ms),
-            self.forwarder
-                .query(server, hostname, &RecordType::AAAA, timeout_ms),
-        );
+                .query(server, hostname, record_type, timeout_ms)
+        };
+        let (a, aaaa) = tokio::join!(lookup(&RecordType::A), lookup(&RecordType::AAAA));
+        // One family failing while the other answered is most likely a lost
+        // datagram. Ask once more: a half answer is kept for good, since an
+        // upstream with any address is never looked up again.
         let responses = match (a, aaaa) {
             (Err(e), Err(_)) => return Err(e),
+            (Err(_), aaaa) => [lookup(&RecordType::A).await, aaaa],
+            (a, Err(_)) => [a, lookup(&RecordType::AAAA).await],
             (a, aaaa) => [a, aaaa],
         };
         let addrs: Vec<SocketAddr> = responses
