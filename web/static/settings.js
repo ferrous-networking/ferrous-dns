@@ -491,7 +491,6 @@
             toggleLocalDomain() {
                 if (this.settings.local_domain) {
                     this.settings.local_domain = '';
-                    this.settings.local_dns_server = '';
                 } else {
                     this.settings.local_domain = 'lan';
                 }

@@ -433,7 +433,7 @@
                             <h4 style="font-size:16px;font-weight:600;margin:0">Block local domain from internet</h4>
                         </div>
                         <p style="font-size:13px;color:var(--text-secondary);margin:0">When a local domain (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">lan</code>) is configured, queries for that domain that are not found in local records will return NXDOMAIN instead of leaking to your upstream DNS servers.</p>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">Set your router address as the local DNS server to also resolve hostnames for discovered clients.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">With a Local DNS server set below, names under the local domain are asked to your router.</p>
                     </div>
                     <div @click="toggleLocalDomain()"
                          :class="settings.local_domain?'active':''" class="toggle-switch">
@@ -443,18 +443,26 @@
 
                 <div x-show="settings.local_domain" x-cloak
                      style="border-top:1px solid var(--border-color);padding-top:16px">
-                    <div class="form-group" style="margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
                         <label class="form-label">Local domain name</label>
                         <input type="text" x-model="settings.local_domain" placeholder="lan"
                                style="max-width:400px;font-family:monospace">
                         <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Queries for <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">*.lan</code> not in local records will return NXDOMAIN</p>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Local DNS server <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
-                        <input type="text" x-model="settings.local_dns_server" placeholder="192.168.1.1:53"
-                               style="max-width:400px;font-family:monospace">
-                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Your router or DHCP server. Used to resolve hostnames of discovered clients (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">device.lan</code>)</p>
-                    </div>
+                </div>
+            </div>
+
+            <div style="padding:16px 0;border-top:1px solid var(--border-color)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <i data-lucide="router" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <h4 style="font-size:16px;font-weight:600;margin:0">Local DNS server <span style="color:var(--text-tertiary);font-weight:400;font-size:13px">(optional)</span></h4>
+                </div>
+                <p style="font-size:13px;color:var(--text-secondary);margin:0">Your router or DHCP server. Ferrous DNS asks it for the hostnames of discovered clients (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">device.lan</code>), for names under the local domain, and for the hostnames in your upstream servers (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">dns.adguard-dns.com</code>).</p>
+                <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 12px">Set it when this machine uses Ferrous DNS as its own resolver: without it, upstream hostnames cannot be looked up at startup and those upstreams stay unusable.</p>
+                <div class="form-group" style="margin-bottom:0">
+                    <input type="text" x-model="settings.local_dns_server" placeholder="192.168.1.1:53" aria-label="Local DNS server"
+                           style="max-width:400px;font-family:monospace">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">An IP address, or IP:port; port 53 when omitted.</p>
                 </div>
             </div>
 
@@ -738,7 +746,7 @@
                     <li><strong style="color:var(--text-primary)">Prefer the hostname for encrypted protocols.</strong> For DoT, DoQ, DoH and H3 it is also the name checked against the server's certificate and sent as SNI; some providers, such as AdGuard DNS private servers, identify you by it.</li>
                     <li><strong style="color:var(--text-primary)">Ports:</strong> <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">udp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tcp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tls://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://</code> need one (53 for plain DNS, 853 for DoT and DoQ); <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://</code> default to 443. IPv6 addresses go in brackets: <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://[2a10:50c0::ad1:ff]:853</code>.</li>
                     <li><strong style="color:var(--text-primary)">Coming from AdGuard?</strong> Its <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">quic://host</code> addresses are written here as <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://host:853</code>.</li>
-                    <li><strong style="color:var(--text-primary)">Hostnames are looked up</strong> with this machine's system resolver when the server starts and when pools are saved. If this machine uses Ferrous DNS itself as its resolver, those lookups can fail at startup.</li>
+                    <li><strong style="color:var(--text-primary)">Hostnames are looked up</strong> through the Local DNS server (DNS Settings) when one is set, otherwise with this machine's resolver, when the server starts and when pools are saved. A lookup that fails is retried automatically.</li>
                 </ul>
             </div>
         </div>
