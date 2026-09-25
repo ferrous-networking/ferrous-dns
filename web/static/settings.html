@@ -624,7 +624,7 @@
                 <i data-lucide="book-open" style="width:20px;height:20px;color:var(--color-primary)"></i>
                 <h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Protocol Reference</h2>
             </div>
-            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px">URL schemes accepted in the server address fields below.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px">URL schemes accepted in the server address fields below. Every protocol accepts a hostname or an IP address.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;background:var(--bg-tertiary)">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -684,7 +684,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">HTTPS <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoH)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://1.1.1.1/dns-query</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://dns.google/dns-query</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over HTTPS (RFC 8484). Queries sent as HTTP/2 POST. Blends with web traffic — hard to block.</p>
@@ -701,7 +701,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">QUIC <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoQ)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://94.140.14.14:853</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://dns.adguard-dns.com:853</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over QUIC (RFC 9250). TLS 1.3 over UDP. No head-of-line blocking. Best encrypted option overall.</p>
@@ -718,7 +718,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">H3 <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoH3)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://94.140.14.14/dns-query</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://dns.google/dns-query</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over HTTP/3. Same semantics as DoH but over QUIC. Requires UDP port 443 to be reachable.</p>
@@ -728,6 +728,18 @@
                         <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(107,114,128,0.15);color:var(--text-tertiary);font-weight:500">Port 443</span>
                     </div>
                 </div>
+            </div>
+            <div style="margin-top:16px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <i data-lucide="lightbulb" style="width:15px;height:15px;color:#F59E0B;flex-shrink:0"></i>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Writing a server address</span>
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text-secondary);line-height:1.7">
+                    <li><strong style="color:var(--text-primary)">Prefer the hostname for encrypted protocols.</strong> For DoT, DoQ, DoH and H3 it is also the name checked against the server's certificate and sent as SNI; some providers, such as AdGuard DNS private servers, identify you by it.</li>
+                    <li><strong style="color:var(--text-primary)">Ports:</strong> <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">udp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tcp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tls://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://</code> need one (53 for plain DNS, 853 for DoT and DoQ); <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://</code> default to 443. IPv6 addresses go in brackets: <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://[2a10:50c0::ad1:ff]:853</code>.</li>
+                    <li><strong style="color:var(--text-primary)">Coming from AdGuard?</strong> Its <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">quic://host</code> addresses are written here as <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://host:853</code>.</li>
+                    <li><strong style="color:var(--text-primary)">Hostnames are looked up</strong> with this machine's system resolver when the server starts and when pools are saved. If this machine uses Ferrous DNS itself as its resolver, those lookups can fail at startup.</li>
+                </ul>
             </div>
         </div>
 
@@ -768,16 +780,21 @@
                     </div>
                     <div>
                         <label class="form-label">Servers</label>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">One server per field, written as in the Protocol Reference above, e.g. <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://dns.adguard-dns.com:853</code>.</p>
                         <div style="display:flex;flex-direction:column;gap:8px">
                             <template x-for="(srv,sidx) in pool.servers" :key="sidx">
-                                <div style="display:flex;gap:8px">
-                                    <input type="text" x-model="pool.servers[sidx]" placeholder="8.8.8.8:53" style="flex:1">
-                                    <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:40px;text-align:center;display:flex;align-items:center;justify-content:center">
-                                        <span x-text="getServerHealth(srv)==='Healthy'?'✅':getServerHealth(srv)==='Unhealthy'?'❌':'❓'"></span>
+                                <div>
+                                    <div style="display:flex;gap:8px">
+                                        <input type="text" x-model="pool.servers[sidx]" @blur="touchServer(idx, sidx)" placeholder="doq://dns.adguard-dns.com:853" style="flex:1"
+                                               :style="serverFieldError(idx, sidx, srv) ? {borderColor: 'var(--color-error)'} : {}">
+                                        <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:40px;text-align:center;display:flex;align-items:center;justify-content:center">
+                                            <span x-text="getServerHealth(srv)==='Healthy'?'✅':getServerHealth(srv)==='Unhealthy'?'❌':'❓'"></span>
+                                        </div>
+                                        <button @click="pool.servers.splice(sidx,1)" class="btn-icon" style="padding:10px">
+                                            <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                        </button>
                                     </div>
-                                    <button @click="pool.servers.splice(sidx,1)" class="btn-icon" style="padding:10px">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                    </button>
+                                    <p x-show="serverFieldError(idx, sidx, srv)" x-text="serverFieldError(idx, sidx, srv)" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
                                 </div>
                             </template>
                             <button @click="pool.servers.push('')" class="btn btn-primary" style="width:fit-content">
