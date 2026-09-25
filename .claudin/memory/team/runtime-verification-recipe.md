@@ -36,7 +36,7 @@ Run it from a directory containing a `migrations` symlink to the repo's `migrati
 
 To reach an authenticated session: `POST /api/auth/setup {"password": "..."}` returns 204 and writes the Argon2 hash into the config file, but the running process keeps its startup snapshot of `[auth]`, so **restart before logging in**.
 
-**Gotcha:** `AdminConfig` derives `Default`, so a config file with no `[auth.admin]` table gets `username = ""` rather than the `"admin"` that `default_admin_username()` supplies when the table exists without the key. After setup, set `username = "admin"` in the generated `[auth.admin]` table and restart, or every login returns 401 with "Invalid credentials".
+**Admin username:** since PR #251 (merged 2026-09-25 as `e75ba8c`), `AdminConfig` has a hand-written `Default` with `username = "admin"` (`domain/src/config/auth.rs:121-124`). A config with no `[auth.admin]` table now logs in as `admin`. Before #251 the username came out empty and every login returned 401, so only builds older than `e75ba8c` still need `username = "admin"` set by hand.
 
 **Verifying blocklist behaviour:** query with `dig @127.0.0.1 -p 15353 <domain>`; under the default `block_mode = "null_ip"` a blocked name answers `0.0.0.0` with `EDE 15 (Blocked)`. The trustworthy "my list actually loaded" signal is the `Fetched blocklist source url=…` log line, **not** the `exact=` count in `Block index compiled` — a 224k-entry HaGeZi list logs `exact=0` because its entries parse as wildcards. A source whose URL 404s is only `warn!`-logged and the reload still reports success, so always check for the fetch line per URL. See [[issue-216-blocklist-sync]].
 
