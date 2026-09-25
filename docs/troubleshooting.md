@@ -99,6 +99,40 @@ Check the dashboard at **Settings > System Status > Upstream Health**. If all up
 - Verify your upstream URLs are correct in `ferrous-dns.toml`
 - Check network connectivity from the server: `dig @8.8.8.8 example.com`
 - If using DoH/DoT/DoQ upstreams, ensure outbound ports 443/853 are open
+- If only upstreams written as hostnames are unhealthy, see [An Upstream Hostname Never Comes Up](#hostname-upstream-never-comes-up)
+
+---
+
+## An Upstream Hostname Never Comes Up {#hostname-upstream-never-comes-up}
+
+### Symptom
+
+An upstream written with a hostname, such as `doq://dns.adguard-dns.com:853`, stays unhealthy and never answers, while the same server written as an IP address works. The startup log has `Failed to resolve upstream hostname, keeping unresolved hostname=dns.adguard-dns.com`, and each query sent to it logs `transport requires resolved address, got: dns.adguard-dns.com:853`.
+
+### Cause
+
+Ferrous DNS looks `udp://`, `tcp://`, `tls://` and `doq://` hostnames up with the host's system resolver when it starts and when pools are saved. If that lookup fails, the server stays unusable until the next restart or save. The most common reason is a host whose `/etc/resolv.conf` points at Ferrous DNS itself, which is not answering yet while it starts.
+
+### Solution
+
+- Point the host's own resolver at your router or a public resolver instead of Ferrous DNS
+- Check the lookup works on the host: `getent hosts dns.adguard-dns.com`
+- Save the pools again in **Settings > DNS Advanced > Upstream DNS Pools**, or restart, to retry the lookup
+
+---
+
+## An Upstream URL Is Rejected
+
+Saving pools shows `Invalid server '…'`, or the server refuses to start with it. The message ends with how to fix the address; the common ones:
+
+| Message | Fix |
+|:--------|:----|
+| `'quic://' is not a supported scheme` | Write DNS-over-QUIC as `doq://host:853` — AdGuard shows it as `quic://` |
+| `missing port` | Add the port: `:853` for `tls://` and `doq://`, `:53` for `udp://` and `tcp://` |
+| `add a scheme` | Only `IP:PORT` may omit the scheme; write a hostname as `udp://host:53` |
+| `IPv6 addresses must be in brackets` | `https://[2606:4700:4700::1111]/dns-query` |
+
+See [Upstream URL Formats](features/upstream-management.md#upstream-url-formats).
 
 ---
 

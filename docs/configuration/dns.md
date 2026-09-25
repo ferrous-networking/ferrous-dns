@@ -50,16 +50,16 @@ Ferrous DNS supports all major DNS transport protocols:
 | DNS-over-QUIC | `doq://host:port` | `doq://dns.adguard-dns.com:853` |
 | HTTP/3 | `h3://host[:port]/path` | `h3://dns.google/dns-query` |
 
-DoH and HTTP/3 URLs default to port 443; write an IPv6 literal in brackets (`https://[2606:4700:4700::1111]/dns-query`).
-
-You can also use DNS names directly (resolved at startup):
+Every protocol takes a hostname or an IP address. `udp://`, `tcp://`, `tls://` and `doq://` need a port; DoH and HTTP/3 URLs default to 443. A bare `IP:PORT` is plain UDP, and an IPv6 address goes in brackets (`doq://[2a10:50c0::ad1:ff]:853`, `https://[2606:4700:4700::1111]/dns-query`).
 
 ```toml
 servers = [
-    "doq://dns.adguard-dns.com:853",   # hostname resolved at startup
+    "doq://dns.adguard-dns.com:853",   # looked up at startup and when pools are saved
     "https://dns.google/dns-query",
 ]
 ```
+
+Upstream Management covers [hostname or IP](../features/upstream-management.md#hostname-or-ip), [AdGuard's `quic://` addresses](../features/upstream-management.md#from-adguard), and [how hostnames are resolved](../features/upstream-management.md#hostname-resolution).
 
 ---
 
@@ -366,7 +366,7 @@ Ferrous DNS supports all common DNS record types per RFC 1035:
 local_dns_server = "192.168.1.1:53"
 ```
 
-`local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for three distinct purposes.
+`local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for two distinct purposes.
 
 !!! note "Answers from the router are validated"
     Queries to `local_dns_server` get the same anti-spoofing as upstream pools: the answer must come from the router's address and match the transaction ID, the question and the DNS Cookie, and a truncated answer is retried over TCP. With `qname_case_randomization = true` the query name's case is randomized here too — if your router rewrites the case of names, every answer fails that check and the log shows `Local DNS server query failed`; turn 0x20 off in that case. See [Security Hardening](../features/security-hardening.md#upstream-response-validation).
@@ -409,35 +409,9 @@ This is especially useful for:
 
 ---
 
-### 3. Upstream Server Name Resolution {#upstream-name-resolution}
+### Upstream hostnames do not use it {#upstream-name-resolution}
 
-Upstream server URLs may contain hostnames rather than bare IP addresses:
-
-```toml
-servers = [
-    "doq://dns.adguard-dns.com:853",
-    "https://cloudflare-dns.com/dns-query",
-    "tls://dns.quad9.net:853",
-]
-```
-
-At startup, Ferrous DNS must resolve these hostnames to IP addresses before it can establish connections. If `local_dns_server` is configured, these startup lookups are sent there first — which matters in environments where:
-
-- The machine running Ferrous DNS has no system resolver configured (common in containers)
-- You want to avoid a circular dependency (Ferrous DNS cannot query itself to bootstrap its own upstreams)
-- Your internal network routes DNS differently than the default system resolver
-
-```text
-Startup: resolve "dns.adguard-dns.com"
-              │
-              ▼ (if local_dns_server is set)
-    192.168.1.1:53  →  returns 94.140.14.14
-              │
-              ▼
-    Connection established to doq://94.140.14.14:853
-```
-
-If `local_dns_server` is not set, hostname resolution at startup falls back to the system resolver (`/etc/resolv.conf`).
+Hostnames in upstream URLs such as `doq://dns.adguard-dns.com:853` are looked up with the host's **system resolver** (`/etc/resolv.conf`), not `local_dns_server`, when the server starts and when pools are saved. If the machine running Ferrous DNS uses Ferrous DNS itself as its resolver, those startup lookups fail — point it at your router instead. See [How hostnames are resolved](../features/upstream-management.md#hostname-resolution).
 
 ---
 
@@ -454,7 +428,6 @@ local_dns_server = "192.168.1.1:53"  # your router's IP
 | Scenario | Effect |
 |:---------|:-------|
 | Client `192.168.1.42` connects | Dashboard shows `laptop.lan` instead of raw IP |
-| Upstream URL `doq://dns.adguard-dns.com:853` | Hostname resolved via router at startup |
 | New device joins the network | Hostname pulled from router's DHCP table |
 
 ---

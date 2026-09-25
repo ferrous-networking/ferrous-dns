@@ -6,29 +6,52 @@ Ferrous DNS gives you full control over how DNS queries are forwarded to the int
 
 ## Upstream URL Formats
 
-All upstream servers are specified as URLs. Every major DNS transport protocol is supported:
+All upstream servers are specified as URLs. Every major DNS transport protocol is supported, and every one of them takes a hostname or an IP address — you never need to use bare IP addresses:
 
-| Protocol | Format | Example |
-|:---------|:-------|:--------|
-| Plain UDP | `udp://host:port` | `udp://8.8.8.8:53` |
-| Plain TCP | `tcp://host:port` | `tcp://8.8.8.8:53` |
-| DNS-over-HTTPS (DoH) | `https://host[:port]/path` | `https://cloudflare-dns.com/dns-query` |
-| DNS-over-TLS (DoT) | `tls://host:port` | `tls://1.1.1.1:853` |
-| DNS-over-QUIC (DoQ) | `doq://host:port` | `doq://dns.adguard-dns.com:853` |
-| HTTP/3 | `h3://host[:port]/path` | `h3://dns.google/dns-query` |
+| Protocol | Format | Example | Port |
+|:---------|:-------|:--------|:-----|
+| Plain UDP | `udp://host:port` | `udp://8.8.8.8:53` | required, usually 53 |
+| Plain TCP | `tcp://host:port` | `tcp://8.8.8.8:53` | required, usually 53 |
+| DNS-over-HTTPS (DoH) | `https://host[:port]/path` | `https://cloudflare-dns.com/dns-query` | optional, defaults to 443 |
+| DNS-over-TLS (DoT) | `tls://host:port` | `tls://dns.google:853` | required, usually 853 |
+| DNS-over-QUIC (DoQ) | `doq://host:port` | `doq://dns.adguard-dns.com:853` | required, usually 853 |
+| HTTP/3 | `h3://host[:port]/path` | `h3://dns.google/dns-query` | optional, defaults to 443 |
 
-DoH and HTTP/3 URLs default to port 443. An IPv6 literal goes in brackets, as in any URL: `https://[2606:4700:4700::1111]/dns-query`. A URL with an unbracketed IPv6 address or a port that is not a number from 0 to 65535 is rejected at startup and by the configuration API.
+A bare `IP:PORT` with no scheme, such as `8.8.8.8:53`, is plain UDP. An IPv6 address goes in brackets, as in any URL: `doq://[2a10:50c0::ad1:ff]:853`, `https://[2606:4700:4700::1111]/dns-query`.
 
-Hostnames in upstream URLs are resolved once at startup — you never need to use bare IP addresses:
+An address Ferrous DNS cannot read is rejected at startup, by the configuration API, and by the Settings page before it saves, with a message that says how to fix it — for example `missing port — DNS-over-QUIC usually uses 853, e.g. doq://dns.adguard-dns.com:853`.
+
+### Hostname or IP address? {#hostname-or-ip}
+
+Both work. For the encrypted protocols (DoT, DoQ, DoH, HTTP/3), prefer the hostname:
+
+- It is the name the server's TLS certificate is checked against, and it is sent as SNI during the handshake. With an IP address, the certificate must list that IP.
+- Some providers identify your account or device by the hostname you connect to, such as AdGuard DNS private servers (`doq://<device-id>.d.adguard-dns.com:853`). An IP address loses that.
+
+### Coming from AdGuard {#from-adguard}
+
+AdGuard Home and the AdGuard DNS dashboard write DNS-over-QUIC as `quic://host`, usually without a port. Ferrous DNS uses `doq://` and needs the port:
+
+| AdGuard shows | Write in Ferrous DNS |
+|:--------------|:---------------------|
+| `quic://dns.adguard-dns.com` | `doq://dns.adguard-dns.com:853` |
+| `quic://<device-id>.d.adguard-dns.com` | `doq://<device-id>.d.adguard-dns.com:853` |
+| `tls://dns.adguard-dns.com` | `tls://dns.adguard-dns.com:853` |
+| `https://dns.adguard-dns.com/dns-query` | unchanged |
+
+### How hostnames are resolved {#hostname-resolution}
 
 ```toml
 servers = [
-    "doq://dns.adguard-dns.com:853",   # hostname resolved once at startup
-    "https://dns.google/dns-query",    # hostname resolved once at startup
+    "doq://dns.adguard-dns.com:853",   # looked up at startup and when pools are saved
+    "https://dns.google/dns-query",    # also looked up at query time if that failed
 ]
 ```
 
-Ferrous DNS resolves these hostnames once at startup using the **system resolver** (the host's `/etc/resolv.conf` / OS resolver), then caches the IPs internally. The `local_dns_server` setting in `[dns]` is used for reverse (PTR) lookups of private clients and for split-DNS local-TLD queries — it is **not** used to resolve upstream URL hostnames.
+Ferrous DNS looks upstream hostnames up with the **system resolver** (the host's `/etc/resolv.conf` / OS resolver) when it starts and whenever the pools are saved, and uses up to four addresses per family. The `local_dns_server` setting in `[dns]` is used for reverse (PTR) lookups of private clients and for split-DNS local-TLD queries — it is **not** used to resolve upstream URL hostnames.
+
+!!! warning "If the lookup fails"
+    A `udp://`, `tcp://`, `tls://` or `doq://` hostname whose lookup fails stays unusable until the server restarts or the pools are saved again, and the log shows `Failed to resolve upstream hostname, keeping unresolved`. `https://` and `h3://` look the name up again when a query needs it. The usual cause is a host whose own resolver is Ferrous DNS, which is not answering yet while it starts — see [Troubleshooting](../troubleshooting.md#hostname-upstream-never-comes-up).
 
 ---
 

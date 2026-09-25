@@ -311,6 +311,8 @@ servers  = [
     h3://dns.google/dns-query                 HTTP/3
     ```
 
+    Hostnames and IP addresses both work, and a bare `8.8.8.8:53` is plain UDP. `udp://`, `tcp://`, `tls://` and `doq://` need a port; `https://` and `h3://` default to 443. IPv6 goes in brackets: `doq://[2a10:50c0::ad1:ff]:853`. AdGuard's `quic://host` is written `doq://host:853`.
+
 See [Upstream Management](../features/upstream-management.md).
 
 ---
