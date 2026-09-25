@@ -139,6 +139,51 @@ fn a_local_dns_server_hostname_disables_local_forwarding() {
     }
 }
 
+/// Older releases started with an upstream that had no host, and every query
+/// to it failed; the file now loads without it, and without a pool it emptied.
+#[test]
+fn an_upstream_without_a_host_is_dropped() {
+    let contents = format!(
+        "{}\n{}",
+        MINIMAL_TOML.replace(
+            r#"upstream_servers = ["1.1.1.1:53"]"#,
+            r#"upstream_servers = ["1.1.1.1:53", "tcp://:53"]"#,
+        ),
+        r#"
+[[dns.pools]]
+name = "mixed"
+strategy = "Parallel"
+servers = ["doq://:853", "doq://dns.adguard-dns.com:853", "udp://:53"]
+
+[[dns.pools]]
+name = "hostless"
+strategy = "Failover"
+servers = ["tls://:853"]
+"#
+    );
+    let config = load(&contents);
+
+    assert_eq!(config.dns.upstream_servers, ["1.1.1.1:53"]);
+    let pools: Vec<(&str, &[String])> = config
+        .dns
+        .pools
+        .iter()
+        .map(|p| (p.name.as_str(), p.servers.as_slice()))
+        .collect();
+    assert_eq!(
+        pools,
+        [("mixed", &["doq://dns.adguard-dns.com:853".to_string()][..])]
+    );
+}
+
+/// Older releases failed to start with these, so they still fail to parse.
+#[test]
+fn an_upstream_older_releases_rejected_is_kept_for_the_parser() {
+    let tables = "[[dns.pools]]\nname = \"p\"\nstrategy = \"Parallel\"\nservers = [\"quic://dns.adguard-dns.com\"]";
+    let config = load(&file("", tables));
+    assert_eq!(config.dns.pools[0].servers, ["quic://dns.adguard-dns.com"]);
+}
+
 /// Older releases ran the retention job with 0: every run deletes every row.
 #[test]
 fn a_zero_query_log_retention_is_kept() {
