@@ -97,3 +97,27 @@ async fn a_stalled_download_fails_with_a_timeout_error() {
         "a stall must fail without waiting for the overall download limit"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_download_that_never_finishes_is_cut_off() {
+    keep_clock_ticking();
+    // A line every 20 seconds never trips the stall timeout, so only the
+    // overall limit can end it.
+    let url = serve_in_chunks(list_lines(1000), Duration::from_secs(20), 1 << 30).await;
+
+    let started = Instant::now();
+    let error = ListDownloader::new()
+        .unwrap()
+        .fetch(&url)
+        .await
+        .expect_err("a download that never finishes must be cut off");
+
+    assert!(
+        error.to_string().contains("timed out"),
+        "the error must say the download timed out: {error}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10 * 60),
+        "a trickling server must not hold the rebuild indefinitely"
+    );
+}
