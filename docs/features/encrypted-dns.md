@@ -60,6 +60,8 @@ servers = [
 | NextDNS | `https://dns.nextdns.io` | — | — |
 | CleanBrowsing | `https://doh.cleanbrowsing.org/doh/security-filter/` | — | — |
 
+DoT and DoQ addresses need the port, usually `:853`. AdGuard's apps and dashboard write DoQ as `quic://host`; here it is `doq://host:853`, and an AdGuard DNS private server is `doq://<device-id>.d.adguard-dns.com:853`. See [Upstream URL Formats](upstream-management.md#upstream-url-formats).
+
 ---
 
 ## Server-Side Encrypted DNS

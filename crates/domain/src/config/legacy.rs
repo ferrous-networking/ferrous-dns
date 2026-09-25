@@ -27,6 +27,7 @@ use super::dns_cookies::{parse_server_secret, DnsCookiesConfig};
 use super::encrypted_dns::EncryptedDnsConfig;
 use super::root::Config;
 use super::server::parse_bind_host;
+use crate::DnsProtocol;
 
 /// Rewrites, in the parsed file `doc`, each string value the typed parse
 /// would reject but earlier releases ran with.
@@ -35,6 +36,7 @@ pub(super) fn normalize_document(doc: &mut Table) {
     ignore_unused_cookie_secret(doc);
     default_unknown_eviction_strategy(doc);
     disable_unparseable_local_dns_server(doc);
+    drop_hostless_upstreams(doc);
 }
 
 /// Replaces with its default each number [`Config::validate`] would reject
@@ -315,6 +317,68 @@ fn disable_unparseable_local_dns_server(doc: &mut Table) {
         Logged::Value,
         "disabling local forwarding; set the router's IP address or IP:port to enable it",
     );
+}
+
+/// Older releases started with an upstream whose host was empty or a broken
+/// IPv6 literal (`doq://:853`), and every query to it failed. It is dropped,
+/// and so is a pool it leaves without servers.
+fn drop_hostless_upstreams(doc: &mut Table) {
+    let Some(dns) = doc.get_mut("dns").and_then(Value::as_table_mut) else {
+        return;
+    };
+    if let Some(servers) = dns
+        .get_mut("upstream_servers")
+        .and_then(Value::as_array_mut)
+    {
+        drop_hostless("dns.upstream_servers", servers);
+    }
+    let Some(pools) = dns.get_mut("pools").and_then(Value::as_array_mut) else {
+        return;
+    };
+    pools.retain_mut(|pool| {
+        let Some(servers) = pool.get_mut("servers").and_then(Value::as_array_mut) else {
+            return true;
+        };
+        if !drop_hostless("dns.pools.servers", servers) || !servers.is_empty() {
+            return true;
+        }
+        let name = pool.get("name").and_then(Value::as_str).unwrap_or_default();
+        warn!(
+            key = "dns.pools",
+            value = name,
+            "Invalid config value: dropping the pool, which has no usable upstream left"
+        );
+        false
+    });
+}
+
+/// Removes each server [`is_hostless_upstream`] matches; whether any went.
+fn drop_hostless(key: &str, servers: &mut Vec<Value>) -> bool {
+    let before = servers.len();
+    servers.retain(|server| match server.as_str() {
+        Some(server) if is_hostless_upstream(server) => {
+            warn!(
+                key,
+                value = server,
+                "Invalid config value: dropping the upstream, which has no usable host"
+            );
+            false
+        }
+        _ => true,
+    });
+    servers.len() != before
+}
+
+/// Older releases took any `HOST:PORT` after these schemes, an empty host included.
+fn is_hostless_upstream(server: &str) -> bool {
+    let Some((scheme, rest)) = server.split_once("://") else {
+        return false;
+    };
+    matches!(scheme, "udp" | "tcp" | "tls" | "doq")
+        && rest
+            .rsplit_once(':')
+            .is_some_and(|(_, port)| port.parse::<u16>().is_ok())
+        && server.parse::<DnsProtocol>().is_err()
 }
 
 /// Whether a rewritten value may appear in the warning.

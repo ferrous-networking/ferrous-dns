@@ -133,7 +133,7 @@ is otherwise only written to the log.
 - **Cache Overview** — entries, hit rate, evictions, compactions, optimistic refreshes
 - **DNS Configuration** — upstream pools, strategies, DNSSEC, cache settings
 - **Rate Limiting** — enable/disable rate limiting, configure QPS, burst, whitelist, slip ratio, dry-run mode, TCP/DoT connection limits
-- **DNS Settings** — non-FQDN blocking, private PTR blocking, local domain
+- **DNS Settings** — non-FQDN blocking, private PTR blocking, local domain, Local DNS server (your router, also used to look up upstream hostnames)
 - **API Key** — generate, save, or remove the API key
 - **Dashboard Session Key** — authenticate the dashboard for API key-protected servers
 - **Pi-hole Compatibility** — toggle Pi-hole v6 API mode

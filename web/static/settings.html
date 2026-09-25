@@ -244,27 +244,27 @@
                                 <!-- Expanded: per-IP breakdown -->
                                 <div x-show="isUpstreamExpanded(group.address)" style="padding-bottom:10px">
                                     <template x-for="(ep, idx) in group.resolved" :key="ep.address">
-                                        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0 6px 20px">
-                                            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                                                <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
-                                                      x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
-                                                <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
-                                                      x-text="ep.family.toUpperCase()"></span>
-                                                <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                                                      x-text="ep.address"></span>
+                                        <div style="padding:6px 0 6px 20px">
+                                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                                                    <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
+                                                          x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
+                                                    <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
+                                                          x-text="ep.family.toUpperCase()"></span>
+                                                    <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                                          x-text="ep.address"></span>
+                                                </div>
+                                                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
+                                                    <template x-if="ep.latency_ms != null">
+                                                        <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
+                                                    </template>
+                                                    <span :style="'background:' + poolStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
+                                                          x-text="ep.status"></span>
+                                                </div>
                                             </div>
-                                            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
-                                                <template x-if="ep.latency_ms != null">
-                                                    <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
-                                                </template>
-                                                <template x-if="ep.last_error && ep.status !== 'Healthy'">
-                                                    <span :title="ep.last_error"
-                                                          style="font-size:11px;color:var(--color-error);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default"
-                                                          x-text="ep.last_error"></span>
-                                                </template>
-                                                <span :style="'background:' + poolStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
-                                                      x-text="ep.status"></span>
-                                            </div>
+                                            <!-- The whole error, wrapped: it often says how to fix the server. -->
+                                            <p x-show="ep.last_error && ep.status !== 'Healthy'" x-text="ep.last_error"
+                                               style="margin:4px 0 0 24px;font-size:11px;line-height:1.5;color:var(--color-error);overflow-wrap:anywhere"></p>
                                         </div>
                                     </template>
                                 </div>
@@ -433,7 +433,7 @@
                             <h4 style="font-size:16px;font-weight:600;margin:0">Block local domain from internet</h4>
                         </div>
                         <p style="font-size:13px;color:var(--text-secondary);margin:0">When a local domain (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">lan</code>) is configured, queries for that domain that are not found in local records will return NXDOMAIN instead of leaking to your upstream DNS servers.</p>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">Set your router address as the local DNS server to also resolve hostnames for discovered clients.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:8px 0 0">With a Local DNS server set below, names under the local domain are asked to your router.</p>
                     </div>
                     <div @click="toggleLocalDomain()"
                          :class="settings.local_domain?'active':''" class="toggle-switch">
@@ -443,18 +443,26 @@
 
                 <div x-show="settings.local_domain" x-cloak
                      style="border-top:1px solid var(--border-color);padding-top:16px">
-                    <div class="form-group" style="margin-bottom:16px">
+                    <div class="form-group" style="margin-bottom:0">
                         <label class="form-label">Local domain name</label>
                         <input type="text" x-model="settings.local_domain" placeholder="lan"
                                style="max-width:400px;font-family:monospace">
                         <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Queries for <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">*.lan</code> not in local records will return NXDOMAIN</p>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">Local DNS server <span style="color:var(--text-tertiary);font-weight:400">(optional)</span></label>
-                        <input type="text" x-model="settings.local_dns_server" placeholder="192.168.1.1:53"
-                               style="max-width:400px;font-family:monospace">
-                        <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">Your router or DHCP server. Used to resolve hostnames of discovered clients (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">device.lan</code>)</p>
-                    </div>
+                </div>
+            </div>
+
+            <div style="padding:16px 0;border-top:1px solid var(--border-color)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <i data-lucide="router" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <h4 style="font-size:16px;font-weight:600;margin:0">Local DNS server <span style="color:var(--text-tertiary);font-weight:400;font-size:13px">(optional)</span></h4>
+                </div>
+                <p style="font-size:13px;color:var(--text-secondary);margin:0">Your router or DHCP server. Ferrous DNS asks it for the hostnames of discovered clients (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">device.lan</code>), for names under the local domain, and for the hostnames in your upstream servers (e.g. <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">dns.adguard-dns.com</code>).</p>
+                <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 12px">Set it when this machine uses Ferrous DNS as its own resolver: without it, upstream hostnames cannot be looked up at startup and those upstreams stay unusable.</p>
+                <div class="form-group" style="margin-bottom:0">
+                    <input type="text" x-model="settings.local_dns_server" placeholder="192.168.1.1:53" aria-label="Local DNS server"
+                           style="max-width:400px;font-family:monospace">
+                    <p style="font-size:11px;color:var(--text-tertiary);margin-top:4px">An IP address, or IP:port; port 53 when omitted.</p>
                 </div>
             </div>
 
@@ -624,7 +632,7 @@
                 <i data-lucide="book-open" style="width:20px;height:20px;color:var(--color-primary)"></i>
                 <h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0">Protocol Reference</h2>
             </div>
-            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px">URL schemes accepted in the server address fields below.</p>
+            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px">URL schemes accepted in the server address fields below. Every protocol accepts a hostname or an IP address.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
                 <div style="border:1px solid var(--border-color);border-radius:8px;padding:16px;background:var(--bg-tertiary)">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
@@ -684,7 +692,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">HTTPS <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoH)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://1.1.1.1/dns-query</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://dns.google/dns-query</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over HTTPS (RFC 8484). Queries sent as HTTP/2 POST. Blends with web traffic — hard to block.</p>
@@ -701,7 +709,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">QUIC <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoQ)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://94.140.14.14:853</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://dns.adguard-dns.com:853</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over QUIC (RFC 9250). TLS 1.3 over UDP. No head-of-line blocking. Best encrypted option overall.</p>
@@ -718,7 +726,7 @@
                         </div>
                         <div>
                             <h4 style="font-weight:700;font-size:14px;margin:0;color:var(--text-primary)">H3 <span style="font-weight:400;color:var(--text-tertiary);font-size:12px">(DoH3)</span></h4>
-                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://94.140.14.14/dns-query</code>
+                            <code style="font-size:11px;color:var(--text-tertiary);background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://dns.google/dns-query</code>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0 0 10px;line-height:1.5">DNS over HTTP/3. Same semantics as DoH but over QUIC. Requires UDP port 443 to be reachable.</p>
@@ -728,6 +736,18 @@
                         <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:rgba(107,114,128,0.15);color:var(--text-tertiary);font-weight:500">Port 443</span>
                     </div>
                 </div>
+            </div>
+            <div style="margin-top:16px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <i data-lucide="lightbulb" style="width:15px;height:15px;color:#F59E0B;flex-shrink:0"></i>
+                    <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Writing a server address</span>
+                </div>
+                <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text-secondary);line-height:1.7">
+                    <li><strong style="color:var(--text-primary)">Prefer the hostname for encrypted protocols.</strong> For DoT, DoQ, DoH and H3 it is also the name checked against the server's certificate and sent as SNI; some providers, such as AdGuard DNS private servers, identify you by it.</li>
+                    <li><strong style="color:var(--text-primary)">Ports:</strong> <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">udp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tcp://</code>, <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">tls://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://</code> need one (53 for plain DNS, 853 for DoT and DoQ); <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">https://</code> and <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">h3://</code> default to 443. IPv6 addresses go in brackets: <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://[2a10:50c0::ad1:ff]:853</code>.</li>
+                    <li><strong style="color:var(--text-primary)">Coming from AdGuard?</strong> Its <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">quic://host</code> addresses are written here as <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://host:853</code>.</li>
+                    <li><strong style="color:var(--text-primary)">Hostnames are looked up</strong> through the Local DNS server (DNS Settings) when one is set, otherwise with this machine's resolver, when the server starts and when pools are saved. A lookup that fails is retried automatically.</li>
+                </ul>
             </div>
         </div>
 
@@ -768,16 +788,21 @@
                     </div>
                     <div>
                         <label class="form-label">Servers</label>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">One server per field, written as in the Protocol Reference above, e.g. <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">doq://dns.adguard-dns.com:853</code>.</p>
                         <div style="display:flex;flex-direction:column;gap:8px">
                             <template x-for="(srv,sidx) in pool.servers" :key="sidx">
-                                <div style="display:flex;gap:8px">
-                                    <input type="text" x-model="pool.servers[sidx]" placeholder="8.8.8.8:53" style="flex:1">
-                                    <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:40px;text-align:center;display:flex;align-items:center;justify-content:center">
-                                        <span x-text="getServerHealth(srv)==='Healthy'?'✅':getServerHealth(srv)==='Unhealthy'?'❌':'❓'"></span>
+                                <div>
+                                    <div style="display:flex;gap:8px">
+                                        <input type="text" x-model="pool.servers[sidx]" @blur="touchServer(idx, sidx)" placeholder="doq://dns.adguard-dns.com:853" style="flex:1"
+                                               :style="serverFieldError(idx, sidx, srv) ? {borderColor: 'var(--color-error)'} : {}">
+                                        <div style="padding:10px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;min-width:40px;text-align:center;display:flex;align-items:center;justify-content:center">
+                                            <span x-text="getServerHealth(srv)==='Healthy'?'✅':getServerHealth(srv)==='Unhealthy'?'❌':'❓'"></span>
+                                        </div>
+                                        <button @click="pool.servers.splice(sidx,1)" class="btn-icon" style="padding:10px">
+                                            <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                        </button>
                                     </div>
-                                    <button @click="pool.servers.splice(sidx,1)" class="btn-icon" style="padding:10px">
-                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                    </button>
+                                    <p x-show="serverFieldError(idx, sidx, srv)" x-text="serverFieldError(idx, sidx, srv)" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
                                 </div>
                             </template>
                             <button @click="pool.servers.push('')" class="btn btn-primary" style="width:fit-content">

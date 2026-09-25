@@ -63,6 +63,9 @@
             },
             upstreamHealth: [],
             expandedUpstreams: [],
+            // Pool server fields show their format error once left, or all of them after a save attempt.
+            serverTouched: {},
+            showServerErrors: false,
             cacheMetrics: {
                 total_entries: 0, hits: 0, misses: 0, evictions: 0,
                 insertions: 0, optimistic_refreshes: 0,
@@ -296,6 +299,119 @@
                     weight: p.weight ?? null
                 })));
             },
+            // Mirrors DnsProtocol::from_str (crates/domain/src/value_objects/dns_protocol.rs),
+            // messages included, so a mistyped upstream is explained before saving. It only
+            // flags what the backend rejects too; the backend stays the authority on save.
+            upstreamUrlError(value) {
+                const s = (value || '').trim();
+                if (!s) return '';
+                const sep = s.indexOf('://');
+                if (sep < 0) return this.bareUpstreamError(s);
+                const scheme = s.slice(0, sep);
+                const rest = s.slice(sep + 3);
+                switch (scheme) {
+                    case 'udp': case 'tcp': case 'tls': case 'doq': {
+                        const error = this.hostPortError(rest);
+                        return error === null ? this.missingPortHint(scheme, rest.replace(/\/+$/, '')) : error;
+                    }
+                    case 'https': case 'h3':
+                        return this.urlAuthorityError(rest);
+                    case 'quic': {
+                        const written = rest.replace(/\/+$/, '');
+                        const port = this.hostPortError(written) === null ? ':853' : '';
+                        return `'quic://' is not a supported scheme — write DNS-over-QUIC as doq://${written}${port}`;
+                    }
+                    default:
+                        return `unknown scheme '${scheme}://' — use udp://, tcp://, tls://, doq://, https:// or h3://`;
+                }
+            },
+            // '' when `s` is HOST:PORT or [IPv6]:PORT, null when only the port is missing.
+            hostPortError(s) {
+                let host, port;
+                if (s.startsWith('[')) {
+                    const end = s.indexOf(']');
+                    if (end < 0) return 'unterminated IPv6 literal';
+                    const after = s.slice(end + 1);
+                    if (!after) return null;
+                    if (!after.startsWith(':')) return 'unexpected characters after IPv6 literal';
+                    host = s.slice(1, end);
+                    port = after.slice(1);
+                } else {
+                    const colon = s.lastIndexOf(':');
+                    if (colon < 0) return null;
+                    host = s.slice(0, colon);
+                    port = s.slice(colon + 1);
+                }
+                if (!host) return 'missing host';
+                return this.portError(port);
+            },
+            portError(port) {
+                return /^\+?\d+$/.test(port) && Number(port) <= 65535
+                    ? '' : `invalid port '${port}' — use a number from 0 to 65535`;
+            },
+            missingPortHint(scheme, written) {
+                const [protocol, port] = scheme === 'tls' ? ['DNS-over-TLS', 853]
+                    : scheme === 'doq' ? ['DNS-over-QUIC', 853] : ['plain DNS', 53];
+                const prefix = scheme ? `${scheme}://` : '';
+                return `missing port — ${protocol} usually uses ${port}, e.g. ${prefix}${written}:${port}`;
+            },
+            urlAuthorityError(rest) {
+                const authority = rest.split(/[/?#]/)[0];
+                let host = authority;
+                let port = null;
+                if (authority.startsWith('[')) {
+                    // The backend also checks the literal is IPv6; that message comes from Rust.
+                    const end = authority.indexOf(']');
+                    if (end < 0) return 'unterminated IPv6 literal';
+                    host = authority.slice(1, end);
+                    const after = authority.slice(end + 1);
+                    if (after && !after.startsWith(':')) return 'unexpected characters after IPv6 literal';
+                    if (after) port = after.slice(1);
+                } else if ((authority.match(/:/g) || []).length > 1) {
+                    return `IPv6 addresses must be in brackets, e.g. [${authority}]`;
+                } else if (authority.includes(':')) {
+                    [host, port] = authority.split(':');
+                }
+                if (!host) return 'missing host';
+                return port === null ? '' : this.portError(port);
+            },
+            // Only IP:PORT may omit the scheme. A bracketed IPv6 one is left to the backend.
+            bareUpstreamError(s) {
+                const octet = '(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+                const ipv4 = `${octet}(\\.${octet}){3}`;
+                const ipv4WithPort = s.match(new RegExp(`^${ipv4}:(\\d+)$`));
+                if (ipv4WithPort && Number(ipv4WithPort.at(-1)) <= 65535) return '';
+                if (/^\[[^\]]*\]:\d+$/.test(s)) return '';
+                if (new RegExp(`^${ipv4}$`).test(s)) return this.missingPortHint('', s);
+                if (s.includes(':') && this.isIpv6(s)) return this.missingPortHint('', `[${s}]`);
+                const hostLike = s.match(/^[A-Za-z0-9._-]+(:\d+)?$/);
+                if (hostLike) return `add a scheme, e.g. udp://${s}${hostLike[1] ? '' : ':53'} — only IP:PORT may omit it`;
+                return 'unrecognized server address — use a URL such as doq://dns.adguard-dns.com:853 or IP:PORT such as 8.8.8.8:53';
+            },
+            isIpv6(s) {
+                try {
+                    new URL(`http://[${s}]/`);
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+            touchServer(idx, sidx) {
+                this.serverTouched[`${idx}:${sidx}`] = true;
+            },
+            serverFieldError(idx, sidx, value) {
+                if (!this.showServerErrors && !this.serverTouched[`${idx}:${sidx}`]) return '';
+                return this.upstreamUrlError(value);
+            },
+            firstInvalidServer(pools) {
+                for (const p of pools) {
+                    for (const s of p.servers) {
+                        const hint = this.upstreamUrlError(s);
+                        if (hint) return `Pool '${p.name}': Invalid server '${s}': ${hint}`;
+                    }
+                }
+                return '';
+            },
             async saveConfig() {
                 // Strip blank server inputs and drop empty pools before saving — an empty
                 // or malformed upstream would otherwise break the server on its next boot.
@@ -310,6 +426,13 @@
                 // including them makes the backend rebuild and re-resolve every upstream,
                 // so an unrelated edit (cache, rate-limit) shouldn't pay for that.
                 const poolsChanged = this.normalizedPools(cleanedPools) !== this._savedPoolsJson;
+                // Pools that did not change were loaded from the running config, so only edits are checked.
+                const invalidServer = poolsChanged ? this.firstInvalidServer(cleanedPools) : '';
+                if (invalidServer) {
+                    this.showServerErrors = true;
+                    this.showAlert('error', 'Failed to save: ' + invalidServer);
+                    return;
+                }
                 const dnsPayload = {...this.config.dns};
                 if (poolsChanged) {
                     dnsPayload.pools = cleanedPools;
@@ -328,6 +451,8 @@
                         // the snapshot so the next unrelated save won't resend them.
                         this.config.dns.pools = cleanedPools;
                         this._savedPoolsJson = this.normalizedPools(cleanedPools);
+                        this.serverTouched = {};
+                        this.showServerErrors = false;
                         // Only upstream pools are hot-applied; honor the backend flag for everything else.
                         if (data.restart_required) this.restartRequired = true;
                         this.showAlert('success', data.message || 'Configuration saved.');
@@ -366,7 +491,6 @@
             toggleLocalDomain() {
                 if (this.settings.local_domain) {
                     this.settings.local_domain = '';
-                    this.settings.local_dns_server = '';
                 } else {
                     this.settings.local_domain = 'lan';
                 }

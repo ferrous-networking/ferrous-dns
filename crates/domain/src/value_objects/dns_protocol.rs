@@ -175,30 +175,81 @@ impl DnsProtocol {
     }
 }
 
-fn parse_host_port(s: &str) -> Option<(&str, u16)> {
-    if s.starts_with('[') {
-        let end = s.find(']')?;
-        let host = &s[1..end];
-        let rest = &s[end + 1..];
-        let port_str = rest.strip_prefix(':')?;
-        let port = port_str.parse::<u16>().ok()?;
-        Some((host, port))
-    } else {
-        let (host, port_str) = s.rsplit_once(':')?;
-        let port = port_str.parse::<u16>().ok()?;
-        Some((host, port))
+const SUPPORTED_SCHEMES: &str = "use udp://, tcp://, tls://, doq://, https:// or h3://";
+
+enum HostPortError {
+    MissingPort,
+    Invalid(String),
+}
+
+impl HostPortError {
+    fn into_hint(self, scheme: &str, rest: &str) -> String {
+        match self {
+            HostPortError::MissingPort => missing_port_hint(scheme, rest.trim_end_matches('/')),
+            HostPortError::Invalid(hint) => hint,
+        }
     }
 }
 
+/// Splits `HOST:PORT` or `[IPv6]:PORT`; the host comes back without brackets.
+fn split_host_port(s: &str) -> Result<(&str, u16), HostPortError> {
+    let (host, port) = match s.strip_prefix('[') {
+        Some(bracketed) => {
+            let (host, after) = bracketed
+                .split_once(']')
+                .ok_or_else(|| HostPortError::Invalid("unterminated IPv6 literal".into()))?;
+            if after.is_empty() {
+                return Err(HostPortError::MissingPort);
+            }
+            let port = after.strip_prefix(':').ok_or_else(|| {
+                HostPortError::Invalid("unexpected characters after IPv6 literal".into())
+            })?;
+            (host, port)
+        }
+        None => s.rsplit_once(':').ok_or(HostPortError::MissingPort)?,
+    };
+    if host.is_empty() {
+        return Err(HostPortError::Invalid("missing host".into()));
+    }
+    Ok((host, parse_port(port).map_err(HostPortError::Invalid)?))
+}
+
+fn parse_port(port: &str) -> Result<u16, String> {
+    port.parse::<u16>()
+        .map_err(|_| format!("invalid port '{port}' — use a number from 0 to 65535"))
+}
+
+/// `written` is the address as the user should write it, before the port.
+fn missing_port_hint(scheme: &str, written: &str) -> String {
+    let (protocol, port) = match scheme {
+        "tls" => ("DNS-over-TLS", 853),
+        "doq" => ("DNS-over-QUIC", 853),
+        _ => ("plain DNS", 53),
+    };
+    let prefix = if scheme.is_empty() {
+        String::new()
+    } else {
+        format!("{scheme}://")
+    };
+    format!("missing port — {protocol} usually uses {port}, e.g. {prefix}{written}:{port}")
+}
+
+/// AdGuard's dashboard and AdGuard Home write DoQ as `quic://HOST`, often without a port.
+fn quic_scheme_hint(rest: &str) -> String {
+    let rest = rest.trim_end_matches('/');
+    let port = match split_host_port(rest) {
+        Err(HostPortError::MissingPort) => ":853",
+        _ => "",
+    };
+    format!("'quic://' is not a supported scheme — write DNS-over-QUIC as doq://{rest}{port}")
+}
+
 /// The returned name is what the peer certificate is checked against; IPs stay unbracketed.
-fn parse_named_addr(rest: &str) -> Result<(UpstreamAddr, Arc<str>), String> {
+fn parse_named_addr(scheme: &str, rest: &str) -> Result<(UpstreamAddr, Arc<str>), String> {
     if let Ok(addr) = rest.parse::<SocketAddr>() {
         return Ok((UpstreamAddr::Resolved(addr), addr.ip().to_string().into()));
     }
-    let (host, port_str) = rest.rsplit_once(':').ok_or("missing port")?;
-    let port = port_str
-        .parse::<u16>()
-        .map_err(|e| format!("invalid port: {e}"))?;
+    let (host, port) = split_host_port(rest).map_err(|e| e.into_hint(scheme, rest))?;
     let hostname: Arc<str> = host.into();
     Ok((
         UpstreamAddr::Unresolved {
@@ -230,7 +281,12 @@ fn parse_url_authority(rest: &str) -> Result<(Arc<str>, u16), String> {
             };
             (host, port)
         }
-        // An unbracketed IPv6 address lands here and fails the port parse.
+        // A second colon can only come from an unbracketed IPv6 address.
+        None if authority.matches(':').count() > 1 => {
+            return Err(format!(
+                "IPv6 addresses must be in brackets, e.g. [{authority}]"
+            ));
+        }
         None => match authority.split_once(':') {
             Some((host, port)) => (host, Some(port)),
             None => (authority, None),
@@ -240,77 +296,107 @@ fn parse_url_authority(rest: &str) -> Result<(Arc<str>, u16), String> {
         return Err("missing host".into());
     }
     let port = match port {
-        Some(port) => port
-            .parse::<u16>()
-            .map_err(|e| format!("invalid port '{port}': {e}"))?,
+        Some(port) => parse_port(port)?,
         None => 443,
     };
     Ok((host.into(), port))
 }
 
-fn parse_upstream_addr(addr_str: &str) -> Result<UpstreamAddr, String> {
-    if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+fn parse_upstream_addr(scheme: &str, rest: &str) -> Result<UpstreamAddr, String> {
+    if let Ok(addr) = rest.parse::<SocketAddr>() {
         return Ok(UpstreamAddr::Resolved(addr));
     }
-    if let Some((host, port)) = parse_host_port(addr_str) {
-        return Ok(UpstreamAddr::Unresolved {
-            hostname: host.into(),
-            port,
+    let (host, port) = split_host_port(rest).map_err(|e| e.into_hint(scheme, rest))?;
+    Ok(UpstreamAddr::Unresolved {
+        hostname: host.into(),
+        port,
+    })
+}
+
+/// Only `IP:PORT` may omit the scheme; it means plain UDP.
+fn parse_bare(s: &str) -> Result<DnsProtocol, String> {
+    if let Ok(addr) = s.parse::<SocketAddr>() {
+        return Ok(DnsProtocol::Udp {
+            addr: UpstreamAddr::Resolved(addr),
         });
     }
-    Err(format!("Invalid address '{}'", addr_str))
+    match s.parse::<IpAddr>() {
+        Ok(IpAddr::V4(_)) => return Err(missing_port_hint("", s)),
+        Ok(IpAddr::V6(_)) => return Err(missing_port_hint("", &format!("[{s}]"))),
+        Err(_) => {}
+    }
+    if is_host_like(s) {
+        let port = if s.contains(':') { "" } else { ":53" };
+        return Err(format!(
+            "add a scheme, e.g. udp://{s}{port} — only IP:PORT may omit it"
+        ));
+    }
+    Err("unrecognized server address — use a URL such as doq://dns.adguard-dns.com:853 or IP:PORT such as 8.8.8.8:53".into())
+}
+
+/// A DNS name or IPv4-looking token, optionally followed by `:DIGITS`.
+fn is_host_like(s: &str) -> bool {
+    let host = match s.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
+        Some(_) => return false,
+        None => s,
+    };
+    !host.is_empty()
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
+fn parse_protocol(s: &str) -> Result<DnsProtocol, String> {
+    let Some((scheme, rest)) = s.split_once("://") else {
+        return parse_bare(s);
+    };
+    match scheme {
+        "udp" => Ok(DnsProtocol::Udp {
+            addr: parse_upstream_addr(scheme, rest)?,
+        }),
+        "tcp" => Ok(DnsProtocol::Tcp {
+            addr: parse_upstream_addr(scheme, rest)?,
+        }),
+        "tls" => {
+            let (addr, hostname) = parse_named_addr(scheme, rest)?;
+            Ok(DnsProtocol::Tls { addr, hostname })
+        }
+        "doq" => {
+            let (addr, hostname) = parse_named_addr(scheme, rest)?;
+            Ok(DnsProtocol::Quic { addr, hostname })
+        }
+        "h3" => {
+            let (hostname, port) = parse_url_authority(rest)?;
+            Ok(DnsProtocol::H3 {
+                url: s.into(),
+                hostname,
+                port,
+                resolved_addrs: vec![],
+            })
+        }
+        "https" => {
+            let (hostname, port) = parse_url_authority(rest)?;
+            Ok(DnsProtocol::Https {
+                url: s.into(),
+                hostname,
+                port,
+                resolved_addrs: vec![],
+            })
+        }
+        "quic" => Err(quic_scheme_hint(rest)),
+        _ => Err(format!(
+            "unknown scheme '{scheme}://' — {SUPPORTED_SCHEMES}"
+        )),
+    }
 }
 
 impl FromStr for DnsProtocol {
     type Err = DomainError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(addr_str) = s.strip_prefix("udp://") {
-            let addr = parse_upstream_addr(addr_str)
-                .map_err(|_| DomainError::ConfigError(format!("Invalid UDP address '{s}'")))?;
-            return Ok(DnsProtocol::Udp { addr });
-        }
-        if let Some(addr_str) = s.strip_prefix("tcp://") {
-            let addr = parse_upstream_addr(addr_str)
-                .map_err(|_| DomainError::ConfigError(format!("Invalid TCP address '{s}'")))?;
-            return Ok(DnsProtocol::Tcp { addr });
-        }
-        if let Some(rest) = s.strip_prefix("tls://") {
-            let (addr, hostname) = parse_named_addr(rest)
-                .map_err(|e| DomainError::ConfigError(format!("Invalid TLS address '{s}': {e}. Expected 'tls://IP:PORT' or 'tls://HOSTNAME:PORT'")))?;
-            return Ok(DnsProtocol::Tls { addr, hostname });
-        }
-        if let Some(rest) = s.strip_prefix("doq://") {
-            let (addr, hostname) = parse_named_addr(rest)
-                .map_err(|e| DomainError::ConfigError(format!("Invalid QUIC address '{s}': {e}. Expected 'doq://IP:PORT' or 'doq://HOSTNAME:PORT'")))?;
-            return Ok(DnsProtocol::Quic { addr, hostname });
-        }
-        if let Some(rest) = s.strip_prefix("h3://") {
-            let (hostname, port) = parse_url_authority(rest)
-                .map_err(|e| DomainError::ConfigError(format!("Invalid H3 URL '{s}': {e}")))?;
-            return Ok(DnsProtocol::H3 {
-                url: s.into(),
-                hostname,
-                port,
-                resolved_addrs: vec![],
-            });
-        }
-        if let Some(rest) = s.strip_prefix("https://") {
-            let (hostname, port) = parse_url_authority(rest)
-                .map_err(|e| DomainError::ConfigError(format!("Invalid HTTPS URL '{s}': {e}")))?;
-            return Ok(DnsProtocol::Https {
-                url: s.into(),
-                hostname,
-                port,
-                resolved_addrs: vec![],
-            });
-        }
-        if let Ok(addr) = s.parse::<SocketAddr>() {
-            return Ok(DnsProtocol::Udp {
-                addr: UpstreamAddr::Resolved(addr),
-            });
-        }
-        Err(DomainError::ConfigError(format!("Invalid DNS endpoint format: '{s}'. Expected: udp://IP:PORT, tcp://IP:PORT, tls://HOST:PORT, https://URL, h3://URL, doq://HOST:PORT, or IP:PORT")))
+        parse_protocol(s)
+            .map_err(|hint| DomainError::ConfigError(format!("Invalid server '{s}': {hint}")))
     }
 }
 

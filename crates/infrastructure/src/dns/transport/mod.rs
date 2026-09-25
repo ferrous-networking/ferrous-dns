@@ -148,7 +148,9 @@ fn feature_disabled(
 fn require_resolved(addr: &UpstreamAddr, label: &str) -> Result<SocketAddr, DomainError> {
     addr.socket_addr().ok_or_else(|| {
         DomainError::IoError(format!(
-            "{label} transport requires resolved address, got: {addr}"
+            "{label} upstream {addr} has no IP address yet: looking up its hostname failed. \
+             It is retried automatically; if this machine uses Ferrous DNS as its own \
+             resolver, set Local DNS server (Settings > DNS Settings) to your router"
         ))
     })
 }

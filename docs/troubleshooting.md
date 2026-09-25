@@ -25,12 +25,15 @@ On most Linux distributions, `systemd-resolved` occupies port 53.
     sudo systemctl disable systemd-resolved
     ```
 
-    Then update `/etc/resolv.conf` to point to Ferrous DNS or a public resolver:
+    Then update `/etc/resolv.conf` to point to your router or a public resolver:
 
     ```bash
     sudo rm /etc/resolv.conf
-    echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+    echo "nameserver 192.168.1.1" | sudo tee /etc/resolv.conf   # your router, or e.g. 1.1.1.1
     ```
+
+    !!! warning "Don't point this machine at Ferrous DNS itself"
+        With `nameserver 127.0.0.1`, this machine resolves through Ferrous DNS, which is not answering yet while it starts, so the hostnames in your upstream URLs cannot be looked up. If you do want that, set [`local_dns_server`](configuration/dns.md#local-dns-server) to your router so Ferrous DNS asks it for those names instead.
 
 === "Change systemd-resolved to stub mode"
 
@@ -99,6 +102,41 @@ Check the dashboard at **Settings > System Status > Upstream Health**. If all up
 - Verify your upstream URLs are correct in `ferrous-dns.toml`
 - Check network connectivity from the server: `dig @8.8.8.8 example.com`
 - If using DoH/DoT/DoQ upstreams, ensure outbound ports 443/853 are open
+- If only upstreams written as hostnames are unhealthy, see [An Upstream Hostname Never Comes Up](#hostname-upstream-never-comes-up)
+
+---
+
+## An Upstream Hostname Never Comes Up {#hostname-upstream-never-comes-up}
+
+### Symptom
+
+An upstream written with a hostname, such as `doq://dns.adguard-dns.com:853`, stays unhealthy and never answers, while the same server written as an IP address works. The startup log has `Failed to resolve upstream hostname, keeping unresolved … hostname=dns.adguard-dns.com`, and each query sent to it fails with `QUIC upstream dns.adguard-dns.com:853 has no IP address yet` (`QUIC transport requires resolved address` in 0.9.18 and earlier), which **Settings > System Status** also shows for that server.
+
+### Cause
+
+Ferrous DNS could not look the hostname up. It asks `local_dns_server` first when one is set, then the host's system resolver. The most common reason is a host whose `/etc/resolv.conf` points at Ferrous DNS itself, with no `local_dns_server` set: while Ferrous DNS starts, nothing answers that lookup, and afterwards Ferrous DNS has no resolved upstream to ask.
+
+### Solution
+
+- Set **Local DNS server** to your router in **Settings > DNS Settings** (`local_dns_server` in `[dns]`) and restart. Upstream hostnames are then asked to the router first
+- Or point the host's own resolver at your router or a public resolver instead of Ferrous DNS
+- Check the lookup works on the host: `getent hosts dns.adguard-dns.com`
+- A lookup that failed is retried automatically, from the health-check interval up to every five minutes. The log shows `resolved to … upstream servers … on retry` when it succeeds. Saving the pools in **Settings > DNS Advanced > Upstream DNS Pools** retries at once
+
+---
+
+## An Upstream URL Is Rejected
+
+Saving pools shows `Invalid server '…'`, or the server refuses to start with it. The message ends with how to fix the address; the common ones:
+
+| Message | Fix |
+|:--------|:----|
+| `'quic://' is not a supported scheme` | Write DNS-over-QUIC as `doq://host:853` — AdGuard shows it as `quic://` |
+| `missing port` | Add the port: `:853` for `tls://` and `doq://`, `:53` for `udp://` and `tcp://` |
+| `add a scheme` | Only `IP:PORT` may omit the scheme; write a hostname as `udp://host:53` |
+| `IPv6 addresses must be in brackets` | `https://[2606:4700:4700::1111]/dns-query` |
+
+See [Upstream URL Formats](features/upstream-management.md#upstream-url-formats).
 
 ---
 

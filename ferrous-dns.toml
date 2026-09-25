@@ -85,7 +85,7 @@ rebinding_protection_enabled = true     # Block responses where a public domain 
 # rebinding_allowlist = []              # Domains exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
 mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
-local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
+local_dns_server = "10.0.0.1:53"        # Router/DHCP server — PTR lookups for client hostnames, and upstream URL hostnames (asked before the system resolver)
 
 # Anti-spoofing for plaintext (Do53) upstream and local_dns_server queries, all record types. DNS Cookies
 # (RFC 7873) are always sent and validated gracefully. Setting this adds
@@ -278,6 +278,13 @@ ttl = 300
 # ip = "10.0.10.1"
 # record_type = "A"
 # ttl = 300
+
+# Upstream pools. Each server is a URL, written with a hostname or an IP address:
+#   udp://8.8.8.8:53                      tcp://8.8.8.8:53   (a bare 8.8.8.8:53 is UDP)
+#   tls://dns.google:853                  doq://dns.adguard-dns.com:853
+#   https://cloudflare-dns.com/dns-query  h3://dns.google/dns-query
+# udp/tcp/tls/doq need a port; https/h3 default to 443. IPv6 goes in brackets:
+# doq://[2a10:50c0::ad1:ff]:853. AdGuard's quic://host is written doq://host:853.
 
 [[dns.pools]]
 name = "pool1"
