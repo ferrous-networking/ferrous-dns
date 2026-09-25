@@ -618,6 +618,130 @@ mod tests {
         );
     }
 
+    /// Stands in for the router behind `local_dns_server`: while `answering`
+    /// is set, it answers `upstream.test A` with 192.0.2.1 and every other
+    /// question with an empty NOERROR; otherwise it drops queries.
+    async fn spawn_router(answering: Arc<std::sync::atomic::AtomicBool>) -> SocketAddr {
+        use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
+        use hickory_proto::rr::rdata::A;
+        use hickory_proto::rr::{RData, Record, RecordType as WireType};
+
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = socket.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 1500];
+            while let Ok((len, peer)) = socket.recv_from(&mut buf).await {
+                if !answering.load(std::sync::atomic::Ordering::Relaxed) {
+                    continue;
+                }
+                let Ok(req) = Message::from_vec(&buf[..len]) else {
+                    continue;
+                };
+                let Some(q) = req.queries.first().cloned() else {
+                    continue;
+                };
+                let mut resp = Message::new(req.id, MessageType::Response, OpCode::Query);
+                resp.metadata.recursion_desired = req.metadata.recursion_desired;
+                resp.metadata.recursion_available = true;
+                resp.metadata.response_code = ResponseCode::NoError;
+                resp.add_query(q.clone());
+                if q.query_type() == WireType::A
+                    && q.name().to_ascii().eq_ignore_ascii_case("upstream.test.")
+                {
+                    resp.add_answer(Record::from_rdata(
+                        q.name().clone(),
+                        300,
+                        RData::A(A(std::net::Ipv4Addr::new(192, 0, 2, 1))),
+                    ));
+                }
+                let _ = socket.send_to(&resp.to_vec().unwrap(), peer).await;
+            }
+        });
+        addr
+    }
+
+    fn resolved_addrs(pool_manager: &PoolManager) -> Vec<SocketAddr> {
+        pool_manager
+            .get_all_arc_protocols()
+            .iter()
+            .filter_map(|p| p.socket_addr())
+            .collect()
+    }
+
+    fn router(answering: bool) -> Arc<std::sync::atomic::AtomicBool> {
+        Arc::new(std::sync::atomic::AtomicBool::new(answering))
+    }
+
+    /// Issue #250: when this machine resolves through Ferrous DNS itself, the
+    /// system lookup at startup can never succeed; the router must answer it.
+    #[tokio::test]
+    async fn upstream_hostnames_resolve_through_the_local_dns_server() {
+        let mut config = Config::default();
+        config.dns.local_dns_server = Some(spawn_router(router(true)).await.to_string());
+        let (_dir, services) =
+            build_services_with_upstream(config, "doq://upstream.test:853").await;
+
+        let expected: Vec<SocketAddr> = vec!["192.0.2.1:853".parse().unwrap()];
+        assert_eq!(resolved_addrs(&services.pool_manager), expected);
+        for manager in [
+            &services.dnssec_pool_manager,
+            &services.maintenance_pool_manager,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert_eq!(resolved_addrs(manager), expected);
+        }
+    }
+
+    /// A lookup that failed at startup (the router or the network not up yet)
+    /// must be retried in the background, without a restart or a pool save.
+    #[tokio::test]
+    async fn an_upstream_hostname_that_failed_at_startup_is_retried() {
+        let answering = router(false);
+        let mut config = Config::default();
+        config.dns.local_dns_server = Some(spawn_router(answering.clone()).await.to_string());
+        config.dns.health_check.interval = 1;
+        let (_dir, services) =
+            build_services_with_upstream(config, "doq://upstream.test:853").await;
+        assert!(
+            resolved_addrs(&services.pool_manager).is_empty(),
+            "the router was not answering at startup"
+        );
+
+        answering.store(true, std::sync::atomic::Ordering::Relaxed);
+        let resolved = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            loop {
+                let addrs = resolved_addrs(&services.pool_manager);
+                if !addrs.is_empty() {
+                    return addrs;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .expect("the hostname was never retried after the router came back");
+        assert_eq!(
+            resolved,
+            vec!["192.0.2.1:853".parse::<SocketAddr>().unwrap()]
+        );
+    }
+
+    /// A router that does not answer must not break what already worked: the
+    /// system resolver still gets the lookup.
+    #[tokio::test]
+    async fn upstream_hostnames_fall_back_to_the_system_resolver() {
+        let mut config = Config::default();
+        config.dns.local_dns_server = Some(spawn_router(router(false)).await.to_string());
+        let (_dir, services) = build_services_with_upstream(config, "udp://localhost:53").await;
+
+        assert!(
+            resolved_addrs(&services.pool_manager).contains(&"127.0.0.1:53".parse().unwrap()),
+            "{:?}",
+            services.pool_manager.get_all_arc_protocols()
+        );
+    }
+
     /// Older builds saved the router's bare IP; startup must take it as port 53.
     #[tokio::test]
     async fn a_bare_local_dns_server_ip_starts_on_port_53() {
