@@ -10,7 +10,7 @@ use crate::{
 };
 use axum::{extract::State, http::StatusCode, Json};
 use ferrous_dns_domain::{
-    Config, DnsConfig, DnsProtocol, DnssecMode, UpstreamPool, UpstreamStrategy,
+    Config, DnsConfig, DnsProtocol, DnssecMode, DomainError, UpstreamPool, UpstreamStrategy,
 };
 use tokio::sync::OwnedMutexGuard;
 use tracing::{debug, error, info, instrument, Instrument};
@@ -87,10 +87,13 @@ fn parse_pools(pools: Vec<PoolUpdate>) -> Result<Vec<UpstreamPool>, String> {
                 continue;
             }
             if let Err(e) = trimmed.parse::<DnsProtocol>() {
-                return Err(format!(
-                    "Invalid server '{}' in pool '{}': {}",
-                    trimmed, p.name, e
-                ));
+                // The parser's message already names the server; skip the
+                // "Configuration error:" prefix so the UI shows only the hint.
+                let reason = match e {
+                    DomainError::ConfigError(reason) => reason,
+                    other => other.to_string(),
+                };
+                return Err(format!("Pool '{}': {reason}", p.name));
             }
             servers.push(trimmed.to_string());
         }
