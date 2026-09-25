@@ -35,7 +35,7 @@ impl SyncBlocklistSourcesUseCase {
 
         tokio::spawn(async move {
             info!("Manual blocklist sync started");
-            match engine.reload().await {
+            match engine.refresh_lists().await {
                 Ok(()) => info!("Manual blocklist sync completed"),
                 Err(e) => error!(error = %e, "Manual blocklist sync failed"),
             }

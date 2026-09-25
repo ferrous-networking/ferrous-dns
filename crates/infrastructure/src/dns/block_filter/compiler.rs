@@ -14,8 +14,8 @@ use futures::{stream, StreamExt};
 use rayon::prelude::*;
 use rustc_hash::FxBuildHasher;
 use sqlx::{sqlite::SqliteRow, Row, SqlitePool};
-use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, LazyLock};
 use tracing::{info, warn};
 
 /// `None` when the dedicated pool cannot be built: the build then runs on
@@ -35,6 +35,18 @@ static BLOCKLIST_BUILD_POOL: LazyLock<Option<rayon::ThreadPool>> = LazyLock::new
 });
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 4;
+
+/// The last successful download of each list, keyed by URL.
+pub(super) type HeldLists = HashMap<String, Arc<str>>;
+
+/// Whether a build downloads the lists it already holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ListFetch {
+    /// Download only the lists not held yet, such as a newly added source.
+    ReuseHeld,
+    /// Download every list again, as a sync does.
+    Redownload,
+}
 
 #[derive(Debug)]
 pub enum ParsedEntry {
@@ -220,27 +232,54 @@ fn build_group_masks(sources: &[SourceMeta], all_group_ids: &[i64]) -> HashMap<i
     group_masks
 }
 
-async fn fetch_sources(
-    url_tasks: Vec<(u8, String)>,
+/// Puts the text of every URL into `next`: the copy in `held`, unless `fetch`
+/// asks for a new download or no copy is held. A failed download keeps the
+/// held copy, so a flaky server cannot unblock a whole list. Returns the URLs
+/// downloaded by this call.
+async fn fetch_lists(
+    urls: HashSet<String>,
     downloader: &ListDownloader,
-) -> HashMap<u8, String> {
-    stream::iter(url_tasks)
-        .map(|(bit, url)| async move {
-            match downloader.fetch(&url).await {
-                Ok(text) => {
-                    info!(url = %url, "Fetched blocklist source");
-                    Some((bit, text))
-                }
-                Err(e) => {
-                    warn!(url = %url, error = %e, "Failed to fetch blocklist source");
-                    None
-                }
+    held: &HeldLists,
+    fetch: ListFetch,
+    table: SourceTable,
+    next: &mut HeldLists,
+) -> HashSet<String> {
+    let mut to_download = Vec::new();
+    for url in urls {
+        match held.get(&url) {
+            Some(text) if fetch == ListFetch::ReuseHeld => {
+                next.insert(url, Arc::clone(text));
             }
+            _ => to_download.push(url),
+        }
+    }
+
+    let results: Vec<_> = stream::iter(to_download)
+        .map(|url| async move {
+            let result = downloader.fetch(&url).await;
+            (url, result)
         })
         .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
-        .filter_map(std::future::ready)
         .collect()
-        .await
+        .await;
+
+    let kind = table.kind();
+    let mut downloaded = HashSet::new();
+    for (url, result) in results {
+        match (result, held.get(&url)) {
+            (Ok(text), _) => {
+                info!(url = %url, "Fetched {kind} source");
+                next.insert(url.clone(), Arc::from(text));
+                downloaded.insert(url);
+            }
+            (Err(e), Some(text)) => {
+                warn!(url = %url, error = %e, "Failed to fetch {kind} source; keeping the previous download");
+                next.insert(url, Arc::clone(text));
+            }
+            (Err(e), None) => warn!(url = %url, error = %e, "Failed to fetch {kind} source"),
+        }
+    }
+    downloaded
 }
 
 /// Source table stamped by [`mark_sources_synced`]. An enum because the
@@ -256,6 +295,13 @@ impl SourceTable {
         match self {
             Self::Blocklist => "blocklist_sources",
             Self::Whitelist => "whitelist_sources",
+        }
+    }
+
+    fn kind(self) -> &'static str {
+        match self {
+            Self::Blocklist => "blocklist",
+            Self::Whitelist => "whitelist",
         }
     }
 }
@@ -472,6 +518,8 @@ fn parse_action(row: &SqliteRow) -> Option<DomainAction> {
 pub(super) async fn compile_block_index(
     pool: &SqlitePool,
     downloader: &ListDownloader,
+    held: &mut HeldLists,
+    fetch: ListFetch,
 ) -> Result<BlockIndex, DomainError> {
     let SourceLoad {
         sources,
@@ -479,12 +527,28 @@ pub(super) async fn compile_block_index(
         all_group_ids,
         bit_to_source,
     } = load_sources(pool).await?;
-    let source_texts = fetch_sources(url_tasks, downloader).await;
+    // Only lists still in use carry over, so a removed source releases its text.
+    let mut next = HeldLists::new();
+    let downloaded = fetch_lists(
+        url_tasks.iter().map(|(_, url)| url.clone()).collect(),
+        downloader,
+        held,
+        fetch,
+        SourceTable::Blocklist,
+        &mut next,
+    )
+    .await;
+    let source_texts: HashMap<u8, Arc<str>> = url_tasks
+        .iter()
+        .filter_map(|(bit, url)| next.get(url).map(|text| (*bit, Arc::clone(text))))
+        .collect();
 
-    // Failed downloads retain their previous timestamp as a staleness signal.
-    let synced_source_ids: Vec<i64> = source_texts
-        .keys()
-        .filter_map(|bit| bit_to_source[*bit as usize].as_ref().map(|s| s.id))
+    // Only a download made now advances the timestamp; a reused or kept copy
+    // retains the previous one as a staleness signal.
+    let synced_source_ids: Vec<i64> = url_tasks
+        .iter()
+        .filter(|(_, url)| downloaded.contains(url))
+        .filter_map(|(bit, _)| bit_to_source[*bit as usize].as_ref().map(|s| s.id))
         .collect();
     if let Err(e) = mark_sources_synced(
         pool,
@@ -512,7 +576,8 @@ pub(super) async fn compile_block_index(
     .fetch_all(pool)
     .await
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
-    let allowlist_load = load_allowlists(pool, downloader).await?;
+    let allowlist_load = load_allowlists(pool, downloader, held, fetch, &mut next).await?;
+    *held = next;
 
     let build = move || {
         let group_masks = build_group_masks(&sources, &all_group_ids);
@@ -609,12 +674,15 @@ pub(super) async fn compile_block_index(
 
 struct AllowlistLoad {
     manual_rows: Vec<SqliteRow>,
-    sources: Vec<(Vec<i64>, String)>,
+    sources: Vec<(Vec<i64>, Arc<str>)>,
 }
 
 async fn load_allowlists(
     pool: &SqlitePool,
     downloader: &ListDownloader,
+    held: &HeldLists,
+    fetch: ListFetch,
+    next: &mut HeldLists,
 ) -> Result<AllowlistLoad, DomainError> {
     let manual_rows = sqlx::query("SELECT domain FROM whitelist")
         .fetch_all(pool)
@@ -642,23 +710,19 @@ async fn load_allowlists(
         }
     }
 
-    let fetched: Vec<_> = stream::iter(urls)
-        .map(|(url, (groups, source_ids))| async move {
-            match downloader.fetch(&url).await {
-                Ok(text) => Some((groups, source_ids, text)),
-                Err(e) => {
-                    warn!(url = %url, error = %e, "Failed to fetch whitelist source");
-                    None
-                }
-            }
-        })
-        .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
-        .filter_map(std::future::ready)
-        .collect()
-        .await;
-    let synced_source_ids: Vec<i64> = fetched
+    let downloaded = fetch_lists(
+        urls.keys().cloned().collect(),
+        downloader,
+        held,
+        fetch,
+        SourceTable::Whitelist,
+        next,
+    )
+    .await;
+    let synced_source_ids: Vec<i64> = urls
         .iter()
-        .flat_map(|(_, ids, _)| ids.iter().copied())
+        .filter(|(url, _)| downloaded.contains(*url))
+        .flat_map(|(_, (_, ids))| ids.iter().copied())
         .collect();
     if let Err(e) = mark_sources_synced(
         pool,
@@ -673,9 +737,9 @@ async fn load_allowlists(
 
     Ok(AllowlistLoad {
         manual_rows,
-        sources: fetched
+        sources: urls
             .into_iter()
-            .map(|(groups, _, text)| (groups, text))
+            .filter_map(|(url, (groups, _))| next.get(&url).map(|text| (groups, Arc::clone(text))))
             .collect(),
     })
 }

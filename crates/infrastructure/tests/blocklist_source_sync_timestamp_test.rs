@@ -444,9 +444,10 @@ async fn abandoned_reload_still_publishes_the_committed_change() {
     );
 }
 
-#[tokio::test]
-async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
-    let (pool, _dir) = test_pool().await;
+/// An engine that has downloaded its one blocklist source, served by the
+/// returned listener, so `held.test` is blocked. The source's sync date is
+/// then reset to [`STAMP`].
+async fn engine_holding_a_list(pool: &SqlitePool) -> (Arc<BlockFilterEngine>, TcpListener) {
     let engine = BlockFilterEngine::new(
         pool.clone(),
         DEFAULT_GROUP_ID,
@@ -459,7 +460,7 @@ async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base_url = format!("http://{}", listener.local_addr().unwrap());
-    SqliteBlocklistSourceRepository::new(pool)
+    SqliteBlocklistSourceRepository::new(pool.clone())
         .create(
             "Held list".to_owned(),
             Some(format!("{base_url}/held")),
@@ -482,6 +483,26 @@ async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
         engine.check("held.test", DEFAULT_GROUP_ID),
         FilterDecision::Block(BlockSource::Blocklist)
     );
+    sqlx::query("UPDATE blocklist_sources SET last_synced_at = ?")
+        .bind(STAMP)
+        .execute(pool)
+        .await
+        .unwrap();
+    (engine, listener)
+}
+
+async fn blocklist_sync_date(pool: &SqlitePool) -> String {
+    sqlx::query("SELECT last_synced_at FROM blocklist_sources")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .get("last_synced_at")
+}
+
+#[tokio::test]
+async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
+    let (pool, _dir) = test_pool().await;
+    let (engine, listener) = engine_holding_a_list(&pool).await;
 
     // The list server becomes unreachable, then an edit elsewhere, such as a
     // managed domain or a regex filter, rebuilds the index.
@@ -492,5 +513,79 @@ async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
         engine.check("held.test", DEFAULT_GROUP_ID),
         FilterDecision::Block(BlockSource::Blocklist),
         "an edit elsewhere must not unblock a list that could not be downloaded again"
+    );
+}
+
+#[tokio::test]
+async fn an_unrelated_rebuild_does_not_download_a_held_list_again() {
+    let (pool, _dir) = test_pool().await;
+    let (engine, listener) = engine_holding_a_list(&pool).await;
+
+    // The listener never answers, so a rebuild that downloaded would hang here.
+    timeout(Duration::from_secs(5), engine.reload())
+        .await
+        .expect("an edit elsewhere must not wait on a download")
+        .unwrap();
+
+    assert!(
+        timeout(Duration::from_millis(50), listener.accept())
+            .await
+            .is_err(),
+        "an edit elsewhere must not request the list again"
+    );
+    assert_eq!(blocklist_sync_date(&pool).await, STAMP);
+}
+
+#[tokio::test]
+async fn a_sync_downloads_a_held_list_again() {
+    let (pool, _dir) = test_pool().await;
+    let (engine, listener) = engine_holding_a_list(&pool).await;
+
+    let refresher = engine.clone();
+    let refresh = tokio::spawn(async move { refresher.refresh_lists().await });
+    let (request, _) = receive_request(&listener).await;
+    respond(request, "200 OK", "fresh.test\n").await;
+    timeout(Duration::from_secs(5), refresh)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        engine.check("fresh.test", DEFAULT_GROUP_ID),
+        FilterDecision::Block(BlockSource::Blocklist)
+    );
+    assert_eq!(
+        engine.check("held.test", DEFAULT_GROUP_ID),
+        FilterDecision::Allow,
+        "the new download replaces the held copy"
+    );
+    assert_ne!(blocklist_sync_date(&pool).await, STAMP);
+}
+
+#[tokio::test]
+async fn a_sync_whose_download_fails_keeps_the_held_copy() {
+    let (pool, _dir) = test_pool().await;
+    let (engine, listener) = engine_holding_a_list(&pool).await;
+
+    let refresher = engine.clone();
+    let refresh = tokio::spawn(async move { refresher.refresh_lists().await });
+    let (request, _) = receive_request(&listener).await;
+    respond(request, "503 Service Unavailable", "").await;
+    timeout(Duration::from_secs(5), refresh)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        engine.check("held.test", DEFAULT_GROUP_ID),
+        FilterDecision::Block(BlockSource::Blocklist),
+        "a failed download must not unblock the list"
+    );
+    assert_eq!(
+        blocklist_sync_date(&pool).await,
+        STAMP,
+        "a kept copy retains its sync date as the staleness signal"
     );
 }

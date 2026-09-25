@@ -39,9 +39,10 @@ impl ListDownloader {
             }
         };
 
-        let response = self.client.get(url).send().await.map_err(|e| {
-            DomainError::BlockFilterFetchError(format!("{url}: {}", describe(e)))
-        })?;
+        let response =
+            self.client.get(url).send().await.map_err(|e| {
+                DomainError::BlockFilterFetchError(format!("{url}: {}", describe(e)))
+            })?;
 
         if !response.status().is_success() {
             return Err(DomainError::BlockFilterFetchError(format!(
