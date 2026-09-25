@@ -85,7 +85,7 @@ rebinding_protection_enabled = true     # Block responses where a public domain 
 # rebinding_allowlist = []              # Domains exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
 mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
-local_dns_server = "10.0.0.1:53"        # Router/DHCP server — used for PTR lookups to resolve client hostnames
+local_dns_server = "10.0.0.1:53"        # Router/DHCP server — PTR lookups for client hostnames, and upstream URL hostnames (asked before the system resolver)
 
 # Anti-spoofing for plaintext (Do53) upstream and local_dns_server queries, all record types. DNS Cookies
 # (RFC 7873) are always sent and validated gracefully. Setting this adds

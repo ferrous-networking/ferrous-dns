@@ -29,7 +29,7 @@ local_dns_server = "10.0.0.1:53"
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
 | `local_domain` | — | Local domain suffix appended to short hostnames |
-| `local_dns_server` | — | Router/DHCP server used for PTR lookups and client hostname resolution: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
+| `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
 | `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
@@ -366,7 +366,7 @@ Ferrous DNS supports all common DNS record types per RFC 1035:
 local_dns_server = "192.168.1.1:53"
 ```
 
-`local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for two distinct purposes.
+`local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for three distinct purposes. In the dashboard it is **Settings > DNS Settings > Local DNS server**; a change applies after a restart.
 
 !!! note "Answers from the router are validated"
     Queries to `local_dns_server` get the same anti-spoofing as upstream pools: the answer must come from the router's address and match the transaction ID, the question and the DNS Cookie, and a truncated answer is retried over TCP. With `qname_case_randomization = true` the query name's case is randomized here too — if your router rewrites the case of names, every answer fails that check and the log shows `Local DNS server query failed`; turn 0x20 off in that case. See [Security Hardening](../features/security-hardening.md#upstream-response-validation).
@@ -409,9 +409,21 @@ This is especially useful for:
 
 ---
 
-### Upstream hostnames do not use it {#upstream-name-resolution}
+### 3. Upstream Server Name Resolution {#upstream-name-resolution}
 
-Hostnames in upstream URLs such as `doq://dns.adguard-dns.com:853` are looked up with the host's **system resolver** (`/etc/resolv.conf`), not `local_dns_server`, when the server starts and when pools are saved. If the machine running Ferrous DNS uses Ferrous DNS itself as its resolver, those startup lookups fail — point it at your router instead. See [How hostnames are resolved](../features/upstream-management.md#hostname-resolution).
+Hostnames in upstream URLs, such as `doq://dns.adguard-dns.com:853`, are asked to `local_dns_server` first, then to the host's system resolver (`/etc/resolv.conf`). This matters when the machine running Ferrous DNS uses Ferrous DNS itself as its resolver. That setup can never look its own upstreams up through the system: nothing answers while Ferrous DNS starts, and afterwards it has no resolved upstream to ask.
+
+```text
+Startup: look up "dns.adguard-dns.com"
+              │
+              ▼ (local_dns_server is set)
+    192.168.1.1:53  →  94.140.14.14, 2a10:50c0::ad1:ff
+              │
+              ▼
+    doq://dns.adguard-dns.com:853 connects to those addresses
+```
+
+A lookup that fails is retried in the background. See [How hostnames are resolved](../features/upstream-management.md#hostname-resolution).
 
 ---
 
@@ -428,6 +440,7 @@ local_dns_server = "192.168.1.1:53"  # your router's IP
 | Scenario | Effect |
 |:---------|:-------|
 | Client `192.168.1.42` connects | Dashboard shows `laptop.lan` instead of raw IP |
+| Upstream URL `doq://dns.adguard-dns.com:853` | Hostname looked up through the router, even when this machine resolves through Ferrous DNS |
 | New device joins the network | Hostname pulled from router's DHCP table |
 
 ---

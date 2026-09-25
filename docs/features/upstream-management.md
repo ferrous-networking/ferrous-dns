@@ -43,15 +43,20 @@ AdGuard Home and the AdGuard DNS dashboard write DNS-over-QUIC as `quic://host`,
 
 ```toml
 servers = [
-    "doq://dns.adguard-dns.com:853",   # looked up at startup and when pools are saved
-    "https://dns.google/dns-query",    # also looked up at query time if that failed
+    "doq://dns.adguard-dns.com:853",   # looked up at startup, when pools are saved, and retried if that failed
+    "https://dns.google/dns-query",
 ]
 ```
 
-Ferrous DNS looks upstream hostnames up with the **system resolver** (the host's `/etc/resolv.conf` / OS resolver) when it starts and whenever the pools are saved, and uses up to four addresses per family. The `local_dns_server` setting in `[dns]` is used for reverse (PTR) lookups of private clients and for split-DNS local-TLD queries — it is **not** used to resolve upstream URL hostnames.
+Ferrous DNS looks upstream hostnames up when it starts and whenever the pools are saved, and uses up to four addresses per family:
 
-!!! warning "If the lookup fails"
-    A `udp://`, `tcp://`, `tls://` or `doq://` hostname whose lookup fails stays unusable until the server restarts or the pools are saved again, and the log shows `Failed to resolve upstream hostname, keeping unresolved`. `https://` and `h3://` look the name up again when a query needs it. The usual cause is a host whose own resolver is Ferrous DNS, which is not answering yet while it starts — see [Troubleshooting](../troubleshooting.md#hostname-upstream-never-comes-up).
+1. **`local_dns_server`**, when set: your router is asked for the A and AAAA records, with the same anti-spoofing checks as every query sent to it.
+2. **The system resolver** (the host's `/etc/resolv.conf` / OS resolver), when `local_dns_server` is unset, does not answer within two seconds, or has no address for the name.
+
+The router comes first so that upstream hostnames keep resolving on a machine that uses Ferrous DNS as its own resolver. There, the system lookup can never succeed: nothing answers it while Ferrous DNS starts, and afterwards Ferrous DNS has no resolved upstream to ask. One consequence: when the router answers, an `/etc/hosts` entry for an upstream hostname is not consulted.
+
+!!! note "If the lookup fails"
+    The server is kept without an address, and the log shows `Failed to resolve upstream hostname, keeping unresolved and retrying in the background`. Ferrous DNS looks it up again at the health-check interval, doubling the wait up to five minutes while it keeps failing, with no restart needed. Until then, `udp://`, `tcp://`, `tls://` and `doq://` servers fail every query with `has no IP address yet`, which Settings > System Status shows for that server; `https://` and `h3://` also try the system resolver when a query needs them. See [Troubleshooting](../troubleshooting.md#hostname-upstream-never-comes-up).
 
 ---
 
