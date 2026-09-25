@@ -443,3 +443,54 @@ async fn abandoned_reload_still_publishes_the_committed_change() {
         FilterDecision::Block(BlockSource::Blocklist)
     );
 }
+
+#[tokio::test]
+async fn an_unrelated_rebuild_keeps_a_list_it_cannot_download_again() {
+    let (pool, _dir) = test_pool().await;
+    let engine = BlockFilterEngine::new(
+        pool.clone(),
+        DEFAULT_GROUP_ID,
+        Arc::new(ScheduleStateStore::new()),
+        true,
+    )
+    .await
+    .unwrap();
+    engine.reload().await.unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    SqliteBlocklistSourceRepository::new(pool)
+        .create(
+            "Held list".to_owned(),
+            Some(format!("{base_url}/held")),
+            vec![DEFAULT_GROUP_ID],
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+    let reloader = engine.clone();
+    let reload = tokio::spawn(async move { reloader.reload().await });
+    let (request, _) = receive_request(&listener).await;
+    respond(request, "200 OK", "held.test\n").await;
+    timeout(Duration::from_secs(5), reload)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        engine.check("held.test", DEFAULT_GROUP_ID),
+        FilterDecision::Block(BlockSource::Blocklist)
+    );
+
+    // The list server becomes unreachable, then an edit elsewhere, such as a
+    // managed domain or a regex filter, rebuilds the index.
+    drop(listener);
+    engine.reload().await.unwrap();
+
+    assert_eq!(
+        engine.check("held.test", DEFAULT_GROUP_ID),
+        FilterDecision::Block(BlockSource::Blocklist),
+        "an edit elsewhere must not unblock a list that could not be downloaded again"
+    );
+}
