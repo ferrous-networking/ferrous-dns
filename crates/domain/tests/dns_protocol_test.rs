@@ -1,4 +1,4 @@
-use ferrous_dns_domain::{DnsProtocol, UpstreamAddr};
+use ferrous_dns_domain::{DnsProtocol, DomainError, UpstreamAddr};
 
 #[test]
 fn test_parse_udp() {
@@ -573,6 +573,117 @@ fn malformed_https_and_h3_authorities_are_rejected() {
         "h3://:443/dns-query",
     ] {
         assert!(url.parse::<DnsProtocol>().is_err(), "{url}");
+    }
+}
+
+fn rejection_message(input: &str) -> String {
+    match input.parse::<DnsProtocol>() {
+        Err(DomainError::ConfigError(msg)) => msg,
+        other => format!("not a ConfigError rejection: {other:?}"),
+    }
+}
+
+#[test]
+fn rejected_upstreams_explain_how_to_write_them() {
+    let scheme_list = "use udp://, tcp://, tls://, doq://, https:// or h3://";
+    let cases = [
+        (
+            "quic://abc.d.adguard-dns.com",
+            "'quic://' is not a supported scheme — write DNS-over-QUIC as doq://abc.d.adguard-dns.com:853".to_string(),
+        ),
+        (
+            "quic://abc.d.adguard-dns.com/",
+            "'quic://' is not a supported scheme — write DNS-over-QUIC as doq://abc.d.adguard-dns.com:853".to_string(),
+        ),
+        (
+            "quic://dns.adguard-dns.com:853",
+            "'quic://' is not a supported scheme — write DNS-over-QUIC as doq://dns.adguard-dns.com:853".to_string(),
+        ),
+        ("foo://dns.google:53", format!("unknown scheme 'foo://' — {scheme_list}")),
+        ("DOQ://dns.adguard-dns.com:853", format!("unknown scheme 'DOQ://' — {scheme_list}")),
+        (
+            "doq://dns.adguard-dns.com",
+            "missing port — DNS-over-QUIC usually uses 853, e.g. doq://dns.adguard-dns.com:853".to_string(),
+        ),
+        (
+            "doq://[2a10:50c0::ad1:ff]",
+            "missing port — DNS-over-QUIC usually uses 853, e.g. doq://[2a10:50c0::ad1:ff]:853".to_string(),
+        ),
+        (
+            "tls://dns.google",
+            "missing port — DNS-over-TLS usually uses 853, e.g. tls://dns.google:853".to_string(),
+        ),
+        (
+            "udp://dns.google",
+            "missing port — plain DNS usually uses 53, e.g. udp://dns.google:53".to_string(),
+        ),
+        (
+            "tcp://8.8.8.8",
+            "missing port — plain DNS usually uses 53, e.g. tcp://8.8.8.8:53".to_string(),
+        ),
+        (
+            "8.8.8.8",
+            "missing port — plain DNS usually uses 53, e.g. 8.8.8.8:53".to_string(),
+        ),
+        (
+            "2001:4860:4860::8888",
+            "missing port — plain DNS usually uses 53, e.g. [2001:4860:4860::8888]:53".to_string(),
+        ),
+        (
+            "doq://dns.adguard-dns.com:99999",
+            "invalid port '99999' — use a number from 0 to 65535".to_string(),
+        ),
+        (
+            "https://dns.example:70000/dns-query",
+            "invalid port '70000' — use a number from 0 to 65535".to_string(),
+        ),
+        ("doq://:853", "missing host".to_string()),
+        ("tls://:853", "missing host".to_string()),
+        ("udp://:53", "missing host".to_string()),
+        ("tcp://:53", "missing host".to_string()),
+        (
+            "dns.google:53",
+            "add a scheme, e.g. udp://dns.google:53 — only IP:PORT may omit it".to_string(),
+        ),
+        (
+            "dns.google",
+            "add a scheme, e.g. udp://dns.google:53 — only IP:PORT may omit it".to_string(),
+        ),
+        (
+            "https://2606:4700::1111/dns-query",
+            "IPv6 addresses must be in brackets, e.g. [2606:4700::1111]".to_string(),
+        ),
+        (
+            "not a server",
+            "unrecognized server address — use a URL such as doq://dns.adguard-dns.com:853 or IP:PORT such as 8.8.8.8:53".to_string(),
+        ),
+    ];
+    let mismatches: Vec<String> = cases
+        .into_iter()
+        .filter_map(|(input, hint)| {
+            let expected = format!("Invalid server '{input}': {hint}");
+            let actual = rejection_message(input);
+            (actual != expected).then(|| format!("{input}\n   got: {actual}\n  want: {expected}"))
+        })
+        .collect();
+    assert!(mismatches.is_empty(), "\n{}", mismatches.join("\n"));
+}
+
+#[test]
+fn upstream_forms_accepted_before_the_new_messages_still_parse() {
+    for input in [
+        "doq://dns.adguard-dns.com:853",
+        "doq://94.140.14.14:853",
+        "doq://[2a10:50c0::ad1:ff]:853",
+        "tls://dns.google:853",
+        "https://cloudflare-dns.com/dns-query",
+        "h3://dns.google/dns-query",
+        "8.8.8.8:53",
+        "[2001:4860:4860::8888]:53",
+        "udp://dns.google:53",
+        "udp://2001:4860:4860::8888:53",
+    ] {
+        assert!(input.parse::<DnsProtocol>().is_ok(), "{input}");
     }
 }
 

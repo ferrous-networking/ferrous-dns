@@ -113,6 +113,29 @@ async fn test_update_config_rejects_invalid_server() {
 }
 
 #[tokio::test]
+async fn test_update_config_explains_a_quic_scheme_upstream() {
+    let pool = create_test_db().await;
+    let app = test_app(pool).await.0.router;
+
+    let (status, json) = post_config(
+        app,
+        serde_json::json!({
+            "dns": { "pools": [
+                { "name": "p1", "strategy": "parallel", "priority": 1,
+                  "servers": ["quic://abc.d.adguard-dns.com"] }
+            ] }
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json["error"],
+        "Pool 'p1': Invalid server 'quic://abc.d.adguard-dns.com': 'quic://' is not a supported scheme — write DNS-over-QUIC as doq://abc.d.adguard-dns.com:853"
+    );
+}
+
+#[tokio::test]
 async fn test_update_config_rejects_pool_with_only_blank_servers() {
     let pool = create_test_db().await;
     let TestApp {
