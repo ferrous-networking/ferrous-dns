@@ -97,7 +97,7 @@ tempfile = "3.8"
 time = "0.3"
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber.workspace = true
-criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 [[bench]]
 name = "udp_cache_hit"
