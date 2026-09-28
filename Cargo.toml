@@ -31,7 +31,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 rayon = "1"
 fastrand = "2.0"
-getrandom = "0.3"
+getrandom = "0.4"
 lru = "0.18.1"
 ahash = "0.8"
 bloomfilter = "3.0.1"
