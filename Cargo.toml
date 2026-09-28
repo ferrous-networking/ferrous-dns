@@ -85,7 +85,7 @@ libc = "0.2.183"
 
 # OpenAPI documentation
 utoipa = { version = "5", features = ["axum_extras", "chrono"] }
-utoipa-axum = "0.2"
+utoipa-axum = "0.3"
 utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 # ============================================================================
