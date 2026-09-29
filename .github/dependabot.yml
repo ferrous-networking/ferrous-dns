@@ -26,6 +26,13 @@ updates:
       - "dependencies"
       - "rust"
     groups:
+      # utoipa-axum and utoipa-scalar pin a utoipa major, so a major bump of
+      # any one of them only builds together with the other two (#258-#260).
+      # Listed first because a dependency joins the first group it matches.
+      utoipa:
+        applies-to: version-updates
+        patterns:
+          - "utoipa*"
       # Batch non-breaking updates into a single PR to reduce churn.
       cargo-minor-patch:
         applies-to: version-updates
