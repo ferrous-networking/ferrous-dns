@@ -10,6 +10,7 @@ mod rebinding_guard;
 mod response_ip_filter_guard;
 pub mod tsc_timer;
 mod tunneling_guard;
+mod upstream_admission;
 pub use cookie_guard::DnsCookieGuard;
 pub use dga_guard::DgaAnalysisEvent;
 pub use handle_dns_query::HandleDnsQueryUseCase;

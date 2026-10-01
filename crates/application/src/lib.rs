@@ -1,3 +1,4 @@
+pub mod drop_counter;
 pub mod ports;
 pub mod use_cases;
 

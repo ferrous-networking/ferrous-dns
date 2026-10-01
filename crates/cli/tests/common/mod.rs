@@ -214,20 +214,17 @@ pub fn handler_with_canned_addresses(addresses: Vec<IpAddr>, ttl: u32) -> Arc<Dn
 }
 
 pub fn handler_with_resolver(resolver: Arc<dyn DnsResolver>) -> Arc<DnsServerHandler> {
-    handler_with_resolver_and_filter(resolver, Arc::new(AllowAllFilter))
+    handler_with_use_case(HandleDnsQueryUseCase::new(
+        resolver,
+        Arc::new(AllowAllFilter),
+        Arc::new(NoopQueryLog),
+    ))
 }
 
-pub fn handler_with_resolver_and_filter(
-    resolver: Arc<dyn DnsResolver>,
-    filter: Arc<dyn BlockFilterEnginePort>,
-) -> Arc<DnsServerHandler> {
-    let use_case = Arc::new(HandleDnsQueryUseCase::new(
-        resolver,
-        filter,
-        Arc::new(NoopQueryLog),
-    ));
+/// Wraps `use_case` in a handler that answers blocked names with a null IP.
+pub fn handler_with_use_case(use_case: HandleDnsQueryUseCase) -> Arc<DnsServerHandler> {
     Arc::new(DnsServerHandler::new(
-        use_case,
+        Arc::new(use_case),
         BlockPolicy {
             mode: BlockResponseMode::NullIp,
             ttl: 60,

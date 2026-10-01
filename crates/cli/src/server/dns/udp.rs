@@ -1,9 +1,9 @@
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock::coarse_now_secs;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
-use ferrous_dns_infrastructure::drop_counter::DropCounter;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -18,7 +18,9 @@ use super::pktinfo;
 
 const PACKETS_BEFORE_YIELD: usize = 256;
 
-/// Admission shared by every listener for queries that leave the inline cache path.
+/// Admission shared by every UDP worker for queries that leave the inline
+/// cache path. It bounds the spawned tasks, and sheds before the copy and the
+/// spawn; queries that wait on an upstream are bounded in the use case.
 pub(super) struct FallbackAdmission {
     slots: Arc<Semaphore>,
     shed: DropCounter,
@@ -344,6 +346,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
+    use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
     use ferrous_dns_domain::{DnsQuery, DomainError};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
@@ -473,14 +476,17 @@ mod tests {
             ))
             .await
             .unwrap();
-        // One upstream slot: the single fallback budget of today.
+        // One upstream slot, and room for the burst below in the listener's budget.
+        let use_case = HandleDnsQueryUseCase::new(
+            resolver.clone(),
+            Arc::new(test_support::BlockOneFilter("blocked.example")),
+            Arc::new(test_support::NoopQueryLog),
+        )
+        .with_upstream_limit(1);
         let worker = tokio::spawn(run_udp_worker(
             socket,
-            test_support::handler_with_resolver_and_filter(
-                resolver.clone(),
-                Arc::new(test_support::BlockOneFilter("blocked.example")),
-            ),
-            Arc::new(FallbackAdmission::new(1)),
+            test_support::handler_with_use_case(use_case),
+            Arc::new(FallbackAdmission::new(8)),
             0,
         ));
 
