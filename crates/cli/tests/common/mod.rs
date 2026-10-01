@@ -13,7 +13,8 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockResponseMode, DnsQuery, DnssecStats, DomainError, QueryLog, QueryLogFilter, QueryStats,
+    BlockResponseMode, BlockSource, DnsQuery, DnssecStats, DomainError, QueryLog, QueryLogFilter,
+    QueryStats,
 };
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use hickory_proto::op::{Message, MessageType, OpCode, Query as WireQuery};
@@ -82,6 +83,48 @@ impl BlockFilterEnginePort for AllowAllFilter {
     }
     fn is_blocking_enabled(&self) -> bool {
         false
+    }
+    fn set_blocking_enabled(&self, _enabled: bool) {}
+}
+
+/// Blocks one domain as a blocklist match; allows every other.
+pub struct BlockOneFilter(pub &'static str);
+
+#[async_trait]
+impl BlockFilterEnginePort for BlockOneFilter {
+    fn resolve_group(&self, _ip: IpAddr) -> i64 {
+        0
+    }
+    fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {
+        if domain == self.0 {
+            FilterDecision::Block(BlockSource::Blocklist)
+        } else {
+            FilterDecision::Allow
+        }
+    }
+    fn explain(&self, _domain: &str, _group_id: i64) -> ferrous_dns_domain::FilterExplanation {
+        unimplemented!()
+    }
+    fn match_candidate(
+        &self,
+        _domains: &[String],
+        _list_lines: &[String],
+        _regexes: &[String],
+    ) -> Result<Vec<bool>, DomainError> {
+        unimplemented!()
+    }
+    fn store_cname_decision(&self, _domain: &str, _group_id: i64, _ttl_secs: u64) {}
+    async fn reload(&self) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn load_client_groups(&self) -> Result<(), DomainError> {
+        Ok(())
+    }
+    fn compiled_domain_count(&self) -> usize {
+        1
+    }
+    fn is_blocking_enabled(&self) -> bool {
+        true
     }
     fn set_blocking_enabled(&self, _enabled: bool) {}
 }
@@ -171,9 +214,16 @@ pub fn handler_with_canned_addresses(addresses: Vec<IpAddr>, ttl: u32) -> Arc<Dn
 }
 
 pub fn handler_with_resolver(resolver: Arc<dyn DnsResolver>) -> Arc<DnsServerHandler> {
+    handler_with_resolver_and_filter(resolver, Arc::new(AllowAllFilter))
+}
+
+pub fn handler_with_resolver_and_filter(
+    resolver: Arc<dyn DnsResolver>,
+    filter: Arc<dyn BlockFilterEnginePort>,
+) -> Arc<DnsServerHandler> {
     let use_case = Arc::new(HandleDnsQueryUseCase::new(
         resolver,
-        Arc::new(AllowAllFilter),
+        filter,
         Arc::new(NoopQueryLog),
     ));
     Arc::new(DnsServerHandler::new(
@@ -206,6 +256,17 @@ pub fn build_a_query(name: &str) -> Vec<u8> {
     let mut buf = Vec::with_capacity(64);
     let mut encoder = BinEncoder::new(&mut buf);
     message.emit(&mut encoder).unwrap();
+    buf
+}
+
+/// [`build_a_query`] with an OPT record that sets the DO bit (RFC 3225), the
+/// kind of query the UDP fast path leaves to the slow path.
+pub fn build_a_query_with_do(name: &str) -> Vec<u8> {
+    let mut buf = build_a_query(name);
+    buf[10..12].copy_from_slice(&1u16.to_be_bytes());
+    // Root owner, TYPE OPT, 4096-byte payload, extended RCODE and version 0,
+    // DO set, no options.
+    buf.extend_from_slice(&[0, 0, 41, 0x10, 0, 0, 0, 0x80, 0, 0, 0]);
     buf
 }
 
