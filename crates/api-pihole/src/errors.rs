@@ -123,6 +123,7 @@ fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
         | DomainError::ConfigError(_)
         | DomainError::TransportNoHealthyServers
         | DomainError::TransportAllServersUnreachable
+        | DomainError::UpstreamCapacityExhausted
         | DomainError::SpoofedResponse { .. } => {
             (StatusCode::INTERNAL_SERVER_ERROR, "server_error")
         }

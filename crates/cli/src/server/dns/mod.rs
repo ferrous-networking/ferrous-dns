@@ -17,7 +17,11 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::info;
 
-const MAX_IN_FLIGHT_UDP_QUERIES: usize = 4096;
+/// Client queries, over every transport, that may wait on an upstream at once.
+pub const MAX_UPSTREAM_BOUND_QUERIES: usize = 4096;
+/// UDP fallback tasks in flight. The headroom over the upstream budget keeps
+/// answers that need no upstream serviceable while that budget is full.
+const MAX_IN_FLIGHT_UDP_QUERIES: usize = 2 * MAX_UPSTREAM_BOUND_QUERIES;
 
 /// Starts the Do53 listeners on `bind`: one SO_REUSEPORT UDP socket and TCP
 /// listener per worker, each a dual-stack AF_INET6 socket (see `udp` / `tcp`).

@@ -3,6 +3,7 @@ mod pool;
 mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
+use crate::server::dns::MAX_UPSTREAM_BOUND_QUERIES;
 use ferrous_dns_application::ports::{
     CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
@@ -213,6 +214,7 @@ impl DnsServices {
             config.database.client_tracking_interval,
         )
         .with_rate_limiter(rate_limiter)
+        .with_upstream_limit(MAX_UPSTREAM_BOUND_QUERIES)
         .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces())
         .with_query_logging(config.database.log_queries);
 

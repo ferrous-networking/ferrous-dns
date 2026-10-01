@@ -5,8 +5,8 @@ mod timeline;
 mod writer;
 
 use crate::dns::cache::coarse_clock::coarse_now_secs;
-use crate::drop_counter::DropCounter;
 use async_trait::async_trait;
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
     PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };

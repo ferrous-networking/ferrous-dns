@@ -170,6 +170,11 @@ impl DnsServerHandler {
 
         let resolution = match self.use_case.execute(&request).await {
             Ok(res) => res,
+            // Over UDP the client retries a dropped query; a stream client
+            // would sit out its timeout, so it gets SERVFAIL now.
+            Err(DomainError::UpstreamCapacityExhausted) if protocol == ClientProtocol::Udp => {
+                return None;
+            }
             Err(e) => return Some(self.error_response(&query, request.record_type, &e)),
         };
 

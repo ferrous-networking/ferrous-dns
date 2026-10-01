@@ -1,9 +1,9 @@
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_domain::ClientProtocol;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock::coarse_now_secs;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use ferrous_dns_infrastructure::dns::wire_response;
-use ferrous_dns_infrastructure::drop_counter::DropCounter;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -18,7 +18,9 @@ use super::pktinfo;
 
 const PACKETS_BEFORE_YIELD: usize = 256;
 
-/// Admission shared by every listener for queries that leave the inline cache path.
+/// Admission shared by every UDP worker for queries that leave the inline
+/// cache path. It bounds the spawned tasks, and sheds before the copy and the
+/// spawn; queries that wait on an upstream are bounded in the use case.
 pub(super) struct FallbackAdmission {
     slots: Arc<Semaphore>,
     shed: DropCounter,
@@ -344,7 +346,9 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
+    use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
     use ferrous_dns_domain::{DnsQuery, DomainError};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::net::UdpSocket;
     use tokio::sync::Notify;
@@ -352,11 +356,23 @@ mod tests {
     struct GatedResolver {
         entered: Notify,
         release: Semaphore,
+        resolved: AtomicUsize,
+    }
+
+    impl GatedResolver {
+        fn new() -> Self {
+            Self {
+                entered: Notify::new(),
+                release: Semaphore::new(0),
+                resolved: AtomicUsize::new(0),
+            }
+        }
     }
 
     #[async_trait]
     impl DnsResolver for GatedResolver {
         async fn resolve(&self, _: &DnsQuery) -> Result<DnsResolution, DomainError> {
+            self.resolved.fetch_add(1, Ordering::Relaxed);
             self.entered.notify_one();
             self.release.acquire().await.unwrap().forget();
             Ok(DnsResolution::new(
@@ -366,9 +382,28 @@ mod tests {
         }
 
         fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
-            (query.domain.as_ref() == "cached.example")
-                .then(|| DnsResolution::new(vec![IpAddr::from([192, 0, 2, 1])], true))
+            match query.domain.as_ref() {
+                "cached.example" => {
+                    Some(DnsResolution::new(vec![IpAddr::from([192, 0, 2, 1])], true))
+                }
+                // A negative entry: a hit without response data.
+                "nx.example" => Some(DnsResolution::new(vec![], true)),
+                _ => None,
+            }
         }
+    }
+
+    fn with_id(id: u16, mut packet: Vec<u8>) -> Vec<u8> {
+        packet[..2].copy_from_slice(&id.to_be_bytes());
+        packet
+    }
+
+    /// The response's ID and RCODE.
+    fn id_and_rcode(response: &[u8]) -> (u16, u8) {
+        (
+            u16::from_be_bytes([response[0], response[1]]),
+            response[3] & 0x0f,
+        )
     }
 
     #[tokio::test]
@@ -378,10 +413,7 @@ mod tests {
             eprintln!("skipping: no dual-stack loopback available");
             return;
         }
-        let resolver = Arc::new(GatedResolver {
-            entered: Notify::new(),
-            release: Semaphore::new(0),
-        });
+        let resolver = Arc::new(GatedResolver::new());
         let socket = Arc::new(create_udp_socket("127.0.0.1:0".parse().unwrap()).unwrap());
         let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         client
@@ -420,6 +452,81 @@ mod tests {
             resolver.release.add_permits(1);
             client.recv(&mut response).await.unwrap();
             assert_eq!(&response[..2], &4u16.to_be_bytes());
+        };
+        let result = tokio::time::timeout(Duration::from_secs(5), exercise).await;
+        worker.abort();
+        result.unwrap();
+    }
+
+    /// Issue #239: answers that never wait on an upstream (a blocked name, a
+    /// DO=1 cache hit, a cached NXDOMAIN) stay serviceable while misses hold
+    /// every upstream slot; a new miss is still shed.
+    #[tokio::test]
+    async fn local_answers_are_served_while_misses_hold_the_upstream_budget() {
+        if !test_support::dual_stack_loopback_available() {
+            eprintln!("skipping: no dual-stack loopback available");
+            return;
+        }
+        let resolver = Arc::new(GatedResolver::new());
+        let socket = Arc::new(create_udp_socket("127.0.0.1:0".parse().unwrap()).unwrap());
+        let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        client
+            .connect(test_support::unmap_addr(
+                socket.get_ref().local_addr().unwrap(),
+            ))
+            .await
+            .unwrap();
+        // One upstream slot, and room for the burst below in the listener's budget.
+        let use_case = HandleDnsQueryUseCase::new(
+            resolver.clone(),
+            Arc::new(test_support::BlockOneFilter("blocked.example")),
+            Arc::new(test_support::NoopQueryLog),
+        )
+        .with_upstream_limit(1);
+        let worker = tokio::spawn(run_udp_worker(
+            socket,
+            test_support::handler_with_use_case(use_case),
+            Arc::new(FallbackAdmission::new(8)),
+            0,
+        ));
+
+        let query = |id, name| with_id(id, test_support::build_a_query(name));
+        let exercise = async {
+            client.send(&query(1, "slow.example")).await.unwrap();
+            resolver.entered.notified().await;
+            client.send(&query(2, "shed.example")).await.unwrap();
+            client.send(&query(3, "blocked.example")).await.unwrap();
+            client
+                .send(&with_id(
+                    4,
+                    test_support::build_a_query_with_do("cached.example"),
+                ))
+                .await
+                .unwrap();
+            client.send(&query(5, "nx.example")).await.unwrap();
+
+            let mut response = [0; 512];
+            let mut answered = Vec::new();
+            for _ in 0..3 {
+                let len = client.recv(&mut response).await.unwrap();
+                answered.push(id_and_rcode(&response[..len]));
+            }
+            answered.sort_unstable();
+            // NOERROR for the blocked name (null-IP answer) and the DO=1 hit,
+            // NXDOMAIN for the negative entry.
+            assert_eq!(answered, [(3, 0), (4, 0), (5, 3)]);
+            // The new miss never reached the resolver.
+            assert_eq!(resolver.resolved.load(Ordering::Relaxed), 1);
+
+            resolver.release.add_permits(1);
+            let len = client.recv(&mut response).await.unwrap();
+            assert_eq!(id_and_rcode(&response[..len]), (1, 0));
+
+            client.send(&query(6, "next.example")).await.unwrap();
+            resolver.entered.notified().await;
+            resolver.release.add_permits(1);
+            let len = client.recv(&mut response).await.unwrap();
+            assert_eq!(id_and_rcode(&response[..len]), (6, 0));
         };
         let result = tokio::time::timeout(Duration::from_secs(5), exercise).await;
         worker.abort();

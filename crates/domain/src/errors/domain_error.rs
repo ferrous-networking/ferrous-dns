@@ -47,6 +47,10 @@ pub enum DomainError {
     #[error("DNS query rate limited (truncated, retry via TCP)")]
     DnsRateLimitedSlip,
 
+    /// Every slot for a query that may wait on an upstream is taken.
+    #[error("Upstream query capacity exhausted")]
+    UpstreamCapacityExhausted,
+
     #[error("DNS tunneling detected")]
     DnsTunnelingDetected,
 

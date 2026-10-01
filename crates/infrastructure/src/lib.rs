@@ -2,7 +2,6 @@ pub mod auth;
 pub(crate) mod counted_map;
 pub mod database;
 pub mod dns;
-pub mod drop_counter;
 pub mod repositories;
 pub mod schedule;
 pub mod service_catalog;

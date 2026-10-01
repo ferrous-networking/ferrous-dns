@@ -7,6 +7,7 @@ use super::rebinding_guard::RebindingGuard;
 use super::response_ip_filter_guard::ResponseIpFilterGuard;
 use super::tsc_timer;
 use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
+use super::upstream_admission::UpstreamAdmission;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DgaFlagStore, DnsResolution, DnsResolver,
     FilterDecision, NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore,
@@ -24,6 +25,7 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::SemaphorePermit;
 
 const LAST_SEEN_CAPACITY: NonZeroUsize = match NonZeroUsize::new(8_192) {
     Some(n) => n,
@@ -53,6 +55,7 @@ pub struct HandleDnsQueryUseCase {
     dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
     dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
     cookie_guard: Option<DnsCookieGuard>,
+    upstream_admission: Option<UpstreamAdmission>,
     dnssec_enforce: bool,
     dns64_prefix: Option<Ipv6Addr>,
     log_queries: bool,
@@ -82,6 +85,7 @@ impl HandleDnsQueryUseCase {
             dga_event_tx: None,
             dga_flag_store: None,
             cookie_guard: None,
+            upstream_admission: None,
             dnssec_enforce: false,
             dns64_prefix: None,
             log_queries: true,
@@ -155,6 +159,22 @@ impl HandleDnsQueryUseCase {
     pub fn with_rate_limiter(mut self, rate_limiter: Arc<DnsRateLimiter>) -> Self {
         self.rate_limiter = rate_limiter;
         self
+    }
+
+    /// Bounds the queries waiting on an upstream at once, over every transport:
+    /// past `limit`, a query that would go upstream fails with
+    /// `UpstreamCapacityExhausted` instead of waiting. Unbounded by default.
+    pub fn with_upstream_limit(mut self, limit: usize) -> Self {
+        self.upstream_admission = Some(UpstreamAdmission::new(limit));
+        self
+    }
+
+    /// A slot for a query about to wait on an upstream, held until it drops.
+    fn admit_upstream(&self) -> Result<Option<SemaphorePermit<'_>>, DomainError> {
+        self.upstream_admission
+            .as_ref()
+            .map(UpstreamAdmission::try_admit)
+            .transpose()
     }
 
     /// Enables phase-1 DNS tunneling detection on the hot path.
@@ -725,7 +745,10 @@ impl HandleDnsQueryUseCase {
             // `resolve` expects the caller to have probed the cache already.
             let resolution = match self.resolver.try_cache(&safe_query) {
                 Some(cached) if cached.has_response_data() => cached,
-                _ => self.resolver.resolve(&safe_query).await?,
+                _ => {
+                    let _upstream_slot = self.admit_upstream()?;
+                    self.resolver.resolve(&safe_query).await?
+                }
             };
             self.log(&QueryLog {
                 cache_hit: resolution.cache_hit,
@@ -764,6 +787,8 @@ impl HandleDnsQueryUseCase {
             }
         }
 
+        // Blocked, refused and cached answers above never take a slot.
+        let _upstream_slot = self.admit_upstream()?;
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
                 if let Some(block_source) = self.blocked_cname(&resolution.cname_chain, group_id) {

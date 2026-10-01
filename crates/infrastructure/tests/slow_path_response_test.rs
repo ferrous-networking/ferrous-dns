@@ -194,6 +194,37 @@ async fn outcomes_map_to_rcode_extended_error_and_block_answer() {
 }
 
 #[tokio::test]
+async fn a_shed_query_is_dropped_over_udp_and_answered_servfail_on_streams() {
+    let handler = server_without_cookies(Err(DomainError::UpstreamCapacityExhausted));
+    let q = query(RecordType::A, Some(false), false, false);
+
+    // The UDP client retries; a stream client would wait out its timeout.
+    assert!(handler
+        .handle_raw_udp_fallback(&q, CLIENT, ClientProtocol::Udp)
+        .await
+        .is_none());
+    for protocol in [
+        ClientProtocol::Tcp,
+        ClientProtocol::Dot,
+        ClientProtocol::Doh,
+        ClientProtocol::Doq,
+    ] {
+        let reply = handler
+            .handle_raw_udp_fallback(&q, CLIENT, protocol)
+            .await
+            .expect("stream transports are answered");
+        let reply = Message::from_vec(&reply).unwrap();
+        assert_eq!(reply.metadata.id, ID, "{protocol:?}");
+        assert_eq!(
+            reply.metadata.response_code,
+            ResponseCode::ServFail,
+            "{protocol:?}"
+        );
+        assert!(reply.answers.is_empty(), "{protocol:?}");
+    }
+}
+
+#[tokio::test]
 async fn built_answers_carry_opt_exactly_when_the_query_did() {
     let outcomes = [
         (Ok(answer(None)), true),
