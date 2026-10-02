@@ -67,25 +67,6 @@ jobs:
             - [ ] Documentation is updated
             - [ ] Version bump will be MAJOR
 
-  size-label:
-    name: Size Label
-    runs-on: ubuntu-latest
-    steps:
-      - name: Add size label
-        uses: codelytv/pr-size-labeler@v1
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          xs_label: 'size/xs'
-          xs_max_size: 10
-          s_label: 'size/s'
-          s_max_size: 100
-          m_label: 'size/m'
-          m_max_size: 500
-          l_label: 'size/l'
-          l_max_size: 1000
-          xl_label: 'size/xl'
-          fail_if_xl: false
-
   check-todos:
     name: Check for TODO/FIXME
     runs-on: ubuntu-latest
@@ -101,14 +82,4 @@ jobs:
             echo "::warning::New TODO or FIXME comments found in this PR"
             echo "Consider creating issues for these items"
           fi
-        continue-on-error: true
-
-  suggest-reviewers:
-    name: Suggest Reviewers
-    runs-on: ubuntu-latest
-    steps:
-      - name: Suggest reviewers
-        uses: kentaro-m/auto-assign-action@v2.0.2
-        with:
-          configuration-path: '.github/auto-assign.yml'
         continue-on-error: true

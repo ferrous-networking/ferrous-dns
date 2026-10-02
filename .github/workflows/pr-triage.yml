@@ -1,0 +1,52 @@
+name: PR Triage
+
+# Jobs that write to the pull request (labels, reviewers). They run on
+# pull_request_target because a `pull_request` run from a fork only gets a
+# read-only token, so they used to fail with 403 on every external PR.
+#
+# pull_request_target runs with a write token in the base repo's context:
+# never check out or execute code from the PR here. Both actions only call the
+# GitHub API, and they are pinned to commit SHAs for the same reason.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions: {}
+
+jobs:
+  size-label:
+    name: Size Label
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Add size label
+        uses: codelytv/pr-size-labeler@4e3aa0f77f348c8066513d453515316ffa01a607 # v1.11.1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 10
+          s_label: 'size/s'
+          s_max_size: 100
+          m_label: 'size/m'
+          m_max_size: 500
+          l_label: 'size/l'
+          l_max_size: 1000
+          xl_label: 'size/xl'
+          fail_if_xl: false
+
+  suggest-reviewers:
+    name: Suggest Reviewers
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Suggest reviewers
+        uses: kentaro-m/auto-assign-action@0a2c53d3721e4c5cfcce6afd4014aecc337979f6 # v2.0.2
+        with:
+          configuration-path: '.github/auto-assign.yml'
+        continue-on-error: true
