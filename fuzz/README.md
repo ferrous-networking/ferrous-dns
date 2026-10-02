@@ -28,7 +28,7 @@ make fuzz-short
 | `query_fast_path` | `dns::fast_path::parse_query` chained into `dns::wire_response::build_cache_hit_response`, plus `FastPathQuery::edns_cookie`, `encode_response` and `encode_truncated` for the slow path | any client that can send a UDP packet |
 | `response_lowercase_0x20` | `dns::forwarding::response_validator::lowercase_owner_names` | the upstream resolver, or an off-path spoofer racing it |
 | `upstream_relay` | `dns::wire_response::relay_with_edns`, and `cache_form` chained into `relay_cached` | the upstream resolver, or an off-path spoofer racing it |
-| `dnssec_records` | `RrsigRecord::parse`, `DsRecord::parse`, `DnskeyRecord::parse` | a hostile signed zone |
+| `dnssec_records` | `DsRecord::parse`, `DnskeyRecord::parse` | a hostile signed zone |
 | `proxy_protocol_v2` | `dns::proxy_protocol::read_proxy_v2_client_ip` | whatever speaks to the TCP/DoT listener behind a load balancer |
 | `blocklist_text` | `dns::block_filter::compiler::parse_list_text` | the remote blocklist an operator subscribes to |
 

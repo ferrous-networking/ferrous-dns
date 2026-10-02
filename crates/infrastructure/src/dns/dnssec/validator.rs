@@ -1,10 +1,9 @@
 use super::cache::DnssecCache;
 use super::trust_anchor::TrustAnchorStore;
+use super::types::DnskeyRecord;
 use super::validation::authority::{self as auth_check, now_secs, to_fqdn};
-use super::validation::denial::{
-    prove_denial, prove_wildcard_expansion, VerifiedNsec, VerifiedNsec3,
-};
-use super::validation::ChainVerifier;
+use super::validation::denial::{prove_denial, prove_wildcard_expansion};
+use super::validation::{ChainFailure, ChainTrust, ChainVerifier};
 use crate::dns::forwarding::record_type_map::RecordTypeMapper;
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DnssecStatus, DomainError, RecordType};
@@ -14,13 +13,121 @@ use hickory_proto::rr::{Name, RData, Record};
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-/// Upper bound on distinct signer zones a single answer may carry before it is
-/// rejected without walking any chain. Each distinct zone drives an independent
-/// chain walk (per-label DS + DNSKEY fetches), so an attacker can pack RRSIGs
-/// naming many bogus signer zones to multiply upstream queries. A legitimate
-/// answer — even a long cross-zone CNAME chain — names only a few zones; this
-/// ceiling is well above any real case while bounding the walk fan-out.
-const MAX_SIGNER_ZONES: usize = 8;
+/// Upper bound on distinct chain walks one answer may trigger. Every RRset
+/// anchors a walk (at its signer, or at its owner when unsigned) and each walk
+/// costs per-label DS + DNSKEY fetches, so a crafted answer naming many
+/// distinct zones would multiply upstream queries. A legitimate answer — even
+/// a long cross-zone CNAME chain — needs only a few.
+const MAX_CHAIN_WALKS: usize = 8;
+
+/// A chain walk done for this answer, memoized so each name is walked once.
+struct Walk<'a> {
+    anchor: &'a Name,
+    /// `anchor` in presentation form, as handed to the walk.
+    walked: String,
+    trust: Result<ChainTrust, ChainFailure>,
+}
+
+impl Walk<'_> {
+    /// The walk ended in a signed zone whose apex is the walked name itself.
+    fn secure_apex(&self) -> Option<&str> {
+        match &self.trust {
+            Ok(ChainTrust::Secure { zone }) if zone.eq_ignore_ascii_case(&self.walked) => {
+                Some(zone)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// One answer RRset and the zones that claim to have signed it, borrowed from
+/// the message.
+struct AnswerRrset<'a> {
+    owner: &'a Name,
+    rtype: hickory_proto::rr::RecordType,
+    records: Vec<&'a Record>,
+    /// Distinct signers of the covering RRSIGs, restricted to those that
+    /// enclose the owner (RFC 4035 §5.3.1). Empty: the RRset is unsigned.
+    signers: Vec<&'a Name>,
+}
+
+impl<'a> AnswerRrset<'a> {
+    /// The name whose chain decides this RRset's fate.
+    fn walk_anchors(&self) -> &[&'a Name] {
+        if self.signers.is_empty() {
+            std::slice::from_ref(&self.owner)
+        } else {
+            &self.signers
+        }
+    }
+}
+
+fn covering_rrsigs<'a>(
+    owner: &'a Name,
+    rtype: hickory_proto::rr::RecordType,
+    answers: &'a [Record],
+) -> impl Iterator<Item = &'a hickory_proto::dnssec::rdata::RRSIG> + 'a {
+    answers.iter().filter_map(move |record| match &record.data {
+        RData::DNSSEC(DNSSECRData::RRSIG(rrsig))
+            if &record.name == owner && rrsig.input().type_covered == rtype =>
+        {
+            Some(rrsig)
+        }
+        _ => None,
+    })
+}
+
+fn group_rrsets(answers: &[Record]) -> Vec<AnswerRrset<'_>> {
+    let mut rrsets: Vec<AnswerRrset<'_>> = Vec::new();
+    for record in answers {
+        if matches!(record.data, RData::DNSSEC(DNSSECRData::RRSIG(_))) {
+            continue;
+        }
+        let rtype = record.record_type();
+        match rrsets
+            .iter_mut()
+            .find(|r| r.owner == &record.name && r.rtype == rtype)
+        {
+            Some(rrset) => rrset.records.push(record),
+            None => rrsets.push(AnswerRrset {
+                owner: &record.name,
+                rtype,
+                records: vec![record],
+                signers: Vec::new(),
+            }),
+        }
+    }
+    for rrset in &mut rrsets {
+        for rrsig in covering_rrsigs(rrset.owner, rrset.rtype, answers) {
+            let signer = &rrsig.input().signer_name;
+            if auth_check::name_encloses(signer, rrset.owner) && !rrset.signers.contains(&signer) {
+                rrset.signers.push(signer);
+            }
+        }
+    }
+    rrsets
+}
+
+/// The most severe of two outcomes: Bogus > Indeterminate > Insecure > Secure.
+fn most_severe(a: DnssecStatus, b: DnssecStatus) -> DnssecStatus {
+    match (a, b) {
+        (DnssecStatus::Bogus, _) | (_, DnssecStatus::Bogus) => DnssecStatus::Bogus,
+        (DnssecStatus::Indeterminate, _) | (_, DnssecStatus::Indeterminate) => {
+            DnssecStatus::Indeterminate
+        }
+        (DnssecStatus::Insecure, _) | (_, DnssecStatus::Insecure) => DnssecStatus::Insecure,
+        (DnssecStatus::Secure, DnssecStatus::Secure) => DnssecStatus::Secure,
+    }
+}
+
+/// Key lookup that only answers for `zone`, so a record signed by any other
+/// zone — even one this validation also proved — cannot vouch for it.
+fn keys_of(
+    zone: &Name,
+    keys: Option<Arc<[DnskeyRecord]>>,
+) -> impl Fn(&Name) -> Option<Arc<[DnskeyRecord]>> + '_ {
+    move |signer: &Name| if signer == zone { keys.clone() } else { None }
+}
 
 pub struct DnssecValidator {
     pool_manager: Arc<PoolManager>,
@@ -77,12 +184,10 @@ impl DnssecValidator {
             .validate_message(domain, record_type, &upstream_result.response.message)
             .await;
 
-        let elapsed = start.elapsed().as_millis() as u64;
-
         debug!(
             domain = %domain,
             status = %validation_status.as_str(),
-            elapsed_ms = elapsed,
+            elapsed_ms = start.elapsed().as_millis() as u64,
             "DNSSEC validation completed"
         );
 
@@ -105,74 +210,18 @@ impl DnssecValidator {
 
         let validation_status = self.validate_message(domain, record_type, message).await;
 
-        let elapsed = start.elapsed().as_millis() as u64;
-
         debug!(
             domain = %domain,
             status = %validation_status.as_str(),
-            elapsed_ms = elapsed,
+            elapsed_ms = start.elapsed().as_millis() as u64,
             "DNSSEC validation completed (pre-fetched)"
         );
 
         validation_status
     }
 
-    pub fn insert_zone_keys_for_test(
-        &mut self,
-        zone: &str,
-        keys: Vec<crate::dns::dnssec::types::DnskeyRecord>,
-    ) {
-        self.chain_verifier.insert_zone_keys_for_test(zone, keys);
-    }
-
-    fn extract_signer_zone(answers: &[Record]) -> Option<String> {
-        for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
-                let input = rrsig.input();
-                if input.type_covered != hickory_proto::rr::RecordType::DNSKEY {
-                    return Some(input.signer_name.to_string());
-                }
-            }
-        }
-        None
-    }
-
-    /// Distinct signer zones across all non-DNSKEY RRSIGs in `answers`, in order
-    /// of first appearance. A cross-zone CNAME chain is signed by more than one
-    /// zone, each of which must be anchored before its RRset can be trusted.
-    fn extract_signer_zones(answers: &[Record]) -> Vec<String> {
-        let mut zones: Vec<String> = Vec::new();
-        for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
-                let input = rrsig.input();
-                if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
-                    continue;
-                }
-                let signer = input.signer_name.to_string();
-                if !zones.contains(&signer) {
-                    zones.push(signer);
-                }
-            }
-        }
-        zones
-    }
-
-    /// Combines per-zone chain-validation outcomes for a multi-signer answer.
-    /// The answer is only `Secure` when every signer zone validates; otherwise
-    /// the most severe outcome wins (Bogus > Indeterminate > Insecure).
-    fn combine_chain_status(a: DnssecStatus, b: DnssecStatus) -> DnssecStatus {
-        match (a, b) {
-            (DnssecStatus::Bogus, _) | (_, DnssecStatus::Bogus) => DnssecStatus::Bogus,
-            (DnssecStatus::Indeterminate, _) | (_, DnssecStatus::Indeterminate) => {
-                DnssecStatus::Indeterminate
-            }
-            (DnssecStatus::Insecure, _) | (_, DnssecStatus::Insecure) => DnssecStatus::Insecure,
-            (DnssecStatus::Secure, DnssecStatus::Secure) => DnssecStatus::Secure,
-        }
-    }
-
-    /// Runs full validation over an already-fetched message: positive answers go
-    /// through RRset signature + wildcard-expansion checks; empty answers
+    /// Runs full validation over an already-fetched message: every answer
+    /// RRset is anchored to the chain of trust on its own; empty answers
     /// (NXDOMAIN / NODATA) go through authenticated denial of existence.
     async fn validate_message(
         &mut self,
@@ -180,157 +229,250 @@ impl DnssecValidator {
         record_type: RecordType,
         message: &hickory_proto::op::Message,
     ) -> DnssecStatus {
+        self.chain_verifier.clear_established_keys();
         if message.answers.is_empty() {
             return self.validate_negative(domain, record_type, message).await;
         }
+        self.validate_positive(domain, &message.answers, &message.authorities)
+            .await
+    }
 
-        // Establish the chain of trust for *every* signer zone present in the
-        // answer (a cross-zone CNAME chain carries more than one), so each answer
-        // RRset can later be checked against the keys of its own signer zone. If
-        // the answer is unsigned there are no signer zones; fall back to the
-        // queried name so an insecure delegation is still detected.
-        let mut signer_zones = Self::extract_signer_zones(&message.answers);
-        if signer_zones.is_empty() {
-            signer_zones.push(domain.to_owned());
+    async fn validate_positive(
+        &mut self,
+        domain: &str,
+        answers: &[Record],
+        authorities: &[Record],
+    ) -> DnssecStatus {
+        let rrsets = group_rrsets(answers);
+        if rrsets.is_empty() {
+            warn!(domain = %domain, "answer section holds only RRSIGs");
+            return DnssecStatus::Bogus;
         }
 
-        // Anti-amplification: cap the number of independent chain walks one
-        // answer can trigger. More distinct signer zones than any legitimate
-        // answer would carry means a crafted response trying to multiply
-        // upstream DS/DNSKEY queries — reject it before walking anything.
-        if signer_zones.len() > MAX_SIGNER_ZONES {
+        let mut anchors: Vec<&Name> = Vec::new();
+        for &anchor in rrsets.iter().flat_map(AnswerRrset::walk_anchors) {
+            if !anchors.contains(&anchor) {
+                anchors.push(anchor);
+            }
+        }
+        if anchors.len() > MAX_CHAIN_WALKS {
             warn!(
                 domain = %domain,
-                zones = signer_zones.len(),
-                "answer names too many signer zones; refusing chain walk (possible amplification)"
+                walks = anchors.len(),
+                "answer needs too many chain walks; refusing (possible amplification)"
             );
             return DnssecStatus::Bogus;
         }
 
+        let mut walks: Vec<Walk<'_>> = Vec::with_capacity(anchors.len());
         let mut status = DnssecStatus::Secure;
-        for zone in &signer_zones {
-            let zone_status = self.chain_verifier.verify_chain(zone).await;
-            status = Self::combine_chain_status(status, zone_status);
-            // Bogus is terminal under `combine_chain_status` (it dominates every
-            // other outcome), so once any zone is Bogus the remaining walks
-            // cannot change the verdict — stop and save the queries.
+        for rrset in &rrsets {
+            let rrset_status = self
+                .rrset_status(rrset, &mut walks, answers, authorities)
+                .await;
+            status = most_severe(status, rrset_status);
+            // Bogus dominates every other outcome: stop and save the queries.
             if status == DnssecStatus::Bogus {
                 break;
-            }
-        }
-
-        if status == DnssecStatus::Secure {
-            status = self.verify_rrset_signatures(domain, &message.answers);
-            if status == DnssecStatus::Secure {
-                status = self.verify_wildcard_proof(domain, &message.answers, &message.authorities);
             }
         }
         status
     }
 
-    /// Validates a negative response. Anchors the chain at the authority's signer
-    /// zone, then proves the denial from the NSEC/NSEC3 records.
+    async fn trust<'a, 'w>(
+        &mut self,
+        walks: &'w mut Vec<Walk<'a>>,
+        anchor: &'a Name,
+    ) -> &'w Walk<'a> {
+        if let Some(done) = walks.iter().position(|walk| walk.anchor == anchor) {
+            return &walks[done];
+        }
+        let walked = anchor.to_string();
+        let trust = self.chain_verifier.verify_chain(&walked).await;
+        let index = walks.len();
+        walks.push(Walk {
+            anchor,
+            walked,
+            trust,
+        });
+        &walks[index]
+    }
+
+    async fn rrset_status<'a>(
+        &mut self,
+        rrset: &AnswerRrset<'a>,
+        walks: &mut Vec<Walk<'a>>,
+        answers: &[Record],
+        authorities: &[Record],
+    ) -> DnssecStatus {
+        if rrset.signers.is_empty() {
+            return match &self.trust(walks, rrset.owner).await.trust {
+                Ok(ChainTrust::Insecure) => DnssecStatus::Insecure,
+                Ok(ChainTrust::Secure { zone }) => {
+                    warn!(
+                        owner = %rrset.owner,
+                        rtype = ?rrset.rtype,
+                        zone = %zone,
+                        "unsigned RRset inside a signed zone"
+                    );
+                    DnssecStatus::Bogus
+                }
+                Err(failure) => failure.status(),
+            };
+        }
+
+        let mut outcome = DnssecStatus::Secure;
+        for &signer in &rrset.signers {
+            let walk = self.trust(walks, signer).await;
+            let status = match (&walk.trust, walk.secure_apex()) {
+                (_, Some(zone)) => {
+                    self.signed_rrset_status(rrset, signer, zone, answers, authorities)
+                }
+                (Ok(ChainTrust::Secure { zone }), None) => {
+                    warn!(owner = %rrset.owner, signer = %signer, zone = %zone, "RRSIG signer is not a zone apex");
+                    DnssecStatus::Bogus
+                }
+                (Ok(ChainTrust::Insecure), None) => DnssecStatus::Insecure,
+                (Err(failure), None) => failure.status(),
+            };
+            if status == DnssecStatus::Secure {
+                return status;
+            }
+            outcome = most_severe(outcome, status);
+        }
+        outcome
+    }
+
+    /// A signed RRset whose signer the walk proved to be the secure zone
+    /// `zone`: the signature must verify under that zone's keys, and a wildcard
+    /// expansion must come with proof that the exact owner does not exist.
+    fn signed_rrset_status(
+        &self,
+        rrset: &AnswerRrset<'_>,
+        signer: &Name,
+        zone: &str,
+        answers: &[Record],
+        authorities: &[Record],
+    ) -> DnssecStatus {
+        let lookup = keys_of(signer, self.chain_verifier.get_zone_keys(zone).cloned());
+        let now = now_secs();
+        if !auth_check::rrset_is_authentic(
+            rrset.owner,
+            rrset.rtype,
+            &rrset.records,
+            answers,
+            now,
+            &lookup,
+        ) {
+            warn!(owner = %rrset.owner, rtype = ?rrset.rtype, zone = %zone, "RRset not covered by a valid RRSIG");
+            return DnssecStatus::Bogus;
+        }
+
+        // RFC 4035 §5.3.4: an RRSIG label count below the owner's marks a
+        // wildcard expansion.
+        let owner_labels = rrset.owner.num_labels();
+        let Some(wildcard_labels) = covering_rrsigs(rrset.owner, rrset.rtype, answers)
+            .map(|rrsig| rrsig.input().num_labels)
+            .filter(|labels| *labels < owner_labels)
+            .min()
+        else {
+            return DnssecStatus::Secure;
+        };
+        let (nsec3s, nsecs) = auth_check::collect_verified_denial(authorities, now, &lookup);
+        prove_wildcard_expansion(rrset.owner, wildcard_labels, &nsec3s, &nsecs)
+    }
+
+    /// Validates a negative response: a signed denial must come from the zone
+    /// that encloses the name and prove it; an unsigned one is only acceptable
+    /// below a proven-insecure delegation.
     async fn validate_negative(
         &mut self,
         domain: &str,
         record_type: RecordType,
         message: &hickory_proto::op::Message,
     ) -> DnssecStatus {
-        let Some(zone) = Self::extract_signer_zone(&message.authorities) else {
-            // No signed authority section: unsigned negative, serve without AD.
-            return DnssecStatus::Insecure;
+        let Some(signer) = Self::extract_signer_zone(&message.authorities) else {
+            return match self.chain_verifier.verify_chain(domain).await {
+                Ok(ChainTrust::Insecure) => DnssecStatus::Insecure,
+                Ok(ChainTrust::Secure { zone }) => {
+                    warn!(domain = %domain, zone = %zone, "unsigned negative answer from a signed zone");
+                    DnssecStatus::Bogus
+                }
+                Err(failure) => failure.status(),
+            };
         };
 
         // The authority's signer zone must enclose the queried name. Otherwise a
         // validly-signed denial from an unrelated zone the attacker controls
-        // could be presented as a proof about `domain`; the chain walk below
-        // would happily anchor that real zone, and the NSEC/NSEC3 owners would
-        // be checked against it — never against the victim name. Reject it as
-        // Bogus before doing any of that work.
-        match (to_fqdn(domain), to_fqdn(&zone)) {
-            (Some(qname), Some(zone_name)) if auth_check::name_encloses(&zone_name, &qname) => {}
-            _ => {
-                warn!(
-                    domain = %domain,
-                    zone = %zone,
-                    "negative-answer signer zone does not enclose the queried name"
-                );
-                return DnssecStatus::Bogus;
+        // could be presented as a proof about `domain`.
+        let Some(qname) = to_fqdn(domain) else {
+            return DnssecStatus::Bogus;
+        };
+        if !auth_check::name_encloses(signer, &qname) {
+            warn!(
+                domain = %domain,
+                zone = %signer,
+                "negative-answer signer zone does not enclose the queried name"
+            );
+            return DnssecStatus::Bogus;
+        }
+
+        let walked = signer.to_string();
+        match self.chain_verifier.verify_chain(&walked).await {
+            Ok(ChainTrust::Secure { zone }) if zone.eq_ignore_ascii_case(&walked) => self
+                .validate_denial(
+                    &qname,
+                    record_type,
+                    message.response_code,
+                    signer,
+                    &zone,
+                    &message.authorities,
+                ),
+            Ok(ChainTrust::Secure { zone }) => {
+                warn!(domain = %domain, signer = %signer, zone = %zone, "denial signer is not a zone apex");
+                DnssecStatus::Bogus
             }
+            Ok(ChainTrust::Insecure) => DnssecStatus::Insecure,
+            Err(failure) => failure.status(),
         }
-
-        let chain_status = self.chain_verifier.verify_chain(&zone).await;
-        if chain_status != DnssecStatus::Secure {
-            return chain_status;
-        }
-        self.validate_denial(
-            domain,
-            record_type,
-            message.response_code,
-            &zone,
-            &message.authorities,
-        )
     }
 
-    /// [`auth_check::rrset_is_authentic`] against the zone keys this walk has established.
-    fn rrset_is_authentic(
-        &self,
-        owner: &Name,
-        rtype: hickory_proto::rr::RecordType,
-        rrset: &[Record],
-        sigs: &[Record],
-        now_secs: u32,
-    ) -> bool {
-        auth_check::rrset_is_authentic(owner, rtype, rrset, sigs, now_secs, &|zone| {
-            self.chain_verifier.get_zone_keys(zone).cloned()
-        })
-    }
-
-    /// [`auth_check::collect_verified_denial`] against the zone keys this walk has established.
-    fn collect_verified_denial<'a>(
-        &self,
-        authority: &'a [Record],
-        now_secs: u32,
-    ) -> (Vec<VerifiedNsec3<'a>>, Vec<VerifiedNsec<'a>>) {
-        auth_check::collect_verified_denial(authority, now_secs, &|zone| {
-            self.chain_verifier.get_zone_keys(zone).cloned()
+    fn extract_signer_zone(authority: &[Record]) -> Option<&Name> {
+        authority.iter().find_map(|record| match &record.data {
+            RData::DNSSEC(DNSSECRData::RRSIG(rrsig))
+                if rrsig.input().type_covered != hickory_proto::rr::RecordType::DNSKEY =>
+            {
+                Some(&rrsig.input().signer_name)
+            }
+            _ => None,
         })
     }
 
     /// Validates an authenticated denial of existence (NXDOMAIN / NODATA) using
-    /// the NSEC/NSEC3 records of the authority section. `soa_zone` is the signed
-    /// zone apex already established in the chain.
+    /// the NSEC/NSEC3 records `zone` signed in the authority section.
     fn validate_denial(
         &self,
-        qname: &str,
+        qname: &Name,
         qtype: RecordType,
         rcode: ResponseCode,
-        soa_zone: &str,
+        soa_name: &Name,
+        zone: &str,
         authority: &[Record],
     ) -> DnssecStatus {
-        let (nsec3s, nsecs) = self.collect_verified_denial(authority, now_secs());
-
-        if nsec3s.is_empty() && nsecs.is_empty() {
-            // Signed zone but no authenticated denial records: stripped / forged.
-            return DnssecStatus::Bogus;
-        }
-
-        let (Some(qname_name), Some(soa_name)) = (to_fqdn(qname), to_fqdn(soa_zone)) else {
-            return DnssecStatus::Insecure;
-        };
-        let qtype_hickory = RecordTypeMapper::to_hickory(&qtype);
+        let lookup = keys_of(soa_name, self.chain_verifier.get_zone_keys(zone).cloned());
+        let (nsec3s, nsecs) = auth_check::collect_verified_denial(authority, now_secs(), &lookup);
 
         let result = prove_denial(
-            &qname_name,
-            qtype_hickory,
+            qname,
+            RecordTypeMapper::to_hickory(&qtype),
             rcode,
-            &soa_name,
+            soa_name,
             &nsec3s,
             &nsecs,
         );
         debug!(
             domain = %qname,
-            zone = %soa_zone,
+            zone = %zone,
             ?rcode,
             nsec3 = nsec3s.len(),
             nsec = nsecs.len(),
@@ -338,105 +480,5 @@ impl DnssecValidator {
             "denial of existence validated"
         );
         result
-    }
-
-    /// Verifies the wildcard-expansion proof for a *positive* answer
-    /// (RFC 4035 §5.3.4). Returns `Secure` when the answer is not wildcard-
-    /// expanded (nothing to prove) or the proof is valid; `Bogus` when the
-    /// claimed expansion lacks a denial of the exact name.
-    fn verify_wildcard_proof(
-        &self,
-        qname: &str,
-        answers: &[Record],
-        authority: &[Record],
-    ) -> DnssecStatus {
-        let mut wildcard_labels: Option<u8> = None;
-        for record in answers {
-            if let RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) = &record.data {
-                let input = rrsig.input();
-                if input.type_covered == hickory_proto::rr::RecordType::DNSKEY {
-                    continue;
-                }
-                if input.num_labels < record.name.num_labels() {
-                    wildcard_labels = Some(input.num_labels);
-                    break;
-                }
-            }
-        }
-        let Some(wildcard_labels) = wildcard_labels else {
-            return DnssecStatus::Secure;
-        };
-
-        let (nsec3s, nsecs) = self.collect_verified_denial(authority, now_secs());
-        let Some(qname_name) = to_fqdn(qname) else {
-            return DnssecStatus::Insecure;
-        };
-        prove_wildcard_expansion(&qname_name, wildcard_labels, &nsec3s, &nsecs)
-    }
-
-    pub fn verify_rrset_signatures(&self, domain: &str, all_answers: &[Record]) -> DnssecStatus {
-        let mut has_data = false;
-        let mut has_rrsig = false;
-        for record in all_answers {
-            match &record.data {
-                RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) => {
-                    if rrsig.input().type_covered != hickory_proto::rr::RecordType::DNSKEY {
-                        has_rrsig = true;
-                    }
-                }
-                _ => has_data = true,
-            }
-        }
-
-        if !has_data {
-            // Empty answers are routed to authenticated denial of existence
-            // before reaching here; treat any stray empty RRset as undecided
-            // rather than blindly authentic.
-            debug!(domain = %domain, "No answer RRset to verify");
-            return DnssecStatus::Indeterminate;
-        }
-        if !has_rrsig {
-            debug!(domain = %domain, "No RRSIG for RRset — returning Bogus");
-            return DnssecStatus::Bogus;
-        }
-
-        let now = now_secs();
-
-        // Group the answer records into RRsets keyed by (owner, type). EVERY
-        // RRset must be covered by an RRSIG that verifies against a trusted key
-        // (RFC 4035 §5.3.1): verifying just one and returning Secure would let an
-        // attacker append unsigned (or untrusted) RRsets to a response carrying a
-        // single legitimately-signed RRset and still have the whole answer — and
-        // therefore the AD bit — flagged Secure.
-        let mut rrsets: Vec<(&Name, hickory_proto::rr::RecordType, Vec<Record>)> = Vec::new();
-        for record in all_answers {
-            if matches!(record.data, RData::DNSSEC(DNSSECRData::RRSIG(_))) {
-                continue;
-            }
-            let owner = &record.name;
-            let rtype = record.record_type();
-            match rrsets
-                .iter_mut()
-                .find(|(o, t, _)| *o == owner && *t == rtype)
-            {
-                Some(entry) => entry.2.push(record.clone()),
-                None => rrsets.push((owner, rtype, vec![record.clone()])),
-            }
-        }
-
-        for (owner, rtype, records) in &rrsets {
-            if !self.rrset_is_authentic(owner, *rtype, records.as_slice(), all_answers, now) {
-                warn!(
-                    domain = %domain,
-                    owner = %owner,
-                    rtype = ?rtype,
-                    "answer RRset not covered by a valid RRSIG — returning Bogus"
-                );
-                return DnssecStatus::Bogus;
-            }
-        }
-
-        debug!(domain = %domain, rrsets = rrsets.len(), "all answer RRsets verified");
-        DnssecStatus::Secure
     }
 }

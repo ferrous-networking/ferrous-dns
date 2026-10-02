@@ -1,17 +1,16 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// A cached, already-authenticated RRset with its expiry.
+/// A cached, already-authenticated lookup result with its expiry.
 #[derive(Debug, Clone)]
-pub struct CacheEntry<T> {
-    items: Arc<[T]>,
+pub struct CacheEntry<V> {
+    value: V,
     expires_at: Instant,
 }
 
-impl<T> CacheEntry<T> {
-    pub fn new(items: Vec<T>, ttl_secs: u32) -> Self {
+impl<V> CacheEntry<V> {
+    pub fn new(value: V, ttl_secs: u32) -> Self {
         Self {
-            items: Arc::from(items),
+            value,
             expires_at: Instant::now() + Duration::from_secs(u64::from(ttl_secs)),
         }
     }
@@ -20,7 +19,7 @@ impl<T> CacheEntry<T> {
         Instant::now() >= self.expires_at
     }
 
-    pub fn items(&self) -> &Arc<[T]> {
-        &self.items
+    pub fn get(&self) -> &V {
+        &self.value
     }
 }

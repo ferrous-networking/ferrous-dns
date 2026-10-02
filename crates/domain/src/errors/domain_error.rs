@@ -20,6 +20,9 @@ pub enum DomainError {
     #[error("DNSSEC validation returned Bogus (enforced)")]
     DnssecBogus,
 
+    #[error("DNSSEC validation could not complete (enforced)")]
+    DnssecIndeterminate,
+
     #[error("Invalid DNS response: {0}")]
     InvalidDnsResponse(String),
 

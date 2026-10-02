@@ -102,12 +102,11 @@ impl DnsResolver for DnssecResolver {
                 warn!(
                     domain = %query.domain,
                     error = %e,
-                    "DNSSEC validation failed, returning insecure status"
+                    "DNSSEC validation could not run"
                 );
 
-                // A validation error fails open (Insecure, served, AD=0), never
-                // SERVFAIL.
-                resolution.dnssec_status = Some(DnssecStatus::Insecure);
+                // Not validated is not Insecure: Strict mode SERVFAILs this.
+                resolution.dnssec_status = Some(DnssecStatus::Indeterminate);
                 Ok(resolution)
             }
         }

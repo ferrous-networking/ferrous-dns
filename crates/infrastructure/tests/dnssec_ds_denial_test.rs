@@ -1,23 +1,17 @@
-//! Anti-downgrade: an *empty* DS answer must be backed by an authenticated
-//! denial before the delegation is declared insecure.
-//!
-//! An empty DS RRset needs no signature to fabricate, so accepting it on sight
-//! lets one won race strip DNSSEC from a signed zone. `ChainVerifier` therefore
-//! runs the parent's NSEC/NSEC3 through `prove_denial` before returning
-//! `InsecureDelegation`. These tests pin the two halves of that check that are
-//! deterministic: the DS-specific proof shapes, and the rule that an
-//! unauthenticated proof counts as no proof at all (which is what makes the
-//! check fail *open* rather than SERVFAIL behind authority-stripping
-//! forwarders). Signature math and the full walk stay with the live smoke tests,
-//! matching `dnssec_denial_test.rs`.
+//! Anti-downgrade: an *empty* DS answer only lets the chain walk past a name
+//! when the parent zone's authenticated NSEC/NSEC3 proves what the absence
+//! means. `classify_ds_denial` turns the proof into that meaning — unsigned
+//! delegation, plain name inside the parent zone, or nonexistent name — and
+//! refuses (`None`) anything else, which the walk reports as Bogus. Signature
+//! math and the walk itself are covered end to end in `dnssec_chain_walk_test.rs`.
 
 use data_encoding::BASE32_DNSSEC;
 use ferrous_dns_domain::DnssecStatus;
 use ferrous_dns_infrastructure::dns::dnssec::validation::authority::collect_verified_denial;
 use ferrous_dns_infrastructure::dns::dnssec::validation::denial::{
-    prove_denial, VerifiedNsec, VerifiedNsec3,
+    classify_ds_denial, prove_denial, VerifiedNsec, VerifiedNsec3,
 };
-use ferrous_dns_infrastructure::dns::dnssec::DnskeyRecord;
+use ferrous_dns_infrastructure::dns::dnssec::{DnskeyRecord, DsDenial};
 use hickory_proto::dnssec::rdata::{DNSSECRData, NSEC, NSEC3};
 use hickory_proto::dnssec::Nsec3HashAlgorithm;
 use hickory_proto::op::ResponseCode;
@@ -29,7 +23,7 @@ use std::sync::Arc;
 const SALT: &[u8] = &[0xaa, 0xbb];
 const ITER: u16 = 10;
 
-/// The delegation under attack, and the parent zone that must prove the absence.
+/// The name whose DS was asked for, and the parent zone that must prove the absence.
 const CHILD: &str = "child.example.com.";
 const PARENT: &str = "example.com.";
 
@@ -60,154 +54,156 @@ fn nsec3(opt_out: bool, next_hash: Vec<u8>, types: &[RecordType]) -> NSEC3 {
     )
 }
 
-/// Proves "no DS at CHILD" from the given NSEC3 records.
-fn prove_ds_absence_nsec3(nsec3s: &[VerifiedNsec3<'_>]) -> DnssecStatus {
-    prove_denial(
-        &n(CHILD),
-        RecordType::DS,
-        ResponseCode::NoError,
-        &n(PARENT),
-        nsec3s,
-        &[],
-    )
+fn nodata_nsec3(nsec3s: &[VerifiedNsec3<'_>]) -> Option<DsDenial> {
+    classify_ds_denial(&n(CHILD), ResponseCode::NoError, &n(PARENT), nsec3s, &[])
 }
 
-/// Proves "no DS at CHILD" from the given NSEC records.
-fn prove_ds_absence_nsec(nsecs: &[VerifiedNsec<'_>]) -> DnssecStatus {
-    prove_denial(
-        &n(CHILD),
-        RecordType::DS,
-        ResponseCode::NoError,
-        &n(PARENT),
-        &[],
-        nsecs,
-    )
+fn nodata_nsec(nsecs: &[VerifiedNsec<'_>]) -> Option<DsDenial> {
+    classify_ds_denial(&n(CHILD), ResponseCode::NoError, &n(PARENT), &[], nsecs)
+}
+
+/// A single NSEC3 owned by CHILD's hash.
+fn at_child(rec: &NSEC3) -> Vec<VerifiedNsec3<'_>> {
+    vec![VerifiedNsec3 {
+        owner_label: label_of(&hash(CHILD)),
+        data: rec,
+    }]
 }
 
 // ------------------------- NSEC3 DS NODATA shapes --------------------------
 
 #[test]
-fn nsec3_matching_without_ds_bit_proves_absence() {
-    // The parent's delegation-point NSEC3: NS present, DS absent.
+fn nsec3_delegation_without_ds_is_an_insecure_delegation() {
     let rec = nsec3(false, hash("zzz.example.com."), &[RecordType::NS]);
-    let nsec3s = vec![VerifiedNsec3 {
-        owner_label: label_of(&hash(CHILD)),
-        data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec3(&nsec3s), DnssecStatus::Secure);
+    assert_eq!(
+        nodata_nsec3(&at_child(&rec)),
+        Some(DsDenial::InsecureDelegation)
+    );
 }
 
 #[test]
-fn nsec3_matching_with_ds_bit_contradicts_the_empty_answer() {
-    // The parent says a DS exists while the answer claims none — a downgrade
-    // attempt, not an unsigned delegation.
+fn nsec3_name_without_ns_is_not_a_zone_cut() {
+    // A plain host in the parent zone: the walk keeps the parent's keys, so an
+    // unsigned answer for it is Bogus rather than Insecure.
+    let rec = nsec3(
+        false,
+        hash("zzz.example.com."),
+        &[RecordType::A, RecordType::RRSIG],
+    );
+    assert_eq!(nodata_nsec3(&at_child(&rec)), Some(DsDenial::NotZoneCut));
+}
+
+#[test]
+fn nsec3_with_ds_bit_contradicts_the_empty_answer() {
     let rec = nsec3(
         false,
         hash("zzz.example.com."),
         &[RecordType::NS, RecordType::DS],
     );
-    let nsec3s = vec![VerifiedNsec3 {
-        owner_label: label_of(&hash(CHILD)),
-        data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec3(&nsec3s), DnssecStatus::Bogus);
+    assert_eq!(nodata_nsec3(&at_child(&rec)), None);
 }
 
 #[test]
-fn nsec3_matching_from_the_child_side_is_unusable_not_bogus() {
-    // SOA in the bitmap makes this the *child's* own apex NSEC3. RFC 6840 §4.4:
-    // the child is not authoritative for its DS RRset, so this cannot prove the
-    // DS absent — but it is not evidence of forgery either. Some servers really
-    // do answer DS from the child side, so the record is discarded as unusable
-    // and the verdict falls through to Insecure. Returning Bogus here would
-    // SERVFAIL those legitimate zones.
+fn nsec3_from_the_child_side_proves_nothing() {
+    // SOA in the bitmap makes this the child's own apex record; the child is
+    // not authoritative for its DS (RFC 6840 §4.4).
     let rec = nsec3(
         false,
         hash("zzz.example.com."),
         &[RecordType::SOA, RecordType::NS, RecordType::DNSKEY],
     );
-    let nsec3s = vec![VerifiedNsec3 {
-        owner_label: label_of(&hash(CHILD)),
-        data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec3(&nsec3s), DnssecStatus::Insecure);
+    assert_eq!(nodata_nsec3(&at_child(&rec)), None);
 }
 
 #[test]
-fn insecure_does_not_distinguish_opt_out_from_an_inconclusive_proof() {
-    // RFC 5155 §8.6 opt-out ("unsigned delegation, no DS") and "the records
-    // present prove nothing" both surface as `Insecure`. That collision is why
-    // `confirm_ds_absence` caches the verdict only on `Secure`: a partial
-    // forgery lands here, and caching it would outlive the attack.
+fn nsec3_opt_out_needs_a_closest_encloser_proof() {
+    // RFC 5155 §8.6: an opt-out span over the next closer only counts next to
+    // a matching NSEC3 for the closest encloser.
     let child_hash = hash(CHILD);
     let mut before = child_hash.clone();
-    let mut after = child_hash.clone();
+    let mut after = child_hash;
     before[0] = 0x00;
     after[0] = 0xff;
-
     let opt_out = nsec3(true, after, &[RecordType::NS]);
-    let covering = vec![VerifiedNsec3 {
+    let apex = nsec3(
+        false,
+        hash("zzzz.example.com."),
+        &[RecordType::SOA, RecordType::NS, RecordType::DNSKEY],
+    );
+    let cover = VerifiedNsec3 {
         owner_label: label_of(&before),
         data: &opt_out,
-    }];
-    assert_eq!(prove_ds_absence_nsec3(&covering), DnssecStatus::Insecure);
+    };
+    let ce = VerifiedNsec3 {
+        owner_label: label_of(&hash(PARENT)),
+        data: &apex,
+    };
 
-    // An NSEC3 that neither matches nor covers the name proves nothing.
+    assert_eq!(nodata_nsec3(std::slice::from_ref(&cover)), None);
+    assert_eq!(
+        nodata_nsec3(&[cover, ce]),
+        Some(DsDenial::InsecureDelegation)
+    );
+}
+
+#[test]
+fn nsec3_that_neither_matches_nor_covers_proves_nothing() {
     let unrelated = nsec3(false, hash("b.example.com."), &[RecordType::NS]);
-    let inconclusive = vec![VerifiedNsec3 {
+    let nsec3s = vec![VerifiedNsec3 {
         owner_label: label_of(&hash("a.example.com.")),
         data: &unrelated,
     }];
-    assert_eq!(
-        prove_ds_absence_nsec3(&inconclusive),
-        DnssecStatus::Insecure
-    );
+    assert_eq!(nodata_nsec3(&nsec3s), None);
 }
 
 // -------------------------- NSEC DS NODATA shapes --------------------------
 
-#[test]
-fn nsec_matching_without_ds_bit_proves_absence() {
-    let rec = NSEC::new(n("zzz.example.com."), [RecordType::NS, RecordType::RRSIG]);
+/// Classifies a single NSEC owned by CHILD with the given type bitmap.
+fn nodata_nsec_at_child(types: &[RecordType]) -> Option<DsDenial> {
+    let rec = NSEC::new(n("zzz.example.com."), types.iter().copied());
     let owner = n(CHILD);
-    let nsecs = vec![VerifiedNsec {
+    nodata_nsec(&[VerifiedNsec {
         owner: &owner,
         data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec(&nsecs), DnssecStatus::Secure);
+    }])
 }
 
 #[test]
-fn nsec_matching_with_ds_bit_contradicts_the_empty_answer() {
-    let rec = NSEC::new(n("zzz.example.com."), [RecordType::NS, RecordType::DS]);
-    let owner = n(CHILD);
-    let nsecs = vec![VerifiedNsec {
-        owner: &owner,
-        data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec(&nsecs), DnssecStatus::Bogus);
-}
-
-#[test]
-fn nsec_matching_from_the_child_side_is_unusable_not_bogus() {
-    // RFC 6840 §4.4 — same wrong-side-of-the-delegation rule as NSEC3.
-    let rec = NSEC::new(
-        n("zzz.example.com."),
-        [RecordType::SOA, RecordType::NS, RecordType::DNSKEY],
+fn nsec_delegation_without_ds_is_an_insecure_delegation() {
+    assert_eq!(
+        nodata_nsec_at_child(&[RecordType::NS, RecordType::RRSIG]),
+        Some(DsDenial::InsecureDelegation)
     );
-    let owner = n(CHILD);
-    let nsecs = vec![VerifiedNsec {
-        owner: &owner,
-        data: &rec,
-    }];
-    assert_eq!(prove_ds_absence_nsec(&nsecs), DnssecStatus::Insecure);
+}
+
+#[test]
+fn nsec_name_without_ns_is_not_a_zone_cut() {
+    assert_eq!(
+        nodata_nsec_at_child(&[RecordType::A, RecordType::RRSIG]),
+        Some(DsDenial::NotZoneCut)
+    );
+}
+
+#[test]
+fn nsec_with_ds_bit_contradicts_the_empty_answer() {
+    assert_eq!(
+        nodata_nsec_at_child(&[RecordType::NS, RecordType::DS]),
+        None
+    );
+}
+
+#[test]
+fn nsec_from_the_child_side_proves_nothing() {
+    assert_eq!(
+        nodata_nsec_at_child(&[RecordType::SOA, RecordType::NS, RecordType::DNSKEY]),
+        None
+    );
 }
 
 #[test]
 fn a_child_side_nsec_does_not_shadow_a_valid_parent_side_one() {
     // Order must not decide the outcome: the unusable child-side record is
-    // skipped, so the parent-side proof behind it still lands. Returning on the
-    // first same-owner match made this depend on upstream record ordering.
+    // skipped, so the parent-side proof behind it still lands.
     let child_side = NSEC::new(
         n("zzz.example.com."),
         [RecordType::SOA, RecordType::NS, RecordType::DNSKEY],
@@ -224,7 +220,47 @@ fn a_child_side_nsec_does_not_shadow_a_valid_parent_side_one() {
             data: &parent_side,
         },
     ];
-    assert_eq!(prove_ds_absence_nsec(&nsecs), DnssecStatus::Secure);
+    assert_eq!(nodata_nsec(&nsecs), Some(DsDenial::InsecureDelegation));
+}
+
+#[test]
+fn nsec_empty_non_terminal_is_not_a_zone_cut() {
+    // CHILD has no records of its own but a descendant does: the NSEC before
+    // it covers CHILD and names that descendant next (RFC 4035 §3.1.3.2).
+    let rec = NSEC::new(n("host.child.example.com."), [RecordType::A]);
+    let owner = n("aaa.example.com.");
+    let nsecs = vec![VerifiedNsec {
+        owner: &owner,
+        data: &rec,
+    }];
+    assert_eq!(nodata_nsec(&nsecs), Some(DsDenial::NotZoneCut));
+}
+
+#[test]
+fn nsec_nxdomain_proof_marks_the_name_nonexistent() {
+    let cover = NSEC::new(n("zzz.example.com."), [RecordType::A]);
+    let apex = NSEC::new(n("aaa.example.com."), [RecordType::SOA, RecordType::NS]);
+    let (cover_owner, apex_owner) = (n("bbb.example.com."), n(PARENT));
+    let nsecs = vec![
+        VerifiedNsec {
+            owner: &cover_owner,
+            data: &cover,
+        },
+        VerifiedNsec {
+            owner: &apex_owner,
+            data: &apex,
+        },
+    ];
+    assert_eq!(
+        classify_ds_denial(&n(CHILD), ResponseCode::NXDomain, &n(PARENT), &[], &nsecs),
+        Some(DsDenial::Nonexistent)
+    );
+}
+
+#[test]
+fn no_denial_records_prove_nothing() {
+    assert_eq!(nodata_nsec3(&[]), None);
+    assert_eq!(nodata_nsec(&[]), None);
 }
 
 #[test]
@@ -249,14 +285,6 @@ fn the_child_side_rule_is_scoped_to_ds_queries() {
         &nsecs,
     );
     assert_eq!(result, DnssecStatus::Secure);
-}
-
-#[test]
-fn no_denial_records_at_all_is_bogus() {
-    // Documents why `confirm_ds_absence` must short-circuit *before* calling
-    // `prove_denial`: with nothing to verify this reports Bogus, which would
-    // SERVFAIL every delegation behind an authority-stripping forwarder.
-    assert_eq!(prove_ds_absence_nsec3(&[]), DnssecStatus::Bogus);
 }
 
 // ------------- unauthenticated proofs count as no proof at all -------------
@@ -291,8 +319,9 @@ fn nsec_whose_signer_zone_has_no_keys_is_not_collected() {
         algorithm: 15,
         public_key: vec![0u8; 32],
     }]);
+    let unrelated = n("unrelated.test.");
     let (nsec3s, nsecs) = collect_verified_denial(&authority, 0, &|zone| {
-        (zone == "unrelated.test.").then(|| Arc::clone(&keys))
+        (zone == &unrelated).then(|| Arc::clone(&keys))
     });
 
     assert!(

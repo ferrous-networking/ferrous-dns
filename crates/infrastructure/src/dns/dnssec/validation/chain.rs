@@ -1,22 +1,22 @@
 use super::authority::{self as auth_check, now_secs, to_fqdn};
-use super::denial::prove_denial;
+use super::denial::classify_ds_denial;
 use crate::dns::dnssec::cache::DnssecCache;
 use crate::dns::dnssec::crypto;
 use crate::dns::dnssec::trust_anchor::TrustAnchorStore;
-use crate::dns::dnssec::types::{DnskeyRecord, DsRecord, RrsigRecord};
+use crate::dns::dnssec::types::{DnskeyRecord, DsDenial, DsLookup, DsRecord};
 use crate::dns::load_balancer::PoolManager;
 use ferrous_dns_domain::{DnssecStatus, DomainError, RecordType};
-use hickory_proto::dnssec::rdata::DNSSECRData;
+use hickory_proto::dnssec::rdata::{DNSSECRData, RRSIG};
 use hickory_proto::dnssec::PublicKey;
 use hickory_proto::op::ResponseCode;
-use hickory_proto::rr::{RData, Record};
+use hickory_proto::rr::{Name, RData, Record, RecordType as HRecordType};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-/// Whether an error reflects an inability to reach/parse the upstream (so we
-/// could not validate) rather than a genuine validation failure. Transient
-/// errors fail open (Indeterminate); everything else is treated as Bogus.
+/// Whether an error reflects an inability to reach the upstream (so we could
+/// not validate) rather than forged or contradictory data.
 fn is_transient_error(e: &DomainError) -> bool {
     matches!(
         e,
@@ -35,10 +35,56 @@ fn is_transient_error(e: &DomainError) -> bool {
 /// stays pinned to Insecure after the zone is signed.
 const MAX_NEGATIVE_DS_TTL: u32 = 3600;
 
+/// Where the chain of trust from the root ends for a name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChainTrust {
+    /// `zone` is the deepest signed zone enclosing the name; its keys are
+    /// established for the current validation.
+    Secure { zone: String },
+    /// The parent's signed denial proves an unsigned delegation at or above
+    /// the name.
+    Insecure,
+}
+
+/// Why the chain of trust could not be established.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainFailure {
+    /// Forged, stripped, or contradictory data.
+    Bogus,
+    /// The records needed could not be fetched.
+    Indeterminate,
+}
+
+impl ChainFailure {
+    fn of(error: &DomainError) -> Self {
+        if is_transient_error(error) {
+            Self::Indeterminate
+        } else {
+            Self::Bogus
+        }
+    }
+
+    pub fn status(self) -> DnssecStatus {
+        match self {
+            Self::Bogus => DnssecStatus::Bogus,
+            Self::Indeterminate => DnssecStatus::Indeterminate,
+        }
+    }
+}
+
+/// Outcome of one walk step, from an established zone to a child name.
+enum Step {
+    /// The child is a signed zone; its keys are now established.
+    SecureCut,
+    /// The parent proved there is no DS at the child.
+    NoDs(DsDenial),
+}
+
 struct DnskeyQueryResult {
     keys: Arc<[DnskeyRecord]>,
-    rrsigs: Vec<RrsigRecord>,
-    raw_records: Vec<Record>,
+    /// Answer section of a fresh response, moved out of it: the DNSKEY RRset
+    /// and its self-signature. Empty on a cache hit.
+    answers: Vec<Record>,
     /// True when the keys came from the DNSKEY cache (already validated on the
     /// original fetch) rather than a fresh upstream response that still needs
     /// its self-signature checked.
@@ -47,60 +93,62 @@ struct DnskeyQueryResult {
     ttl: u32,
 }
 
-struct DsQueryResult {
+/// An upstream DS answer that has not been authenticated yet.
+struct FreshDs {
     /// DS records usable for validation (SHA-1 digests dropped per RFC 8624).
-    records: Arc<[DsRecord]>,
-    /// RRSIG(s) covering the DS RRset, signed by the parent zone.
-    rrsigs: Vec<RrsigRecord>,
-    /// The *complete* DS RRset as received (including any SHA-1 entries), needed
-    /// to reconstruct the signed data when verifying `rrsigs`.
-    raw_records: Vec<Record>,
-    /// True when the records came from the DS cache (already parent-authenticated
-    /// on the original fetch) rather than a fresh upstream response.
-    from_cache: bool,
-    /// TTL to cache the authenticated DS set under, once validation succeeds.
+    records: Vec<DsRecord>,
+    /// Answer section, moved out of the response: the *complete* DS RRset
+    /// (SHA-1 entries included, since the RRSIG covers them) and its RRSIGs.
+    answers: Vec<Record>,
+    /// TTL to cache the authenticated DS set under.
     ttl: u32,
-    /// Authority section of the DS response, verbatim. Carries the NSEC/NSEC3
-    /// records (and their RRSIGs) that prove a *missing* DS RRset — without them
-    /// an empty answer cannot be told apart from a forged downgrade. Empty on a
-    /// cache hit, which was already proven on the original fetch.
+    /// Authority section, verbatim: the NSEC/NSEC3 (and RRSIGs) that must
+    /// prove an empty answer.
     authority: Vec<Record>,
-    /// Negative-caching TTL from the authority SOA (RFC 2308), used to cache a
-    /// *proven* absence of DS. `None` when the response carried no SOA.
+    /// Negative-caching TTL from the authority SOA (RFC 2308).
     negative_ttl: Option<u32>,
-    /// Response code of the DS answer, needed to pick the right denial proof
-    /// (NODATA vs NXDOMAIN). `NoError` for cache hits, which skip the proof.
+    /// Picks the denial proof shape (NODATA vs NXDOMAIN).
     rcode: ResponseCode,
 }
 
-/// True when any of `rrsigs` verifies `raw` (the RRset owned by `owner`)
-/// against any of `keys`.
+fn rrset_of(answers: &[Record], rtype: HRecordType) -> impl Iterator<Item = &Record> {
+    answers.iter().filter(move |r| r.record_type() == rtype)
+}
+
+fn rrsigs_covering(answers: &[Record], rtype: HRecordType) -> impl Iterator<Item = &RRSIG> {
+    answers.iter().filter_map(move |r| match &r.data {
+        RData::DNSSEC(DNSSECRData::RRSIG(rrsig)) if rrsig.input().type_covered == rtype => {
+            Some(rrsig)
+        }
+        _ => None,
+    })
+}
+
+/// True when an RRSIG in `answers` verifies the `rtype` RRset there, owned by
+/// `owner`, against one of `keys`.
 fn any_rrsig_verifies(
-    rrsigs: &[RrsigRecord],
-    keys: &[DnskeyRecord],
-    owner: &str,
-    raw: &[Record],
+    answers: &[Record],
+    rtype: HRecordType,
+    keys: &[impl std::borrow::Borrow<DnskeyRecord>],
+    owner: &Name,
     now: u32,
 ) -> bool {
-    for rrsig in rrsigs {
-        for key in keys {
-            match crypto::verify_rrsig(rrsig, key, owner, raw, now) {
-                Ok(true) => {
-                    debug!(owner = %owner, key_tag = key.calculate_key_tag(), "RRSIG verified");
-                    return true;
-                }
-                Ok(false) => {}
-                Err(e) => warn!(owner = %owner, error = %e, "RRSIG verification error"),
+    rrsigs_covering(answers, rtype).any(|rrsig| {
+        match crypto::rrsig_verifies(rrsig, keys, owner, rrset_of(answers, rtype), now) {
+            Ok(verified) => verified,
+            Err(e) => {
+                warn!(owner = %owner, error = %e, "RRSIG verification error");
+                false
             }
         }
-    }
-    false
+    })
 }
 
 pub struct ChainVerifier {
     pool_manager: Arc<PoolManager>,
     trust_store: TrustAnchorStore,
 
+    /// Keys of the zones proven secure during the current validation.
     validated_keys: HashMap<String, Arc<[DnskeyRecord]>>,
 
     dnssec_cache: Arc<DnssecCache>,
@@ -125,500 +173,341 @@ impl ChainVerifier {
         }
     }
 
-    pub async fn verify_chain(&mut self, domain: &str) -> DnssecStatus {
-        debug!(domain = %domain, "Starting DNSSEC chain verification");
+    /// Forgets the zone keys of earlier validations, so key lookups only see
+    /// zones this validation proved itself. Cheap: re-walks hit the DNSKEY cache.
+    pub fn clear_established_keys(&mut self) {
+        self.validated_keys.clear();
+    }
+
+    /// Walks from the root towards `name`, one label at a time, and reports
+    /// where the chain of trust ends. A label without a DS is only passed when
+    /// the zone above it *proves* the absence; the proof also says whether the
+    /// label is an unsigned delegation (stop: Insecure), a name inside the same
+    /// zone (keep walking under the same keys), or nonexistent (stop: the
+    /// zone above encloses `name`).
+    pub async fn verify_chain(&mut self, name: &str) -> Result<ChainTrust, ChainFailure> {
+        debug!(name = %name, "Starting DNSSEC chain verification");
 
         if !self.trust_store.has_anchor_for(".") {
             warn!("No root trust anchor configured");
-            return DnssecStatus::Indeterminate;
+            return Err(ChainFailure::Indeterminate);
         }
-
-        let labels = Self::split_domain(domain);
-        debug!(labels = ?labels, "Domain labels");
 
         // Turn the configured KSK trust anchors into the full validated root
         // DNSKEY RRset (KSK + ZSK). The bare anchor KSK is not enough: the DS
-        // RRset of each TLD is signed by the root *ZSK*, so without the ZSK the
-        // first delegation's DS could not be authenticated. Done on every walk —
-        // it is cache-backed (a hit re-uses the already-validated set), so it
-        // stays cheap while still honouring the DNSKEY TTL and root key rollover.
-        match self.bootstrap_root_keys().await {
-            Ok(()) => {}
-            Err(e) => {
-                warn!(error = %e, "Root key bootstrap failed");
-                if is_transient_error(&e) {
-                    return DnssecStatus::Indeterminate;
-                }
-                return DnssecStatus::Bogus;
-            }
+        // RRset of each TLD is signed by the root *ZSK*. Done on every walk —
+        // it is cache-backed, so it stays cheap while still honouring the
+        // DNSKEY TTL and root key rollover.
+        if let Err(e) = self.bootstrap_root_keys().await {
+            warn!(error = %e, "Root key bootstrap failed");
+            return Err(ChainFailure::of(&e));
         }
 
-        let mut current_domain = String::from(".");
-
-        for label in &labels {
-            let child_domain = if current_domain == "." {
-                format!("{}.", label)
-            } else {
-                format!("{}.{}", label, current_domain)
-            };
-
-            debug!(
-                parent = %current_domain,
-                child = %child_domain,
-                "Validating delegation"
-            );
-
-            match self
-                .validate_delegation(&current_domain, &child_domain)
-                .await
-            {
-                Ok(()) => {
-                    debug!(domain = %child_domain, "Delegation validated");
-                }
-                Err(DomainError::InsecureDelegation) => {
-                    debug!(
-                        parent = %current_domain,
-                        child = %child_domain,
-                        "Insecure delegation: no DS records, chain is unsigned"
-                    );
-                    return DnssecStatus::Insecure;
+        let fqdn: Cow<'_, str> = if name.ends_with('.') {
+            Cow::Borrowed(name)
+        } else {
+            Cow::Owned(format!("{name}."))
+        };
+        let mut zone = ".";
+        for child in descending_suffixes(&fqdn) {
+            match self.step(zone, child).await {
+                Ok(Step::SecureCut) => zone = child,
+                Ok(Step::NoDs(DsDenial::NotZoneCut)) => {}
+                Ok(Step::NoDs(DsDenial::Nonexistent)) => break,
+                Ok(Step::NoDs(DsDenial::InsecureDelegation)) => {
+                    debug!(zone = %zone, child = %child, "Proven insecure delegation");
+                    return Ok(ChainTrust::Insecure);
                 }
                 Err(e) => {
-                    warn!(
-                        parent = %current_domain,
-                        child = %child_domain,
-                        error = %e,
-                        "Delegation validation failed"
-                    );
-                    // A transport/network failure means we *couldn't* validate,
-                    // not that the data is forged. Fail open (Indeterminate) so a
-                    // transient upstream issue doesn't SERVFAIL signed domains in
-                    // Strict mode; only genuine crypto/structural failures are Bogus.
-                    if is_transient_error(&e) {
-                        return DnssecStatus::Indeterminate;
-                    }
-                    return DnssecStatus::Bogus;
+                    warn!(zone = %zone, child = %child, error = %e, "Chain of trust broken");
+                    return Err(ChainFailure::of(&e));
                 }
             }
-
-            current_domain = child_domain;
         }
 
-        debug!(
-            domain = %domain,
-            "Chain of trust validated successfully"
-        );
-
-        DnssecStatus::Secure
+        debug!(name = %name, zone = %zone, "Chain of trust validated");
+        Ok(ChainTrust::Secure {
+            zone: zone.to_owned(),
+        })
     }
 
-    async fn validate_delegation(
-        &mut self,
-        parent_domain: &str,
-        child_domain: &str,
-    ) -> Result<(), DomainError> {
-        let (ds_result, dnskey_result) = tokio::join!(
-            Self::fetch_ds(
-                &self.dnssec_cache,
-                &self.pool_manager,
-                child_domain,
-                self.timeout_ms
-            ),
-            Self::fetch_dnskey(
-                &self.dnssec_cache,
-                &self.pool_manager,
-                child_domain,
-                self.timeout_ms
-            ),
-        );
-
-        let ds_result = ds_result?;
-
-        // `records` has SHA-1 digests dropped (RFC 8624), so it goes empty for a
-        // delegation that publishes *only* SHA-1 — a DS that genuinely exists.
-        // Asking the parent to prove absence there would meet a signed NSEC/NSEC3
-        // with the DS bit set and flag a legitimate zone Bogus. Absence is about
-        // the RRset as received; unusable-but-present falls through to the
-        // algorithm check below, which yields Insecure.
-        if ds_result.raw_records.is_empty() {
-            self.confirm_ds_absence(parent_domain, child_domain, &ds_result)?;
-            debug!(domain = %child_domain, "No DS records found (insecure delegation)");
-            return Err(DomainError::InsecureDelegation);
-        }
-
-        // RFC 4035 §5.2: the DS RRset lives in — and is signed by — the *parent*
-        // zone. Before any DS is used to authenticate the child's keys, the DS
-        // RRset itself MUST be verified with a parent key already established in
-        // the chain of trust. Without this the validator merely trusts whatever
-        // DS the upstream returned: an on-path attacker (plaintext Do53, or any
-        // untrusted upstream) could inject a DS matching an attacker-generated
-        // KSK, serve a self-signed DNSKEY RRset and ZSK-signed answers, and have
-        // the whole forged branch accepted as Secure / AD=1.
-        //
-        // A cache hit is exempt: the DS cache is populated only *after* this
-        // check passes (below), so cached DS records are already
-        // parent-authenticated — and the cache does not retain the RRSIGs.
-        if !ds_result.from_cache {
-            let Some(parent_keys) = self.validated_keys.get(parent_domain).cloned() else {
-                warn!(
-                    parent = %parent_domain,
-                    child = %child_domain,
-                    "Parent zone keys not established; cannot authenticate DS RRset"
+    async fn step(&mut self, zone: &str, child: &str) -> Result<Step, DomainError> {
+        // A cached DS answer settles the step on its own; only a cold lookup
+        // fetches DNSKEY alongside it, betting on a secure cut to save an RTT.
+        // Fetching it unconditionally would cost an upstream query on every
+        // walk through an unsigned delegation, whose missing keys never cache.
+        let (lookup, prefetched_dnskey) = match self.dnssec_cache.get_ds(child) {
+            Some(lookup) => (lookup, None),
+            None => {
+                let (fresh, dnskey) = tokio::join!(
+                    Self::fetch_ds(&self.pool_manager, child, self.timeout_ms),
+                    Self::fetch_dnskey(
+                        &self.dnssec_cache,
+                        &self.pool_manager,
+                        child,
+                        self.timeout_ms
+                    ),
                 );
-                return Err(DomainError::InvalidDnsResponse(
-                    "Parent keys unavailable for DS validation".into(),
-                ));
-            };
-
-            if ds_result.rrsigs.is_empty() {
-                warn!(
-                    parent = %parent_domain,
-                    child = %child_domain,
-                    "DS RRset carried no RRSIG; cannot anchor it to the parent zone"
-                );
-                return Err(DomainError::InvalidDnsResponse(
-                    "DS RRset missing RRSIG".into(),
-                ));
+                (self.authenticate_ds(zone, child, fresh?)?, Some(dnskey))
             }
-
-            let ds_authentic = any_rrsig_verifies(
-                &ds_result.rrsigs,
-                &parent_keys,
-                child_domain,
-                &ds_result.raw_records,
-                now_secs(),
-            );
-
-            if !ds_authentic {
-                warn!(
-                    parent = %parent_domain,
-                    child = %child_domain,
-                    "DS RRSIG did not verify against any parent key"
-                );
-                return Err(DomainError::InvalidDnsResponse(
-                    "DS RRSIG verification failed".into(),
-                ));
-            }
-
-            // Parent-authenticated ⇒ safe to cache the usable DS set now.
-            self.dnssec_cache
-                .cache_ds(child_domain, ds_result.records.to_vec(), ds_result.ttl);
-        }
+        };
+        let ds_records = match lookup {
+            DsLookup::Absent(denial) => return Ok(Step::NoDs(denial)),
+            DsLookup::Present(records) => records,
+        };
 
         // RFC 6840 §5.2: the DS RRset's algorithm field names the algorithm the
         // child zone signs with. If this build implements none of the algorithms
-        // in the (now parent-authenticated) DS RRset, there is no usable
-        // authentication path into the child — it MUST be treated as Insecure
-        // (served, AD=0), exactly as a missing DS, NOT Bogus. Without this the walk
-        // continues and the child's DNSKEY self-signature — necessarily in that
-        // same unsupported algorithm — fails to verify, so the zone is wrongly
-        // flagged Bogus and SERVFAIL'd in Strict mode.
-        if !ds_result
-            .records
+        // in the parent-authenticated DS RRset (or the delegation publishes only
+        // SHA-1 digests, RFC 8624), there is no usable authentication path into
+        // the child — it MUST be treated as Insecure, exactly as a proven
+        // missing DS, NOT Bogus.
+        if !ds_records
             .iter()
             .any(|ds| crypto::is_supported_algorithm(ds.algorithm))
         {
-            debug!(
-                domain = %child_domain,
-                "DS RRset references only unsupported algorithms; treating child as insecure"
-            );
-            return Err(DomainError::InsecureDelegation);
+            debug!(child = %child, "DS RRset has no usable algorithm; treating child as insecure");
+            return Ok(Step::NoDs(DsDenial::InsecureDelegation));
         }
 
-        let dnskey_result = dnskey_result?;
+        let dnskey_result = match prefetched_dnskey {
+            Some(result) => result?,
+            None => {
+                Self::fetch_dnskey(
+                    &self.dnssec_cache,
+                    &self.pool_manager,
+                    child,
+                    self.timeout_ms,
+                )
+                .await?
+            }
+        };
 
         if dnskey_result.keys.is_empty() {
-            warn!(domain = %child_domain, "No DNSKEY records found");
+            warn!(domain = %child, "No DNSKEY records found");
             return Err(DomainError::InvalidDnsResponse(
                 "No DNSKEY records found".into(),
             ));
         }
 
-        let mut validated_keys = Vec::new();
-
-        for ds in ds_result.records.iter() {
-            for dnskey in dnskey_result.keys.iter() {
-                match crypto::verify_ds(ds, dnskey, child_domain) {
-                    Ok(true) => {
-                        debug!(
-                            domain = %child_domain,
-                            key_tag = dnskey.calculate_key_tag(),
-                            "DS validation successful"
-                        );
-                        validated_keys.push(dnskey.clone());
-                        break;
-                    }
-                    Ok(false) => {
-                        debug!(
-                            domain = %child_domain,
-                            ds_tag = ds.key_tag,
-                            key_tag = dnskey.calculate_key_tag(),
-                            "DS does not match DNSKEY"
-                        );
-                    }
+        let ds_matches = |key: &&DnskeyRecord| {
+            ds_records
+                .iter()
+                .any(|ds| match crypto::verify_ds(ds, key, child) {
+                    Ok(matched) => matched,
                     Err(e) => {
-                        warn!(error = %e, "DS verification error");
+                        warn!(domain = %child, error = %e, "DS verification error");
+                        false
                     }
-                }
-            }
-        }
+                })
+        };
 
-        if validated_keys.is_empty() {
-            warn!(
-                domain = %child_domain,
-                "No DNSKEY matched any DS record"
-            );
-            return Err(DomainError::InvalidDnsResponse(
-                "No matching DNSKEY for DS".into(),
-            ));
-        }
-
-        // RFC 4035 §5.2: before *any* key in the DNSKEY RRset is trusted, the RRset
-        // must be validated with a key that a DS RR refers to. A fresh (cache-miss)
-        // response therefore MUST carry a self-signature that verifies against a
-        // DS-matched key; otherwise the zone is Bogus. Trusting every returned key
-        // without this check would let an on-path attacker inject a rogue ZSK (with
-        // the DNSKEY RRSIGs stripped) and have answers it signs accepted as Secure.
-        //
-        // A cache hit is exempt: the DNSKEY cache is only populated *below*, after a
-        // successful self-signature validation, so cached keys are already
-        // authenticated — and the cache does not retain the RRSIGs needed to re-check.
-        if !dnskey_result.from_cache {
-            if dnskey_result.rrsigs.is_empty() || dnskey_result.raw_records.is_empty() {
-                warn!(
-                    domain = %child_domain,
-                    "DNSKEY RRset carried no self-signature; cannot establish trust"
-                );
+        if dnskey_result.from_cache {
+            // Cached keys passed the self-signature check when they were stored;
+            // the DS, possibly re-fetched since, must still vouch for one of them.
+            if !dnskey_result.keys.iter().any(|key| ds_matches(&key)) {
+                warn!(domain = %child, "No cached DNSKEY matches the DS RRset");
                 return Err(DomainError::InvalidDnsResponse(
-                    "DNSKEY RRset missing self-signature".into(),
+                    "No matching DNSKEY for DS".into(),
+                ));
+            }
+        } else {
+            let anchored: Vec<&DnskeyRecord> =
+                dnskey_result.keys.iter().filter(ds_matches).collect();
+            if anchored.is_empty() {
+                warn!(domain = %child, "No DNSKEY matched any DS record");
+                return Err(DomainError::InvalidDnsResponse(
+                    "No matching DNSKEY for DS".into(),
                 ));
             }
 
-            let rrsig_ok = any_rrsig_verifies(
-                &dnskey_result.rrsigs,
-                &validated_keys,
-                child_domain,
-                &dnskey_result.raw_records,
+            // RFC 4035 §5.2: before *any* key in the DNSKEY RRset is trusted, the
+            // RRset must be validated with a key that a DS RR refers to. Trusting
+            // every returned key without this check would let an on-path attacker
+            // inject a rogue ZSK (with the DNSKEY RRSIGs stripped) and have answers
+            // it signs accepted as Secure. Cached keys are exempt: the cache is only
+            // populated below, after this check.
+            let owner = to_fqdn(child).ok_or_else(|| {
+                DomainError::InvalidDnsResponse(format!("unparseable DNSKEY owner {child}"))
+            })?;
+            if !any_rrsig_verifies(
+                &dnskey_result.answers,
+                HRecordType::DNSKEY,
+                &anchored,
+                &owner,
                 now_secs(),
-            );
-
-            if !rrsig_ok {
-                warn!(
-                    domain = %child_domain,
-                    "DNSKEY RRSIG verification failed for all keys"
-                );
+            ) {
+                warn!(domain = %child, "DNSKEY RRset not self-signed by a DS-matched key");
                 return Err(DomainError::InvalidDnsResponse(
                     "DNSKEY RRSIG verification failed".into(),
                 ));
             }
 
-            // Self-signature verified by a DS-matched key ⇒ every key in the RRset
-            // (KSK + ZSKs) is now authenticated. Persist only this validated set so
-            // later lookups skip the round trip without re-checking.
             self.dnssec_cache.cache_dnskey(
-                child_domain,
-                dnskey_result.keys.to_vec(),
+                child,
+                Arc::clone(&dnskey_result.keys),
                 dnskey_result.ttl,
             );
         }
 
         self.validated_keys
-            .insert(child_domain.to_string(), dnskey_result.keys);
+            .insert(child.to_string(), dnskey_result.keys);
 
-        Ok(())
+        Ok(Step::SecureCut)
     }
 
-    /// Confirms that a *missing* DS RRset is genuine rather than a forged
-    /// downgrade, before the caller declares the delegation insecure.
-    ///
-    /// An empty DS answer carries no signature, so it costs an attacker nothing
-    /// to fabricate: winning one race against this query strips DNSSEC from a
-    /// signed zone, and every later answer for it is then served unvalidated.
-    /// RFC 4035 §5.2 requires the parent's authenticated denial (NSEC/NSEC3)
-    /// instead — which is signed, and which the parent's keys (already
-    /// established by the walk that got us here) can check.
-    ///
-    /// Deliberately fails open. Plenty of forwarders drop the authority section
-    /// entirely, leaving nothing to verify; SERVFAIL'ing those would break
-    /// resolution far more often than it would stop an attack. Only a proof that
-    /// is *present and contradicts* the empty answer is treated as an attack.
-    /// The fail-open path is counted (`record_ds_denial_fail_open`) so operators
-    /// can see whether their upstreams leave this check toothless.
-    fn confirm_ds_absence(
+    /// Authenticates a fresh DS answer against the keys of `zone`, the zone the
+    /// DS of `child` lives in, and caches the result.
+    fn authenticate_ds(
         &self,
-        parent_domain: &str,
-        child_domain: &str,
-        ds_result: &DsQueryResult,
-    ) -> Result<(), DomainError> {
-        // Cached DS sets were proven on the fetch that populated them.
-        if ds_result.from_cache {
-            return Ok(());
-        }
-
-        let (nsec3s, nsecs) =
-            auth_check::collect_verified_denial(&ds_result.authority, now_secs(), &|zone| {
-                self.validated_keys.get(zone).cloned()
-            });
-
-        if nsec3s.is_empty() && nsecs.is_empty() {
-            warn!(
-                parent = %parent_domain,
-                child = %child_domain,
-                "No authenticated NSEC/NSEC3 proving the DS RRset absent — \
-                 serving the delegation as insecure, uncached (fail-open)"
-            );
-            self.dnssec_cache.record_ds_denial_fail_open();
-            return Ok(());
-        }
-
-        let (Some(qname), Some(soa_name)) = (to_fqdn(child_domain), to_fqdn(parent_domain)) else {
-            return Ok(());
+        zone: &str,
+        child: &str,
+        fresh: FreshDs,
+    ) -> Result<DsLookup, DomainError> {
+        let Some(zone_keys) = self.validated_keys.get(zone).cloned() else {
+            warn!(zone = %zone, child = %child, "Zone keys not established; cannot authenticate DS answer");
+            return Err(DomainError::InvalidDnsResponse(
+                "Parent keys unavailable for DS validation".into(),
+            ));
         };
 
-        // The apex is the walk's `parent_domain`, not the owner of the SOA in the
-        // response: the former is already authenticated, the latter is attacker-
-        // supplied data we are in the middle of deciding whether to trust.
-        let result = prove_denial(
-            &qname,
-            hickory_proto::rr::RecordType::DS,
-            ds_result.rcode,
-            &soa_name,
-            &nsec3s,
-            &nsecs,
-        );
+        let child_name = to_fqdn(child).ok_or_else(|| {
+            DomainError::InvalidDnsResponse(format!("unparseable DS owner {child}"))
+        })?;
 
-        match result {
-            DnssecStatus::Bogus => {
-                warn!(
-                    parent = %parent_domain,
-                    child = %child_domain,
-                    "DS RRset reported absent, but the signed denial contradicts it \
-                     — treating the delegation as forged"
-                );
-                Err(DomainError::InvalidDnsResponse(format!(
-                    "forged proof of DS absence for {child_domain}"
-                )))
+        if rrset_of(&fresh.answers, HRecordType::DS).next().is_none() {
+            let lookup = DsLookup::Absent(self.prove_ds_absence(
+                zone,
+                child,
+                &child_name,
+                &fresh,
+                zone_keys,
+            )?);
+            if let Some(ttl) = fresh.negative_ttl.filter(|ttl| *ttl > 0) {
+                self.dnssec_cache
+                    .cache_ds(child, lookup.clone(), ttl.min(MAX_NEGATIVE_DS_TTL));
             }
-            // Only a conclusive proof earns a cache entry. `Insecure` conflates
-            // an NSEC3 opt-out with "the records present prove nothing", and the
-            // latter is exactly where a partial forgery lands — caching it would
-            // turn one won race into a downgrade that outlives the attack.
-            DnssecStatus::Secure => {
-                if let Some(ttl) = ds_result.negative_ttl.filter(|ttl| *ttl > 0) {
-                    self.dnssec_cache.cache_ds(
-                        child_domain,
-                        Vec::new(),
-                        ttl.min(MAX_NEGATIVE_DS_TTL),
-                    );
-                }
-                Ok(())
-            }
-            DnssecStatus::Insecure | DnssecStatus::Indeterminate => Ok(()),
+            return Ok(lookup);
         }
+
+        // RFC 4035 §5.2: the DS RRset lives in — and is signed by — the parent
+        // zone. It MUST verify with a key already established in the chain before
+        // it is used to authenticate the child's keys; otherwise an on-path
+        // attacker could inject a DS matching a key of their own.
+        if !any_rrsig_verifies(
+            &fresh.answers,
+            HRecordType::DS,
+            &zone_keys[..],
+            &child_name,
+            now_secs(),
+        ) {
+            warn!(zone = %zone, child = %child, "DS RRset not signed by a key of the zone");
+            return Err(DomainError::InvalidDnsResponse(
+                "DS RRSIG verification failed".into(),
+            ));
+        }
+
+        let lookup = DsLookup::Present(Arc::from(fresh.records));
+        self.dnssec_cache.cache_ds(child, lookup.clone(), fresh.ttl);
+        Ok(lookup)
+    }
+
+    /// Classifies an empty DS answer from the parent's authenticated
+    /// NSEC/NSEC3 (RFC 4035 §5.2). An empty answer costs nothing to forge, so
+    /// without a signed proof it is a downgrade attempt, never an insecure
+    /// delegation — even when the cause is an upstream that strips the
+    /// authority section, since the two look identical on the wire.
+    fn prove_ds_absence(
+        &self,
+        zone: &str,
+        child: &str,
+        child_name: &Name,
+        fresh: &FreshDs,
+        zone_keys: Arc<[DnskeyRecord]>,
+    ) -> Result<DsDenial, DomainError> {
+        let zone_name = to_fqdn(zone).ok_or_else(|| {
+            DomainError::InvalidDnsResponse(format!("unparseable zone name {zone}"))
+        })?;
+
+        // Only the zone holding the DS may deny it.
+        let (nsec3s, nsecs) =
+            auth_check::collect_verified_denial(&fresh.authority, now_secs(), &|signer| {
+                (signer == &zone_name).then(|| Arc::clone(&zone_keys))
+            });
+
+        if let Some(denial) =
+            classify_ds_denial(child_name, fresh.rcode, &zone_name, &nsec3s, &nsecs)
+        {
+            debug!(zone = %zone, child = %child, ?denial, "DS absence proven");
+            return Ok(denial);
+        }
+
+        if nsec3s.is_empty() && nsecs.is_empty() {
+            self.dnssec_cache.record_ds_denial_unproven();
+            warn!(
+                zone = %zone,
+                child = %child,
+                "Empty DS answer without an authenticated NSEC/NSEC3 denial \
+                 (forged, or the upstream strips DNSSEC proofs)"
+            );
+        } else {
+            warn!(
+                zone = %zone,
+                child = %child,
+                "Signed denial does not prove the DS RRset absent"
+            );
+        }
+        Err(DomainError::InvalidDnsResponse(format!(
+            "no authenticated proof that {child} has no DS"
+        )))
     }
 
     async fn fetch_ds(
-        cache: &DnssecCache,
         pool: &PoolManager,
         domain: &str,
         timeout_ms: u64,
-    ) -> Result<DsQueryResult, DomainError> {
-        if let Some(records) = cache.get_ds(domain) {
-            debug!(
-                domain = %domain,
-                count = records.len(),
-                "DS cache hit"
-            );
-            return Ok(DsQueryResult {
-                records,
-                rrsigs: vec![],
-                raw_records: vec![],
-                from_cache: true,
-                ttl: 0,
-                authority: vec![],
-                negative_ttl: None,
-                rcode: ResponseCode::NoError,
-            });
-        }
-
+    ) -> Result<FreshDs, DomainError> {
         debug!(domain = %domain, "DS cache miss, querying DNS");
 
         let domain_arc: Arc<str> = Arc::from(domain);
-        let result = pool
+        let upstream_result = pool
             .query(&domain_arc, &RecordType::DS, timeout_ms, true)
-            .await;
+            .await
+            .inspect_err(|e| warn!(domain = %domain, error = %e, "DS query failed"))?;
 
-        match result {
-            Ok(upstream_result) => {
-                let mut records = Vec::new();
-                let mut rrsigs = Vec::new();
-                let mut raw_records = Vec::new();
-
-                for record in &upstream_result.response.message.answers {
-                    match &record.data {
-                        RData::DNSSEC(DNSSECRData::DS(ds)) => {
-                            // The DS RRSIG covers the *complete* DS RRset as
-                            // published, so every DS record (SHA-1 included) is
-                            // needed to reconstruct the signed data, even though
-                            // SHA-1 digests are not used for digest matching.
-                            raw_records.push(record.clone());
-
-                            let digest_type = u8::from(ds.digest_type());
-                            // RFC 8624: the SHA-1 DS digest (type 1) MUST NOT be
-                            // used for validation. Dropping it here means a
-                            // delegation that publishes only SHA-1 DS records is
-                            // treated as having no usable DS (Insecure, served,
-                            // AD=0), while a zone that also publishes a
-                            // SHA-256/384 DS validates against the stronger digest.
-                            if digest_type == 1 {
-                                debug!(domain = %domain, "Ignoring SHA-1 DS digest (RFC 8624)");
-                                continue;
-                            }
-                            records.push(DsRecord {
-                                key_tag: ds.key_tag(),
-                                algorithm: u8::from(ds.algorithm()),
-                                digest_type,
-                                digest: ds.digest().to_vec(),
-                            });
-                        }
-                        RData::DNSSEC(DNSSECRData::RRSIG(rrsig))
-                            if rrsig.input().type_covered == hickory_proto::rr::RecordType::DS =>
-                        {
-                            rrsigs.extend(RrsigRecord::from_hickory(rrsig));
-                        }
-                        _ => {}
-                    }
-                }
-
-                debug!(
-                    domain = %domain,
-                    count = records.len(),
-                    rrsigs = rrsigs.len(),
-                    "DS query successful"
-                );
-
-                // Caching is deferred to validate_delegation, which caches the DS
-                // set only *after* its RRSIG has been verified against a parent
-                // key. Caching here would let an unauthenticated (possibly
-                // attacker-injected) DS set poison later lookups.
-                let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-
-                Ok(DsQueryResult {
-                    records: Arc::from(records),
-                    rrsigs,
-                    raw_records,
-                    from_cache: false,
-                    ttl,
-                    authority: upstream_result.response.message.authorities,
-                    negative_ttl: upstream_result.response.negative_soa_ttl,
-                    rcode: upstream_result.response.rcode,
-                })
+        let mut records = Vec::new();
+        for record in &upstream_result.response.message.answers {
+            let RData::DNSSEC(DNSSECRData::DS(ds)) = &record.data else {
+                continue;
+            };
+            let digest_type = u8::from(ds.digest_type());
+            // RFC 8624: the SHA-1 DS digest (type 1) MUST NOT be used for
+            // validation. The record stays in `answers`, which the RRSIG covers.
+            if digest_type == 1 {
+                debug!(domain = %domain, "Ignoring SHA-1 DS digest (RFC 8624)");
+                continue;
             }
-            Err(e) => {
-                warn!(domain = %domain, error = %e, "DS query failed");
-                Err(e)
-            }
+            records.push(DsRecord {
+                key_tag: ds.key_tag(),
+                algorithm: u8::from(ds.algorithm()),
+                digest_type,
+                digest: ds.digest().to_vec(),
+            });
         }
+
+        debug!(domain = %domain, count = records.len(), "DS query successful");
+
+        // Caching waits for `authenticate_ds`: caching unauthenticated data here
+        // would let an injected DS set poison later lookups.
+        let response = upstream_result.response;
+        Ok(FreshDs {
+            records,
+            ttl: response.min_ttl.unwrap_or(3600),
+            negative_ttl: response.negative_soa_ttl,
+            rcode: response.rcode,
+            answers: response.message.answers,
+            authority: response.message.authorities,
+        })
     }
 
     async fn fetch_dnskey(
@@ -635,8 +524,7 @@ impl ChainVerifier {
             );
             return Ok(DnskeyQueryResult {
                 keys,
-                rrsigs: vec![],
-                raw_records: vec![],
+                answers: Vec::new(),
                 from_cache: true,
                 ttl: 0,
             });
@@ -645,65 +533,40 @@ impl ChainVerifier {
         debug!(domain = %domain, "DNSKEY cache miss, querying DNS");
 
         let domain_arc: Arc<str> = Arc::from(domain);
-        let result = pool
+        let upstream_result = pool
             .query(&domain_arc, &RecordType::DNSKEY, timeout_ms, true)
-            .await;
+            .await
+            .inspect_err(|e| warn!(domain = %domain, error = %e, "DNSKEY query failed"))?;
 
-        match result {
-            Ok(upstream_result) => {
-                let mut keys = Vec::new();
-                let mut rrsigs = Vec::new();
-                let mut raw_records = Vec::new();
-
-                for record in &upstream_result.response.message.answers {
-                    match &record.data {
-                        RData::DNSSEC(DNSSECRData::DNSKEY(dnskey)) => {
-                            let pk = dnskey.public_key();
-                            keys.push(DnskeyRecord {
-                                flags: dnskey.flags(),
-                                protocol: 3,
-                                algorithm: u8::from(<dyn PublicKey>::algorithm(pk)),
-                                public_key: <dyn PublicKey>::public_bytes(pk).to_vec(),
-                            });
-                            raw_records.push(record.clone());
-                        }
-                        RData::DNSSEC(DNSSECRData::RRSIG(rrsig))
-                            if rrsig.input().type_covered
-                                == hickory_proto::rr::RecordType::DNSKEY =>
-                        {
-                            rrsigs.extend(RrsigRecord::from_hickory(rrsig));
-                        }
-                        _ => {}
-                    }
-                }
-
-                debug!(
-                    domain = %domain,
-                    keys = keys.len(),
-                    rrsigs = rrsigs.len(),
-                    "DNSKEY query successful"
-                );
-
-                // Caching is deferred to validate_delegation, which only caches
-                // the key set *after* its DNSKEY self-signature has been verified
-                // against a DS-matched key. Caching here would let an unvalidated
-                // (potentially attacker-injected) key set poison later lookups.
-                let ttl = upstream_result.response.min_ttl.unwrap_or(3600);
-
-                let keys_arc: Arc<[DnskeyRecord]> = Arc::from(keys);
-                Ok(DnskeyQueryResult {
-                    keys: keys_arc,
-                    rrsigs,
-                    raw_records,
-                    from_cache: false,
-                    ttl,
+        let keys: Vec<DnskeyRecord> = rrset_of(
+            &upstream_result.response.message.answers,
+            HRecordType::DNSKEY,
+        )
+        .filter_map(|record| match &record.data {
+            RData::DNSSEC(DNSSECRData::DNSKEY(dnskey)) => {
+                let pk = dnskey.public_key();
+                Some(DnskeyRecord {
+                    flags: dnskey.flags(),
+                    protocol: 3,
+                    algorithm: u8::from(<dyn PublicKey>::algorithm(pk)),
+                    public_key: <dyn PublicKey>::public_bytes(pk).to_vec(),
                 })
             }
-            Err(e) => {
-                warn!(domain = %domain, error = %e, "DNSKEY query failed");
-                Err(e)
-            }
-        }
+            _ => None,
+        })
+        .collect();
+
+        debug!(domain = %domain, keys = keys.len(), "DNSKEY query successful");
+
+        // Caching waits for the self-signature check in `step`: caching an
+        // unvalidated key set here would let injected keys poison later lookups.
+        let response = upstream_result.response;
+        Ok(DnskeyQueryResult {
+            keys: Arc::from(keys),
+            ttl: response.min_ttl.unwrap_or(3600),
+            answers: response.message.answers,
+            from_cache: false,
+        })
     }
 
     /// Establishes the validated root DNSKEY RRset (KSK + ZSK) from the
@@ -719,6 +582,10 @@ impl ChainVerifier {
     /// rollover the outgoing and incoming keys are published side by side for
     /// months, and only one of them signs the RRset at any given moment.
     async fn bootstrap_root_keys(&mut self) -> Result<(), DomainError> {
+        // Already established by an earlier walk of this validation.
+        if self.validated_keys.contains_key(".") {
+            return Ok(());
+        }
         let dnskey_result =
             Self::fetch_dnskey(&self.dnssec_cache, &self.pool_manager, ".", self.timeout_ms)
                 .await?;
@@ -737,12 +604,9 @@ impl ChainVerifier {
         }
 
         // At least one configured anchor must be present in the live root RRset.
-        let anchor_keys: Vec<DnskeyRecord> = self
+        let anchor_keys = self
             .trust_store
-            .anchor_keys_present(".", &dnskey_result.keys)
-            .into_iter()
-            .cloned()
-            .collect();
+            .anchor_keys_present(".", &dnskey_result.keys);
 
         if anchor_keys.is_empty() {
             return Err(DomainError::InvalidDnsResponse(format!(
@@ -751,38 +615,29 @@ impl ChainVerifier {
             )));
         }
 
-        if dnskey_result.rrsigs.is_empty() || dnskey_result.raw_records.is_empty() {
-            return Err(DomainError::InvalidDnsResponse(
-                "Root DNSKEY RRset carried no self-signature".into(),
-            ));
-        }
-
-        let rrsig_ok = any_rrsig_verifies(
-            &dnskey_result.rrsigs,
+        if !any_rrsig_verifies(
+            &dnskey_result.answers,
+            HRecordType::DNSKEY,
             &anchor_keys,
-            ".",
-            &dnskey_result.raw_records,
+            &Name::root(),
             now_secs(),
-        );
-
-        if !rrsig_ok {
+        ) {
             return Err(DomainError::InvalidDnsResponse(format!(
-                "Root DNSKEY self-signature verification failed against {} anchored key(s)",
+                "Root DNSKEY RRset not self-signed by any of {} anchored key(s)",
                 anchor_keys.len()
             )));
         }
-
-        self.warn_on_unanchored_root_ksks(&dnskey_result.keys);
-
-        self.dnssec_cache
-            .cache_dnskey(".", dnskey_result.keys.to_vec(), dnskey_result.ttl);
-        self.validated_keys
-            .insert(".".to_string(), dnskey_result.keys);
 
         debug!(
             anchored_keys = anchor_keys.len(),
             "Root DNSKEY RRset bootstrapped from trust anchors"
         );
+        self.warn_on_unanchored_root_ksks(&dnskey_result.keys);
+
+        self.dnssec_cache
+            .cache_dnskey(".", Arc::clone(&dnskey_result.keys), dnskey_result.ttl);
+        self.validated_keys
+            .insert(".".to_string(), dnskey_result.keys);
         Ok(())
     }
 
@@ -806,19 +661,13 @@ impl ChainVerifier {
     pub fn get_zone_keys(&self, zone: &str) -> Option<&Arc<[DnskeyRecord]>> {
         self.validated_keys.get(zone)
     }
+}
 
-    pub fn insert_zone_keys_for_test(&mut self, zone: &str, keys: Vec<DnskeyRecord>) {
-        self.validated_keys
-            .insert(zone.to_string(), Arc::from(keys));
-    }
-
-    pub fn split_domain(domain: &str) -> Vec<&str> {
-        let domain = domain.trim_end_matches('.');
-
-        if domain.is_empty() {
-            return Vec::new();
-        }
-
-        domain.split('.').rev().collect()
-    }
+/// The names a walk visits on its way down to `fqdn`, shortest first, as
+/// slices of it: `test.`, `example.test.`, `www.example.test.`.
+fn descending_suffixes(fqdn: &str) -> impl Iterator<Item = &str> {
+    let body = fqdn.strip_suffix('.').unwrap_or(fqdn);
+    body.rmatch_indices('.')
+        .map(|(dot, _)| &fqdn[dot + 1..])
+        .chain((!body.is_empty()).then_some(fqdn))
 }

@@ -58,8 +58,8 @@ Validation outcomes for the last 24 hours, summarised and then listed per query:
 - **Validated** — how many answers went through validation, and what share of all queries that is
 - **Secure** — signed and cryptographically verified
 - **Insecure** — the zone is unsigned, so there was nothing to verify
-- **Bogus** — validation failed; under `dnssec_mode = "Strict"` these answers become SERVFAIL
-- **Indeterminate** — the chain of trust could not be resolved either way
+- **Bogus** — validation failed: signatures or denial proofs are missing or wrong; under `dnssec_mode = "Strict"` these answers become SERVFAIL
+- **Indeterminate** — the chain of trust could not be fetched (upstream timeouts); also SERVFAIL under `"Strict"`
 - Filter the listing by status, and follow it live with **Live update**
 
 ![DNSSEC page — validated, secure, insecure, bogus and indeterminate counters above a per-query listing](../assets/dashboard/dashboard-dnssec.png)

@@ -1,73 +1,85 @@
-use super::types::{DnskeyRecord, DsRecord, RrsigRecord};
-use super::validation::authority::to_fqdn;
-use crate::dns::forwarding::record_type_map::RecordTypeMapper;
+use super::types::{DnskeyRecord, DsRecord};
 use ferrous_dns_domain::DomainError;
-use hickory_proto::dnssec::rdata::sig::SigInput;
-use hickory_proto::dnssec::Algorithm;
+use hickory_proto::dnssec::rdata::RRSIG;
 use hickory_proto::dnssec::TBS;
-use hickory_proto::rr::{DNSClass, Name, Record, SerialNumber};
+use hickory_proto::rr::{DNSClass, Name, Record};
 use ring::signature;
 use sha1::{Digest, Sha1};
 use sha2::{Sha256, Sha384};
-use std::str::FromStr;
+use std::borrow::Borrow;
 
-pub fn verify_rrsig(
-    rrsig: &RrsigRecord,
-    dnskey: &DnskeyRecord,
-    domain: &str,
-    records: &[Record],
+/// Whether `rrsig` is a valid signature, by one of `keys`, over `records` — the
+/// RRset owned by `owner`.
+///
+/// Keys are matched on algorithm and key tag first; the to-be-signed data is
+/// serialized once, and only when a key matches. A verification error (for
+/// example an unsupported algorithm) is returned only if no candidate verifies.
+pub fn rrsig_verifies<'r, K: Borrow<DnskeyRecord>>(
+    rrsig: &RRSIG,
+    keys: &[K],
+    owner: &Name,
+    records: impl Iterator<Item = &'r Record>,
     now_secs: u32,
 ) -> Result<bool, DomainError> {
-    let name = to_fqdn(domain).ok_or_else(|| {
-        DomainError::InvalidDnsResponse(format!("invalid RRset owner name: {domain}"))
-    })?;
-    verify_rrsig_with_name(rrsig, dnskey, &name, records, now_secs)
+    let input = rrsig.input();
+    if !within_validity(
+        input.sig_inception.get(),
+        input.sig_expiration.get(),
+        now_secs,
+    ) {
+        return Ok(false);
+    }
+
+    let algorithm = u8::from(input.algorithm);
+    let mut candidates = keys
+        .iter()
+        .map(Borrow::borrow)
+        .filter(|key: &&DnskeyRecord| {
+            key.algorithm == algorithm && key.calculate_key_tag() == input.key_tag
+        })
+        .peekable();
+    if candidates.peek().is_none() {
+        return Ok(false);
+    }
+
+    let tbs = TBS::from_input(owner, DNSClass::IN, input, records)
+        .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
+    let mut outcome = Ok(false);
+    for key in candidates {
+        match verify_signature(algorithm, tbs.as_ref(), rrsig.sig(), key) {
+            Ok(true) => return Ok(true),
+            Ok(false) => {}
+            Err(e) => outcome = Err(e),
+        }
+    }
+    outcome
 }
 
-/// Like [`verify_rrsig`], but takes the RRset owner as a parsed [`Name`].
-///
-/// Preferred when the owner is already available as a `Name`: it avoids a
-/// presentation-format round-trip that mangles labels with characters the
-/// display form escapes (e.g. `!`), which would otherwise fail to re-parse.
-pub fn verify_rrsig_with_name(
-    rrsig: &RrsigRecord,
+/// RFC 4034 §3.1.5: RRSIG inception/expiration are mod-2^32 serial numbers,
+/// not absolute u32s, so a window straddling the 2106 wrap (or a clock near it)
+/// must be compared with serial arithmetic. For any window shorter than 2^31
+/// seconds (~68 years) this matches the naive comparison.
+fn within_validity(inception: u32, expiration: u32, now: u32) -> bool {
+    serial_le(inception, now) && serial_le(now, expiration)
+}
+
+/// RFC 1982 serial-number `a <= b` in mod-2^32 arithmetic: `b - a` (wrapping)
+/// lands in the lower half of the space iff `a` is at or before `b`.
+fn serial_le(a: u32, b: u32) -> bool {
+    b.wrapping_sub(a) < 0x8000_0000
+}
+
+fn verify_signature(
+    algorithm: u8,
+    data: &[u8],
+    sig: &[u8],
     dnskey: &DnskeyRecord,
-    name: &Name,
-    records: &[Record],
-    now_secs: u32,
 ) -> Result<bool, DomainError> {
-    if !rrsig.is_valid_at(now_secs) {
-        return Ok(false);
-    }
-
-    if dnskey.calculate_key_tag() != rrsig.key_tag || dnskey.algorithm != rrsig.algorithm {
-        return Ok(false);
-    }
-
-    let signer_name = Name::from_str(&rrsig.signer_name)
-        .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
-
-    let sig_input = SigInput {
-        type_covered: RecordTypeMapper::to_hickory(&rrsig.type_covered),
-        algorithm: Algorithm::from_u8(rrsig.algorithm),
-        num_labels: rrsig.labels,
-        original_ttl: rrsig.original_ttl,
-        sig_expiration: SerialNumber::from(rrsig.signature_expiration),
-        sig_inception: SerialNumber::from(rrsig.signature_inception),
-        key_tag: rrsig.key_tag,
-        signer_name,
-    };
-
-    let tbs = TBS::from_input(name, DNSClass::IN, &sig_input, records.iter())
-        .map_err(|e| DomainError::InvalidDnsResponse(e.to_string()))?;
-    let data = tbs.as_ref();
-    let sig = rrsig.signature.as_slice();
-
     // 1024-bit RSA ZSKs are still common in deployed DNSSEC zones (RFC 8624
     // discourages but does not forbid them), so accept the full 1024..=8192
     // range — the stricter 2048-minimum verifier rejects them and produces
     // a false Bogus. Matches the behaviour of unbound/bind validators.
-    match rrsig.algorithm {
+    match algorithm {
         5 | 7 => verify_rsa(
             &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
             data,
@@ -105,14 +117,13 @@ pub fn verify_rrsig_with_name(
             "Ed448 (algorithm 16) is not supported by this build".into(),
         )),
         _ => Err(DomainError::InvalidDnsResponse(format!(
-            "Unsupported DNSSEC algorithm: {}",
-            rrsig.algorithm
+            "Unsupported DNSSEC algorithm: {algorithm}"
         ))),
     }
 }
 
 /// Whether this build implements the given DNSSEC signature algorithm
-/// (matches the dispatch arms in [`verify_rrsig_with_name`]). Used to decide,
+/// (matches the dispatch arms in [`verify_signature`]). Used to decide,
 /// per RFC 6840 §5.2, whether a zone whose DS RRset names only algorithms we
 /// cannot process must be treated as Insecure rather than Bogus.
 pub fn is_supported_algorithm(algorithm: u8) -> bool {
@@ -128,21 +139,30 @@ pub fn verify_ds(
         return Ok(false);
     }
 
-    let dnskey_data = build_dnskey_data(dnskey, owner_name)?;
+    match ds.digest_type {
+        1 => dnskey_digest_matches::<Sha1>(dnskey, owner_name, &ds.digest),
+        2 => dnskey_digest_matches::<Sha256>(dnskey, owner_name, &ds.digest),
+        4 => dnskey_digest_matches::<Sha384>(dnskey, owner_name, &ds.digest),
+        _ => Err(DomainError::InvalidDnsResponse(format!(
+            "Unsupported DS digest type: {}",
+            ds.digest_type
+        ))),
+    }
+}
 
-    let computed_digest = match ds.digest_type {
-        1 => Sha1::digest(&dnskey_data).to_vec(),
-        2 => Sha256::digest(&dnskey_data).to_vec(),
-        4 => Sha384::digest(&dnskey_data).to_vec(),
-        _ => {
-            return Err(DomainError::InvalidDnsResponse(format!(
-                "Unsupported DS digest type: {}",
-                ds.digest_type
-            )))
-        }
-    };
-
-    Ok(computed_digest == ds.digest)
+/// RFC 4034 §5.1.4: digest = hash(canonical owner name | DNSKEY RDATA), fed to
+/// the hasher piecewise instead of assembled in a buffer.
+fn dnskey_digest_matches<D: Digest>(
+    dnskey: &DnskeyRecord,
+    owner_name: &str,
+    expected: &[u8],
+) -> Result<bool, DomainError> {
+    let mut hasher = D::new();
+    hash_canonical_name(&mut hasher, owner_name)?;
+    hasher.update(dnskey.flags.to_be_bytes());
+    hasher.update([dnskey.protocol, dnskey.algorithm]);
+    hasher.update(&dnskey.public_key);
+    Ok(hasher.finalize().as_slice() == expected)
 }
 
 fn verify_rsa(
@@ -242,20 +262,10 @@ fn parse_rsa_key(key_data: &[u8]) -> Result<(&[u8], &[u8]), DomainError> {
     Ok((exponent, modulus))
 }
 
-fn build_dnskey_data(dnskey: &DnskeyRecord, owner_name: &str) -> Result<Vec<u8>, DomainError> {
-    let mut data = name_to_wire(owner_name)?;
-    data.extend_from_slice(&dnskey.flags.to_be_bytes());
-    data.push(dnskey.protocol);
-    data.push(dnskey.algorithm);
-    data.extend_from_slice(&dnskey.public_key);
-    Ok(data)
-}
-
-/// Canonical (lowercased, RFC 4034 §6.2) wire form of a presentation name.
-fn name_to_wire(name: &str) -> Result<Vec<u8>, DomainError> {
+/// Feeds the canonical (lowercased, RFC 4034 §6.2) wire form of a presentation
+/// name to `hasher`, one label at a time.
+fn hash_canonical_name(hasher: &mut impl Digest, name: &str) -> Result<(), DomainError> {
     let name = name.trim_end_matches('.');
-    let mut wire = Vec::with_capacity(name.len() + 2);
-
     if !name.is_empty() {
         for label in name.split('.') {
             if label.is_empty() {
@@ -264,11 +274,14 @@ fn name_to_wire(name: &str) -> Result<Vec<u8>, DomainError> {
             if label.len() > 63 {
                 return Err(DomainError::InvalidDnsResponse("DNS label too long".into()));
             }
-            wire.push(label.len() as u8);
-            wire.extend(label.bytes().map(|b| b.to_ascii_lowercase()));
+            let mut wire = [0u8; 64];
+            wire[0] = label.len() as u8;
+            for (dst, src) in wire[1..].iter_mut().zip(label.bytes()) {
+                *dst = src.to_ascii_lowercase();
+            }
+            hasher.update(&wire[..=label.len()]);
         }
     }
-
-    wire.push(0);
-    Ok(wire)
+    hasher.update([0u8]);
+    Ok(())
 }

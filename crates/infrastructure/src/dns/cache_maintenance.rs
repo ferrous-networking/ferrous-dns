@@ -8,7 +8,7 @@ use ferrous_dns_application::ports::{
     CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome, DnsResolver,
     QueryLogRepository,
 };
-use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{DnsQuery, DomainError, QueryLog, QuerySource, RecordType};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
@@ -144,9 +144,12 @@ impl DnsCacheMaintenance {
         let resolution = resolver.resolve(&query).await?;
         let response_time = start.elapsed().as_micros() as u64;
 
-        // Bogus answers are never cached, so the stale one goes rather than
+        // Unvalidated answers are never cached, so the stale one goes rather than
         // being renewed: under Strict the next query must SERVFAIL, not hit.
-        if resolution.dnssec_status == Some(DnssecStatus::Bogus) {
+        if resolution
+            .dnssec_status
+            .is_some_and(|status| status.is_unvalidated())
+        {
             cache.remove(domain, record_type);
             return Ok(false);
         }

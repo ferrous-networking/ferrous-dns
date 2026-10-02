@@ -10,11 +10,10 @@ pub struct DnssecValidatorStats {
     pub dnskey_misses: u64,
     pub ds_hits: u64,
     pub ds_misses: u64,
-    /// Delegations served as Insecure because the upstream returned no
-    /// authenticated NSEC/NSEC3 proving the DS RRset absent. A non-trivial count
-    /// means the configured upstreams strip the authority section, so the
-    /// anti-downgrade check is not actually protecting those lookups.
-    pub ds_denial_fail_opens: u64,
+    /// Empty DS answers that carried no authenticated NSEC/NSEC3 denial and so
+    /// failed validation. A non-trivial count means the configured upstreams
+    /// strip DNSSEC proofs; Strict mode SERVFAILs the affected names.
+    pub ds_denials_unproven: u64,
 }
 
 /// Port for reading the DNSSEC validator's cache counters.

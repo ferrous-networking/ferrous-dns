@@ -1,9 +1,7 @@
 use super::local_ptr::ptr_resolution;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
-use ferrous_dns_domain::{
-    DnsQuery, DnssecStatus, DomainError, Nat64Prefix, PrivateIpFilter, RecordType,
-};
+use ferrous_dns_domain::{DnsQuery, DomainError, Nat64Prefix, PrivateIpFilter, RecordType};
 use hickory_proto::op::{Message, ResponseCode};
 use hickory_proto::rr::{Name, RData};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -57,8 +55,11 @@ impl Dns64Resolver {
             return Ok(res); // no A either — keep the original NODATA
         };
 
-        // Never synthesize from a DNSSEC-Bogus A record.
-        if a_res.dnssec_status == Some(DnssecStatus::Bogus) {
+        // Never synthesize from an A record that did not validate.
+        if a_res
+            .dnssec_status
+            .is_some_and(|status| status.is_unvalidated())
+        {
             return Ok(res);
         }
 

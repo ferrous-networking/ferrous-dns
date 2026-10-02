@@ -6,7 +6,7 @@
 //! `u32` accumulator on inputs no real response could carry.
 #![no_main]
 
-use ferrous_dns_infrastructure::dns::dnssec::types::{DnskeyRecord, DsRecord, RrsigRecord};
+use ferrous_dns_infrastructure::dns::dnssec::types::{DnskeyRecord, DsRecord};
 use libfuzzer_sys::fuzz_target;
 
 const MAX_RDLENGTH: usize = u16::MAX as usize;
@@ -14,11 +14,6 @@ const MAX_RDLENGTH: usize = u16::MAX as usize;
 fuzz_target!(|data: &[u8]| {
     if data.len() > MAX_RDLENGTH {
         return;
-    }
-
-    if let Ok(rrsig) = RrsigRecord::parse(data) {
-        let _ = rrsig.is_valid_at(0);
-        let _ = rrsig.to_string();
     }
 
     if let Ok(ds) = DsRecord::parse(data) {

@@ -227,6 +227,12 @@ impl DnssecStatus {
             Self::Indeterminate => "Indeterminate",
         }
     }
+
+    /// Validation could not show the answer `Secure` or provably `Insecure`.
+    /// Strict mode refuses to serve these.
+    pub fn is_unvalidated(&self) -> bool {
+        matches!(self, Self::Bogus | Self::Indeterminate)
+    }
 }
 
 impl FromStr for DnssecStatus {

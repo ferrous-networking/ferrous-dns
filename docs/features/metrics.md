@@ -132,5 +132,5 @@ Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, `fe
 | Endpoint | Auth | Purpose |
 |:---------|:-----|:--------|
 | `/metrics` | None | Prometheus / OpenMetrics scrape |
-| `/api/dnssec/stats` | Yes | DNSSEC validation counters, including `ds_denial_fail_opens` |
+| `/api/dnssec/stats` | Yes | DNSSEC validation counters, including `ds_denials_unproven` |
 | `/openapi.json` | None | OpenAPI description of the REST API |

@@ -163,10 +163,13 @@ impl CachedResolver {
     }
 
     fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
-        // Never cache a Bogus result. Under Strict enforcement it must SERVFAIL
-        // on every query, so the fast cache path must not be able to serve it;
-        // under Permissive, re-validating a broken domain each time is fine.
-        if resolution.dnssec_status == Some(DnssecStatus::Bogus) {
+        // Never cache an unvalidated (Bogus/Indeterminate) result. Under Strict it
+        // must SERVFAIL on every query, so the fast cache path must not be able to
+        // serve it; under Permissive, re-validating it each time is fine.
+        if resolution
+            .dnssec_status
+            .is_some_and(|status| status.is_unvalidated())
+        {
             return;
         }
         let dnssec_status = resolution

@@ -1,20 +1,23 @@
 use ferrous_dns_domain::{DnssecStatus, RecordType, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::trust_anchor::TrustAnchorStore;
-use ferrous_dns_infrastructure::dns::dnssec::{
-    DnskeyRecord, DnssecCache, DnssecValidator, DnssecValidatorPool,
-};
+use ferrous_dns_infrastructure::dns::dnssec::validation::authority::rrset_is_authentic;
+use ferrous_dns_infrastructure::dns::dnssec::{DnskeyRecord, DnssecCache, DnssecValidatorPool};
 use ferrous_dns_infrastructure::dns::PoolManager;
+use hickory_proto::dnssec::crypto::Ed25519SigningKey;
+use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
+use hickory_proto::dnssec::{Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey};
 use hickory_proto::op::{Message, MessageType, OpCode};
 use hickory_proto::rr::rdata::A;
-use hickory_proto::rr::{Name, RData, Record};
+use hickory_proto::rr::{DNSClass, Name, RData, Record, RecordSet, RecordType as HRT};
 use std::net::Ipv4Addr;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
-
 use std::time::Duration;
+use time::OffsetDateTime;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
+
 async fn make_pool_manager(server: String) -> Arc<PoolManager> {
     let pool = UpstreamPool {
         name: "test".into(),
@@ -26,275 +29,105 @@ async fn make_pool_manager(server: String) -> Arc<PoolManager> {
     Arc::new(PoolManager::new(vec![pool], None).await.unwrap())
 }
 
-fn make_validator() -> DnssecValidator {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let pm = rt.block_on(make_pool_manager("udp://127.0.0.1:5353".into()));
-    DnssecValidator::new(
-        pm,
-        TrustAnchorStore::empty(),
-        Arc::new(DnssecCache::new()),
-        5000,
-    )
-}
-
 fn make_a_record(name: &str, ip: Ipv4Addr) -> Record {
     let name = Name::from_str(name).unwrap();
     Record::from_rdata(name, 300, RData::A(A(ip)))
 }
 
-#[test]
-fn test_verify_rrset_empty_records_returns_indeterminate() {
-    // Empty answers (NXDOMAIN / NODATA) are routed to authenticated denial of
-    // existence before reaching the RRset verifier; a stray empty RRset here is
-    // undecided rather than blindly authentic.
-    let validator = make_validator();
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &[]),
-        DnssecStatus::Indeterminate
-    );
-}
-
-#[test]
-fn test_verify_rrset_a_records_only_no_rrsig_returns_bogus() {
-    let validator = make_validator();
-    let a = make_a_record("example.com.", Ipv4Addr::new(1, 2, 3, 4));
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &[a]),
-        DnssecStatus::Bogus
-    );
-}
-
-#[test]
-fn test_verify_rrset_multiple_a_records_no_rrsig_returns_bogus() {
-    let validator = make_validator();
-    let records: Vec<Record> = [
-        Ipv4Addr::new(1, 2, 3, 4),
-        Ipv4Addr::new(5, 6, 7, 8),
-        Ipv4Addr::new(9, 10, 11, 12),
-    ]
-    .iter()
-    .map(|ip| make_a_record("example.com.", *ip))
-    .collect();
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &records),
-        DnssecStatus::Bogus
-    );
-}
-
-#[test]
-fn test_verify_rrset_rrsig_present_no_zone_keys_returns_bogus() {
-    use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
-    use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
-    };
-    use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
-    use time::{Duration as TD, OffsetDateTime};
-
-    let validator = make_validator();
-
+/// An A record at `owner`, its RRSIG made by a fresh Ed25519 key in the name of
+/// `signer`, and that key.
+fn signed_a(owner: &str, signer: &str) -> (Record, Record, DnskeyRecord) {
     let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
     let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
-    let pub_key_buf = signing_key.to_public_key().unwrap();
-    let pub_bytes = pub_key_buf.public_bytes().to_vec();
-
-    let h_pub = PublicKeyBuf::new(pub_bytes, Algorithm::ED25519);
-    let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
-    let signer_name = Name::from_str("example.com.").unwrap();
-    let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = DnssecSigner::new(
-        h_dnskey,
-        Box::new(signing_key),
-        signer_name.clone(),
-        sig_duration,
-    );
-
-    let record_name = Name::from_str("example.com.").unwrap();
-    let a_record = make_a_record("example.com.", Ipv4Addr::new(1, 2, 3, 4));
-    let mut rrset = RecordSet::new(record_name.clone(), HRT::A, 0);
-    rrset.insert(a_record.clone(), 0);
-
-    let inception = OffsetDateTime::now_utc() - TD::minutes(5);
-    let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
-    let rrsig_record =
-        Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
-
-    let answers = vec![a_record, rrsig_record];
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &answers),
-        DnssecStatus::Bogus
-    );
-}
-
-#[test]
-fn test_verify_rrset_valid_ed25519_rrsig_returns_secure() {
-    use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
-    use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
-    };
-    use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
-    use time::{Duration as TD, OffsetDateTime};
-
-    let mut validator = make_validator();
-
-    let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
-    let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
-    let pub_key_buf = signing_key.to_public_key().unwrap();
-    let pub_bytes = pub_key_buf.public_bytes().to_vec();
-
-    let our_dnskey = DnskeyRecord {
+    let pub_bytes = signing_key.to_public_key().unwrap().public_bytes().to_vec();
+    let key = DnskeyRecord {
         flags: 256,
         protocol: 3,
         algorithm: 15,
         public_key: pub_bytes.clone(),
     };
-
-    let h_pub = PublicKeyBuf::new(pub_bytes, Algorithm::ED25519);
-    let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
-    let signer_name = Name::from_str("example.com.").unwrap();
-    let sig_duration = std::time::Duration::from_secs(7200);
     let signer = DnssecSigner::new(
-        h_dnskey,
+        HickoryDNSKEY::with_flags(256, PublicKeyBuf::new(pub_bytes, Algorithm::ED25519)),
         Box::new(signing_key),
-        signer_name.clone(),
-        sig_duration,
+        Name::from_str(signer).unwrap(),
+        Duration::from_secs(7200),
     );
 
-    let record_name = Name::from_str("example.com.").unwrap();
-    let a_record = make_a_record("example.com.", Ipv4Addr::new(93, 184, 216, 34));
-    let mut rrset = RecordSet::new(record_name.clone(), HRT::A, 0);
+    let owner = Name::from_str(owner).unwrap();
+    let a_record = make_a_record(&owner.to_string(), Ipv4Addr::new(192, 0, 2, 1));
+    let mut rrset = RecordSet::new(owner.clone(), HRT::A, 0);
     rrset.insert(a_record.clone(), 0);
-
-    let inception = OffsetDateTime::now_utc() - TD::minutes(5);
+    let inception = OffsetDateTime::now_utc() - time::Duration::minutes(5);
     let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
-    let rrsig_record =
-        Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
+    let rrsig_record = Record::from_rdata(owner, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
+    (a_record, rrsig_record, key)
+}
 
-    validator.insert_zone_keys_for_test("example.com.", vec![our_dnskey]);
+fn now() -> u32 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32
+}
 
-    let answers = vec![a_record, rrsig_record];
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &answers),
-        DnssecStatus::Secure
-    );
+fn authentic(a_record: &Record, sigs: &[Record], zone: &str, keys: Vec<DnskeyRecord>) -> bool {
+    let keys: Arc<[DnskeyRecord]> = Arc::from(keys);
+    let zone = Name::from_str(zone).unwrap();
+    rrset_is_authentic(
+        &a_record.name,
+        HRT::A,
+        std::slice::from_ref(a_record),
+        sigs,
+        now(),
+        &|signer| (signer == &zone).then(|| Arc::clone(&keys)),
+    )
 }
 
 #[test]
-fn test_verify_rrset_wrong_zone_key_returns_bogus() {
-    use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
-    use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKeyBuf, SigningKey,
-    };
-    use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
-    use time::{Duration as TD, OffsetDateTime};
+fn rrset_signed_by_an_established_zone_key_is_authentic() {
+    let (a, sig, key) = signed_a("example.com.", "example.com.");
+    assert!(authentic(&a, &[sig], "example.com.", vec![key]));
+}
 
-    let mut validator = make_validator();
+#[test]
+fn rrset_whose_signer_has_no_established_keys_is_not_authentic() {
+    let (a, sig, _) = signed_a("example.com.", "example.com.");
+    assert!(!authentic(&a, &[sig], "unrelated.test.", vec![]));
+}
 
-    let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
-    let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
-    let pub_key_buf = signing_key.to_public_key().unwrap();
-    let pub_bytes: Vec<u8> = {
-        use hickory_proto::dnssec::PublicKey;
-        pub_key_buf.public_bytes().to_vec()
-    };
-
-    let h_pub = PublicKeyBuf::new(pub_bytes, Algorithm::ED25519);
-    let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
-    let signer_name = Name::from_str("example.com.").unwrap();
-    let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = DnssecSigner::new(
-        h_dnskey,
-        Box::new(signing_key),
-        signer_name.clone(),
-        sig_duration,
-    );
-
-    let record_name = Name::from_str("example.com.").unwrap();
-    let a_record = make_a_record("example.com.", Ipv4Addr::new(1, 2, 3, 4));
-    let mut rrset = RecordSet::new(record_name.clone(), HRT::A, 0);
-    rrset.insert(a_record.clone(), 0);
-
-    let inception = OffsetDateTime::now_utc() - TD::minutes(5);
-    let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
-    let rrsig_record =
-        Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
-
+#[test]
+fn rrset_signed_with_a_key_the_zone_does_not_hold_is_not_authentic() {
+    let (a, sig, _) = signed_a("example.com.", "example.com.");
     let wrong_key = DnskeyRecord {
         flags: 256,
         protocol: 3,
         algorithm: 15,
         public_key: vec![0u8; 32],
     };
-    validator.insert_zone_keys_for_test("example.com.", vec![wrong_key]);
-
-    let answers = vec![a_record, rrsig_record];
-    assert_eq!(
-        validator.verify_rrset_signatures("example.com.", &answers),
-        DnssecStatus::Bogus
-    );
+    assert!(!authentic(&a, &[sig], "example.com.", vec![wrong_key]));
 }
 
 #[test]
-fn test_verify_rrset_signer_not_enclosing_owner_returns_bogus() {
-    // Cross-zone forgery (RFC 4035 §5.3.1). An attacker controls a real,
-    // validly-chained zone (evil.example) and signs an A record for an unrelated
-    // victim name (victim.bank.com) with their own key, labelling the RRSIG with
-    // their own signer name. The signature verifies against the attacker key, and
-    // `extract_signer_zones` would have populated validated_keys["evil.example."]
-    // by walking that genuinely-signed zone — so without the signer-encloses-owner
-    // check this answer would be accepted as Secure (AD=1) despite being entirely
-    // forged. The signer name does NOT enclose the owner, so it must be Bogus.
-    use hickory_proto::dnssec::rdata::{DNSSECRData, DNSKEY as HickoryDNSKEY, RRSIG};
-    use hickory_proto::dnssec::{
-        crypto::Ed25519SigningKey, Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey,
-    };
-    use hickory_proto::rr::{DNSClass, RecordSet, RecordType as HRT};
-    use time::{Duration as TD, OffsetDateTime};
+fn rrset_signed_by_a_zone_that_does_not_enclose_it_is_not_authentic() {
+    // Cross-zone forgery (RFC 4035 §5.3.1): an attacker who holds a real,
+    // validly-chained zone signs a record for an unrelated victim name with
+    // their own key. The signature verifies, but the signer does not enclose
+    // the owner.
+    let (a, sig, attacker_key) = signed_a("victim.bank.com.", "evil.example.");
+    assert!(!authentic(&a, &[sig], "evil.example.", vec![attacker_key]));
+}
 
-    let mut validator = make_validator();
-
-    let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
-    let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
-    let pub_key_buf = signing_key.to_public_key().unwrap();
-    let pub_bytes = pub_key_buf.public_bytes().to_vec();
-
-    let attacker_dnskey = DnskeyRecord {
-        flags: 256,
-        protocol: 3,
-        algorithm: 15,
-        public_key: pub_bytes.clone(),
-    };
-
-    let h_pub = PublicKeyBuf::new(pub_bytes, Algorithm::ED25519);
-    let h_dnskey = HickoryDNSKEY::with_flags(256, h_pub);
-    // The attacker signs with THEIR own zone as the signer name...
-    let signer_name = Name::from_str("evil.example.").unwrap();
-    let sig_duration = std::time::Duration::from_secs(7200);
-    let signer = DnssecSigner::new(
-        h_dnskey,
-        Box::new(signing_key),
-        signer_name.clone(),
-        sig_duration,
-    );
-
-    // ...over a forged RRset owned by an unrelated victim name.
-    let record_name = Name::from_str("victim.bank.com.").unwrap();
-    let a_record = make_a_record("victim.bank.com.", Ipv4Addr::new(6, 6, 6, 6));
-    let mut rrset = RecordSet::new(record_name.clone(), HRT::A, 0);
-    rrset.insert(a_record.clone(), 0);
-
-    let inception = OffsetDateTime::now_utc() - TD::minutes(5);
-    let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
-    let rrsig_record =
-        Record::from_rdata(record_name, 300, RData::DNSSEC(DNSSECRData::RRSIG(rrsig)));
-
-    // The attacker's zone keys are trusted (their real zone chains to the root).
-    validator.insert_zone_keys_for_test("evil.example.", vec![attacker_dnskey]);
-
-    let answers = vec![a_record, rrsig_record];
-    assert_eq!(
-        validator.verify_rrset_signatures("victim.bank.com.", &answers),
-        DnssecStatus::Bogus
-    );
+/// A positive answer naming more distinct owners than the validator will walk
+/// chains for: refused as Bogus before any upstream query.
+fn answer_needing_too_many_walks() -> Message {
+    let mut m = Message::new(0, MessageType::Response, OpCode::Query);
+    for i in 0..9 {
+        m.add_answer(make_a_record(
+            &format!("host{i}.example."),
+            Ipv4Addr::LOCALHOST,
+        ));
+    }
+    m
 }
 
 async fn observe_query(
@@ -339,9 +172,9 @@ async fn next_free_validator_serves_the_oldest_waiter() {
     // The second validator is suspended while bootstrapping the root keys.
     observe_query(&upstream, &mut second, ".").await;
 
-    let negative = Message::new(0, MessageType::Response, OpCode::Query);
+    let instant = answer_needing_too_many_walks();
     let mut oldest =
-        Box::pin(pool.validate_with_message("oldest.example.", RecordType::A, &negative));
+        Box::pin(pool.validate_with_message("oldest.example.", RecordType::A, &instant));
     let mut younger = Box::pin(pool.validate_query("younger.example.", RecordType::A));
     assert!(futures::poll!(&mut oldest).is_pending());
     assert!(futures::poll!(&mut younger).is_pending());
@@ -353,7 +186,7 @@ async fn next_free_validator_serves_the_oldest_waiter() {
         .await
         .expect("the oldest waiter must not wait for the still-busy first validator")
         .unwrap();
-    assert_eq!(result, DnssecStatus::Insecure);
+    assert_eq!(result, DnssecStatus::Bogus);
     observe_query(&upstream, &mut younger, "younger.example.").await;
 }
 
@@ -371,13 +204,13 @@ async fn cancelled_validation_and_waiters_restore_pool_capacity() {
     let mut active = Box::pin(pool.validate_query("active.example.", RecordType::A));
     observe_query(&upstream, &mut active, "active.example.").await;
 
-    let negative = Message::new(0, MessageType::Response, OpCode::Query);
+    let instant = answer_needing_too_many_walks();
     let mut cancelled =
-        Box::pin(pool.validate_with_message("cancelled.example.", RecordType::A, &negative));
+        Box::pin(pool.validate_with_message("cancelled.example.", RecordType::A, &instant));
     let mut admitted =
-        Box::pin(pool.validate_with_message("admitted.example.", RecordType::A, &negative));
+        Box::pin(pool.validate_with_message("admitted.example.", RecordType::A, &instant));
     let mut survivor =
-        Box::pin(pool.validate_with_message("survivor.example.", RecordType::A, &negative));
+        Box::pin(pool.validate_with_message("survivor.example.", RecordType::A, &instant));
     assert!(futures::poll!(&mut cancelled).is_pending());
     assert!(futures::poll!(&mut admitted).is_pending());
     assert!(futures::poll!(&mut survivor).is_pending());
@@ -390,5 +223,5 @@ async fn cancelled_validation_and_waiters_restore_pool_capacity() {
         .await
         .expect("cancellation must return both the validator and its capacity")
         .unwrap();
-    assert_eq!(result, DnssecStatus::Insecure);
+    assert_eq!(result, DnssecStatus::Bogus);
 }

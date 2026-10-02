@@ -238,19 +238,20 @@ Example use case: route `corp.internal` to `10.0.0.5:53` (Active Directory) whil
 
 Ferrous DNS validates DNSSEC signatures (chain of trust from the root KSK, RSA/ECDSA/Ed25519) on upstream responses. The `dnssec_mode` setting controls how the validation result is applied:
 
-| Mode | DO bit / validation | Bogus result | AD bit |
-|------|---------------------|--------------|--------|
+| Mode | DO bit / validation | Bogus / Indeterminate result | AD bit |
+|------|---------------------|------------------------------|--------|
 | `"Off"` | Not requested | — | never set |
-| `"Permissive"` (default) | Requested + validated | served, tagged `Bogus` in the query log | set on `Secure` |
-| `"Strict"` | Requested + validated | rejected with `SERVFAIL` + EDE 6 | set on `Secure` |
+| `"Permissive"` (default) | Requested + validated | served, tagged in the query log | set on `Secure` |
+| `"Strict"` | Requested + validated | rejected with `SERVFAIL` + EDE 6 (Bogus) or EDE 5 (Indeterminate) | set on `Secure` |
 
 - **AD bit** (Authenticated Data, RFC 6840): set only when a response validates as `Secure` and the client did not set the CD bit.
 - **CD bit** (Checking Disabled, RFC 4035): when a client sets CD, enforcement is skipped for that query so the client can perform its own validation — Strict mode will not `SERVFAIL` it.
-- **Fail-open**: only a *proven* `Bogus` result is enforced. Validation errors, timeouts, and `Indeterminate`/`Insecure` results are served (with the AD bit clear), prioritising availability.
+- **Fail-closed**: `Insecure` is served only when a signed proof shows the name sits below an unsigned delegation. An answer stripped of its signatures or its denial proof is `Bogus`, and a chain that could not be fetched (timeouts, unreachable upstream) is `Indeterminate`; Strict rejects both. Neither is cached, so the next query revalidates.
+- **Upstreams must pass DNSSEC records through.** A forwarder that drops RRSIG/NSEC/NSEC3 (some home routers do) makes signed names `Bogus`. `ds_denials_unproven` at `GET /api/dnssec/stats` counts that case; watch it under `Permissive` before switching to `Strict`.
 
 ```toml title="ferrous-dns.toml"
 [dns]
-dnssec_mode = "Strict"   # SERVFAIL on Bogus; "Permissive" validates without rejecting; "Off" disables
+dnssec_mode = "Strict"   # SERVFAIL on Bogus or Indeterminate; "Permissive" validates without rejecting; "Off" disables
 ```
 
 !!! note
@@ -281,7 +282,7 @@ The file takes `DS` and `DNSKEY` records, one per line, with `;` comments — th
 Behaviour worth knowing:
 
 - The file **replaces** the embedded anchors rather than adding to them, so you can retire an anchor and not only introduce one. List every anchor you want trusted.
-- A configured file that cannot be read or parsed **aborts startup**. Falling back to the embedded set would leave you believing you had replaced the trust root when you had not.
+- A configured file that cannot be read or parsed **aborts startup**. Falling back to the embedded set would leave you believing you had replaced the trust root when you had not. So does a file with no anchor for the root zone `.`: validation walks down from the root, so without one nothing could validate.
 - The path is read once at startup. It is deliberately not exposed through the REST API or the web UI, and is not part of a configuration backup, since it names a host path.
 - Startup logs the count and the source: `DNSSEC trust anchors loaded count=2 source=embedded`.
 

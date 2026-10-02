@@ -169,6 +169,7 @@ async fn outcomes_map_to_rcode_extended_error_and_block_answer() {
         (E::DnsCookieInvalid, Refused, Some(25), false),
         (E::QueryTimeout, ServFail, Some(22), false),
         (E::DnssecBogus, ServFail, Some(6), false),
+        (E::DnssecIndeterminate, ServFail, Some(5), false),
         (E::InvalidDomainName("x".into()), ServFail, None, false),
         (E::Blocked, NoError, Some(15), true),
         (E::DgaDomainDetected, NoError, Some(15), true),
