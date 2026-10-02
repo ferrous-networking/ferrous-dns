@@ -167,9 +167,9 @@ dnssec_mode = "Strict"
 
 - **`Off`** — no validation; the DNSSEC OK (DO) bit is not requested upstream.
 - **`Permissive`** (default) — every upstream response is validated and tagged (`Secure`/`Insecure`/`Bogus`/`Indeterminate`) in the query log, but the response is delivered unchanged.
-- **`Strict`** — a response that validates as `Bogus` is rejected with `SERVFAIL` (+ Extended DNS Error code 6), preventing forged responses from reaching clients.
+- **`Strict`** — a response that validates as `Bogus` is rejected with `SERVFAIL` (+ Extended DNS Error code 6), and one whose chain of trust could not be fetched (`Indeterminate`) with `SERVFAIL` + EDE 5, so forged or stripped responses never reach clients.
 
-The **AD** (Authenticated Data) bit is set only when a response validates as `Secure` and the client did not set the **CD** (Checking Disabled) bit. A client that sets CD opts out of enforcement — Strict mode will not `SERVFAIL` its queries, so it can do its own validation. Enforcement is **fail-open**: only a proven `Bogus` result is rejected; validation errors and timeouts are served.
+The **AD** (Authenticated Data) bit is set only when a response validates as `Secure` and the client did not set the **CD** (Checking Disabled) bit. A client that sets CD opts out of enforcement — Strict mode will not `SERVFAIL` its queries, so it can do its own validation. Validation is **fail-closed**: `Insecure` requires a signed proof of an unsigned delegation, so stripping signatures or denial records from a signed zone yields `Bogus`, not `Insecure`.
 
 The `queries_dnssec_bogus` counter (dashboard + Prometheus `ferrousdns_queries_dnssec_bogus`) tracks how many responses failed validation.
 
@@ -519,8 +519,8 @@ The following are planned for future releases:
 
 | Mechanism | Status |
 |:----------|:-------|
-| DNSSEC validation | :white_check_mark: Active — `permissive` by default, `strict` to SERVFAIL on Bogus |
-| DNSSEC downgrade (DS denial) | :warning: Detection only — fail-opens counted at `/api/dnssec/stats` |
+| DNSSEC validation | :white_check_mark: Active — `permissive` by default, `strict` to SERVFAIL on Bogus/Indeterminate |
+| DNSSEC downgrade (DS denial) | :white_check_mark: Enforced — an empty DS answer needs the parent's signed NSEC/NSEC3 proof; unproven answers are Bogus and counted at `/api/dnssec/stats` |
 | Upstream response validation (txid + question + source) | :white_check_mark: Active on every transport |
 | Upstream source-port rotation | :white_check_mark: Active |
 | 0x20 QNAME case randomization | :grey_question: Opt-in — `qname_case_randomization`, off by default |

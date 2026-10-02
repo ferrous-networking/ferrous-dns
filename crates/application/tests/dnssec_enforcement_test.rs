@@ -62,8 +62,32 @@ async fn permissive_mode_serves_bogus() {
 }
 
 #[tokio::test]
-async fn strict_mode_fails_open_on_insecure() {
-    // A validation error/timeout degrades to Insecure (fail-open): served, not SERVFAIL.
+async fn strict_mode_servfails_on_indeterminate() {
+    // A validation that could not complete (DS/DNSKEY lookups dropped or timed
+    // out) is not a proof of insecurity; serving it would let anyone who can
+    // drop those lookups switch validation off.
+    let uc = use_case(
+        resolver_returning(Some(DnssecStatus::Indeterminate)).await,
+        true,
+    );
+    let res = uc.execute(&request(false)).await;
+    assert!(
+        matches!(res, Err(DomainError::DnssecIndeterminate)),
+        "Strict mode must SERVFAIL on Indeterminate, got {res:?}"
+    );
+}
+
+#[tokio::test]
+async fn permissive_mode_serves_indeterminate() {
+    let uc = use_case(
+        resolver_returning(Some(DnssecStatus::Indeterminate)).await,
+        false,
+    );
+    assert!(uc.execute(&request(false)).await.is_ok());
+}
+
+#[tokio::test]
+async fn strict_mode_serves_proven_insecure() {
     let uc = use_case(resolver_returning(Some(DnssecStatus::Insecure)).await, true);
     assert!(uc.execute(&request(false)).await.is_ok());
 }

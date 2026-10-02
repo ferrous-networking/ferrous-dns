@@ -34,7 +34,7 @@ impl DnssecStatsPort for DnssecStatsAdapter {
             dnskey_misses: snapshot.total_dnskey_misses,
             ds_hits: snapshot.total_ds_hits,
             ds_misses: snapshot.total_ds_misses,
-            ds_denial_fail_opens: snapshot.total_ds_denial_fail_opens,
+            ds_denials_unproven: snapshot.total_ds_denials_unproven,
         }
     }
 }

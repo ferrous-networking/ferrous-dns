@@ -81,6 +81,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         DomainError::DnssecValidationFailed(_)
         | DomainError::InsecureDelegation
         | DomainError::DnssecBogus
+        | DomainError::DnssecIndeterminate
         | DomainError::InvalidDnsResponse(_)
         | DomainError::DatabaseError(_)
         | DomainError::IoError(_)

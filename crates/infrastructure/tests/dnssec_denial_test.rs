@@ -197,13 +197,25 @@ fn nsec3_nodata_bogus_when_matching_record_has_type() {
 
 #[test]
 fn nsec3_ds_nodata_optout_is_insecure() {
-    // A covering opt-out NSEC3 (owner 00.. < hash(qname) < next ff..).
-    let owner_label = label_of(&[0u8; 20]);
+    // RFC 5155 §8.6: a covering opt-out NSEC3 (owner 00.. < hash(qname) <
+    // next ff..) for the next closer, beside the closest encloser's match.
     let rec = nsec3(true, ITER, vec![0xff; 20], &[RecordType::NS]);
-    let nsec3s = vec![VerifiedNsec3 {
-        owner_label,
-        data: &rec,
-    }];
+    let apex = nsec3(
+        false,
+        ITER,
+        hash("zzzz.example.com."),
+        &[RecordType::SOA, RecordType::NS],
+    );
+    let nsec3s = vec![
+        VerifiedNsec3 {
+            owner_label: label_of(&[0u8; 20]),
+            data: &rec,
+        },
+        VerifiedNsec3 {
+            owner_label: label_of(&hash("example.com.")),
+            data: &apex,
+        },
+    ];
     let result = prove_denial(
         &n("insecure-deleg.example.com."),
         RecordType::DS,
@@ -213,6 +225,98 @@ fn nsec3_ds_nodata_optout_is_insecure() {
         &[],
     );
     assert_eq!(result, DnssecStatus::Insecure);
+}
+
+#[test]
+fn nsec3_nodata_without_a_proof_is_bogus() {
+    // Signed records that neither match nor give an opt-out closest-encloser
+    // proof: the NODATA is unproven, so it cannot be served as anything but Bogus.
+    let rec = nsec3(false, ITER, hash("b.example.com."), &[RecordType::A]);
+    let nsec3s = vec![VerifiedNsec3 {
+        owner_label: label_of(&hash("a.example.com.")),
+        data: &rec,
+    }];
+    let result = prove_denial(
+        &n("x.example.com."),
+        RecordType::A,
+        ResponseCode::NoError,
+        &n("example.com."),
+        &nsec3s,
+        &[],
+    );
+    assert_eq!(result, DnssecStatus::Bogus);
+}
+
+#[test]
+fn nsec1_nodata_without_a_matching_record_is_bogus() {
+    let rec = nsec("b.example.com.", &[RecordType::A]);
+    let owner = n("a.example.com.");
+    let nsecs = [VerifiedNsec {
+        owner: &owner,
+        data: &rec,
+    }];
+    let result = prove_denial(
+        &n("zzz.example.com."),
+        RecordType::A,
+        ResponseCode::NoError,
+        &n("example.com."),
+        &[],
+        &nsecs,
+    );
+    assert_eq!(result, DnssecStatus::Bogus);
+}
+
+#[test]
+fn nsec1_nodata_at_an_empty_non_terminal_is_secure() {
+    // ent.example.com has no records, only a descendant: the NSEC before it
+    // covers it and names that descendant next.
+    let rec = nsec("host.ent.example.com.", &[RecordType::A]);
+    let owner = n("aaa.example.com.");
+    let nsecs = [VerifiedNsec {
+        owner: &owner,
+        data: &rec,
+    }];
+    let result = prove_denial(
+        &n("ent.example.com."),
+        RecordType::A,
+        ResponseCode::NoError,
+        &n("example.com."),
+        &[],
+        &nsecs,
+    );
+    assert_eq!(result, DnssecStatus::Secure);
+}
+
+#[test]
+fn nsec1_wildcard_nodata_is_secure_only_without_the_type() {
+    // x.example.com does not exist (covered) and *.example.com exists without
+    // the queried type (RFC 4035 §3.1.3.4).
+    let cover = nsec("y.example.com.", &[RecordType::A]);
+    let cover_owner = n("w.example.com.");
+    let wildcard_owner = n("*.example.com.");
+    let ask = |wildcard_types: &[RecordType]| {
+        let wildcard = nsec("a.example.com.", wildcard_types);
+        let nsecs = [
+            VerifiedNsec {
+                owner: &cover_owner,
+                data: &cover,
+            },
+            VerifiedNsec {
+                owner: &wildcard_owner,
+                data: &wildcard,
+            },
+        ];
+        prove_denial(
+            &n("x.example.com."),
+            RecordType::MX,
+            ResponseCode::NoError,
+            &n("example.com."),
+            &[],
+            &nsecs,
+        )
+    };
+    assert_eq!(ask(&[RecordType::A]), DnssecStatus::Secure);
+    assert_eq!(ask(&[RecordType::A, RecordType::MX]), DnssecStatus::Bogus);
 }
 
 #[test]

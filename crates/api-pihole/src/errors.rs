@@ -104,6 +104,7 @@ fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
         DomainError::DnssecValidationFailed(_)
         | DomainError::InsecureDelegation
         | DomainError::DnssecBogus
+        | DomainError::DnssecIndeterminate
         | DomainError::InvalidDnsResponse(_)
         | DomainError::DatabaseError(_)
         | DomainError::IoError(_)

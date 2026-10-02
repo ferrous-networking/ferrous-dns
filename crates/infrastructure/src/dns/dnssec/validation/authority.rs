@@ -11,19 +11,20 @@
 //! they pass in as [`KeyLookup`].
 
 use super::super::crypto;
-use super::super::types::{DnskeyRecord, RrsigRecord};
+use super::super::types::DnskeyRecord;
 use super::denial::{VerifiedNsec, VerifiedNsec3};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::rr::domain::Label;
 use hickory_proto::rr::{Name, RData, Record};
+use std::borrow::Borrow;
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::debug;
 
-/// Resolves a signer zone name to the DNSKEYs already established for it in the
+/// Resolves a signer zone to the DNSKEYs already established for it in the
 /// chain of trust. Returning `None` means "no authenticated keys for this zone",
 /// which makes every RRSIG naming it unverifiable.
-pub type KeyLookup<'a> = &'a dyn Fn(&str) -> Option<Arc<[DnskeyRecord]>>;
+pub type KeyLookup<'a> = &'a dyn Fn(&Name) -> Option<Arc<[DnskeyRecord]>>;
 
 /// Current UNIX time in seconds, truncated to `u32` (the RRSIG serial-number domain).
 pub(crate) fn now_secs() -> u32 {
@@ -46,25 +47,17 @@ pub(crate) fn to_fqdn(domain: &str) -> Option<Name> {
 /// encloses `qname`. Label comparison is the DNS-canonical (case-folded)
 /// equality of [`Name`].
 pub fn name_encloses(zone: &Name, qname: &Name) -> bool {
-    let (zone_labels, qname_labels) = (zone.num_labels(), qname.num_labels());
-    if zone_labels > qname_labels {
-        return false;
-    }
-    let mut ancestor = qname.clone();
-    for _ in 0..(qname_labels - zone_labels) {
-        ancestor = ancestor.base_name();
-    }
-    &ancestor == zone
+    zone.zone_of(qname)
 }
 
 /// True when the `rrset` (every record sharing `owner` + `rtype`) is covered
 /// by a valid RRSIG in `sigs`, signed by a key already established in the
 /// chain of trust. Used both for single-record NSEC/NSEC3 authority RRsets
 /// and for multi-record positive-answer RRsets.
-pub fn rrset_is_authentic(
+pub fn rrset_is_authentic<R: Borrow<Record>>(
     owner: &Name,
     rtype: hickory_proto::rr::RecordType,
-    rrset: &[Record],
+    rrset: &[R],
     sigs: &[Record],
     now_secs: u32,
     key_lookup: KeyLookup<'_>,
@@ -94,19 +87,20 @@ pub fn rrset_is_authentic(
             outcome = "signer-not-enclosing";
             continue;
         }
-        let Some(rr) = RrsigRecord::from_hickory(rrsig) else {
-            continue;
-        };
-        let Some(keys) = key_lookup(&rr.signer_name) else {
+        let Some(keys) = key_lookup(&input.signer_name) else {
             outcome = "no-keys";
             continue;
         };
-        for key in keys.iter() {
-            match crypto::verify_rrsig_with_name(&rr, key, owner, rrset, now_secs) {
-                Ok(true) => return true,
-                Ok(false) => outcome = "sig-false",
-                Err(_) => outcome = "sig-err",
-            }
+        match crypto::rrsig_verifies(
+            rrsig,
+            &keys,
+            owner,
+            rrset.iter().map(Borrow::borrow),
+            now_secs,
+        ) {
+            Ok(true) => return true,
+            Ok(false) => outcome = "sig-false",
+            Err(_) => outcome = "sig-err",
         }
     }
     debug!(owner = %owner, ?rtype, outcome, "rrset not authentic");

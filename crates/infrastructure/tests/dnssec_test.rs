@@ -1,7 +1,12 @@
-use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::dnssec::{
-    crypto, DnskeyRecord, DnssecCache, DsRecord, RrsigRecord,
+    crypto, DnskeyRecord, DnssecCache, DsDenial, DsLookup, DsRecord,
 };
+use hickory_proto::dnssec::crypto::Ed25519SigningKey;
+use hickory_proto::dnssec::rdata::{DNSKEY, RRSIG};
+use hickory_proto::dnssec::{Algorithm, DnssecSigner, PublicKey, PublicKeyBuf, SigningKey};
+use hickory_proto::rr::rdata::A;
+use hickory_proto::rr::{DNSClass, Name, RData, Record, RecordSet, RecordType as HRT};
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now_secs() -> u32 {
@@ -21,9 +26,13 @@ fn cache_serves_unexpired_sets_and_drops_expired_ones() {
         public_key: vec![3, 1, 0, 1],
     };
 
-    cache.cache_dnskey("fresh.example.", vec![key.clone()], 300);
-    cache.cache_dnskey("expired.example.", vec![key], 0);
-    cache.cache_ds("expired.example.", Vec::new(), 0);
+    cache.cache_dnskey("fresh.example.", vec![key.clone()].into(), 300);
+    cache.cache_dnskey("expired.example.", vec![key].into(), 0);
+    cache.cache_ds(
+        "expired.example.",
+        DsLookup::Absent(DsDenial::InsecureDelegation),
+        0,
+    );
 
     assert_eq!(cache.get_dnskey("fresh.example.").unwrap().len(), 1);
     assert!(cache.get_dnskey("expired.example.").is_none());
@@ -161,55 +170,65 @@ fn test_is_supported_algorithm_matches_dispatch_arms() {
     }
 }
 
-#[test]
-fn test_verify_rrsig_expired_signature() {
-    let dnskey = DnskeyRecord {
-        flags: 257,
+/// An A RRset at `example.com.`, an RRSIG over it whose validity window opens
+/// `inception_ago` before now and lasts `lifetime`, and the signing key.
+fn signed_rrset(
+    inception_ago: time::Duration,
+    lifetime: std::time::Duration,
+) -> (Record, RRSIG, DnskeyRecord) {
+    let pkcs8 = Ed25519SigningKey::generate_pkcs8().unwrap();
+    let signing_key = Ed25519SigningKey::from_pkcs8(&pkcs8).unwrap();
+    let public = signing_key.to_public_key().unwrap().public_bytes().to_vec();
+    let key = DnskeyRecord {
+        flags: 256,
         protocol: 3,
-        algorithm: 8,
-        public_key: vec![3, 1, 0, 1, 0xAB],
+        algorithm: 15,
+        public_key: public.clone(),
     };
-    let key_tag = dnskey.calculate_key_tag();
+    let owner = Name::from_str("example.com.").unwrap();
+    let signer = DnssecSigner::new(
+        DNSKEY::with_flags(256, PublicKeyBuf::new(public, Algorithm::ED25519)),
+        Box::new(signing_key),
+        owner.clone(),
+        lifetime,
+    );
+    let record = Record::from_rdata(owner.clone(), 300, RData::A(A::new(192, 0, 2, 1)));
+    let mut rrset = RecordSet::new(owner, HRT::A, 0);
+    rrset.insert(record.clone(), 0);
+    let inception = time::OffsetDateTime::now_utc() - inception_ago;
+    let rrsig = RRSIG::from_rrset(&rrset, DNSClass::IN, inception, &signer).unwrap();
+    (record, rrsig, key)
+}
 
-    let rrsig = RrsigRecord {
-        type_covered: RecordType::A,
-        algorithm: 8,
-        labels: 2,
-        original_ttl: 300,
-        signature_expiration: 1000,
-        signature_inception: 1,
-        key_tag,
-        signer_name: "example.com.".to_string(),
-        signature: vec![0u8; 64],
-    };
-
-    let result = crypto::verify_rrsig(&rrsig, &dnskey, "example.com.", &[], now_secs()).unwrap();
-    assert!(!result, "Expired RRSIG should return false");
+fn verifies(record: &Record, rrsig: &RRSIG, keys: &[DnskeyRecord]) -> bool {
+    crypto::rrsig_verifies(
+        rrsig,
+        keys,
+        &record.name,
+        std::iter::once(record),
+        now_secs(),
+    )
+    .unwrap()
 }
 
 #[test]
-fn test_verify_rrsig_key_tag_mismatch() {
-    let dnskey = DnskeyRecord {
-        flags: 257,
-        protocol: 3,
-        algorithm: 8,
-        public_key: vec![3, 1, 0, 1, 0xAB],
-    };
+fn rrsig_verifies_only_inside_its_validity_window() {
+    let day = std::time::Duration::from_secs(86_400);
+    let (record, current, key) = signed_rrset(time::Duration::minutes(5), day);
+    assert!(verifies(&record, &current, &[key]));
 
-    let now = now_secs();
+    let (record, expired, key) = signed_rrset(time::Duration::days(3), day);
+    assert!(
+        !verifies(&record, &expired, &[key]),
+        "expired signature accepted"
+    );
+}
 
-    let rrsig = RrsigRecord {
-        type_covered: RecordType::A,
-        algorithm: 8,
-        labels: 2,
-        original_ttl: 300,
-        signature_expiration: now + 3600,
-        signature_inception: now - 60,
-        key_tag: 9999, // Deliberately wrong key_tag
-        signer_name: "example.com.".to_string(),
-        signature: vec![0u8; 64],
-    };
-
-    let result = crypto::verify_rrsig(&rrsig, &dnskey, "example.com.", &[], now).unwrap();
-    assert!(!result, "Key tag mismatch should return false");
+#[test]
+fn rrsig_needs_the_signing_key_among_the_candidates() {
+    let day = std::time::Duration::from_secs(86_400);
+    let (record, rrsig, key) = signed_rrset(time::Duration::minutes(5), day);
+    let (_, _, other) = signed_rrset(time::Duration::minutes(5), day);
+    assert!(!verifies(&record, &rrsig, std::slice::from_ref(&other)));
+    assert!(verifies(&record, &rrsig, &[other, key]));
 }

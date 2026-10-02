@@ -4,6 +4,8 @@ use ferrous_dns_domain::DomainError;
 pub const OPTION_CODE: u16 = 15;
 
 pub mod codes {
+    /// RFC 8914 §4.6 — DNSSEC Indeterminate.
+    pub const DNSSEC_INDETERMINATE: u16 = 5;
     pub const DNSSEC_BOGUS: u16 = 6;
     pub const DNSKEY_MISSING: u16 = 9;
     pub const BLOCKED: u16 = 15;
@@ -32,6 +34,10 @@ pub fn from_domain_error(err: &DomainError) -> Option<ExtendedDnsError> {
             (codes::DNSSEC_BOGUS, "DNSSEC signature validation failed")
         }
         DomainError::DnssecBogus => (codes::DNSSEC_BOGUS, "DNSSEC validation: bogus"),
+        DomainError::DnssecIndeterminate => (
+            codes::DNSSEC_INDETERMINATE,
+            "DNSSEC validation: indeterminate",
+        ),
         DomainError::InsecureDelegation => (codes::DNSKEY_MISSING, "insecure delegation"),
         DomainError::QueryTimeout => (codes::NO_REACHABLE_AUTHORITY, "upstream query timed out"),
         DomainError::TransportNoHealthyServers => {

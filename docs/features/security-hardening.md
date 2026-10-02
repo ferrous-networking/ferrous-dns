@@ -124,11 +124,11 @@ Upstream queries advertise a 1232-byte EDNS UDP payload — small enough to avoi
 |:-----|:----------|
 | `off` | No validation. |
 | `permissive` | **Default.** Validate and tag the result (`dnssec_status` in the query log, AD bit on secure answers), but never SERVFAIL. |
-| `strict` | Bogus answers become SERVFAIL, unless the client sets CD. |
+| `strict` | Answers that do not validate — `Bogus`, or `Indeterminate` because the chain could not be fetched — become SERVFAIL, unless the client sets CD. |
 
 NXDOMAIN and NODATA are validated too, via NSEC and NSEC3 denial-of-existence proofs (including opt-out and the RFC 9276 parameter limits). Validation results are exposed at `GET /api/dnssec/stats` and filterable in the query log.
 
-**Downgrade detection, not enforcement.** An empty DS answer is checked against the parent's authenticated NSEC/NSEC3 denial (RFC 4035 §5.2): a signed proof that contradicts the answer makes the response Bogus. But if the authority section is missing or unauthenticated, the resolver falls back to treating the delegation as insecure — so an attacker able to compose the entire response can still downgrade it by omitting the proof. These fail-opens are counted as `ds_denial_fail_opens` at `GET /api/dnssec/stats` so the gap is measurable rather than invisible.
+**Insecure must be proven.** An answer is `Insecure` only when the zone above it proves, with signed NSEC/NSEC3, a delegation that has no DS (or an NSEC3 opt-out span), or when the DS names only algorithms this build cannot verify (RFC 6840 §5.2). An empty DS answer without that proof, an unsigned answer or denial from a zone the chain shows is signed, or a denial built from the parent's NSEC at a zone cut (RFC 6840 §4.1) is `Bogus`. A forwarder that strips the authority section therefore turns signed names `Bogus`; such answers are counted as `ds_denials_unproven` at `GET /api/dnssec/stats`, so check that counter before switching to `strict`.
 
 Trust anchors are the IANA root KSKs, embedded in the binary. `[dns] dnssec_trust_anchor_file` **replaces** them (it does not merge), is read only at startup, and an unreadable file aborts boot rather than falling back to no validation. There is no RFC 5011 automated rollover: a future root key roll needs either an updated release or your own anchor file.
 
@@ -163,7 +163,7 @@ Published so you can plan around it rather than discover it.
 |:----|:--------------|:-------|
 | No API rate limiting | The REST API has no request throttling middleware of any kind. Put the dashboard behind a reverse proxy or a trusted network. | Not implemented |
 | Login lockout behind a reverse proxy | The lockout counts failures per TCP peer and ignores `X-Forwarded-For`, so behind a proxy all logins share the proxy's count. See [Login lockout](security.md#login-lockout). | By design |
-| DS-denial fail-open | Downgrade *detection* only; a response with no authority section still degrades to insecure. Tracked by `ds_denial_fail_opens`. | Detection only |
+| `Indeterminate` under `permissive` | When DS/DNSKEY lookups cannot be fetched, `permissive` still serves the answer without AD. Use `strict` to refuse it. | By design |
 | EDNS Client Subnet | Client ECS is not stripped from upstream queries yet. | Planned (RFC 7871) |
 | RFC 5011 trust-anchor rollover | Root key updates need a new release or a manual anchor file. | Planned |
 | `/metrics` is unauthenticated | When `metrics_enabled = true` the endpoint is served without auth. See [Metrics & Monitoring](metrics.md). | By design — bind it carefully |

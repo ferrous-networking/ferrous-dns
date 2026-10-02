@@ -6,9 +6,9 @@
 //! 2026-10-11.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
-use ferrous_dns_domain::{DnssecStatus, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::{
-    ChainVerifier, DnskeyRecord, DnssecCache, TrustAnchorKey, TrustAnchorStore,
+    ChainTrust, ChainVerifier, DnskeyRecord, DnssecCache, TrustAnchorKey, TrustAnchorStore,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use std::str::FromStr;
@@ -209,6 +209,13 @@ fn rejects_a_file_without_anchors() {
 }
 
 #[test]
+fn rejects_a_file_without_a_root_anchor() {
+    let err = TrustAnchorStore::from_str(&format!("example. IN DS 20326 8 2 {KSK_2017_DS}\n"))
+        .unwrap_err();
+    assert!(err.to_string().contains("root zone"), "{err}");
+}
+
+#[test]
 fn rejects_a_digest_of_the_wrong_length() {
     let err = TrustAnchorStore::from_str(". IN DS 20326 8 2 DEADBEEF\n").unwrap_err();
 
@@ -276,7 +283,12 @@ async fn live_embedded_anchors_bootstrap_the_root() {
     let mut verifier = live_root_chain_verifier().await;
 
     let result = verifier.verify_chain(".").await;
-    assert_eq!(result, DnssecStatus::Secure);
+    assert_eq!(
+        result,
+        Ok(ChainTrust::Secure {
+            zone: ".".to_string()
+        })
+    );
 
     let root_keys = verifier
         .get_zone_keys(".")

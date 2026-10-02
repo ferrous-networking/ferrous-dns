@@ -1,6 +1,6 @@
-use ferrous_dns_domain::{DnssecStatus, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::trust_anchor::TrustAnchorStore;
-use ferrous_dns_infrastructure::dns::dnssec::{ChainVerifier, DnssecCache};
+use ferrous_dns_infrastructure::dns::dnssec::{ChainFailure, ChainVerifier, DnssecCache};
 use ferrous_dns_infrastructure::dns::PoolManager;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,36 +26,12 @@ async fn chain_walk_honours_the_configured_upstream_timeout() {
     );
 
     let started = Instant::now();
-    let status = verifier.verify_chain("example.com.").await;
+    let verdict = verifier.verify_chain("example.com.").await;
 
-    assert_eq!(status, DnssecStatus::Indeterminate);
+    assert_eq!(verdict, Err(ChainFailure::Indeterminate));
     assert!(
         started.elapsed() < Duration::from_secs(3),
         "walk took {:?}; the 200 ms timeout was not applied",
         started.elapsed()
     );
-}
-
-#[test]
-fn test_split_domain_root_is_empty() {
-    assert!(ChainVerifier::split_domain(".").is_empty());
-    assert!(ChainVerifier::split_domain("").is_empty());
-}
-
-#[test]
-fn test_split_domain_tld_gives_single_label() {
-    assert_eq!(ChainVerifier::split_domain("com"), vec!["com"]);
-    assert_eq!(ChainVerifier::split_domain("com."), vec!["com"]);
-}
-
-#[test]
-fn test_split_domain_two_labels_reversed() {
-    let labels = ChainVerifier::split_domain("example.com.");
-    assert_eq!(labels, vec!["com", "example"]);
-}
-
-#[test]
-fn test_split_domain_three_labels_reversed() {
-    let labels = ChainVerifier::split_domain("www.example.com.");
-    assert_eq!(labels, vec!["com", "example", "www"]);
 }

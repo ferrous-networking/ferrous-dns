@@ -256,7 +256,7 @@ qname_case_randomization = false
 | `upstream_servers` | `list` | `[]` | Fallback upstream servers used when no pool matches; supports all URI schemes |
 | `query_timeout` | `int` | `3` | Seconds to wait for an upstream response before trying the next server |
 | `default_strategy` | `str` | `"Parallel"` | Default resolution strategy for `upstream_servers`: `"Parallel"` or `"Sequential"` |
-| `dnssec_mode` | `str` | `"Permissive"` | DNSSEC enforcement: `"Off"` (no validation), `"Permissive"` (validate + tag, no SERVFAIL), `"Strict"` (SERVFAIL on Bogus). The legacy `dnssec_enabled` bool is still accepted (`true` → Permissive, `false` → Off) |
+| `dnssec_mode` | `str` | `"Permissive"` | DNSSEC enforcement: `"Off"` (no validation), `"Permissive"` (validate + tag, no SERVFAIL), `"Strict"` (SERVFAIL on Bogus or Indeterminate). The legacy `dnssec_enabled` bool is still accepted (`true` → Permissive, `false` → Off) |
 | `block_private_ptr` | `bool` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
 | `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection) |

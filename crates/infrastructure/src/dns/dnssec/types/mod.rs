@@ -1,10 +1,8 @@
 pub mod dnskey;
 pub mod ds;
-pub mod rrsig;
 
 pub use dnskey::DnskeyRecord;
-pub use ds::DsRecord;
-pub use rrsig::RrsigRecord;
+pub use ds::{DsDenial, DsLookup, DsRecord};
 
 /// IANA mnemonic of a DNSSEC signature algorithm number, for log output.
 pub fn algorithm_name(algorithm: u8) -> &'static str {

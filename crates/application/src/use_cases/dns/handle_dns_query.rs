@@ -854,20 +854,26 @@ impl HandleDnsQueryUseCase {
                         }
                     }
                 }
-                // DNSSEC enforcement (Strict mode): a proven Bogus result is
-                // returned as SERVFAIL — unless the client set the CD bit, in
-                // which case it asked to do its own validation. Only "Bogus"
-                // is enforced; Insecure/Indeterminate/errors fail open.
-                if self.dnssec_enforce
-                    && !request.checking_disabled
-                    && resolution.dnssec_status == Some(DnssecStatus::Bogus)
-                {
+                // DNSSEC enforcement (Strict mode): an answer validation could not
+                // establish as Secure or provably Insecure is SERVFAIL — unless the
+                // client set the CD bit and so does its own validation. Serving
+                // Indeterminate would let anyone who can drop DS/DNSKEY lookups
+                // switch validation off.
+                let refusal = match resolution.dnssec_status {
+                    _ if !self.dnssec_enforce || request.checking_disabled => None,
+                    Some(DnssecStatus::Bogus) => Some(("SERVFAIL_BOGUS", DomainError::DnssecBogus)),
+                    Some(DnssecStatus::Indeterminate) => {
+                        Some(("SERVFAIL_INDETERMINATE", DomainError::DnssecIndeterminate))
+                    }
+                    Some(DnssecStatus::Secure | DnssecStatus::Insecure) | None => None,
+                };
+                if let Some((response_status, error)) = refusal {
                     self.log(&QueryLog {
                         dnssec_status: resolution.dnssec_status,
-                        response_status: Some("SERVFAIL_BOGUS"),
+                        response_status: Some(response_status),
                         ..Self::base_query_log(request, elapsed_us(), group_id)
                     });
-                    return Err(DomainError::DnssecBogus);
+                    return Err(error);
                 }
                 let response_status = if resolution.local_dns {
                     Some("LOCAL_DNS")

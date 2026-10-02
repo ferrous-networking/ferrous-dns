@@ -40,6 +40,6 @@ pub async fn get_dnssec_stats(
         insecure: stats.insecure,
         bogus: stats.bogus,
         indeterminate: stats.indeterminate,
-        ds_denial_fail_opens: validator.ds_denial_fail_opens,
+        ds_denials_unproven: validator.ds_denials_unproven,
     }))
 }

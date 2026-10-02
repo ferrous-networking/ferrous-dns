@@ -1,4 +1,4 @@
-//! Authenticated denial of existence (RFC 4035 §5.4, RFC 5155, RFC 9276).
+//! Authenticated denial of existence (RFC 4035 §5.4, RFC 5155, RFC 6840, RFC 9276).
 //!
 //! Given the NSEC / NSEC3 records of a negative response's authority section —
 //! already proven authentic by their RRSIGs — these routines decide whether the
@@ -6,15 +6,19 @@
 //!
 //! Mapping to [`DnssecStatus`]:
 //! * `Secure` — the denial is fully proven.
-//! * `Insecure` — the denial points at an unsigned (opt-out) delegation, or the
-//!   NSEC3 iteration count is above the hardening cap; serve without AD.
-//! * `Bogus` — the zone is signed but the denial is unproven / forged.
+//! * `Insecure` — the proof points at an NSEC3 opt-out span (which may hide an
+//!   unsigned delegation), or the NSEC3 iteration count is above the hardening
+//!   cap; serve without AD.
+//! * `Bogus` — anything else. The zone is signed, so a denial that is not
+//!   proven is indistinguishable from a forged one.
 //!
 //! The matching logic follows the structure of unbound / hickory's validator but
 //! is implemented here against the project's own chain-of-trust machinery.
 
+use crate::dns::dnssec::types::DsDenial;
 use data_encoding::BASE32_DNSSEC;
 use ferrous_dns_domain::DnssecStatus;
+use hickory_proto::dnssec::crypto::Digest;
 use hickory_proto::dnssec::rdata::{NSEC, NSEC3};
 use hickory_proto::dnssec::Nsec3HashAlgorithm;
 use hickory_proto::op::ResponseCode;
@@ -56,14 +60,67 @@ pub fn prove_denial(
     }
 }
 
-fn verify_nsec3(
-    qname: &Name,
-    qtype: RecordType,
+/// Classifies the parent zone's answer to a DS query for `child` (RFC 4035
+/// §5.2). `None` when the records prove nothing about that DS, or contradict
+/// the empty answer — either way the walk cannot continue past `child`.
+pub fn classify_ds_denial(
+    child: &Name,
     rcode: ResponseCode,
-    soa_name: &Name,
+    parent: &Name,
     nsec3s: &[VerifiedNsec3<'_>],
-) -> DnssecStatus {
-    // RFC 5155 §8.2 — all NSEC3 RRs in the proof share the same parameters.
+    nsecs: &[VerifiedNsec<'_>],
+) -> Option<DsDenial> {
+    match rcode {
+        ResponseCode::NXDomain => {
+            match prove_denial(child, RecordType::DS, rcode, parent, nsec3s, nsecs) {
+                DnssecStatus::Secure => Some(DsDenial::Nonexistent),
+                // Opt-out over the next closer, or an iteration count past the cap.
+                DnssecStatus::Insecure => Some(DsDenial::InsecureDelegation),
+                DnssecStatus::Bogus | DnssecStatus::Indeterminate => None,
+            }
+        }
+        ResponseCode::NoError if !nsec3s.is_empty() => nsec3_ds_nodata(child, parent, nsec3s),
+        ResponseCode::NoError => nsec1_ds_nodata(child, nsecs),
+        _ => None,
+    }
+}
+
+/// What a parent-side record owned by the DS query name proves.
+fn ds_denial_at(has: impl Fn(RecordType) -> bool) -> Option<DsDenial> {
+    if has(RecordType::DS) || has(RecordType::CNAME) {
+        return None;
+    }
+    Some(if has(RecordType::NS) {
+        DsDenial::InsecureDelegation
+    } else {
+        DsDenial::NotZoneCut
+    })
+}
+
+/// RFC 6840 §4.4 — a DS proof must come from the *parent* side of the
+/// delegation. An NSEC/NSEC3 whose bitmap carries SOA is the child zone's own
+/// apex record, and the child is not authoritative for its DS RRset, so it
+/// cannot prove that RRset absent. Without this check a signed child could strip
+/// the DS of its own delegation and downgrade itself to Insecure.
+fn wrong_side_of_delegation(mut type_bit_maps: impl Iterator<Item = RecordType>) -> bool {
+    type_bit_maps.any(|t| t == RecordType::SOA)
+}
+
+/// NS without SOA: the parent's record at a zone cut. RFC 6840 §4.1 — it
+/// proves nothing about names at or below the cut except the DS the parent
+/// itself holds, because those names live in the child zone.
+fn is_delegation(type_bit_maps: impl Iterator<Item = RecordType>) -> bool {
+    let (mut ns, mut soa) = (false, false);
+    for t in type_bit_maps {
+        ns |= t == RecordType::NS;
+        soa |= t == RecordType::SOA;
+    }
+    ns && !soa
+}
+
+/// RFC 5155 §8.2 parameter agreement plus the RFC 9276 iteration cap. `Err`
+/// carries the verdict when the records cannot be used for a proof.
+fn nsec3_params<'a>(nsec3s: &'a [VerifiedNsec3<'_>]) -> Result<(&'a [u8], u16), DnssecStatus> {
     let first = &nsec3s[0];
     let salt = first.data.salt();
     let iterations = first.data.iterations();
@@ -72,14 +129,25 @@ fn verify_nsec3(
             || r.data.salt() != salt
             || r.data.iterations() != iterations
     }) {
-        return DnssecStatus::Bogus;
+        return Err(DnssecStatus::Bogus);
     }
-
-    // RFC 9276 §3.2 hardening: refuse to spend CPU on high iteration counts.
     if iterations > NSEC3_ITERATION_CAP {
-        return DnssecStatus::Insecure;
+        return Err(DnssecStatus::Insecure);
     }
+    Ok((salt, iterations))
+}
 
+fn verify_nsec3(
+    qname: &Name,
+    qtype: RecordType,
+    rcode: ResponseCode,
+    soa_name: &Name,
+    nsec3s: &[VerifiedNsec3<'_>],
+) -> DnssecStatus {
+    let (salt, iterations) = match nsec3_params(nsec3s) {
+        Ok(params) => params,
+        Err(status) => return status,
+    };
     match rcode {
         ResponseCode::NXDomain => nsec3_nxdomain(qname, soa_name, salt, iterations, nsec3s),
         ResponseCode::NoError => nsec3_nodata(qname, qtype, soa_name, salt, iterations, nsec3s),
@@ -88,11 +156,15 @@ fn verify_nsec3(
 }
 
 /// Hash `name` and return (raw digest, base32 label). `None` on hashing failure.
-fn nsec3_hash(name: &Name, salt: &[u8], iterations: u16) -> Option<(Vec<u8>, Label)> {
+fn nsec3_hash(name: &Name, salt: &[u8], iterations: u16) -> Option<(Digest, Label)> {
     let digest = Nsec3HashAlgorithm::SHA1.hash(salt, name, iterations).ok()?;
-    let raw = digest.as_ref().to_vec();
-    let label = Label::from_ascii(&BASE32_DNSSEC.encode(&raw)).ok()?;
-    Some((raw, label))
+    let raw = digest.as_ref();
+    // SHA-1 is 20 bytes, 32 in base32; the stack buffer covers any digest up to 40.
+    let mut base32 = [0u8; 64];
+    let base32 = base32.get_mut(..BASE32_DNSSEC.encode_len(raw.len()))?;
+    BASE32_DNSSEC.encode_mut(raw, base32);
+    let label = Label::from_ascii(std::str::from_utf8(base32).ok()?).ok()?;
+    Some((digest, label))
 }
 
 /// True when `target` falls in the (owner, next] interval of the NSEC3 record,
@@ -147,6 +219,46 @@ fn encloser_candidates(qname: &Name, soa_name: &Name) -> Vec<Name> {
     }
 }
 
+/// RFC 5155 §8.3 closest provable encloser of `qname`, with the NSEC3 that
+/// covers its next closer name.
+struct ClosestEncloser<'a> {
+    encloser: Name,
+    next_closer_cover: &'a VerifiedNsec3<'a>,
+}
+
+/// The closest provable encloser proof: the longest *proper* ancestor of
+/// `qname` with a matching NSEC3, plus a covering NSEC3 for the next closer.
+/// `None` when the records do not form that proof.
+fn closest_encloser_proof<'a>(
+    qname: &Name,
+    soa_name: &Name,
+    salt: &[u8],
+    iterations: u16,
+    nsec3s: &'a [VerifiedNsec3<'a>],
+) -> Option<ClosestEncloser<'a>> {
+    let candidates = encloser_candidates(qname, soa_name);
+    for idx in 1..candidates.len() {
+        let Some((_, ce_label)) = nsec3_hash(&candidates[idx], salt, iterations) else {
+            continue;
+        };
+        let Some(ce) = nsec3_find_matching(nsec3s, &ce_label) else {
+            continue;
+        };
+        // RFC 5155 §8.3: a delegation cannot be the closest encloser; names
+        // below it belong to another zone.
+        if is_delegation(ce.data.type_bit_maps()) {
+            return None;
+        }
+        let (nc_raw, nc_label) = nsec3_hash(&candidates[idx - 1], salt, iterations)?;
+        let next_closer_cover = nsec3_find_covering(nsec3s, nc_raw.as_ref(), &nc_label)?;
+        return Some(ClosestEncloser {
+            encloser: candidates[idx].clone(),
+            next_closer_cover,
+        });
+    }
+    None
+}
+
 /// RFC 5155 §8.4 — NXDOMAIN closest-encloser proof.
 fn nsec3_nxdomain(
     qname: &Name,
@@ -162,47 +274,24 @@ fn nsec3_nxdomain(
         }
     }
 
-    let candidates = encloser_candidates(qname, soa_name);
-
-    // Find the closest encloser: the longest candidate with a *matching* NSEC3.
-    for (idx, ce) in candidates.iter().enumerate() {
-        let Some((_, ce_label)) = nsec3_hash(ce, salt, iterations) else {
-            continue;
-        };
-        if nsec3_find_matching(nsec3s, &ce_label).is_none() {
-            continue;
-        }
-        // idx == 0 would mean qname itself matches → contradicts NXDOMAIN.
-        if idx == 0 {
-            return DnssecStatus::Bogus;
-        }
-        // Next closer = the candidate one label longer than the closest encloser.
-        let next_closer = &candidates[idx - 1];
-        let Some((nc_raw, nc_label)) = nsec3_hash(next_closer, salt, iterations) else {
-            return DnssecStatus::Bogus;
-        };
-        let Some(nc_record) = nsec3_find_covering(nsec3s, &nc_raw, &nc_label) else {
-            return DnssecStatus::Bogus;
-        };
-        // Opt-out over the next closer → the (insecure) name may exist unsigned.
-        if nc_record.data.opt_out() {
-            return DnssecStatus::Insecure;
-        }
-        // Wildcard at the closest encloser must be covered (proven absent).
-        let Some(wildcard) = make_wildcard(ce) else {
-            return DnssecStatus::Bogus;
-        };
-        let Some((wc_raw, wc_label)) = nsec3_hash(&wildcard, salt, iterations) else {
-            return DnssecStatus::Bogus;
-        };
-        return match nsec3_find_covering(nsec3s, &wc_raw, &wc_label) {
-            Some(_) => DnssecStatus::Secure,
-            None => DnssecStatus::Bogus,
-        };
+    let Some(proof) = closest_encloser_proof(qname, soa_name, salt, iterations, nsec3s) else {
+        return DnssecStatus::Bogus;
+    };
+    // Opt-out over the next closer → the (insecure) name may exist unsigned.
+    if proof.next_closer_cover.data.opt_out() {
+        return DnssecStatus::Insecure;
     }
-
-    // No matching closest encloser found.
-    DnssecStatus::Bogus
+    // Wildcard at the closest encloser must be covered (proven absent).
+    let Some(wildcard) = make_wildcard(&proof.encloser) else {
+        return DnssecStatus::Bogus;
+    };
+    let Some((wc_raw, wc_label)) = nsec3_hash(&wildcard, salt, iterations) else {
+        return DnssecStatus::Bogus;
+    };
+    match nsec3_find_covering(nsec3s, wc_raw.as_ref(), &wc_label) {
+        Some(_) => DnssecStatus::Secure,
+        None => DnssecStatus::Bogus,
+    }
 }
 
 /// RFC 5155 §8.5–8.7 — NODATA proofs.
@@ -214,19 +303,20 @@ fn nsec3_nodata(
     iterations: u16,
     nsec3s: &[VerifiedNsec3<'_>],
 ) -> DnssecStatus {
-    let Some((q_raw, q_label)) = nsec3_hash(qname, salt, iterations) else {
+    let Some((_, q_label)) = nsec3_hash(qname, salt, iterations) else {
         return DnssecStatus::Bogus;
     };
 
     // §8.5 / §8.6 — an NSEC3 matching QNAME with QTYPE and CNAME absent.
     if let Some(record) = nsec3_find_matching(nsec3s, &q_label) {
-        // RFC 6840 §4.4: an NSEC3 from the *child* side of a delegation cannot
-        // deny a DS, because the DS lives in the parent. Some servers answer DS
-        // from the child side anyway, so such a record is unusable as proof —
-        // not evidence of forgery. Fall through to the remaining proofs instead
-        // of returning Bogus, which would SERVFAIL a legitimate zone.
-        let usable =
-            !(qtype == RecordType::DS && wrong_side_of_delegation(record.data.type_bit_maps()));
+        // A child-side record cannot deny a DS (RFC 6840 §4.4), and a
+        // parent-side delegation record cannot deny anything but the DS
+        // (RFC 6840 §4.1). Either is unusable here; the remaining proofs decide.
+        let usable = if qtype == RecordType::DS {
+            !wrong_side_of_delegation(record.data.type_bit_maps())
+        } else {
+            !is_delegation(record.data.type_bit_maps())
+        };
         if usable {
             let has_type = record.data.type_bit_maps().any(|t| t == qtype);
             let has_cname = record.data.type_bit_maps().any(|t| t == RecordType::CNAME);
@@ -237,57 +327,69 @@ fn nsec3_nodata(
         }
     }
 
-    // §8.6 — DS NODATA via opt-out: covering NSEC3 with the opt-out bit set.
-    if qtype == RecordType::DS {
-        if let Some(record) = nsec3_find_covering(nsec3s, &q_raw, &q_label) {
-            if record.data.opt_out() {
-                return DnssecStatus::Insecure;
-            }
-        }
-    }
+    // Both remaining proofs start from the closest-encloser proof; build it
+    // once, since each candidate costs an iterated SHA-1.
+    let Some(proof) = closest_encloser_proof(qname, soa_name, salt, iterations, nsec3s) else {
+        return DnssecStatus::Bogus;
+    };
 
     // §8.7 — wildcard NODATA: closest-encloser proof for a servicing wildcard.
-    if wildcard_based_encloser(qname, soa_name, salt, iterations, nsec3s) {
+    if wildcard_nodata(&proof, qtype, salt, iterations, nsec3s) {
         return DnssecStatus::Secure;
     }
 
-    // Signed NSEC3 records are present but none conclusively prove this NODATA.
-    // Fail open (served without AD) rather than SERVFAIL a possibly valid name.
-    DnssecStatus::Insecure
+    // §8.6 — no matching record: only an opt-out span over the next closer,
+    // which may hide an unsigned delegation, leaves the name unproven-but-
+    // legitimate. Anything short of that is not a proof.
+    if proof.next_closer_cover.data.opt_out() {
+        DnssecStatus::Insecure
+    } else {
+        DnssecStatus::Bogus
+    }
 }
 
-/// Wildcard closest-encloser proof (RFC 5155 §8.7): a *matching* wildcard NSEC3
-/// plus a *covering* next closer.
-fn wildcard_based_encloser(
-    qname: &Name,
-    soa_name: &Name,
+/// Wildcard NODATA (RFC 5155 §8.7): an NSEC3 matching the wildcard at the
+/// closest encloser, without QTYPE or CNAME.
+fn wildcard_nodata(
+    proof: &ClosestEncloser<'_>,
+    qtype: RecordType,
     salt: &[u8],
     iterations: u16,
     nsec3s: &[VerifiedNsec3<'_>],
 ) -> bool {
-    let candidates = encloser_candidates(qname, soa_name);
-    // Wildcards of each proper ancestor (skip qname itself). `ce` is at index
-    // `idx`; its next closer is the candidate one label longer (`idx - 1`).
-    for idx in 1..candidates.len() {
-        let ce = &candidates[idx];
-        let Some(wildcard) = make_wildcard(ce) else {
-            continue;
-        };
-        let Some((_, wc_label)) = nsec3_hash(&wildcard, salt, iterations) else {
-            continue;
-        };
-        if nsec3_find_matching(nsec3s, &wc_label).is_none() {
-            continue;
-        }
-        let next_closer = &candidates[idx - 1];
-        let Some((nc_raw, nc_label)) = nsec3_hash(next_closer, salt, iterations) else {
-            continue;
-        };
-        if nsec3_find_covering(nsec3s, &nc_raw, &nc_label).is_some() {
-            return true;
-        }
+    let Some(wildcard) = make_wildcard(&proof.encloser) else {
+        return false;
+    };
+    let Some((_, wc_label)) = nsec3_hash(&wildcard, salt, iterations) else {
+        return false;
+    };
+    nsec3_find_matching(nsec3s, &wc_label).is_some_and(|record| {
+        !record
+            .data
+            .type_bit_maps()
+            .any(|t| t == qtype || t == RecordType::CNAME)
+    })
+}
+
+/// DS NODATA over NSEC3: the parent-side record matching `child`, or an
+/// opt-out span over it (RFC 5155 §8.6).
+fn nsec3_ds_nodata(child: &Name, parent: &Name, nsec3s: &[VerifiedNsec3<'_>]) -> Option<DsDenial> {
+    let (salt, iterations) = match nsec3_params(nsec3s) {
+        Ok(params) => params,
+        Err(DnssecStatus::Insecure) => return Some(DsDenial::InsecureDelegation),
+        Err(_) => return None,
+    };
+    let (_, label) = nsec3_hash(child, salt, iterations)?;
+    if let Some(record) = nsec3s
+        .iter()
+        .filter(|r| r.owner_label == label)
+        .find(|r| !wrong_side_of_delegation(r.data.type_bit_maps()))
+    {
+        return ds_denial_at(|t| record.data.type_bit_maps().any(|b| b == t));
     }
-    false
+    closest_encloser_proof(child, parent, salt, iterations, nsec3s)
+        .filter(|proof| proof.next_closer_cover.data.opt_out())
+        .map(|_| DsDenial::InsecureDelegation)
 }
 
 fn make_wildcard(name: &Name) -> Option<Name> {
@@ -302,7 +404,7 @@ fn verify_nsec1(
     nsecs: &[VerifiedNsec<'_>],
 ) -> DnssecStatus {
     match rcode {
-        ResponseCode::NoError => nsec1_nodata(qname, qtype, nsecs),
+        ResponseCode::NoError => nsec1_nodata(qname, qtype, soa_name, nsecs),
         ResponseCode::NXDomain => nsec1_nxdomain(qname, soa_name, nsecs),
         _ => DnssecStatus::Bogus,
     }
@@ -318,29 +420,47 @@ fn nsec1_covers(owner: &Name, next: &Name, target: &Name) -> bool {
     }
 }
 
-/// RFC 6840 §4.4 — a DS NODATA proof must come from the *parent* side of the
-/// delegation. An NSEC/NSEC3 whose bitmap carries SOA is the child zone's own
-/// apex record, and the child is not authoritative for its DS RRset, so it
-/// cannot prove that RRset absent. Without this check a signed child could strip
-/// the DS of its own delegation and downgrade itself to Insecure.
-///
-/// Note the converse is deliberately *not* required: a matching record without
-/// the NS bit simply means the name is not a zone cut, which is a legitimate
-/// "no DS here" for the intermediate labels the chain walk steps through.
-fn wrong_side_of_delegation(mut type_bit_maps: impl Iterator<Item = RecordType>) -> bool {
-    type_bit_maps.any(|t| t == RecordType::SOA)
+/// An NSEC covering `target` that may be used to deny it: not the parent's
+/// record at a zone cut above `target` (RFC 6840 §4.1).
+fn nsec1_usable_cover<'a, 'b>(
+    nsecs: &'a [VerifiedNsec<'b>],
+    target: &Name,
+) -> Option<&'a VerifiedNsec<'b>> {
+    nsecs.iter().find(|n| {
+        nsec1_covers(n.owner, n.data.next_domain_name(), target)
+            && !(n.owner.zone_of(target) && is_delegation(n.data.type_bit_maps()))
+    })
 }
 
-fn nsec1_nodata(qname: &Name, qtype: RecordType, nsecs: &[VerifiedNsec<'_>]) -> DnssecStatus {
+/// RFC 4035 §3.1.3.2 — an empty non-terminal has no NSEC of its own; the NSEC
+/// covering it has a next name below it.
+fn nsec1_empty_non_terminal(qname: &Name, nsecs: &[VerifiedNsec<'_>]) -> bool {
+    nsec1_usable_cover(nsecs, qname).is_some_and(|n| {
+        let next = n.data.next_domain_name();
+        next.num_labels() > qname.num_labels() && qname.zone_of(next)
+    })
+}
+
+fn nsec1_nodata(
+    qname: &Name,
+    qtype: RecordType,
+    soa_name: &Name,
+    nsecs: &[VerifiedNsec<'_>],
+) -> DnssecStatus {
     // Direct match: an NSEC owned by QNAME with QTYPE and CNAME absent.
     for n in nsecs {
         if n.owner != qname {
             continue;
         }
-        // RFC 6840 §4.4 — see `nsec3_nodata`. Skipping rather than returning
-        // also keeps this independent of record order: a child-side NSEC listed
-        // ahead of a valid parent-side one must not decide the outcome.
-        if qtype == RecordType::DS && wrong_side_of_delegation(n.data.type_bit_maps()) {
+        // Same usability rules as `nsec3_nodata`. Skipping rather than
+        // returning keeps this independent of record order: an unusable record
+        // listed ahead of a valid one must not decide the outcome.
+        let unusable = if qtype == RecordType::DS {
+            wrong_side_of_delegation(n.data.type_bit_maps())
+        } else {
+            is_delegation(n.data.type_bit_maps())
+        };
+        if unusable {
             continue;
         }
         let has_type = n.data.type_bit_maps().any(|t| t == qtype);
@@ -350,28 +470,60 @@ fn nsec1_nodata(qname: &Name, qtype: RecordType, nsecs: &[VerifiedNsec<'_>]) -> 
         }
         return DnssecStatus::Secure;
     }
-    // No NSEC matched the name — cannot prove this NODATA. Fail open.
-    DnssecStatus::Insecure
+
+    if nsec1_empty_non_terminal(qname, nsecs)
+        || nsec1_wildcard_nodata(qname, qtype, soa_name, nsecs)
+    {
+        return DnssecStatus::Secure;
+    }
+    DnssecStatus::Bogus
+}
+
+/// RFC 4035 §3.1.3.4 — wildcard NODATA: QNAME is covered (does not exist) and
+/// the NSEC of the wildcard at its closest encloser lacks QTYPE and CNAME.
+fn nsec1_wildcard_nodata(
+    qname: &Name,
+    qtype: RecordType,
+    soa_name: &Name,
+    nsecs: &[VerifiedNsec<'_>],
+) -> bool {
+    let Some(covering) = nsec1_usable_cover(nsecs, qname) else {
+        return false;
+    };
+    let closest = nsec1_closest_encloser(qname, covering);
+    if closest.num_labels() < soa_name.num_labels() {
+        return false;
+    }
+    let Some(wildcard) = make_wildcard(&closest) else {
+        return false;
+    };
+    nsecs.iter().any(|n| {
+        n.owner == &wildcard
+            && !n
+                .data
+                .type_bit_maps()
+                .any(|t| t == qtype || t == RecordType::CNAME)
+    })
+}
+
+/// Closest encloser = longest common ancestor of QNAME with the covering
+/// NSEC's owner or its next name (RFC 7129 §5.5).
+fn nsec1_closest_encloser(qname: &Name, covering: &VerifiedNsec<'_>) -> Name {
+    let ce_owner = common_suffix(qname, covering.owner);
+    let ce_next = common_suffix(qname, covering.data.next_domain_name());
+    if ce_owner.num_labels() >= ce_next.num_labels() {
+        ce_owner
+    } else {
+        ce_next
+    }
 }
 
 fn nsec1_nxdomain(qname: &Name, soa_name: &Name, nsecs: &[VerifiedNsec<'_>]) -> DnssecStatus {
     // An NSEC must cover QNAME (proving the exact name does not exist).
-    let covering = nsecs
-        .iter()
-        .find(|n| nsec1_covers(n.owner, n.data.next_domain_name(), qname));
-    let Some(covering) = covering else {
+    let Some(covering) = nsec1_usable_cover(nsecs, qname) else {
         return DnssecStatus::Bogus;
     };
-
-    // Closest encloser = longest common ancestor of QNAME with the covering
-    // NSEC's owner or its next name (RFC 7129 §5.5).
-    let ce_owner = common_suffix(qname, covering.owner);
-    let ce_next = common_suffix(qname, covering.data.next_domain_name());
-    let closest = if ce_owner.num_labels() >= ce_next.num_labels() {
-        ce_owner
-    } else {
-        ce_next
-    };
+    let closest = nsec1_closest_encloser(qname, covering);
     if closest.num_labels() < soa_name.num_labels() {
         return DnssecStatus::Bogus;
     }
@@ -380,14 +532,26 @@ fn nsec1_nxdomain(qname: &Name, soa_name: &Name, nsecs: &[VerifiedNsec<'_>]) -> 
     let Some(wildcard) = make_wildcard(&closest) else {
         return DnssecStatus::Bogus;
     };
-    let wildcard_covered = nsecs.iter().any(|n| {
-        n.owner == &wildcard || nsec1_covers(n.owner, n.data.next_domain_name(), &wildcard)
-    });
-    if wildcard_covered {
+    // Covered, not matched: an NSEC owned by the wildcard proves it exists, in
+    // which case the answer should have been synthesized from it.
+    if nsec1_usable_cover(nsecs, &wildcard).is_some() {
         DnssecStatus::Secure
     } else {
         DnssecStatus::Bogus
     }
+}
+
+/// DS NODATA over NSEC: the parent-side record owned by `child`, or proof that
+/// `child` is an empty non-terminal of the parent zone.
+fn nsec1_ds_nodata(child: &Name, nsecs: &[VerifiedNsec<'_>]) -> Option<DsDenial> {
+    if let Some(n) = nsecs
+        .iter()
+        .filter(|n| n.owner == child)
+        .find(|n| !wrong_side_of_delegation(n.data.type_bit_maps()))
+    {
+        return ds_denial_at(|t| n.data.type_bit_maps().any(|b| b == t));
+    }
+    nsec1_empty_non_terminal(child, nsecs).then_some(DsDenial::NotZoneCut)
 }
 
 /// Longest common suffix (shared ancestor) of two names, by labels.
@@ -420,11 +584,10 @@ pub fn prove_wildcard_expansion(
     nsecs: &[VerifiedNsec<'_>],
 ) -> DnssecStatus {
     if !nsec3s.is_empty() {
-        let salt = nsec3s[0].data.salt();
-        let iterations = nsec3s[0].data.iterations();
-        if iterations > NSEC3_ITERATION_CAP {
-            return DnssecStatus::Insecure;
-        }
+        let (salt, iterations) = match nsec3_params(nsec3s) {
+            Ok(params) => params,
+            Err(status) => return status,
+        };
         if qname.num_labels() <= wildcard_labels {
             return DnssecStatus::Bogus;
         }
@@ -432,21 +595,16 @@ pub fn prove_wildcard_expansion(
         // closest encloser; an NSEC3 must *cover* it.
         let next_closer = ancestor_with_labels(qname, wildcard_labels + 1);
         match nsec3_hash(&next_closer, salt, iterations) {
-            Some((nc_raw, nc_label)) => match nsec3_find_covering(nsec3s, &nc_raw, &nc_label) {
-                Some(_) => DnssecStatus::Secure,
-                None => DnssecStatus::Bogus,
-            },
-            None => DnssecStatus::Insecure,
+            Some((nc_raw, nc_label)) => {
+                match nsec3_find_covering(nsec3s, nc_raw.as_ref(), &nc_label) {
+                    Some(_) => DnssecStatus::Secure,
+                    None => DnssecStatus::Bogus,
+                }
+            }
+            None => DnssecStatus::Bogus,
         }
-    } else if !nsecs.is_empty() {
-        if nsecs
-            .iter()
-            .any(|n| nsec1_covers(n.owner, n.data.next_domain_name(), qname))
-        {
-            DnssecStatus::Secure
-        } else {
-            DnssecStatus::Bogus
-        }
+    } else if nsec1_usable_cover(nsecs, qname).is_some() {
+        DnssecStatus::Secure
     } else {
         // Wildcard expansion claimed but no NSEC/NSEC3 records to justify it.
         DnssecStatus::Bogus

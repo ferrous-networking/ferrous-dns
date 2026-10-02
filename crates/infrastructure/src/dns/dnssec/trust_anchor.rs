@@ -210,6 +210,13 @@ impl FromStr for TrustAnchorStore {
                 "trust anchor file contains no DS or DNSKEY record".into(),
             ));
         }
+        // Validation walks down from `.`; without a root anchor every answer
+        // would be Indeterminate, which Strict mode refuses to serve.
+        if !anchors.iter().any(|anchor| anchor.domain == ".") {
+            return Err(DomainError::ConfigError(
+                "trust anchor file has no anchor for the root zone '.'".into(),
+            ));
+        }
 
         Ok(Self { anchors })
     }

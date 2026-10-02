@@ -68,7 +68,7 @@ With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — 
     - **Upstream anti-spoofing** — transaction ID and question matching, source address validation, DNS Cookies (RFC 7873), source-port rotation, and opt-in 0x20 QNAME case randomization
     - **DNS rate limiting** — token bucket per subnet with NXDOMAIN budget, TC=1 slip, and dry-run mode
     - **TCP/DoT connection limiting** — per-IP limits prevent connection exhaustion
-    - **DNSSEC validation** — permissive by default (validate and tag), `strict` to SERVFAIL on Bogus, with NSEC/NSEC3 denial-of-existence proofs
+    - **DNSSEC validation** — permissive by default (validate and tag), `strict` to SERVFAIL on Bogus or Indeterminate, with NSEC/NSEC3 denial-of-existence proofs; `Insecure` only with a signed proof
     - DNS rebinding protection
     - **Malware detection** — DNS tunneling detection, DGA detection (Domain Generation Algorithm), NXDomain hijack detection, response IP filtering (C2 blocking)
     - PROXY Protocol v2 support
@@ -80,7 +80,7 @@ With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — 
     - **Prometheus / OpenMetrics endpoint** at `/metrics` (opt-in via `metrics_enabled`) — cache, upstream health, blocklist size and query volume
     - **OpenAPI description** at `/openapi.json` with a built-in API explorer
     - **SQLite query log** with per-client, per-domain and DNSSEC-status filtering
-    - **DNSSEC statistics** at `/api/dnssec/stats`, including downgrade fail-open counters
+    - **DNSSEC statistics** at `/api/dnssec/stats`, including a counter of DS denials upstreams left unproven
     - Details: [Metrics & Monitoring](features/metrics.md)
 
 ---
