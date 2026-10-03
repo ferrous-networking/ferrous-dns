@@ -23,7 +23,13 @@ fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
 }
 
 fn repo_with(pool: &SqlitePool, cfg: &DatabaseConfig) -> SqliteQueryLogRepository {
-    SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), cfg)
+    SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        cfg,
+        Default::default(),
+    )
 }
 
 /// Rebuilds the rollups from the raw rows with the production backfill, which

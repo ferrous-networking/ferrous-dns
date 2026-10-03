@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 
 /// Snapshot of DNS cache metrics for API exposure.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CacheMetricsSnapshot {
     pub total_entries: usize,
     pub hits: u64,

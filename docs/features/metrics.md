@@ -65,6 +65,16 @@ Labelled `{pool, server, address, family}`. The aggregate row for a server uses 
 |:-------|:-----|:--------|
 | `blocklist_domains` | gauge | Domains currently compiled into the block filter |
 
+### Overload shedding
+
+Work dropped on purpose because a fixed budget was full, counted since process start. Any rise means the server ran out of headroom at that point; zero is normal. These are what tell deliberate shedding apart from packet loss without reading the rate-limited `WARN` lines that report the same totals.
+
+| Metric | Type | Meaning |
+|:-------|:-----|:--------|
+| `udp_fallback_shed` | counter | UDP queries dropped unanswered because all 8192 slots for queries leaving the inline cache path were taken; the client retries |
+| `upstream_shed` | counter | Client queries refused because 4096 queries, over every transport, were already waiting on an upstream; UDP queries are dropped, stream clients get SERVFAIL |
+| `query_log_dropped` | counter | Query log entries dropped because the batching channel (`[database] query_log_channel_capacity`) was full; the queries were still answered |
+
 ### Query volume (rolling 24 h)
 
 These are derived from the SQLite query log over a **24-hour window**, not since process start.
@@ -119,11 +129,15 @@ ferrousdns_upstream_up == 0
 # Share of traffic being blocked (24 h window)
 ferrousdns_queries_blocked / ferrousdns_queries
 
+# Queries shed in the last 5 minutes, per path
+increase(ferrousdns_udp_fallback_shed_total[5m])
+increase(ferrousdns_upstream_shed_total[5m])
+
 # Version skew across a fleet
 count by (version) (ferrousdns_build_info)
 ```
 
-Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, `ferrousdns_cache_hit_rate` dropping below its normal band, and a rising `ferrousdns_queries_rate_limited` (either an attack or a rate limit set too tight).
+Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, `ferrousdns_cache_hit_rate` dropping below its normal band, a rising `ferrousdns_queries_rate_limited` (either an attack or a rate limit set too tight), and any increase in `ferrousdns_udp_fallback_shed_total` or `ferrousdns_upstream_shed_total` (clients went unanswered: upstreams too slow, or traffic beyond what the server can absorb).
 
 ---
 

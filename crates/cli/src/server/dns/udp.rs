@@ -23,14 +23,14 @@ const PACKETS_BEFORE_YIELD: usize = 256;
 /// spawn; queries that wait on an upstream are bounded in the use case.
 pub(super) struct FallbackAdmission {
     slots: Arc<Semaphore>,
-    shed: DropCounter,
+    shed: Arc<DropCounter>,
 }
 
 impl FallbackAdmission {
-    pub(super) fn new(limit: usize) -> Self {
+    pub(super) fn new(limit: usize, shed: Arc<DropCounter>) -> Self {
         Self {
             slots: Arc::new(Semaphore::new(limit)),
-            shed: DropCounter::new(),
+            shed,
         }
     }
 
@@ -345,6 +345,7 @@ mod test_support;
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use ferrous_dns_application::drop_counter::ShedCounters;
     use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
     use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
     use ferrous_dns_domain::{DnsQuery, DomainError};
@@ -422,10 +423,11 @@ mod tests {
             ))
             .await
             .unwrap();
+        let shed = ShedCounters::default();
         let worker = tokio::spawn(run_udp_worker(
             socket,
             test_support::handler_with_resolver(resolver.clone()),
-            Arc::new(FallbackAdmission::new(1)),
+            Arc::new(FallbackAdmission::new(1, shed.udp_fallback.clone())),
             0,
         ));
 
@@ -456,6 +458,17 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(5), exercise).await;
         worker.abort();
         result.unwrap();
+        // Query 2 alone found every fallback slot taken.
+        let scraped = ferrous_dns_api::render_metrics(
+            &Default::default(),
+            &[],
+            None,
+            0,
+            &shed.totals(),
+            "test",
+        )
+        .unwrap();
+        assert!(scraped.contains("\nferrousdns_udp_fallback_shed_total 1\n"));
     }
 
     /// Issue #239: answers that never wait on an upstream (a blocked name, a
@@ -482,11 +495,11 @@ mod tests {
             Arc::new(test_support::BlockOneFilter("blocked.example")),
             Arc::new(test_support::NoopQueryLog),
         )
-        .with_upstream_limit(1);
+        .with_upstream_limit(1, Default::default());
         let worker = tokio::spawn(run_udp_worker(
             socket,
             test_support::handler_with_use_case(use_case),
-            Arc::new(FallbackAdmission::new(8)),
+            Arc::new(FallbackAdmission::new(8, Default::default())),
             0,
         ));
 

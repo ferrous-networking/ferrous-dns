@@ -11,6 +11,7 @@ pub use mdns::start_mdns_listener;
 pub use tcp::bind_tcp_listener;
 
 use connection_limiter::ConnectionLimiter;
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_infrastructure::dns::server::DnsServerHandler;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,17 +26,22 @@ const MAX_IN_FLIGHT_UDP_QUERIES: usize = 2 * MAX_UPSTREAM_BOUND_QUERIES;
 
 /// Starts the Do53 listeners on `bind`: one SO_REUSEPORT UDP socket and TCP
 /// listener per worker, each a dual-stack AF_INET6 socket (see `udp` / `tcp`).
+/// UDP queries shed for lack of a fallback slot count in `udp_fallback_shed`.
 pub async fn start_dns_server(
     bind: SocketAddr,
     handler: DnsServerHandler,
     num_workers: usize,
     proxy_protocol_enabled: bool,
     tcp_conn_limiter: ConnectionLimiter,
+    udp_fallback_shed: Arc<DropCounter>,
 ) -> anyhow::Result<()> {
     info!(bind_address = %bind, num_workers, "Starting DNS server with SO_REUSEPORT");
 
     let handler = Arc::new(handler);
-    let udp_admission = Arc::new(udp::FallbackAdmission::new(MAX_IN_FLIGHT_UDP_QUERIES));
+    let udp_admission = Arc::new(udp::FallbackAdmission::new(
+        MAX_IN_FLIGHT_UDP_QUERIES,
+        udp_fallback_shed,
+    ));
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for i in 0..num_workers {

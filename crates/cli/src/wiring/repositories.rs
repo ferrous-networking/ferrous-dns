@@ -1,3 +1,4 @@
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
     ApiTokenRepository, MfaRepository, SessionRepository, UserRepository,
 };
@@ -65,6 +66,7 @@ impl Repositories {
         read_pool: SqlitePool,
         db_config: &DatabaseConfig,
         blocking_enabled: bool,
+        query_log_dropped: Arc<DropCounter>,
     ) -> Result<Self, ferrous_dns_domain::DomainError> {
         let blocklist = SqliteBlocklistRepository::new(write_pool.clone());
         let whitelist = SqliteWhitelistRepository::new(write_pool.clone());
@@ -119,6 +121,7 @@ impl Repositories {
                 query_log_pool,
                 read_pool,
                 db_config,
+                query_log_dropped,
             )),
             blocklist: Arc::new(blocklist),
             blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(write_pool.clone())),
