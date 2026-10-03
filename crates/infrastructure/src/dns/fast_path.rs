@@ -1,4 +1,4 @@
-use super::wire_response::COOKIE_OPTION_CODE;
+use super::wire_response::{QuestionName, COOKIE_OPTION_CODE};
 use ferrous_dns_domain::{EdnsCookie, RecordType};
 
 const MAX_DOMAIN_LEN: usize = 253;
@@ -56,6 +56,13 @@ impl FastPathQuery {
     /// The question section, `buf[12..question_end]`, for echoing in a response.
     pub fn question<'a>(&self, buf: &'a [u8]) -> &'a [u8] {
         &buf[12..self.question_end]
+    }
+
+    /// The question name, `buf[12..question_end - 4]`, which `parse_query`
+    /// walked label by label, so it needs no second walk.
+    #[inline]
+    pub fn question_name<'a>(&self, buf: &'a [u8]) -> QuestionName<'a> {
+        QuestionName(&buf[12..self.question_end - 4])
     }
 
     /// The first DNS Cookie option (RFC 7873, code 10) of the query in `buf`,

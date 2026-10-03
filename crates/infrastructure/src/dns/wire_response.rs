@@ -317,12 +317,13 @@ fn write_header(out: &mut Vec<u8>, id: u16, flags: [u8; 2], qd: u16, an: u16, ns
     }
 }
 
-/// Re-issues an upstream response under the client's header and OPT: ID and
-/// RD from the client, AD as given, the upstream OPT and any transaction
-/// signature dropped and `edns` appended in their place, carrying the
-/// upstream's extended RCODE bits. A client without DO (no `edns`, or
-/// `dnssec_ok` clear) gets no authenticating DNSSEC RRs it did not ask for
-/// (RFC 4035 §3.2.1). `None` if `upstream` is
+/// Re-issues an upstream response under the client's header, question
+/// spelling ([`echo_question_case`]) and OPT: ID and RD from the client, AD
+/// as given, the upstream OPT and any transaction signature dropped and
+/// `edns` appended in their place, carrying the upstream's extended RCODE
+/// bits. A client without DO
+/// (no `edns`, or `dnssec_ok` clear) gets no authenticating DNSSEC RRs it did
+/// not ask for (RFC 4035 §3.2.1). `None` if `upstream` is
 /// not a well-formed sequence of sections, holds two OPTs or an OPT outside
 /// the additional section, or has an extended RCODE that `edns: None` cannot
 /// carry.
@@ -330,6 +331,7 @@ pub fn relay_with_edns(
     upstream: &[u8],
     id: u16,
     recursion_desired: bool,
+    qname: Option<QuestionName<'_>>,
     authentic_data: bool,
     edns: Option<&EdnsReply<'_>>,
 ) -> Option<Vec<u8>> {
@@ -337,7 +339,53 @@ pub fn relay_with_edns(
     let sections = resection(upstream, strip)?;
     let mut out = append_opt(sections.out, sections.extended_rcode, edns)?;
     set_relay_header(&mut out, id, recursion_desired, authentic_data);
+    if let Some(qname) = qname {
+        echo_question_case(&mut out, qname);
+    }
     Some(out)
+}
+
+/// The name of a client query's first question, in wire form and
+/// uncompressed, as the client spelled it.
+#[derive(Debug, Clone, Copy)]
+pub struct QuestionName<'a>(pub(super) &'a [u8]);
+
+impl<'a> QuestionName<'a> {
+    /// The name that opens the question section `question`; `None` if it is
+    /// compressed or runs past the section.
+    pub fn parse(question: &'a [u8]) -> Option<Self> {
+        let mut pos = 0;
+        loop {
+            match *question.get(pos)? {
+                0 => return Some(Self(&question[..=pos])),
+                len @ 1..=63 => pos += 1 + usize::from(len),
+                _ => return None,
+            }
+        }
+    }
+}
+
+/// Writes the client's spelling `qname` over the question name of `msg` when
+/// the two are the same name ignoring ASCII case (RFC 4343 §3). The cache
+/// holds one spelling for every client, the lowercase one once 0x20 is
+/// stripped, and a resolver sending 0x20 drops an answer that does not echo
+/// its own. Same name, same length: no compression pointer moves, and those
+/// of the owner names now read the client's spelling too. A different name,
+/// as a Safe Search rewrite answers with, stays.
+#[inline]
+fn echo_question_case(msg: &mut [u8], QuestionName(qname): QuestionName<'_>) {
+    if msg.get(4..6).is_none_or(|qdcount| qdcount == [0, 0]) {
+        return;
+    }
+    let Some(name) = msg.get_mut(12..12 + qname.len()) else {
+        return;
+    };
+    // A length byte is never an ASCII letter, so equal ignoring case means
+    // the same labels at the same offsets. Most clients send the cache's
+    // spelling, which the plain compare settles without the case folding.
+    if *name != *qname && name.eq_ignore_ascii_case(qname) {
+        name.copy_from_slice(qname);
+    }
 }
 
 /// EDNS option code, from the local and experimental range (RFC 6891 §9), of
@@ -392,7 +440,8 @@ pub fn cache_form(upstream: &[u8], entry_ttl: u32, ttls: RangeInclusive<u32>) ->
 }
 
 /// Relays the cached answer `wire` (see [`cache_form`]) to a client, under
-/// its ID and RD and `edns` as its OPT, every TTL counted down by
+/// its ID, RD and question spelling (see [`relay_with_edns`]) and `edns` as
+/// its OPT, every TTL counted down by
 /// [`aged_ttl`] for an entry with `remaining` seconds left. AD is clear: the
 /// fast path serves clients without DO, which must not see the validating
 /// upstream's AD (RFC 6840 §5.8). The records are copied as they sit, and
@@ -403,12 +452,13 @@ pub fn relay_cached(
     wire: &[u8],
     id: u16,
     recursion_desired: bool,
+    qname: Option<QuestionName<'_>>,
     edns: Option<&EdnsReply<'_>>,
     remaining: u32,
 ) -> Option<Vec<u8>> {
     let (body, opt) = cached_opt(wire)?;
     if opt.authenticating && !edns.is_some_and(|e| e.dnssec_ok) {
-        return relay_aged(wire, id, recursion_desired, false, edns, remaining);
+        return relay_aged(wire, id, recursion_desired, qname, false, edns, remaining);
     }
     let mut out = match edns {
         // The cache's OPT but for its option and DO, which is the query's.
@@ -442,6 +492,9 @@ pub fn relay_cached(
     };
     age_ttls(&mut out, opt.ttls, opt.entry_ttl, remaining)?;
     set_relay_header(&mut out, id, recursion_desired, false);
+    if let Some(qname) = qname {
+        echo_question_case(&mut out, qname);
+    }
     Some(out)
 }
 
@@ -452,11 +505,12 @@ pub fn relay_aged(
     wire: &[u8],
     id: u16,
     recursion_desired: bool,
+    qname: Option<QuestionName<'_>>,
     authentic_data: bool,
     edns: Option<&EdnsReply<'_>>,
     remaining: u32,
 ) -> Option<Vec<u8>> {
-    let mut out = relay_with_edns(wire, id, recursion_desired, authentic_data, edns)?;
+    let mut out = relay_with_edns(wire, id, recursion_desired, qname, authentic_data, edns)?;
     if let Some((_, opt)) = cached_opt(wire) {
         for_each_ttl(&mut out, |ttl, _| {
             *ttl = aged_ttl(u32::from_be_bytes(*ttl), opt.entry_ttl, remaining).to_be_bytes();
@@ -1187,6 +1241,7 @@ mod tests {
             &upstream,
             0x2222,
             false,
+            None,
             true,
             Some(&EdnsReply {
                 dnssec_ok: true,
@@ -1218,7 +1273,7 @@ mod tests {
             .collect();
         assert_eq!(cookies, [ours.to_vec()]);
 
-        let without = relay_with_edns(&upstream, 1, true, false, None).unwrap();
+        let without = relay_with_edns(&upstream, 1, true, None, false, None).unwrap();
         assert!(Message::from_vec(&without).unwrap().edns.is_none());
     }
 
@@ -1231,7 +1286,40 @@ mod tests {
         ));
         let mut wire = upstream.to_vec().unwrap();
         wire[7] = 1; // ANCOUNT claims a record the message does not hold
-        assert!(relay_with_edns(&wire, 1, true, false, None).is_none());
+        assert!(relay_with_edns(&wire, 1, true, None, false, None).is_none());
+    }
+
+    /// Only the same name takes the client's spelling: one of the same length
+    /// but other letters is another name, and a prefix of it too.
+    #[test]
+    fn relay_echoes_the_client_spelling_of_the_same_name_only() {
+        let mut upstream = Message::new(1, MessageType::Response, OpCode::Query);
+        upstream.add_query(Query::query(
+            Name::from_str("example.com.").unwrap(),
+            RecordType::MX,
+        ));
+        let upstream = upstream.to_vec().unwrap();
+        // `Name::from_str` folds case through IDNA; `from_ascii` keeps it.
+        let spelled_as = |name| {
+            let mut query = Message::new(0, MessageType::Query, OpCode::Query);
+            query.add_query(Query::query(
+                Name::from_ascii(name).unwrap(),
+                RecordType::MX,
+            ));
+            let query = query.to_vec().unwrap();
+            let qname = QuestionName::parse(&query[12..]).expect("uncompressed");
+            let relayed = relay_with_edns(&upstream, 1, true, Some(qname), false, None).unwrap();
+            Message::from_vec(&relayed).unwrap().queries[0]
+                .name()
+                .to_string()
+        };
+
+        assert_eq!(spelled_as("ExAmPlE.CoM."), "ExAmPlE.CoM.");
+        assert_eq!(spelled_as("ExAmPlF.CoM."), "example.com.");
+        assert_eq!(spelled_as("ExAmPlE.Co."), "example.com.");
+        assert_eq!(spelled_as("ExAmPlE."), "example.com.");
+        assert!(QuestionName::parse(&[0xC0, 0x0C, 0, 15, 0, 1]).is_none());
+        assert!(QuestionName::parse(b"\x07exam").is_none());
     }
 
     /// RFC 6891 does not require OPT to be the last additional record. A
@@ -1256,7 +1344,8 @@ mod tests {
             cookie: Some(&[0x55; 16]),
             ede: None,
         };
-        let relayed = relay_with_edns(&wire, 1, true, false, Some(&ours)).expect("re-sectioned");
+        let relayed =
+            relay_with_edns(&wire, 1, true, None, false, Some(&ours)).expect("re-sectioned");
         let relayed = Message::from_vec(&relayed).expect("relayed message decodes");
         assert_eq!(relayed.additionals, upstream.additionals);
     }
@@ -1328,7 +1417,7 @@ mod tests {
         };
 
         for edns in [Some(&plain), None] {
-            let relayed = relay_with_edns(&wire, 7, true, false, edns).expect("re-sectioned");
+            let relayed = relay_with_edns(&wire, 7, true, None, false, edns).expect("re-sectioned");
             let relayed = Message::from_vec(&relayed).expect("relayed message decodes");
             assert_eq!(relayed.answers, upstream.answers[..1], "{edns:?}");
             assert_eq!(relayed.additionals, upstream.additionals, "{edns:?}");
@@ -1342,7 +1431,7 @@ mod tests {
             dnssec_ok: true,
             ..plain
         };
-        let relayed = relay_with_edns(&wire, 7, true, false, Some(&validating)).unwrap();
+        let relayed = relay_with_edns(&wire, 7, true, None, false, Some(&validating)).unwrap();
         let relayed = Message::from_vec(&relayed).unwrap();
         assert_eq!(relayed.answers, upstream.answers, "a DO client keeps them");
     }
@@ -1352,7 +1441,7 @@ mod tests {
         let mut wire = vec![0x11, 0x11, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
         wire.extend_from_slice(b"\x07example\x03com\x00\x00\x2E\x00\x01"); // RRSIG query
         rr(&mut wire, &[0xC0, 12], TYPE_RRSIG, &rrsig_rdata(1));
-        let relayed = relay_with_edns(&wire, 7, true, false, None).unwrap();
+        let relayed = relay_with_edns(&wire, 7, true, None, false, None).unwrap();
         assert_eq!(
             types(&Message::from_vec(&relayed).unwrap().answers),
             [RecordType::RRSIG]
@@ -1433,8 +1522,8 @@ mod tests {
             let cached = cache_form(&wire, 60, 0..=u32::MAX).unwrap();
             for edns in [None, Some(&plain), Some(&with_cookie)] {
                 assert_eq!(
-                    relay_cached(&cached, 9, false, edns, 60),
-                    relay_with_edns(&wire, 9, false, false, edns),
+                    relay_cached(&cached, 9, false, None, edns, 60),
+                    relay_with_edns(&wire, 9, false, None, false, edns),
                     "{edns:?}"
                 );
             }
@@ -1513,7 +1602,7 @@ mod tests {
             let cached =
                 cache_form(&mx_with_authority_and_glue(signed), 300, 0..=u32::MAX).unwrap();
             for edns in [None, Some(&plain), Some(&with_cookie)] {
-                let reply = relay_cached(&cached, 9, false, edns, 200).unwrap();
+                let reply = relay_cached(&cached, 9, false, None, edns, 200).unwrap();
                 assert_eq!(ttls(&reply), aged, "signed {signed}, {edns:?}");
             }
             // The slow path, for a client that keeps the RRSIG.
@@ -1521,7 +1610,7 @@ mod tests {
                 dnssec_ok: true,
                 ..plain
             };
-            let reply = relay_aged(&cached, 9, false, false, Some(&validating), 200).unwrap();
+            let reply = relay_aged(&cached, 9, false, None, false, Some(&validating), 200).unwrap();
             let mut kept = aged.to_vec();
             if signed {
                 kept.insert(1, (RecordType::RRSIG, 200));
@@ -1535,11 +1624,11 @@ mod tests {
     #[test]
     fn records_past_their_ttl_are_served_with_the_stale_ttl() {
         let cached = cache_form(&mx_with_authority_and_glue(false), 300, 0..=u32::MAX).unwrap();
-        let stale = relay_cached(&cached, 9, false, None, STALE_SERVE_TTL).unwrap();
+        let stale = relay_cached(&cached, 9, false, None, None, STALE_SERVE_TTL).unwrap();
         assert!(ttls(&stale).iter().all(|&(_, ttl)| ttl == STALE_SERVE_TTL));
 
         // 250 s in, the glue ran out 130 s ago.
-        let late = relay_cached(&cached, 9, false, None, 50).unwrap();
+        let late = relay_cached(&cached, 9, false, None, None, 50).unwrap();
         assert_eq!(
             ttls(&late),
             [
@@ -1564,7 +1653,7 @@ mod tests {
                 (RecordType::A, 600)
             ]
         );
-        let reply = relay_cached(&cached, 9, false, None, 500).unwrap();
+        let reply = relay_cached(&cached, 9, false, None, None, 500).unwrap();
         assert!(ttls(&reply).iter().all(|&(_, ttl)| ttl == 500));
     }
 
@@ -1573,7 +1662,7 @@ mod tests {
     #[test]
     fn relay_cached_declines_bytes_not_in_cache_form() {
         let upstream = mx_with_authority_and_glue(false);
-        assert!(relay_cached(&upstream, 9, false, None, 60).is_none());
+        assert!(relay_cached(&upstream, 9, false, None, None, 60).is_none());
     }
 
     /// RFC 6840 §5.8: the cached bytes may carry the validating upstream's
@@ -1585,7 +1674,7 @@ mod tests {
         wire[3] |= 0x20;
         let cached = cache_form(&wire, 300, 0..=u32::MAX).unwrap();
         for rd in [false, true] {
-            let reply = relay_cached(&cached, 0x4242, rd, None, 300).unwrap();
+            let reply = relay_cached(&cached, 0x4242, rd, None, None, 300).unwrap();
             let msg = Message::from_vec(&reply).unwrap();
             assert_eq!(
                 (msg.id, msg.recursion_desired, msg.authentic_data),

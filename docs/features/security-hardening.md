@@ -98,7 +98,7 @@ Details worth knowing before enabling it:
 
 - It applies to **every record type**, not only A/AAAA.
 - The echoed name is compared **case-sensitively on plain DNS only**. On DoT/DoH/DoQ the comparison is case-insensitive.
-- The randomized name is canonicalized before the answer is cached, so clients and the query log never see mixed-case names.
+- The randomized name is canonicalized before the answer is cached, so neither the cache nor the query log keeps the randomized case. Every client gets the question back spelled as it sent it, so a downstream resolver doing its own 0x20 check accepts the answer.
 - It also applies to queries sent to `local_dns_server`. A router that rewrites name case fails validation on every local answer, logged as `Local DNS server query failed`.
 - It is off by default because a minority of upstreams normalize QNAME case, which would make every response from them fail validation. Enable it, then watch for a jump in upstream failures before leaving it on.
 

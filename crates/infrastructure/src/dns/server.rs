@@ -3,7 +3,7 @@ use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::fast_path::{self, FastPathQuery};
 use crate::dns::forwarding::RecordTypeMapper;
 use crate::dns::wire_response::{
-    self, EdnsReply, Rcode, ResponseBody, ResponseHead, COOKIE_OPTION_CODE,
+    self, EdnsReply, QuestionName, Rcode, ResponseBody, ResponseHead, COOKIE_OPTION_CODE,
 };
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
@@ -92,12 +92,12 @@ impl DnsServerHandler {
                         wire,
                         query.id,
                         query.recursion_desired,
+                        Some(query.question_name(raw)),
                         query.has_edns().then_some(&PLAIN_EDNS),
                         remaining,
                     ),
-                    Some(cookie) => {
-                        self.relay_cached_with_cookie(wire, query, cookie, client_ip, remaining)
-                    }
+                    Some(cookie) => self
+                        .relay_cached_with_cookie(wire, query, raw, cookie, client_ip, remaining),
                 }?;
                 // Oversized-for-UDP hits bail to the slow path, which sets TC=1,
                 // as build_cache_hit_response does for A/AAAA.
@@ -115,6 +115,7 @@ impl DnsServerHandler {
         &self,
         wire: &[u8],
         query: &FastPathQuery,
+        raw: &[u8],
         cookie: &[u8],
         client_ip: IpAddr,
         remaining: u32,
@@ -129,6 +130,7 @@ impl DnsServerHandler {
             wire,
             query.id,
             query.recursion_desired,
+            Some(query.question_name(raw)),
             Some(&reply),
             remaining,
         )
@@ -194,12 +196,14 @@ impl DnsServerHandler {
             if let Some(wire_data) = &resolution.upstream_wire_data {
                 // 0x20 case randomization never reaches this far: responses are
                 // canonicalized at the upstream choke point, before they enter
-                // the cache (see ResponseValidator::canonicalize). Our OPT
+                // the cache (see ResponseValidator::canonicalize); the relay
+                // writes the client's spelling back. Our OPT
                 // replaces the upstream's or the cache's: DO copied from the
                 // query (RFC 3225 §3), our server cookie, and none for a client
                 // that sent none (RFC 6891 §7). A client without DO loses the
                 // DNSSEC RRs it did not ask for (RFC 4035 §3.2.1).
                 let reply = query.edns_reply(cookie, None);
+                let qname = QuestionName::parse(&query.question);
                 // A cache hit's TTLs count down its time in the cache (RFC
                 // 1035 §3.2.1), as the fast path's do.
                 let relayed = match (resolution.cache_hit, resolution.min_ttl) {
@@ -207,6 +211,7 @@ impl DnsServerHandler {
                         wire_data,
                         query.id,
                         query.rd,
+                        qname,
                         set_ad,
                         reply.as_ref(),
                         remaining,
@@ -215,6 +220,7 @@ impl DnsServerHandler {
                         wire_data,
                         query.id,
                         query.rd,
+                        qname,
                         set_ad,
                         reply.as_ref(),
                     ),

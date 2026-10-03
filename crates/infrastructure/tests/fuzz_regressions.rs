@@ -333,12 +333,13 @@ fn relay_keeps_the_upstream_extended_rcode() {
         cookie: Some(&[0x55; 16]),
         ede: None,
     };
-    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&ours)).unwrap();
+    let relayed =
+        wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&ours)).unwrap();
     let rcode = Message::from_vec(&relayed).unwrap().metadata.response_code;
     assert_eq!(u16::from(rcode), 23);
 
     // Without an OPT of our own the extended bits have nowhere to go.
-    assert!(wire_response::relay_with_edns(upstream, 1, true, false, None).is_none());
+    assert!(wire_response::relay_with_edns(upstream, 1, true, None, false, None).is_none());
 }
 
 /// `crash-53ce8e0a` from the `upstream_relay` target: an NXDOMAIN whose only
@@ -358,10 +359,11 @@ fn relay_drops_a_tsig_rather_than_append_an_opt_behind_it() {
         cookie: Some(&[0x55; 16]),
         ede: None,
     };
-    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&ours))
+    let relayed = wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&ours))
         .expect("re-sectioned");
     let cached = wire_response::cache_form(upstream, 60, 0..=u32::MAX).expect("cacheable");
-    let served = wire_response::relay_cached(&cached, 1, true, Some(&ours), 60).expect("served");
+    let served =
+        wire_response::relay_cached(&cached, 1, true, None, Some(&ours), 60).expect("served");
     for reply in [relayed, served] {
         let msg = Message::from_vec(&reply).expect("relayed message decodes");
         assert_eq!(u16::from(msg.metadata.response_code), 3);
@@ -385,8 +387,8 @@ fn relay_reads_a_sig_type_covered_field_inside_its_rdata() {
         cookie: None,
         ede: None,
     };
-    let once = wire_response::relay_with_edns(upstream, 1, true, false, Some(&ours)).unwrap();
-    let twice = wire_response::relay_with_edns(&once, 1, true, false, Some(&ours));
+    let once = wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&ours)).unwrap();
+    let twice = wire_response::relay_with_edns(&once, 1, true, None, false, Some(&ours));
     assert_eq!(twice.as_deref(), Some(&once[..]));
 }
 
@@ -409,9 +411,10 @@ fn relay_keeps_a_name_whose_labels_run_into_the_dropped_opt() {
         cookie: None,
         ede: None,
     };
-    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&ours)).unwrap();
+    let relayed =
+        wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&ours)).unwrap();
     let cached = wire_response::cache_form(upstream, 60, 0..=u32::MAX).unwrap();
-    let served = wire_response::relay_cached(&cached, 1, true, Some(&ours), 60).unwrap();
+    let served = wire_response::relay_cached(&cached, 1, true, None, Some(&ours), 60).unwrap();
     for reply in [relayed, served] {
         let msg = Message::from_vec(&reply).expect("relayed message decodes");
         assert_eq!(msg.additionals, source.additionals);
@@ -440,11 +443,13 @@ fn a_malformed_rrsig_is_stripped_for_plain_clients_but_never_cached() {
         dnssec_ok: true,
         ..plain
     };
-    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&plain))
+    let relayed = wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&plain))
         .expect("a plain client gets the answer without the RRSIG");
     let msg = Message::from_vec(&relayed).unwrap();
     assert!(msg.additionals.is_empty() && msg.edns.is_some());
-    assert!(wire_response::relay_with_edns(upstream, 1, true, false, Some(&with_do)).is_none());
+    assert!(
+        wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&with_do)).is_none()
+    );
     assert!(wire_response::cache_form(upstream, 60, 0..=u32::MAX).is_none());
 }
 
@@ -466,7 +471,7 @@ fn a_name_read_from_ttl_bytes_is_relayed_but_not_cached() {
         cookie: None,
         ede: None,
     };
-    let relayed = wire_response::relay_with_edns(upstream, 1, true, false, Some(&plain))
+    let relayed = wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&plain))
         .expect("the relay copies the TTL the glue name is read from as is");
     let source = Message::from_vec(upstream).unwrap();
     let msg = Message::from_vec(&relayed).unwrap();
@@ -489,6 +494,6 @@ fn a_name_overrunning_its_rdata_is_relayed_but_not_cached() {
         cookie: None,
         ede: None,
     };
-    assert!(wire_response::relay_with_edns(upstream, 1, true, false, Some(&plain)).is_some());
+    assert!(wire_response::relay_with_edns(upstream, 1, true, None, false, Some(&plain)).is_some());
     assert!(wire_response::cache_form(upstream, 60, 0..=u32::MAX).is_none());
 }
