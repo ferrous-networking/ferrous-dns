@@ -1,6 +1,7 @@
 //! Accounting for work deliberately shed under overload.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Drops to log: those since the previous report, and since construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,42 @@ impl DropCounter {
             total,
         })
     }
+
+    /// Drops recorded since construction.
+    #[inline]
+    pub fn total(&self) -> u64 {
+        self.total.load(Ordering::Relaxed)
+    }
+}
+
+/// One [`DropCounter`] per path that sheds work under overload: its owner
+/// records into it and `/metrics` reads it.
+#[derive(Debug, Default, Clone)]
+pub struct ShedCounters {
+    /// UDP datagrams dropped because every fallback task slot was taken.
+    pub udp_fallback: Arc<DropCounter>,
+    /// Client queries refused because every upstream slot was taken.
+    pub upstream: Arc<DropCounter>,
+    /// Query log entries dropped because the batching channel was full.
+    pub query_log: Arc<DropCounter>,
+}
+
+impl ShedCounters {
+    pub fn totals(&self) -> ShedTotals {
+        ShedTotals {
+            udp_fallback: self.udp_fallback.total(),
+            upstream: self.upstream.total(),
+            query_log: self.query_log.total(),
+        }
+    }
+}
+
+/// [`ShedCounters`] read at one instant.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ShedTotals {
+    pub udp_fallback: u64,
+    pub upstream: u64,
+    pub query_log: u64,
 }
 
 #[cfg(test)]

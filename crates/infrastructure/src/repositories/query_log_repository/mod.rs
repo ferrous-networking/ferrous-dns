@@ -15,6 +15,7 @@ use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QuerySta
 use reader::DomainVerdict;
 use sqlx::SqlitePool;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -26,17 +27,19 @@ pub struct SqliteQueryLogRepository {
     sender: mpsc::Sender<QueryLogEntry>,
     sample_rate: u32,
     sample_counter: AtomicU64,
-    dropped: DropCounter,
+    dropped: Arc<DropCounter>,
     /// Built once at startup, so this is when the server started serving.
     started_at: Instant,
 }
 
 impl SqliteQueryLogRepository {
+    /// Entries dropped because the batching channel is full count in `dropped`.
     pub fn new(
         write_pool: SqlitePool,
         query_log_pool: SqlitePool,
         read_pool: SqlitePool,
         cfg: &DatabaseConfig,
+        dropped: Arc<DropCounter>,
     ) -> Self {
         let channel_capacity = cfg.query_log_channel_capacity;
         let max_batch_size = cfg.query_log_max_batch_size;
@@ -62,7 +65,7 @@ impl SqliteQueryLogRepository {
             sender,
             sample_rate: cfg.query_log_sample_rate,
             sample_counter: AtomicU64::new(0),
-            dropped: DropCounter::new(),
+            dropped,
             started_at: Instant::now(),
         }
     }

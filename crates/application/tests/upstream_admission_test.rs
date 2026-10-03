@@ -5,6 +5,7 @@
 mod helpers;
 
 use async_trait::async_trait;
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, SafeSearchEnginePort};
 use ferrous_dns_application::use_cases::dns::DnsRateLimiter;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
@@ -74,6 +75,7 @@ struct Fixture {
     use_case: Arc<HandleDnsQueryUseCase>,
     resolver: Arc<HeldResolver>,
     log: Arc<MockQueryLogRepository>,
+    shed: Arc<DropCounter>,
 }
 
 /// A use case with a single upstream slot.
@@ -92,14 +94,16 @@ fn fixture() -> Fixture {
         whitelist: vec!["192.168.1.0/24".to_string()],
         ..RateLimitConfig::default()
     };
+    let shed = Arc::new(DropCounter::new());
     let use_case = HandleDnsQueryUseCase::new(resolver.clone(), filter, log.clone())
         .with_rate_limiter(Arc::new(DnsRateLimiter::new(&rate_limit)))
         .with_safe_search(Arc::new(ForceSafeSearch))
-        .with_upstream_limit(1);
+        .with_upstream_limit(1, shed.clone());
     Fixture {
         use_case: Arc::new(use_case),
         resolver,
         log,
+        shed,
     }
 }
 
@@ -143,6 +147,7 @@ async fn test_answers_that_need_no_upstream_are_served_while_the_slot_is_held() 
         Err(DomainError::DnsRateLimited)
     ));
 
+    assert_eq!(fixture.shed.total(), 0, "nothing above needed an upstream");
     fixture.resolver.release.add_permits(1);
     assert!(held.await.unwrap().is_ok());
 }
@@ -171,6 +176,7 @@ async fn test_a_miss_over_the_budget_is_shed_on_every_transport_without_a_log_en
         );
     }
     assert_eq!(fixture.log.sync_log_count(), logged);
+    assert_eq!(fixture.shed.total(), 5);
 
     fixture.resolver.release.add_permits(1);
     assert!(held.await.unwrap().is_ok());

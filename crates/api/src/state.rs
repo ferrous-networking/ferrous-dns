@@ -1,3 +1,4 @@
+use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_application::ports::{
     ConfigFilePersistence, DnsCachePort, DnssecStatsPort, TlsCertificatePort, UpstreamHealthPort,
     UpstreamReloadPort,
@@ -56,6 +57,8 @@ pub struct DnsUseCases {
     pub reload_upstream: Arc<dyn UpstreamReloadPort>,
     /// Live DNSSEC validator cache counters (zeros when validation is off).
     pub dnssec_stats: Arc<dyn DnssecStatsPort>,
+    /// Work shed under overload, per drop path, since boot.
+    pub shed: ShedCounters,
 }
 
 #[derive(Clone)]

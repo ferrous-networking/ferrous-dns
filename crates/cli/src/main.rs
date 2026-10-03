@@ -5,6 +5,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Context;
 use clap::Parser;
+use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -49,15 +50,17 @@ async fn async_main() -> anyhow::Result<()> {
     let config_arc = Arc::new(RwLock::new(config.clone()));
     let wal_pool = write_pool.clone();
 
+    let shed = ShedCounters::default();
     let repos = wiring::Repositories::new(
         write_pool,
         query_log_pool,
         read_pool,
         &config.database,
         config.blocking.enabled,
+        shed.query_log.clone(),
     )
     .await?;
-    let dns_services = wiring::DnsServices::new(&config, &repos).await?;
+    let dns_services = wiring::DnsServices::new(&config, &repos, shed.upstream.clone()).await?;
     let use_cases = wiring::UseCases::new(
         &repos,
         dns_services.pool_manager.clone(),
@@ -109,12 +112,14 @@ async fn async_main() -> anyhow::Result<()> {
         None
     };
 
+    let udp_fallback_shed = shed.udp_fallback.clone();
     let app_state = wiring::build_app_state(
         use_cases,
         auth.use_cases,
         &repos,
         &dns_services,
         &config_services,
+        shed,
         web_tls_config.is_some(),
     )
     .await;
@@ -141,6 +146,7 @@ async fn async_main() -> anyhow::Result<()> {
             num_dns_workers,
             proxy_protocol_enabled,
             tcp_conn_limiter,
+            udp_fallback_shed,
         )
         .await
         {

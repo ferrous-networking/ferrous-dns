@@ -4,6 +4,7 @@
 //! so no `AppState` or database is required.
 
 use ferrous_dns_api::render_metrics;
+use ferrous_dns_application::drop_counter::ShedTotals;
 use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth,
     UpstreamStatus,
@@ -77,6 +78,7 @@ fn render_includes_cache_counters_and_gauges() {
         &sample_upstreams(),
         Some(&sample_stats()),
         1234,
+        &ShedTotals::default(),
         "9.9.9",
     )
     .unwrap();
@@ -100,6 +102,7 @@ fn render_includes_upstream_and_query_series() {
         &sample_upstreams(),
         Some(&sample_stats()),
         0,
+        &ShedTotals::default(),
         "9.9.9",
     )
     .unwrap();
@@ -118,7 +121,15 @@ fn render_includes_upstream_and_query_series() {
 
 #[test]
 fn render_omits_query_gauges_when_stats_missing() {
-    let body = render_metrics(&sample_cache(), &sample_upstreams(), None, 5, "9.9.9").unwrap();
+    let body = render_metrics(
+        &sample_cache(),
+        &sample_upstreams(),
+        None,
+        5,
+        &ShedTotals::default(),
+        "9.9.9",
+    )
+    .unwrap();
 
     // Live metrics still present even without query stats.
     assert!(body.contains("ferrousdns_cache_hits_total 5"));

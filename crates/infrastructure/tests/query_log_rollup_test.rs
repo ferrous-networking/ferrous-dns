@@ -125,7 +125,13 @@ async fn writer_rollups_equal_backfill_over_raw_rows() {
         query_log_flush_interval_ms: 5,
         ..DatabaseConfig::default()
     };
-    let repo = SqliteQueryLogRepository::new(pool.clone(), pool.clone(), pool.clone(), &cfg);
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &cfg,
+        Default::default(),
+    );
 
     // Several waves, each awaited, so buckets receive repeated upserts and the
     // ON CONFLICT accumulation path is exercised, not just first inserts.

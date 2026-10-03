@@ -4,6 +4,7 @@ mod resolver;
 
 use crate::server::dns::connection_limiter::ConnectionLimiter;
 use crate::server::dns::MAX_UPSTREAM_BOUND_QUERIES;
+use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
     CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
@@ -63,7 +64,12 @@ pub struct DnsServices {
 }
 
 impl DnsServices {
-    pub async fn new(config: &Config, repos: &Repositories) -> anyhow::Result<Self> {
+    /// Client queries shed for lack of an upstream slot count in `upstream_shed`.
+    pub async fn new(
+        config: &Config,
+        repos: &Repositories,
+        upstream_shed: Arc<DropCounter>,
+    ) -> anyhow::Result<Self> {
         info!("Initializing DNS services with load balancing");
         tsc_timer::init();
 
@@ -214,7 +220,7 @@ impl DnsServices {
             config.database.client_tracking_interval,
         )
         .with_rate_limiter(rate_limiter)
-        .with_upstream_limit(MAX_UPSTREAM_BOUND_QUERIES)
+        .with_upstream_limit(MAX_UPSTREAM_BOUND_QUERIES, upstream_shed)
         .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces())
         .with_query_logging(config.database.log_queries);
 
@@ -490,10 +496,19 @@ mod tests {
             crate::bootstrap::database::init_database(&database_url, &config.database)
                 .await
                 .unwrap();
-        let repos = Repositories::new(write, query_log, read, &config.database, false)
+        let repos = Repositories::new(
+            write,
+            query_log,
+            read,
+            &config.database,
+            false,
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        let services = DnsServices::new(&config, &repos, Default::default())
             .await
             .unwrap();
-        let services = DnsServices::new(&config, &repos).await.unwrap();
         (dir, services)
     }
 
