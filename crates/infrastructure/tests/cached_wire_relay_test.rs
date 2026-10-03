@@ -468,3 +468,49 @@ async fn cached_answers_count_down_every_ttl() {
         assert_eq!(got, [300 - age, 300 - age, 120 - age]);
     }
 }
+
+/// A resolver that sends 0x20-randomized names drops an answer whose
+/// question is not spelled as it asked; the cache holds one spelling for every
+/// client. A different name, as a Safe Search rewrite answers with, stays.
+#[tokio::test]
+async fn cached_answers_echo_the_question_as_the_client_spelled_it() {
+    let rewritten = upstream("safe.example.net", WireType::MX, mx(), false, true, 0);
+    let server = Server::caching(
+        &[
+            (
+                "mail.example.com",
+                RecordType::MX,
+                upstream("mail.example.com", WireType::MX, mx(), false, true, 0),
+            ),
+            ("www.example.com", RecordType::MX, rewritten),
+        ],
+        Arc::new(NoopQueryLog),
+    );
+    let spelled = |reply: &Message| {
+        (
+            reply.queries[0].name().to_string(),
+            reply.answers[0].name.to_string(),
+        )
+    };
+    let cookie = Some(&CLIENT_COOKIE[..]);
+
+    for (owner, echoed) in [
+        ("MaIl.ExAmPlE.cOm.", "MaIl.ExAmPlE.cOm."),
+        ("wWw.ExAmPlE.cOm.", "safe.example.net."),
+    ] {
+        let mut replies = Vec::new();
+        for (edns, cookie) in [(None, None), (Some(false), None), (Some(false), cookie)] {
+            replies.push(
+                server
+                    .fast(&query(owner, WireType::MX, edns, cookie))
+                    .expect("hit"),
+            );
+        }
+        for (edns, cookie) in [(Some(true), None), (Some(true), cookie)] {
+            replies.push(server.slow(&query(owner, WireType::MX, edns, cookie)).await);
+        }
+        for reply in replies {
+            assert_eq!(spelled(&reply), (echoed.into(), echoed.into()), "{owner}");
+        }
+    }
+}

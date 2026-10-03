@@ -5,20 +5,23 @@
 //! bytes come from the upstream, or from an off-path spoofer that won the
 //! race.
 //!
-//! Beyond not panicking: relaying our own output again is a no-op, and when
+//! Beyond not panicking: relaying our own output again is a no-op, both
+//! relays spell the question name byte for byte as the client did when it
+//! asked for the upstream's name and as the upstream did otherwise, and when
 //! hickory decodes the upstream message it decodes the relayed one to the same
 //! RCODE and records (less the stripped ones) under our header and OPT, and
 //! serving the cache form decodes to the same message as relaying directly.
-//! Messages with a compression pointer into the header are skipped for those
-//! checks: RFC 1035 forbids them, hickory follows them, and their target
-//! moves under the ID rewrite every cached answer gets, relayed or not.
+//! Messages with a compression pointer into the header are skipped for the
+//! hickory checks: RFC 1035 forbids them, hickory follows them, and their
+//! target moves under the ID rewrite every cached answer gets, relayed or not.
 //!
 //! The relay knobs come from the upstream ID, which the relay overwrites
-//! anyway, so corpus entries stay plain DNS packets.
+//! anyway, so corpus entries stay plain DNS packets. The client's question
+//! is the upstream's in uppercase, with one more byte flipped under knob 32.
 #![no_main]
 
 use ferrous_dns_infrastructure::dns::fuzz_api;
-use ferrous_dns_infrastructure::dns::wire_response::{self, EdnsReply};
+use ferrous_dns_infrastructure::dns::wire_response::{self, EdnsReply, QuestionName};
 use hickory_proto::dnssec::rdata::DNSSECRData;
 use hickory_proto::op::Message;
 use hickory_proto::rr::rdata::NULL;
@@ -71,6 +74,41 @@ fn blank_opaque_names(msg: &mut Message) {
     }
 }
 
+/// Length, root label included, of the uncompressed name that opens `buf`.
+fn uncompressed_name_len(buf: &[u8]) -> Option<usize> {
+    let mut pos = 0;
+    loop {
+        match *buf.get(pos)? {
+            0 => return Some(pos + 1),
+            len @ 1..=63 => pos += 1 + usize::from(len),
+            _ => return None,
+        }
+    }
+}
+
+/// Byte for byte, where hickory compares names ignoring case: the question
+/// name of `reply` is the client's when the client asked for the upstream's
+/// name, and the upstream's spelling otherwise.
+fn assert_question_spelling(reply: &[u8], upstream: &[u8], client_question: &[u8]) {
+    if upstream.get(4..6).is_none_or(|qdcount| qdcount == [0, 0]) {
+        return;
+    }
+    let Some(len) = uncompressed_name_len(&upstream[12..]) else {
+        return;
+    };
+    let theirs = &upstream[12..12 + len];
+    let client = uncompressed_name_len(client_question).map(|n| &client_question[..n]);
+    let expected = match client {
+        Some(client) if client.eq_ignore_ascii_case(theirs) => client,
+        _ => theirs,
+    };
+    assert_eq!(
+        &reply[12..12 + len],
+        expected,
+        "question name not spelled as expected"
+    );
+}
+
 fuzz_target!(|upstream: &[u8]| {
     let Some(&[hi, lo]) = upstream.get(..2) else {
         return;
@@ -84,11 +122,21 @@ fuzz_target!(|upstream: &[u8]| {
     };
     let edns = (knobs & 16 == 0).then_some(&reply);
     let dnssec_ok = edns.is_some_and(|e| e.dnssec_ok);
+    // The client's question is the upstream's in uppercase: the same name.
+    // With knob 32 its first label byte differs too: another name.
+    let mut question = upstream.get(12..).unwrap_or_default().to_ascii_uppercase();
+    if knobs & 32 != 0 {
+        if let Some(byte) = question.get_mut(1) {
+            *byte ^= 1;
+        }
+    }
+    let qname = QuestionName::parse(&question);
 
-    let Some(relayed) = wire_response::relay_with_edns(upstream, ID, rd, ad, edns) else {
+    let Some(relayed) = wire_response::relay_with_edns(upstream, ID, rd, qname, ad, edns) else {
         return;
     };
-    let again = wire_response::relay_with_edns(&relayed, ID, rd, ad, edns);
+    assert_question_spelling(&relayed, upstream, &question);
+    let again = wire_response::relay_with_edns(&relayed, ID, rd, qname, ad, edns);
     assert_eq!(
         again.as_deref(),
         Some(&relayed[..]),
@@ -136,7 +184,8 @@ fuzz_target!(|upstream: &[u8]| {
         ede: None,
     };
     let cached = wire_response::cache_form(upstream, u32::MAX, 0..=u32::MAX);
-    let relays_with_do = wire_response::relay_with_edns(upstream, ID, rd, ad, Some(&with_do));
+    let relays_with_do =
+        wire_response::relay_with_edns(upstream, ID, rd, qname, ad, Some(&with_do));
     let cached = match (cached, relays_with_do) {
         (Some(cached), Some(_)) => cached,
         (Some(_), None) => panic!("cached what a DO client cannot be relayed"),
@@ -149,8 +198,9 @@ fuzz_target!(|upstream: &[u8]| {
         }
         (None, None) => return,
     };
-    let served = wire_response::relay_cached(&cached, ID, rd, edns, u32::MAX)
+    let served = wire_response::relay_cached(&cached, ID, rd, qname, edns, u32::MAX)
         .expect("relayed but not served from the cache");
+    assert_question_spelling(&served, upstream, &question);
     let mut served = Message::from_vec(&served).expect("the cache form served an invalid message");
     blank_opaque_names(&mut served);
     let mut expected = got;
