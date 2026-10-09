@@ -46,6 +46,15 @@ body {
     margin: 0
 }
 
+/* Preflight's `:disabled { cursor: default }` loads before the page CSS, so a
+   page's `.btn { cursor: pointer }` would otherwise win on a disabled button. */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+    cursor: default
+}
+
 .sidebar {
     position: fixed;
     left: 0;
