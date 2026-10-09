@@ -401,7 +401,7 @@ success_threshold = 1
 
 ### Internal Network (Split DNS)
 
-Route internal domains to a local resolver, everything else to DoH:
+Route an internal domain to a local resolver, everything else to DoH:
 
 ```toml
 [dns]
@@ -419,7 +419,7 @@ servers  = [
 ]
 ```
 
-Internal domain routing (e.g. `corp.internal` → `10.0.0.10:53`) is configured via **Clients > Groups > Forwarding** in the dashboard.
+Queries for `corp` and every name under it go to `10.0.0.10:53`; everything else uses the `public` pool. Only one domain can be routed this way — see [Conditional Forwarding](../configuration/dns.md#conditional-forwarding).
 
 ---
 

@@ -111,7 +111,6 @@ is otherwise only written to the log.
 
 - Manage static A/AAAA records
 - Automatic PTR generation from A records
-- Conditional forwarding configuration
 
 ![Local DNS — the add-record form above the table of static records with FQDN, IP, type and TTL](../assets/dashboard/dashboard-local-dns.png)
 

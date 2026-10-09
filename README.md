@@ -160,7 +160,6 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 - [Auto client detection](https://ferrous-networking.github.io/ferrous-dns/features/client-management/) by IP, MAC address, and hostname
 - [Client groups](https://ferrous-networking.github.io/ferrous-dns/features/client-management/) with independent policies (e.g. Kids, Work, IoT, Guest)
 - [Parental controls](https://ferrous-networking.github.io/ferrous-dns/features/client-management/) with time-based scheduling per group
-- [Conditional forwarding](https://ferrous-networking.github.io/ferrous-dns/features/client-management/) — route specific domains to internal resolvers
 
 **Security** — [Security docs](https://ferrous-networking.github.io/ferrous-dns/features/security/)
 - [HTTPS](https://ferrous-networking.github.io/ferrous-dns/features/security/) for dashboard and REST API (single port, automatic HTTP -> HTTPS redirect)

@@ -33,7 +33,7 @@ Group your clients to apply independent policies:
 2. Click **New Group**
 3. Set a name (e.g. "Kids", "Work", "IoT", "Guest")
 4. Assign clients to the group
-5. Configure the group's blocklists, schedules, and forwarding
+5. Configure the group's blocklists and schedules
 
 ### Group Policies
 
@@ -45,7 +45,6 @@ Each group can have its own:
 | **Allowlist** | Domains always allowed for this group |
 | **Safe Search** | Force safe search on search engines |
 | **Scheduling** | Time-based blocking rules |
-| **Conditional forwarding** | Route specific domains to internal resolvers |
 | **Upstream** | Use different upstream DNS pools (planned) |
 
 ---
@@ -83,31 +82,6 @@ Monday–Friday, 09:00–18:00 → block Gaming, Streaming, Social Media
 The schedule evaluator runs every minute and activates/deactivates blocking rules automatically.
 
 See [Block Services & Schedules](block-services.md) for the complete scheduling guide with REST API examples, days bitmask reference, and real-world scenarios.
-
----
-
-## Conditional Forwarding
-
-Route specific domain queries to internal resolvers instead of the configured upstream pools:
-
-### Use Cases
-
-- **Active Directory**: route `corp.internal` → `10.0.0.10:53` (AD DNS)
-- **Home lab**: route `home.lab` → `192.168.1.1:53` (local resolver)
-- **Split-horizon**: route `internal.company.com` → internal DNS while everything else uses DoH
-
-### Configuration
-
-Managed via dashboard: **Clients > Groups > [Group] > Forwarding**
-
-Or via the REST API:
-```json
-{
-  "domain": "corp.internal",
-  "upstream": "10.0.0.10:53",
-  "group_id": 1
-}
-```
 
 ---
 
