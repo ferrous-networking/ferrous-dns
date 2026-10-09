@@ -17,7 +17,7 @@ When `pihole_compat = true`, the Ferrous API moves to `/ferrous/api/*` and the P
 
 ## Interactive Documentation (OpenAPI / Scalar)
 
-Both APIs publish an OpenAPI 3.x specification and ship a built-in [Scalar](https://scalar.com) UI for interactive exploration. The endpoints are public — no authentication is required to read the spec or open the UI.
+Both APIs publish an OpenAPI 3.x specification and ship a built-in [Scalar](https://scalar.com) UI for interactive exploration. Scalar is embedded in the binary, so the explorer works without internet access. The endpoints are public — no authentication is required to read the spec or open the UI.
 
 | Mode | OpenAPI spec | Interactive docs |
 |:-----|:-------------|:-----------------|

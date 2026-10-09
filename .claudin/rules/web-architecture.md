@@ -8,16 +8,20 @@ Vanilla HTML/CSS/JS + Alpine.js, **no build step, no framework, no npm**. Don't 
 
 ## Stack
 
-- **Alpine.js 3.13.5** (CDN) — every page is an Alpine app: `<body x-data="app()" x-init="init()">`, `app()` returns the reactive state object. All rendering is declarative (`x-for`, `x-text`, `x-show`) — no manual DOM templating.
-- **Chart.js 4.4.1** (CDN) — dashboard charts only.
-- **Tailwind** (CDN) + **Lucide** icons (CDN) — nothing is vendored; `shared.js:9` re-renders Lucide icons after DOM changes.
+- **Alpine.js 3.13.5** — every page is an Alpine app: `<body x-data="app()" x-init="init()">`, `app()` returns the reactive state object. All rendering is declarative (`x-for`, `x-text`, `x-show`) — no manual DOM templating.
+- **Chart.js 4.4.1** — dashboard charts only.
+- **Lucide 0.469.0** icons — `shared.js:9` re-renders Lucide icons after DOM changes.
+- **Tailwind Preflight only** — the CSS reset, loaded first in `<head>`. No page uses a Tailwind utility class and there is no Tailwind compiler, so utility classes do nothing; style with `shared.css` tokens. **Inter** is the UI font.
+- **Everything third-party is vendored** in `web/static/vendor/` (version in the file name; source, SHA-256 and licence in its `README.md`) and served from the binary. Never load a script, stylesheet, font or image from a CDN or other external host: the UI must work without internet access (#271), and `crates/cli/tests/web_assets_local_test.rs` fails CI when a page or stylesheet does.
 - Design tokens and layout (sidebar, cards) live in `shared.css` (`:root` / `.dark` CSS vars).
 
 ## How it's served
 
-- Assets are **compiled into the binary** with `include_str!` in `crates/cli/src/server/web.rs` — routes at `web.rs:167-216`, the `css_handler!`/`js_handler!` macros at `web.rs:333-356`. There is NO `ServeDir`/static dir at runtime: adding a page requires editing `web.rs` (new `include_str!` + route + handler).
-- `/ferrous-config.js` is generated at runtime (`web.rs:245-261`) and injects `window.FERROUS_API_BASE` / `FERROUS_VERSION` — that's how the UI discovers the API base; `shared.js:3` falls back to `/api`.
-- Gzip via `CompressionLayer` (`web.rs:215`). No CSP or other security headers are set — if you add any, check CDN usage first (Alpine/Tailwind/Chart.js/Lucide all load from CDNs).
+- Assets are **compiled into the binary** in `crates/cli/src/server/web.rs`: our own files via the `static_files!` table (`web.rs:247-285`, one `url => (file, content type)` row each, `include_str!`). There is NO `ServeDir`/static dir at runtime: adding a page means adding its rows there.
+- Vendored files go through one route, `/static/vendor/{*file}`, backed by the `VENDOR_FILES` table (`web.rs:183`, `include_bytes!`) and served with `Cache-Control: immutable`. That is why an upgrade must be a **new versioned file name**, never an in-place replacement. A unit test fails if the table and the directory disagree.
+- `/api/docs` (Scalar) renders `web/static/api-docs.html` through `utoipa-scalar`'s `custom_html` (`web.rs:128`); it loads the vendored Scalar build with `withDefaultFonts: false` (keeps it off `fonts.scalar.com`) and `agent`/`mcp` disabled (their buttons call `api.scalar.com`; "Generate MCP" uploads the spec there).
+- `/ferrous-config.js` is generated at runtime (`web.rs:313`) and injects `window.FERROUS_API_BASE` / `FERROUS_VERSION` — that's how the UI discovers the API base; `shared.js:3` falls back to `/api`.
+- Gzip via `CompressionLayer` (`web.rs:287`). No CSP or other security headers are set. Everything is same-origin now, but Alpine's standard build evaluates expressions with `new Function`, so a CSP needs `'unsafe-eval'` or a switch to Alpine's CSP build.
 
 ## Auth flow
 

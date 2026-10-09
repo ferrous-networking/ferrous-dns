@@ -129,7 +129,7 @@ Each flush aggregates its batch in memory and upserts a handful of rows into the
 | Cache eviction | Hit-rate scoring by default (`lru` / `lfu` / `lfu-k` selectable) |
 | Database | SQLite (async, WAL mode) |
 | TLS/QUIC | rustls, QUIC (HTTP/3 + DoQ) |
-| Frontend | HTMX + Alpine.js + TailwindCSS |
+| Frontend | Alpine.js + Chart.js + Lucide, embedded in the binary |
 
 ---
 
@@ -183,7 +183,7 @@ Ferrous DNS ships as a single binary containing:
 - DoT server (TCP/TLS)
 - DoH server (HTTP/HTTPS)
 - REST API (Axum)
-- Web dashboard (static files embedded)
+- Web dashboard and API explorer (every asset embedded — no CDN, works without internet access)
 - Background jobs (blocklist sync, cache maintenance, WAL checkpoint)
 
 No external dependencies at runtime — just the binary and an SQLite file.

@@ -137,7 +137,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 - Real-time query log with block/allow actions
 - Query rate, blocked queries, top domains, top clients
 - Upstream latency graphs and health status
-- Dark mode, built with HTMX + Alpine.js + TailwindCSS
+- Dark mode, built with Alpine.js; every asset is embedded in the binary, so the dashboard works without internet access
 
 **Encrypted DNS** — [Encrypted DNS docs](https://ferrous-networking.github.io/ferrous-dns/features/encrypted-dns/)
 - Upstream: plain UDP, [DoH](https://ferrous-networking.github.io/ferrous-dns/features/encrypted-dns/), [DoT](https://ferrous-networking.github.io/ferrous-dns/features/encrypted-dns/), [DoQ](https://ferrous-networking.github.io/ferrous-dns/features/encrypted-dns/), and [HTTP/3](https://ferrous-networking.github.io/ferrous-dns/features/encrypted-dns/)

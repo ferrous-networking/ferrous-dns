@@ -23,6 +23,8 @@ paths: web/**
 
 ## Don't
 
-- Don't add a bundler, npm, framework, or vendored libs — CDN + Alpine is the architecture.
+- Don't add a bundler, npm or framework — Alpine on plain HTML is the architecture.
+- Don't load anything from a CDN or other external host — the UI must work offline (#271). A new third-party file goes in `web/static/vendor/` under a versioned name, with a `VENDOR_FILES` row in `crates/cli/src/server/web.rs` and a row in `vendor/README.md`.
+- Don't use Tailwind utility classes — only its Preflight reset ships, so they style nothing.
 - Don't add a second state object or global mutable variables outside `app()`.
 - Don't bypass `checkAuth()` / `apiFetch()` with hand-rolled auth logic.

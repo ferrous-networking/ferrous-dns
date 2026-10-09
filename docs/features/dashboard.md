@@ -12,7 +12,7 @@ Open your browser and navigate to:
 http://<your-server-ip>:8080
 ```
 
-The dashboard is a single-page application built with **HTMX + Alpine.js + TailwindCSS** and compiled into the server binary — no external dependencies, no Node.js, no build step.
+The dashboard is built with **Alpine.js**, **Chart.js** and **Lucide** icons, and every file it loads — libraries and fonts included — is compiled into the server binary. It makes no request to third-party hosts, so it works on networks without internet access. No Node.js, no build step.
 
 ---
 

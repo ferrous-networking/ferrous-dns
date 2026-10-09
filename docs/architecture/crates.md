@@ -20,7 +20,7 @@ ferrous-dns/
 │   ├── common/          # Shared test helpers
 │   ├── flows/           # End-to-end flow tests
 │   └── performance/     # Benchmarks
-├── web/static/          # Frontend (HTMX + Alpine.js + TailwindCSS)
+├── web/static/          # Frontend (Alpine.js; third-party files in vendor/)
 ├── migrations/          # SQLite migrations (sqlx)
 └── Cargo.toml           # Workspace root
 ```

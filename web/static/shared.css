@@ -1,5 +1,5 @@
 /* Shared styles for all Ferrous DNS pages */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('/static/vendor/inter-v20/inter.css');
 
 :root {
     --color-primary: #3B82F6;
@@ -44,6 +44,15 @@ body {
     color: var(--text-primary);
     padding-left: 260px;
     margin: 0
+}
+
+/* Preflight's `:disabled { cursor: default }` loads before the page CSS, so a
+   page's `.btn { cursor: pointer }` would otherwise win on a disabled button. */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+    cursor: default
 }
 
 .sidebar {
