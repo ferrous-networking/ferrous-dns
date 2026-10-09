@@ -123,6 +123,10 @@ fn build_strict_cors(allowed_origins: &[String]) -> CorsLayer {
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
 }
 
+/// `utoipa-scalar`'s page template with Scalar and its fonts loaded from the
+/// binary rather than jsDelivr and fonts.scalar.com, so `/docs` works offline.
+const API_DOCS_HTML: &str = include_str!("../../../../web/static/api-docs.html");
+
 /// An API's routes plus its `/openapi.json` spec and Scalar UI at `/docs`.
 fn api_branch(router: Router, spec: OpenApi) -> Router {
     let json = spec.clone();
@@ -134,7 +138,9 @@ fn api_branch(router: Router, spec: OpenApi) -> Router {
                 async move { Json(json) }
             }),
         )
-        .merge(Router::from(Scalar::with_url("/docs", spec)))
+        .merge(Router::from(
+            Scalar::with_url("/docs", spec).custom_html(API_DOCS_HTML),
+        ))
         .merge(router)
 }
 
