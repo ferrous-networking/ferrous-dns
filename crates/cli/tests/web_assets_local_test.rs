@@ -71,11 +71,7 @@ fn all_fetched_urls() -> Vec<(String, String)> {
     files
         .iter()
         .flat_map(|file| {
-            let name = file
-                .strip_prefix(STATIC_DIR)
-                .unwrap()
-                .display()
-                .to_string();
+            let name = file.strip_prefix(STATIC_DIR).unwrap().display().to_string();
             fetched_urls(file)
                 .into_iter()
                 .map(move |url| (name.clone(), url))
