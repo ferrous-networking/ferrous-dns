@@ -28,8 +28,8 @@ local_dns_server = "10.0.0.1:53"
 | `dnssec_trust_anchor_file` | — | Path to a trust anchor file replacing the embedded IANA root anchors (see [Trust anchors](#trust-anchors)) |
 | `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
-| `local_domain` | — | Local domain suffix appended to short hostnames |
-| `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
+| `local_domain` | — | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools — see [Conditional Forwarding](#conditional-forwarding) |
+| `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, names under `local_domain`, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
 | `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
@@ -226,11 +226,23 @@ This means reverse DNS lookups work without any extra configuration, including f
 
 ## Conditional Forwarding
 
-Route specific domains to internal resolvers (e.g. your AD domain controller, split-horizon DNS):
+Queries for one domain can go to an internal resolver — your router, an Active Directory domain controller, a home-lab DNS server — while every other query follows the upstream pools. Set `local_domain` to that domain and `local_dns_server` to the resolver:
 
-Conditional forwarding is managed via the dashboard UI (Clients > Groups > Forwarding) or the REST API. It allows you to route queries for specific domains to a designated upstream, while all other queries follow the normal pool routing.
+```toml
+[dns]
+local_domain     = "corp.internal"
+local_dns_server = "10.0.0.10:53"   # AD / internal DNS server
+```
 
-Example use case: route `corp.internal` to `10.0.0.5:53` (Active Directory) while everything else uses DoH upstreams.
+- `corp.internal` and every name under it are sent to `10.0.0.10:53`, never to the upstream pools. A single-label name such as `fileserver` becomes `fileserver.corp.internal` first, unless `block_non_fqdn` is on.
+- Reverse (PTR) lookups for private address ranges go to the same server.
+- When that server answers NXDOMAIN, fails or does not answer, the client gets NXDOMAIN; the name is not retried upstream.
+- Its answers skip DNSSEC validation, so an unsigned internal zone still resolves under `dnssec_mode = "Strict"`, and they are exempt from [DNS rebinding protection](../features/malware-detection.md#dns-rebinding-protection).
+
+In the dashboard both are under **Settings > DNS Settings** (**Block local domain from internet** and **Local DNS server**); a change applies after a restart.
+
+!!! note "One domain, one server"
+    This forwards one domain to one server, for every client. Forwarding several domains to different servers, or per client group, is not supported.
 
 ---
 

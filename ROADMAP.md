@@ -31,7 +31,7 @@
 - [x] Blocklist URL import
 - [x] Blocklist regex support
 - [x] Allow and block buttons in query log
-- [x] Conditional forwarding
+- [x] Local domain forwarding to the router (`local_domain` + `local_dns_server`)
 
 ### ✅ v0.3.0 - Advanced Features
 

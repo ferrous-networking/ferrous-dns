@@ -54,7 +54,6 @@ With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — 
     - Auto client detection by IP and MAC address
     - Client groups with independent policies (kids, work, IoT)
     - Per-group parental controls with time-based scheduling
-    - Conditional forwarding — route specific domains to internal resolvers
 
 === "Security"
 

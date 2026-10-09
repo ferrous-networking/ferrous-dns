@@ -261,8 +261,8 @@ qname_case_randomization = false
 | `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
 | `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection) |
 | `rebinding_allowlist` | `list` | `[]` | Domains exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels) |
-| `local_domain` | `str` | `"lan"` | Local domain suffix appended to short hostnames |
-| `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups and client hostname resolution: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
+| `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools — see [Conditional Forwarding](dns.md#conditional-forwarding) |
+| `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups, client hostname resolution and names under `local_domain`: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
 | `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
 
