@@ -273,3 +273,28 @@ async fn ferrous_config_js_handler(State(pihole_compat): State<bool>) -> impl In
         body,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_api_docs_load_scalar_from_the_binary() {
+        let response = api_branch(Router::new(), OpenApi::default())
+            .oneshot(Request::get("/docs").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            !html.contains(r#"src="http"#) && !html.contains(r#"href="http"#),
+            "the API docs page fetches from a third-party host:\n{html}"
+        );
+        assert!(html.contains(r#"src="/static/vendor/scalar-api-reference-"#));
+    }
+}
