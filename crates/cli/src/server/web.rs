@@ -1,7 +1,7 @@
 use axum::{
-    extract::State,
-    http::{header, HeaderValue, Method},
-    response::IntoResponse,
+    extract::{Path, State},
+    http::{header, HeaderValue, Method, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -142,6 +142,7 @@ const HTML: &str = "text/html; charset=utf-8";
 const CSS: &str = "text/css; charset=utf-8";
 const JS: &str = "application/javascript; charset=utf-8";
 const SVG: &str = "image/svg+xml; charset=utf-8";
+const WOFF2: &str = "font/woff2";
 
 /// Mounts files embedded from `web/static`, one `url => (file, content type)`
 /// row each, so a route cannot drift from the file it serves.
@@ -159,6 +160,52 @@ macro_rules! static_files {
             )
         )*
     };
+}
+
+/// The third-party files in `web/static/vendor`, one `file => content type`
+/// row each, embedded so the UI never needs internet access (#271).
+macro_rules! vendor_files {
+    ($($file:literal => $mime:expr),* $(,)?) => {
+        &[$((
+            $file,
+            include_bytes!(concat!("../../../../web/static/vendor/", $file)),
+            $mime,
+        )),*]
+    };
+}
+
+const VENDOR_FILES: &[(&str, &[u8], &str)] = vendor_files![
+    "alpinejs-3.13.5.min.js" => JS,
+    "chart.js-4.4.1.umd.js" => JS,
+    "lucide-0.469.0.min.js" => JS,
+    "scalar-api-reference-1.73.1.standalone.js" => JS,
+    "tailwind-preflight-3.4.17.css" => CSS,
+    "inter-v20/inter.css" => CSS,
+    "inter-v20/inter-cyrillic-ext.woff2" => WOFF2,
+    "inter-v20/inter-cyrillic.woff2" => WOFF2,
+    "inter-v20/inter-greek-ext.woff2" => WOFF2,
+    "inter-v20/inter-greek.woff2" => WOFF2,
+    "inter-v20/inter-latin-ext.woff2" => WOFF2,
+    "inter-v20/inter-latin.woff2" => WOFF2,
+    "inter-v20/inter-vietnamese.woff2" => WOFF2,
+];
+
+const VENDOR_ROUTE: &str = "/static/vendor/{*file}";
+
+/// Every vendored file name carries its upstream version, so a browser can
+/// keep it for good instead of re-downloading it on each page.
+async fn vendor_file_handler(Path(file): Path<String>) -> Response {
+    match VENDOR_FILES.iter().find(|(name, _, _)| *name == file) {
+        Some((_, body, mime)) => (
+            [
+                (header::CONTENT_TYPE, *mime),
+                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            ],
+            *body,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// The web app. The Pi-hole API, when `pihole_state` is given, takes `/api`
@@ -230,6 +277,7 @@ fn create_app(
         "/dns-filter.html" => ("dns-filter.html", HTML),
         "/block-services.html" => ("block-services.html", HTML),
     })
+    .route(VENDOR_ROUTE, get(vendor_file_handler))
     .layer(CompressionLayer::new().gzip(true))
     .layer(build_cors_layer(cors_allowed_origins));
 
@@ -278,8 +326,76 @@ async fn ferrous_config_js_handler(State(pihole_compat): State<bool>) -> impl In
 mod tests {
     use super::*;
     use axum::body::{to_bytes, Body};
-    use axum::http::{Request, StatusCode};
+    use axum::http::Request;
+    use std::path::Path as FsPath;
     use tower::ServiceExt;
+
+    fn vendor_request(file: &str) -> Request<Body> {
+        Request::get(format!("/static/vendor/{file}"))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    fn files_under(dir: &FsPath, root: &FsPath, files: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                files_under(&path, root, files);
+            } else {
+                let relative = path.strip_prefix(root).unwrap();
+                files.push(relative.to_str().unwrap().replace('\\', "/"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_vendor_files_match_the_vendor_directory() {
+        let root = FsPath::new(env!("CARGO_MANIFEST_DIR")).join("../../web/static/vendor");
+        let mut on_disk = Vec::new();
+        files_under(&root, &root, &mut on_disk);
+        on_disk.retain(|file| file != "README.md" && !file.starts_with("LICENSES/"));
+        on_disk.sort();
+
+        let mut served: Vec<String> = VENDOR_FILES
+            .iter()
+            .map(|(name, _, _)| name.to_string())
+            .collect();
+        served.sort();
+
+        assert_eq!(
+            served, on_disk,
+            "VENDOR_FILES and web/static/vendor list different files"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vendor_file_is_served_with_its_type_and_immutable_cache() {
+        let router = Router::new().route(VENDOR_ROUTE, get(vendor_file_handler));
+
+        let response = router
+            .oneshot(vendor_request("inter-v20/inter-latin.woff2"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], WOFF2);
+        assert_eq!(
+            response.headers()[header::CACHE_CONTROL],
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vendor_file_unknown_name_is_not_found() {
+        let router = Router::new().route(VENDOR_ROUTE, get(vendor_file_handler));
+
+        let response = router
+            .oneshot(vendor_request("alpinejs-0.0.0.min.js"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 
     #[tokio::test]
     async fn test_api_docs_load_scalar_from_the_binary() {

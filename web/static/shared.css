@@ -1,5 +1,5 @@
 /* Shared styles for all Ferrous DNS pages */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('/static/vendor/inter-v20/inter.css');
 
 :root {
     --color-primary: #3B82F6;
