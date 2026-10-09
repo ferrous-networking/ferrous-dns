@@ -19,7 +19,7 @@ Vanilla HTML/CSS/JS + Alpine.js, **no build step, no framework, no npm**. Don't 
 
 - Assets are **compiled into the binary** in `crates/cli/src/server/web.rs`: our own files via the `static_files!` table (`web.rs:247-285`, one `url => (file, content type)` row each, `include_str!`). There is NO `ServeDir`/static dir at runtime: adding a page means adding its rows there.
 - Vendored files go through one route, `/static/vendor/{*file}`, backed by the `VENDOR_FILES` table (`web.rs:183`, `include_bytes!`) and served with `Cache-Control: immutable`. That is why an upgrade must be a **new versioned file name**, never an in-place replacement. A unit test fails if the table and the directory disagree.
-- `/api/docs` (Scalar) renders `web/static/api-docs.html` through `utoipa-scalar`'s `custom_html` (`web.rs:128`); it loads the vendored Scalar build with `withDefaultFonts: false`, which keeps it off `fonts.scalar.com`.
+- `/api/docs` (Scalar) renders `web/static/api-docs.html` through `utoipa-scalar`'s `custom_html` (`web.rs:128`); it loads the vendored Scalar build with `withDefaultFonts: false` (keeps it off `fonts.scalar.com`) and `agent`/`mcp` disabled (their buttons call `api.scalar.com`; "Generate MCP" uploads the spec there).
 - `/ferrous-config.js` is generated at runtime (`web.rs:313`) and injects `window.FERROUS_API_BASE` / `FERROUS_VERSION` — that's how the UI discovers the API base; `shared.js:3` falls back to `/api`.
 - Gzip via `CompressionLayer` (`web.rs:287`). No CSP or other security headers are set. Everything is same-origin now, but Alpine's standard build evaluates expressions with `new Function`, so a CSP needs `'unsafe-eval'` or a switch to Alpine's CSP build.
 
