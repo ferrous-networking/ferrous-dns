@@ -10,6 +10,7 @@ use ferrous_dns_api::{
     DnsUseCases, GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases,
     ServiceUseCases,
 };
+use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, DnsCachePort, SafeSearchConfigRepository, SafeSearchEnginePort,
     UpstreamReloadPort,
@@ -59,6 +60,7 @@ pub struct TestApp {
     pub cache: Arc<DnsCache>,
     pub client_repo: Arc<SqliteClientRepository>,
     pub pool_manager: Arc<PoolManager>,
+    pub query_log: Arc<SqliteQueryLogRepository>,
 }
 
 impl TestApp {
@@ -81,6 +83,7 @@ pub struct TestAppBuilder {
     sqlite_safe_search: bool,
     sqlite_backup: bool,
     overrides: ConfigOverrides,
+    query_log_channel_capacity: Option<usize>,
 }
 
 impl TestAppBuilder {
@@ -130,6 +133,12 @@ impl TestAppBuilder {
         self
     }
 
+    /// Query log batching channel capacity, in place of the production default.
+    pub fn query_log_channel_capacity(mut self, capacity: usize) -> Self {
+        self.query_log_channel_capacity = Some(capacity);
+        self
+    }
+
     pub async fn build(self) -> TestApp {
         let pool = match self.pool {
             Some(pool) => pool,
@@ -144,7 +153,11 @@ impl TestAppBuilder {
                 .unwrap();
         }
 
-        let db_config = DatabaseConfig::default();
+        let mut db_config = DatabaseConfig::default();
+        if let Some(capacity) = self.query_log_channel_capacity {
+            db_config.query_log_channel_capacity = capacity;
+        }
+        let shed = ShedCounters::default();
         let client_repo = Arc::new(SqliteClientRepository::new(pool.clone(), &db_config));
         let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
         let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
@@ -157,6 +170,7 @@ impl TestAppBuilder {
             pool.clone(),
             pool.clone(),
             &db_config,
+            shed.query_log.clone(),
         ));
         let null_engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
         let sync_engine = self.sync_engine.unwrap_or_else(|| null_engine.clone());
@@ -248,6 +262,7 @@ impl TestAppBuilder {
                     Arc::new(NullConfigRepository),
                 )),
                 dnssec_stats: Arc::new(DnssecStatsAdapter::disabled()),
+                shed,
                 upstream_health: Arc::new(UpstreamHealthAdapter::new(pool_manager.clone(), None)),
                 reload_upstream,
             },
@@ -474,6 +489,7 @@ impl TestAppBuilder {
             cache,
             client_repo,
             pool_manager,
+            query_log: query_log_repo,
         }
     }
 }

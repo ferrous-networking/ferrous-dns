@@ -1015,7 +1015,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "ferrous-dns"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "async-trait",
  "axum",
@@ -1085,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-api-pihole"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "async-trait",
  "axum",
@@ -1108,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-application"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "async-trait",
  "bytes",
@@ -1138,7 +1138,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-domain"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -1151,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-infrastructure"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "ferrous-dns-jobs"
-version = "0.9.19"
+version = "0.9.20"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3705,9 +3705,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c85f2c3ef0b1cd58b36682f4b17aaa995f0e5db534d85692b4903abce21f67"
+checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
  "tokio",
@@ -4353,7 +4353,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

@@ -54,6 +54,7 @@ fn repo(pool: &sqlx::SqlitePool) -> SqliteQueryLogRepository {
         pool.clone(),
         pool.clone(),
         &DatabaseConfig::default(),
+        Default::default(),
     )
 }
 

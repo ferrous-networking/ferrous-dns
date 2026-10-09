@@ -2,6 +2,7 @@ use ferrous_dns_api::{
     AppState, AuthUseCases, BackupUseCases, BlockingUseCases, ClientUseCases, DnsUseCases,
     GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
 };
+use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_application::ports::{
     BlocklistSourceCreator, ConfigFilePersistence, ConfigRepository, DnsCachePort, GroupCreator,
     LocalRecordCreator, UpstreamReloadPort,
@@ -80,6 +81,7 @@ pub async fn build_app_state(
     repos: &Repositories,
     dns_services: &DnsServices,
     config_services: &ConfigServices,
+    shed: ShedCounters,
     https_active: bool,
 ) -> AppState {
     let config = config_services.config.clone();
@@ -156,6 +158,7 @@ pub async fn build_app_state(
                 Some(dns_services.health_checker.clone()),
             )),
             dnssec_stats: dns_services.dnssec_stats.clone(),
+            shed,
             reload_upstream: config_services.reload_upstream.clone(),
         },
         groups: GroupUseCases {

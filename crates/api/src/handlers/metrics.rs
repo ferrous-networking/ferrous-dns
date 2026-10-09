@@ -12,6 +12,7 @@ use axum::{
     routing::get,
     Router,
 };
+use ferrous_dns_application::drop_counter::ShedTotals;
 use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, UpstreamGroupHealth, UpstreamStatus,
 };
@@ -80,6 +81,7 @@ pub fn render_metrics(
     upstreams: &[UpstreamGroupHealth],
     query_stats: Option<&QueryStats>,
     blocklist_domains: usize,
+    shed: &ShedTotals,
     version: &str,
 ) -> Result<String, DomainError> {
     let mut registry = Registry::with_prefix("ferrousdns");
@@ -131,6 +133,30 @@ pub fn render_metrics(
         ),
     ];
     for (name, help, value) in cache_counters {
+        let counter = Counter::<u64>::default();
+        counter.inc_by(value);
+        registry.register(name, help, counter);
+    }
+
+    // Work shed on purpose under overload, as opposed to lost: monotonic since boot.
+    let shed_counters: [(&str, &str, u64); 3] = [
+        (
+            "udp_fallback_shed",
+            "UDP queries dropped because every fallback task slot was taken",
+            shed.udp_fallback,
+        ),
+        (
+            "upstream_shed",
+            "Client queries refused because every upstream slot was taken",
+            shed.upstream,
+        ),
+        (
+            "query_log_dropped",
+            "Query log entries dropped because the batching channel was full",
+            shed.query_log,
+        ),
+    ];
+    for (name, help, value) in shed_counters {
         let counter = Counter::<u64>::default();
         counter.inc_by(value);
         registry.register(name, help, counter);
@@ -329,6 +355,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         &upstreams,
         query_stats.as_ref(),
         blocklist_domains,
+        &state.dns.shed.totals(),
         env!("CARGO_PKG_VERSION"),
     );
 

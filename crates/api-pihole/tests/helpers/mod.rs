@@ -307,6 +307,7 @@ async fn build_pihole_state(
         pool.clone(),
         pool.clone(),
         &db_config,
+        Default::default(),
     ));
     let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
     let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));

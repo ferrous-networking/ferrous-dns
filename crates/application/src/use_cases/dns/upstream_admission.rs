@@ -1,6 +1,7 @@
 use super::coarse_timer::coarse_now_ns;
 use crate::drop_counter::DropCounter;
 use ferrous_dns_domain::DomainError;
+use std::sync::Arc;
 use tokio::sync::{Semaphore, SemaphorePermit};
 
 /// Bounds the client queries waiting on an upstream at once, over every
@@ -8,14 +9,14 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 /// serviceable while slow upstreams hold every one.
 pub(super) struct UpstreamAdmission {
     slots: Semaphore,
-    shed: DropCounter,
+    shed: Arc<DropCounter>,
 }
 
 impl UpstreamAdmission {
-    pub(super) fn new(limit: usize) -> Self {
+    pub(super) fn new(limit: usize, shed: Arc<DropCounter>) -> Self {
         Self {
             slots: Semaphore::new(limit),
-            shed: DropCounter::new(),
+            shed,
         }
     }
 

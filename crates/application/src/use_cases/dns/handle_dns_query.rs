@@ -8,6 +8,7 @@ use super::response_ip_filter_guard::ResponseIpFilterGuard;
 use super::tsc_timer;
 use super::tunneling_guard::{TunnelingAnalysisEvent, TunnelingGuard, TunnelingVerdict};
 use super::upstream_admission::UpstreamAdmission;
+use crate::drop_counter::DropCounter;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DgaFlagStore, DnsResolution, DnsResolver,
     FilterDecision, NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore,
@@ -163,9 +164,10 @@ impl HandleDnsQueryUseCase {
 
     /// Bounds the queries waiting on an upstream at once, over every transport:
     /// past `limit`, a query that would go upstream fails with
-    /// `UpstreamCapacityExhausted` instead of waiting. Unbounded by default.
-    pub fn with_upstream_limit(mut self, limit: usize) -> Self {
-        self.upstream_admission = Some(UpstreamAdmission::new(limit));
+    /// `UpstreamCapacityExhausted` instead of waiting, and counts in `shed`.
+    /// Unbounded by default.
+    pub fn with_upstream_limit(mut self, limit: usize, shed: Arc<DropCounter>) -> Self {
+        self.upstream_admission = Some(UpstreamAdmission::new(limit, shed));
         self
     }
 
