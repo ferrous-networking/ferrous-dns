@@ -93,6 +93,7 @@
 - [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
 - [x] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`) — `[blocking]` `sinkhole_ipv4` / `sinkhole_ipv6`, applied to `null_ip` blocked answers
 - [x] TOTP / 2FA — two-phase login (TOTP enrollment + `/auth/2fa/verify`) plus WebAuthn passkeys as a second factor or passwordless login, gated on `[auth.webauthn]`; API keys are exempt
+- [ ] Conditional forwarding — route a list of domain suffixes (a corporate zone, a national ccTLD) to a chosen upstream pool, for every client or per client group; unsigned internal zones can opt out of DNSSEC validation and rebinding protection while public zones keep both, and per-group answers are cached apart so split-horizon results never reach another group
 
 ### 🌟 v1.0.0 - Production Ready
 
