@@ -624,7 +624,7 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
     loop {
         let batch_started = Instant::now();
         let deleted = sqlx::query(
-            "DELETE FROM query_log WHERE rowid IN (SELECT rowid FROM query_log WHERE created_at < ? LIMIT 5000)",
+            "DELETE FROM query_log WHERE rowid IN (SELECT rowid FROM query_log WHERE created_at < ? LIMIT 1000)",
         )
         .bind(&cutoff)
         .execute(pool)
@@ -650,9 +650,11 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
     Ok(total_deleted)
 }
 
-/// How long retention waits after a batch before taking the write lock again.
-fn retention_pause(_batch_elapsed: Duration) -> Duration {
-    Duration::from_millis(50)
+/// How long retention waits after a batch before taking the write lock again: at least
+/// as long as the batch held it, so a large backlog on slow storage never keeps the
+/// query-log writer, client tracking or sessions waiting out their busy timeout.
+fn retention_pause(batch_elapsed: Duration) -> Duration {
+    batch_elapsed.max(Duration::from_millis(50))
 }
 
 #[cfg(test)]
