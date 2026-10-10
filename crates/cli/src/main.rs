@@ -46,6 +46,11 @@ async fn async_main() -> anyhow::Result<()> {
     let database_url = format!("sqlite:{}", config.database.path);
     let (write_pool, query_log_pool, read_pool) =
         bootstrap::init_database(&database_url, &config.database).await?;
+    let database_pools = [
+        write_pool.clone(),
+        query_log_pool.clone(),
+        read_pool.clone(),
+    ];
 
     let config_arc = Arc::new(RwLock::new(config.clone()));
     let wal_pool = write_pool.clone();
@@ -123,6 +128,8 @@ async fn async_main() -> anyhow::Result<()> {
         web_tls_config.is_some(),
     )
     .await;
+
+    let shutdown = bootstrap::shutdown_signal().context("Failed to listen for shutdown signals")?;
 
     let dns_addr = config.server.dns_listen_address();
     let handler_use_case = dns_services.handler_use_case;
@@ -233,7 +240,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     let web_addr = config.server.web_listen_address();
 
-    server::start_web_server(
+    let web_server = server::start_web_server(
         web_addr,
         app_state,
         pihole_state,
@@ -241,8 +248,15 @@ async fn async_main() -> anyhow::Result<()> {
         config.server.metrics_enabled,
         web_doh,
         web_tls_config,
-    )
-    .await?;
+    );
+
+    tokio::select! {
+        result = web_server => result?,
+        signal = shutdown => {
+            info!(signal, "Shutdown signal received");
+            bootstrap::close_database(&database_pools).await;
+        }
+    }
 
     info!("Server shutdown complete");
     Ok(())
