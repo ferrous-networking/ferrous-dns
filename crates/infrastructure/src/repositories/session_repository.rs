@@ -11,11 +11,14 @@ use crate::repositories::{db_err, sql_now};
 
 pub struct SqliteSessionRepository {
     pool: SqlitePool,
+    /// Session lookups run on every authenticated request; reading them off the write
+    /// pool keeps the UI answering while writers queue for the write lock.
+    read_pool: SqlitePool,
 }
 
 impl SqliteSessionRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, read_pool: SqlitePool) -> Self {
+        Self { pool, read_pool }
     }
 }
 
@@ -62,7 +65,7 @@ impl SessionRepository for SqliteSessionRepository {
              FROM auth_sessions WHERE id = ?",
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&self.read_pool)
         .await
         .map_err(db_err("Failed to get session"))?;
 
@@ -126,7 +129,7 @@ impl SessionRepository for SqliteSessionRepository {
              FROM auth_sessions WHERE expires_at >= ? ORDER BY last_seen_at DESC",
         )
         .bind(sql_now())
-        .fetch_all(&self.pool)
+        .fetch_all(&self.read_pool)
         .await
         .map_err(db_err("Failed to get active sessions"))?;
 

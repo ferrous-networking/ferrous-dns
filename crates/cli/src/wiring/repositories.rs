@@ -119,7 +119,7 @@ impl Repositories {
             query_log: Arc::new(SqliteQueryLogRepository::new(
                 write_pool.clone(),
                 query_log_pool,
-                read_pool,
+                read_pool.clone(),
                 db_config,
                 query_log_dropped,
             )),
@@ -140,7 +140,7 @@ impl Repositories {
             safe_search_engine,
             schedule_profile: Arc::new(SqliteScheduleProfileRepository::new(write_pool.clone())),
             schedule_state,
-            session: Arc::new(SqliteSessionRepository::new(write_pool.clone())),
+            session: Arc::new(SqliteSessionRepository::new(write_pool.clone(), read_pool)),
             user: Arc::new(SqliteUserRepository::new(write_pool.clone())),
             mfa: Arc::new(SqliteMfaRepository::new(write_pool.clone())),
             api_token: Arc::new(SqliteApiTokenRepository::new(write_pool)),

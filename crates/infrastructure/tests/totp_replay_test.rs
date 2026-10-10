@@ -43,7 +43,7 @@ async fn fixture() -> Fixture {
             totp.clone(),
             hasher.clone(),
             admin_user_provider(pool.clone()),
-            Arc::new(SqliteSessionRepository::new(pool)),
+            Arc::new(SqliteSessionRepository::new(pool.clone(), pool)),
             Arc::new(AuthConfig::default()),
         ),
         confirm: ConfirmTotpUseCase::new(mfa.clone(), totp, hasher),
