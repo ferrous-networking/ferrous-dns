@@ -137,6 +137,10 @@ async fn test_wal_checkpoint_truncates_a_wal_over_the_size_limit() {
         0,
         "a {before}-byte WAL was left in place, reported as {outcome:?}"
     );
+    assert!(
+        matches!(outcome, WalCheckpointOutcome::Truncated { frames } if frames > 16_384),
+        "truncated WAL reported as {outcome:?}"
+    );
 
     pool.close().await;
 }
@@ -168,6 +172,10 @@ async fn test_wal_checkpoint_gives_up_on_truncating_quickly_when_a_reader_pins_t
         "the checkpoint held writers off for {waited:?}"
     );
     assert_eq!(db.wal_len(), before, "reported as {outcome:?}");
+    assert!(
+        matches!(outcome, WalCheckpointOutcome::Busy { .. }),
+        "pinned truncation reported as {outcome:?}"
+    );
 
     snapshot.rollback().await.unwrap();
     reader.close().await.unwrap();
