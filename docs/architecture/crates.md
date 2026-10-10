@@ -137,7 +137,7 @@ A thin layer that exposes the Pi-hole v6 REST API format at `/api/*`, reusing th
 Contains:
 - `BlocklistSyncJob` — downloads and indexes blocklists periodically
 - `CacheMaintenanceJob` — eviction and compaction cycles whenever the cache is enabled, plus optimistic refresh when `cache_optimistic_refresh` is on
-- `WalCheckpointJob` — periodic SQLite WAL PASSIVE checkpoint
+- `WalCheckpointJob` — periodic SQLite WAL PASSIVE checkpoint, escalated to TRUNCATE once the WAL passes 64 MiB
 - `ClientSyncJob` — syncs client MAC addresses from ARP and resolves client hostnames
 - `ScheduleEvaluatorJob` — activates/deactivates time-based blocking rules
 

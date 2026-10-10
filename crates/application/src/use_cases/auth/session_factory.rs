@@ -44,6 +44,13 @@ pub(crate) fn is_expired(expires_at: &str) -> bool {
         .unwrap_or(true)
 }
 
+/// Whether a [`TIMESTAMP_FMT`] timestamp is at least `secs` old; unparseable values count as old.
+pub(crate) fn is_older_than(at: &str, secs: i64) -> bool {
+    chrono::NaiveDateTime::parse_from_str(at, TIMESTAMP_FMT)
+        .map(|at| chrono::Utc::now().naive_utc() - at >= chrono::TimeDelta::seconds(secs))
+        .unwrap_or(true)
+}
+
 /// Builds a fresh `AuthSession` for an authenticated user.
 ///
 /// Shared by the password-only login path and the second-factor verify path so

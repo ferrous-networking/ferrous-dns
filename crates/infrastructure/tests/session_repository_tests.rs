@@ -25,7 +25,8 @@ fn session(id: &str, remember_me: bool, expires_in_secs: i64) -> AuthSession {
 
 #[tokio::test]
 async fn remember_me_round_trips_and_expiry_splits_active_from_expired() {
-    let repo = SqliteSessionRepository::new(db::migrated_pool().await);
+    let pool = db::migrated_pool().await;
+    let repo = SqliteSessionRepository::new(pool.clone(), pool);
     repo.create(&session("remembered", true, 3600))
         .await
         .unwrap();

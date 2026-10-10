@@ -51,7 +51,8 @@ async fn fixture() -> Fixture {
         None,
         Arc::new(TomlConfigFilePersistence),
     ));
-    let sessions: Arc<dyn SessionRepository> = Arc::new(SqliteSessionRepository::new(pool.clone()));
+    let sessions: Arc<dyn SessionRepository> =
+        Arc::new(SqliteSessionRepository::new(pool.clone(), pool.clone()));
     let mfa: Arc<dyn MfaRepository> = Arc::new(SqliteMfaRepository::new(pool));
 
     Fixture {

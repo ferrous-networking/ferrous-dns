@@ -53,7 +53,7 @@ async fn update_password_of_missing_user_is_not_found() {
 async fn delete_revokes_sessions_and_second_factors_of_that_user_only() {
     let pool = db::migrated_pool().await;
     let users = SqliteUserRepository::new(pool.clone());
-    let sessions = SqliteSessionRepository::new(pool.clone());
+    let sessions = SqliteSessionRepository::new(pool.clone(), pool.clone());
     let mfa = SqliteMfaRepository::new(pool);
 
     let bob = users

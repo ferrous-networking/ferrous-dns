@@ -154,7 +154,7 @@ async fn a_passkey_login_moves_the_stored_passkey_to_the_new_counter() {
         webauthn.clone(),
         mfa.clone(),
         admin_user_provider(pool.clone()),
-        Arc::new(SqliteSessionRepository::new(pool)),
+        Arc::new(SqliteSessionRepository::new(pool.clone(), pool)),
         Arc::new(AuthConfig::default()),
     );
     password_accepted(mfa.as_ref(), "login").await;

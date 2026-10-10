@@ -746,7 +746,7 @@ client_tracking_interval  = 60
 |:-------|:-----|:--------|:------------|
 | `path` | `str` | `"ferrous-dns.db"` | Path to the SQLite database file |
 | `log_queries` | `bool` | `true` | Store every DNS query for analytics and the query log dashboard |
-| `queries_log_stored` | `int` | `30` | Days to retain query log entries. Cleanup runs at startup and then daily; `0` deletes every entry at each run |
+| `queries_log_stored` | `int` | `30` | Days to retain query log entries. Cleanup runs at startup and then daily, in 1000-row batches paced so other writers are not blocked; `0` deletes every entry at each run |
 | `client_tracking_interval` | `int` | `60` | Minimum seconds between consecutive last-seen writes for the same client IP |
 
 ### Query-log write pipeline
@@ -802,7 +802,7 @@ sqlite_mmap_size_mb            = 64
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `wal_autocheckpoint` | `int` | `0` | SQLite WAL autocheckpoint threshold in pages; `0` disables automatic checkpointing (a background job manages it instead) |
-| `wal_checkpoint_interval_secs` | `int` | `120` | Seconds between WAL PASSIVE checkpoint runs by the background job |
+| `wal_checkpoint_interval_secs` | `int` | `120` | Seconds between WAL checkpoint runs by the background job: a PASSIVE pass, then a TRUNCATE once the WAL has grown past 64 MiB |
 | `sqlite_cache_size_kb` | `int` | `16384` | SQLite page cache size in KB (default: 16 MB) |
 | `sqlite_mmap_size_mb` | `int` | `64` | Memory-mapped I/O size in MB; `0` disables mmap |
 

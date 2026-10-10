@@ -417,7 +417,8 @@ read_acquire_timeout_secs = 15
 # higher = less checkpoint overhead under heavy write load.
 wal_autocheckpoint = 0
 
-# Seconds between WAL PASSIVE checkpoints (background job).
+# Seconds between WAL checkpoints (background job): a PASSIVE pass, then a
+# TRUNCATE once the WAL has grown past 64 MiB.
 # Lower = smaller WAL file and faster reads; higher = less checkpoint overhead.
 # Recommended: 120 for RPi/SD card, 300 for SSD.
 wal_checkpoint_interval_secs = 120
