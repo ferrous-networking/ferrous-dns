@@ -622,6 +622,7 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
     let mut total_deleted: u64 = 0;
 
     loop {
+        let batch_started = Instant::now();
         let deleted = sqlx::query(
             "DELETE FROM query_log WHERE rowid IN (SELECT rowid FROM query_log WHERE created_at < ? LIMIT 5000)",
         )
@@ -634,7 +635,7 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
             break;
         }
         total_deleted += deleted;
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        tokio::time::sleep(retention_pause(batch_started.elapsed())).await;
     }
 
     // A bucket straddling the cutoff goes whole, so `days = 0` clears everything.
@@ -649,11 +650,17 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
     Ok(total_deleted)
 }
 
+/// How long retention waits after a batch before taking the write lock again.
+fn retention_pause(_batch_elapsed: Duration) -> Duration {
+    Duration::from_millis(50)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::MALWARE_FILTER;
+    use super::{retention_pause, MALWARE_FILTER};
     use ferrous_dns_domain::BlockSource;
     use std::collections::BTreeSet;
+    use std::time::Duration;
 
     fn quoted_names(sql: &str) -> BTreeSet<&str> {
         sql.split('\'').skip(1).step_by(2).collect()
@@ -676,5 +683,17 @@ mod tests {
         let list = &backfill[list_start..];
         let list = &list[..list.find(')').expect("closed list")];
         assert_eq!(quoted_names(list), expected);
+    }
+
+    #[test]
+    fn retention_leaves_the_write_lock_free_for_at_least_as_long_as_a_batch_held_it() {
+        assert_eq!(
+            retention_pause(Duration::from_secs(3)),
+            Duration::from_secs(3)
+        );
+        assert_eq!(
+            retention_pause(Duration::from_millis(1)),
+            Duration::from_millis(50)
+        );
     }
 }
