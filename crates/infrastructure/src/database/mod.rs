@@ -3,8 +3,11 @@ use sqlx::sqlite::{
     SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
     SqliteSynchronous,
 };
+use sqlx::Connection;
+use std::path::Path;
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tracing::{info, warn};
 
 fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error> {
     SqliteConnectOptions::from_str(database_url).map(|o| {
@@ -60,11 +63,58 @@ async fn build_pool(
         .await
 }
 
+fn wal_file_len(db_path: &Path) -> u64 {
+    let mut wal = db_path.as_os_str().to_owned();
+    wal.push("-wal");
+    std::fs::metadata(wal).map_or(0, |m| m.len())
+}
+
+/// Copies the WAL a previous run left behind back into the database and truncates it.
+///
+/// A killed run never cleans up its WAL, and the first connection after it rebuilds the
+/// WAL index by reading the whole file. On slow storage a large WAL takes minutes; inside
+/// a pool that would race `acquire_timeout` and fail every start the same way, so this
+/// runs on a connection of its own, before any pool exists.
+async fn checkpoint_leftover_wal(options: &SqliteConnectOptions) -> Result<(), sqlx::Error> {
+    let wal_bytes = wal_file_len(options.get_filename());
+    if wal_bytes > 0 {
+        info!(
+            wal_bytes,
+            "Checkpointing the WAL left by the previous run; a large one takes a while on slow storage"
+        );
+    }
+
+    let started = Instant::now();
+    let mut conn = SqliteConnection::connect_with(options).await?;
+    let (busy, log_frames, checkpointed_frames): (i64, i64, i64) =
+        sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(&mut conn)
+            .await?;
+    conn.close().await?;
+
+    if busy != 0 {
+        warn!(
+            log_frames,
+            checkpointed_frames,
+            "Another connection kept the WAL busy; starting without truncating it"
+        );
+    } else if wal_bytes > 0 {
+        info!(
+            frames = checkpointed_frames,
+            duration_ms = started.elapsed().as_millis() as u64,
+            "WAL checkpointed and truncated"
+        );
+    }
+    Ok(())
+}
+
 pub async fn create_write_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
 ) -> Result<SqlitePool, sqlx::Error> {
     let busy = Duration::from_secs(cfg.write_busy_timeout_secs);
+    checkpoint_leftover_wal(&base_options(database_url)?.busy_timeout(busy)).await?;
+
     let pool = build_pool(
         database_url,
         cfg,

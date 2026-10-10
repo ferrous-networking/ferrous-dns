@@ -89,7 +89,10 @@ async fn test_write_pool_folds_the_wal_left_by_a_previous_run_back_into_the_data
         .await
         .unwrap();
     let left_behind = wal_len(&db_path);
-    assert!(left_behind > 1_048_576, "setup left {left_behind} WAL bytes");
+    assert!(
+        left_behind > 1_048_576,
+        "setup left {left_behind} WAL bytes"
+    );
 
     let pool = create_write_pool(&url, &cfg).await.expect("second start");
 

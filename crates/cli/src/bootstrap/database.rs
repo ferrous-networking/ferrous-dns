@@ -43,10 +43,10 @@ pub async fn init_database(
 
 async fn warm_page_cache(pool: &SqlitePool) {
     let result = sqlx::query("SELECT id FROM query_log ORDER BY id DESC LIMIT 5000")
-        .execute(pool)
+        .fetch_all(pool)
         .await;
     match result {
-        Ok(r) => info!(rows = r.rows_affected(), "SQLite page cache warmed"),
+        Ok(rows) => info!(rows = rows.len(), "SQLite page cache warmed"),
         Err(e) => error!(error = %e, "SQLite warmup query failed (non-critical)"),
     }
 }
