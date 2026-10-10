@@ -18,7 +18,7 @@ client_tracking_interval = 60
 |:-------|:--------|:------------|
 | `path` | `./ferrous-dns.db` | Path to the SQLite database file |
 | `log_queries` | `true` | Store every DNS query for analytics and the query log dashboard |
-| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs at startup and then daily; `0` deletes every entry at each run |
+| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs at startup and then daily, deleting 1000 rows at a time and then pausing at least as long as each batch took, so other writers are not blocked; `0` deletes every entry at each run |
 | `client_tracking_interval` | `60` | Minimum seconds between consecutive last-seen DB writes per client IP |
 
 ---
@@ -106,7 +106,7 @@ sqlite_mmap_size_mb = 64
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `wal_autocheckpoint` | `0` | WAL auto-checkpoint interval (pages). `0` = disabled — manual checkpoints via background job |
-| `wal_checkpoint_interval_secs` | `120` | Seconds between background WAL PASSIVE checkpoints |
+| `wal_checkpoint_interval_secs` | `120` | Seconds between background WAL checkpoints: a PASSIVE pass, then a TRUNCATE once the WAL has grown past 64 MiB |
 | `sqlite_cache_size_kb` | `16384` | SQLite page cache size in KB |
 | `sqlite_mmap_size_mb` | `64` | Memory-mapped I/O size in MB |
 
@@ -124,6 +124,13 @@ sqlite_mmap_size_mb = 64
 Ferrous DNS uses SQLite in **WAL (Write-Ahead Logging)** mode, which allows concurrent readers while a write is in progress. This is critical for keeping the dashboard responsive while the query log is being written.
 
 With `wal_autocheckpoint = 0` (default), checkpointing is handled by a background job at `wal_checkpoint_interval_secs` intervals. This avoids sudden I/O spikes under heavy write load. A PASSIVE checkpoint never waits for readers, so a long-running reader can leave part of the WAL uncopied; the job then logs a warning with the frame counts (`WAL passive checkpoint partial` / `blocked by a busy lock`) instead of reporting completion. A warning that repeats every cycle means something keeps a read transaction open and the WAL file will keep growing.
+
+A PASSIVE checkpoint copies frames back but leaves them in the WAL. Once the WAL has grown past 64 MiB, the job follows with a TRUNCATE checkpoint, which shrinks the file to zero bytes. A TRUNCATE has to wait for readers to leave the WAL and holds new writers off while it waits, so it gives up after 2 s and keeps the passive result. In that case the job logs `blocked by a busy lock`.
+
+The WAL is also bounded across restarts:
+
+- **At startup,** before opening its connection pools, the server copies back and truncates any WAL the previous run left. It uses a connection with no timeout, so a large WAL left by a killed process makes that start slower but never fails it. The log reports the WAL's size and how long the copy took.
+- **On `SIGTERM` or `SIGINT`,** for example from `docker stop`, the server closes the database. SQLite then copies the WAL back and deletes it.
 
 ---
 

@@ -313,7 +313,7 @@ Error: database is locked
 
 ### Cause
 
-SQLite WAL mode allows concurrent reads but serializes writes. Under very high query logging load, the write lock can be contended.
+SQLite WAL mode allows concurrent reads but serializes writes. Under very high query logging load, the write lock can be contended. On v0.9.20 and earlier, the query-log cleanup also deleted a large backlog in 5000-row batches only 50 ms apart, and every dashboard request wrote its session. On slow storage that kept the lock busy for minutes, for example after `queries_log_stored` was lowered. The cleanup now deletes 1000 rows at a time and then pauses at least as long as each batch took. Session checks no longer write on every request.
 
 ### Solution
 
@@ -331,6 +331,45 @@ Or reduce write pressure by sampling queries:
 query_log_sample_rate = 10       # log 1 in 10 queries instead of all
 query_log_max_batch_size = 5000  # larger batches = fewer transactions
 ```
+
+---
+
+## Startup Fails With "pool timed out while waiting for an open connection"
+
+### Symptom
+
+The server stops during startup, and with Docker the container restarts into the same error:
+
+```text
+INFO  ferrous_dns::bootstrap::database: Initializing database: sqlite:ferrous-dns.db
+ERROR ferrous_dns::bootstrap::database: Failed to initialize write pool: pool timed out while waiting for an open connection
+```
+
+The error comes exactly `write_busy_timeout_secs` after `Initializing database`.
+
+### Cause
+
+The database has a large `-wal` file, left behind by a process that was killed instead of stopped. Before SQLite can open the database, it reads the whole WAL. On v0.9.20 and earlier:
+
+- that read happened inside the write pool's connection timeout, so a WAL that took longer failed every start;
+- each restart began the read again from scratch;
+- the server did not handle `docker stop`, so every stop, upgrade or reboot left a WAL behind.
+
+Current releases read the WAL on a connection with no timeout, copy it back into the database and truncate it. A large WAL only makes that start slower, and the log reports its size. On `SIGTERM` the server closes the database, which removes the WAL. While it runs, any WAL past 64 MiB is truncated.
+
+### Solution
+
+**Do not delete the `-wal` file.** It holds committed changes that are not in the `.db` file yet. Deleting it loses them and can corrupt the database.
+
+On v0.9.20 and earlier, stop the server and copy the WAL back by hand. This takes a while on slow storage:
+
+```bash
+docker stop ferrous-dns
+sqlite3 /path/to/data/ferrous-dns.db 'PRAGMA wal_checkpoint(TRUNCATE);'
+docker start ferrous-dns
+```
+
+If the `-wal` file was already deleted, check the database with `sqlite3 ferrous-dns.db 'PRAGMA quick_check;'`.
 
 ---
 
