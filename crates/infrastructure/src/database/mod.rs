@@ -99,8 +99,8 @@ async fn checkpoint_leftover_wal(options: &SqliteConnectOptions) -> Result<(), s
             "Another connection kept the WAL busy; starting without truncating it"
         );
     } else if wal_bytes > 0 {
+        // A successful TRUNCATE reports the emptied log, so its frame counts are zero.
         info!(
-            frames = checkpointed_frames,
             duration_ms = started.elapsed().as_millis() as u64,
             "WAL checkpointed and truncated"
         );
