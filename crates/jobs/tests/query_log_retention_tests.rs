@@ -199,7 +199,7 @@ impl QueryLogRepository for MockQueryLogRepository {
     }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_query_log_retention_job_removes_only_logs_past_configured_days() {
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_recent_log("10.0.0.1").await;
@@ -208,7 +208,7 @@ async fn test_query_log_retention_job_removes_only_logs_past_configured_days() {
 
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
     QueryLogRetentionJob::new(use_case, 7).spawn();
-    sleep(Duration::from_millis(200)).await;
+    sleep(FOUR_HOURS + Duration::from_secs(1)).await;
 
     assert_eq!(repo.count().await, 2);
 }
@@ -245,7 +245,11 @@ async fn test_query_log_retention_job_skips_startup_and_first_runs_four_hours_la
     assert_eq!(repo.count().await, 1, "no cleanup may compete with startup");
 
     sleep(Duration::from_secs(2)).await;
-    assert_eq!(repo.count().await, 0, "the first cleanup runs 4 hours after startup");
+    assert_eq!(
+        repo.count().await,
+        0,
+        "the first cleanup runs 4 hours after startup"
+    );
 }
 
 #[tokio::test(start_paused = true)]

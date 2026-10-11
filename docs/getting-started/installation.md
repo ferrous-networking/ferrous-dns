@@ -277,7 +277,7 @@ Some config values that earlier releases started with are now invalid, mostly be
 docker logs ferrous-dns 2>&1 | grep "Invalid config value"
 ```
 
-Values that made earlier releases fail to start or crash still stop startup. `queries_log_stored = 0` keeps its meaning: every run of the daily cleanup deletes the whole query log. The full list is under [Loading the Config File](../configuration/ferrous-dns-toml.md#loading-the-config-file). The dashboard and the API reject all of these values.
+Values that made earlier releases fail to start or crash still stop startup. `queries_log_stored = 0` keeps its meaning: every run of the cleanup deletes the whole query log. The full list is under [Loading the Config File](../configuration/ferrous-dns-toml.md#loading-the-config-file). The dashboard and the API reject all of these values.
 
 ### DoH behind a reverse proxy
 

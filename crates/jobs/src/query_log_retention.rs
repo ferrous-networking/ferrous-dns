@@ -3,6 +3,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info};
 
+/// Cadence of the cleanup, and also the delay before its first run: a cleanup at startup
+/// competes with the boot for the disk, and smaller runs hold the write lock for less time.
+const RETENTION_INTERVAL_SECS: u64 = 4 * 3600;
+
 pub struct QueryLogRetentionJob {
     cleanup: Arc<CleanupOldQueryLogsUseCase>,
     retention_days: u32,
@@ -14,7 +18,7 @@ impl QueryLogRetentionJob {
         Self {
             cleanup,
             retention_days,
-            interval_secs: 86400,
+            interval_secs: RETENTION_INTERVAL_SECS,
         }
     }
 
@@ -26,11 +30,14 @@ impl QueryLogRetentionJob {
     pub fn spawn(self) {
         info!(
             retention_days = self.retention_days,
+            interval_secs = self.interval_secs,
             "Starting query log retention job"
         );
 
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(self.interval_secs));
+            let period = Duration::from_secs(self.interval_secs);
+            let mut interval =
+                tokio::time::interval_at(tokio::time::Instant::now() + period, period);
             loop {
                 interval.tick().await;
                 match self.cleanup.execute(self.retention_days).await {

@@ -353,7 +353,7 @@ level = "info"                          # Log verbosity: "error", "warn", "info"
 [database]
 path = "ferrous-dns.db"                 # Path to the SQLite database file
 log_queries = true                      # Store every DNS query in the database for analytics
-queries_log_stored = 30                 # Days to retain query log entries before the daily cleanup; 0 deletes them all at each run
+queries_log_stored = 30                 # Days to retain query log entries; the cleanup runs every 4 hours, first 4 hours after startup; 0 deletes them all at each run
 
 # Minimum seconds between consecutive last-seen DB writes for the same client IP.
 # Reduce to track clients more frequently; increase to lower SQLite write pressure.
