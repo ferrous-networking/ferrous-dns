@@ -280,7 +280,11 @@ impl DnsServerHandler {
                 return build_blocked_wire(query, record_type, self.block_policy, ede.as_ref());
             }
             DomainError::DnsRateLimitedSlip => return query.truncated(),
-            DomainError::DnsRateLimited | DomainError::DnsCookieInvalid => Rcode::Refused,
+            DomainError::DnsRateLimited => Rcode::Refused,
+            // RFC 7873 §5.2.3: a client cookie gets BADCOOKIE and ours to
+            // retry with. A query without one has nothing to carry it.
+            DomainError::DnsCookieInvalid if query.has_response_cookie() => Rcode::BadCookie,
+            DomainError::DnsCookieInvalid => Rcode::Refused,
             DomainError::NxDomain | DomainError::LocalNxDomain => {
                 return query.respond(Rcode::NxDomain, false, ResponseBody::Empty, None);
             }
@@ -353,6 +357,10 @@ impl<'a> ClientQuery<'a> {
         if let Some(edns) = &mut self.edns {
             edns.cookie = cookie;
         }
+    }
+
+    fn has_response_cookie(&self) -> bool {
+        self.edns.is_some_and(|e| e.cookie.is_some())
     }
 
     fn edns_reply<'r>(&'r self, ede: Option<&'r ExtendedDnsError>) -> Option<EdnsReply<'r>> {

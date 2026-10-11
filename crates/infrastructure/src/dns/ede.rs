@@ -12,8 +12,6 @@ pub mod codes {
     pub const PROHIBITED: u16 = 18;
     pub const NO_REACHABLE_AUTHORITY: u16 = 22;
     pub const NETWORK_ERROR: u16 = 23;
-    /// RFC 8914 §4.26 — Bad or Missing EDNS Cookie.
-    pub const BAD_COOKIE: u16 = 25;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +24,7 @@ pub fn from_domain_error(err: &DomainError) -> Option<ExtendedDnsError> {
     let (info_code, extra_text) = match err {
         DomainError::Blocked => (codes::BLOCKED, "domain is in blocklist"),
         DomainError::DgaDomainDetected => (codes::BLOCKED, "DGA domain detected"),
-        DomainError::DnsCookieInvalid => (codes::BAD_COOKIE, "bad or missing EDNS cookie"),
+        DomainError::DnsCookieInvalid => (codes::PROHIBITED, "missing or invalid DNS cookie"),
         DomainError::FilteredQuery(_) => (codes::BLOCKED, "query filtered by policy"),
         DomainError::DnsTunnelingDetected => (codes::PROHIBITED, "DNS tunneling detected"),
         DomainError::DnsRateLimited => (codes::PROHIBITED, "rate limit exceeded"),

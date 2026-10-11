@@ -25,6 +25,14 @@ fn should_return_prohibited_when_rate_limited() {
     assert_eq!(ede.info_code, codes::PROHIBITED);
 }
 
+/// RFC 8914 §4.19 annotates a refused unauthorized client. EDE 25 is
+/// Signature Expired before Valid, not a cookie code.
+#[test]
+fn should_return_prohibited_when_cookie_invalid() {
+    let ede = ede::from_domain_error(&DomainError::DnsCookieInvalid).unwrap();
+    assert_eq!(ede.info_code, codes::PROHIBITED);
+}
+
 #[test]
 fn should_return_dnssec_bogus_when_validation_failed() {
     let ede =

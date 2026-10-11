@@ -21,8 +21,9 @@ pub struct DnsCookiesConfig {
     /// to allow in-flight clients to re-negotiate without errors.
     pub secret_rotation_secs: u64,
 
-    /// When `true`, queries that carry an invalid or absent server cookie are
-    /// rejected with REFUSED + EDE 25 (Bad or Missing EDNS Cookie).
+    /// When `true`, a UDP query without a valid server cookie is not
+    /// resolved: BADCOOKIE with a fresh cookie if it sent a client cookie,
+    /// REFUSED if it sent none. TCP, DoT, DoH and DoQ are not checked.
     /// When `false` (default), the server responds normally but always
     /// echoes a fresh server cookie so clients can learn and cache it.
     pub require_valid_cookie: bool,

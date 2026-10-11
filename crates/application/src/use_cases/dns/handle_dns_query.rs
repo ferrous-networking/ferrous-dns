@@ -416,6 +416,15 @@ impl HandleDnsQueryUseCase {
     /// to [`Self::execute`], otherwise `(group_id, explicitly_allowed)`.
     #[inline]
     fn cache_gate(&self, domain: &str, client_ip: IpAddr) -> Option<(i64, bool)> {
+        // Strict DNS Cookies validate every UDP query, which `execute` does.
+        if self
+            .cookie_guard
+            .as_ref()
+            .is_some_and(DnsCookieGuard::is_strict)
+        {
+            return None;
+        }
+
         let group_id = self.block_filter.resolve_group(client_ip);
 
         let filter_decision = self.block_filter.check(domain, group_id);
@@ -656,7 +665,11 @@ impl HandleDnsQueryUseCase {
             group_id,
         )?;
 
-        if let Some(guard) = self.cookie_guard.as_ref().filter(|g| g.is_strict()) {
+        if let Some(guard) = self
+            .cookie_guard
+            .as_ref()
+            .filter(|g| g.requires_cookie(request.protocol))
+        {
             let opt = request
                 .edns_cookie
                 .as_ref()

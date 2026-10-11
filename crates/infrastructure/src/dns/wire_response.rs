@@ -157,7 +157,8 @@ const EDNS_UDP_PAYLOAD: u16 = 4096;
 /// `hostmaster.ferrous-dns.invalid.` — the synthetic SOA RNAME.
 const SOA_RNAME: &[u8] = b"\x0ahostmaster\x0bferrous-dns\x07invalid\x00";
 
-/// Response codes this server sets in the header (RFC 1035 §4.1.1).
+/// Response codes this server sets: the low four bits go in the header (RFC
+/// 1035 §4.1.1), the rest in the OPT's extended RCODE (RFC 6891 §6.1.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Rcode {
@@ -166,6 +167,9 @@ pub enum Rcode {
     ServFail = 2,
     NxDomain = 3,
     Refused = 5,
+    /// RFC 7873 §8. Its upper bits need an OPT, so only a query that sent
+    /// a cookie gets it.
+    BadCookie = 23,
 }
 
 /// Header fields of a response that are not derived from its sections.
@@ -184,7 +188,7 @@ impl ResponseHead {
             hi |= 0x02;
         }
         // RA is always set: this server recurses for every client.
-        let lo = 0x80 | (u8::from(self.authentic_data) << 5) | self.rcode as u8;
+        let lo = 0x80 | (u8::from(self.authentic_data) << 5) | (self.rcode as u8 & 0x0F);
         [hi, lo]
     }
 }
@@ -303,7 +307,7 @@ pub fn encode_response(
         }
     }
     if let Some(edns) = edns {
-        edns.write(&mut out, 0);
+        edns.write(&mut out, head.rcode as u8 >> 4);
     }
     out
 }
@@ -1266,6 +1270,28 @@ mod tests {
             }
             other => panic!("expected SOA, got {other:?}"),
         }
+    }
+
+    /// RFC 6891 §6.1.3: BADCOOKIE (23) is 7 in the header and 1 in the OPT.
+    #[test]
+    fn extended_rcode_splits_between_the_header_and_the_opt() {
+        let q = question("example.com.", RecordType::A);
+        let cookie = [7u8; 16];
+        let wire = encode_response(
+            &head(Rcode::BadCookie),
+            &q,
+            1,
+            ResponseBody::Empty,
+            Some(&EdnsReply {
+                dnssec_ok: false,
+                cookie: Some(&cookie),
+                ede: None,
+            }),
+        );
+
+        assert_eq!(wire[3] & 0x0F, 7);
+        let msg = Message::from_vec(&wire).unwrap();
+        assert_eq!(u16::from(msg.response_code), 23);
     }
 
     #[test]

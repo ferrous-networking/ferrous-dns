@@ -468,21 +468,22 @@ Stage 3 — Secret rotation
 
 When a client has negotiated a valid server cookie, the server can confirm with high confidence that subsequent queries originate from the same IP. An attacker spoofing the victim's source address does not know the server's HMAC secret and cannot reproduce the correct server cookie, so:
 
-- **Amplification attacks** — spoofed queries without a valid cookie are refused in permissive mode (no resolution, minimal response) or rejected with `REFUSED` in strict mode, preventing the server from being used as a reflector.
+- **Amplification attacks** — in strict mode, a UDP query without a valid cookie gets a small `BADCOOKIE` or `REFUSED` reply and never an answer, even when the answer is in the cache, so the server cannot be used as a reflector. Permissive mode answers every query.
 - **Cache poisoning** — an attacker cannot inject a forged response without matching the cookie the client presented, dramatically narrowing the race window.
 
-### Integration with EDE Code 25
+### Strict Mode Responses
 
-In strict mode (`require_valid_cookie = true`), queries with an absent or invalid server cookie are rejected with:
+In strict mode (`require_valid_cookie = true`), a UDP query without a valid server cookie is not resolved:
 
-- **RCODE** `REFUSED`
-- **EDE info_code** `25` — *Bad or Missing EDNS Cookie* (RFC 8914 § 4.25)
+- **With a client cookie** but no server cookie, or a stale or forged one: **RCODE** `BADCOOKIE` (23), carrying a fresh server cookie (RFC 7873 §5.2.3–§5.2.4). An RFC 7873 client retries with it and is answered.
+- **With no cookie at all**: **RCODE** `REFUSED`.
+- Both carry **EDE info_code** `18`: *Prohibited*, with the text "missing or invalid DNS cookie" (RFC 8914 §4.19).
 
-This gives RFC-aware clients a precise machine-readable reason for the rejection, enabling automatic retry with a freshly bootstrapped cookie.
+Queries over TCP, DoT, DoH and DoQ are not checked: their handshake already proves the client's address, which is all a server cookie proves (RFC 7873 §5.2.3), and DoH clients never send a cookie.
 
 ### Fast Path Behaviour
 
-Cache hits skip cookie validation: a query served from L1 or L2 cache is answered even in strict mode, and validation runs only on cache misses. Every reply to a query that carries a cookie echoes that cookie beside a fresh server cookie: cache hits of every type (A/AAAA included), errors, blocked answers and truncated (TC=1) replies alike. RFC 7873 §5.3 requires it, because a client that has learned the server cookie discards any reply without one. c-ares, the resolver behind Alpine's curl and git, does exactly that and times out. Only queries that carry a cookie pay for the HMAC.
+Every reply to a query that carries a cookie echoes that cookie beside a fresh server cookie: cache hits of every type (A/AAAA included), errors, blocked answers and truncated (TC=1) replies alike. RFC 7873 §5.3 requires it, because a client that has learned the server cookie discards any reply without one. c-ares, the resolver behind Alpine's curl and git, does exactly that and times out. Only queries that carry a cookie pay for the HMAC. In strict mode the inline UDP cache path is off: every UDP query, cache hits included, goes through the full path, which validates its cookie.
 
 ### Configuration
 

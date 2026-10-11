@@ -440,9 +440,10 @@ sqlite_mmap_size_mb = 64
 # Set server_secret to a stable 64-char hex string (32 bytes) so cookies survive
 # restarts. Leave empty to use an ephemeral secret (clients re-negotiate on restart).
 #
-# Set require_valid_cookie = true for strict mode: queries without a valid cookie
-# are refused (REFUSED + EDE 25). Only enable on servers where all clients
-# support RFC 7873 (dig, modern resolvers). Default is permissive.
+# Set require_valid_cookie = true for strict mode: a UDP query without a valid
+# cookie gets BADCOOKIE with a fresh cookie, or REFUSED when it sent none.
+# TCP, DoT, DoH and DoQ are not checked. Only enable on servers where all UDP
+# clients support RFC 7873 (dig, modern resolvers). Default is permissive.
 #
 # The table is nested under [dns]; a top-level [dns_cookies] is ignored.
 [dns.dns_cookies]

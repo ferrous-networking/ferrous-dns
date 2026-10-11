@@ -1,4 +1,4 @@
-use ferrous_dns_domain::DnsCookiesConfig;
+use ferrous_dns_domain::{ClientProtocol, DnsCookiesConfig};
 use ring::hmac;
 use std::net::IpAddr;
 
@@ -22,6 +22,15 @@ impl DnsCookieGuard {
 
     pub(super) fn is_strict(&self) -> bool {
         self.strict
+    }
+
+    /// Whether a query over `protocol` must carry a valid server cookie: in
+    /// strict mode, over UDP. A TCP, TLS or QUIC handshake already proves the
+    /// client's address, which is all the cookie proves (RFC 7873 §5.2.3).
+    /// `None`, a request from no listener, is held to the UDP rule.
+    pub(super) fn requires_cookie(&self, protocol: Option<ClientProtocol>) -> bool {
+        use ClientProtocol::{Doh, Doq, Dot, Tcp};
+        self.strict && !matches!(protocol, Some(Tcp | Dot | Doh | Doq))
     }
 
     /// Whether EDNS option-10 data carries a server cookie this server issued to `client_ip`.
@@ -161,5 +170,23 @@ mod tests {
         assert!(DnsCookieGuard::from_config(&config(true, true), [0; 32]).is_strict());
         assert!(!DnsCookieGuard::from_config(&config(true, false), [0; 32]).is_strict());
         assert!(!DnsCookieGuard::from_config(&config(false, true), [0; 32]).is_strict());
+    }
+
+    #[test]
+    fn strict_mode_requires_a_cookie_over_udp_only() {
+        let strict = guard_enabled();
+        assert!(strict.requires_cookie(Some(ClientProtocol::Udp)));
+        assert!(strict.requires_cookie(None));
+        for protocol in [
+            ClientProtocol::Tcp,
+            ClientProtocol::Dot,
+            ClientProtocol::Doh,
+            ClientProtocol::Doq,
+        ] {
+            assert!(!strict.requires_cookie(Some(protocol)), "{protocol}");
+        }
+
+        let permissive = DnsCookieGuard::from_config(&DnsCookiesConfig::default(), [0; 32]);
+        assert!(!permissive.requires_cookie(Some(ClientProtocol::Udp)));
     }
 }

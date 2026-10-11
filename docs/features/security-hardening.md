@@ -78,7 +78,7 @@ Configured under `[dns.dns_cookies]`, documented in detail in [DNS Cookies](secu
 enabled              = true    # on by default
 server_secret        = ""      # empty = ephemeral secret, regenerated each restart
 secret_rotation_secs = 3600
-require_valid_cookie = false   # true = REFUSED + EDE 25 for cookieless clients
+require_valid_cookie = false   # true = BADCOOKIE/REFUSED for UDP clients without a valid cookie
 ```
 
 `server_secret` must be exactly 64 hex characters when set; with cookies enabled anything else aborts startup rather than silently falling back (with `enabled = false` it is ignored with a warning). Leaving it empty is fine for a single instance, but every restart invalidates outstanding client cookies — set it explicitly for production and for multi-instance deployments.
