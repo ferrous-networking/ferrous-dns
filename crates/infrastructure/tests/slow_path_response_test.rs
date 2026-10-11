@@ -39,6 +39,14 @@ impl DnsResolver for Scripted {
 
 /// The handler, and the COOKIE payload it must return for `CLIENT_COOKIE`.
 fn server(outcome: Result<DnsResolution, DomainError>) -> (DnsServerHandler, Vec<u8>) {
+    server_with_policy(outcome, POLICY)
+}
+
+/// [`server`], answering blocks under `policy`.
+fn server_with_policy(
+    outcome: Result<DnsResolution, DomainError>,
+    policy: BlockPolicy,
+) -> (DnsServerHandler, Vec<u8>) {
     let cookies = DnsCookiesConfig {
         require_valid_cookie: false,
         ..DnsCookiesConfig::default()
@@ -53,7 +61,7 @@ fn server(outcome: Result<DnsResolution, DomainError>) -> (DnsServerHandler, Vec
         .cookie_guard()
         .expect("cookies are enabled")
         .generate_server_cookie(CLIENT, &CLIENT_COOKIE);
-    let handler = DnsServerHandler::new(Arc::new(use_case), POLICY);
+    let handler = DnsServerHandler::new(Arc::new(use_case), policy);
     (handler, [&CLIENT_COOKIE[..], &server_cookie].concat())
 }
 
@@ -225,16 +233,49 @@ async fn a_shed_query_is_dropped_over_udp_and_answered_servfail_on_streams() {
     }
 }
 
+/// RFC 6891 §7 / RFC 7873 §5.3: every reply we build (answers, errors,
+/// blocks under each policy and truncations) carries an OPT exactly when
+/// the query did, and our cookie exactly when the query sent one. A client
+/// that has learned our server cookie drops a reply without it (issue #279).
 #[tokio::test]
-async fn built_answers_carry_opt_exactly_when_the_query_did() {
-    let outcomes = [
-        (Ok(answer(None)), true),
-        (Err(DomainError::NxDomain), false),
-        (Err(DomainError::Blocked), false),
-    ];
-    for (outcome, answered) in outcomes {
-        let label = format!("{outcome:?}");
-        let (handler, our_cookie) = server(outcome);
+async fn built_answers_carry_opt_and_cookie_exactly_when_the_query_did() {
+    use BlockResponseMode::{NoData, NullIp, NxDomain, Refused};
+    use DomainError as E;
+    // Larger than the 1232-byte buffer the query advertises, so TC=1.
+    let oversized = DnsResolution::new(
+        (0..100)
+            .map(|i| IpAddr::V4(Ipv4Addr::new(192, 0, 2, i)))
+            .collect(),
+        false,
+    );
+    let mut cases: Vec<_> = [
+        Ok(answer(None)),
+        Ok(oversized),
+        Err(E::NxDomain),
+        Err(E::LocalNxDomain),
+        Err(E::DnsRateLimited),
+        Err(E::DnsRateLimitedSlip),
+        Err(E::DnsCookieInvalid),
+        Err(E::QueryTimeout),
+        Err(E::DnssecBogus),
+        Err(E::Blocked),
+        Err(E::DgaDomainDetected),
+        Err(E::FilteredQuery("p".into())),
+        Err(E::DnsTunnelingDetected),
+    ]
+    .into_iter()
+    .map(|outcome| (NullIp, outcome))
+    .collect();
+    cases.extend([NxDomain, NoData, Refused].map(|mode| (mode, Err(E::Blocked))));
+
+    // Every shape is checked before failing, so a failure lists them all.
+    let mut dropped = Vec::new();
+    for (mode, outcome) in cases {
+        let label = match &outcome {
+            Ok(resolution) => format!("{mode:?}, {} addresses", resolution.addresses.len()),
+            Err(err) => format!("{mode:?}, {err:?}"),
+        };
+        let (handler, our_cookie) = server_with_policy(outcome, BlockPolicy { mode, ..POLICY });
 
         let plain = ask(&handler, &query(RecordType::A, None, false, false)).await;
         assert!(
@@ -243,13 +284,24 @@ async fn built_answers_carry_opt_exactly_when_the_query_did() {
         );
 
         let reply = ask(&handler, &query(RecordType::A, Some(true), true, false)).await;
-        let opt = reply.edns.as_ref().expect("OPT echoed");
-        assert!(opt.flags().dnssec_ok, "{label}: DO copied (RFC 3225 §3)");
-        assert_eq!(opt.max_payload(), 4096, "{label}");
-        if answered {
-            assert_eq!(option(&reply, 10), Some(our_cookie), "RFC 7873 §5.2");
+        match reply.edns.as_ref() {
+            None => dropped.push(format!("{label}: no OPT")),
+            Some(opt) => {
+                assert!(opt.flags().dnssec_ok, "{label}: DO copied (RFC 3225 §3)");
+                assert_eq!(opt.max_payload(), 4096, "{label}");
+                if option(&reply, 10) != Some(our_cookie) {
+                    dropped.push(format!("{label}: no cookie"));
+                }
+            }
         }
+
+        let cookieless = ask(&handler, &query(RecordType::A, Some(false), false, false)).await;
+        if cookieless.edns.is_none() {
+            dropped.push(format!("{label}: no OPT without a cookie"));
+        }
+        assert_eq!(option(&cookieless, 10), None, "{label}: no cookie sent");
     }
+    assert!(dropped.is_empty(), "{dropped:#?}");
 }
 
 #[tokio::test]

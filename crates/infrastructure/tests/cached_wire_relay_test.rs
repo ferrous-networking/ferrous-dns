@@ -22,7 +22,10 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::fast_path::parse_query;
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
-use ferrous_dns_infrastructure::dns::{CachedData, DnsCache, DnsCacheConfig, EvictionStrategy};
+use ferrous_dns_infrastructure::dns::wire_response::{self, RESPONSE_BUF_LEN};
+use ferrous_dns_infrastructure::dns::{
+    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy,
+};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query, ResponseCode};
 use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::rdata::{MX, TXT};
@@ -140,6 +143,18 @@ impl Server {
     /// A handler with DNS Cookies on, logging to `log`, whose cache holds
     /// `answers`.
     fn caching(answers: &[(&str, RecordType, Vec<u8>)], log: Arc<dyn QueryLogRepository>) -> Self {
+        let entries = answers.iter().map(|(name, record_type, wire)| {
+            let data = CachedData::WireData(Bytes::from(wire.clone()));
+            (*name, *record_type, data)
+        });
+        Self::holding(entries, log)
+    }
+
+    /// [`Self::caching`], with the cache holding `entries` as they are.
+    fn holding<'a>(
+        entries: impl IntoIterator<Item = (&'a str, RecordType, CachedData)>,
+        log: Arc<dyn QueryLogRepository>,
+    ) -> Self {
         let cache = Arc::new(DnsCache::new(DnsCacheConfig {
             max_entries: 100,
             eviction_strategy: EvictionStrategy::HitRate,
@@ -155,9 +170,8 @@ impl Server {
             min_ttl: 0,
             max_ttl: 86_400,
         }));
-        for (name, record_type, wire) in answers {
-            let data = CachedData::WireData(Bytes::from(wire.clone()));
-            cache.insert(name, *record_type, data, 300, None);
+        for (name, record_type, data) in entries {
+            cache.insert(name, record_type, data, 300, None);
         }
         let resolver = Arc::new(CachedResolver::new(Arc::new(NoUpstream), cache, 300, 4));
         let cookies = DnsCookiesConfig {
@@ -189,6 +203,22 @@ impl Server {
             .handler
             .try_fast_path_wire(&parsed, query, CLIENT, ClientProtocol::Udp)?;
         Some(Message::from_vec(&reply).expect("the reply decodes"))
+    }
+
+    /// What the UDP worker's A/AAAA fast path sends for `query`.
+    fn fast_address(&self, query: &[u8]) -> Option<Message> {
+        let parsed = parse_query(query).expect("a fast-path query");
+        let mut out = [0u8; RESPONSE_BUF_LEN];
+        let len = self.handler.try_fast_path(
+            parsed.domain(),
+            parsed.record_type,
+            CLIENT,
+            ClientProtocol::Udp,
+            |addresses, ttl| {
+                wire_response::build_cache_hit_response(&parsed, query, addresses, ttl, &mut out)
+            },
+        )?;
+        Some(Message::from_vec(&out[..len]).expect("the reply decodes"))
     }
 
     /// What the slow path sends for `query`.
@@ -248,6 +278,12 @@ fn mx() -> RData {
 
 fn txt(text: &str) -> RData {
     RData::TXT(TXT::new(vec![text.to_string()]))
+}
+
+fn addresses(addresses: &[IpAddr]) -> CachedData {
+    CachedData::IpAddresses(CachedAddresses {
+        addresses: Arc::new(addresses.to_vec()),
+    })
 }
 
 /// A query for `owner`, with an OPT carrying `cookie` when `edns` is
@@ -325,6 +361,43 @@ fn cached_answers_echo_the_client_cookie_beside_our_server_cookie() {
             cookie_of(&reply),
             None,
             "{owner}: no cookie sent, none back"
+        );
+    }
+}
+
+/// The same for a cached A/AAAA answer, which the UDP worker encodes
+/// inline: c-ares drops it when it lacks the cookie (issue #279).
+#[test]
+fn cached_addresses_echo_the_client_cookie_beside_our_server_cookie() {
+    let v4 = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 80));
+    let v6: IpAddr = "2001:db8::80".parse().unwrap();
+    let server = Server::holding(
+        [
+            ("example.com", RecordType::A, addresses(&[v4])),
+            ("example.com", RecordType::AAAA, addresses(&[v6])),
+        ],
+        Arc::new(NoopQueryLog),
+    );
+    let ours = [&CLIENT_COOKIE[..], &server.server_cookie].concat();
+    let stale = [&CLIENT_COOKIE[..], &[0xEE; 16]].concat();
+
+    for (qtype, address) in [(WireType::A, v4), (WireType::AAAA, v6)] {
+        for sent in [&CLIENT_COOKIE[..], &stale] {
+            let reply = server
+                .fast_address(&query("example.com", qtype, Some(false), Some(sent)))
+                .expect("served on the fast path");
+            assert_eq!(reply.metadata.id, ID);
+            assert_eq!(reply.answers[0].data.ip_addr(), Some(address), "{qtype}");
+            assert_eq!(cookie_of(&reply), Some(ours.clone()), "{qtype}");
+        }
+        let reply = server
+            .fast_address(&query("example.com", qtype, Some(false), None))
+            .expect("served on the fast path");
+        assert!(reply.edns.is_some());
+        assert_eq!(
+            cookie_of(&reply),
+            None,
+            "{qtype}: no cookie sent, none back"
         );
     }
 }
