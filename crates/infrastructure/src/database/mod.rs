@@ -108,6 +108,53 @@ async fn checkpoint_leftover_wal(options: &SqliteConnectOptions) -> Result<(), s
     Ok(())
 }
 
+/// Planner statistics for `idx_query_log_window`, written when `sqlite_stat1` has none.
+/// The id range and the distinct sources are index seeks (min and max in separate
+/// subqueries, or SQLite scans), so this costs milliseconds at any size. Only the first
+/// two numbers steer a plan here (retention skip-scans on rows per `query_source`), so
+/// the per-timestamp ones stay at 1.
+const SEED_QUERY_LOG_STATS: &str = "
+    INSERT INTO sqlite_stat1 (tbl, idx, stat)
+    SELECT 'query_log', 'idx_query_log_window',
+           row_count || ' ' || ((row_count + source_count - 1) / source_count) || ' 1 1'
+    FROM (
+        SELECT (SELECT max(id) FROM query_log) - (SELECT min(id) FROM query_log) + 1 AS row_count,
+               (WITH RECURSIVE source(v) AS (
+                    SELECT min(query_source) FROM query_log
+                    UNION ALL
+                    SELECT (SELECT min(query_source) FROM query_log WHERE query_source > v)
+                    FROM source WHERE v IS NOT NULL
+                ) SELECT count(v) FROM source) AS source_count
+    )
+    WHERE row_count > 0
+      AND NOT EXISTS (SELECT 1 FROM sqlite_stat1 WHERE idx = 'idx_query_log_window')";
+
+/// Estimates the query log's missing statistics so the `PRAGMA optimize` that follows has
+/// no reason to ANALYZE it.
+///
+/// ANALYZE counts every entry of an index exactly, whatever `analysis_limit` says. The
+/// window index was built over the existing rows on upgrade, so on a multi-GB query log
+/// that count read the whole index before DNS could start, and a boot killed during it
+/// left no statistics for the next one.
+async fn seed_missing_query_log_stats(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    // Creates sqlite_stat1 on a database that was never analyzed.
+    sqlx::query("ANALYZE sqlite_schema")
+        .execute(&mut *conn)
+        .await?;
+    let seeded = sqlx::query(SEED_QUERY_LOG_STATS)
+        .execute(&mut *conn)
+        .await?
+        .rows_affected();
+    if seeded > 0 {
+        // Statistics load with the schema; this reloads them on this connection.
+        sqlx::query("ANALYZE sqlite_schema")
+            .execute(&mut *conn)
+            .await?;
+        info!("Estimated the query log's planner statistics instead of analyzing it");
+    }
+    Ok(())
+}
+
 pub async fn create_write_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
@@ -128,7 +175,10 @@ pub async fn create_write_pool(
     sqlx::migrate!("../../migrations").run(&pool).await?;
     crate::repositories::client_subnet_repository::canonicalize_stored_subnets(&pool).await?;
 
-    sqlx::query("PRAGMA optimize").execute(&pool).await?;
+    let mut conn = pool.acquire().await?;
+    seed_missing_query_log_stats(&mut conn).await?;
+    sqlx::query("PRAGMA optimize").execute(&mut *conn).await?;
+    drop(conn);
 
     Ok(pool)
 }
