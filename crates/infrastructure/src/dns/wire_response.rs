@@ -36,12 +36,15 @@ pub fn wire_fits_udp_buffer(wire_len: usize, client_max_size: u16) -> bool {
 }
 
 /// Encodes a cache hit into `out`, which may hold a previous response, and
-/// returns its length. `None` if it would not fit the client or `out`.
+/// returns its length. A query with OPT gets one back, carrying `cookie`,
+/// our COOKIE payload, when there is one. `None` if it would not fit the
+/// client or `out`.
 pub fn build_cache_hit_response(
     query: &FastPathQuery,
     query_buf: &[u8],
     addresses: &[IpAddr],
     ttl: u32,
+    cookie: Option<&[u8]>,
     out: &mut [u8; RESPONSE_BUF_LEN],
 ) -> Option<usize> {
     if addresses.is_empty() || query.question_end > query_buf.len() {
@@ -53,7 +56,7 @@ pub fn build_cache_hit_response(
     let answers_size: usize = addresses.iter().map(address_rr_len).sum();
 
     let opt_size = if query.has_edns() {
-        OPT_RECORD.len()
+        OPT_RECORD.len() + cookie.map_or(0, |c| 4 + c.len())
     } else {
         0
     };
@@ -87,11 +90,26 @@ pub fn build_cache_hit_response(
     }
 
     if query.has_edns() {
-        out[pos..pos + OPT_RECORD.len()].copy_from_slice(&OPT_RECORD);
-        pos += OPT_RECORD.len();
+        pos += write_fast_path_opt(&mut out[pos..], cookie);
     }
 
     Some(pos)
+}
+
+/// Writes the fast path's OPT, with `cookie` as its only option when there
+/// is one, at the start of `out`; returns its length.
+#[inline]
+fn write_fast_path_opt(out: &mut [u8], cookie: Option<&[u8]>) -> usize {
+    let Some(cookie) = cookie else {
+        out[..OPT_RECORD.len()].copy_from_slice(&OPT_RECORD);
+        return OPT_RECORD.len();
+    };
+    let rdlen = 4 + cookie.len();
+    out[..11].copy_from_slice(&opt_head(0, false, rdlen as u16));
+    out[11..13].copy_from_slice(&COOKIE_OPTION_CODE.to_be_bytes());
+    out[13..15].copy_from_slice(&(cookie.len() as u16).to_be_bytes());
+    out[15..15 + cookie.len()].copy_from_slice(cookie);
+    OPT_RECORD.len() + rdlen
 }
 
 /// Answer-section size of one A (16) or AAAA (28) record owned by `C0 0C`.
@@ -291,11 +309,13 @@ pub fn encode_response(
 }
 
 /// Header plus question with TC=1: tells a UDP client to retry over TCP.
+/// `edns` is the OPT a query with one gets back (RFC 6891 §7).
 pub fn encode_truncated(
     id: u16,
     recursion_desired: bool,
     question: &[u8],
     qdcount: u16,
+    edns: Option<&EdnsReply<'_>>,
 ) -> Vec<u8> {
     let head = ResponseHead {
         id,
@@ -303,9 +323,14 @@ pub fn encode_truncated(
         authentic_data: false,
         rcode: Rcode::NoError,
     };
-    let mut out = Vec::with_capacity(12 + question.len());
-    write_header(&mut out, id, head.flags(true), qdcount, 0, 0, 0);
+    let opt_len = edns.map_or(0, EdnsReply::len);
+    let mut out = Vec::with_capacity(12 + question.len() + opt_len);
+    let arcount = u16::from(edns.is_some());
+    write_header(&mut out, id, head.flags(true), qdcount, 0, 0, arcount);
     out.extend_from_slice(question);
+    if let Some(edns) = edns {
+        edns.write(&mut out, 0);
+    }
     out
 }
 
@@ -1097,18 +1122,60 @@ mod tests {
 
         let mut clean = [0u8; RESPONSE_BUF_LEN];
         let mut dirty = [0xA5u8; RESPONSE_BUF_LEN];
-        let clean_len =
-            build_cache_hit_response(&parsed, &query, &addresses, 60, &mut clean).unwrap();
-        let dirty_len =
-            build_cache_hit_response(&parsed, &query, &addresses, 60, &mut dirty).unwrap();
-        assert_eq!(&dirty[..dirty_len], &clean[..clean_len]);
-        assert_eq!(
-            Message::from_vec(&clean[..clean_len])
-                .unwrap()
-                .answers
-                .len(),
-            2
-        );
+        for cookie in [None, Some(&[7u8; 16][..])] {
+            let clean_len =
+                build_cache_hit_response(&parsed, &query, &addresses, 60, cookie, &mut clean)
+                    .unwrap();
+            let dirty_len =
+                build_cache_hit_response(&parsed, &query, &addresses, 60, cookie, &mut dirty)
+                    .unwrap();
+            assert_eq!(&dirty[..dirty_len], &clean[..clean_len]);
+            assert_eq!(
+                Message::from_vec(&clean[..clean_len])
+                    .unwrap()
+                    .answers
+                    .len(),
+                2
+            );
+        }
+    }
+
+    /// RFC 7873 §5.3: a cache hit for a query that sent a cookie carries ours
+    /// as the OPT's only option, written as `EdnsReply` would write it.
+    #[test]
+    fn cache_hit_opt_carries_the_cookie_as_edns_reply_writes_it() {
+        let mut query = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 1];
+        query.extend_from_slice(b"\x07example\x03com\x00\x00\x01\x00\x01");
+        query.extend_from_slice(&[0, 0, 41, 0x04, 0xd0, 0, 0, 0, 0, 0, 0]);
+        let parsed = super::super::fast_path::parse_query(&query).unwrap();
+        let cookie = [7u8; 16];
+        let mut out = [0u8; RESPONSE_BUF_LEN];
+        let len = build_cache_hit_response(
+            &parsed,
+            &query,
+            &["192.0.2.1".parse().unwrap()],
+            60,
+            Some(&cookie),
+            &mut out,
+        )
+        .unwrap();
+
+        let mut opt = Vec::new();
+        EdnsReply {
+            dnssec_ok: false,
+            cookie: Some(&cookie),
+            ede: None,
+        }
+        .write(&mut opt, 0);
+        assert!(out[..len].ends_with(&opt));
+        let msg = Message::from_vec(&out[..len]).unwrap();
+        assert!(msg
+            .edns
+            .unwrap()
+            .options()
+            .as_ref()
+            .iter()
+            .any(|(_, o)| matches!(o, EdnsOption::Unknown(10, d) if d == &cookie)));
     }
 
     #[test]
@@ -1204,10 +1271,32 @@ mod tests {
     #[test]
     fn truncated_response_carries_tc_and_the_question_only() {
         let q = question("big.example.com.", RecordType::TXT);
-        let msg = Message::from_vec(&encode_truncated(9, false, &q, 1)).unwrap();
+        let msg = Message::from_vec(&encode_truncated(9, false, &q, 1, None)).unwrap();
         assert!(msg.truncation && !msg.recursion_desired);
         assert_eq!(msg.queries.len(), 1);
         assert!(msg.answers.is_empty() && msg.edns.is_none());
+    }
+
+    /// RFC 6891 §7 / RFC 7873 §5.3: a query with OPT gets its TC=1 reply
+    /// with one, so a client that sent a cookie keeps it and retries over TCP.
+    #[test]
+    fn truncated_response_carries_the_opt_it_is_given() {
+        let q = question("big.example.com.", RecordType::TXT);
+        let cookie = [7u8; 16];
+        let edns = EdnsReply {
+            dnssec_ok: true,
+            cookie: Some(&cookie),
+            ede: None,
+        };
+        let msg = Message::from_vec(&encode_truncated(9, true, &q, 1, Some(&edns))).unwrap();
+        assert!(msg.truncation && msg.answers.is_empty());
+        let opt = msg.edns.unwrap();
+        assert!(opt.flags().dnssec_ok);
+        assert!(opt
+            .options()
+            .as_ref()
+            .iter()
+            .any(|(_, o)| matches!(o, EdnsOption::Unknown(10, d) if d == &cookie)));
     }
 
     #[test]

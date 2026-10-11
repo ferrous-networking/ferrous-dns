@@ -163,6 +163,7 @@ fn test_fast_path_response_includes_opt_when_client_sent_edns() {
         &query_bytes,
         &addresses,
         300,
+        None,
         &mut wire,
     )
     .expect("build_cache_hit_response should succeed");
@@ -258,6 +259,7 @@ fn test_fast_path_response_no_opt_when_client_has_no_edns() {
         &query_bytes,
         &addresses,
         300,
+        None,
         &mut wire,
     )
     .expect("build_cache_hit_response should succeed");

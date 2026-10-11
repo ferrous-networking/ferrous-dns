@@ -482,7 +482,7 @@ This gives RFC-aware clients a precise machine-readable reason for the rejection
 
 ### Fast Path Behaviour
 
-Cache hits skip cookie validation: a query served from L1 or L2 cache is answered even in strict mode, and validation runs only on cache misses. A cache hit for a non-address type (MX, TXT, HTTPS, PTR and so on) answers a client cookie the way RFC 7873 §5.3 requires: the reply echoes that cookie beside a fresh server cookie, so a validating client does not discard the answer. Only queries that carry a cookie pay for the HMAC. The UDP fast path for A/AAAA hits answers with an OPT record but no COOKIE option, which RFC 7873 permits: the client treats the reply as coming from a server without cookie support.
+Cache hits skip cookie validation: a query served from L1 or L2 cache is answered even in strict mode, and validation runs only on cache misses. Every reply to a query that carries a cookie echoes that cookie beside a fresh server cookie: cache hits of every type (A/AAAA included), errors, blocked answers and truncated (TC=1) replies alike. RFC 7873 §5.3 requires it, because a client that has learned the server cookie discards any reply without one. c-ares, the resolver behind Alpine's curl and git, does exactly that and times out. Only queries that carry a cookie pay for the HMAC.
 
 ### Configuration
 

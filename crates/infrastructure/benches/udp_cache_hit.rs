@@ -234,12 +234,14 @@ fn serve(handler: &DnsServerHandler, raw: &[u8], out: &mut [u8; RESPONSE_BUF_LEN
     match query.kind {
         FastPathKind::IpAddress => handler
             .try_fast_path(
-                query.domain(),
-                query.record_type,
+                &query,
+                raw,
                 CLIENT,
                 ClientProtocol::Udp,
-                |addresses, ttl| {
-                    wire_response::build_cache_hit_response(&query, raw, addresses, ttl, out)
+                |addresses, ttl, cookie| {
+                    wire_response::build_cache_hit_response(
+                        &query, raw, addresses, ttl, cookie, out,
+                    )
                 },
             )
             .unwrap_or(0),
@@ -261,6 +263,10 @@ fn udp_cache_hit(c: &mut Criterion) {
     for (label, raw) in [
         ("a_edns", query(A_NAME, 1, true)),
         ("a_plain", query(A_NAME, 1, false)),
+        (
+            "a_edns_cookie",
+            query_with_options(A_NAME, 1, true, &[0, 10, 0, 8, 1, 2, 3, 4, 5, 6, 7, 8]),
+        ),
         ("mx_edns", query(MX_NAME, 15, true)),
         ("mx_plain", query(MX_NAME, 15, false)),
         (

@@ -92,13 +92,24 @@ fuzz_target!(|packet: &[u8]| {
         addresses.push(IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, i)));
     }
 
+    // A parsed query's options are well formed and its COOKIE has an allowed length.
+    let cookie = query.edns_cookie(packet);
+    assert!(
+        cookie.is_none_or(|c| matches!(c.len(), 8 | 16..=40)),
+        "the wire parser admitted a COOKIE RFC 7873 rejects"
+    );
+
+    // The client's own cookie, up to 40 bytes, stands in for ours (16): the
+    // larger OPT must stay inside the fixed buffer too.
     let mut buf = [0u8; wire_response::RESPONSE_BUF_LEN];
-    if let Some(len) = wire_response::build_cache_hit_response(&query, packet, &addresses, 300, &mut buf)
+    if let Some(len) =
+        wire_response::build_cache_hit_response(&query, packet, &addresses, 300, cookie, &mut buf)
     {
         assert!(len <= buf.len(), "response length escaped the fixed buffer");
         // The UDP worker reuses its buffers, so no byte may depend on prior contents.
         let mut dirty = [0xA5u8; wire_response::RESPONSE_BUF_LEN];
-        let dirty_len = wire_response::build_cache_hit_response(&query, packet, &addresses, 300, &mut dirty);
+        let dirty_len =
+            wire_response::build_cache_hit_response(&query, packet, &addresses, 300, cookie, &mut dirty);
         assert_eq!(dirty_len.map(|l| &dirty[..l]), Some(&buf[..len]), "response depends on buffer contents");
         assert!(
             wire_response::wire_fits_udp_buffer(len, query.client_max_size),
@@ -106,12 +117,6 @@ fuzz_target!(|packet: &[u8]| {
         );
     }
 
-    // A parsed query's options are well formed and its COOKIE has an allowed length.
-    let cookie = query.edns_cookie(packet);
-    assert!(
-        cookie.is_none_or(|c| matches!(c.len(), 8 | 16..=40)),
-        "the wire parser admitted a COOKIE RFC 7873 rejects"
-    );
     let question = query.question(packet);
     let head = ResponseHead {
         id: query.id,
@@ -132,7 +137,10 @@ fuzz_target!(|packet: &[u8]| {
             (wire_response::encode_response(&head, question, 1, body, edns), edns.is_some())
         }))
         .collect();
-    answers.push((wire_response::encode_truncated(query.id, query.recursion_desired, question, 1), false));
+    for edns in [None, Some(&reply)] {
+        let truncated = wire_response::encode_truncated(query.id, query.recursion_desired, question, 1, edns);
+        answers.push((truncated, edns.is_some()));
+    }
     for (wire, has_opt) in answers {
         let msg = Message::from_vec(&wire).expect("encoded answer does not decode");
         let [echoed] = msg.queries.as_slice() else {

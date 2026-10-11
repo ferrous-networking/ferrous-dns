@@ -210,12 +210,14 @@ impl Server {
         let parsed = parse_query(query).expect("a fast-path query");
         let mut out = [0u8; RESPONSE_BUF_LEN];
         let len = self.handler.try_fast_path(
-            parsed.domain(),
-            parsed.record_type,
+            &parsed,
+            query,
             CLIENT,
             ClientProtocol::Udp,
-            |addresses, ttl| {
-                wire_response::build_cache_hit_response(&parsed, query, addresses, ttl, &mut out)
+            |addresses, ttl, cookie| {
+                wire_response::build_cache_hit_response(
+                    &parsed, query, addresses, ttl, cookie, &mut out,
+                )
             },
         )?;
         Some(Message::from_vec(&out[..len]).expect("the reply decodes"))

@@ -256,6 +256,7 @@ fn cache_hit_response_declines_oversized_rrset() {
         &packet,
         &addresses,
         u32::MAX,
+        None,
         &mut [0u8; wire_response::RESPONSE_BUF_LEN]
     )
     .is_none());
@@ -268,8 +269,9 @@ fn cache_hit_response_stays_inside_the_fixed_buffer() {
     let addresses = vec![IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1))];
 
     let mut buf = [0u8; wire_response::RESPONSE_BUF_LEN];
-    let len = wire_response::build_cache_hit_response(&query, &packet, &addresses, 300, &mut buf)
-        .expect("a single A record fits");
+    let len =
+        wire_response::build_cache_hit_response(&query, &packet, &addresses, 300, None, &mut buf)
+            .expect("a single A record fits");
 
     assert!(len <= buf.len());
     assert!(wire_response::wire_fits_udp_buffer(
@@ -312,9 +314,9 @@ fn query_fast_path_seed_corpus_is_clean() {
 
         let addresses = vec![IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1))];
         let mut buf = [0u8; wire_response::RESPONSE_BUF_LEN];
-        if let Some(len) =
-            wire_response::build_cache_hit_response(&query, &packet, &addresses, 300, &mut buf)
-        {
+        if let Some(len) = wire_response::build_cache_hit_response(
+            &query, &packet, &addresses, 300, None, &mut buf,
+        ) {
             assert!(len <= buf.len(), "seed: {}", path.display());
         }
     }

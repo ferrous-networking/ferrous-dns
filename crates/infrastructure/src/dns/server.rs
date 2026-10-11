@@ -55,17 +55,30 @@ impl DnsServerHandler {
     }
 
     /// Serves an A/AAAA cache hit through `respond`, which encodes the reply
-    /// or declines it (`None`) for the slow path.
+    /// with the COOKIE payload it is handed, or declines it (`None`) for the
+    /// slow path. `raw` is the query packet.
     pub fn try_fast_path<R>(
         &self,
-        domain: &str,
-        record_type: RecordType,
+        query: &FastPathQuery,
+        raw: &[u8],
         client_ip: IpAddr,
         protocol: ClientProtocol,
-        respond: impl FnOnce(&[IpAddr], u32) -> Option<R>,
+        respond: impl FnOnce(&[IpAddr], u32, Option<&[u8]>) -> Option<R>,
     ) -> Option<R> {
-        self.use_case
-            .try_cache_direct(domain, record_type, client_ip, protocol, respond)
+        self.use_case.try_cache_direct(
+            query.domain(),
+            query.record_type,
+            client_ip,
+            protocol,
+            |addresses, ttl| {
+                // A client that sent a cookie drops a reply without ours
+                // (RFC 7873 §5.3).
+                let cookie = query
+                    .edns_cookie(raw)
+                    .and_then(|cookie| self.response_cookie(Some(cookie), client_ip));
+                respond(addresses, ttl, cookie.as_ref().map(EdnsCookie::as_bytes))
+            },
+        )
     }
 
     /// Returns a ready-to-send cached wire response for non-IP record types (NS,
@@ -148,12 +161,17 @@ impl DnsServerHandler {
         client_ip: IpAddr,
         protocol: ClientProtocol,
     ) -> Option<Vec<u8>> {
-        let (query, request) = match parse_client_query(raw, client_ip, protocol)? {
+        let (mut query, request) = match parse_client_query(raw, client_ip, protocol)? {
             ParsedQuery::Valid(query, request) => (query, request),
             ParsedQuery::BadCookie(query) => {
-                return Some(query.respond(Rcode::FormErr, false, ResponseBody::Empty, None, None));
+                return Some(query.respond(Rcode::FormErr, false, ResponseBody::Empty, None));
             }
         };
+        // Every reply built from `query` carries it from here on.
+        query.set_response_cookie(self.response_cookie(
+            request.edns_cookie.as_ref().map(EdnsCookie::as_bytes),
+            client_ip,
+        ));
 
         // Over UDP, the client-advertised EDNS buffer (or 512 without EDNS) caps
         // the response size; larger answers must be truncated with TC=1 so the
@@ -186,11 +204,6 @@ impl DnsServerHandler {
         let set_ad = query.edns.is_some_and(|e| e.dnssec_ok)
             && !query.cd
             && resolution.dnssec_status == Some(DnssecStatus::Secure);
-        let cookie = self.response_cookie(
-            request.edns_cookie.as_ref().map(EdnsCookie::as_bytes),
-            client_ip,
-        );
-        let cookie = cookie.as_ref().map(EdnsCookie::as_bytes);
 
         if resolution.addresses.is_empty() {
             if let Some(wire_data) = &resolution.upstream_wire_data {
@@ -202,7 +215,7 @@ impl DnsServerHandler {
                 // query (RFC 3225 §3), our server cookie, and none for a client
                 // that sent none (RFC 6891 §7). A client without DO loses the
                 // DNSSEC RRs it did not ask for (RFC 4035 §3.2.1).
-                let reply = query.edns_reply(cookie, None);
+                let reply = query.edns_reply(None);
                 let qname = QuestionName::parse(&query.question);
                 // A cache hit's TTLs count down its time in the cache (RFC
                 // 1035 §3.2.1), as the fast path's do.
@@ -231,9 +244,7 @@ impl DnsServerHandler {
                 // would hand the client the upstream's OPT (RFC 6891 §7).
                 return Some(match relayed {
                     Some(bytes) => maybe_truncate(bytes),
-                    None => {
-                        query.respond(Rcode::ServFail, false, ResponseBody::Empty, cookie, None)
-                    }
+                    None => query.respond(Rcode::ServFail, false, ResponseBody::Empty, None),
                 });
             }
         }
@@ -250,7 +261,6 @@ impl DnsServerHandler {
             Rcode::NoError,
             set_ad,
             body,
-            cookie,
             None,
         )))
     }
@@ -272,17 +282,19 @@ impl DnsServerHandler {
             DomainError::DnsRateLimitedSlip => return query.truncated(),
             DomainError::DnsRateLimited | DomainError::DnsCookieInvalid => Rcode::Refused,
             DomainError::NxDomain | DomainError::LocalNxDomain => {
-                return query.respond(Rcode::NxDomain, false, ResponseBody::Empty, None, None);
+                return query.respond(Rcode::NxDomain, false, ResponseBody::Empty, None);
             }
             _ => Rcode::ServFail,
         };
-        query.respond(rcode, false, ResponseBody::Empty, None, ede.as_ref())
+        query.respond(rcode, false, ResponseBody::Empty, ede.as_ref())
     }
 
     /// COOKIE option payload for the reply to `client_cookie`, the query's
     /// COOKIE option: the client cookie followed by our server cookie for it
     /// (RFC 7873 §5.2). `None` without a client cookie, or when DNS Cookies
-    /// are disabled.
+    /// are disabled. Out of line: the server cookie is an HMAC, kept off the
+    /// fast path's hot code.
+    #[inline(never)]
     fn response_cookie(
         &self,
         client_cookie: Option<&[u8]>,
@@ -303,6 +315,9 @@ impl DnsServerHandler {
 struct ClientEdns {
     dnssec_ok: bool,
     udp_payload: u16,
+    /// Our COOKIE payload for a query that sent one: every reply carries it
+    /// (RFC 7873 §5.3).
+    cookie: Option<EdnsCookie>,
 }
 
 /// What a response needs from its query, whichever parser decoded it.
@@ -327,20 +342,23 @@ impl<'a> ClientQuery<'a> {
             edns: edns_dnssec_ok.map(|dnssec_ok| ClientEdns {
                 dnssec_ok,
                 udp_payload: 512,
+                cookie: None,
             }),
             question: Cow::Borrowed(question),
             qdcount: 1,
         }
     }
 
-    fn edns_reply<'r>(
-        &self,
-        cookie: Option<&'r [u8]>,
-        ede: Option<&'r ExtendedDnsError>,
-    ) -> Option<EdnsReply<'r>> {
-        self.edns.map(|e| EdnsReply {
+    fn set_response_cookie(&mut self, cookie: Option<EdnsCookie>) {
+        if let Some(edns) = &mut self.edns {
+            edns.cookie = cookie;
+        }
+    }
+
+    fn edns_reply<'r>(&'r self, ede: Option<&'r ExtendedDnsError>) -> Option<EdnsReply<'r>> {
+        self.edns.as_ref().map(|e| EdnsReply {
             dnssec_ok: e.dnssec_ok,
-            cookie,
+            cookie: e.cookie.as_ref().map(EdnsCookie::as_bytes),
             ede,
         })
     }
@@ -350,7 +368,6 @@ impl<'a> ClientQuery<'a> {
         rcode: Rcode,
         authentic_data: bool,
         body: ResponseBody<'_>,
-        cookie: Option<&[u8]>,
         ede: Option<&ExtendedDnsError>,
     ) -> Vec<u8> {
         let head = ResponseHead {
@@ -364,12 +381,18 @@ impl<'a> ClientQuery<'a> {
             &self.question,
             self.qdcount,
             body,
-            self.edns_reply(cookie, ede).as_ref(),
+            self.edns_reply(ede).as_ref(),
         )
     }
 
     fn truncated(&self) -> Vec<u8> {
-        wire_response::encode_truncated(self.id, self.rd, &self.question, self.qdcount)
+        wire_response::encode_truncated(
+            self.id,
+            self.rd,
+            &self.question,
+            self.qdcount,
+            self.edns_reply(None).as_ref(),
+        )
     }
 }
 
@@ -407,6 +430,7 @@ fn parse_client_query(
         edns: q.has_edns().then_some(ClientEdns {
             dnssec_ok: q.wants_dnssec,
             udp_payload: q.client_max_size,
+            cookie: None,
         }),
         question: Cow::Borrowed(q.question(raw)),
         qdcount: 1,
@@ -457,6 +481,7 @@ fn parse_client_query_hickory(
         edns: msg.edns.as_ref().map(|edns| ClientEdns {
             dnssec_ok: edns.flags().dnssec_ok,
             udp_payload: edns.max_payload(),
+            cookie: None,
         }),
         question: Cow::Owned(question),
         qdcount,
@@ -482,7 +507,7 @@ pub fn build_blocked_wire(
     let negative = ResponseBody::NegativeSoa { ttl: policy.ttl };
     let (rcode, sinkhole) = match policy.mode {
         BlockResponseMode::Refused => {
-            return query.respond(Rcode::Refused, false, ResponseBody::Empty, None, ede);
+            return query.respond(Rcode::Refused, false, ResponseBody::Empty, ede);
         }
         BlockResponseMode::NxDomain => (Rcode::NxDomain, None),
         BlockResponseMode::NoData => (Rcode::NoError, None),
@@ -506,7 +531,7 @@ pub fn build_blocked_wire(
         },
         None => negative,
     };
-    query.respond(rcode, false, body, None, ede)
+    query.respond(rcode, false, body, ede)
 }
 
 #[cfg(test)]

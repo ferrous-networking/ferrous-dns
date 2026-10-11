@@ -165,11 +165,11 @@ async fn run_udp_worker_batch(
                         FastPathKind::IpAddress => {
                             // Encoded straight into the sendmmsg buffer.
                             let staged = handler.try_fast_path(
-                                fast_query.domain(),
-                                fast_query.record_type,
+                                &fast_query,
+                                msg.data,
                                 client_ip,
                                 ClientProtocol::Udp,
-                                |addresses, ttl| {
+                                |addresses, ttl, cookie| {
                                     send_batch
                                         .stage(msg.src, msg.dst_ip, |out| {
                                             wire_response::build_cache_hit_response(
@@ -177,6 +177,7 @@ async fn run_udp_worker_batch(
                                                 msg.data,
                                                 addresses,
                                                 ttl,
+                                                cookie,
                                                 out,
                                             )
                                         })
@@ -275,17 +276,18 @@ async fn run_udp_worker_single(
                         match fast_query.kind {
                             FastPathKind::IpAddress => {
                                 let sent = handler.try_fast_path(
-                                    fast_query.domain(),
-                                    fast_query.record_type,
+                                    &fast_query,
+                                    query_buf,
                                     client_ip,
                                     ClientProtocol::Udp,
-                                    |addresses, ttl| {
+                                    |addresses, ttl, cookie| {
                                         let mut wire = [0u8; wire_response::RESPONSE_BUF_LEN];
                                         let wire_len = wire_response::build_cache_hit_response(
                                             &fast_query,
                                             query_buf,
                                             addresses,
                                             ttl,
+                                            cookie,
                                             &mut wire,
                                         )?;
                                         let _ = pktinfo::try_send_with_src_ip(
