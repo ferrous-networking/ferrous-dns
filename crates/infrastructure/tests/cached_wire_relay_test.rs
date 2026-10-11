@@ -147,13 +147,15 @@ impl Server {
             let data = CachedData::WireData(Bytes::from(wire.clone()));
             (*name, *record_type, data)
         });
-        Self::holding(entries, log)
+        Self::holding(entries, log, false)
     }
 
-    /// [`Self::caching`], with the cache holding `entries` as they are.
+    /// [`Self::caching`], with the cache holding `entries` as they are, in
+    /// strict cookie mode if `require_valid_cookie`.
     fn holding<'a>(
         entries: impl IntoIterator<Item = (&'a str, RecordType, CachedData)>,
         log: Arc<dyn QueryLogRepository>,
+        require_valid_cookie: bool,
     ) -> Self {
         let cache = Arc::new(DnsCache::new(DnsCacheConfig {
             max_entries: 100,
@@ -175,7 +177,7 @@ impl Server {
         }
         let resolver = Arc::new(CachedResolver::new(Arc::new(NoUpstream), cache, 300, 4));
         let cookies = DnsCookiesConfig {
-            require_valid_cookie: false,
+            require_valid_cookie,
             ..DnsCookiesConfig::default()
         };
         let use_case = HandleDnsQueryUseCase::new(resolver, Arc::new(AllowAllFilter), log)
@@ -379,6 +381,7 @@ fn cached_addresses_echo_the_client_cookie_beside_our_server_cookie() {
             ("example.com", RecordType::AAAA, addresses(&[v6])),
         ],
         Arc::new(NoopQueryLog),
+        false,
     );
     let ours = [&CLIENT_COOKIE[..], &server.server_cookie].concat();
     let stale = [&CLIENT_COOKIE[..], &[0xEE; 16]].concat();
@@ -401,6 +404,65 @@ fn cached_addresses_echo_the_client_cookie_beside_our_server_cookie() {
             None,
             "{qtype}: no cookie sent, none back"
         );
+    }
+}
+
+/// Strict mode validates every UDP query, cache hits included, so the
+/// inline paths leave them all to the slow path. It answers REFUSED without
+/// a cookie, BADCOOKIE with ours to a bare client cookie (RFC 7873 §5.2.3),
+/// and the cached answer to our cookie.
+#[tokio::test]
+async fn strict_mode_validates_cache_hits_on_the_slow_path() {
+    let v4 = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 80));
+    let mx_wire = upstream("mail.example.com", WireType::MX, mx(), false, true, 0);
+    let server = Server::holding(
+        [
+            ("example.com", RecordType::A, addresses(&[v4])),
+            (
+                "mail.example.com",
+                RecordType::MX,
+                CachedData::WireData(Bytes::from(mx_wire)),
+            ),
+        ],
+        Arc::new(NoopQueryLog),
+        true,
+    );
+    let ours = [&CLIENT_COOKIE[..], &server.server_cookie].concat();
+    type Fast = fn(&Server, &[u8]) -> Option<Message>;
+    let cases: [(&str, WireType, Fast); 2] = [
+        ("example.com", WireType::A, Server::fast_address),
+        ("mail.example.com", WireType::MX, Server::fast),
+    ];
+
+    for (owner, qtype, fast) in cases {
+        let cookieless = query(owner, qtype, Some(false), None);
+        let bare = query(owner, qtype, Some(false), Some(&CLIENT_COOKIE));
+        let valid = query(owner, qtype, Some(false), Some(&ours));
+        for q in [&cookieless, &bare, &valid] {
+            assert!(fast(&server, q).is_none(), "{owner}: served inline");
+        }
+
+        let reply = server.slow(&cookieless).await;
+        assert_eq!(
+            reply.metadata.response_code,
+            ResponseCode::Refused,
+            "{owner}"
+        );
+        assert_eq!(cookie_of(&reply), None, "{owner}");
+
+        let reply = server.slow(&bare).await;
+        assert_eq!(u16::from(reply.metadata.response_code), 23, "{owner}");
+        assert!(reply.answers.is_empty(), "{owner}");
+        assert_eq!(cookie_of(&reply), Some(ours.clone()), "{owner}");
+
+        let reply = server.slow(&valid).await;
+        assert_eq!(
+            reply.metadata.response_code,
+            ResponseCode::NoError,
+            "{owner}"
+        );
+        assert_eq!(types(&reply.answers), [qtype], "{owner}");
+        assert_eq!(cookie_of(&reply), Some(ours.clone()), "{owner}");
     }
 }
 

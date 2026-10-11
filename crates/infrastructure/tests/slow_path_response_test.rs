@@ -47,8 +47,21 @@ fn server_with_policy(
     outcome: Result<DnsResolution, DomainError>,
     policy: BlockPolicy,
 ) -> (DnsServerHandler, Vec<u8>) {
+    handler_with(outcome, policy, false)
+}
+
+/// [`server`] in strict cookie mode: `require_valid_cookie = true`.
+fn strict_server(outcome: Result<DnsResolution, DomainError>) -> (DnsServerHandler, Vec<u8>) {
+    handler_with(outcome, POLICY, true)
+}
+
+fn handler_with(
+    outcome: Result<DnsResolution, DomainError>,
+    policy: BlockPolicy,
+    require_valid_cookie: bool,
+) -> (DnsServerHandler, Vec<u8>) {
     let cookies = DnsCookiesConfig {
-        require_valid_cookie: false,
+        require_valid_cookie,
         ..DnsCookiesConfig::default()
     };
     let use_case = HandleDnsQueryUseCase::new(
@@ -174,7 +187,7 @@ async fn outcomes_map_to_rcode_extended_error_and_block_answer() {
         (E::NxDomain, NXDomain, None, false),
         (E::LocalNxDomain, NXDomain, None, false),
         (E::DnsRateLimited, Refused, Some(18), false),
-        (E::DnsCookieInvalid, Refused, Some(25), false),
+        (E::DnsCookieInvalid, Refused, Some(18), false),
         (E::QueryTimeout, ServFail, Some(22), false),
         (E::DnssecBogus, ServFail, Some(6), false),
         (E::DnssecIndeterminate, ServFail, Some(5), false),
@@ -302,6 +315,61 @@ async fn built_answers_carry_opt_and_cookie_exactly_when_the_query_did() {
         assert_eq!(option(&cookieless, 10), None, "{label}: no cookie sent");
     }
     assert!(dropped.is_empty(), "{dropped:#?}");
+}
+
+/// RFC 7873 §5.2.3/§5.2.4: over UDP, strict mode answers a client cookie
+/// without a valid server cookie with BADCOOKIE and ours, which the client
+/// retries with, and a query with no cookie with REFUSED. TCP, TLS and QUIC
+/// prove the source address, so they need no cookie: DoH clients send none.
+#[tokio::test]
+async fn strict_mode_hands_out_our_cookie_with_badcookie_over_udp() {
+    let (handler, our_cookie) = strict_server(Ok(answer(None)));
+    let stale = [&CLIENT_COOKIE[..], &[0xEE; 8]].concat();
+    let ede = |reply: &Message| option(reply, 15).map(|d| u16::from_be_bytes([d[0], d[1]]));
+
+    for sent in [&CLIENT_COOKIE[..], &stale] {
+        let q = query_with_cookie(RecordType::A, Some(false), Some(sent), false);
+        let reply = ask(&handler, &q).await;
+        assert_eq!(u16::from(reply.metadata.response_code), 23, "BADCOOKIE");
+        assert!(reply.answers.is_empty());
+        assert_eq!(option(&reply, 10), Some(our_cookie.clone()));
+        assert_eq!(ede(&reply), Some(18), "Prohibited (RFC 8914 §4.19)");
+    }
+
+    let q = query_with_cookie(RecordType::A, Some(false), Some(&our_cookie), false);
+    let retry = ask(&handler, &q).await;
+    assert_eq!(retry.metadata.response_code, ResponseCode::NoError);
+    assert_eq!(retry.answers.len(), 1);
+    assert_eq!(option(&retry, 10), Some(our_cookie));
+
+    for edns in [None, Some(false)] {
+        let reply = ask(&handler, &query(RecordType::A, edns, false, false)).await;
+        assert_eq!(
+            reply.metadata.response_code,
+            ResponseCode::Refused,
+            "{edns:?}"
+        );
+        assert_eq!(option(&reply, 10), None, "{edns:?}");
+    }
+
+    let q = query(RecordType::A, Some(false), false, false);
+    for protocol in [
+        ClientProtocol::Tcp,
+        ClientProtocol::Dot,
+        ClientProtocol::Doh,
+        ClientProtocol::Doq,
+    ] {
+        let reply = handler
+            .handle_raw_udp_fallback(&q, CLIENT, protocol)
+            .await
+            .expect("answered");
+        let reply = Message::from_vec(&reply).unwrap();
+        assert_eq!(
+            reply.metadata.response_code,
+            ResponseCode::NoError,
+            "{protocol}"
+        );
+    }
 }
 
 #[tokio::test]

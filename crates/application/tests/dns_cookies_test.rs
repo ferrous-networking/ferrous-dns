@@ -3,7 +3,9 @@ mod helpers;
 use ferrous_dns_application::ports::DnsResolution;
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{DnsCookiesConfig, DnsRequest, DomainError, EdnsCookie, RecordType};
+use ferrous_dns_domain::{
+    ClientProtocol, DnsCookiesConfig, DnsRequest, DomainError, EdnsCookie, RecordType,
+};
 use helpers::{MockBlockFilterEngine, MockDnsResolver, MockQueryLogRepository};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -159,4 +161,62 @@ async fn should_reject_query_with_only_client_cookie_when_require_valid_cookie_t
         matches!(result, Err(DomainError::DnsCookieInvalid)),
         "bootstrapping client cookie must be rejected when require_valid_cookie is true"
     );
+}
+
+/// RFC 7873 §5.2.3: TCP, TLS and QUIC already prove the source address, so
+/// strict mode validates cookies over UDP only. DoH and DoT clients send none.
+#[tokio::test]
+async fn should_allow_query_without_cookie_over_stream_transports_when_require_valid_cookie_true() {
+    let config = cookies_config(true);
+    for protocol in [
+        ClientProtocol::Tcp,
+        ClientProtocol::Dot,
+        ClientProtocol::Doh,
+        ClientProtocol::Doq,
+    ] {
+        let guard = DnsCookieGuard::from_config(&config, SECRET);
+        let (use_case, _log) = make_use_case(resolver_ok().await, guard);
+        let request =
+            DnsRequest::new("example.com", RecordType::A, CLIENT_IP).with_protocol(protocol);
+        let result = use_case.execute(&request).await;
+        assert!(result.is_ok(), "{protocol} must not need a cookie");
+    }
+
+    let guard = DnsCookieGuard::from_config(&config, SECRET);
+    let (use_case, _log) = make_use_case(resolver_ok().await, guard);
+    let request =
+        DnsRequest::new("example.com", RecordType::A, CLIENT_IP).with_protocol(ClientProtocol::Udp);
+    let result = use_case.execute(&request).await;
+    assert!(
+        matches!(result, Err(DomainError::DnsCookieInvalid)),
+        "UDP without a cookie must be rejected when require_valid_cookie is true"
+    );
+}
+
+/// Strict mode validates every UDP query, cache hits included: the inline
+/// cache path declines them all and leaves them to `execute`, which does.
+#[test]
+fn should_leave_cache_hits_to_execute_when_require_valid_cookie_true() {
+    for (require_valid, served_inline) in [(true, false), (false, true)] {
+        let resolver = MockDnsResolver::new();
+        resolver.set_cached_response(
+            "example.com",
+            DnsResolution::new(vec!["1.2.3.4".parse().unwrap()], true),
+        );
+        let guard = DnsCookieGuard::from_config(&cookies_config(require_valid), SECRET);
+        let (use_case, _log) = make_use_case(resolver, guard);
+
+        let hit = use_case.try_cache_direct(
+            "example.com",
+            RecordType::A,
+            CLIENT_IP,
+            ClientProtocol::Udp,
+            |addresses, _ttl| Some(addresses.len()),
+        );
+        assert_eq!(
+            hit.is_some(),
+            served_inline,
+            "require_valid_cookie = {require_valid}"
+        );
+    }
 }
