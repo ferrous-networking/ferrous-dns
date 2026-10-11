@@ -105,3 +105,64 @@ async fn test_write_pool_folds_the_wal_left_by_a_previous_run_back_into_the_data
     previous_run.close().await.unwrap();
     pool.close().await;
 }
+
+#[tokio::test]
+async fn test_write_pool_estimates_missing_query_log_stats_instead_of_counting_the_table() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let cfg = DatabaseConfig::default();
+
+    let pool = create_write_pool(&url, &cfg).await.expect("first start");
+    // Ids 1..=1000 over three sources with the middle half deleted: counting every
+    // index entry finds 500 rows, the id range says 1000.
+    sqlx::query(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000)
+         INSERT INTO query_log (id, domain, record_type, client_ip, query_source, created_at)
+         SELECT i, 'example.com', 'A', '10.0.0.1',
+                CASE i % 3 WHEN 0 THEN 'client' WHEN 1 THEN 'internal' ELSE 'dnssec_validation' END,
+                datetime(1700000000 + i, 'unixepoch')
+         FROM n",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM query_log WHERE id BETWEEN 251 AND 750")
+        .execute(&pool)
+        .await
+        .unwrap();
+    // What an upgrade leaves behind: an index built over existing rows, never analyzed.
+    sqlx::query("DELETE FROM sqlite_stat1 WHERE tbl = 'query_log'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    let pool = create_write_pool(&url, &cfg).await.expect("second start");
+
+    let (stat,): (String,) =
+        sqlx::query_as("SELECT stat FROM sqlite_stat1 WHERE idx = 'idx_query_log_window'")
+            .fetch_one(&pool)
+            .await
+            .expect("idx_query_log_window has statistics after startup");
+    assert_eq!(
+        stat, "1000 334 1 1",
+        "startup counted every row of query_log instead of estimating it"
+    );
+
+    let read = create_read_pool(&url, &cfg).await.expect("read pool");
+    let plan: Vec<(i64, i64, i64, String)> = sqlx::query_as(
+        "EXPLAIN QUERY PLAN SELECT rowid FROM query_log WHERE created_at < ? LIMIT 1000",
+    )
+    .bind("2023-11-15 00:00:00")
+    .fetch_all(&read)
+    .await
+    .unwrap();
+    assert!(
+        plan.iter()
+            .any(|(_, _, _, detail)| detail.contains("ANY(query_source)")),
+        "retention cannot skip-scan the window index: {plan:?}"
+    );
+
+    read.close().await;
+    pool.close().await;
+}
