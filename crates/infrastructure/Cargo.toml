@@ -102,3 +102,7 @@ criterion = { version = "0.8", default-features = false, features = ["cargo_benc
 [[bench]]
 name = "udp_cache_hit"
 harness = false
+
+[[bench]]
+name = "cache_ops"
+harness = false
