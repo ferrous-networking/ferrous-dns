@@ -283,6 +283,30 @@ async fn test_entry_is_renewed_before_it_expires() {
     );
 }
 
+/// Asks for `domain` every `every` until `stop` is set, on a thread of its
+/// own, the way a client keeps a name in use.
+fn keep_asking(
+    cache: &Arc<DnsCache>,
+    domain: &'static str,
+    every: Duration,
+) -> (
+    Arc<std::sync::atomic::AtomicBool>,
+    std::thread::JoinHandle<()>,
+) {
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handle = std::thread::spawn({
+        let cache = Arc::clone(cache);
+        let stop = Arc::clone(&stop);
+        move || {
+            while !stop.load(Ordering::Relaxed) {
+                let _ = cache.get(domain, &RecordType::A);
+                std::thread::sleep(every);
+            }
+        }
+    });
+    (stop, handle)
+}
+
 #[tokio::test]
 async fn test_renewal_arms_the_next_renewal() {
     let cache = create_cache_with(200, 0.5);
@@ -293,13 +317,49 @@ async fn test_renewal_arms_the_next_renewal() {
         no_ranking(),
         true,
     );
-    cache.insert("loop.example", RecordType::A, make_ip_data(OLD_IP), 2, None);
+    cache.insert("loop.example", RecordType::A, countable(), 2, None);
+    let (stop, client) = keep_asking(&cache, "loop.example", Duration::from_millis(300));
 
+    let renewed = wait_until(Duration::from_secs(6), || resolver.count() >= 3).await;
+    stop.store(true, Ordering::Relaxed);
+    client.join().unwrap();
     assert!(
-        wait_until(Duration::from_secs(6), || resolver.count() >= 3).await,
-        "each renewal must arm the next one; renewals={}",
+        renewed,
+        "each renewal must arm the next one while the name is in use; renewals={}",
         resolver.count()
     );
+}
+
+/// A TTL under a minute renews more than once a minute, so it is only
+/// renewed while someone keeps asking for it. One hit must not keep a short
+/// entry renewing for the whole access window.
+#[tokio::test]
+async fn test_short_ttl_stops_renewing_once_nobody_asks() {
+    // TTL 4 at threshold 0.5: renewed 2 s in (the lifetime it was asked in),
+    // due again 2 s after that, and still fresh when asked for again below.
+    let cache = create_cache_with(200, 0.5);
+    let resolver = RecordingResolver::new(Some(4));
+    let _worker = start_worker(
+        &cache,
+        resolver.clone() as Arc<dyn DnsResolver>,
+        no_ranking(),
+        true,
+    );
+    cache.insert("once.example", RecordType::A, countable(), 4, None);
+
+    tokio::time::sleep(Duration::from_millis(5_500)).await;
+    assert_eq!(
+        resolver.count(),
+        1,
+        "the lifetime it was asked in is renewed, and then no more"
+    );
+    assert_eq!(cache.metrics().stale_hits.load(Ordering::Relaxed), 0);
+
+    let (stop, client) = keep_asking(&cache, "once.example", Duration::from_millis(300));
+    let resumed = wait_until(Duration::from_secs(4), || resolver.count() >= 2).await;
+    stop.store(true, Ordering::Relaxed);
+    client.join().unwrap();
+    assert!(resumed, "asked for again, it is renewed again");
 }
 
 #[tokio::test]
@@ -560,9 +620,11 @@ async fn test_stale_repair_runs_with_optimistic_refresh_off() {
         no_ranking(),
         false,
     );
-    cache.insert("plain.example", RecordType::A, countable(), 1, None);
+    // TTL 3 (grace 6 s): the coarse clock moves in whole seconds, so a 2 s
+    // grace leaves no margin after the sleep.
+    cache.insert("plain.example", RecordType::A, countable(), 3, None);
 
-    tokio::time::sleep(Duration::from_millis(1_200)).await;
+    tokio::time::sleep(Duration::from_millis(3_200)).await;
     coarse_clock::tick();
     assert_eq!(resolver.count(), 0, "nothing is renewed ahead of expiry");
 

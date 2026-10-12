@@ -250,6 +250,46 @@ fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
     );
 }
 
+/// After a renewal nobody has asked for, a TTL under a minute is not renewed
+/// again, since it would renew more than once a minute; a TTL of a minute or
+/// more is, for as long as it stays inside the access window.
+#[test]
+fn test_unasked_renewal_continues_only_for_ttls_of_a_minute_or_more() {
+    coarse_clock::tick();
+    let cache = cache(0.75, u64::MAX);
+    cache.insert("short.example", RecordType::A, cname(), 30, None);
+    cache.insert("long.example", RecordType::A, cname(), 60, None);
+
+    std::thread::sleep(Duration::from_millis(1_100));
+    coarse_clock::tick();
+    for domain in ["short.example", "long.example"] {
+        assert!(cache.refresh_record(domain, &RecordType::A, None, cname(), None));
+    }
+    // Both are due by then and neither has expired.
+    let due = coarse_clock::coarse_now_secs() + 25;
+
+    assert!(
+        cache
+            .claim_due_refresh(&timer("short.example", due), due, &no_ranking())
+            .is_none(),
+        "a 30 s entry unasked since its renewal must not renew again"
+    );
+    assert!(
+        cache
+            .claim_due_refresh(&timer("long.example", due + 20), due + 20, &no_ranking())
+            .is_some(),
+        "a 60 s entry inside the access window renews as before"
+    );
+
+    assert!(cache.get("short.example", &RecordType::A).is_some());
+    assert!(
+        cache
+            .claim_due_refresh(&timer("short.example", due), due, &no_ranking())
+            .is_some(),
+        "asked for again, the 30 s entry renews again"
+    );
+}
+
 /// A hit on an entry whose timer is pending arms nothing more.
 #[test]
 fn test_hits_on_an_armed_entry_arm_no_second_timer() {
@@ -335,14 +375,15 @@ fn test_each_thread_gets_the_whole_inbox_capacity() {
 }
 
 /// An expired entry still inside its stale grace is worth renewing: clients
-/// are being served it.
+/// are being served it. TTL 3 (grace 6 s) rather than 1: the coarse clock
+/// moves in whole seconds, so a 2 s grace leaves no margin after a sleep.
 #[test]
 fn test_stale_entry_still_in_grace_is_claimed() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    cache.insert("stale.example", RecordType::A, cname(), 1, None);
+    cache.insert("stale.example", RecordType::A, cname(), 3, None);
 
-    std::thread::sleep(Duration::from_millis(1_100));
+    std::thread::sleep(Duration::from_millis(3_200));
     coarse_clock::tick();
     let now = coarse_clock::coarse_now_secs();
 

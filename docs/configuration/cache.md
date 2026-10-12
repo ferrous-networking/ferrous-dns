@@ -128,7 +128,7 @@ cache_access_window_secs = 43200
 | 100 s | 50 s | 60 s before expiry would be at 40 s, before half the TTL |
 | 30 s | 22 s | the threshold; the TTL is shorter than the 60 s lead |
 
-The half-TTL bound keeps a TTL just above a minute from being renewed every few seconds, since each renewal brings the same TTL back. Short TTLs are renewed more often than long ones by design: renewing every entry in use before it expires is what keeps clients off the upstream. Raising `cache_min_ttl` lowers that upstream traffic.
+The half-TTL bound keeps a TTL just above a minute from being renewed every few seconds, since each renewal brings the same TTL back. A TTL under a minute is renewed only while clients keep asking for it: after a renewal nobody asked for, it is left to expire, and the next query renews it again. That keeps a 5-second entry asked for once from being renewed every few seconds for the whole access window. Raising `cache_min_ttl` lowers refresh traffic further.
 
 **Load is bounded by concurrency, not by rate**: at most 16 renewals run at once. When more entries fall due together, they wait their turn, so a burst never floods the upstream, and nothing due is dropped because of a rate limit.
 

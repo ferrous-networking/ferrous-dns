@@ -1,5 +1,6 @@
 use super::key::CacheKey;
-use super::schedule::ScheduledRefresh;
+use super::record::CachedRecord;
+use super::schedule::{ScheduledRefresh, REFRESH_LEAD_SECS};
 use super::storage::DnsCache;
 use ferrous_dns_domain::RecordType;
 use std::cmp::Ordering;
@@ -48,14 +49,27 @@ impl PartialOrd for DueRefresh {
 }
 
 impl DnsCache {
+    /// Whether renewing `record` is worth an upstream query: someone asked
+    /// for it within `cache_access_window_secs`. A TTL shorter than
+    /// `REFRESH_LEAD_SECS` renews more than once a minute, so it must also
+    /// have been asked for since its last renewal. Without that, one hit kept
+    /// a 5 s entry renewing every few seconds for the whole access window.
+    pub(super) fn is_worth_renewing(&self, record: &CachedRecord, now_secs: u64) -> bool {
+        let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
+        if now_secs.saturating_sub(last_access) > self.access_window_secs {
+            return false;
+        }
+        u64::from(record.ttl) >= REFRESH_LEAD_SECS || last_access >= record.inserted_at_secs
+    }
+
     /// Turns a timer that fired into a claimed renewal, or spends it.
     ///
     /// A timer the record no longer matches, because it was renewed or
     /// replaced since, is left alone: that renewal armed the timer that is
     /// live now. Otherwise the timer is spent whatever happens, and the entry
-    /// is only claimed if it is still worth renewing: in use, not past the
-    /// end of its stale grace, and not already being renewed by a serve-stale
-    /// repair.
+    /// is only claimed if it is still worth renewing (see
+    /// [`Self::is_worth_renewing`]), not past the end of its stale grace, and
+    /// not already being renewed by a serve-stale repair.
     pub fn claim_due_refresh(
         &self,
         timer: &ScheduledRefresh,
@@ -71,8 +85,7 @@ impl DnsCache {
             return None;
         }
 
-        let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
-        if now_secs.saturating_sub(last_access) > self.access_window_secs {
+        if !self.is_worth_renewing(record, now_secs) {
             // Left to expire. A hit before then finds the entry disarmed and
             // arms it again.
             record.disarm_refresh();

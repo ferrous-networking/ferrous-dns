@@ -57,8 +57,7 @@ impl DnsCache {
         if record.is_permanent() || record.is_refreshing() || record.ttl == 0 {
             return false;
         }
-        let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
-        now_secs.saturating_sub(last_access) <= self.access_window_secs
-            && record.refresh_due_at_secs(self.refresh_threshold) <= now_secs
+        record.refresh_due_at_secs(self.refresh_threshold) <= now_secs
+            && self.is_worth_renewing(record, now_secs)
     }
 }
