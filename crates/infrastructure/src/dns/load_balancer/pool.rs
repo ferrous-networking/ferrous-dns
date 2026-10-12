@@ -43,7 +43,8 @@ struct PoolWithStrategy {
 }
 
 impl PoolWithStrategy {
-    /// `None` means a transport failure, so a lower-priority pool may still answer.
+    /// `None` means a transport failure or a declined question, so a
+    /// lower-priority pool may still answer.
     async fn query(
         &self,
         servers: &[&Arc<DnsProtocol>],
@@ -68,6 +69,10 @@ impl PoolWithStrategy {
             }
             Err(e) if ResponseParser::is_transport_error(&e) => {
                 warn!(pool = %self.config.name, error = %e, "Transport error, trying next pool");
+                None
+            }
+            Err(e @ DomainError::UpstreamServerFailure { .. }) => {
+                debug!(pool = %self.config.name, error = %e, "Upstream declined the query, trying next pool");
                 None
             }
             Err(e) => {

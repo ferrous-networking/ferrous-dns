@@ -113,6 +113,8 @@ Pool 2 (priority=2) — any healthy server? → YES → use pool 2
 upstream_servers fallback (if configured)
 ```
 
+A server that answers with an error code (`SERVFAIL`, `REFUSED`, `NOTIMP`, `FORMERR`) has declined the query, so it counts as a failed attempt, like a timeout. Every strategy moves on to its next server, and a pool whose servers all decline falls through to the next pool. Such a reply is never cached and never replaces a cached answer during a refresh. `NXDOMAIN` and NODATA are answers, so they are returned as they are and trigger no failover.
+
 ---
 
 ## Resolution Strategies

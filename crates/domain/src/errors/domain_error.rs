@@ -159,6 +159,9 @@ pub enum DomainError {
     #[error("Spoofed or invalid upstream response from {server}: {reason}")]
     SpoofedResponse { server: String, reason: String },
 
+    #[error("Upstream {server} answered {rcode}")]
+    UpstreamServerFailure { server: String, rcode: &'static str },
+
     #[error("Schedule profile not found: {0}")]
     ScheduleProfileNotFound(i64),
 

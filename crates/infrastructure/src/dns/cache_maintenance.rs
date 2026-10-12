@@ -1,3 +1,4 @@
+use super::cache::negative_cache::negative_ttl;
 use super::cache::{
     coarse_clock, CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, RefreshRequest,
     RefreshScanOptions,
@@ -164,14 +165,13 @@ impl DnsCacheMaintenance {
             return Ok(false);
         };
         let dnssec_status = resolution.dnssec_status.map(CachedDnssecStatus::from);
+        // An answer without records is NXDOMAIN or NODATA: keeping the entry's
+        // old TTL would carry a positive answer's lifetime over to it.
+        let ttl = resolution
+            .min_ttl
+            .unwrap_or_else(|| negative_ttl(resolution.negative_soa_ttl));
 
-        if !cache.refresh_record(
-            domain,
-            record_type,
-            resolution.min_ttl,
-            new_data,
-            dnssec_status,
-        ) {
+        if !cache.refresh_record(domain, record_type, Some(ttl), new_data, dnssec_status) {
             return Ok(false);
         }
 

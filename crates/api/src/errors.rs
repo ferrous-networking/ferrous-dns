@@ -100,6 +100,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::TransportAllServersUnreachable
         | DomainError::UpstreamCapacityExhausted
         | DomainError::SpoofedResponse { .. }
+        | DomainError::UpstreamServerFailure { .. }
         | DomainError::ConfigError(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

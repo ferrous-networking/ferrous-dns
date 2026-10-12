@@ -37,6 +37,12 @@ impl DnsResponse {
             ResponseCode::ServFail | ResponseCode::Refused | ResponseCode::NotImp
         )
     }
+
+    /// Whether the server answered the question, with data, NODATA or
+    /// NXDOMAIN. Any other rcode means it declined to.
+    pub fn is_answer(&self) -> bool {
+        matches!(self.rcode, ResponseCode::NoError | ResponseCode::NXDomain)
+    }
 }
 
 pub struct ResponseParser;

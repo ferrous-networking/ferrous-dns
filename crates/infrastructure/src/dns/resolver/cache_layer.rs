@@ -1,5 +1,5 @@
 use super::super::cache::key::CacheKey;
-use super::super::cache::negative_cache::MIN_NEGATIVE_TTL;
+use super::super::cache::negative_cache::{negative_ttl, MIN_NEGATIVE_TTL};
 use super::super::cache::{
     CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
 };
@@ -178,11 +178,16 @@ impl CachedResolver {
 
         if resolution.addresses.is_empty() {
             match &resolution.upstream_wire_data {
+                // No answer records means NXDOMAIN or NODATA, which lives for
+                // the SOA's negative TTL rather than the default one.
                 Some(wire_data) => self.cache.insert(
                     query.domain.as_ref(),
                     query.record_type,
                     CachedData::WireData(wire_data.clone()),
-                    resolution.min_ttl.unwrap_or(self.cache_ttl).max(1),
+                    resolution.min_ttl.map_or_else(
+                        || negative_ttl(resolution.negative_soa_ttl),
+                        |ttl| ttl.max(1),
+                    ),
                     Some(dnssec_status),
                     resolution.local_dns,
                 ),

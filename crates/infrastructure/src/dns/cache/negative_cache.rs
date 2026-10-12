@@ -18,6 +18,14 @@ pub(crate) const MIN_NEGATIVE_TTL: u32 = 300;
 /// NXDOMAIN can linger if the upstream advertises an unreasonable SOA TTL.
 const MAX_NEGATIVE_TTL: u32 = 3_600;
 
+/// How long a negative answer is cached: the SOA's negative TTL, held to the
+/// `[MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL]` window.
+pub(crate) fn negative_ttl(soa_ttl: Option<u32>) -> u32 {
+    soa_ttl
+        .unwrap_or(MIN_NEGATIVE_TTL)
+        .clamp(MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL)
+}
+
 /// Marks an entry from the local DNS server in the top bit of its expiry,
 /// which epoch seconds never reach; the entry stays one `u64`.
 const LOCAL_DNS_BIT: u64 = 1 << 63;
@@ -89,7 +97,7 @@ impl NegativeDnsCache {
     }
 
     pub fn insert(&self, domain: &str, record_type: RecordType, ttl: u32, local_dns: bool) {
-        let ttl = ttl.clamp(MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL);
+        let ttl = negative_ttl(Some(ttl));
         let now = coarse_now_secs();
         self.cache
             .evict_if_full::<EVICTION_BATCH_SIZE>(self.max_entries, |entry| {
