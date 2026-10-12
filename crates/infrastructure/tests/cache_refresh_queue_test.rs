@@ -445,6 +445,50 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
     );
 }
 
+/// A caching upstream answers with what is left of its own copy, and two
+/// anycast nodes can be minutes apart: Cloudflare answered 560, 408 and then
+/// 14 for the same name within six seconds. A renewal must not trade a valid
+/// entry for a shorter-lived one. The entry is kept and renewed again when it
+/// expires, by which time the upstream's copy has rolled over.
+#[tokio::test]
+async fn test_renewal_never_shortens_a_valid_entry() {
+    // TTL 6 at threshold 0.5: due 3 s in, with 3 s left; the upstream offers 1.
+    let cache = create_cache_with(200, 0.5);
+    let resolver = RecordingResolver::new(Some(1));
+    let _worker = start_worker(
+        &cache,
+        resolver.clone() as Arc<dyn DnsResolver>,
+        no_ranking(),
+        true,
+    );
+    cache.insert(
+        "anycast.example",
+        RecordType::A,
+        make_ip_data(OLD_IP),
+        6,
+        None,
+    );
+
+    assert!(wait_until(Duration::from_secs(5), || resolver.count() >= 1).await);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        cached_addresses(&cache, "anycast.example"),
+        Some(vec![OLD_IP.parse().unwrap()]),
+        "a 1 s answer must not replace an entry with 3 s left"
+    );
+
+    assert!(
+        wait_until(Duration::from_secs(6), || resolver.count() >= 2).await,
+        "the entry is renewed again once it expires"
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        cached_addresses(&cache, "anycast.example"),
+        Some(vec![NEW_IP.parse().unwrap()]),
+        "past its own expiry, any answer extends it"
+    );
+}
+
 // ── Failures ────────────────────────────────────────────────────────────────
 
 #[tokio::test]
