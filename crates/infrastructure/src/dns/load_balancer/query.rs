@@ -12,6 +12,27 @@ fn get_display(protocol: &DnsProtocol, cache: &ServerDisplays) -> Arc<str> {
         .unwrap_or_else(|| Arc::from(protocol.to_string()))
 }
 
+/// Whether `error` is an upstream answering SERVFAIL: one server, or every
+/// server a strategy asked.
+pub(super) fn is_servfail(error: &DomainError) -> bool {
+    match error {
+        DomainError::UpstreamServerFailure { rcode, .. } => *rcode == "SERVFAIL",
+        DomainError::AllUpstreamsServfail => true,
+        _ => false,
+    }
+}
+
+/// The error for a strategy whose every server failed: SERVFAIL only when
+/// each one answered it, so a timeout next to a SERVFAIL is not reported as
+/// an upstream that declined.
+pub(super) fn all_servers_failed(all_servfail: bool) -> DomainError {
+    if all_servfail {
+        DomainError::AllUpstreamsServfail
+    } else {
+        DomainError::TransportAllServersUnreachable
+    }
+}
+
 /// One attempt against `protocol` within the pool query described by `ctx`.
 ///
 /// A reply that declines the question (SERVFAIL, REFUSED, ...) is an error, so

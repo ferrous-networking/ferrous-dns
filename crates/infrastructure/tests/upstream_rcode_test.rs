@@ -327,6 +327,83 @@ async fn servfail_and_timeout_across_pools_stays_unreachable() {
     );
 }
 
+/// S7c. Inside one pool, every strategy reports SERVFAIL from all of its
+/// servers as such, and anything else mixed in as an unreachable upstream.
+#[tokio::test]
+async fn every_strategy_reports_servfail_only_when_every_server_answered_it() {
+    let cases: [(UpstreamStrategy, &[ResponseCode], bool); 8] = [
+        (
+            UpstreamStrategy::Failover,
+            &[ResponseCode::ServFail, ResponseCode::ServFail],
+            true,
+        ),
+        (
+            UpstreamStrategy::Failover,
+            &[ResponseCode::ServFail, ResponseCode::Refused],
+            false,
+        ),
+        (
+            UpstreamStrategy::Balanced,
+            &[ResponseCode::ServFail, ResponseCode::ServFail],
+            true,
+        ),
+        (
+            UpstreamStrategy::Balanced,
+            &[ResponseCode::Refused, ResponseCode::ServFail],
+            false,
+        ),
+        (
+            UpstreamStrategy::Parallel,
+            &[ResponseCode::ServFail, ResponseCode::ServFail],
+            true,
+        ),
+        (
+            UpstreamStrategy::Parallel,
+            &[ResponseCode::ServFail, ResponseCode::Refused],
+            false,
+        ),
+        (
+            UpstreamStrategy::Parallel,
+            &[
+                ResponseCode::ServFail,
+                ResponseCode::ServFail,
+                ResponseCode::ServFail,
+            ],
+            true,
+        ),
+        (
+            UpstreamStrategy::Parallel,
+            &[
+                ResponseCode::ServFail,
+                ResponseCode::Refused,
+                ResponseCode::ServFail,
+            ],
+            false,
+        ),
+    ];
+    for (strategy, rcodes, servfail) in cases {
+        let mut servers = Vec::new();
+        for rcode in rcodes {
+            servers.push(Responder::spawn(Behavior::rcode(*rcode)).await);
+        }
+        let refs: Vec<&Responder> = servers.iter().collect();
+        let pm = manager(vec![pool("only", strategy, 1, &refs)]).await;
+
+        let result = query_a(&pm).await;
+        if servfail {
+            assert!(
+                matches!(result, Err(DomainError::AllUpstreamsServfail)),
+                "{strategy:?} {rcodes:?}: got {result:?}"
+            );
+        } else {
+            assert!(
+                matches!(result, Err(DomainError::TransportAllServersUnreachable)),
+                "{strategy:?} {rcodes:?}: got {result:?}"
+            );
+        }
+    }
+}
+
 /// S8. Guard: NXDOMAIN is the server's answer, so there is nothing to fail
 /// over from.
 #[tokio::test]

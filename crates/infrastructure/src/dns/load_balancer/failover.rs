@@ -1,4 +1,4 @@
-use super::query::query_server;
+use super::query::{all_servers_failed, is_servfail, query_server};
 use super::strategy::{QueryContext, UpstreamResult};
 use ferrous_dns_domain::DomainError;
 use tracing::{debug, warn};
@@ -10,6 +10,7 @@ pub(super) async fn query(ctx: &QueryContext<'_>) -> Result<UpstreamResult, Doma
     }
     debug!(strategy = "failover", servers = ctx.servers.len(), domain = %ctx.domain, "Trying sequentially");
 
+    let mut all_servfail = true;
     for (index, protocol) in ctx.servers.iter().enumerate() {
         match query_server(ctx, protocol).await {
             Ok(r) => {
@@ -18,8 +19,9 @@ pub(super) async fn query(ctx: &QueryContext<'_>) -> Result<UpstreamResult, Doma
             }
             Err(e) => {
                 warn!(protocol = %protocol, error = %e, position = index, "Failing over");
+                all_servfail &= is_servfail(&e);
             }
         }
     }
-    Err(DomainError::TransportAllServersUnreachable)
+    Err(all_servers_failed(all_servfail))
 }

@@ -1,10 +1,21 @@
-use super::query::query_server;
+use super::query::{all_servers_failed, is_servfail, query_server};
 use super::strategy::{QueryContext, UpstreamResult};
 use ferrous_dns_domain::DomainError;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
+
+/// What a pair reports when both servers failed. It returns the second
+/// error as before, except that one SERVFAIL next to another kind of failure
+/// must not read as "every server answered SERVFAIL".
+fn pair_failure(first: &DomainError, second: DomainError) -> DomainError {
+    match (is_servfail(first), is_servfail(&second)) {
+        (true, true) => DomainError::AllUpstreamsServfail,
+        (false, true) => DomainError::TransportAllServersUnreachable,
+        _ => second,
+    }
+}
 
 /// Races every server, taking the first successful answer.
 pub(super) async fn query(ctx: &QueryContext<'_>) -> Result<UpstreamResult, DomainError> {
@@ -27,8 +38,14 @@ pub(super) async fn query(ctx: &QueryContext<'_>) -> Result<UpstreamResult, Doma
                 };
                 match first {
                     Ok(r) => Ok(r),
-                    Err(_) if first_idx == 0 => (&mut f1).await,
-                    Err(_) => (&mut f0).await,
+                    Err(first_err) => {
+                        let second = if first_idx == 0 {
+                            (&mut f1).await
+                        } else {
+                            (&mut f0).await
+                        };
+                        second.map_err(|second_err| pair_failure(&first_err, second_err))
+                    }
                 }
             };
 
@@ -47,12 +64,14 @@ pub(super) async fn query(ctx: &QueryContext<'_>) -> Result<UpstreamResult, Doma
                 .collect();
 
             let first_success = async {
+                let mut all_servfail = true;
                 while let Some(result) = futs.next().await {
-                    if result.is_ok() {
-                        return result;
+                    match result {
+                        Ok(_) => return result,
+                        Err(e) => all_servfail &= is_servfail(&e),
                     }
                 }
-                Err(DomainError::TransportAllServersUnreachable)
+                Err(all_servers_failed(all_servfail))
             };
 
             timeout(Duration::from_millis(ctx.timeout_ms), first_success)

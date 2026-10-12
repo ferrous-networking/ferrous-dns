@@ -1,4 +1,5 @@
 use super::health::HealthChecker;
+use super::query::{all_servers_failed, is_servfail};
 use super::strategy::{QueryContext, ServerDisplays, Strategy, UpstreamResult};
 use crate::dns::forwarding::{HardeningOpts, MessageBuilder, ResponseParser, ResponseValidator};
 use crate::dns::transport::resolver::UpstreamHostResolver;
@@ -42,9 +43,16 @@ struct PoolWithStrategy {
     server_displays: ServerDisplays,
 }
 
+/// Why a pool produced no answer.
+enum PoolFailure {
+    /// An error no lower-priority pool could do better on.
+    Final(DomainError),
+    /// A transport failure or a declined question, so a lower-priority pool
+    /// may still answer. `servfail` is whether every server answered SERVFAIL.
+    FellThrough { servfail: bool },
+}
+
 impl PoolWithStrategy {
-    /// `None` means a transport failure or a declined question, so a
-    /// lower-priority pool may still answer.
     async fn query(
         &self,
         servers: &[&Arc<DnsProtocol>],
@@ -52,7 +60,7 @@ impl PoolWithStrategy {
         timeout_ms: u64,
         query_bytes: &[u8],
         validator: &ResponseValidator,
-    ) -> Option<Result<UpstreamResult, DomainError>> {
+    ) -> Result<UpstreamResult, PoolFailure> {
         let ctx = QueryContext {
             servers,
             domain,
@@ -65,19 +73,23 @@ impl PoolWithStrategy {
         match self.strategy.query_refs(&ctx).await {
             Ok(result) => {
                 debug!(pool = %self.config.name, server = %result.server_display, "Pool query successful");
-                Some(Ok(result))
+                Ok(result)
             }
             Err(e) if ResponseParser::is_transport_error(&e) => {
                 warn!(pool = %self.config.name, error = %e, "Transport error, trying next pool");
-                None
+                Err(PoolFailure::FellThrough { servfail: false })
             }
-            Err(e @ DomainError::UpstreamServerFailure { .. }) => {
+            Err(
+                e @ (DomainError::UpstreamServerFailure { .. } | DomainError::AllUpstreamsServfail),
+            ) => {
                 debug!(pool = %self.config.name, error = %e, "Upstream declined the query, trying next pool");
-                None
+                Err(PoolFailure::FellThrough {
+                    servfail: is_servfail(&e),
+                })
             }
             Err(e) => {
                 warn!(pool = %self.config.name, error = %e, "DNS error, not trying other pools");
-                Some(Err(e))
+                Err(PoolFailure::Final(e))
             }
         }
     }
@@ -393,6 +405,8 @@ impl PoolManager {
             MessageBuilder::build_query_hardened(domain, record_type, dnssec_ok, self.hardening)?;
 
         let mut any_healthy = false;
+        let mut any_tried = false;
+        let mut all_servfail = true;
         for pool in pools.iter() {
             let healthy_refs: SmallVec<[&Arc<DnsProtocol>; 16]> =
                 if let Some(checker) = &self.health_checker {
@@ -413,11 +427,16 @@ impl PoolManager {
                 self.leave_fail_open();
             }
 
-            if let Some(outcome) = pool
+            match pool
                 .query(&healthy_refs, domain, timeout_ms, &query_bytes, &validator)
                 .await
             {
-                return outcome;
+                Ok(result) => return Ok(result),
+                Err(PoolFailure::Final(e)) => return Err(e),
+                Err(PoolFailure::FellThrough { servfail }) => {
+                    any_tried = true;
+                    all_servfail &= servfail;
+                }
             }
         }
 
@@ -433,15 +452,20 @@ impl PoolManager {
                 if all_refs.is_empty() {
                     continue;
                 }
-                if let Some(outcome) = pool
+                match pool
                     .query(&all_refs, domain, timeout_ms, &query_bytes, &validator)
                     .await
                 {
-                    return outcome;
+                    Ok(result) => return Ok(result),
+                    Err(PoolFailure::Final(e)) => return Err(e),
+                    Err(PoolFailure::FellThrough { servfail }) => {
+                        any_tried = true;
+                        all_servfail &= servfail;
+                    }
                 }
             }
         }
-        Err(DomainError::TransportAllServersUnreachable)
+        Err(all_servers_failed(any_tried && all_servfail))
     }
 
     fn leave_fail_open(&self) {

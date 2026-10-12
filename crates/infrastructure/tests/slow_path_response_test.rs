@@ -189,6 +189,8 @@ async fn outcomes_map_to_rcode_extended_error_and_block_answer() {
         (E::DnsRateLimited, Refused, Some(18), false),
         (E::DnsCookieInvalid, Refused, Some(18), false),
         (E::QueryTimeout, ServFail, Some(22), false),
+        (E::TransportAllServersUnreachable, ServFail, Some(22), false),
+        (E::AllUpstreamsServfail, ServFail, Some(22), false),
         (
             E::UpstreamServerFailure {
                 server: "udp://192.0.2.53:53".into(),

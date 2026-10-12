@@ -64,6 +64,16 @@ fn should_return_no_reachable_authority_when_all_servers_unreachable() {
     assert_eq!(ede.info_code, codes::NO_REACHABLE_AUTHORITY);
 }
 
+/// Every upstream answering SERVFAIL is told apart only for the refresh
+/// worker; a client sees exactly what an unreachable upstream gives it.
+#[test]
+fn should_map_every_upstream_servfailing_like_all_servers_unreachable() {
+    let servfail = ede::from_domain_error(&DomainError::AllUpstreamsServfail).unwrap();
+    let unreachable = ede::from_domain_error(&DomainError::TransportAllServersUnreachable).unwrap();
+    assert_eq!(servfail.info_code, unreachable.info_code);
+    assert_eq!(servfail.extra_text, unreachable.extra_text);
+}
+
 #[test]
 fn should_return_network_error_when_transport_timeout() {
     let ede = ede::from_domain_error(&DomainError::TransportTimeout {
