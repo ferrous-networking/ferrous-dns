@@ -2,7 +2,8 @@
 //!
 //! A fake upstream serves `.` → `test.` → `example.test.`, all Ed25519-signed,
 //! plus `insecure.test.` (an unsigned delegation that `test.` proves with a
-//! signed NSEC) and `stripped.test.` (whose DS denial an attacker removed). The
+//! signed NSEC), `stripped.test.` (whose DS denial an attacker removed) and
+//! `servfail.test.` (whose DS query the upstream answers with SERVFAIL). The
 //! validator is anchored on the fake root key, so every verdict comes from real
 //! signature math and the real chain walk; only the network is simulated.
 
@@ -196,6 +197,15 @@ fn hierarchy() -> Hierarchy {
     );
     // The attacker's empty DS answer, denial proof removed.
     up.insert(key("stripped.test.", DS), reply(vec![], vec![]));
+    // An upstream that declines the DS query outright.
+    up.insert(
+        key("servfail.test.", DS),
+        Reply {
+            rcode: ResponseCode::ServFail,
+            answers: vec![],
+            authorities: vec![],
+        },
+    );
     // Plain hosts inside example.test.: no DS, and no NS bit, so not zone cuts.
     up.insert(
         key("www.example.test.", DS),
@@ -440,6 +450,22 @@ async fn missing_ds_denial_is_bogus() {
         verdict(&h, "host.stripped.test", FRecordType::A, m).await,
         DnssecStatus::Bogus,
         "an empty DS answer without the parent's signed denial proves nothing"
+    );
+}
+
+/// S22. A SERVFAIL is a lookup that never got an answer, not forged data.
+#[tokio::test]
+async fn servfailed_ds_lookup_is_indeterminate() {
+    let h = hierarchy();
+    let m = message(
+        ResponseCode::NoError,
+        vec![a("host.servfail.test.")],
+        vec![],
+    );
+    assert_eq!(
+        verdict(&h, "host.servfail.test", FRecordType::A, m).await,
+        DnssecStatus::Indeterminate,
+        "an upstream that declines the DS query leaves the chain undecided"
     );
 }
 

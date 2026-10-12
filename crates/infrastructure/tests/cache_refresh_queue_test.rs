@@ -18,8 +18,10 @@
 //! porque uma FIFO única faria o item stale esperar todo o backlog paced.
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use ferrous_dns_application::ports::{CacheMaintenancePort, DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
+use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
     RefreshPace, RefreshRequest, RefreshScanOptions, RefreshSenders,
@@ -801,5 +803,130 @@ async fn test_bogus_refresh_drops_the_entry_instead_of_renewing_it() {
         cached.is_none(),
         "the Bogus answer must not be cached: {:?}",
         cached.map(|(data, status, _, _)| (data.as_ip_addresses().cloned(), status))
+    );
+}
+
+/// An upstream NXDOMAIN for `domain`, with an SOA whose negative TTL is
+/// `soa_ttl`, as the pool path receives it.
+fn nxdomain_wire(domain: &str, soa_ttl: u32) -> Bytes {
+    use hickory_proto::op::{Message, MessageType, OpCode, Query, ResponseCode};
+    use hickory_proto::rr::rdata::SOA;
+    use hickory_proto::rr::{Name, RData, Record, RecordType as WireType};
+    use hickory_proto::serialize::binary::BinEncodable;
+    use std::str::FromStr;
+
+    let mut msg = Message::new(0x4242, MessageType::Response, OpCode::Query);
+    msg.metadata.response_code = ResponseCode::NXDomain;
+    msg.add_query(Query::query(
+        Name::from_str(&format!("{domain}.")).unwrap(),
+        WireType::A,
+    ));
+    let soa = SOA::new(
+        Name::from_str("ns1.com.").unwrap(),
+        Name::from_str("hostmaster.com.").unwrap(),
+        1,
+        3600,
+        900,
+        604_800,
+        soa_ttl,
+    );
+    msg.add_authorities(vec![Record::from_rdata(
+        Name::from_str("com.").unwrap(),
+        soa_ttl,
+        RData::SOA(soa),
+    )]);
+    Bytes::from(msg.to_bytes().unwrap())
+}
+
+/// Answers every refresh with fixed upstream wire, parsed as `CoreResolver` does.
+struct WireResolver(Bytes);
+
+#[async_trait]
+impl DnsResolver for WireResolver {
+    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        let response = ResponseParser::parse_bytes(self.0.clone())?;
+        Ok(DnsResolution {
+            min_ttl: response.min_ttl,
+            negative_soa_ttl: response.negative_soa_ttl,
+            upstream_wire_data: Some(response.raw_bytes),
+            ..DnsResolution::new(response.addresses, false)
+        })
+    }
+}
+
+/// Runs one serve-stale repair of `queued-0.com` A against `resolver` and
+/// returns the entry's data and remaining TTL, read on a fresh thread so the
+/// test thread's L1 copy cannot answer.
+async fn ttl_after_repair(cache: &Arc<DnsCache>, resolver: WireResolver) -> (CachedData, u32) {
+    let (stale_tx, stale_rx) = mpsc::channel(16);
+    let (_optimistic_tx, optimistic_rx) = mpsc::channel(16);
+    let (_pace_tx, pace_rx) = watch::channel(None);
+    DnsCacheMaintenance::start_refresh_worker(
+        Arc::clone(cache),
+        Arc::new(resolver),
+        None,
+        stale_rx,
+        optimistic_rx,
+        pace_rx,
+        0,
+    );
+
+    stale_tx
+        .send((Arc::from("queued-0.com"), RecordType::A))
+        .await
+        .expect("send failed");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let (data, _, remaining_ttl, _) = std::thread::spawn({
+        let cache = Arc::clone(cache);
+        move || cache.get("queued-0.com", &RecordType::A)
+    })
+    .join()
+    .unwrap()
+    .expect("the renewed entry should be cached");
+    (data, remaining_ttl.unwrap_or(0))
+}
+
+/// S19. A name that stopped existing is renewed for the negative TTL, not
+/// for the hours its positive answer had.
+#[tokio::test]
+async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
+    let cache = create_cache_with(200, 0.0);
+    cache.insert(
+        "queued-0.com",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        7_200,
+        None,
+    );
+
+    let (data, ttl) =
+        ttl_after_repair(&cache, WireResolver(nxdomain_wire("queued-0.com", 60))).await;
+
+    assert!(matches!(data, CachedData::WireData(_)), "got {data:?}");
+    assert!(
+        (290..=300).contains(&ttl),
+        "an NXDOMAIN renewal takes the negative TTL, got {ttl}"
+    );
+}
+
+/// S20. A cached NXDOMAIN is renewed for the SOA's current negative TTL.
+#[tokio::test]
+async fn test_negative_entry_renewal_follows_the_new_soa_ttl() {
+    let cache = create_cache_with(200, 0.0);
+    cache.insert(
+        "queued-0.com",
+        RecordType::A,
+        CachedData::WireData(nxdomain_wire("queued-0.com", 300)),
+        300,
+        None,
+    );
+
+    let (_, ttl) =
+        ttl_after_repair(&cache, WireResolver(nxdomain_wire("queued-0.com", 86_400))).await;
+
+    assert!(
+        (3590..=3600).contains(&ttl),
+        "the renewal follows the new SOA, capped at 3600; got {ttl}"
     );
 }
