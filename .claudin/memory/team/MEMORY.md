@@ -25,6 +25,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Wildcard local records](decisions/wildcard-local-records.md) — why the wildcard layer sits above the cache, and two unfiled bugs in exact local records
 - [Exact local records answer NODATA](decisions/local-record-exact-nodata.md) — PR #227: an exact A/AAAA owns the whole name, so split-horizon overrides lose every other type
 - [Restart banner is a sticky server flag](decisions/restart-banner-server-flag.md) — PR #236: in-memory `restart_pending`, cleared only by a restart; config diff rejected
+- [DNS cookie echo + strict mode](decisions/dns-cookie-strict-mode.md) — #279: cookie on every reply; strict is UDP-only, fast path off, BADCOOKIE + EDE 18
 
 ## Bugs
 
