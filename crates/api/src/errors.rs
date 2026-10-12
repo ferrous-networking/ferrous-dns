@@ -98,6 +98,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::TransportConnectionReset { .. }
         | DomainError::TransportNoHealthyServers
         | DomainError::TransportAllServersUnreachable
+        | DomainError::AllUpstreamsServfail
         | DomainError::UpstreamCapacityExhausted
         | DomainError::SpoofedResponse { .. }
         | DomainError::UpstreamServerFailure { .. }

@@ -156,6 +156,12 @@ pub enum DomainError {
     #[error("All upstream servers are unreachable")]
     TransportAllServersUnreachable,
 
+    /// Every upstream asked, in every pool tried, answered SERVFAIL. Kept apart
+    /// from `TransportAllServersUnreachable` so a background refresh can retry
+    /// it; a client gets the same SERVFAIL and EDE either way.
+    #[error("Every upstream answered SERVFAIL")]
+    AllUpstreamsServfail,
+
     #[error("Spoofed or invalid upstream response from {server}: {reason}")]
     SpoofedResponse { server: String, reason: String },
 

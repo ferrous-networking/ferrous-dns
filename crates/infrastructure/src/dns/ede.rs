@@ -41,7 +41,7 @@ pub fn from_domain_error(err: &DomainError) -> Option<ExtendedDnsError> {
         DomainError::TransportNoHealthyServers => {
             (codes::NO_REACHABLE_AUTHORITY, "no healthy upstream servers")
         }
-        DomainError::TransportAllServersUnreachable => (
+        DomainError::TransportAllServersUnreachable | DomainError::AllUpstreamsServfail => (
             codes::NO_REACHABLE_AUTHORITY,
             "all upstream servers unreachable",
         ),

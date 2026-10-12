@@ -806,6 +806,60 @@ async fn test_bogus_refresh_drops_the_entry_instead_of_renewing_it() {
     );
 }
 
+/// Answers every refresh with a resolution the validator could not finish,
+/// as when the DS or DNSKEY lookups behind it time out.
+struct IndeterminateResolver;
+
+#[async_trait]
+impl DnsResolver for IndeterminateResolver {
+    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        Ok(DnsResolution {
+            dnssec_status: Some(ferrous_dns_domain::DnssecStatus::Indeterminate),
+            ..DnsResolution::new(vec!["203.0.113.66".parse().unwrap()], false)
+        })
+    }
+}
+
+/// R1. An Indeterminate refresh is a validation that could not run, not a
+/// verdict on the zone. The entry validated when it was stored keeps serving
+/// until its own TTL ends, and the unvalidated answer does not replace it.
+#[tokio::test]
+async fn test_indeterminate_refresh_keeps_the_validated_entry() {
+    let cache = create_cache_with(200, 0.0);
+    insert_entries(&cache, 1);
+    let (stale_tx, stale_rx) = mpsc::channel(16);
+    let (_optimistic_tx, optimistic_rx) = mpsc::channel(16);
+    let (_pace_tx, pace_rx) = watch::channel(None);
+    DnsCacheMaintenance::start_refresh_worker(
+        Arc::clone(&cache),
+        Arc::new(IndeterminateResolver),
+        None,
+        stale_rx,
+        optimistic_rx,
+        pace_rx,
+        0,
+    );
+
+    stale_tx
+        .send((Arc::from("queued-0.com"), RecordType::A))
+        .await
+        .expect("send failed");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let cached = std::thread::spawn({
+        let cache = Arc::clone(&cache);
+        move || cache.get("queued-0.com", &RecordType::A)
+    })
+    .join()
+    .unwrap()
+    .and_then(|(data, _, _, _)| data.as_ip_addresses().map(|a| a.as_ref().clone()));
+    assert_eq!(
+        cached,
+        Some(vec!["1.2.3.4".parse::<IpAddr>().unwrap()]),
+        "the validated entry must survive an Indeterminate refresh, unchanged"
+    );
+}
+
 /// An upstream NXDOMAIN for `domain`, with an SOA whose negative TTL is
 /// `soa_ttl`, as the pool path receives it.
 fn nxdomain_wire(domain: &str, soa_ttl: u32) -> Bytes {

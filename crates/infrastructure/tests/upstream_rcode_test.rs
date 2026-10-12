@@ -286,9 +286,10 @@ async fn servfailing_pool_falls_through_to_the_next_pool() {
     );
 }
 
-/// S7.
+/// S7. Every pool declining with SERVFAIL is told apart from an unreachable
+/// upstream, so a refresh can retry it.
 #[tokio::test]
-async fn every_pool_servfailing_is_unreachable() {
+async fn every_pool_servfailing_is_distinguishable() {
     let first = Responder::spawn(Behavior::rcode(ResponseCode::ServFail)).await;
     let second = Responder::spawn(Behavior::rcode(ResponseCode::ServFail)).await;
     let pm = manager(vec![
@@ -299,10 +300,31 @@ async fn every_pool_servfailing_is_unreachable() {
 
     let result = query_a(&pm).await;
     assert!(
-        matches!(result, Err(DomainError::TransportAllServersUnreachable)),
+        matches!(result, Err(DomainError::AllUpstreamsServfail)),
         "got {result:?}"
     );
     assert_eq!(second.queries(), 1, "the fallback pool must be tried");
+}
+
+/// S7b. Guard: a SERVFAIL next to a timeout is not "every upstream answered
+/// SERVFAIL", so it stays an unreachable upstream.
+#[tokio::test]
+async fn servfail_and_timeout_across_pools_stays_unreachable() {
+    let failing = Responder::spawn(Behavior::rcode(ResponseCode::ServFail)).await;
+    let silent =
+        Responder::spawn(Behavior::answer(NEW_IP).after(Duration::from_millis(TIMEOUT_MS + 1_000)))
+            .await;
+    let pm = manager(vec![
+        pool("primary", UpstreamStrategy::Failover, 1, &[&failing]),
+        pool("fallback", UpstreamStrategy::Failover, 2, &[&silent]),
+    ])
+    .await;
+
+    let result = query_a(&pm).await;
+    assert!(
+        matches!(result, Err(DomainError::TransportAllServersUnreachable)),
+        "got {result:?}"
+    );
 }
 
 /// S8. Guard: NXDOMAIN is the server's answer, so there is nothing to fail

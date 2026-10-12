@@ -21,6 +21,7 @@ fn is_transient_error(e: &DomainError) -> bool {
     matches!(
         e,
         DomainError::TransportAllServersUnreachable
+            | DomainError::AllUpstreamsServfail
             | DomainError::TransportNoHealthyServers
             | DomainError::QueryTimeout
             | DomainError::TransportTimeout { .. }
