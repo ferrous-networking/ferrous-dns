@@ -292,9 +292,16 @@ impl CachedRecord {
 
     #[inline(always)]
     pub fn record_hit(&self) {
+        self.record_hits(1);
+    }
+
+    /// Counts `count` hits at once: the batch an L1 copy hands over, or one
+    /// L2 hit.
+    #[inline(always)]
+    pub fn record_hits(&self, count: u64) {
         self.counters
             .hit_count
-            .fetch_add(1, AtomicOrdering::Relaxed);
+            .fetch_add(count, AtomicOrdering::Relaxed);
         let now = super::coarse_clock::coarse_now_secs();
         if self.counters.last_access.load(AtomicOrdering::Relaxed) < now {
             self.counters

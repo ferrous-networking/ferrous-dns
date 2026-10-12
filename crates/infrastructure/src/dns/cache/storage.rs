@@ -179,10 +179,13 @@ impl DnsCache {
         // so reads never decide membership. L1 mirrors L2's address answers,
         // so only an A or AAAA probe is worth its lookup.
         if matches!(record_type, RecordType::A | RecordType::AAAA) {
-            if let Some((arc_data, dnssec_status, local_dns, remaining_ttl)) =
+            if let Some((arc_data, dnssec_status, local_dns, remaining_ttl, l1_hits)) =
                 l1_get(domain, record_type)
             {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
+                if l1_hits > 0 {
+                    self.record_l1_hits(domain, *record_type, l1_hits);
+                }
                 return Some((
                     CachedData::IpAddresses(super::data::CachedAddresses {
                         addresses: arc_data,
@@ -670,6 +673,17 @@ impl DnsCache {
             true
         } else {
             false
+        }
+    }
+
+    /// Hands a batch of hits an L1 copy served over to its L2 record, which
+    /// holds the counters refresh eligibility and eviction read. Runs at most
+    /// once per second per thread and name; a record gone in the meantime
+    /// just drops the batch.
+    fn record_l1_hits(&self, domain: &str, record_type: RecordType, hits: u16) {
+        let key = CacheKey::from_lowercase(domain, record_type);
+        if let Some(entry) = self.cache.get(&key) {
+            entry.value().record_hits(u64::from(hits));
         }
     }
 
