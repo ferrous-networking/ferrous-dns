@@ -7,9 +7,10 @@ impl DnsCache {
     /// Removes dead entries and re-arms live ones that missed their renewal.
     ///
     /// The second job rides on this pass because it already visits every
-    /// entry. An entry in use whose renewal came due and failed, and was not
-    /// retried, has no timer left: it gets one here, so a failing upstream is
-    /// retried once per compaction interval instead of never.
+    /// entry. An entry in use whose renewal came due and failed without a
+    /// retry, or whose timer was shed, has no timer left: it gets one here,
+    /// so a failing upstream is retried once per compaction interval instead
+    /// of never.
     pub fn compact(&self) -> usize {
         let before = self.cache.len();
         let now = coarse_now_secs();
@@ -29,7 +30,7 @@ impl DnsCache {
             if let Some(entry) = self.cache.get(&key) {
                 entry.try_arm_refresh();
             }
-            self.send_or_disarm(ScheduledRefresh {
+            self.send_refresh_timer(ScheduledRefresh {
                 due_at_secs: now,
                 key,
                 retry: false,

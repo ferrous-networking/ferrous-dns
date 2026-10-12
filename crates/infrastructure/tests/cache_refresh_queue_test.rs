@@ -21,7 +21,7 @@ use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
-    RefreshPriority, RefreshRequest, RefreshSenders, ScheduledRefresh,
+    RefreshPriority, RefreshRequest, RefreshSenders, ScheduledRefresh, TimerInbox,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -88,10 +88,10 @@ fn no_ranking() -> RefreshPriority {
     }
 }
 
-/// The two channels into a running worker.
+/// The two ways into a running worker.
 struct Worker {
     stale: mpsc::Sender<RefreshRequest>,
-    schedule: mpsc::Sender<ScheduledRefresh>,
+    timers: Arc<TimerInbox>,
 }
 
 /// Wires `cache` to a new worker over `resolver`, as `setup_cache_maintenance`
@@ -104,20 +104,21 @@ fn start_worker(
 ) -> Worker {
     let _ticker = coarse_clock::start_clock_ticker();
     let (stale, stale_rx) = mpsc::channel(128);
-    let (schedule, schedule_rx) = mpsc::channel(1024);
+    let timers = Arc::new(TimerInbox::new(4_096));
+    let wired = optimistic.then(|| Arc::clone(&timers));
     cache.set_refresh_senders(RefreshSenders {
         stale: stale.clone(),
-        schedule: optimistic.then(|| schedule.clone()),
+        schedule: wired.clone(),
     });
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         resolver,
         None,
         stale_rx,
-        schedule_rx,
+        wired,
         priority,
     );
-    Worker { stale, schedule }
+    Worker { stale, timers }
 }
 
 /// Polls `done` every 10 ms for up to `within`, so a hang fails the test
@@ -365,13 +366,12 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
     let now = coarse_clock::coarse_now_secs();
     for domain in ["later.example", "missing.example"] {
         worker
-            .schedule
-            .send(ScheduledRefresh {
+            .timers
+            .push(ScheduledRefresh {
                 due_at_secs: now,
                 key: CacheKey::new(domain, RecordType::A),
                 retry: false,
             })
-            .await
             .unwrap();
     }
 
@@ -525,13 +525,12 @@ async fn test_due_backlog_starts_hot_entries_first() {
     let due_at_secs = coarse_clock::coarse_now_secs() + 1;
     for domain in cold.iter().chain(hot.iter()) {
         worker
-            .schedule
-            .send(ScheduledRefresh {
+            .timers
+            .push(ScheduledRefresh {
                 due_at_secs,
                 key: CacheKey::new(domain, RecordType::A),
                 retry: false,
             })
-            .await
             .unwrap();
     }
 

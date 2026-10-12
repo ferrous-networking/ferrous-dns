@@ -1,7 +1,7 @@
 use super::cache::negative_cache::negative_ttl;
 use super::cache::{
     coarse_clock, CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, DueRefresh,
-    RefreshPriority, RefreshRequest, RefreshSchedule, ScheduledRefresh,
+    RefreshPriority, RefreshRequest, RefreshSchedule, TimerInbox,
 };
 
 use async_trait::async_trait;
@@ -178,17 +178,18 @@ impl DnsCacheMaintenance {
     /// Spawns the worker that renews cache entries.
     ///
     /// It takes serve-stale repairs from `stale_rx`, always first, and the
-    /// refresh timers the cache arms as it stores and renews entries from
-    /// `schedule_rx`. Each second it claims the timers that came due. Up to
-    /// `MAX_CONCURRENT_REFRESHES` renewals run at once; when more are due,
-    /// `priority` decides which go first. With optimistic refresh off nothing
-    /// arms a timer, and only repairs arrive.
+    /// refresh timers the cache arms in `timers` as it stores and renews
+    /// entries. Each second it collects the timers armed since the last tick
+    /// and claims those that came due. Up to `MAX_CONCURRENT_REFRESHES`
+    /// renewals run at once; when more are due, `priority` decides which go
+    /// first. `timers` is `None` with optimistic refresh off, and only repairs
+    /// arrive.
     pub fn start_refresh_worker(
         cache: Arc<DnsCache>,
         resolver: Arc<dyn DnsResolver>,
         query_log: Option<Arc<dyn QueryLogRepository>>,
         stale_rx: mpsc::Receiver<RefreshRequest>,
-        schedule_rx: mpsc::Receiver<ScheduledRefresh>,
+        timers: Option<Arc<TimerInbox>>,
         priority: RefreshPriority,
     ) {
         let sweep_at = cache.max_entries().saturating_mul(SWEEP_FACTOR);
@@ -198,12 +199,13 @@ impl DnsCacheMaintenance {
             query_log,
             priority,
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_REFRESHES)),
+            timers,
             schedule: RefreshSchedule::default(),
             stale: VecDeque::new(),
             due: BinaryHeap::new(),
             sweep_at,
         };
-        tokio::spawn(worker.run(stale_rx, schedule_rx));
+        tokio::spawn(worker.run(stale_rx));
     }
 }
 
@@ -213,6 +215,8 @@ struct RefreshWorker {
     query_log: Option<Arc<dyn QueryLogRepository>>,
     priority: RefreshPriority,
     permits: Arc<Semaphore>,
+    /// Collected on the tick; arming a timer never wakes this task.
+    timers: Option<Arc<TimerInbox>>,
     schedule: RefreshSchedule,
     /// Repairs waiting for a permit, in arrival order.
     stale: VecDeque<RefreshRequest>,
@@ -223,25 +227,20 @@ struct RefreshWorker {
 }
 
 impl RefreshWorker {
-    async fn run(
-        mut self,
-        mut stale_rx: mpsc::Receiver<RefreshRequest>,
-        mut schedule_rx: mpsc::Receiver<ScheduledRefresh>,
-    ) {
+    async fn run(mut self, mut stale_rx: mpsc::Receiver<RefreshRequest>) {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        let (mut stale_open, mut schedule_open) = (true, true);
+        let mut stale_open = true;
 
         loop {
             let has_work = !self.stale.is_empty() || !self.due.is_empty();
-            if !stale_open && !schedule_open && !has_work {
-                info!("Refresh worker: channels closed, shutting down");
+            if !stale_open && !has_work {
+                info!("Refresh worker: repair channel closed, shutting down");
                 break;
             }
 
             // `biased` keeps the arms in this order: a repair a client waits
-            // on, then what came due, then starting work, and timers for later
-            // last, since none of them falls due before the next tick.
+            // on, then what came due, then starting work.
             tokio::select! {
                 biased;
 
@@ -256,16 +255,20 @@ impl RefreshWorker {
                     let Ok(permit) = permit else { break };
                     self.start_next(permit);
                 }
-
-                timer = schedule_rx.recv(), if schedule_open => match timer {
-                    Some(timer) => self.schedule.register(timer),
-                    None => schedule_open = false,
-                },
             }
         }
     }
 
+    /// Registers every timer armed since the last tick.
+    fn collect_timers(&mut self) {
+        if let Some(timers) = &self.timers {
+            let schedule = &mut self.schedule;
+            timers.drain(|timer| schedule.register(timer));
+        }
+    }
+
     fn claim_due(&mut self) {
+        self.collect_timers();
         let now = coarse_clock::coarse_now_secs();
         for timer in self.schedule.take_due(now) {
             if let Some(due) = self.cache.claim_due_refresh(&timer, now, &self.priority) {

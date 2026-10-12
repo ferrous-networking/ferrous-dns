@@ -10,7 +10,7 @@ use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::resolver::{CachedResolver, CoreResolver};
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheAccess, DnsCacheConfig, DnsCacheMaintenance,
-    EvictionStrategy, PoolManager, RefreshPriority, RefreshRequest, ScheduledRefresh,
+    EvictionStrategy, PoolManager, RefreshPriority, RefreshRequest, ScheduledRefresh, TimerInbox,
 };
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::{A, SOA};
@@ -478,24 +478,24 @@ fn cached_addresses(cache: &Arc<DnsCache>) -> Option<Vec<IpAddr>> {
 
 struct Worker {
     stale: mpsc::Sender<RefreshRequest>,
-    schedule: mpsc::Sender<ScheduledRefresh>,
+    timers: Arc<TimerInbox>,
 }
 
 fn start_worker(cache: &Arc<DnsCache>, pm: Arc<PoolManager>) -> Worker {
     let (stale, stale_rx) = mpsc::channel(16);
-    let (schedule, schedule_rx) = mpsc::channel(16);
+    let timers = Arc::new(TimerInbox::new(16));
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         Arc::new(CoreResolver::new(pm, TIMEOUT_MS, false)),
         None,
         stale_rx,
-        schedule_rx,
+        Some(Arc::clone(&timers)),
         RefreshPriority {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },
     );
-    Worker { stale, schedule }
+    Worker { stale, timers }
 }
 
 fn request() -> RefreshRequest {
@@ -587,7 +587,7 @@ async fn optimistic_refresh_keeps_the_cached_answer_when_upstream_servfails() {
     insert_ip(&cache, OLD_IP);
     let worker = start_worker(&cache, pm);
 
-    worker.schedule.send(due_timer().await).await.unwrap();
+    worker.timers.push(due_timer().await).unwrap();
     wait_for_queries(&up, 1).await;
 
     assert_eq!(

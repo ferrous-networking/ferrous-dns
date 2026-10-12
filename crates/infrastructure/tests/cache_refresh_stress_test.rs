@@ -9,7 +9,7 @@ use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
-    RefreshPriority, RefreshRequest, RefreshSenders, ScheduledRefresh,
+    RefreshPriority, RefreshRequest, RefreshSenders, TimerInbox,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -61,32 +61,29 @@ fn address() -> CachedData {
     })
 }
 
-type Receivers = (
-    mpsc::Receiver<RefreshRequest>,
-    mpsc::Receiver<ScheduledRefresh>,
-);
+type Receivers = (mpsc::Receiver<RefreshRequest>, Arc<TimerInbox>);
 
-/// Wires the cache's refresh channels; timers queue there until a worker
-/// starts on the returned receivers.
+/// Wires the cache's refresh channels; timers wait in the inbox until a
+/// worker starts on it.
 fn wire(cache: &DnsCache) -> Receivers {
     let (stale, stale_rx) = mpsc::channel(128);
-    let (schedule, schedule_rx) = mpsc::channel(32_768);
+    let timers = Arc::new(TimerInbox::new(65_536));
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        schedule: Some(schedule),
+        schedule: Some(Arc::clone(&timers)),
     });
-    (stale_rx, schedule_rx)
+    (stale_rx, timers)
 }
 
 fn start_worker(cache: &Arc<DnsCache>, resolver: Arc<CountingResolver>, receivers: Receivers) {
     let _ticker = coarse_clock::start_clock_ticker();
-    let (stale_rx, schedule_rx) = receivers;
+    let (stale_rx, timers) = receivers;
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         resolver,
         None,
         stale_rx,
-        schedule_rx,
+        Some(timers),
         RefreshPriority {
             min_hit_rate: 0.0,
             min_frequency: 0,

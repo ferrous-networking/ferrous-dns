@@ -7,15 +7,14 @@ use std::sync::atomic::{AtomicU64, AtomicU8, Ordering as AtomicOrdering};
 const FLAG_DELETED: u8 = 0b001;
 const FLAG_REFRESHING: u8 = 0b010;
 const FLAG_PERMANENT: u8 = 0b100;
-/// Set while a refresh timer is pending for the entry, and kept after a
-/// renewal that failed, until compaction re-arms it.
+/// Set while a refresh timer is pending for the entry, and kept when the
+/// renewal failed or the timer was shed, until compaction re-arms it.
 ///
-/// Clear means the entry's timer was spent without renewing it and nothing
-/// will: it fired while the entry was outside the access window, or the
-/// timer never reached the worker. A hit on a clear entry re-arms it, which
-/// is how a name that comes back into use gets renewed again. A failure
-/// keeps the bit set on purpose, so a hit cannot turn a failing upstream
-/// into one retry per hit.
+/// Clear means the entry's timer fired while the entry was outside the
+/// access window, so nothing will renew it. A hit on a clear entry re-arms
+/// it, which is how a name that comes back into use gets renewed again. A
+/// failure or a shed timer keeps the bit set on purpose, so a hit cannot
+/// turn a failing upstream or a full inbox into one more attempt per hit.
 const FLAG_REFRESH_ARMED: u8 = 0b1000;
 /// Set when the answer came from the configured local DNS server, so a hit
 /// stays exempt from checks that trust local answers (rebinding, NXDOMAIN budget).
@@ -152,6 +151,14 @@ impl CachedRecord {
     #[inline(always)]
     pub fn is_local_dns(&self) -> bool {
         self.flags.load(AtomicOrdering::Relaxed) & FLAG_LOCAL_DNS != 0
+    }
+
+    /// Marks a record not yet shared as having a refresh timer on its way;
+    /// see `FLAG_REFRESH_ARMED`.
+    #[inline]
+    pub fn armed(mut self) -> Self {
+        *self.flags.get_mut() |= FLAG_REFRESH_ARMED;
+        self
     }
 
     /// Seconds a client may hold the answer. A permanent entry never expires,

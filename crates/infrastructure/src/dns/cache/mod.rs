@@ -22,5 +22,7 @@ pub use metrics::CacheMetrics;
 pub use port::{DnsCacheAccess, LocalRecordStatus};
 pub use record::CachedRecord;
 pub use refresh::{DueRefresh, RefreshPriority};
-pub use schedule::{refresh_due_at, RefreshSchedule, ScheduledRefresh, REFRESH_LEAD_SECS};
+pub use schedule::{
+    refresh_due_at, RefreshSchedule, ScheduledRefresh, TimerInbox, REFRESH_LEAD_SECS,
+};
 pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest, RefreshSenders};

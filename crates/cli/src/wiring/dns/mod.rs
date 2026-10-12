@@ -21,7 +21,7 @@ use ferrous_dns_infrastructure::dns::{
     dnssec::DnssecStatsAdapter,
     resolver::{LocalPtrResolver, LocalWildcardResolver, PtrRegistry, WildcardRegistry},
     DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager, RefreshPriority,
-    RefreshSenders, ResponseIpFilterDetector, TunnelingDetector,
+    RefreshSenders, ResponseIpFilterDetector, TimerInbox, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
@@ -382,22 +382,27 @@ impl DnsServices {
         // Eviction and compaction run regardless: nothing else bounds the cache.
         let maintenance = DnsCacheMaintenance::new(cache.clone(), MAINTENANCE_INTERVAL_SECS);
 
-        // The timer channel only carries timers from the cache to the worker,
-        // which registers each one at once, so it absorbs bursts of inserts
-        // rather than holding a backlog. Sized off the cache, like the burst
-        // it has to absorb; the upper bound is ~1.3 MB of queued timers.
-        let schedule_capacity = (config.dns.cache_max_entries / 4).clamp(1024, 32_768);
+        // The worker collects timers once a second, so each thread's share of
+        // the inbox has to hold a second of its inserts and renewals: anything
+        // past that is shed, and compaction re-arms the entry once overdue.
+        // Sized off the cache, with a floor for small ones. It grows as it
+        // fills, so its bound (~2.6 MB of timers per thread) is only reached
+        // under that load.
+        let timers = config.dns.cache_optimistic_refresh.then(|| {
+            Arc::new(TimerInbox::new(
+                (config.dns.cache_max_entries / 4).clamp(4_096, 65_536),
+            ))
+        });
         // The stale queue is shallower on purpose: those items are
         // latency-sensitive and served first, so it only has to absorb a
         // burst, not a backlog — the client interaction is over long before a
         // deep one would drain.
         let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(128);
-        let (schedule_tx, schedule_rx) = tokio::sync::mpsc::channel(schedule_capacity);
         cache.set_refresh_senders(RefreshSenders {
             stale: stale_tx,
             // Without it no entry arms a timer: nothing is renewed ahead of
             // expiry, and serve-stale repairs still run.
-            schedule: config.dns.cache_optimistic_refresh.then_some(schedule_tx),
+            schedule: timers.clone(),
         });
 
         let priority = RefreshPriority {
@@ -419,7 +424,7 @@ impl DnsServices {
             resolver_for_maintenance,
             Some(repos.query_log.clone()),
             stale_rx,
-            schedule_rx,
+            timers,
             priority,
         );
 

@@ -2,7 +2,7 @@ use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
     CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshSenders,
-    ScheduledRefresh,
+    TimerInbox,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -203,10 +203,10 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
     // com TTL 2, voltaria a perguntar, e a entrada morreria no fim do grace.
     let cache = create_stale_cache();
     let (stale_tx, mut stale_rx) = mpsc::channel(16);
-    let (schedule_tx, mut schedule_rx) = mpsc::channel::<ScheduledRefresh>(16);
+    let timers = Arc::new(TimerInbox::new(16));
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        schedule: Some(schedule_tx),
+        schedule: Some(Arc::clone(&timers)),
     });
 
     // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros
@@ -220,9 +220,10 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
         3,
         None,
     );
-    let timer = schedule_rx.try_recv();
+    let mut armed = Vec::new();
+    timers.drain(|timer| armed.push(timer.key.domain.to_string()));
     assert!(
-        timer.is_ok_and(|timer| timer.key.domain == "queued-stale.com"),
+        armed == ["queued-stale.com"],
         "PRECONDIÇÃO FALHOU: a inserção deveria ter armado o timer de refresh"
     );
 

@@ -9,7 +9,7 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::cache::CacheKey;
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshSchedule,
-    RefreshSenders, ScheduledRefresh,
+    RefreshSenders, ScheduledRefresh, TimerInbox,
 };
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
@@ -48,16 +48,21 @@ fn address() -> CachedData {
     })
 }
 
-/// Wires a refresh worker stand-in that drains timers as fast as they come,
-/// so an insert pays for arming its timer as it does in production.
+/// Wires a refresh worker stand-in that collects timers in batches, as the
+/// worker does on its tick, so an insert pays for arming its timer as in
+/// production. It collects every millisecond rather than every second, so the
+/// inbox never fills at a benchmark's insert rate.
 fn wire_timer_drain(cache: &DnsCache) {
     let (stale, _stale_rx) = mpsc::channel(128);
-    let (schedule, mut schedule_rx) = mpsc::channel::<ScheduledRefresh>(32_768);
+    let timers = Arc::new(TimerInbox::new(65_536));
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        schedule: Some(schedule),
+        schedule: Some(Arc::clone(&timers)),
     });
-    std::thread::spawn(move || while schedule_rx.blocking_recv().is_some() {});
+    std::thread::spawn(move || loop {
+        timers.drain(|timer| drop(black_box(timer)));
+        std::thread::sleep(Duration::from_millis(1));
+    });
 }
 
 /// Runs `iters` lookups of the hot name spread over `CONTENDED_THREADS`
@@ -125,6 +130,15 @@ fn cache_hits(c: &mut Criterion) {
             let name = &names[next % names.len()];
             next += 1;
             insert_cache.insert(black_box(name), RecordType::A, address(), 3600, None);
+        })
+    });
+    // Optimistic refresh off: the same insert, arming no timer.
+    let unarmed_cache = self::cache(MAINTENANCE_ENTRIES);
+    group.bench_function("insert_unarmed", |b| {
+        b.iter(|| {
+            let name = &names[next % names.len()];
+            next += 1;
+            unarmed_cache.insert(black_box(name), RecordType::A, address(), 3600, None);
         })
     });
     group.finish();

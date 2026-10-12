@@ -5,7 +5,7 @@ use super::key::{normalize_domain, BorrowedKey, CacheKey};
 use super::l1::{l1_clear, l1_get, l1_insert};
 use super::negative_cache::NegativeDnsCache;
 use super::port::{DnsCacheAccess, LocalRecordStatus};
-use super::schedule::ScheduledRefresh;
+use super::schedule::{ScheduledRefresh, TimerInbox};
 use super::{CacheMetrics, CachedData, CachedDnssecStatus, CachedRecord};
 use compact_str::CompactString;
 use dashmap::mapref::one::RefMut;
@@ -53,7 +53,7 @@ pub(crate) const STALE_SERVE_TTL: u32 = 2;
 /// Message carried by the serve-stale repair queue.
 pub type RefreshRequest = (Arc<str>, RecordType);
 
-/// The channels to the refresh worker, wired up by cache maintenance.
+/// What the cache hands the refresh worker, wired up by cache maintenance.
 ///
 /// Separate because they are served differently: a serve-stale repair has a
 /// client waiting on it and always goes first, while a timer only says when
@@ -64,7 +64,7 @@ pub struct RefreshSenders {
     pub stale: mpsc::Sender<RefreshRequest>,
     /// Refresh timers, armed as entries are stored and renewed. `None` when
     /// `cache_optimistic_refresh` is off: nothing is renewed ahead of expiry.
-    pub schedule: Option<mpsc::Sender<ScheduledRefresh>>,
+    pub schedule: Option<Arc<TimerInbox>>,
 }
 
 pub struct DnsCacheConfig {
@@ -332,14 +332,18 @@ impl DnsCache {
         };
         let expires_secs = record.expires_at_secs;
         // Armed before it is visible, so a hit cannot arm it a second time.
-        let timer =
-            (ttl > 0 && self.schedules_refreshes() && record.try_arm_refresh()).then(|| {
-                ScheduledRefresh {
+        let inbox = if ttl > 0 { self.timer_inbox() } else { None };
+        let (record, timer) = match inbox {
+            Some(inbox) => {
+                let timer = ScheduledRefresh {
                     due_at_secs: record.refresh_due_at_secs(self.refresh_threshold),
                     key: key.clone(),
                     retry: false,
-                }
-            });
+                };
+                (record.armed(), Some((inbox, timer)))
+            }
+            None => (record, None),
+        };
 
         self.bloom.set(&key);
         match self.cache.entry(key) {
@@ -357,8 +361,8 @@ impl DnsCache {
             }
         }
 
-        if let Some(timer) = timer {
-            self.send_or_disarm(timer);
+        if let Some((inbox, timer)) = timer {
+            self.push_refresh_timer(inbox, timer);
         }
 
         if let Some(addresses) = maybe_l1_addresses {
@@ -573,41 +577,38 @@ impl DnsCache {
         }
     }
 
-    /// Whether entries get refresh timers: optimistic refresh is on and its
-    /// worker is wired up.
+    /// Where refresh timers go, while optimistic refresh is on and its worker
+    /// is wired up.
     #[inline]
-    pub(crate) fn schedules_refreshes(&self) -> bool {
+    fn timer_inbox(&self) -> Option<&Arc<TimerInbox>> {
         self.refresh_senders
             .get()
-            .is_some_and(|senders| senders.schedule.is_some())
+            .and_then(|senders| senders.schedule.as_ref())
     }
 
-    /// Hands `timer` to the worker. A full queue gives it back, counted as
-    /// shed: the caller disarms the entry, so a hit or compaction arms it
-    /// again.
-    fn send_refresh_timer(&self, timer: ScheduledRefresh) -> Result<(), ScheduledRefresh> {
-        let Some(tx) = self
-            .refresh_senders
-            .get()
-            .and_then(|senders| senders.schedule.as_ref())
-        else {
-            return Err(timer);
-        };
-        tx.try_send(timer).map_err(|err| {
+    /// Whether entries get refresh timers.
+    #[inline]
+    pub(crate) fn schedules_refreshes(&self) -> bool {
+        self.timer_inbox().is_some()
+    }
+
+    /// Hands `timer` to the worker. A full inbox drops it, counted as shed.
+    /// The entry stays armed, so its hits do not each try again while the
+    /// inbox is full: compaction re-arms it once it is overdue, as it does
+    /// after a failed renewal.
+    #[inline]
+    fn push_refresh_timer(&self, inbox: &TimerInbox, timer: ScheduledRefresh) {
+        if inbox.push(timer).is_err() {
             self.metrics
                 .optimistic_refresh_shed
                 .fetch_add(1, AtomicOrdering::Relaxed);
-            err.into_inner()
-        })
+        }
     }
 
-    /// [`Self::send_refresh_timer`] for a caller holding no guard on the
-    /// entry, which is looked up again to disarm it if the send fails.
-    pub(super) fn send_or_disarm(&self, timer: ScheduledRefresh) {
-        if let Err(timer) = self.send_refresh_timer(timer) {
-            if let Some(entry) = self.cache.get(&timer.key) {
-                entry.disarm_refresh();
-            }
+    /// [`Self::push_refresh_timer`] to the wired inbox, if there is one.
+    pub(super) fn send_refresh_timer(&self, timer: ScheduledRefresh) {
+        if let Some(inbox) = self.timer_inbox() {
+            self.push_refresh_timer(inbox, timer);
         }
     }
 
@@ -619,14 +620,11 @@ impl DnsCache {
         if record.ttl == 0 || !self.schedules_refreshes() || !record.try_arm_refresh() {
             return;
         }
-        let timer = ScheduledRefresh {
+        self.send_refresh_timer(ScheduledRefresh {
             due_at_secs: record.refresh_due_at_secs(self.refresh_threshold),
             key: key.clone(),
             retry: false,
-        };
-        if self.send_refresh_timer(timer).is_err() {
-            record.disarm_refresh();
-        }
+        });
     }
 
     /// Arms the one retry a renewal gets after every upstream answered
@@ -642,7 +640,7 @@ impl DnsCache {
         if remaining < 2 {
             return false;
         }
-        self.send_or_disarm(ScheduledRefresh {
+        self.send_refresh_timer(ScheduledRefresh {
             due_at_secs: now + remaining / 2,
             key,
             retry: true,
@@ -730,7 +728,7 @@ impl DnsCache {
         };
 
         if let Some(timer) = timer {
-            self.send_or_disarm(timer);
+            self.send_refresh_timer(timer);
         }
         true
     }

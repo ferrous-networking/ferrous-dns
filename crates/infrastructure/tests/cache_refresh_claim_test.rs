@@ -11,7 +11,7 @@ use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshPriority,
-    RefreshSenders, ScheduledRefresh,
+    RefreshSenders, ScheduledRefresh, TimerInbox,
 };
 use std::collections::BinaryHeap;
 use std::net::IpAddr;
@@ -37,15 +37,15 @@ fn cache(refresh_threshold: f64, access_window_secs: u64) -> DnsCache {
     })
 }
 
-/// Wires a timer channel the test reads, standing in for the worker.
-fn wire_timers(cache: &DnsCache, capacity: usize) -> mpsc::Receiver<ScheduledRefresh> {
+/// Wires a timer inbox the test reads, standing in for the worker.
+fn wire_timers(cache: &DnsCache, capacity: usize) -> Arc<TimerInbox> {
     let (stale, _stale_rx) = mpsc::channel(16);
-    let (schedule, schedule_rx) = mpsc::channel(capacity);
+    let inbox = Arc::new(TimerInbox::new(capacity));
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        schedule: Some(schedule),
+        schedule: Some(Arc::clone(&inbox)),
     });
-    schedule_rx
+    inbox
 }
 
 fn address() -> CachedData {
@@ -74,11 +74,9 @@ fn no_ranking() -> RefreshPriority {
     }
 }
 
-fn drain(rx: &mut mpsc::Receiver<ScheduledRefresh>) -> Vec<ScheduledRefresh> {
+fn drain(inbox: &TimerInbox) -> Vec<ScheduledRefresh> {
     let mut timers = Vec::new();
-    while let Ok(timer) = rx.try_recv() {
-        timers.push(timer);
-    }
+    inbox.drain(|timer| timers.push(timer));
     timers
 }
 
@@ -86,12 +84,12 @@ fn drain(rx: &mut mpsc::Receiver<ScheduledRefresh>) -> Vec<ScheduledRefresh> {
 fn test_insert_arms_a_timer_for_the_second_the_entry_falls_due() {
     coarse_clock::tick();
     let cache = cache(0.75, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     let now = coarse_clock::coarse_now_secs();
 
     cache.insert("armed.example", RecordType::A, address(), 3600, None);
 
-    let armed = drain(&mut timers);
+    let armed = drain(&timers);
     assert_eq!(armed.len(), 1, "one timer per stored entry: {armed:?}");
     assert_eq!(armed[0].key.domain, "armed.example");
     assert!(
@@ -104,7 +102,7 @@ fn test_insert_arms_a_timer_for_the_second_the_entry_falls_due() {
 #[test]
 fn test_permanent_and_negative_entries_arm_nothing() {
     let cache = cache(0.0, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
 
     cache.insert_permanent("local.example", RecordType::A, address(), 300);
     cache.insert(
@@ -115,7 +113,7 @@ fn test_permanent_and_negative_entries_arm_nothing() {
         None,
     );
 
-    assert!(drain(&mut timers).is_empty());
+    assert!(drain(&timers).is_empty());
     let now = coarse_clock::coarse_now_secs();
     assert!(
         cache
@@ -185,9 +183,9 @@ fn test_timer_that_fires_before_the_entry_is_due_claims_nothing() {
 fn test_timer_of_an_entry_renewed_since_claims_nothing() {
     coarse_clock::tick();
     let cache = cache(0.5, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     cache.insert("renewed.example", RecordType::A, address(), 300, None);
-    let first = drain(&mut timers).remove(0);
+    let first = drain(&timers).remove(0);
 
     std::thread::sleep(Duration::from_millis(1_100));
     coarse_clock::tick();
@@ -198,7 +196,7 @@ fn test_timer_of_an_entry_renewed_since_claims_nothing() {
         address(),
         None
     ));
-    let renewed = drain(&mut timers);
+    let renewed = drain(&timers);
 
     assert_eq!(renewed.len(), 1, "the renewal arms the next timer");
     assert!(renewed[0].due_at_secs > first.due_at_secs);
@@ -219,9 +217,9 @@ fn test_timer_of_an_entry_renewed_since_claims_nothing() {
 fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
     coarse_clock::tick();
     let cache = cache(0.0, 0);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     cache.insert("idle.example", RecordType::A, cname(), 300, None);
-    let armed = drain(&mut timers).remove(0);
+    let armed = drain(&timers).remove(0);
 
     std::thread::sleep(Duration::from_millis(1_100));
     coarse_clock::tick();
@@ -233,12 +231,12 @@ fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
         "an entry idle past the access window is not renewed"
     );
     assert!(
-        drain(&mut timers).is_empty(),
+        drain(&timers).is_empty(),
         "and nothing re-arms it by itself"
     );
 
     assert!(cache.get("idle.example", &RecordType::A).is_some());
-    let rearmed = drain(&mut timers);
+    let rearmed = drain(&timers);
     assert_eq!(rearmed.len(), 1, "a hit arms it again: {rearmed:?}");
     assert!(
         rearmed[0].due_at_secs <= now,
@@ -256,21 +254,27 @@ fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
 #[test]
 fn test_hits_on_an_armed_entry_arm_no_second_timer() {
     let cache = cache(0.75, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     cache.insert("busy.example", RecordType::A, cname(), 300, None);
     for _ in 0..10 {
         assert!(cache.get("busy.example", &RecordType::A).is_some());
     }
 
-    assert_eq!(drain(&mut timers).len(), 1);
+    assert_eq!(drain(&timers).len(), 1);
 }
 
+/// A full inbox sheds the timer. The entry stays armed, so its hits do not
+/// each try again while the inbox is full; compaction re-arms it once it is
+/// overdue.
 #[test]
-fn test_full_timer_queue_is_shed_and_rearmed_by_a_later_hit() {
-    let cache = cache(0.75, u64::MAX);
-    let mut timers = wire_timers(&cache, 1);
-    cache.insert("first.example", RecordType::A, cname(), 300, None);
-    cache.insert("second.example", RecordType::A, cname(), 300, None);
+fn test_shed_timer_is_rearmed_by_compaction_not_by_each_hit() {
+    coarse_clock::tick();
+    let cache = cache(0.5, u64::MAX);
+    let timers = wire_timers(&cache, 1);
+    // Due in half an hour, so compaction leaves it alone.
+    cache.insert("first.example", RecordType::A, cname(), 3600, None);
+    // Due a second in, so it is overdue when compaction runs.
+    cache.insert("second.example", RecordType::A, cname(), 2, None);
 
     assert_eq!(
         cache
@@ -278,18 +282,56 @@ fn test_full_timer_queue_is_shed_and_rearmed_by_a_later_hit() {
             .optimistic_refresh_shed
             .load(Ordering::Relaxed),
         1,
-        "the second timer found the queue full"
+        "the second timer found this thread's inbox full"
     );
-    assert_eq!(drain(&mut timers).len(), 1);
+    let delivered = drain(&timers);
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].key.domain, "first.example");
 
-    assert!(cache.get("second.example", &RecordType::A).is_some());
-    let rearmed = drain(&mut timers);
-    assert_eq!(
-        rearmed.len(),
-        1,
-        "the shed entry is armed again on its next hit"
+    for _ in 0..5 {
+        assert!(cache.get("second.example", &RecordType::A).is_some());
+    }
+    assert!(
+        drain(&timers).is_empty(),
+        "hits must not retry a shed timer"
     );
-    assert_eq!(rearmed[0].key.domain, "second.example");
+
+    std::thread::sleep(Duration::from_millis(1_100));
+    coarse_clock::tick();
+    cache.compact();
+    let rearmed: Vec<String> = drain(&timers)
+        .into_iter()
+        .map(|timer| timer.key.domain.to_string())
+        .collect();
+    assert!(
+        rearmed.contains(&"second.example".to_string()),
+        "compaction must re-arm the shed entry once overdue: {rearmed:?}"
+    );
+}
+
+#[test]
+fn test_each_thread_gets_the_whole_inbox_capacity() {
+    let cache = cache(0.75, u64::MAX);
+    let timers = wire_timers(&cache, 100);
+    for i in 0..100 {
+        cache.insert(
+            &format!("burst-{i}.example"),
+            RecordType::A,
+            cname(),
+            300,
+            None,
+        );
+    }
+
+    assert_eq!(
+        cache
+            .metrics()
+            .optimistic_refresh_shed
+            .load(Ordering::Relaxed),
+        0,
+        "a burst on one thread may use all of its capacity"
+    );
+    assert_eq!(drain(&timers).len(), 100);
 }
 
 /// An expired entry still inside its stale grace is worth renewing: clients
@@ -373,9 +415,9 @@ fn test_renewal_rebases_the_hit_rate_used_for_ranking() {
 fn test_compaction_rearms_an_entry_whose_renewal_failed() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     cache.insert("failing.example", RecordType::A, cname(), 300, None);
-    let armed = drain(&mut timers).remove(0);
+    let armed = drain(&timers).remove(0);
 
     std::thread::sleep(Duration::from_millis(1_100));
     coarse_clock::tick();
@@ -388,12 +430,12 @@ fn test_compaction_rearms_an_entry_whose_renewal_failed() {
 
     assert!(cache.get("failing.example", &RecordType::A).is_some());
     assert!(
-        drain(&mut timers).is_empty(),
+        drain(&timers).is_empty(),
         "a hit must not turn a failing upstream into one retry per hit"
     );
 
     cache.compact();
-    let rearmed = drain(&mut timers);
+    let rearmed = drain(&timers);
     assert_eq!(
         rearmed.len(),
         1,
@@ -406,11 +448,11 @@ fn test_compaction_rearms_an_entry_whose_renewal_failed() {
 fn test_compaction_leaves_entries_on_schedule_alone() {
     coarse_clock::tick();
     let cache = cache(0.75, u64::MAX);
-    let mut timers = wire_timers(&cache, 16);
+    let timers = wire_timers(&cache, 16);
     cache.insert("on-time.example", RecordType::A, cname(), 3600, None);
-    drain(&mut timers);
+    drain(&timers);
 
     cache.compact();
 
-    assert!(drain(&mut timers).is_empty());
+    assert!(drain(&timers).is_empty());
 }

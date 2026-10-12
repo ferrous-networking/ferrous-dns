@@ -12,10 +12,22 @@
 
 use super::key::CacheKey;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
 /// How long before expiry an entry is renewed at the latest, unless that
 /// would come before half its TTL (see [`refresh_due_at`]).
 pub const REFRESH_LEAD_SECS: u64 = 60;
+
+/// Shards of the [`TimerInbox`]; each thread pushes to one of them.
+const INBOX_SHARDS: usize = 16;
+
+static NEXT_INBOX_SHARD: AtomicUsize = AtomicUsize::new(0);
+
+thread_local! {
+    /// This thread's inbox shard, handed out round-robin on first use.
+    static INBOX_SHARD: usize = NEXT_INBOX_SHARD.fetch_add(1, Ordering::Relaxed) % INBOX_SHARDS;
+}
 
 /// A timer on its way to the worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +56,60 @@ pub fn refresh_due_at(inserted_at_secs: u64, ttl: u32, threshold: f64) -> u64 {
         ttl
     };
     inserted_at_secs + proportional.min(lead).max(1)
+}
+
+/// Where the cache leaves refresh timers for the worker, which collects them
+/// once a second.
+///
+/// Arming a timer is on the insert path, so it is kept to an uncontended
+/// lock and a push: each thread has its own shard, and nothing is woken,
+/// since no timer falls due before the worker's next tick anyway. Bounded per
+/// shard: a thread that armed `capacity` timers since the last collection
+/// gets the next one back, and the caller counts it as shed. The bound is per
+/// thread rather than split between threads, so a burst that lands on one
+/// thread gets all of it.
+#[derive(Debug)]
+pub struct TimerInbox {
+    shards: Box<[Mutex<Vec<ScheduledRefresh>>]>,
+    shard_capacity: usize,
+}
+
+impl TimerInbox {
+    pub fn new(capacity_per_thread: usize) -> Self {
+        Self {
+            shards: (0..INBOX_SHARDS).map(|_| Mutex::default()).collect(),
+            shard_capacity: capacity_per_thread.max(1),
+        }
+    }
+
+    /// Leaves `timer` for the worker, or hands it back when this thread's
+    /// shard is full.
+    pub fn push(&self, timer: ScheduledRefresh) -> Result<(), ScheduledRefresh> {
+        let shard = INBOX_SHARD.with(|shard| *shard);
+        let mut timers = self.shards[shard]
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if timers.len() >= self.shard_capacity {
+            return Err(timer);
+        }
+        timers.push(timer);
+        Ok(())
+    }
+
+    /// Hands every timer left since the last call to `each`. Each shard is
+    /// swapped out under its lock and processed after, so producers wait for
+    /// a swap, never for the processing. The replacement is sized like the
+    /// batch it replaces, so a steady insert rate pushes without reallocating.
+    pub fn drain(&self, mut each: impl FnMut(ScheduledRefresh)) {
+        for shard in self.shards.iter() {
+            let timers = {
+                let mut timers = shard.lock().unwrap_or_else(PoisonError::into_inner);
+                let len = timers.len();
+                std::mem::replace(&mut *timers, Vec::with_capacity(len))
+            };
+            timers.into_iter().for_each(&mut each);
+        }
+    }
 }
 
 /// Timers by the second they fall due.
