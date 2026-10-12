@@ -112,28 +112,36 @@ cache_access_window_secs = 43200
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `cache_optimistic_refresh` | `true` | Enable background refresh |
-| `cache_refresh_threshold` | `0.75` | When remaining TTL fraction falls below this, schedule a refresh |
-| `cache_min_hit_rate` | `2.0` | Hits/minute below which an entry ranks cold when candidates must be trimmed |
-| `cache_min_frequency` | `10` | Lifetime hits below which an entry ranks cold when candidates must be trimmed |
+| `cache_refresh_threshold` | `0.75` | Fraction of the TTL elapsed at which an entry is renewed (0.75 = renewed with a quarter of its TTL left) |
+| `cache_min_hit_rate` | `2.0` | Hits/minute below which an entry ranks cold when more entries are due than the worker runs at once |
+| `cache_min_frequency` | `10` | Lifetime hits below which an entry ranks cold when more entries are due than the worker runs at once |
 | `cache_access_window_secs` | `43200` | Time window (seconds) since last access for refresh eligibility (43200 = 12h) |
 
-**How it works**: When a cached entry's remaining TTL drops below `cache_refresh_threshold x original_ttl`, a background task pre-fetches a fresh response. The cached entry continues serving from cache until the refresh completes -- zero latency impact for clients.
+**How it works**: when an entry is cached or renewed it arms its own refresh timer, and a background worker renews it when the timer comes due. The cached entry keeps serving until the renewal completes -- zero latency impact for clients. Nothing scans the cache to find what is due, so renewal does not depend on any maintenance interval, and an entry is renewed on time whatever its TTL.
 
-**Pacing is automatic**: a refresh cycle only scans the cache and enqueues its candidates -- the refreshes themselves run on a shared background worker. That worker spreads each cycle's backlog evenly across the cycle interval, draining at a period of `cycle interval / backlog`, so a cycle never fires as a burst of internal queries. There is nothing to configure: the rate follows the backlog, and the ceiling on simultaneous upstream work remains the worker's 16-way concurrency limit.
+**When an entry falls due**: at `cache_refresh_threshold` of its TTL, or 60 seconds before it expires, whichever comes first -- but never before half its TTL. With the default threshold of 0.75:
 
-**Renewal is guaranteed ahead of expiry**, not merely likely. The proportional threshold alone is not enough: a candidate waits up to one cycle to be scanned and up to one more to be drained, so an entry whose remaining life is shorter than two cycle intervals would lapse before its turn. Alongside the threshold, an entry is therefore also taken as soon as less than `2 x cycle interval` (120 seconds at the fixed 60-second cycle) of its TTL remains, whichever fires first. Entries whose whole TTL is shorter than that window cannot be renewed ahead of expiry at all and are left to the serve-stale path.
+| TTL | Renewed after | Why |
+|:----|:--------------|:----|
+| 3600 s | 2700 s | the threshold comes first |
+| 200 s | 140 s | 60 s before expiry comes first |
+| 100 s | 50 s | 60 s before expiry would be at 40 s, before half the TTL |
+| 30 s | 22 s | the threshold; the TTL is shorter than the 60 s lead |
+
+The half-TTL bound keeps a TTL just above a minute from being renewed every few seconds, since each renewal brings the same TTL back. Short TTLs are renewed more often than long ones by design: renewing every entry in use before it expires is what keeps clients off the upstream. Raising `cache_min_ttl` lowers that upstream traffic.
+
+**Load is bounded by concurrency, not by rate**: at most 16 renewals run at once. When more entries fall due together, they wait their turn, so a burst never floods the upstream, and nothing due is dropped because of a rate limit.
+
+**When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, the renewal is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried by the next compaction pass, every `cache_compaction_interval` seconds, for as long as the entry is in use. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
 
 !!! note "Minimum Hit Rate and Minimum Frequency rank, they do not exclude"
-    Every eligible entry is queued for renewal. `cache_min_hit_rate` and `cache_min_frequency` only come into play when a cycle finds more candidates than the queue can hold: candidates are ordered by how much their loss would cost -- entries that clear both thresholds first, and within each group the ones closest to being unusable -- and the tail is dropped. On a healthy deployment nothing is dropped and neither threshold has any effect on refresh. Watch `cache_optimistic_refresh_shed` on `/metrics`: a sustained non-zero value means the working set has outgrown the queue, which is sized from `cache_max_entries`.
+    Every due entry is renewed. `cache_min_hit_rate` and `cache_min_frequency` only come into play when more entries are due at once than the worker runs in parallel: entries that clear both thresholds go first, and within each group the ones closest to being unusable. Neither threshold stops an entry from being renewed. Watch `cache_optimistic_refresh_shed` on `/metrics`: it counts timers that could not be armed in a burst of inserts and entries that died waiting for their turn. A sustained non-zero value means renewals fall behind what is due.
 
-!!! note "Serve-stale is never paced"
-    Pacing applies only to background pre-expiry refreshes. When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a refresh is queued -- those bypass the pacer entirely, because someone is already waiting on the fresh result. Serve-stale repairs run whenever the cache is enabled, including with `cache_optimistic_refresh = false`; that option only turns off the pre-expiry scan.
-
-!!! note
-    `cache_min_ttl` should be >= 240 seconds so the refresh job has time to act before expiry.
+!!! note "Serve-stale repairs go first"
+    When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a repair is queued. A repair always goes ahead of renewals that are merely due, because someone is already waiting on the fresh result. Serve-stale repairs run whenever the cache is enabled, including with `cache_optimistic_refresh = false`; that option only turns off renewal ahead of expiry.
 
 !!! info "Entries outside the access window are not renewed"
-    If a cached entry has not been accessed within `cache_access_window_secs` (default 12 hours), the refresh job ignores it — regardless of how many hits it accumulated in the past. The entry is left to expire naturally and is eventually removed by compaction or eviction. This prevents the cache from wasting upstream queries renewing domains that were popular in the past but are no longer being visited (e.g. a travel site accessed once and never again).
+    If a cached entry has not been accessed within `cache_access_window_secs` (default 12 hours) when it falls due, it is not renewed — regardless of how many hits it accumulated in the past. The entry is left to expire naturally and is eventually removed by compaction or eviction. This prevents the cache from wasting upstream queries renewing domains that were popular in the past but are no longer being visited (e.g. a travel site accessed once and never again). If the name is asked for again before it expires, it is renewed again on its next due time.
 
 ---
 
@@ -267,7 +275,7 @@ cache_adaptive_thresholds       = true         # auto-tune eviction thresholds
 # Aggressive optimistic refresh
 cache_optimistic_refresh    = true
 cache_refresh_threshold     = 0.80            # refresh at 80% TTL consumed
-cache_min_hit_rate          = 1.0             # refresh more entries
+cache_min_hit_rate          = 1.0             # rank more entries as hot under load
 cache_min_frequency         = 5
 cache_access_window_secs    = 86400           # 24 hours
 

@@ -100,7 +100,7 @@ qname_case_randomization = false
 
 cache_enabled = true                    # Enable in-memory DNS response cache
 cache_ttl = 7200                        # Default TTL (seconds) for cached entries when the record has none
-cache_min_ttl = 300                     # Minimum TTL; recommended >= 240 so the refresh job can act before expiry
+cache_min_ttl = 300                     # Minimum TTL; short TTLs are renewed more often, so a floor limits refresh traffic upstream
 cache_max_ttl = 86400                   # Maximum TTL; caps values returned by upstream
 cache_max_entries = 200000              # Maximum number of entries the cache can hold
 cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", "lfu-k" or "lru"; anything else runs as hit_rate with a warning
@@ -122,9 +122,9 @@ cache_inflight_shards = 64
 # Background refresh renews popular entries before they expire, keeping cache hit rate high.
 
 cache_optimistic_refresh = true         # Refresh entries in the background before they expire
-cache_refresh_threshold = 0.75          # Fraction of TTL remaining at which a background refresh is triggered
-cache_min_hit_rate = 2.0                # Minimum hit rate (hits/min) to keep an entry alive via refresh
-cache_min_frequency = 10                # Minimum total hits before an entry is eligible for refresh
+cache_refresh_threshold = 0.75          # Fraction of TTL elapsed at which an entry is renewed (or 60 s before expiry, if sooner)
+cache_min_hit_rate = 2.0                # Hits/min below which an entry ranks cold; cold entries are renewed after hot ones when many are due at once
+cache_min_frequency = 10                # Lifetime hits below which an entry ranks cold, as above; never stops a renewal
 # Time window (seconds) since last access within which an entry is eligible for refresh.
 # e.g. 7200 = 2h, 43200 = 12h, 86400 = 24h
 cache_access_window_secs = 43200

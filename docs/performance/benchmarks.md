@@ -129,7 +129,7 @@ Under load with many clients hitting the same popular domain, this eliminates th
 
 ## Optimistic Prefetch (Background Refresh)
 
-When a popular cache entry's TTL drops below a configurable threshold (default: 75% consumed), a background task proactively refreshes it **before it expires**.
+When a cache entry in use reaches a configurable fraction of its TTL (default: 75% consumed), a background task proactively refreshes it **before it expires**. Each entry arms its own refresh timer when it is cached, so the renewal lands on time whatever the TTL.
 
 ```
 Entry TTL: 3600s
@@ -144,14 +144,14 @@ Entry TTL: 3600s
 
 Clients continue receiving cached responses with zero wait while the background task fetches a fresh answer. The entry is never cold for active domains.
 
-Eligibility criteria (all must be met):
+Eligibility criteria:
 
 | Criterion | Config key | Default |
 |:----------|:-----------|:--------|
-| Minimum total hits | `cache_min_frequency` | 10 |
-| Minimum hits per minute | `cache_min_hit_rate` | 2.0 |
 | Last accessed within | `cache_access_window_secs` | 43200 (12h) |
-| Remaining TTL fraction below | `cache_refresh_threshold` | 0.75 |
+| Fraction of TTL elapsed | `cache_refresh_threshold` | 0.75 (or 60 s before expiry, if sooner) |
+
+`cache_min_frequency` (10) and `cache_min_hit_rate` (2.0) do not gate renewal; they only decide which entries go first when more are due at once than the 16 concurrent renewals.
 
 This keeps the effective hit rate close to 100% for actively-used domains as their TTLs cycle naturally.
 

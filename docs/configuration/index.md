@@ -323,8 +323,8 @@ cache_adaptive_thresholds       = true          # auto-tune eviction thresholds
 # Aggressive optimistic refresh for near-100% hit rate
 cache_optimistic_refresh    = true
 cache_refresh_threshold     = 0.80             # refresh earlier (80% TTL consumed)
-cache_min_hit_rate          = 1.0              # lower threshold — refresh more entries
-cache_min_frequency         = 5               # fewer hits required
+cache_min_hit_rate          = 1.0              # rank more entries as hot under load
+cache_min_frequency         = 5               # fewer hits to rank as hot
 cache_access_window_secs    = 86400           # 24h access window
 
 # LFU-K
