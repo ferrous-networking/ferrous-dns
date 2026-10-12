@@ -18,7 +18,6 @@ fn create_cache(min_ttl: u32) -> DnsCache {
         access_window_secs: 43_200,
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl,
         max_ttl: 86_400,
     })

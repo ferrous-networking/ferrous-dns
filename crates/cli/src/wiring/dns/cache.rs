@@ -34,7 +34,6 @@ pub(super) fn build_cache(config: &Config) -> Arc<DnsCache> {
             access_window_secs: config.dns.cache_access_window_secs,
             eviction_sample_size: config.dns.cache_eviction_sample_size,
             lfuk_k_value: 0.5,
-            refresh_sample_rate: 1.0,
             min_ttl: config.dns.cache_min_ttl,
             max_ttl: config.dns.cache_max_ttl,
         }))
@@ -50,7 +49,6 @@ pub(super) fn build_cache(config: &Config) -> Arc<DnsCache> {
             access_window_secs: 0,
             eviction_sample_size: 8,
             lfuk_k_value: 0.5,
-            refresh_sample_rate: 1.0,
             min_ttl: config.dns.cache_min_ttl,
             max_ttl: config.dns.cache_max_ttl,
         }))

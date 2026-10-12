@@ -1,128 +1,121 @@
-use super::coarse_clock::coarse_now_secs;
+use super::key::CacheKey;
+use super::schedule::ScheduledRefresh;
 use super::storage::DnsCache;
-use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
+use std::cmp::Ordering;
 use std::sync::atomic::Ordering as AtomicOrdering;
 
-/// Knobs the maintenance cycle hands to a candidate scan.
+/// What sorts due renewals when they outnumber the worker's permits.
 ///
-/// They live here rather than on `DnsCache` because they describe the refresh
-/// policy, not the store: `min_lead_secs` is derived from the cycle interval,
-/// which only the maintenance layer knows.
+/// Both only rank: every due entry is renewed in the end. Under pressure the
+/// question is not which entry dies soonest but which death costs most: a hot
+/// entry that dies costs one slow query per client that wanted it, a cold one
+/// costs a single query.
 #[derive(Debug, Clone, Copy)]
-pub struct RefreshScanOptions {
-    /// How much life must remain before an entry is taken regardless of the
-    /// proportional threshold. Set to twice the cycle interval, which is the
-    /// worst-case wait between crossing the threshold and being drained.
-    pub min_lead_secs: u64,
-    /// Hits per minute, since the last renewal, below which an entry counts as
-    /// cold. Only used to decide who is dropped first when a cycle's backlog
-    /// does not fit.
+pub struct RefreshPriority {
+    /// Hits per minute, since the last renewal, below which an entry counts
+    /// as cold.
     pub min_hit_rate: f64,
     /// Lifetime hits below which an entry counts as cold. Keeps entries that
     /// were only just inserted from displacing an established working set.
     pub min_frequency: u64,
 }
 
+/// A renewal the worker claimed and has yet to start.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DueRefresh {
+    pub key: CacheKey,
+    /// Whether this is already the retry after every upstream answered
+    /// SERVFAIL.
+    pub retry: bool,
+    is_cold: bool,
+    /// The instant past which the entry stops being usable at all.
+    deadline_secs: u64,
+}
+
+/// Hot before cold, then the earliest deadline, so `BinaryHeap` (a max-heap)
+/// pops the most urgent renewal first.
+impl Ord for DueRefresh {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (other.is_cold, other.deadline_secs).cmp(&(self.is_cold, self.deadline_secs))
+    }
+}
+
+impl PartialOrd for DueRefresh {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl DnsCache {
-    /// Claims every entry due for renewal, ordered by how urgently it needs it.
+    /// Turns a timer that fired into a claimed renewal, or spends it.
     ///
-    /// Ordering is `(cold, deadline)`. Deadline first would be the obvious
-    /// choice, but the list only gets truncated when a cycle's backlog does not
-    /// fit, and in that situation the question is not which entry dies soonest
-    /// but which death costs most: a hot entry that dies costs one slow query
-    /// per client that wanted it, a cold one costs a single query. Within each
-    /// class the deadline decides, so nothing hot is ever starved by something
-    /// hotter but less urgent.
-    pub fn get_refresh_candidates(
+    /// A timer the record no longer matches, because it was renewed or
+    /// replaced since, is left alone: that renewal armed the timer that is
+    /// live now. Otherwise the timer is spent whatever happens, and the entry
+    /// is only claimed if it is still worth renewing: in use, not past the
+    /// end of its stale grace, and not already being renewed by a serve-stale
+    /// repair.
+    pub fn claim_due_refresh(
         &self,
-        opts: &RefreshScanOptions,
-    ) -> Vec<(CompactString, RecordType)> {
-        let mut candidates: Vec<(bool, u64, CompactString, RecordType)> = Vec::with_capacity(16);
-        let now = coarse_now_secs();
-        let sample_period = self.refresh_sample_period;
-        let mut idx: u64 = 0;
-
-        for entry in self.cache.iter() {
-            idx += 1;
-            if sample_period > 1 && !idx.is_multiple_of(sample_period) {
-                continue;
-            }
-            let record = entry.value();
-
-            if record.is_marked_for_deletion() {
-                continue;
-            }
-
-            if record.data.is_negative() {
-                continue;
-            }
-
-            // `refresh_record` refuses permanent entries, so queueing one burns
-            // a drain slot on a guaranteed no-op.
-            if record.is_permanent() {
-                continue;
-            }
-
-            let key = entry.key();
-            let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
-            let age_since_access = now.saturating_sub(last_access);
-            let within_window = age_since_access <= self.access_window_secs;
-
-            if !within_window {
-                continue;
-            }
-
-            let expired = record.is_expired_at_secs(now);
-
-            if expired && !record.is_stale_usable_at_secs(now) {
-                continue;
-            }
-
-            if !expired && !record.should_refresh(self.refresh_threshold, now, opts.min_lead_secs) {
-                continue;
-            }
-
-            if !record.try_set_refresh_queued() {
-                continue;
-            }
-
-            let hits = record.counters.hit_count.load(AtomicOrdering::Relaxed);
-            let is_cold = record.hits_per_minute_since_refresh(now) < opts.min_hit_rate
-                || hits < opts.min_frequency;
-
-            candidates.push((
-                is_cold,
-                record.refresh_deadline_secs(),
-                key.domain.clone(),
-                key.record_type,
-            ));
+        timer: &ScheduledRefresh,
+        now_secs: u64,
+        priority: &RefreshPriority,
+    ) -> Option<DueRefresh> {
+        let entry = self.cache.get(&timer.key)?;
+        let record = entry.value();
+        if record.is_permanent() || record.is_marked_for_deletion() {
+            return None;
+        }
+        if record.refresh_due_at_secs(self.refresh_threshold) > now_secs {
+            return None;
         }
 
-        candidates.sort_unstable_by_key(|(is_cold, deadline, _, _)| (*is_cold, *deadline));
+        let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
+        if now_secs.saturating_sub(last_access) > self.access_window_secs {
+            // Left to expire. A hit before then finds the entry disarmed and
+            // arms it again.
+            record.disarm_refresh();
+            return None;
+        }
+        if record.is_expired_at_secs(now_secs) && !record.is_stale_usable_at_secs(now_secs) {
+            return None;
+        }
+        // A serve-stale repair in flight renews the entry, or, if it fails,
+        // leaves it armed for compaction to retry.
+        if !record.try_set_refreshing() {
+            return None;
+        }
 
-        candidates
-            .into_iter()
-            .map(|(_, _, domain, record_type)| (domain, record_type))
-            .collect()
+        let hits = record.counters.hit_count.load(AtomicOrdering::Relaxed);
+        Some(DueRefresh {
+            key: timer.key.clone(),
+            retry: timer.retry,
+            is_cold: record.hits_per_minute_since_refresh(now_secs) < priority.min_hit_rate
+                || hits < priority.min_frequency,
+            deadline_secs: record.refresh_deadline_secs(),
+        })
     }
 
-    /// Releases the queue claim on a candidate the cycle could not hand over.
-    ///
-    /// Only the queue flag: an in-flight resolution, if one somehow started in
-    /// between, is none of this path's business.
-    pub fn reset_refresh_queued(&self, domain: &str, record_type: &RecordType) {
-        use super::key::CacheKey;
-
-        let key = CacheKey::new(domain, *record_type);
-        if let Some(entry) = self.cache.get(&key) {
-            entry.clear_refresh_queued();
+    /// Whether a claimed renewal is still worth an upstream query after
+    /// waiting for a permit. Releases the claim when it is not, and counts an
+    /// entry that died waiting as shed: renewals fell behind what was due.
+    pub(crate) fn is_still_refreshable(&self, key: &CacheKey, now_secs: u64) -> bool {
+        let Some(entry) = self.cache.get(key) else {
+            return false;
+        };
+        let record = entry.value();
+        if record.is_expired_at_secs(now_secs) && !record.is_stale_usable_at_secs(now_secs) {
+            record.clear_refreshing();
+            self.metrics
+                .optimistic_refresh_shed
+                .fetch_add(1, AtomicOrdering::Relaxed);
+            return false;
         }
+        true
     }
 
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
-        use super::key::CacheKey;
-
         let key = CacheKey::new(domain, *record_type);
         if let Some(entry) = self.cache.get(&key) {
             entry.clear_refreshing();

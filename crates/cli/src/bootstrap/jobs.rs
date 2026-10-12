@@ -2,7 +2,7 @@ use ferrous_dns_application::ports::CacheMaintenancePort;
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
     BlocklistSyncJob, CacheMaintenanceJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob,
-    ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob, DEFAULT_REFRESH_INTERVAL_SECS,
+    ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob, MAINTENANCE_INTERVAL_SECS,
 };
 use sqlx::SqlitePool;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ pub fn spawn_jobs(
     if let Some(maintenance) = cache_maintenance {
         CacheMaintenanceJob::new(
             maintenance,
-            DEFAULT_REFRESH_INTERVAL_SECS,
+            MAINTENANCE_INTERVAL_SECS,
             config.dns.cache_compaction_interval,
         )
         .spawn();

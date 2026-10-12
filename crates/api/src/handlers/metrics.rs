@@ -128,7 +128,7 @@ pub fn render_metrics(
         ),
         (
             "cache_optimistic_refresh_shed",
-            "Optimistic refresh candidates a cycle cut for lack of queue room",
+            "Renewals ahead of expiry given up on: timer queue full, or entry died waiting",
             cache.optimistic_refresh_shed,
         ),
     ];

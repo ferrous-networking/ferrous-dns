@@ -27,7 +27,6 @@ fn make_cache() -> Arc<dyn DnsCacheAccess> {
         access_window_secs: 7200,
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl: 0,
         max_ttl: 86_400,
     }))
@@ -169,7 +168,6 @@ async fn entries_cached_without_a_determination_report_none() {
         access_window_secs: 7200,
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl: 0,
         max_ttl: 86_400,
     }));

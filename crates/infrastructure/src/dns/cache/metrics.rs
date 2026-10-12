@@ -24,8 +24,10 @@ pub struct CacheMetrics {
     /// scheduled behind it, so a non-zero value means the channel is undersized.
     pub stale_refresh_drops: AtomicU64,
 
-    /// Optimistic candidates a cycle cut because its backlog did not fit in the
-    /// queue. Non-zero means the working set outgrew the queue.
+    /// Renewals given up on: a refresh timer that found the worker's queue
+    /// full, or a due entry that died while waiting for a permit. Each one is
+    /// an entry renewed late or not at all; a sustained non-zero rate means
+    /// renewals fall behind what is due.
     pub optimistic_refresh_shed: AtomicU64,
 }
 

@@ -1,24 +1,29 @@
 //! The cache operations the refresh scheduling and the L1 hit accounting
 //! touch, measured in isolation: an L1 hit on one thread and on eight threads
-//! sharing one hot name, an L2 hit, an insert, and the refresh maintenance a
-//! 200k-entry cache costs.
+//! sharing one hot name, an L2 hit, an insert that arms its refresh timer,
+//! and the timer work a 200k-entry cache costs per minute.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
+use ferrous_dns_infrastructure::dns::cache::CacheKey;
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshScanOptions,
+    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshSchedule,
+    RefreshSenders, ScheduledRefresh,
 };
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 const HOT_NAME: &str = "www.example.com";
 const L2_NAME: &str = "alias.example.com";
 const CONTENDED_THREADS: u64 = 8;
 const MAINTENANCE_ENTRIES: usize = 200_000;
 const INSERT_NAMES: usize = 100_000;
+/// The TTL every maintenance-bench entry has, so 200k timers spread over it.
+const MAINTENANCE_TTL_SECS: u64 = 3600;
 
 fn cache(max_entries: usize) -> Arc<DnsCache> {
     Arc::new(DnsCache::new(DnsCacheConfig {
@@ -32,7 +37,6 @@ fn cache(max_entries: usize) -> Arc<DnsCache> {
         access_window_secs: 7200,
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl: 0,
         max_ttl: 86_400,
     }))
@@ -42,6 +46,18 @@ fn address() -> CachedData {
     CachedData::IpAddresses(CachedAddresses {
         addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 215, 14))]),
     })
+}
+
+/// Wires a refresh worker stand-in that drains timers as fast as they come,
+/// so an insert pays for arming its timer as it does in production.
+fn wire_timer_drain(cache: &DnsCache) {
+    let (stale, _stale_rx) = mpsc::channel(128);
+    let (schedule, mut schedule_rx) = mpsc::channel::<ScheduledRefresh>(32_768);
+    cache.set_refresh_senders(RefreshSenders {
+        stale,
+        schedule: Some(schedule),
+    });
+    std::thread::spawn(move || while schedule_rx.blocking_recv().is_some() {});
 }
 
 /// Runs `iters` lookups of the hot name spread over `CONTENDED_THREADS`
@@ -99,6 +115,7 @@ fn cache_hits(c: &mut Criterion) {
     });
 
     let insert_cache = self::cache(MAINTENANCE_ENTRIES);
+    wire_timer_drain(&insert_cache);
     let names: Vec<String> = (0..INSERT_NAMES)
         .map(|i| format!("host-{i}.example.com"))
         .collect();
@@ -113,31 +130,38 @@ fn cache_hits(c: &mut Criterion) {
     group.finish();
 }
 
-/// What keeping a 200k-entry cache renewed costs per maintenance cycle, with
-/// nothing due yet: the part that grows with the cache, not with the work.
+/// What keeping a 200k-entry cache renewed costs per minute: the 60 ticks
+/// that take the timers falling due in that minute. The scan this replaced
+/// visited all 200k entries once a minute instead.
 fn refresh_maintenance(c: &mut Criterion) {
-    coarse_clock::tick();
-    let cache = cache(MAINTENANCE_ENTRIES);
-    for i in 0..MAINTENANCE_ENTRIES {
-        cache.insert(
-            &format!("m-{i}.example.com"),
-            RecordType::A,
-            address(),
-            3600,
-            None,
-        );
-    }
-    let opts = RefreshScanOptions {
-        min_lead_secs: 120,
-        min_hit_rate: 2.0,
-        min_frequency: 10,
+    let keys: Vec<CacheKey> = (0..MAINTENANCE_ENTRIES)
+        .map(|i| CacheKey::new(&format!("m-{i}.example.com"), RecordType::A))
+        .collect();
+    let full_schedule = || {
+        let mut schedule = RefreshSchedule::default();
+        for (i, key) in keys.iter().enumerate() {
+            schedule.register(ScheduledRefresh {
+                due_at_secs: i as u64 % MAINTENANCE_TTL_SECS,
+                key: key.clone(),
+                retry: false,
+            });
+        }
+        schedule
     };
-    assert!(cache.get_refresh_candidates(&opts).is_empty());
 
     let mut group = c.benchmark_group("cache_maintenance");
     group.sample_size(10);
-    group.bench_function("refresh_cycle_200k", |b| {
-        b.iter(|| cache.get_refresh_candidates(&opts))
+    group.bench_function("refresh_timers_minute_200k", |b| {
+        b.iter_batched(
+            full_schedule,
+            |mut schedule| {
+                for second in 0..60 {
+                    black_box(schedule.take_due(second));
+                }
+                schedule
+            },
+            BatchSize::LargeInput,
+        )
     });
     group.finish();
 }

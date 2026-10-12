@@ -1,8 +1,8 @@
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
-    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshScanOptions,
-    RefreshSenders,
+    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshSenders,
+    ScheduledRefresh,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -20,7 +20,6 @@ fn create_stale_cache() -> DnsCache {
         access_window_secs: 7200,
         eviction_sample_size: 8,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl: 0,
         max_ttl: 86_400,
     })
@@ -30,29 +29,20 @@ fn make_cname_data(name: &str) -> CachedData {
     CachedData::CanonicalName(Arc::from(name))
 }
 
-/// Wires only the stale queue, which is the one serve-stale hits feed. The
-/// optimistic sender is still required, so it gets a receiver the test keeps
-/// alive by returning it.
-fn wire_stale_queue(
-    cache: &DnsCache,
-    capacity: usize,
-) -> (
-    mpsc::Receiver<RefreshRequest>,
-    mpsc::Receiver<RefreshRequest>,
-) {
+/// Wires only the stale queue, which is the one serve-stale hits feed.
+fn wire_stale_queue(cache: &DnsCache, capacity: usize) -> mpsc::Receiver<RefreshRequest> {
     let (stale_tx, stale_rx) = mpsc::channel(capacity);
-    let (optimistic_tx, optimistic_rx) = mpsc::channel(capacity);
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        optimistic: optimistic_tx,
+        schedule: None,
     });
-    (stale_rx, optimistic_rx)
+    stale_rx
 }
 
 #[test]
 fn test_stale_entry_sends_to_refresh_channel() {
     let cache = create_stale_cache();
-    let (mut rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
+    let mut rx = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "stale-chan.com",
@@ -86,7 +76,7 @@ fn test_stale_entry_sends_to_refresh_channel() {
 #[test]
 fn test_stale_refresh_only_fires_once() {
     let cache = create_stale_cache();
-    let (mut rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
+    let mut rx = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "once.com",
@@ -123,7 +113,7 @@ fn test_stale_refresh_only_fires_once() {
 #[test]
 fn test_stale_refresh_channel_full_does_not_block() {
     let cache = create_stale_cache();
-    let (_rx, _optimistic_rx) = wire_stale_queue(&cache, 1);
+    let _rx = wire_stale_queue(&cache, 1);
 
     cache.insert(
         "full-a.com",
@@ -182,7 +172,7 @@ fn test_stale_get_without_sender_still_works() {
 #[test]
 fn test_expired_beyond_grace_not_served_stale() {
     let cache = create_stale_cache();
-    let (_rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
+    let _rx = wire_stale_queue(&cache, 16);
 
     cache.insert(
         "expired.com",
@@ -204,21 +194,25 @@ fn test_expired_beyond_grace_not_served_stale() {
 }
 
 #[test]
-fn test_queued_for_optimistic_still_schedules_stale_repair() {
-    // Uma entrada reivindicada por uma varredura de manutenção pode ficar na
-    // fila optimistic por boa parte de um ciclo. Enquanto espera, um cliente
-    // que a encontra stale precisa conseguir agendar o reparo rápido pelo canal
-    // não pausado — é para isso que a flag de fila é separada da flag de voo.
-    // Com uma flag só, `try_set_refreshing` falhava e o reparo nunca era
-    // enfileirado: o cliente recebia stale com TTL 2, voltava a perguntar, e a
-    // entrada morria no fim do grace period.
+fn test_armed_refresh_timer_still_schedules_stale_repair() {
+    // Uma entrada com timer de refresh armado ainda não está em renovação: o
+    // timer só diz quando ela vence. Um cliente que a encontra stale precisa
+    // conseguir agendar o reparo rápido — é para isso que o bit de timer
+    // armado é separado da flag de voo. Com uma flag só, `try_set_refreshing`
+    // falharia e o reparo nunca seria enfileirado: o cliente receberia stale
+    // com TTL 2, voltaria a perguntar, e a entrada morreria no fim do grace.
     let cache = create_stale_cache();
-    let (mut stale_rx, _optimistic_rx) = wire_stale_queue(&cache, 16);
+    let (stale_tx, mut stale_rx) = mpsc::channel(16);
+    let (schedule_tx, mut schedule_rx) = mpsc::channel::<ScheduledRefresh>(16);
+    cache.set_refresh_senders(RefreshSenders {
+        stale: stale_tx,
+        schedule: Some(schedule_tx),
+    });
 
     // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros
     // testes do binário chamam `tick()` em paralelo, então uma janela de 2 s
     // deixa pouca folga se esta thread for desescalonada entre o sleep e a
-    // varredura. Em 3,2 s a entrada está expirada com quase 3 s de folga.
+    // consulta. Em 3,2 s a entrada está expirada com quase 3 s de folga.
     cache.insert(
         "queued-stale.com",
         RecordType::CNAME,
@@ -226,20 +220,14 @@ fn test_queued_for_optimistic_still_schedules_stale_repair() {
         3,
         None,
     );
+    let timer = schedule_rx.try_recv();
+    assert!(
+        timer.is_ok_and(|timer| timer.key.domain == "queued-stale.com"),
+        "PRECONDIÇÃO FALHOU: a inserção deveria ter armado o timer de refresh"
+    );
 
     std::thread::sleep(std::time::Duration::from_millis(3200));
     coarse_clock::tick();
-
-    // A varredura reivindica a entrada para a fila optimistic.
-    let claimed = cache.get_refresh_candidates(&RefreshScanOptions {
-        min_lead_secs: 0,
-        min_hit_rate: 0.0,
-        min_frequency: 0,
-    });
-    assert!(
-        claimed.iter().any(|(d, _)| d == "queued-stale.com"),
-        "PRECONDIÇÃO FALHOU: a varredura deveria ter reivindicado a entrada"
-    );
 
     // Agora o cliente chega e encontra a entrada stale.
     let result = cache.get(&Arc::from("queued-stale.com"), &RecordType::CNAME);
@@ -251,8 +239,8 @@ fn test_queued_for_optimistic_still_schedules_stale_repair() {
     let msg = stale_rx.try_recv();
     assert!(
         msg.is_ok(),
-        "Entrada já reivindicada para a fila optimistic ainda deve poder agendar \
-         o reparo serve-stale no canal rápido"
+        "Entrada com timer de refresh armado ainda deve poder agendar o reparo \
+         serve-stale no canal rápido"
     );
     let (domain, record_type) = msg.expect("mensagem de reparo stale ausente");
     assert_eq!(&*domain, "queued-stale.com");

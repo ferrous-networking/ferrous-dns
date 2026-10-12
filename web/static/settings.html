@@ -1268,7 +1268,7 @@
                                 <i data-lucide="bar-chart-2" style="width:20px;height:20px;color:var(--color-primary)"></i>
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Hit Rate</h4>
                             </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Cache hits per minute, counted since the entry's last renewal, below which an entry ranks as cold. Cold entries are still refreshed normally; they are simply the first to be dropped when a refresh cycle produces more candidates than fit in the queue.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Cache hits per minute, counted since the entry's last renewal, below which an entry ranks as cold. Cold entries are still refreshed normally; they only wait behind hot ones when more entries fall due at once than the refresh worker runs in parallel.</p>
                         </div>
                         <div style="flex-shrink:0;width:150px">
                             <input type="number" x-model.number="config.dns.cache_min_hit_rate" step="0.1" min="0" style="width:100%;text-align:right">
@@ -1284,7 +1284,7 @@
                                 <i data-lucide="hash" style="width:20px;height:20px;color:var(--color-primary)"></i>
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Frequency</h4>
                             </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Lifetime hits below which an entry ranks as cold, alongside Minimum Hit Rate. Keeps a burst of newly inserted entries from displacing an established working set when a cycle's candidates have to be trimmed.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Lifetime hits below which an entry ranks as cold, alongside Minimum Hit Rate. Keeps a burst of newly inserted entries from jumping ahead of an established working set when more entries fall due at once than the refresh worker runs in parallel.</p>
                         </div>
                         <div style="flex-shrink:0;width:150px">
                             <input type="number" x-model.number="config.dns.cache_min_frequency" min="1" style="width:100%;text-align:right">

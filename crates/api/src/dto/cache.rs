@@ -47,7 +47,8 @@ pub struct CacheMetricsResponse {
     pub transient_upstream_errors: u64,
     /// Serve-stale repairs dropped because the stale refresh queue was full.
     pub stale_refresh_drops: u64,
-    /// Optimistic refresh candidates a cycle cut for lack of queue room.
+    /// Renewals ahead of expiry given up on: a refresh timer that found the
+    /// worker's queue full, or a due entry that died waiting for a permit.
     pub optimistic_refresh_shed: u64,
 }
 

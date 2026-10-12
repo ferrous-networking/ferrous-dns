@@ -29,7 +29,6 @@ fn cache(max_entries: usize, access_window_secs: u64) -> DnsCache {
         access_window_secs,
         eviction_sample_size: 16,
         lfuk_k_value: 0.5,
-        refresh_sample_rate: 1.0,
         min_ttl: 0,
         max_ttl: 86_400,
     })

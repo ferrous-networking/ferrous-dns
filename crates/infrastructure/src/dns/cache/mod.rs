@@ -11,6 +11,7 @@ pub mod negative_cache;
 pub mod port;
 pub mod record;
 pub mod refresh;
+pub mod schedule;
 pub mod storage;
 
 pub use bloom::AtomicBloom;
@@ -20,5 +21,6 @@ pub use key::{BorrowedKey, CacheKey};
 pub use metrics::CacheMetrics;
 pub use port::{DnsCacheAccess, LocalRecordStatus};
 pub use record::CachedRecord;
-pub use refresh::RefreshScanOptions;
+pub use refresh::{DueRefresh, RefreshPriority};
+pub use schedule::{refresh_due_at, RefreshSchedule, ScheduledRefresh, REFRESH_LEAD_SECS};
 pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest, RefreshSenders};

@@ -20,12 +20,12 @@ use ferrous_dns_infrastructure::dns::{
     cache_maintenance::DnsCacheMaintenance,
     dnssec::DnssecStatsAdapter,
     resolver::{LocalPtrResolver, LocalWildcardResolver, PtrRegistry, WildcardRegistry},
-    DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager, RefreshScanOptions,
+    DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager, RefreshPriority,
     RefreshSenders, ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
-    DEFAULT_REFRESH_INTERVAL_SECS,
+    MAINTENANCE_INTERVAL_SECS,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -380,38 +380,27 @@ impl DnsServices {
         }
 
         // Eviction and compaction run regardless: nothing else bounds the cache.
-        let maintenance = DnsCacheMaintenance::new(cache.clone(), DEFAULT_REFRESH_INTERVAL_SECS);
-        let optimistic = config.dns.cache_optimistic_refresh;
+        let maintenance = DnsCacheMaintenance::new(cache.clone(), MAINTENANCE_INTERVAL_SECS);
 
-        // The optimistic queue holds one cycle's backlog. A cycle produces
-        // roughly `entries * interval / ttl` candidates, so it is sized off the
-        // cache rather than fixed: a constant that fits a small deployment
-        // silently caps how much of a large one can stay warm. The clamp keeps
-        // both ends sane — the upper bound is ~0.8 MB of queued keys. With the
-        // scan off nothing enqueues there, so it gets the minimum.
-        let optimistic_capacity = if optimistic {
-            (config.dns.cache_max_entries / 4).clamp(1024, 32_768)
-        } else {
-            1
-        };
+        // The timer channel only carries timers from the cache to the worker,
+        // which registers each one at once, so it absorbs bursts of inserts
+        // rather than holding a backlog. Sized off the cache, like the burst
+        // it has to absorb; the upper bound is ~1.3 MB of queued timers.
+        let schedule_capacity = (config.dns.cache_max_entries / 4).clamp(1024, 32_768);
         // The stale queue is shallower on purpose: those items are
-        // latency-sensitive and drained unpaced, so it only has to absorb a
+        // latency-sensitive and served first, so it only has to absorb a
         // burst, not a backlog — the client interaction is over long before a
         // deep one would drain.
         let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(128);
-        let (optimistic_tx, optimistic_rx) = tokio::sync::mpsc::channel(optimistic_capacity);
-        let (pace_tx, pace_rx) = tokio::sync::watch::channel(None);
+        let (schedule_tx, schedule_rx) = tokio::sync::mpsc::channel(schedule_capacity);
         cache.set_refresh_senders(RefreshSenders {
             stale: stale_tx,
-            optimistic: optimistic_tx,
+            // Without it no entry arms a timer: nothing is renewed ahead of
+            // expiry, and serve-stale repairs still run.
+            schedule: config.dns.cache_optimistic_refresh.then_some(schedule_tx),
         });
 
-        // A candidate waits up to one cycle to be scanned and up to one more to
-        // be drained, so anything with less life than that left would expire
-        // before its turn. Taking it early is what makes "renewed before the
-        // TTL lapses" hold rather than merely tend to hold.
-        let scan_opts = RefreshScanOptions {
-            min_lead_secs: DEFAULT_REFRESH_INTERVAL_SECS * 2,
+        let priority = RefreshPriority {
             min_hit_rate: config.dns.cache_min_hit_rate,
             min_frequency: config.dns.cache_min_frequency,
         };
@@ -424,22 +413,15 @@ impl DnsServices {
             .builder(Arc::clone(&maintenance_pool_manager))
             .build();
 
-        // Started even with the optimistic scan off: serve-stale repairs arrive on the stale queue.
+        // Started even with optimistic refresh off: serve-stale repairs arrive on the stale queue.
         DnsCacheMaintenance::start_refresh_worker(
             cache.clone(),
             resolver_for_maintenance,
             Some(repos.query_log.clone()),
             stale_rx,
-            optimistic_rx,
-            pace_rx,
-            scan_opts.min_lead_secs,
+            schedule_rx,
+            priority,
         );
-
-        let maintenance = if optimistic {
-            maintenance.with_optimistic_refresh(scan_opts, pace_tx)
-        } else {
-            maintenance
-        };
 
         Ok((
             Some(Arc::new(maintenance) as Arc<dyn CacheMaintenancePort>),

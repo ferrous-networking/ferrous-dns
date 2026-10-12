@@ -1,7 +1,5 @@
 use async_trait::async_trait;
-use ferrous_dns_application::ports::{
-    CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome,
-};
+use ferrous_dns_application::ports::{CacheCompactionOutcome, CacheMaintenancePort};
 use ferrous_dns_domain::DomainError;
 use ferrous_dns_jobs::CacheMaintenanceJob;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -11,10 +9,8 @@ use tokio::time::{sleep, Duration};
 #[derive(Default)]
 struct MockCacheMaintenancePort {
     eviction_calls: AtomicU64,
-    refresh_calls: AtomicU64,
     compaction_calls: AtomicU64,
     fail_eviction: AtomicBool,
-    fail_refresh: AtomicBool,
     fail_compaction: AtomicBool,
 }
 
@@ -22,13 +18,6 @@ impl MockCacheMaintenancePort {
     fn failing_eviction() -> Self {
         Self {
             fail_eviction: AtomicBool::new(true),
-            ..Self::default()
-        }
-    }
-
-    fn failing_refresh() -> Self {
-        Self {
-            fail_refresh: AtomicBool::new(true),
             ..Self::default()
         }
     }
@@ -42,10 +31,6 @@ impl MockCacheMaintenancePort {
 
     fn eviction_call_count(&self) -> u64 {
         self.eviction_calls.load(Ordering::Relaxed)
-    }
-
-    fn refresh_call_count(&self) -> u64 {
-        self.refresh_calls.load(Ordering::Relaxed)
     }
 
     fn compaction_call_count(&self) -> u64 {
@@ -63,14 +48,6 @@ impl CacheMaintenancePort for MockCacheMaintenancePort {
         Ok(())
     }
 
-    async fn run_refresh_cycle(&self) -> Result<CacheRefreshOutcome, DomainError> {
-        self.refresh_calls.fetch_add(1, Ordering::Relaxed);
-        if self.fail_refresh.load(Ordering::Relaxed) {
-            return Err(DomainError::IoError("mock refresh failure".into()));
-        }
-        Ok(CacheRefreshOutcome::default())
-    }
-
     async fn run_compaction_cycle(&self) -> Result<CacheCompactionOutcome, DomainError> {
         self.compaction_calls.fetch_add(1, Ordering::Relaxed);
         if self.fail_compaction.load(Ordering::Relaxed) {
@@ -83,29 +60,27 @@ impl CacheMaintenancePort for MockCacheMaintenancePort {
 // Both tasks tick once immediately, so only a second tick proves an interval is honoured.
 
 #[tokio::test]
-async fn test_cache_maintenance_job_eviction_and_refresh_run_on_the_cycle_interval() {
+async fn test_cache_maintenance_job_eviction_runs_on_the_cycle_interval() {
     let mock = Arc::new(MockCacheMaintenancePort::default());
     CacheMaintenanceJob::new(mock.clone(), 1, 3600).spawn();
 
     sleep(Duration::from_millis(1500)).await;
 
     assert!(mock.eviction_call_count() >= 2);
-    assert!(mock.refresh_call_count() >= 2);
     assert_eq!(mock.compaction_call_count(), 1);
 }
 
 #[tokio::test]
-async fn test_cache_maintenance_job_eviction_error_does_not_skip_refresh() {
+async fn test_cache_maintenance_job_eviction_error_is_non_fatal() {
     let mock = Arc::new(MockCacheMaintenancePort::failing_eviction());
 
     CacheMaintenanceJob::new(mock.clone(), 1, 3600).spawn();
 
-    sleep(Duration::from_millis(1500)).await;
+    sleep(Duration::from_millis(2200)).await;
 
-    assert!(mock.eviction_call_count() >= 2);
     assert!(
-        mock.refresh_call_count() >= 2,
-        "A failed eviction must not stop the refresh that follows it"
+        mock.eviction_call_count() >= 2,
+        "Job should continue running after eviction errors"
     );
 }
 
@@ -117,21 +92,7 @@ async fn test_cache_maintenance_job_compaction_runs_on_its_own_interval() {
     sleep(Duration::from_millis(1500)).await;
 
     assert!(mock.compaction_call_count() >= 2);
-    assert_eq!(mock.refresh_call_count(), 1);
-}
-
-#[tokio::test]
-async fn test_cache_maintenance_job_refresh_error_is_non_fatal() {
-    let mock = Arc::new(MockCacheMaintenancePort::failing_refresh());
-
-    CacheMaintenanceJob::new(mock.clone(), 1, 3600).spawn();
-
-    sleep(Duration::from_millis(2200)).await;
-
-    assert!(
-        mock.refresh_call_count() >= 2,
-        "Job should continue running after refresh errors"
-    );
+    assert_eq!(mock.eviction_call_count(), 1);
 }
 
 #[tokio::test]

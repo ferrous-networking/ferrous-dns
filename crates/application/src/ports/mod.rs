@@ -57,9 +57,7 @@ pub use blocked_service_repository::BlockedServiceRepository;
 pub use blocklist_repository::BlocklistRepository;
 pub use blocklist_source_creator::BlocklistSourceCreator;
 pub use blocklist_source_repository::BlocklistSourceRepository;
-pub use cache_maintenance_port::{
-    CacheCompactionOutcome, CacheMaintenancePort, CacheRefreshOutcome,
-};
+pub use cache_maintenance_port::{CacheCompactionOutcome, CacheMaintenancePort};
 pub use client_repository::ClientRepository;
 pub use client_subnet_repository::ClientSubnetRepository;
 pub use config_file_port::ConfigFilePersistence;

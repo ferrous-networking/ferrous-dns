@@ -1,19 +1,22 @@
 use super::coarse_clock::coarse_now_secs;
 use super::data::{CachedData, CachedDnssecStatus};
+use super::schedule::refresh_due_at;
 use ferrous_dns_domain::RecordType;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering as AtomicOrdering};
 
 const FLAG_DELETED: u8 = 0b001;
 const FLAG_REFRESHING: u8 = 0b010;
 const FLAG_PERMANENT: u8 = 0b100;
-/// Set when a maintenance cycle has handed the entry to the optimistic queue
-/// but no resolution has started yet.
+/// Set while a refresh timer is pending for the entry, and kept after a
+/// renewal that failed, until compaction re-arms it.
 ///
-/// Deliberately distinct from `FLAG_REFRESHING`: an entry can sit queued for a
-/// large part of a cycle, and during that window a client hitting the stale
-/// path must still be able to schedule the fast, unpaced repair. Only
-/// `FLAG_REFRESHING` — a resolution actually in flight — blocks that.
-const FLAG_REFRESH_QUEUED: u8 = 0b1000;
+/// Clear means the entry's timer was spent without renewing it and nothing
+/// will: it fired while the entry was outside the access window, or the
+/// timer never reached the worker. A hit on a clear entry re-arms it, which
+/// is how a name that comes back into use gets renewed again. A failure
+/// keeps the bit set on purpose, so a hit cannot turn a failing upstream
+/// into one retry per hit.
+const FLAG_REFRESH_ARMED: u8 = 0b1000;
 /// Set when the answer came from the configured local DNS server, so a hit
 /// stays exempt from checks that trust local answers (rebinding, NXDOMAIN budget).
 const FLAG_LOCAL_DNS: u8 = 0b1_0000;
@@ -230,17 +233,42 @@ impl CachedRecord {
             .fetch_and(!FLAG_REFRESHING, AtomicOrdering::Release);
     }
 
-    /// Claims the entry for the optimistic queue, de-duplicating it across
-    /// cycles: a candidate still waiting to be drained is not offered again.
+    /// See `FLAG_REFRESH_ARMED`.
     #[inline(always)]
-    pub fn try_set_refresh_queued(&self) -> bool {
-        self.try_set_flag(FLAG_REFRESH_QUEUED)
+    pub fn is_refresh_armed(&self) -> bool {
+        self.flags.load(AtomicOrdering::Relaxed) & FLAG_REFRESH_ARMED != 0
+    }
+
+    /// Whether a hit should arm this entry's refresh timer again: it is not a
+    /// local record, which is never renewed, and its last timer was spent
+    /// without renewing it. One load, since every L2 hit asks.
+    #[inline(always)]
+    pub fn needs_refresh_rearm(&self) -> bool {
+        self.flags.load(AtomicOrdering::Relaxed) & (FLAG_REFRESH_ARMED | FLAG_PERMANENT) == 0
     }
 
     #[inline(always)]
-    pub fn clear_refresh_queued(&self) {
+    pub fn is_refreshing(&self) -> bool {
+        self.flags.load(AtomicOrdering::Relaxed) & FLAG_REFRESHING != 0
+    }
+
+    /// Claims the right to arm the entry's refresh timer; `false` if it is
+    /// already armed.
+    #[inline(always)]
+    pub fn try_arm_refresh(&self) -> bool {
+        self.try_set_flag(FLAG_REFRESH_ARMED)
+    }
+
+    #[inline(always)]
+    pub fn disarm_refresh(&self) {
         self.flags
-            .fetch_and(!FLAG_REFRESH_QUEUED, AtomicOrdering::Release);
+            .fetch_and(!FLAG_REFRESH_ARMED, AtomicOrdering::Release);
+    }
+
+    /// The second this entry falls due for renewal; see [`refresh_due_at`].
+    #[inline(always)]
+    pub fn refresh_due_at_secs(&self, threshold: f64) -> u64 {
+        refresh_due_at(self.inserted_at_secs, self.ttl, threshold)
     }
 
     /// Hits per minute accumulated since the last renewal.
@@ -267,27 +295,6 @@ impl CachedRecord {
         self.counters
             .hits_at_last_refresh
             .store(hits, AtomicOrdering::Relaxed);
-    }
-
-    /// Whether the entry should be handed to the background refresh queue.
-    ///
-    /// `threshold` is the configured fraction of TTL that must have elapsed.
-    /// That alone is not enough: a candidate waits up to one cycle to be
-    /// scanned and up to one more to be drained, so a purely proportional test
-    /// misses any entry whose remaining life is shorter than that. Hence the
-    /// lead-time floor — whichever fires first wins. The floor is skipped for
-    /// entries whose whole TTL fits inside it, since those cannot be renewed
-    /// ahead of expiry at all and would otherwise never leave the queue.
-    #[inline(always)]
-    pub fn should_refresh(&self, threshold: f64, now_secs: u64, min_lead_secs: u64) -> bool {
-        if (self.ttl as u64) > min_lead_secs
-            && self.expires_at_secs.saturating_sub(now_secs) <= min_lead_secs
-        {
-            return true;
-        }
-
-        let elapsed = now_secs.saturating_sub(self.inserted_at_secs) as f64;
-        elapsed >= (self.ttl as f64) * threshold
     }
 
     #[inline(always)]
