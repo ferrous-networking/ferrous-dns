@@ -1236,8 +1236,8 @@
                             <i data-lucide="refresh-cw" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Optimistic Refresh</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Proactively re-fetches cache entries in the background before they expire, so clients always receive a fresh response with zero added latency. Triggered when a cached entry has consumed more than the configured Refresh Threshold of its TTL.</p>
-                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Every eligible entry is renewed, at a rate derived from how many are due — there is no fixed ceiling to tune. The thresholds below only decide who is dropped first if a cycle produces more candidates than the queue can hold.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Proactively re-fetches cache entries in the background before they expire, so clients always receive a fresh response with zero added latency. Each entry is renewed at the Refresh Threshold of its TTL, or 60 seconds before it expires, whichever comes first. An entry whose TTL is under a minute is renewed only while clients keep asking for it.</p>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Every entry in use is renewed on its own timer, with at most 16 renewals running at once — there is no rate to tune. The thresholds below only decide which entries go first when more fall due at once than run in parallel.</p>
                     </div>
                     <div @click="config.dns.cache_optimistic_refresh=!config.dns.cache_optimistic_refresh"
                          :class="config.dns.cache_optimistic_refresh?'active':''" class="toggle-switch">
@@ -1252,7 +1252,7 @@
                                 <i data-lucide="gauge" style="width:20px;height:20px;color:var(--color-primary)"></i>
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Refresh Threshold</h4>
                             </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Fraction of a cache entry's TTL that must have elapsed before a background refresh is triggered. A value of <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">0.75</code> means the entry is refreshed when 75% of its TTL has passed.</p>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Fraction of a cache entry's TTL that must have elapsed before a background refresh is triggered. A value of <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">0.75</code> refreshes a one-hour entry after 45 minutes. When that would leave less than a minute, the entry is refreshed 60 seconds before it expires instead, but never before half its TTL: a 200-second entry is refreshed after 140 seconds.</p>
                         </div>
                         <div style="flex-shrink:0;width:150px">
                             <input type="number" x-model.number="config.dns.cache_refresh_threshold" step="0.05" min="0.1" max="0.99" style="width:100%;text-align:right">
@@ -1299,7 +1299,7 @@
                             <i data-lucide="calendar" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Access Window</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Time window within which an entry must have been accessed at least once to remain eligible for optimistic refresh. Entries not accessed within this window will expire normally rather than being proactively renewed.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Time window within which an entry must have been accessed at least once to remain eligible for optimistic refresh. An entry not accessed within this window is left to expire rather than being proactively renewed; the next query for it puts it back on the refresh schedule.</p>
                         <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Example: 7200 = 2 h &nbsp;·&nbsp; 43200 = 12 h &nbsp;·&nbsp; 86400 = 24 h.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
@@ -1329,7 +1329,7 @@
                             <i data-lucide="archive" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Compaction Interval</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Interval between full cache compaction passes that scan for and remove all expired entries. Lower values free memory more promptly; higher values reduce CPU overhead at the cost of holding stale entries slightly longer.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Interval between full cache compaction passes that remove expired entries. Each pass also retries the renewal of entries whose last refresh failed, for example on an upstream timeout. Lower values free memory and retry failed renewals sooner; higher values reduce CPU overhead at the cost of holding stale entries slightly longer.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
                         <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60" style="width:100%;text-align:right">
