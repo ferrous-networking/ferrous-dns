@@ -21,11 +21,12 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 
 ## Decisions
 
-- [Adaptive refresh pacer](decisions/cache-adaptive-refresh-pacer.md) — why PR #211 paces by backlog and removed `cache_max_refresh_per_sec`
+- [Adaptive refresh pacer](decisions/cache-adaptive-refresh-pacer.md) — why PR #211 paced by backlog and removed `cache_max_refresh_per_sec`; superseded by per-entry timers
 - [Wildcard local records](decisions/wildcard-local-records.md) — why the wildcard layer sits above the cache, and two unfiled bugs in exact local records
 - [Exact local records answer NODATA](decisions/local-record-exact-nodata.md) — PR #227: an exact A/AAAA owns the whole name, so split-horizon overrides lose every other type
 - [Restart banner is a sticky server flag](decisions/restart-banner-server-flag.md) — PR #236: in-memory `restart_pending`, cleared only by a restart; config diff rejected
 - [DNS cookie echo + strict mode](decisions/dns-cookie-strict-mode.md) — #279: cookie on every reply; strict is UDP-only, fast path off, BADCOOKIE + EDE 18
+- [Per-entry refresh timers](decisions/cache-per-entry-refresh-timer.md) — 60 s scan + pacer replaced by one timer per entry; due rule, timer states, one follow-up decision, inbox not channel
 
 ## Bugs
 
@@ -39,3 +40,5 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Upstream rcode ignored on the pool path](bugs/upstream-rcode-ignored-on-pool-path.md) — upstream SERVFAIL/NXDOMAIN cached for `cache_ttl` and logged NOERROR; issue #244
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
 - [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; IP refresh still open
+- [Cache dead config + L1 hit undercount](bugs/cache-dead-config-and-l1-hit-undercount.md) — `cache_adaptive_thresholds`/`lfuk_history_size` unused; L1 undercount + toml wording fixed on the refresh-timer branch
+- [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — in-flight followers logged as cache hits with their upstream wait; real hits are ~1.5 µs; unfiled

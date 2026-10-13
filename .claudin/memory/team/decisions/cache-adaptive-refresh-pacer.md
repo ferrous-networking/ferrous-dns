@@ -6,6 +6,8 @@ scope: cache/refresh
 impact: structural
 ---
 
+**Superseded (2026-10-12)** by [[cache-per-entry-refresh-timer]] on branch `fix/cache-per-entry-refresh-timer`. The scan and the pacer are gone, and each entry arms its own timer. What still holds from this note: no fixed rate, a 16-way concurrency bound, and ranking that orders work without excluding any.
+
 PR #210 (merged 2026-08, v0.9.13) moved optimistic refresh from an inline loop to a paced
 queue with `cache_max_refresh_per_sec = 4.0`. The problem it set out to solve was
 burstiness — a 60s cycle firing the whole working set at once — but burstiness was already
