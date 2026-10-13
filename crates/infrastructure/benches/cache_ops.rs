@@ -145,8 +145,8 @@ fn cache_hits(c: &mut Criterion) {
 }
 
 /// What keeping a 200k-entry cache renewed costs per minute: the 60 ticks
-/// that take the timers falling due in that minute. The scan this replaced
-/// visited all 200k entries once a minute instead.
+/// that take the timers falling due in that minute, against a pass over all
+/// 200k entries, which any scan for due entries would cost.
 fn refresh_maintenance(c: &mut Criterion) {
     let keys: Vec<CacheKey> = (0..MAINTENANCE_ENTRIES)
         .map(|i| CacheKey::new(&format!("m-{i}.example.com"), RecordType::A))

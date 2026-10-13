@@ -119,7 +119,7 @@ cache_access_window_secs = 43200
 
 **How it works**: when an entry is cached or renewed it arms its own refresh timer, and a background worker renews it when the timer comes due. The cached entry keeps serving until the renewal completes -- zero latency impact for clients. Nothing scans the cache to find what is due, so renewal does not depend on any maintenance interval, and an entry is renewed on time whatever its TTL.
 
-**When an entry falls due**: at `cache_refresh_threshold` of its TTL, or 60 seconds before it expires, whichever comes first -- but never before half its TTL. With the default threshold of 0.75:
+**When an entry falls due**: at `cache_refresh_threshold` of its TTL, or 60 seconds before it expires, whichever comes first -- but the 60-second lead never pulls the renewal before half its TTL. A threshold below 0.5 still applies as set. With the default threshold of 0.75:
 
 | TTL | Renewed after | Why |
 |:----|:--------------|:----|
@@ -132,9 +132,9 @@ The half-TTL bound keeps a TTL just above a minute from being renewed every few 
 
 **Load is bounded by concurrency, not by rate**: at most 16 renewals run at once. When more entries fall due together, they wait their turn, so a burst never floods the upstream, and nothing due is dropped because of a rate limit.
 
-**A renewal never shortens an entry**: a caching upstream such as Cloudflare or Quad9 answers with what is left of its own copy, and two of its anycast nodes can be minutes apart. A renewal ahead of expiry that would end the entry sooner than it already ends, or at the same time, is not applied: the entry keeps its answer and is renewed again as it expires, when the upstream's copy has rolled over.
+**A renewal never shortens an entry**: a caching upstream such as Cloudflare or Quad9 answers with what is left of its own copy, and two of its anycast nodes can be minutes apart. A renewal ahead of expiry that would end the entry sooner than it already ends, or at the same time, is not applied: the entry keeps its answer and is tried once more a second before it expires, when the upstream's copy has usually rolled over. If that attempt does not extend it either, the entry runs out its TTL and the next query renews it. Once an entry has expired, any answer is taken.
 
-**When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, the renewal is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried by the next compaction pass, every `cache_compaction_interval` seconds, for as long as the entry is in use. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
+**When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, a renewal ahead of expiry is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried by the next compaction pass, every `cache_compaction_interval` seconds, for as long as the entry is in use. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
 
 !!! note "Minimum Hit Rate and Minimum Frequency rank, they do not exclude"
     Every due entry is renewed. `cache_min_hit_rate` and `cache_min_frequency` only come into play when more entries are due at once than the worker runs in parallel: entries that clear both thresholds go first, and within each group the ones closest to being unusable. Neither threshold stops an entry from being renewed. Watch `cache_optimistic_refresh_shed` on `/metrics`: it counts timers that could not be armed in a burst of inserts and entries that died waiting for their turn. A sustained non-zero value means renewals fall behind what is due.

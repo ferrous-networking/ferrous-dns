@@ -389,7 +389,7 @@ cache_access_window_secs  = 43200
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `cache_optimistic_refresh` | `bool` | `true` | Enable background refresh for popular entries |
-| `cache_refresh_threshold` | `float` | `0.75` | Renew an entry when this fraction of its TTL has elapsed, or 60 s before it expires if that comes first (never before half the TTL) |
+| `cache_refresh_threshold` | `float` | `0.75` | Renew an entry when this fraction of its TTL has elapsed, or 60 s before it expires if that comes first (the 60 s lead never pulls it before half the TTL) |
 | `cache_min_hit_rate` | `float` | `2.0` | Hits per minute below which an entry ranks cold: renewed after hot entries when many fall due at once, never skipped |
 | `cache_min_frequency` | `int` | `10` | Lifetime hits below which an entry ranks cold, as above |
 | `cache_access_window_secs` | `int` | `43200` | Access window in seconds for refresh eligibility (43200 = 12 hours) |

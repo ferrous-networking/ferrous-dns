@@ -6,9 +6,9 @@ use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// What a pair reports when both servers failed. It returns the second
-/// error as before, except that one SERVFAIL next to another kind of failure
-/// must not read as "every server answered SERVFAIL".
+/// What a pair reports when both servers failed: the second error, except
+/// that one SERVFAIL next to another kind of failure must not read as "every
+/// server answered SERVFAIL".
 fn pair_failure(first: &DomainError, second: DomainError) -> DomainError {
     match (is_servfail(first), is_servfail(&second)) {
         (true, true) => DomainError::AllUpstreamsServfail,

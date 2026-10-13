@@ -1152,7 +1152,7 @@
                             <i data-lucide="chevrons-down" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Minimum Cache TTL</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Floor applied to every cached entry. Upstream values below this threshold are raised to this minimum. Recommended ≥ 240 seconds to prevent excessive upstream queries.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Floor applied to every cached entry. Upstream values below this threshold are raised to this minimum. Short TTLs are renewed more often, so a higher floor sends fewer refresh queries upstream.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
                         <input type="number" x-model.number="config.dns.cache_min_ttl" min="0" style="width:100%;text-align:right">

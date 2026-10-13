@@ -1,11 +1,10 @@
 //! A hit served by the thread-local L1 is still a hit on the record.
 //!
 //! An address answer is copied into L1 when it is cached, and from then on a
-//! lookup on that thread never reaches L2, which holds the counters. Before
-//! this was fixed, the name the clients asked for most looked idle there: its
-//! `last_access` stayed at insertion, so it left the refresh access window
-//! while in use; and its `hit_count` stayed near zero, so capacity eviction
-//! picked it first.
+//! lookup on that thread never reaches L2, which holds the counters. L1 hands
+//! its hits over in batches, so the name clients ask for most keeps a recent
+//! `last_access`, which keeps it inside the refresh access window, and a high
+//! `hit_count`, which keeps capacity eviction from picking it first.
 
 use ferrous_dns_application::ports::{CacheEntryQuery, CacheEntrySnapshot};
 use ferrous_dns_domain::RecordType;
@@ -67,7 +66,7 @@ fn listed(cache: &DnsCache, domain: &str) -> Option<CacheEntrySnapshot> {
         .find(|entry| entry.domain == domain)
 }
 
-/// R3.
+/// Every lookup L1 serves is counted on the record.
 #[test]
 fn test_l1_hits_reach_the_record_counters() {
     let cache = cache(100, 7200);
@@ -81,10 +80,10 @@ fn test_l1_hits_reach_the_record_counters() {
     );
 }
 
-/// R4. With a one-second access window, a name read every few milliseconds
-/// must still be inside it.
+/// The last lookup L1 served is the record's last access, so with a one
+/// second access window a name read every few milliseconds stays inside it.
 #[test]
-fn test_hot_l1_name_stays_refresh_eligible() {
+fn test_l1_hits_keep_the_last_access_current() {
     let cache = cache(100, 1);
     let now = serve_from_l1(&cache, "l1-eligible.example", 50);
 
@@ -142,8 +141,8 @@ fn test_l1_batch_that_fills_its_counter_loses_no_hit() {
     assert_eq!(entry.hits, 70_001);
 }
 
-/// R5. A full cache evicts by hit rate, so the name with the most hits, all
-/// of them served by L1, must outlive names read three times each.
+/// A full cache evicts by hit rate, so the name with the most hits, all of
+/// them served by L1, must outlive names read three times each.
 #[test]
 fn test_capacity_eviction_spares_the_hot_l1_name() {
     let cache = cache(10, 7200);

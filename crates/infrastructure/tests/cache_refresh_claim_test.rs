@@ -312,7 +312,7 @@ fn test_unasked_renewal_continues_only_for_ttls_of_a_minute_or_more() {
         cache
             .claim_due_refresh(long, long.due_at_secs, &no_ranking())
             .is_some(),
-        "a 60 s entry inside the access window renews as before"
+        "a 60 s entry inside the access window renews unasked"
     );
 
     assert!(cache.get("short.example", &RecordType::A).is_some());
