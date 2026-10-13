@@ -40,7 +40,7 @@ const SWEEP_BUDGET: usize = 16_384;
 /// `Stale` means a client has already been served a stale answer and is
 /// waiting on the real one, so it always goes first. `Due` and `Retry` are
 /// renewals on a timer, which may decline an answer that would not extend
-/// the entry; only a `Due` one gets one more attempt.
+/// the entry; see [`RefreshOrigin::retry_in`] for what each gets after.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshOrigin {
     Stale,
@@ -67,23 +67,29 @@ enum RefreshOutcome {
 }
 
 impl RefreshOrigin {
-    /// Seconds from now to the one more attempt a renewal that did not renew
-    /// the entry gets, given the life the entry has left. Only a renewal on a
-    /// first timer gets one: a declined answer may have a copy that rolled
-    /// over a second before expiry, and every upstream answering SERVFAIL is
-    /// usually transient. Any other case is left to compaction, or to
+    /// Seconds from now to the next attempt a renewal on a timer that did
+    /// not renew the entry gets, given the life the entry has left.
+    ///
+    /// A declined answer is tried again a second before expiry, when another
+    /// copy upstream may already have rolled over, and if declined again, at
+    /// expiry, where any answer is taken: an expired entry never declines, so
+    /// that ends it in at most three queries. Every upstream answering
+    /// SERVFAIL is usually transient, so a first timer gets one retry halfway
+    /// through what is left. Any other case is left to compaction, or to
     /// serve-stale once the entry expires.
     fn retry_in(
         self,
         outcome: &Result<RefreshOutcome, DomainError>,
         remaining_secs: u64,
     ) -> Option<u64> {
-        if self != Self::Due || remaining_secs < 2 {
-            return None;
-        }
-        match outcome {
-            Ok(RefreshOutcome::Declined) => Some(remaining_secs - 1),
-            Err(DomainError::AllUpstreamsServfail) => Some(remaining_secs / 2),
+        match (self, outcome) {
+            (Self::Due, Ok(RefreshOutcome::Declined)) if remaining_secs >= 2 => {
+                Some(remaining_secs - 1)
+            }
+            (Self::Due | Self::Retry, Ok(RefreshOutcome::Declined)) => Some(remaining_secs),
+            (Self::Due, Err(DomainError::AllUpstreamsServfail)) if remaining_secs >= 2 => {
+                Some(remaining_secs / 2)
+            }
             _ => None,
         }
     }

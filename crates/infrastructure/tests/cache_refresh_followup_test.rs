@@ -10,6 +10,7 @@ use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::DnsCache;
 use refresh::{address, no_ranking, refresh_cache, start_worker, wait_until, OLD_IP};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -79,9 +80,83 @@ async fn test_ttl_zero_answers_do_not_requery_upstream_every_second() {
 
     let calls = resolver.calls_since(inserted);
     assert!(
-        calls.len() <= 2,
-        "the renewal and one more attempt at most; got calls at {calls:?}"
+        calls.len() <= 3 && calls.iter().all(|&at| at <= 4),
+        "at most three attempts, none past expiry at +4; got calls at {calls:?}"
     );
+}
+
+/// A caching upstream whose copy ends when the entry's does keeps offering
+/// what is left of it, and only rolls over at expiry. The entry must then be
+/// renewed at expiry, not left to go stale until a client asks for it.
+#[tokio::test]
+async fn test_twice_declined_renewal_is_renewed_at_expiry() {
+    let cache = cache(0.5);
+    let resolver = SameCopyResolver::new();
+    start(&cache, resolver.clone() as Arc<dyn DnsResolver>);
+    coarse_clock::tick();
+    let inserted = coarse_clock::coarse_now_secs();
+    resolver.expires_at.store(inserted + 10, Ordering::SeqCst);
+    // Due at +5 with 5 s left, offered 5: declined. Tried again at +9 with
+    // 1 s left, offered 1: declined. Renewed at +10.
+    cache.insert(
+        "same-copy.example",
+        RecordType::A,
+        address(OLD_IP),
+        10,
+        None,
+    );
+
+    assert!(
+        wait_until(Duration::from_secs(14), || resolver.calls() >= 3).await,
+        "the entry must be renewed at expiry; calls={}",
+        resolver.calls()
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        cache.metrics().optimistic_refreshes.load(Ordering::Relaxed),
+        1,
+        "the third attempt, at expiry, stores the answer"
+    );
+    tokio::time::sleep(Duration::from_millis(2_000)).await;
+    assert_eq!(resolver.calls(), 3, "and nothing more is asked");
+}
+
+/// Answers with the copy a caching upstream holds until `expires_at`: what is
+/// left of it before then, a fresh 300 s copy from then on.
+struct SameCopyResolver {
+    expires_at: AtomicU64,
+    calls: AtomicUsize,
+}
+
+impl SameCopyResolver {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            expires_at: AtomicU64::new(0),
+            calls: AtomicUsize::new(0),
+        })
+    }
+
+    fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl DnsResolver for SameCopyResolver {
+    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let now = coarse_clock::coarse_now_secs();
+        let expires_at = self.expires_at.load(Ordering::SeqCst);
+        let ttl = if now < expires_at {
+            (expires_at - now) as u32
+        } else {
+            300
+        };
+        Ok(DnsResolution {
+            min_ttl: Some(ttl),
+            ..DnsResolution::new(vec!["192.0.2.2".parse().unwrap()], false)
+        })
+    }
 }
 
 /// Past expiry any answer beats the stale one, so a renewal then stores even
@@ -106,10 +181,7 @@ async fn test_renewal_of_an_expired_entry_stores_any_answer() {
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     assert_eq!(
-        cache
-            .metrics()
-            .optimistic_refreshes
-            .load(std::sync::atomic::Ordering::Relaxed),
+        cache.metrics().optimistic_refreshes.load(Ordering::Relaxed),
         1,
         "the TTL 0 answer was stored, not declined; calls at {:?}",
         resolver.calls_since(inserted)

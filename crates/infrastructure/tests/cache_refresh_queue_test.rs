@@ -409,12 +409,13 @@ async fn test_renewal_never_shortens_a_valid_entry() {
     );
 }
 
-/// A declined renewal gets one more attempt only; after that the entry runs
-/// out its TTL and serve-stale takes over.
+/// An upstream that keeps answering with nothing to extend the entry gets a
+/// second chance before expiry and a last one at expiry, which takes any
+/// answer; after that nothing more is asked.
 #[tokio::test]
-async fn test_declined_renewal_is_tried_once_more_only() {
-    // TTL 10 at 0.5: due at +5 with 5 s left, offered 0 s: declined, tried
-    // again at +9 with 1 s left, declined again, and no third attempt.
+async fn test_declined_renewal_is_settled_by_expiry() {
+    // TTL 10 at 0.5: due at +5 with 5 s left, offered 0 s: declined; again
+    // at +9 with 1 s left: declined; at +10 the TTL 0 answer is taken.
     let cache = create_cache_with(200, 0.5);
     let resolver = RecordingResolver::new(Some(0));
     let _worker = start_worker(
@@ -425,12 +426,12 @@ async fn test_declined_renewal_is_tried_once_more_only() {
     );
     cache.insert("stingy.example", RecordType::A, address(OLD_IP), 10, None);
 
-    assert!(wait_until(Duration::from_secs(12), || resolver.count() >= 2).await);
-    tokio::time::sleep(Duration::from_millis(4_000)).await;
+    assert!(wait_until(Duration::from_secs(13), || resolver.count() >= 3).await);
+    tokio::time::sleep(Duration::from_millis(3_000)).await;
     assert_eq!(
         resolver.count(),
-        2,
-        "a TTL 0 answer is declined, tried once more, and then left alone"
+        3,
+        "declined twice, taken at expiry, and then left alone"
     );
 }
 
