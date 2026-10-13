@@ -132,6 +132,8 @@ The half-TTL bound keeps a TTL just above a minute from being renewed every few 
 
 **Load is bounded by concurrency, not by rate**: at most 16 renewals run at once. When more entries fall due together, they wait their turn, so a burst never floods the upstream, and nothing due is dropped because of a rate limit.
 
+**A renewal never shortens an entry**: a caching upstream such as Cloudflare or Quad9 answers with what is left of its own copy, and two of its anycast nodes can be minutes apart. A renewal ahead of expiry that would end the entry sooner than it already ends, or at the same time, is not applied: the entry keeps its answer and is renewed again as it expires, when the upstream's copy has rolled over.
+
 **When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, the renewal is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried by the next compaction pass, every `cache_compaction_interval` seconds, for as long as the entry is in use. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
 
 !!! note "Minimum Hit Rate and Minimum Frequency rank, they do not exclude"
