@@ -1,63 +1,26 @@
 //! What a renewal that did not renew the entry leaves behind: at most one
 //! more attempt, and never a loop of them.
 
+#[path = "support/refresh.rs"]
+mod refresh;
+
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
-use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
-    RefreshPriority, RefreshSenders, TimerInbox,
-};
-use std::net::IpAddr;
+use ferrous_dns_infrastructure::dns::DnsCache;
+use refresh::{address, no_ranking, refresh_cache, start_worker, wait_until, OLD_IP};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 /// The shipped defaults where they matter: a 2 h access window and
 /// `cache_min_ttl = 0`.
 fn cache(refresh_threshold: f64) -> Arc<DnsCache> {
-    Arc::new(DnsCache::new(DnsCacheConfig {
-        max_entries: 200,
-        eviction_strategy: EvictionStrategy::HitRate,
-        refresh_threshold,
-        batch_eviction_percentage: 0.2,
-        min_frequency: 0,
-        min_lfuk_score: 0.0,
-        shard_amount: 4,
-        access_window_secs: 7_200,
-        eviction_sample_size: 8,
-        lfuk_k_value: 0.5,
-        min_ttl: 0,
-        max_ttl: 86_400,
-    }))
+    refresh_cache(200, refresh_threshold, 7_200)
 }
 
-fn address() -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec!["192.0.2.1".parse::<IpAddr>().unwrap()]),
-    })
-}
-
-fn start_worker(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
-    let _ticker = coarse_clock::start_clock_ticker();
-    let (stale, stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(4_096));
-    cache.set_refresh_senders(RefreshSenders {
-        stale,
-        schedule: Some(Arc::clone(&timers)),
-    });
-    DnsCacheMaintenance::start_refresh_worker(
-        Arc::clone(cache),
-        resolver,
-        None,
-        stale_rx,
-        Some(timers),
-        RefreshPriority {
-            min_hit_rate: 0.0,
-            min_frequency: 0,
-        },
-    );
+fn start(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
+    start_worker(cache, resolver, no_ranking(), true);
 }
 
 /// Answers every query with one address and a fixed TTL, recording the
@@ -100,28 +63,17 @@ impl DnsResolver for FixedTtlResolver {
     }
 }
 
-async fn wait_until(within: Duration, done: impl Fn() -> bool) -> bool {
-    let deadline = tokio::time::Instant::now() + within;
-    while !done() {
-        if tokio::time::Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    true
-}
-
 /// An upstream that answers TTL 0 must not keep the worker querying it every
 /// second once the entry expires, with no client asking.
 #[tokio::test]
 async fn test_ttl_zero_answers_do_not_requery_upstream_every_second() {
     let cache = cache(0.5);
     let resolver = FixedTtlResolver::new(0);
-    start_worker(&cache, resolver.clone() as Arc<dyn DnsResolver>);
+    start(&cache, resolver.clone() as Arc<dyn DnsResolver>);
     coarse_clock::tick();
     let inserted = coarse_clock::coarse_now_secs();
     // Due at +2, expires at +4, stale grace ends at +8.
-    cache.insert("zero.example", RecordType::A, address(), 4, None);
+    cache.insert("zero.example", RecordType::A, address(OLD_IP), 4, None);
 
     tokio::time::sleep(Duration::from_millis(9_500)).await;
 
@@ -132,17 +84,49 @@ async fn test_ttl_zero_answers_do_not_requery_upstream_every_second() {
     );
 }
 
+/// Past expiry any answer beats the stale one, so a renewal then stores even
+/// an answer that ends no later; only a live entry declines one.
+#[tokio::test]
+async fn test_renewal_of_an_expired_entry_stores_any_answer() {
+    // TTL 3 at threshold 1.0 with the 60 s lead out of reach: due at +3,
+    // the second it expires.
+    let cache = cache(1.0);
+    let resolver = FixedTtlResolver::new(0);
+    start(&cache, resolver.clone() as Arc<dyn DnsResolver>);
+    coarse_clock::tick();
+    let inserted = coarse_clock::coarse_now_secs();
+    cache.insert("expired.example", RecordType::A, address(OLD_IP), 3, None);
+
+    assert!(
+        wait_until(Duration::from_secs(6), || !resolver
+            .calls_since(inserted)
+            .is_empty())
+        .await
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(
+        cache
+            .metrics()
+            .optimistic_refreshes
+            .load(std::sync::atomic::Ordering::Relaxed),
+        1,
+        "the TTL 0 answer was stored, not declined; calls at {:?}",
+        resolver.calls_since(inserted)
+    );
+}
+
 /// Compaction must leave alone an entry whose declined renewal already has
 /// its one more attempt pending.
 #[tokio::test]
 async fn test_compaction_does_not_requery_a_declined_renewal() {
     let cache = cache(0.5);
     let resolver = FixedTtlResolver::new(1);
-    start_worker(&cache, resolver.clone() as Arc<dyn DnsResolver>);
+    start(&cache, resolver.clone() as Arc<dyn DnsResolver>);
     coarse_clock::tick();
     let inserted = coarse_clock::coarse_now_secs();
     // Due at +5 with 5 s left; the upstream offers 1 s, so it is declined.
-    cache.insert("declined.example", RecordType::A, address(), 10, None);
+    cache.insert("declined.example", RecordType::A, address(OLD_IP), 10, None);
 
     assert!(
         wait_until(Duration::from_secs(8), || !resolver

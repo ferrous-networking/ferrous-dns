@@ -135,13 +135,15 @@ fn test_timers_due_in_the_same_second_are_all_taken() {
 }
 
 #[test]
-fn test_retain_drops_rejected_timers_and_keeps_the_count() {
+fn test_sweep_drops_rejected_timers_and_keeps_the_count() {
     let mut schedule = RefreshSchedule::default();
-    for i in 0..10u64 {
+    for i in 1..=10u64 {
         schedule.register(timer(&format!("t-{i}.example"), i, i % 3 == 0));
     }
 
-    schedule.retain(|key| key.domain.ends_with("2.example") || key.domain.ends_with("3.example"));
+    let keep =
+        |key: &CacheKey| key.domain.ends_with("2.example") || key.domain.ends_with("3.example");
+    assert_eq!(schedule.sweep(0, usize::MAX, keep), None);
 
     assert_eq!(schedule.len(), 2);
     let due: Vec<String> = schedule
@@ -150,4 +152,25 @@ fn test_retain_drops_rejected_timers_and_keeps_the_count() {
         .map(|timer| timer.key.domain.to_string())
         .collect();
     assert_eq!(due, vec!["t-2.example", "t-3.example"]);
+}
+
+/// A sweep spreads over steps of `budget` timers, resuming where it left off,
+/// and ends once every second has been visited.
+#[test]
+fn test_sweep_resumes_until_every_timer_is_visited() {
+    let mut schedule = RefreshSchedule::default();
+    for i in 1..=100u64 {
+        schedule.register(timer(&format!("t-{i}.example"), i, false));
+    }
+
+    let mut from = 0;
+    let mut steps = 0;
+    while let Some(next) = schedule.sweep(from, 10, |_| false) {
+        assert!(next > from, "each step moves forward");
+        from = next;
+        steps += 1;
+    }
+
+    assert_eq!(steps, 9, "100 timers at 10 a step take 10 steps");
+    assert!(schedule.is_empty());
 }

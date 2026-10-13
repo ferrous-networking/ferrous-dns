@@ -1,17 +1,14 @@
 //! The refresh worker, end to end: timers armed by the cache, claimed as they
 //! come due, and renewals run under the concurrency limit.
 //!
-//! This replaces the per-minute scan and its pacer. The scan coupled renewal
-//! to its own cadence: a candidate waited up to a cycle to be found and up to
-//! another to be drained, so an entry whose TTL was short next to that window
-//! went stale before its renewal, and `cache_min_ttl` had to stay above 240 s
-//! for the job to keep up. Each entry now arms its own timer, so it is renewed
-//! on time whatever its TTL.
-//!
-//! What the old tests pinned and still holds: a serve-stale repair never waits
-//! behind prefetches, a renewal no longer due spends no upstream query, hot
-//! entries go before cold ones when renewals outnumber the permits, and
-//! nothing due is dropped by policy.
+//! Each entry arms its own timer, so it is renewed on time whatever its TTL.
+//! A serve-stale repair never waits behind renewals, a timer that is no
+//! longer the entry's spends no upstream query, hot entries go before cold
+//! ones when renewals outnumber the permits, and nothing due is dropped by
+//! policy.
+
+#[path = "support/refresh.rs"]
+mod refresh;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -19,54 +16,19 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
-use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
-    RefreshPriority, RefreshRequest, RefreshSenders, ScheduledRefresh, TimerInbox,
+use ferrous_dns_infrastructure::dns::{CachedData, ColdThresholds, DnsCache, ScheduledRefresh};
+use refresh::{
+    address, cached_addresses, cname, no_ranking, refresh_cache, start_worker, wait_until, NEW_IP,
+    OLD_IP,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, Semaphore};
-
-const OLD_IP: &str = "192.0.2.1";
-const NEW_IP: &str = "192.0.2.2";
+use tokio::sync::Semaphore;
 
 fn create_cache_with(max_entries: usize, refresh_threshold: f64) -> Arc<DnsCache> {
-    create_cache(max_entries, refresh_threshold, u64::MAX)
-}
-
-fn create_cache(
-    max_entries: usize,
-    refresh_threshold: f64,
-    access_window_secs: u64,
-) -> Arc<DnsCache> {
-    Arc::new(DnsCache::new(DnsCacheConfig {
-        max_entries,
-        eviction_strategy: EvictionStrategy::HitRate,
-        refresh_threshold,
-        batch_eviction_percentage: 0.2,
-        min_frequency: 0,
-        min_lfuk_score: 0.0,
-        shard_amount: 4,
-        access_window_secs,
-        eviction_sample_size: 8,
-        lfuk_k_value: 0.5,
-        min_ttl: 0,
-        max_ttl: 86_400,
-    }))
-}
-
-fn make_ip_data(ip: &str) -> CachedData {
-    let addr: IpAddr = ip.parse().expect("IP de teste inválido");
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
-}
-
-/// A CNAME never enters L1, so every lookup of it is an L2 hit and counts.
-fn countable() -> CachedData {
-    CachedData::CanonicalName(Arc::from("target.example"))
+    refresh_cache(max_entries, refresh_threshold, u64::MAX)
 }
 
 fn insert_entries(cache: &DnsCache, count: usize, ttl: u32) {
@@ -74,78 +36,11 @@ fn insert_entries(cache: &DnsCache, count: usize, ttl: u32) {
         cache.insert(
             &format!("queued-{i}.com"),
             RecordType::A,
-            make_ip_data(OLD_IP),
+            address(OLD_IP),
             ttl,
             None,
         );
     }
-}
-
-fn no_ranking() -> RefreshPriority {
-    RefreshPriority {
-        min_hit_rate: 0.0,
-        min_frequency: 0,
-    }
-}
-
-/// The two ways into a running worker.
-struct Worker {
-    stale: mpsc::Sender<RefreshRequest>,
-    timers: Arc<TimerInbox>,
-}
-
-/// Wires `cache` to a new worker over `resolver`, as `setup_cache_maintenance`
-/// does, and starts the coarse clock ticking so timers come due.
-fn start_worker(
-    cache: &Arc<DnsCache>,
-    resolver: Arc<dyn DnsResolver>,
-    priority: RefreshPriority,
-    optimistic: bool,
-) -> Worker {
-    let _ticker = coarse_clock::start_clock_ticker();
-    let (stale, stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(4_096));
-    let wired = optimistic.then(|| Arc::clone(&timers));
-    cache.set_refresh_senders(RefreshSenders {
-        stale: stale.clone(),
-        schedule: wired.clone(),
-    });
-    DnsCacheMaintenance::start_refresh_worker(
-        Arc::clone(cache),
-        resolver,
-        None,
-        stale_rx,
-        wired,
-        priority,
-    );
-    Worker { stale, timers }
-}
-
-/// Polls `done` every 10 ms for up to `within`, so a hang fails the test
-/// instead of blocking it.
-async fn wait_until(within: Duration, done: impl Fn() -> bool) -> bool {
-    let deadline = tokio::time::Instant::now() + within;
-    while !done() {
-        if tokio::time::Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    true
-}
-
-/// What L2 holds for `domain`, read on a fresh thread so this thread's L1
-/// copy cannot answer instead.
-fn cached_addresses(cache: &Arc<DnsCache>, domain: &str) -> Option<Vec<IpAddr>> {
-    let cache = Arc::clone(cache);
-    let domain = domain.to_string();
-    std::thread::spawn(move || {
-        cache
-            .get(&domain, &RecordType::A)
-            .and_then(|(data, _, _, _)| data.as_ip_addresses().map(|a| a.as_ref().clone()))
-    })
-    .join()
-    .unwrap()
 }
 
 /// Records, in order, the domains it was asked for, with the coarse second
@@ -190,6 +85,43 @@ impl DnsResolver for RecordingResolver {
             .push((query.domain.to_string(), coarse_clock::coarse_now_secs()));
         Ok(DnsResolution {
             min_ttl: self.ttl,
+            ..DnsResolution::new(vec![NEW_IP.parse().unwrap()], false)
+        })
+    }
+}
+
+/// A caching upstream near the end of its copy: answers `first_ttl` once,
+/// then `then_ttl` after its copy rolled over.
+struct RolloverResolver {
+    calls: AtomicUsize,
+    first_ttl: u32,
+    then_ttl: u32,
+}
+
+impl RolloverResolver {
+    fn new(first_ttl: u32, then_ttl: u32) -> Arc<Self> {
+        Arc::new(Self {
+            calls: AtomicUsize::new(0),
+            first_ttl,
+            then_ttl,
+        })
+    }
+
+    fn count(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl DnsResolver for RolloverResolver {
+    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        let ttl = if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            self.first_ttl
+        } else {
+            self.then_ttl
+        };
+        Ok(DnsResolution {
+            min_ttl: Some(ttl),
             ..DnsResolution::new(vec![NEW_IP.parse().unwrap()], false)
         })
     }
@@ -240,8 +172,7 @@ impl DnsResolver for GatedResolver {
 
 // ── Renewing on time ────────────────────────────────────────────────────────
 
-/// The case the scan could not serve: a TTL shorter than its two-cycle
-/// window. The entry is renewed before it expires, not repaired after.
+/// A TTL of a few seconds is renewed before it expires, not repaired after.
 #[tokio::test]
 async fn test_entry_is_renewed_before_it_expires() {
     let cache = create_cache_with(200, 0.75);
@@ -254,13 +185,7 @@ async fn test_entry_is_renewed_before_it_expires() {
     );
     coarse_clock::tick();
     let inserted_at = coarse_clock::coarse_now_secs();
-    cache.insert(
-        "short.example",
-        RecordType::A,
-        make_ip_data(OLD_IP),
-        3,
-        None,
-    );
+    cache.insert("short.example", RecordType::A, address(OLD_IP), 3, None);
 
     assert!(
         wait_until(Duration::from_secs(5), || resolver.count() >= 1).await,
@@ -317,7 +242,7 @@ async fn test_renewal_arms_the_next_renewal() {
         no_ranking(),
         true,
     );
-    cache.insert("loop.example", RecordType::A, countable(), 2, None);
+    cache.insert("loop.example", RecordType::A, cname(), 2, None);
     let (stop, client) = keep_asking(&cache, "loop.example", Duration::from_millis(300));
 
     let renewed = wait_until(Duration::from_secs(6), || resolver.count() >= 3).await;
@@ -345,7 +270,7 @@ async fn test_short_ttl_stops_renewing_once_nobody_asks() {
         no_ranking(),
         true,
     );
-    cache.insert("once.example", RecordType::A, countable(), 4, None);
+    cache.insert("once.example", RecordType::A, cname(), 4, None);
 
     tokio::time::sleep(Duration::from_millis(5_500)).await;
     assert_eq!(
@@ -386,7 +311,7 @@ async fn test_a_burst_of_due_entries_is_all_renewed() {
 #[tokio::test]
 async fn test_idle_entry_is_renewed_again_once_it_is_used() {
     // Due 4 s after insertion, with a 2 s window: idle by the time it is due.
-    let cache = create_cache(200, 0.014, 2);
+    let cache = refresh_cache(200, 0.014, 2);
     let resolver = RecordingResolver::new(Some(300));
     let _worker = start_worker(
         &cache,
@@ -394,7 +319,7 @@ async fn test_idle_entry_is_renewed_again_once_it_is_used() {
         no_ranking(),
         true,
     );
-    cache.insert("idle.example", RecordType::A, countable(), 300, None);
+    cache.insert("idle.example", RecordType::A, cname(), 300, None);
 
     tokio::time::sleep(Duration::from_millis(5_200)).await;
     assert_eq!(resolver.count(), 0, "an idle entry must not be renewed");
@@ -416,13 +341,7 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
         no_ranking(),
         true,
     );
-    cache.insert(
-        "later.example",
-        RecordType::A,
-        make_ip_data(OLD_IP),
-        3600,
-        None,
-    );
+    cache.insert("later.example", RecordType::A, address(OLD_IP), 3600, None);
     let now = coarse_clock::coarse_now_secs();
     for domain in ["later.example", "missing.example"] {
         worker
@@ -448,26 +367,22 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
 /// A caching upstream answers with what is left of its own copy, and two
 /// anycast nodes can be minutes apart: Cloudflare answered 560, 408 and then
 /// 14 for the same name within six seconds. A renewal must not trade a valid
-/// entry for a shorter-lived one. The entry is kept and renewed again when it
-/// expires, by which time the upstream's copy has rolled over.
+/// entry for a shorter-lived one. The entry is kept, and tried once more a
+/// second before it expires, when the upstream's copy has rolled over.
 #[tokio::test]
 async fn test_renewal_never_shortens_a_valid_entry() {
-    // TTL 6 at threshold 0.5: due 3 s in, with 3 s left; the upstream offers 1.
+    // TTL 6 at threshold 0.5: due 3 s in, with 3 s left; the upstream offers
+    // 1 s, so it is declined and tried again 2 s later, with 1 s left, when
+    // its copy has rolled over to 2 s.
     let cache = create_cache_with(200, 0.5);
-    let resolver = RecordingResolver::new(Some(1));
+    let resolver = RolloverResolver::new(1, 2);
     let _worker = start_worker(
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
         true,
     );
-    cache.insert(
-        "anycast.example",
-        RecordType::A,
-        make_ip_data(OLD_IP),
-        6,
-        None,
-    );
+    cache.insert("anycast.example", RecordType::A, address(OLD_IP), 6, None);
 
     assert!(wait_until(Duration::from_secs(5), || resolver.count() >= 1).await);
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -478,14 +393,44 @@ async fn test_renewal_never_shortens_a_valid_entry() {
     );
 
     assert!(
-        wait_until(Duration::from_secs(6), || resolver.count() >= 2).await,
-        "the entry is renewed again once it expires"
+        wait_until(Duration::from_secs(4), || resolver.count() >= 2).await,
+        "the entry is tried once more before it expires"
     );
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(
         cached_addresses(&cache, "anycast.example"),
         Some(vec![NEW_IP.parse().unwrap()]),
-        "past its own expiry, any answer extends it"
+        "the copy that rolled over extends it, so it is taken"
+    );
+    assert_eq!(
+        cache.metrics().stale_hits.load(Ordering::Relaxed),
+        0,
+        "the entry never went stale"
+    );
+}
+
+/// A declined renewal gets one more attempt only; after that the entry runs
+/// out its TTL and serve-stale takes over.
+#[tokio::test]
+async fn test_declined_renewal_is_tried_once_more_only() {
+    // TTL 10 at 0.5: due at +5 with 5 s left, offered 0 s: declined, tried
+    // again at +9 with 1 s left, declined again, and no third attempt.
+    let cache = create_cache_with(200, 0.5);
+    let resolver = RecordingResolver::new(Some(0));
+    let _worker = start_worker(
+        &cache,
+        resolver.clone() as Arc<dyn DnsResolver>,
+        no_ranking(),
+        true,
+    );
+    cache.insert("stingy.example", RecordType::A, address(OLD_IP), 10, None);
+
+    assert!(wait_until(Duration::from_secs(12), || resolver.count() >= 2).await);
+    tokio::time::sleep(Duration::from_millis(4_000)).await;
+    assert_eq!(
+        resolver.count(),
+        2,
+        "a TTL 0 answer is declined, tried once more, and then left alone"
     );
 }
 
@@ -502,13 +447,7 @@ async fn test_every_upstream_servfailing_gets_exactly_one_retry() {
         true,
     );
     // Due a second in; the retry lands halfway through the 7 s left.
-    cache.insert(
-        "flaky.example",
-        RecordType::A,
-        make_ip_data(OLD_IP),
-        8,
-        None,
-    );
+    cache.insert("flaky.example", RecordType::A, address(OLD_IP), 8, None);
 
     assert!(
         wait_until(Duration::from_secs(6), || resolver.count() >= 2).await,
@@ -536,7 +475,7 @@ async fn test_other_failures_wait_for_compaction_to_retry() {
         no_ranking(),
         true,
     );
-    cache.insert("slow.example", RecordType::A, countable(), 300, None);
+    cache.insert("slow.example", RecordType::A, cname(), 300, None);
 
     assert!(wait_until(Duration::from_secs(4), || resolver.count() >= 1).await);
     tokio::time::sleep(Duration::from_millis(2_200)).await;
@@ -590,7 +529,8 @@ async fn test_stale_repair_goes_ahead_of_due_backlog() {
         .send((Arc::from("urgent.example"), RecordType::A))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The worker has taken the repair off the queue before a permit frees.
+    assert!(wait_until(Duration::from_secs(2), || worker.stale.capacity() == 128).await);
     resolver.gate.add_permits(1);
 
     assert!(wait_until(Duration::from_secs(2), || calls() >= 17).await);
@@ -602,54 +542,55 @@ async fn test_stale_repair_goes_ahead_of_due_backlog() {
     resolver.gate.add_permits(64);
 }
 
+/// When more entries fall due together than there are permits, the hot ones
+/// start first, and the cold ones are still renewed after.
 #[tokio::test]
 async fn test_due_backlog_starts_hot_entries_first() {
     let cache = create_cache_with(200, 0.0);
-    let resolver = RecordingResolver::new(Some(300));
+    let resolver = Arc::new(GatedResolver {
+        calls: Mutex::new(Vec::new()),
+        gate: Semaphore::new(0),
+    });
+    let _worker = start_worker(
+        &cache,
+        resolver.clone() as Arc<dyn DnsResolver>,
+        ColdThresholds {
+            min_hit_rate: 0.0,
+            min_frequency: 3,
+        },
+        true,
+    );
+    coarse_clock::tick();
+    // 36 entries fall due in the same second, for 16 permits; 10 are hot.
     let hot: Vec<String> = (0..10).map(|i| format!("hot-{i}.example")).collect();
-    let cold: Vec<String> = (0..10).map(|i| format!("cold-{i}.example")).collect();
+    let cold: Vec<String> = (0..26).map(|i| format!("cold-{i}.example")).collect();
     for domain in cold.iter().chain(hot.iter()) {
-        cache.insert(domain, RecordType::A, countable(), 300, None);
+        cache.insert(domain, RecordType::A, cname(), 300, None);
     }
     for domain in &hot {
         for _ in 0..5 {
             assert!(cache.get(domain, &RecordType::A).is_some());
         }
     }
-    let worker = start_worker(
-        &cache,
-        resolver.clone() as Arc<dyn DnsResolver>,
-        RefreshPriority {
-            min_hit_rate: 0.0,
-            min_frequency: 3,
-        },
-        true,
+    let calls = || resolver.calls.lock().unwrap().len();
+    assert!(
+        wait_until(Duration::from_secs(4), || calls() == 16).await,
+        "16 renewals take every permit; calls={}",
+        calls()
     );
-    // A second from now, when every entry, stored with threshold 0, is due.
-    let due_at_secs = coarse_clock::coarse_now_secs() + 1;
-    for domain in cold.iter().chain(hot.iter()) {
-        worker
-            .timers
-            .push(ScheduledRefresh {
-                due_at_secs,
-                key: CacheKey::new(domain, RecordType::A),
-                retry: false,
-            })
-            .unwrap();
-    }
+    let started: Vec<String> = resolver.calls.lock().unwrap().clone();
+    assert!(
+        started[..10].iter().all(|domain| hot.contains(domain)),
+        "the hot entries must take the first permits; order={started:?}"
+    );
+
+    resolver.gate.add_permits(64);
 
     assert!(
-        wait_until(Duration::from_secs(4), || resolver.count() >= 20).await,
-        "cold entries are renewed too, only later; renewals={}",
-        resolver.count()
+        wait_until(Duration::from_secs(4), || calls() >= 36).await,
+        "cold entries are renewed too, only later; calls={}",
+        calls()
     );
-    let order = resolver.domains();
-    for domain in &order[..10] {
-        assert!(
-            hot.contains(domain),
-            "the hot entries must start first; order={order:?}"
-        );
-    }
 }
 
 // ── Optimistic refresh off ──────────────────────────────────────────────────
@@ -666,7 +607,7 @@ async fn test_stale_repair_runs_with_optimistic_refresh_off() {
     );
     // TTL 3 (grace 6 s): the coarse clock moves in whole seconds, so a 2 s
     // grace leaves no margin after the sleep.
-    cache.insert("plain.example", RecordType::A, countable(), 3, None);
+    cache.insert("plain.example", RecordType::A, cname(), 3, None);
 
     tokio::time::sleep(Duration::from_millis(3_200)).await;
     coarse_clock::tick();
@@ -734,7 +675,7 @@ impl DnsResolver for IndeterminateResolver {
     }
 }
 
-/// R1. An Indeterminate refresh is a validation that could not run, not a
+/// An Indeterminate refresh is a validation that could not run, not a
 /// verdict on the zone. The entry validated when it was stored keeps serving
 /// until its own TTL ends, and the unvalidated answer does not replace it.
 #[tokio::test]
@@ -815,7 +756,7 @@ async fn ttl_after_repair(cache: &Arc<DnsCache>, resolver: WireResolver) -> (Cac
     (data, remaining_ttl.unwrap_or(0))
 }
 
-/// S19. A name that stopped existing is renewed for the negative TTL, not
+/// A name that stopped existing is renewed for the negative TTL, not
 /// for the hours its positive answer had.
 #[tokio::test]
 async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
@@ -823,7 +764,7 @@ async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
     cache.insert(
         "queued-0.com",
         RecordType::A,
-        make_ip_data("1.2.3.4"),
+        address("1.2.3.4"),
         7_200,
         None,
     );
@@ -838,7 +779,7 @@ async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
     );
 }
 
-/// S20. A cached NXDOMAIN is renewed for the SOA's current negative TTL.
+/// A cached NXDOMAIN is renewed for the SOA's current negative TTL.
 #[tokio::test]
 async fn test_negative_entry_renewal_follows_the_new_soa_ttl() {
     let cache = create_cache_with(200, 0.0);

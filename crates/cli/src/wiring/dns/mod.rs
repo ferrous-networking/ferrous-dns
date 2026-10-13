@@ -20,7 +20,7 @@ use ferrous_dns_infrastructure::dns::{
     cache_maintenance::DnsCacheMaintenance,
     dnssec::DnssecStatsAdapter,
     resolver::{LocalPtrResolver, LocalWildcardResolver, PtrRegistry, WildcardRegistry},
-    DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager, RefreshPriority,
+    ColdThresholds, DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager,
     RefreshSenders, ResponseIpFilterDetector, TimerInbox, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
@@ -382,15 +382,15 @@ impl DnsServices {
         // Eviction and compaction run regardless: nothing else bounds the cache.
         let maintenance = DnsCacheMaintenance::new(cache.clone(), MAINTENANCE_INTERVAL_SECS);
 
-        // The worker collects timers once a second, so each thread's share of
-        // the inbox has to hold a second of its inserts and renewals: anything
-        // past that is shed, and compaction re-arms the entry once overdue.
-        // Sized off the cache, with a floor for small ones. It grows as it
-        // fills, so its bound (~2.6 MB of timers per thread) is only reached
-        // under that load.
+        // The worker collects timers once a second, so each of the inbox's 16
+        // shards has to hold a second of the inserts and renewals the threads
+        // pushing to it make: anything past that is shed, and compaction arms
+        // the entry again. Sized off the cache, with a floor for small ones.
+        // A shard grows as it fills, so the bound (~10 MB of timers over all
+        // shards) is only reached under a burst that size.
         let timers = config.dns.cache_optimistic_refresh.then(|| {
             Arc::new(TimerInbox::new(
-                (config.dns.cache_max_entries / 4).clamp(4_096, 65_536),
+                (config.dns.cache_max_entries / 4).clamp(4_096, 16_384),
             ))
         });
         // The stale queue is shallower on purpose: those items are
@@ -402,10 +402,10 @@ impl DnsServices {
             stale: stale_tx,
             // Without it no entry arms a timer: nothing is renewed ahead of
             // expiry, and serve-stale repairs still run.
-            schedule: timers.clone(),
+            timers: timers.clone(),
         });
 
-        let priority = RefreshPriority {
+        let thresholds = ColdThresholds {
             min_hit_rate: config.dns.cache_min_hit_rate,
             min_frequency: config.dns.cache_min_frequency,
         };
@@ -425,7 +425,7 @@ impl DnsServices {
             Some(repos.query_log.clone()),
             stale_rx,
             timers,
-            priority,
+            thresholds,
         );
 
         Ok((

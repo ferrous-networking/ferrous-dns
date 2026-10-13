@@ -6,11 +6,11 @@
 
 use ferrous_dns_application::ports::DnsResolver;
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType, UpstreamPool, UpstreamStrategy};
-use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
+use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::{CachedResolver, CoreResolver};
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheAccess, DnsCacheConfig, DnsCacheMaintenance,
-    EvictionStrategy, PoolManager, RefreshPriority, RefreshRequest, ScheduledRefresh, TimerInbox,
+    CachedAddresses, CachedData, ColdThresholds, DnsCache, DnsCacheAccess, DnsCacheConfig,
+    DnsCacheMaintenance, EvictionStrategy, PoolManager, RefreshRequest, RefreshSenders, TimerInbox,
 };
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::{A, SOA};
@@ -478,40 +478,34 @@ fn cached_addresses(cache: &Arc<DnsCache>) -> Option<Vec<IpAddr>> {
 
 struct Worker {
     stale: mpsc::Sender<RefreshRequest>,
-    timers: Arc<TimerInbox>,
 }
 
+/// Wires `cache` to a new worker over `pm`, as the cli wiring does, so the
+/// entries stored after this arm their own refresh timers.
 fn start_worker(cache: &Arc<DnsCache>, pm: Arc<PoolManager>) -> Worker {
+    let _ticker = coarse_clock::start_clock_ticker();
     let (stale, stale_rx) = mpsc::channel(16);
     let timers = Arc::new(TimerInbox::new(16));
+    cache.set_refresh_senders(RefreshSenders {
+        stale: stale.clone(),
+        timers: Some(Arc::clone(&timers)),
+    });
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         Arc::new(CoreResolver::new(pm, TIMEOUT_MS, false)),
         None,
         stale_rx,
-        Some(Arc::clone(&timers)),
-        RefreshPriority {
+        Some(timers),
+        ColdThresholds {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },
     );
-    Worker { stale, timers }
+    Worker { stale }
 }
 
 fn request() -> RefreshRequest {
     (Arc::from(DOMAIN), RecordType::A)
-}
-
-/// The test entry's refresh timer, firing now. The entry falls due a second
-/// after it is stored, so this waits that second out first.
-async fn due_timer() -> ScheduledRefresh {
-    tokio::time::sleep(Duration::from_millis(1_100)).await;
-    coarse_clock::tick();
-    ScheduledRefresh {
-        due_at_secs: coarse_clock::coarse_now_secs(),
-        key: CacheKey::new(DOMAIN, RecordType::A),
-        retry: false,
-    }
 }
 
 /// Waits until `upstream` has seen `count` queries, then gives the worker a
@@ -578,16 +572,16 @@ async fn stale_repair_keeps_the_cached_answer_when_upstream_servfails() {
     );
 }
 
-/// S11. Same for a renewal ahead of expiry.
+/// S11. Same for a renewal ahead of expiry: the entry, stored with the
+/// worker running, falls due a second in.
 #[tokio::test]
 async fn optimistic_refresh_keeps_the_cached_answer_when_upstream_servfails() {
     let up = Responder::spawn(Behavior::rcode(ResponseCode::ServFail)).await;
     let pm = manager(vec![pool("only", UpstreamStrategy::Failover, 1, &[&up])]).await;
     let cache = create_cache();
+    let _worker = start_worker(&cache, pm);
     insert_ip(&cache, OLD_IP);
-    let worker = start_worker(&cache, pm);
 
-    worker.timers.push(due_timer().await).unwrap();
     wait_for_queries(&up, 1).await;
 
     assert_eq!(

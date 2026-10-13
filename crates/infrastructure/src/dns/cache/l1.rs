@@ -15,11 +15,12 @@ use std::sync::Arc;
 /// time; see [`L1Entry::pending_hits`]). Kept at 16 bytes so it still comes
 /// back in two registers on the hottest call in the resolver.
 type L1Hit = (Arc<Vec<IpAddr>>, CachedDnssecStatus, bool, u32, u16);
+const _: () = assert!(std::mem::size_of::<L1Hit>() == 16);
 
 struct L1Entry {
     addresses: Arc<Vec<IpAddr>>,
     dnssec_status: CachedDnssecStatus,
-    // Packs with `dnssec_status` and the counters below: the entry is 32
+    // Packs with `dnssec_status` and the counters below: the entry is 24
     // bytes, and a thread holds at most `L1_CAPACITY` of them.
     local_dns: bool,
     /// Hits served here and not yet counted on the L2 record. A hit served
@@ -27,13 +28,17 @@ struct L1Entry {
     /// and eviction read, so they are handed over in batches: at most once
     /// per second per thread, or as soon as the batch fills a `u16`. That
     /// keeps a hot name from bouncing one shared cache line between every
-    /// worker thread, and no hit is lost.
+    /// worker thread. A copy replaced by a renewal or a promotion hands its
+    /// batch to the caller, which counts it; one evicted from this thread's
+    /// LRU or cleared loses at most a second of hits, which only happens to a
+    /// name this thread has stopped serving.
     pending_hits: u16,
     expires_secs: u64,
     /// Low 32 bits of the coarse second the last batch was handed over in;
     /// only compared for equality, so the truncation is harmless.
     flushed_at_secs: u32,
 }
+const _: () = assert!(std::mem::size_of::<L1Entry>() == 24);
 
 struct L1State {
     cache: LruCache<CompactString, L1Entry, FxBuildHasher>,
@@ -130,13 +135,17 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
                     flushed,
                 ));
             }
-            state.cache.pop(key_str);
         }
+        // An expired copy stays until the promotion that follows this miss
+        // replaces it, which hands its batch over; one nobody promotes again
+        // ages out of the LRU.
         None
     })
 }
 
-/// Inserts a resolved entry into the thread-local L1 cache with an expiration timestamp.
+/// Inserts a resolved entry into the thread-local L1 cache with an expiration
+/// timestamp. Returns the hits the copy it replaced had batched, for the
+/// caller to count on the record.
 #[inline]
 pub fn l1_insert(
     domain: &str,
@@ -145,7 +154,7 @@ pub fn l1_insert(
     dnssec_status: CachedDnssecStatus,
     local_dns: bool,
     expires_secs: u64,
-) {
+) -> u16 {
     let type_str = record_type.as_str();
     let mut buf = [0u8; STACK_KEY_LEN];
     let key = match stack_key(&mut buf, type_str, domain) {
@@ -154,18 +163,22 @@ pub fn l1_insert(
     };
 
     L1_CACHE.with(|state| {
-        state.borrow_mut().cache.put(
-            key,
-            L1Entry {
-                addresses,
-                dnssec_status,
-                local_dns,
-                pending_hits: 0,
-                expires_secs,
-                flushed_at_secs: coarse_now_secs() as u32,
-            },
-        );
-    });
+        state
+            .borrow_mut()
+            .cache
+            .put(
+                key,
+                L1Entry {
+                    addresses,
+                    dnssec_status,
+                    local_dns,
+                    pending_hits: 0,
+                    expires_secs,
+                    flushed_at_secs: coarse_now_secs() as u32,
+                },
+            )
+            .map_or(0, |replaced| replaced.pending_hits)
+    })
 }
 
 /// Clears this thread's L1 cache and bumps the global generation

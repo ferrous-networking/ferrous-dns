@@ -6,39 +6,46 @@ use ferrous_dns_domain::RecordType;
 use std::cmp::Ordering;
 use std::sync::atomic::Ordering as AtomicOrdering;
 
-/// What sorts due renewals when they outnumber the worker's permits.
+/// Below these an entry counts as cold, and its renewal waits behind hot
+/// ones when more are due than the worker runs at once.
 ///
-/// Both only rank: every due entry is renewed in the end. Under pressure the
+/// They only rank: every due entry is renewed in the end. Under pressure the
 /// question is not which entry dies soonest but which death costs most: a hot
 /// entry that dies costs one slow query per client that wanted it, a cold one
 /// costs a single query.
 #[derive(Debug, Clone, Copy)]
-pub struct RefreshPriority {
-    /// Hits per minute, since the last renewal, below which an entry counts
-    /// as cold.
+pub struct ColdThresholds {
+    /// Hits per minute, since the last renewal.
     pub min_hit_rate: f64,
-    /// Lifetime hits below which an entry counts as cold. Keeps entries that
-    /// were only just inserted from displacing an established working set.
+    /// Lifetime hits. Keeps entries that were only just inserted from
+    /// displacing an established working set.
     pub min_frequency: u64,
 }
 
 /// A renewal the worker claimed and has yet to start.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DueRefresh {
     pub key: CacheKey,
-    /// Whether this is already the retry after every upstream answered
-    /// SERVFAIL.
+    /// Whether this is already the one more attempt after a renewal that did
+    /// not renew the entry.
     pub retry: bool,
     is_cold: bool,
     /// The instant past which the entry stops being usable at all.
     deadline_secs: u64,
 }
 
+impl DueRefresh {
+    fn rank(&self) -> (bool, u64) {
+        (self.is_cold, self.deadline_secs)
+    }
+}
+
 /// Hot before cold, then the earliest deadline, so `BinaryHeap` (a max-heap)
-/// pops the most urgent renewal first.
+/// pops the most urgent renewal first. Equal means equally urgent, which is
+/// all the heap asks; it says nothing about the key.
 impl Ord for DueRefresh {
     fn cmp(&self, other: &Self) -> Ordering {
-        (other.is_cold, other.deadline_secs).cmp(&(self.is_cold, self.deadline_secs))
+        other.rank().cmp(&self.rank())
     }
 }
 
@@ -48,12 +55,20 @@ impl PartialOrd for DueRefresh {
     }
 }
 
+impl PartialEq for DueRefresh {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank() == other.rank()
+    }
+}
+
+impl Eq for DueRefresh {}
+
 impl DnsCache {
     /// Whether renewing `record` is worth an upstream query: someone asked
     /// for it within `cache_access_window_secs`. A TTL shorter than
     /// `REFRESH_LEAD_SECS` renews more than once a minute, so it must also
-    /// have been asked for since its last renewal. Without that, one hit kept
-    /// a 5 s entry renewing every few seconds for the whole access window.
+    /// have been asked for since its last renewal; otherwise one hit would
+    /// keep a 5 s entry renewing every few seconds for the whole window.
     pub(super) fn is_worth_renewing(&self, record: &CachedRecord, now_secs: u64) -> bool {
         let last_access = record.counters.last_access.load(AtomicOrdering::Relaxed);
         if now_secs.saturating_sub(last_access) > self.access_window_secs {
@@ -62,70 +77,72 @@ impl DnsCache {
         u64::from(record.ttl) >= REFRESH_LEAD_SECS || last_access >= record.inserted_at_secs
     }
 
-    /// Turns a timer that fired into a claimed renewal, or spends it.
+    /// Turns a timer that fired into a claimed renewal.
     ///
-    /// A timer the record no longer matches, because it was renewed or
-    /// replaced since, is left alone: that renewal armed the timer that is
-    /// live now. Otherwise the timer is spent whatever happens, and the entry
-    /// is only claimed if it is still worth renewing (see
-    /// [`Self::is_worth_renewing`]), not past the end of its stale grace, and
-    /// not already being renewed by a serve-stale repair.
+    /// A timer that is not the entry's pending one is stale and spends
+    /// nothing: a renewal or a re-arm since replaced it. Otherwise the timer
+    /// is taken, and the entry is claimed only if it is still usable and
+    /// worth renewing (see [`Self::is_worth_renewing`]); one that is not is
+    /// parked, and its next hit arms it again.
     pub fn claim_due_refresh(
         &self,
         timer: &ScheduledRefresh,
         now_secs: u64,
-        priority: &RefreshPriority,
+        thresholds: &ColdThresholds,
     ) -> Option<DueRefresh> {
         let entry = self.cache.get(&timer.key)?;
         let record = entry.value();
-        if record.is_permanent() || record.is_marked_for_deletion() {
-            return None;
-        }
-        if record.refresh_due_at_secs(self.refresh_threshold) > now_secs {
-            return None;
-        }
-
-        if !self.is_worth_renewing(record, now_secs) {
-            // Left to expire. A hit before then finds the entry disarmed and
-            // arms it again.
-            record.disarm_refresh();
+        if record.is_permanent()
+            || record.is_marked_for_deletion()
+            || !record.try_claim_refresh_timer(timer.due_at_secs)
+        {
             return None;
         }
         if record.is_expired_at_secs(now_secs) && !record.is_stale_usable_at_secs(now_secs) {
+            record.lapse_claimed_refresh();
             return None;
         }
-        // A serve-stale repair in flight renews the entry, or, if it fails,
-        // leaves it armed for compaction to retry.
-        if !record.try_set_refreshing() {
-            return None;
+        if !self.is_worth_renewing(record, now_secs) {
+            record.park_claimed_refresh();
+            // A hit that read the state before the park armed nothing; the
+            // access it recorded is visible now, so it is not missed.
+            if !self.is_worth_renewing(record, now_secs) || !record.try_reclaim_parked_refresh() {
+                return None;
+            }
         }
 
         let hits = record.counters.hit_count.load(AtomicOrdering::Relaxed);
         Some(DueRefresh {
             key: timer.key.clone(),
             retry: timer.retry,
-            is_cold: record.hits_per_minute_since_refresh(now_secs) < priority.min_hit_rate
-                || hits < priority.min_frequency,
+            is_cold: record.hits_per_minute_since_refresh(now_secs) < thresholds.min_hit_rate
+                || hits < thresholds.min_frequency,
             deadline_secs: record.refresh_deadline_secs(),
         })
     }
 
-    /// Whether a claimed renewal is still worth an upstream query after
-    /// waiting for a permit. Releases the claim when it is not, and counts an
-    /// entry that died waiting as shed: renewals fell behind what was due.
-    pub(crate) fn is_still_refreshable(&self, key: &CacheKey, now_secs: u64) -> bool {
+    /// Starts a claimed renewal that got its permit. `false` means the caller
+    /// must not resolve: a renewal since replaced it, a serve-stale repair is
+    /// running, or the entry died waiting, which counts as shed because
+    /// renewals fell behind what was due.
+    ///
+    /// The claim held no in-flight bit while it waited, so a client served
+    /// stale meanwhile could still queue its own repair.
+    pub fn start_claimed_refresh(&self, key: &CacheKey, now_secs: u64) -> bool {
         let Some(entry) = self.cache.get(key) else {
             return false;
         };
         let record = entry.value();
+        if record.is_marked_for_deletion() || !record.try_start_claimed_refresh() {
+            return false;
+        }
         if record.is_expired_at_secs(now_secs) && !record.is_stale_usable_at_secs(now_secs) {
-            record.clear_refreshing();
             self.metrics
                 .optimistic_refresh_shed
                 .fetch_add(1, AtomicOrdering::Relaxed);
             return false;
         }
-        true
+        record.try_set_refreshing()
     }
 
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {

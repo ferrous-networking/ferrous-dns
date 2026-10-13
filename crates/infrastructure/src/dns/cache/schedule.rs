@@ -6,9 +6,9 @@
 //! work, and an entry is renewed on time whatever its TTL is relative to any
 //! maintenance interval.
 //!
-//! A timer holds only the key. Whether it is still the live one is read off
-//! the record when it fires: a record renewed or replaced since falls due
-//! later, and that renewal armed its own timer.
+//! A timer holds only the key and its second. The record keeps the second of
+//! its one pending timer, so a timer that fires for any other second is
+//! stale: a renewal or a re-arm since replaced it.
 
 use super::key::CacheKey;
 use std::collections::BTreeMap;
@@ -19,7 +19,8 @@ use std::sync::{Mutex, PoisonError};
 /// would come before half its TTL (see [`refresh_due_at`]).
 pub const REFRESH_LEAD_SECS: u64 = 60;
 
-/// Shards of the [`TimerInbox`]; each thread pushes to one of them.
+/// Shards of the [`TimerInbox`]. Threads are spread over them round-robin, so
+/// past this many threads they share one.
 const INBOX_SHARDS: usize = 16;
 
 static NEXT_INBOX_SHARD: AtomicUsize = AtomicUsize::new(0);
@@ -34,7 +35,8 @@ thread_local! {
 pub struct ScheduledRefresh {
     pub due_at_secs: u64,
     pub key: CacheKey,
-    /// The one retry a renewal gets after every upstream answered SERVFAIL.
+    /// The one more attempt a renewal on a timer gets when it did not renew
+    /// the entry. It gets no further one.
     pub retry: bool,
 }
 
@@ -42,11 +44,10 @@ pub struct ScheduledRefresh {
 /// for renewal: at `threshold` of its TTL, or `REFRESH_LEAD_SECS` before it
 /// expires, whichever comes first.
 ///
-/// The lead never pulls the renewal before half the TTL. Without that bound
-/// a TTL just above the lead would be renewed every second or so, since each
-/// renewal brings the same TTL back; the scan this replaced was capped at
-/// one pass a minute, so it never showed. Never earlier than the second after
-/// insertion either.
+/// The lead never pulls the renewal before half the TTL: otherwise a TTL just
+/// above the lead would be renewed every second or so, since each renewal
+/// brings the same TTL back. A threshold below 0.5 still applies as set.
+/// Never earlier than the second after insertion either.
 pub fn refresh_due_at(inserted_at_secs: u64, ttl: u32, threshold: f64) -> u64 {
     let ttl = u64::from(ttl);
     let proportional = (ttl as f64 * threshold.clamp(0.0, 1.0)) as u64;
@@ -61,13 +62,12 @@ pub fn refresh_due_at(inserted_at_secs: u64, ttl: u32, threshold: f64) -> u64 {
 /// Where the cache leaves refresh timers for the worker, which collects them
 /// once a second.
 ///
-/// Arming a timer is on the insert path, so it is kept to an uncontended
-/// lock and a push: each thread has its own shard, and nothing is woken,
-/// since no timer falls due before the worker's next tick anyway. Bounded per
-/// shard: a thread that armed `capacity` timers since the last collection
-/// gets the next one back, and the caller counts it as shed. The bound is per
-/// thread rather than split between threads, so a burst that lands on one
-/// thread gets all of it.
+/// Arming a timer is on the insert path, so it is kept to a lock that is
+/// rarely contended and a push: each thread pushes to the shard it was given,
+/// and nothing is woken, since no timer falls due before the worker's next
+/// tick anyway. Each shard holds up to `capacity_per_shard` timers between
+/// collections, so a burst that lands on one thread can use a whole shard;
+/// past that the timer comes back to the caller, which counts it as shed.
 #[derive(Debug)]
 pub struct TimerInbox {
     shards: Box<[Mutex<Vec<ScheduledRefresh>>]>,
@@ -75,10 +75,10 @@ pub struct TimerInbox {
 }
 
 impl TimerInbox {
-    pub fn new(capacity_per_thread: usize) -> Self {
+    pub fn new(capacity_per_shard: usize) -> Self {
         Self {
             shards: (0..INBOX_SHARDS).map(|_| Mutex::default()).collect(),
-            shard_capacity: capacity_per_thread.max(1),
+            shard_capacity: capacity_per_shard.max(1),
         }
     }
 
@@ -167,17 +167,46 @@ impl RefreshSchedule {
         self.len == 0
     }
 
-    /// Drops the timers `keep` rejects, such as those for keys no longer
-    /// cached. Linear in the timers held, so it is for the rare sweep.
-    pub fn retain(&mut self, mut keep: impl FnMut(&CacheKey) -> bool) {
-        let mut kept = 0;
-        for by_second in [&mut self.timers, &mut self.retries] {
-            by_second.retain(|_, keys| {
+    /// One step of a sweep that drops the timers `keep` rejects, such as
+    /// those whose entry was evicted. It visits the seconds from `from` on
+    /// until it has looked at `budget` timers, and returns the second to
+    /// resume from, or `None` once it has been through them all. The first
+    /// step (from 0) also sweeps the retries, of which there are few.
+    pub fn sweep(
+        &mut self,
+        from: u64,
+        budget: usize,
+        mut keep: impl FnMut(&CacheKey) -> bool,
+    ) -> Option<u64> {
+        let mut removed = 0;
+        if from == 0 {
+            self.retries.retain(|_, keys| {
+                let before = keys.len();
                 keys.retain(&mut keep);
-                kept += keys.len();
+                removed += before - keys.len();
                 !keys.is_empty()
             });
         }
-        self.len = kept;
+        let mut visited = 0;
+        let mut emptied = Vec::new();
+        let mut resume = None;
+        for (&second, keys) in self.timers.range_mut(from..) {
+            if visited >= budget {
+                resume = Some(second);
+                break;
+            }
+            visited += keys.len();
+            let before = keys.len();
+            keys.retain(&mut keep);
+            removed += before - keys.len();
+            if keys.is_empty() {
+                emptied.push(second);
+            }
+        }
+        for second in emptied {
+            self.timers.remove(&second);
+        }
+        self.len -= removed;
+        resume
     }
 }

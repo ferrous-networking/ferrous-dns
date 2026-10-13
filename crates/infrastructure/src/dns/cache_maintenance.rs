@@ -1,7 +1,7 @@
 use super::cache::negative_cache::negative_ttl;
 use super::cache::{
-    coarse_clock, CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, DueRefresh,
-    RefreshPriority, RefreshRequest, RefreshSchedule, TimerInbox,
+    coarse_clock, CachedAddresses, CachedData, CachedDnssecStatus, ColdThresholds, DnsCache,
+    DueRefresh, RefreshRequest, RefreshSchedule, TimerInbox,
 };
 
 use async_trait::async_trait;
@@ -31,16 +31,62 @@ const MAX_CONCURRENT_REFRESHES: usize = 16;
 /// sweeps out those whose entry was evicted or removed.
 const SWEEP_FACTOR: usize = 2;
 
+/// Timers one tick of a sweep looks at, so a sweep spreads over seconds
+/// rather than holding up the repairs queued behind it.
+const SWEEP_BUDGET: usize = 16_384;
+
 /// Why an entry reached the worker.
 ///
 /// `Stale` means a client has already been served a stale answer and is
 /// waiting on the real one, so it always goes first. `Due` and `Retry` are
-/// renewals ahead of expiry; only a `Due` one gets a retry.
+/// renewals on a timer, which may decline an answer that would not extend
+/// the entry; only a `Due` one gets one more attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshOrigin {
     Stale,
     Due,
     Retry,
+}
+
+/// What a renewal that got an answer did with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RefreshOutcome {
+    /// Stored, and the next timer armed.
+    Renewed,
+    /// Not stored: it would have ended the entry no later than it already
+    /// ends. A caching upstream answers with what is left of its own copy,
+    /// and two anycast nodes can be minutes apart; taking a copy that ends
+    /// sooner cuts a valid answer short, and one that ends at the same second
+    /// is the copy the entry already holds.
+    Declined,
+    /// Removed: the answer validated as Bogus.
+    Removed,
+    /// Not stored, and the entry kept as it was: validation could not run,
+    /// the answer held nothing to store, or the cache refused it.
+    Kept,
+}
+
+impl RefreshOrigin {
+    /// Seconds from now to the one more attempt a renewal that did not renew
+    /// the entry gets, given the life the entry has left. Only a renewal on a
+    /// first timer gets one: a declined answer may have a copy that rolled
+    /// over a second before expiry, and every upstream answering SERVFAIL is
+    /// usually transient. Any other case is left to compaction, or to
+    /// serve-stale once the entry expires.
+    fn retry_in(
+        self,
+        outcome: &Result<RefreshOutcome, DomainError>,
+        remaining_secs: u64,
+    ) -> Option<u64> {
+        if self != Self::Due || remaining_secs < 2 {
+            return None;
+        }
+        match outcome {
+            Ok(RefreshOutcome::Declined) => Some(remaining_secs - 1),
+            Err(DomainError::AllUpstreamsServfail) => Some(remaining_secs / 2),
+            _ => None,
+        }
+    }
 }
 
 /// Infrastructure adapter implementing `CacheMaintenancePort`.
@@ -80,17 +126,18 @@ impl DnsCacheMaintenance {
         }
     }
 
-    /// Resolves `domain` again and stores the answer. `ahead_of_expiry` is a
-    /// renewal on a timer, which may decline an answer that would not extend
-    /// the entry; a serve-stale repair has a client waiting and always stores.
+    /// Resolves `domain` again and stores the answer. A serve-stale repair
+    /// has a client waiting and always stores; a renewal on a timer declines
+    /// an answer that would not extend a live entry (see
+    /// [`RefreshOutcome::Declined`]).
     async fn refresh_entry(
         cache: &DnsCache,
         resolver: &dyn DnsResolver,
         query_log: Option<&dyn QueryLogRepository>,
         domain: &str,
         record_type: &RecordType,
-        ahead_of_expiry: bool,
-    ) -> Result<bool, DomainError> {
+        origin: RefreshOrigin,
+    ) -> Result<RefreshOutcome, DomainError> {
         let start = Instant::now();
 
         debug!(
@@ -112,9 +159,9 @@ impl DnsCacheMaintenance {
         match resolution.dnssec_status {
             Some(DnssecStatus::Bogus) => {
                 cache.remove(domain, record_type);
-                return Ok(false);
+                return Ok(RefreshOutcome::Removed);
             }
-            Some(DnssecStatus::Indeterminate) => return Ok(false),
+            Some(DnssecStatus::Indeterminate) => return Ok(RefreshOutcome::Kept),
             _ => {}
         }
 
@@ -125,7 +172,7 @@ impl DnsCacheMaintenance {
         } else if let Some(wire_bytes) = &resolution.upstream_wire_data {
             CachedData::WireData(wire_bytes.clone())
         } else {
-            return Ok(false);
+            return Ok(RefreshOutcome::Kept);
         };
         let dnssec_status = resolution.dnssec_status.map(CachedDnssecStatus::from);
         // An answer without records is NXDOMAIN or NODATA: keeping the entry's
@@ -134,24 +181,17 @@ impl DnsCacheMaintenance {
             .min_ttl
             .unwrap_or_else(|| negative_ttl(resolution.negative_soa_ttl));
 
-        // A caching upstream answers with what is left of its own copy, and
-        // two anycast nodes can be minutes apart. A positive answer that ends
-        // sooner than the entry already does would cut a valid answer short,
-        // and one that ends at the same time is the copy the entry already
-        // holds: renewing with it only starts a chain of ever shorter
-        // renewals. Either way, keep the entry and renew it again as it
-        // expires, by which time the upstream's copy has rolled over.
-        if ahead_of_expiry && resolution.min_ttl.is_some() {
-            if let Some(remaining) = cache.get_remaining_ttl(domain, record_type) {
-                if ttl.max(cache.min_ttl()) <= remaining {
-                    cache.schedule_refresh_in(domain, *record_type, remaining);
-                    return Ok(false);
-                }
+        // Only a positive answer to a live entry is declined: past expiry any
+        // answer beats a stale one, and a negative TTL is the zone's own.
+        if origin != RefreshOrigin::Stale && resolution.min_ttl.is_some() {
+            let remaining = cache.get_remaining_ttl(domain, record_type).unwrap_or(0);
+            if remaining > 0 && cache.clamp_ttl(ttl) <= remaining {
+                return Ok(RefreshOutcome::Declined);
             }
         }
 
         if !cache.refresh_record(domain, record_type, Some(ttl), new_data, dnssec_status) {
-            return Ok(false);
+            return Ok(RefreshOutcome::Kept);
         }
 
         if let Some(log) = query_log {
@@ -192,7 +232,7 @@ impl DnsCacheMaintenance {
             "Cache entry refreshed with new DNSSEC validation"
         );
 
-        Ok(true)
+        Ok(RefreshOutcome::Renewed)
     }
 
     /// Spawns the worker that renews cache entries.
@@ -201,29 +241,31 @@ impl DnsCacheMaintenance {
     /// refresh timers the cache arms in `timers` as it stores and renews
     /// entries. Each second it collects the timers armed since the last tick
     /// and claims those that came due. Up to `MAX_CONCURRENT_REFRESHES`
-    /// renewals run at once; when more are due, `priority` decides which go
-    /// first. `timers` is `None` with optimistic refresh off, and only repairs
-    /// arrive.
+    /// renewals run at once; when more are due, hot ones (by `thresholds`)
+    /// go first. `timers` is `None` with optimistic refresh off, and only
+    /// repairs arrive.
     pub fn start_refresh_worker(
         cache: Arc<DnsCache>,
         resolver: Arc<dyn DnsResolver>,
         query_log: Option<Arc<dyn QueryLogRepository>>,
         stale_rx: mpsc::Receiver<RefreshRequest>,
         timers: Option<Arc<TimerInbox>>,
-        priority: RefreshPriority,
+        thresholds: ColdThresholds,
     ) {
-        let sweep_at = cache.max_entries().saturating_mul(SWEEP_FACTOR);
+        let base_sweep_at = cache.max_entries().saturating_mul(SWEEP_FACTOR);
         let worker = RefreshWorker {
             cache,
             resolver,
             query_log,
-            priority,
+            thresholds,
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_REFRESHES)),
             timers,
             schedule: RefreshSchedule::default(),
             stale: VecDeque::new(),
             due: BinaryHeap::new(),
-            sweep_at,
+            base_sweep_at,
+            sweep_at: base_sweep_at,
+            sweep_from: None,
         };
         tokio::spawn(worker.run(stale_rx));
     }
@@ -233,7 +275,7 @@ struct RefreshWorker {
     cache: Arc<DnsCache>,
     resolver: Arc<dyn DnsResolver>,
     query_log: Option<Arc<dyn QueryLogRepository>>,
-    priority: RefreshPriority,
+    thresholds: ColdThresholds,
     permits: Arc<Semaphore>,
     /// Collected on the tick; arming a timer never wakes this task.
     timers: Option<Arc<TimerInbox>>,
@@ -242,8 +284,14 @@ struct RefreshWorker {
     stale: VecDeque<RefreshRequest>,
     /// Claimed renewals waiting for a permit, most urgent first.
     due: BinaryHeap<DueRefresh>,
-    /// Timer count past which the next tick sweeps out orphaned timers.
+    /// The fewest timers a sweep ever waits for.
+    base_sweep_at: usize,
+    /// Timer count past which a sweep starts. A cache over its capacity can
+    /// hold more live timers than the base, so each sweep sets it from what
+    /// it left, which keeps sweeps from running back to back.
     sweep_at: usize,
+    /// The second the sweep in progress resumes from.
+    sweep_from: Option<u64>,
 }
 
 impl RefreshWorker {
@@ -288,21 +336,35 @@ impl RefreshWorker {
     }
 
     fn claim_due(&mut self) {
+        // In step with the clock the records are stamped with, so a timer
+        // fires on its second, not up to a second after it.
+        coarse_clock::tick();
         self.collect_timers();
         let now = coarse_clock::coarse_now_secs();
         for timer in self.schedule.take_due(now) {
-            if let Some(due) = self.cache.claim_due_refresh(&timer, now, &self.priority) {
+            if let Some(due) = self.cache.claim_due_refresh(&timer, now, &self.thresholds) {
                 self.due.push(due);
             }
         }
+        self.sweep_step();
+    }
 
-        if self.schedule.len() > self.sweep_at {
-            let cache = &self.cache;
-            self.schedule.retain(|key| cache.holds(key));
-            // A cache over its capacity can hold more live timers than the
-            // bound; moving it keeps the sweep from running every second.
+    /// Drops a slice of the timers whose entry is gone. They would cost
+    /// nothing when they fire, but under eviction churn they pile up for as
+    /// long as the longest TTL.
+    fn sweep_step(&mut self) {
+        let from = match self.sweep_from {
+            Some(from) => from,
+            None if self.schedule.len() > self.sweep_at => 0,
+            None => return,
+        };
+        let cache = &self.cache;
+        self.sweep_from = self
+            .schedule
+            .sweep(from, SWEEP_BUDGET, |key| cache.holds(key));
+        if self.sweep_from.is_none() {
             self.sweep_at = self
-                .sweep_at
+                .base_sweep_at
                 .max(self.schedule.len().saturating_mul(SWEEP_FACTOR));
         }
     }
@@ -313,7 +375,7 @@ impl RefreshWorker {
                 (domain, record_type, RefreshOrigin::Stale)
             } else if let Some(due) = self.due.pop() {
                 let now = coarse_clock::coarse_now_secs();
-                if !self.cache.is_still_refreshable(&due.key, now) {
+                if !self.cache.start_claimed_refresh(&due.key, now) {
                     return;
                 }
                 let origin = if due.retry {
@@ -340,37 +402,53 @@ impl RefreshWorker {
                 query_log.as_deref(),
                 &domain,
                 &record_type,
-                origin != RefreshOrigin::Stale,
+                origin,
             )
             .await;
-            match outcome {
-                Ok(true) => {
-                    // `cache_optimistic_refreshes` counts renewals ahead of
-                    // expiry, not serve-stale repairs.
-                    if origin != RefreshOrigin::Stale {
-                        cache
-                            .metrics()
-                            .optimistic_refreshes
-                            .fetch_add(1, AtomicOrdering::Relaxed);
-                    }
-                    debug!(domain = %domain, record_type = %record_type, ?origin, "Cache entry refreshed");
-                }
-                Ok(false) => cache.reset_refreshing(&domain, &record_type),
-                Err(e) => {
-                    debug!(domain = %domain, ?origin, error = %e, "Background refresh failed");
-                    cache.reset_refreshing(&domain, &record_type);
-                    // Every upstream answering SERVFAIL is usually transient,
-                    // so a renewal ahead of expiry gets one more try. Any other
-                    // failure waits for compaction to re-arm the entry.
-                    if origin == RefreshOrigin::Due
-                        && matches!(e, DomainError::AllUpstreamsServfail)
-                    {
-                        cache.schedule_refresh_retry(&domain, record_type);
-                    }
-                }
-            }
+            Self::follow_up(&cache, &domain, record_type, origin, &outcome);
             drop(permit);
         });
+    }
+
+    /// Everything that happens after a renewal, in one place. A renewal that
+    /// stored the answer armed the next timer itself. One that did not gets
+    /// its one more attempt here, if any, before it lets go of the entry:
+    /// arming it while the renewal still holds the entry is what keeps
+    /// compaction from arming a second one.
+    fn follow_up(
+        cache: &DnsCache,
+        domain: &str,
+        record_type: RecordType,
+        origin: RefreshOrigin,
+        outcome: &Result<RefreshOutcome, DomainError>,
+    ) {
+        match outcome {
+            Ok(RefreshOutcome::Renewed) => {
+                // `cache_optimistic_refreshes` counts renewals ahead of
+                // expiry, not serve-stale repairs.
+                if origin != RefreshOrigin::Stale {
+                    cache
+                        .metrics()
+                        .optimistic_refreshes
+                        .fetch_add(1, AtomicOrdering::Relaxed);
+                }
+                debug!(domain = %domain, record_type = %record_type, ?origin, "Cache entry refreshed");
+                return;
+            }
+            Ok(other) => {
+                debug!(domain = %domain, ?origin, outcome = ?other, "Background refresh left the entry as it was");
+            }
+            Err(e) => {
+                debug!(domain = %domain, ?origin, error = %e, "Background refresh failed");
+            }
+        }
+        let remaining = cache
+            .get_remaining_ttl(domain, &record_type)
+            .map_or(0, u64::from);
+        if let Some(in_secs) = origin.retry_in(outcome, remaining) {
+            cache.schedule_retry(domain, record_type, in_secs);
+        }
+        cache.reset_refreshing(domain, &record_type);
     }
 }
 

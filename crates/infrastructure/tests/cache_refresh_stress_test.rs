@@ -8,8 +8,8 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, DnsCacheMaintenance, EvictionStrategy,
-    RefreshPriority, RefreshRequest, RefreshSenders, TimerInbox,
+    CachedAddresses, CachedData, ColdThresholds, DnsCache, DnsCacheConfig, DnsCacheMaintenance,
+    EvictionStrategy, RefreshRequest, RefreshSenders, TimerInbox,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -64,13 +64,14 @@ fn address() -> CachedData {
 type Receivers = (mpsc::Receiver<RefreshRequest>, Arc<TimerInbox>);
 
 /// Wires the cache's refresh channels; timers wait in the inbox until a
-/// worker starts on it.
+/// worker starts on it. The inserts below all come from this thread, so its
+/// shard has to hold every one of them.
 fn wire(cache: &DnsCache) -> Receivers {
     let (stale, stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(65_536));
+    let timers = Arc::new(TimerInbox::new(ENTRIES * 2));
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        schedule: Some(Arc::clone(&timers)),
+        timers: Some(Arc::clone(&timers)),
     });
     (stale_rx, timers)
 }
@@ -84,7 +85,7 @@ fn start_worker(cache: &Arc<DnsCache>, resolver: Arc<CountingResolver>, receiver
         None,
         stale_rx,
         Some(timers),
-        RefreshPriority {
+        ColdThresholds {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },

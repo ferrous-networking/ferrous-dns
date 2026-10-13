@@ -54,10 +54,10 @@ fn address() -> CachedData {
 /// inbox never fills at a benchmark's insert rate.
 fn wire_timer_drain(cache: &DnsCache) {
     let (stale, _stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(65_536));
+    let timers = Arc::new(TimerInbox::new(16_384));
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        schedule: Some(Arc::clone(&timers)),
+        timers: Some(Arc::clone(&timers)),
     });
     std::thread::spawn(move || loop {
         timers.drain(|timer| drop(black_box(timer)));

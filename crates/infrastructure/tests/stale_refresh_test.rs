@@ -34,7 +34,7 @@ fn wire_stale_queue(cache: &DnsCache, capacity: usize) -> mpsc::Receiver<Refresh
     let (stale_tx, stale_rx) = mpsc::channel(capacity);
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        schedule: None,
+        timers: None,
     });
     stale_rx
 }
@@ -206,7 +206,7 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
     let timers = Arc::new(TimerInbox::new(16));
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        schedule: Some(Arc::clone(&timers)),
+        timers: Some(Arc::clone(&timers)),
     });
 
     // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros
