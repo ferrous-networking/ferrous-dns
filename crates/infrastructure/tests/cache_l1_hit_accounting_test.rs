@@ -96,6 +96,52 @@ fn test_hot_l1_name_stays_refresh_eligible() {
     );
 }
 
+/// Renewing an entry replaces this thread's L1 copy; the hits that copy had
+/// batched must still reach the record.
+#[test]
+fn test_l1_hits_batched_before_a_renewal_are_counted() {
+    let cache = cache(100, 7200);
+    coarse_clock::tick();
+    cache.insert("renewed.example", RecordType::A, address(), 3600, None);
+    for _ in 0..50 {
+        assert!(cache.get("renewed.example", &RecordType::A).is_some());
+    }
+    assert!(cache.refresh_record(
+        "renewed.example",
+        &RecordType::A,
+        Some(3600),
+        address(),
+        None
+    ));
+    std::thread::sleep(Duration::from_millis(1_100));
+    coarse_clock::tick();
+    assert!(cache.get("renewed.example", &RecordType::A).is_some());
+
+    let entry = listed(&cache, "renewed.example").expect("entry listed");
+    assert!(
+        entry.hits >= 51,
+        "51 lookups served, {} counted",
+        entry.hits
+    );
+}
+
+/// A batch that fills its `u16` is handed over at once, and none is lost.
+#[test]
+fn test_l1_batch_that_fills_its_counter_loses_no_hit() {
+    let cache = cache(100, 7200);
+    coarse_clock::tick();
+    cache.insert("busy.example", RecordType::A, address(), 3600, None);
+    for _ in 0..70_000 {
+        assert!(cache.get("busy.example", &RecordType::A).is_some());
+    }
+    std::thread::sleep(Duration::from_millis(1_100));
+    coarse_clock::tick();
+    assert!(cache.get("busy.example", &RecordType::A).is_some());
+
+    let entry = listed(&cache, "busy.example").expect("entry listed");
+    assert_eq!(entry.hits, 70_001);
+}
+
 /// R5. A full cache evicts by hit rate, so the name with the most hits, all
 /// of them served by L1, must outlive names read three times each.
 #[test]
