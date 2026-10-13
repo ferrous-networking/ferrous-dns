@@ -648,6 +648,16 @@ impl DnsCache {
         true
     }
 
+    /// Arms the entry's next renewal `secs` from now, when a renewal was
+    /// declined rather than failed: the entry stays armed throughout.
+    pub(crate) fn schedule_refresh_in(&self, domain: &str, record_type: RecordType, secs: u32) {
+        self.send_refresh_timer(ScheduledRefresh {
+            due_at_secs: coarse_now_secs() + u64::from(secs),
+            key: CacheKey::new(domain, record_type),
+            retry: false,
+        });
+    }
+
     /// Whether `key` is cached. For the worker's sweep of timers whose entry
     /// is gone.
     pub(crate) fn holds(&self, key: &CacheKey) -> bool {

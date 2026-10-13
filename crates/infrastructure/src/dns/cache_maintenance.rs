@@ -80,12 +80,16 @@ impl DnsCacheMaintenance {
         }
     }
 
+    /// Resolves `domain` again and stores the answer. `ahead_of_expiry` is a
+    /// renewal on a timer, which may decline an answer that would not extend
+    /// the entry; a serve-stale repair has a client waiting and always stores.
     async fn refresh_entry(
         cache: &DnsCache,
         resolver: &dyn DnsResolver,
         query_log: Option<&dyn QueryLogRepository>,
         domain: &str,
         record_type: &RecordType,
+        ahead_of_expiry: bool,
     ) -> Result<bool, DomainError> {
         let start = Instant::now();
 
@@ -129,6 +133,22 @@ impl DnsCacheMaintenance {
         let ttl = resolution
             .min_ttl
             .unwrap_or_else(|| negative_ttl(resolution.negative_soa_ttl));
+
+        // A caching upstream answers with what is left of its own copy, and
+        // two anycast nodes can be minutes apart. A positive answer that ends
+        // sooner than the entry already does would cut a valid answer short,
+        // and one that ends at the same time is the copy the entry already
+        // holds: renewing with it only starts a chain of ever shorter
+        // renewals. Either way, keep the entry and renew it again as it
+        // expires, by which time the upstream's copy has rolled over.
+        if ahead_of_expiry && resolution.min_ttl.is_some() {
+            if let Some(remaining) = cache.get_remaining_ttl(domain, record_type) {
+                if ttl.max(cache.min_ttl()) <= remaining {
+                    cache.schedule_refresh_in(domain, *record_type, remaining);
+                    return Ok(false);
+                }
+            }
+        }
 
         if !cache.refresh_record(domain, record_type, Some(ttl), new_data, dnssec_status) {
             return Ok(false);
@@ -320,6 +340,7 @@ impl RefreshWorker {
                 query_log.as_deref(),
                 &domain,
                 &record_type,
+                origin != RefreshOrigin::Stale,
             )
             .await;
             match outcome {
