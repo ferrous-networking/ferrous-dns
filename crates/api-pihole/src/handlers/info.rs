@@ -3,8 +3,10 @@ use axum::Json;
 
 use crate::{
     dto::info::{
-        DatabaseInfoResponse, DiskInfo, FtlDatabaseInfo, FtlInfoResponse, HostInfoResponse,
-        LoginInfoResponse, MemoryInfo, SystemInfoResponse, VersionResponse,
+        ComponentVersion, DatabaseInfoResponse, DiskInfo, DockerVersion, FtlComponentVersion,
+        FtlDatabaseInfo, FtlInfoResponse, FtlLocalVersion, HostInfoResponse, LocalVersion,
+        LoginInfoResponse, MemoryInfo, RemoteVersion, SystemInfoResponse, VersionComponents,
+        VersionResponse,
     },
     errors::PiholeApiError,
     state::PiholeAppState,
@@ -44,10 +46,40 @@ pub async fn get_login_info(State(state): State<PiholeAppState>) -> Json<LoginIn
     security(("session_id" = []))
 )]
 pub async fn get_version() -> Json<VersionResponse> {
+    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let hash = option_env!("GIT_HASH").map(str::to_owned);
+    let component = || ComponentVersion {
+        local: LocalVersion {
+            branch: "main".to_string(),
+            version: version.clone(),
+            hash: hash.clone(),
+        },
+        remote: RemoteVersion {
+            version: version.clone(),
+            hash: hash.clone(),
+        },
+    };
     Json(VersionResponse {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        branch: "main".to_string(),
-        hash: option_env!("GIT_HASH").unwrap_or("unknown").to_string(),
+        version: VersionComponents {
+            core: component(),
+            web: component(),
+            ftl: FtlComponentVersion {
+                local: FtlLocalVersion {
+                    branch: "main".to_string(),
+                    version: version.clone(),
+                    hash: hash.clone(),
+                    date: None,
+                },
+                remote: RemoteVersion {
+                    version: version.clone(),
+                    hash: hash.clone(),
+                },
+            },
+            docker: DockerVersion {
+                local: None,
+                remote: None,
+            },
+        },
     })
 }
 

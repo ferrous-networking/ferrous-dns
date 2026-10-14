@@ -9,7 +9,7 @@ use serde_json::Value;
 use tower::ServiceExt;
 
 #[tokio::test]
-async fn version_returns_required_fields() {
+async fn version_matches_the_ftl_schema() {
     let pool = helpers::create_test_db().await;
     let app = helpers::create_pihole_test_app(pool).await;
 
@@ -33,9 +33,7 @@ async fn version_returns_required_fields() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    assert!(json["version"].is_string(), "version must be a string");
-    assert!(json["branch"].is_string(), "branch must be a string");
-    assert!(json["hash"].is_string(), "hash must be a string");
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoVersion>(&json);
 }
 
 #[tokio::test]
@@ -63,7 +61,9 @@ async fn version_contains_valid_semver() {
         .to_bytes();
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
-    let version = json["version"].as_str().expect("version must be a string");
+    let version = json["version"]["core"]["local"]["version"]
+        .as_str()
+        .expect("version must be a string");
     assert!(
         version.contains('.'),
         "version '{version}' must contain a dot (basic semver check)"

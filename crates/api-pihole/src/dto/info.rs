@@ -11,11 +11,61 @@ pub struct LoginInfoResponse {
 }
 
 /// Pi-hole v6 GET /api/info/version response.
+///
+/// FTL reports Pi-hole's components (core, web, FTL, docker); Ferrous is a
+/// single binary, so each component carries the Ferrous version.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct VersionResponse {
-    pub version: String,
+    pub version: VersionComponents,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VersionComponents {
+    pub core: ComponentVersion,
+    pub web: ComponentVersion,
+    pub ftl: FtlComponentVersion,
+    pub docker: DockerVersion,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ComponentVersion {
+    pub local: LocalVersion,
+    pub remote: RemoteVersion,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FtlComponentVersion {
+    pub local: FtlLocalVersion,
+    pub remote: RemoteVersion,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LocalVersion {
     pub branch: String,
-    pub hash: String,
+    pub version: String,
+    pub hash: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FtlLocalVersion {
+    pub branch: String,
+    pub version: String,
+    pub hash: Option<String>,
+    pub date: Option<String>,
+}
+
+/// The newest release known upstream. Ferrous does not check for updates,
+/// so it repeats the local version and clients report no update.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RemoteVersion {
+    pub version: String,
+    pub hash: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DockerVersion {
+    pub local: Option<String>,
+    pub remote: Option<String>,
 }
 
 /// Pi-hole v6 GET /api/info/ftl response (FTL daemon info).
