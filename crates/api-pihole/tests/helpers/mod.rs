@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod auth;
+pub mod ftl;
 
 use async_trait::async_trait;
 use axum::Router;

@@ -8,6 +8,7 @@ async fn served_spec_documents_routes_but_not_aliases() {
 
     for documented in [
         "/auth",
+        "/info/login",
         "/stats/summary",
         "/dns/blocking",
         "/domains/{type}/{kind}",
