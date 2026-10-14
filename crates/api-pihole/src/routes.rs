@@ -138,6 +138,8 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::action::flush_logs))
         .routes(routes!(handlers::padd::get_padd))
         .routes(routes!(handlers::endpoints::get_endpoints))
+        .routes(routes!(handlers::auth::list_sessions))
+        .routes(routes!(handlers::auth::delete_session))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_pihole_auth,

@@ -591,7 +591,8 @@ async fn deleting_a_session_id_that_names_none_is_a_bad_request() {
         ("-5", "Session ID out of bounds"),
         ("12345", "Session ID not in use"),
     ] {
-        let (status, json) = send(&app, delete_with_sid(&format!("/auth/session/{id}"), &sid)).await;
+        let (status, json) =
+            send(&app, delete_with_sid(&format!("/auth/session/{id}"), &sid)).await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST, "id {id}");
         let reply = assert_ftl_shape::<ftl::ErrorReply>(&json);

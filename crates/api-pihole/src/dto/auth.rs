@@ -59,3 +59,38 @@ pub struct SessionInfo {
 pub struct AuthResponse {
     pub session: SessionInfo,
 }
+
+/// Pi-hole v6 GET /api/auth/sessions response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionsResponse {
+    pub sessions: Vec<SessionEntry>,
+}
+
+/// One live session. FTL numbers sessions by slot; here `id` is a number
+/// derived from the session, stable for as long as it lives.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionEntry {
+    pub id: i64,
+    /// Whether this is the session the request presented.
+    pub current_session: bool,
+    pub valid: bool,
+    pub tls: SessionTls,
+    pub login_at: i64,
+    pub last_active: i64,
+    pub valid_until: i64,
+    pub remote_addr: String,
+    pub user_agent: Option<String>,
+    /// Not recorded, so null.
+    pub x_forwarded_for: Option<String>,
+    /// Logins with an app password are not told apart, so false.
+    pub app: bool,
+    /// Ferrous has no CLI sessions, so false.
+    pub cli: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionTls {
+    /// Whether the web server serves HTTPS, which every login then used.
+    pub login: bool,
+    pub mixed: bool,
+}

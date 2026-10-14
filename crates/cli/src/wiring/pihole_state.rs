@@ -88,6 +88,7 @@ pub fn build_pihole_state(
             logout: auth.use_cases.logout.clone(),
             validate_session: auth.use_cases.validate_session.clone(),
             get_mfa_status: auth.use_cases.get_mfa_status.clone(),
+            get_active_sessions: auth.use_cases.get_active_sessions.clone(),
         },
     }
 }

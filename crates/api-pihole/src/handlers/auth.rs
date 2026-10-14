@@ -1,7 +1,9 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use axum::{
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Path, State},
     http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     Extension, Json,
@@ -12,7 +14,10 @@ use ferrous_dns_domain::{AuthSession, DomainError};
 use tracing::warn;
 
 use crate::{
-    dto::auth::{AuthResponse, LoginRequest, SessionInfo},
+    crud::unix_seconds,
+    dto::auth::{
+        AuthResponse, LoginRequest, SessionEntry, SessionInfo, SessionTls, SessionsResponse,
+    },
     errors::{pihole_error_response, PiholeApiError},
     extract::PiholeJson,
     middleware::extract_sid,
@@ -259,6 +264,103 @@ pub async fn logout(State(state): State<PiholeAppState>, headers: HeaderMap, uri
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(err) => PiholeApiError(err).into_response(),
     }
+}
+
+/// Pi-hole v6 GET /api/auth/sessions — the live sessions, oldest first.
+///
+/// FTL numbers sessions by slot. Ferrous's ids are secret tokens, so each
+/// session is listed under a number derived from a hash of its id (see
+/// [`session_number`]). Whether a login came through an app password or a
+/// proxy is not recorded, so `app` is false and `x_forwarded_for` null.
+#[utoipa::path(
+    get,
+    path = "/auth/sessions",
+    tag = "pihole:auth",
+    responses(
+        (status = 200, description = "Live sessions", body = SessionsResponse)
+    ),
+    security(("session_id" = []))
+)]
+pub async fn list_sessions(
+    State(state): State<PiholeAppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Result<Json<SessionsResponse>, PiholeApiError> {
+    let current = extract_sid(&headers, &uri);
+    let tls = state.system.https_port != 0;
+    let mut sessions = state.auth.get_active_sessions.execute().await?;
+    sessions.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    let sessions = sessions
+        .iter()
+        .map(|session| SessionEntry {
+            id: session_number(&session.id),
+            current_session: current.as_deref() == Some(session.id.as_ref()),
+            valid: true,
+            tls: SessionTls {
+                login: tls,
+                mixed: false,
+            },
+            login_at: unix_seconds(Some(&session.created_at)),
+            last_active: unix_seconds(Some(&session.last_seen_at)),
+            valid_until: unix_seconds(Some(&session.expires_at)),
+            remote_addr: session.ip_address.to_string(),
+            user_agent: Some(session.user_agent.to_string()).filter(|agent| !agent.is_empty()),
+            x_forwarded_for: None,
+            app: false,
+            cli: false,
+        })
+        .collect();
+    Ok(Json(SessionsResponse { sessions }))
+}
+
+/// Pi-hole v6 DELETE /api/auth/session/{id} — ends the session listed under
+/// `id`, with FTL's 400s for an id that is not a number, is negative, or
+/// names no live session.
+#[utoipa::path(
+    delete,
+    path = "/auth/session/{id}",
+    tag = "pihole:auth",
+    params(("id" = i64, Path, description = "Session number from /auth/sessions")),
+    responses(
+        (status = 204, description = "Session ended"),
+        (status = 400, description = "Invalid id, or no live session under it")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn delete_session(
+    State(state): State<PiholeAppState>,
+    Path(id): Path<String>,
+) -> Response {
+    let bad_request = |message: &str| {
+        pihole_error_response(StatusCode::BAD_REQUEST, "bad_request", message, None)
+    };
+    let Ok(number) = id.trim().parse::<i64>() else {
+        return bad_request("Missing or invalid session ID");
+    };
+    if number < 0 {
+        return bad_request("Session ID out of bounds");
+    }
+
+    let sessions = match state.auth.get_active_sessions.execute().await {
+        Ok(sessions) => sessions,
+        Err(err) => return PiholeApiError(err).into_response(),
+    };
+    let Some(session) = sessions.iter().find(|s| session_number(&s.id) == number) else {
+        return bad_request("Session ID not in use");
+    };
+    match state.auth.logout.execute(&session.id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => PiholeApiError(err).into_response(),
+    }
+}
+
+/// The number a session is listed under: 31 bits of a hash of its id, so
+/// nothing of the token itself is shown.
+fn session_number(id: &str) -> i64 {
+    let mut hasher = DefaultHasher::new();
+    id.hash(&mut hasher);
+    (hasher.finish() >> 33) as i64
 }
 
 /// The admin account Pi-hole logins act on, or `None` with `[auth]` disabled.
