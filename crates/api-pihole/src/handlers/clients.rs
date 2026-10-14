@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::net::IpAddr;
 
 use axum::extract::{Query, State};
@@ -12,6 +11,7 @@ use crate::{
         delete_reply, first_group, record, reject_unsafe_item, require_items, to_ftl_group_id,
         unix_seconds, write_status, CrudError,
     },
+    devices::{group_devices, Device},
     dto::clients::{
         ClientSuggestion, ClientSuggestionsQuery, ClientSuggestionsResponse, ClientsResponse,
         ClientsWriteResponse, CreateClientRequest, PiholeClientEntry, UpdateClientRequest,
@@ -109,65 +109,29 @@ fn write_reply(
     (status, Json(ClientsWriteResponse { clients, processed })).into_response()
 }
 
-/// A device as FTL's network table keeps it, gathered from client rows.
-struct Device {
-    hwaddr: String,
-    last_query: i64,
-    addresses: Vec<String>,
-    names: Vec<String>,
-}
-
-impl Device {
-    fn into_suggestion(self) -> ClientSuggestion {
-        let joined = |values: Vec<String>| (!values.is_empty()).then(|| values.join(","));
-        ClientSuggestion {
-            hwaddr: Some(self.hwaddr),
-            mac_vendor: None,
-            last_query: self.last_query,
-            addresses: joined(self.addresses),
-            names: joined(self.names),
+/// A device as network.c's client suggestions list it: its addresses and
+/// distinct names, comma-joined.
+fn into_suggestion(device: Device<'_>) -> ClientSuggestion {
+    let joined = |values: Vec<String>| (!values.is_empty()).then(|| values.join(","));
+    let mut names: Vec<String> = Vec::new();
+    for name in device.clients.iter().filter_map(|c| c.hostname.as_deref()) {
+        if !names.iter().any(|n| n == name) {
+            names.push(name.to_string());
         }
     }
-}
-
-/// Groups clients into devices by MAC address, using FTL's `ip-<address>`
-/// mock hardware address for a client without one, most recently active
-/// first.
-fn group_devices(clients: &[Client], count: usize) -> Vec<ClientSuggestion> {
-    let mut devices: Vec<Device> = Vec::new();
-    let mut by_hwaddr: HashMap<String, usize> = HashMap::new();
-    for client in clients {
-        let hwaddr = client.mac_address.as_deref().map_or_else(
-            || format!("ip-{}", client.ip_address),
-            str::to_ascii_lowercase,
-        );
-        let last_query = unix_seconds(client.last_seen.as_deref());
-        let slot = *by_hwaddr.entry(hwaddr.clone()).or_insert_with(|| {
-            devices.push(Device {
-                hwaddr,
-                last_query,
-                addresses: Vec::new(),
-                names: Vec::new(),
-            });
-            devices.len() - 1
-        });
-
-        let device = &mut devices[slot];
-        device.last_query = device.last_query.max(last_query);
-        device.addresses.push(client.ip_address.to_string());
-        if let Some(name) = client.hostname.as_deref() {
-            if !device.names.iter().any(|n| n == name) {
-                device.names.push(name.to_string());
-            }
-        }
+    ClientSuggestion {
+        last_query: device.last_query(),
+        addresses: joined(
+            device
+                .clients
+                .iter()
+                .map(|c| c.ip_address.to_string())
+                .collect(),
+        ),
+        names: joined(names),
+        hwaddr: Some(device.hwaddr),
+        mac_vendor: None,
     }
-
-    devices.sort_by_key(|d| std::cmp::Reverse(d.last_query));
-    devices
-        .into_iter()
-        .take(count)
-        .map(Device::into_suggestion)
-        .collect()
 }
 
 /// Pi-hole v6 GET /api/clients — list all clients.
@@ -320,7 +284,11 @@ pub async fn suggestions(
     let count = query.count.unwrap_or(DEFAULT_SUGGESTIONS);
     let clients = state.clients.get_clients.get_all(ALL_CLIENTS, 0).await?;
     Ok(Json(ClientSuggestionsResponse {
-        clients: group_devices(&clients, count as usize),
+        clients: group_devices(&clients)
+            .into_iter()
+            .take(count as usize)
+            .map(into_suggestion)
+            .collect(),
     }))
 }
 

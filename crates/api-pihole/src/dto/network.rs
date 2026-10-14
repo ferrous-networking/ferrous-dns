@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::padd::PaddByteCount;
@@ -112,4 +112,49 @@ pub struct InterfaceAddress {
     /// IPv4 only: the interface name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+}
+
+/// Query of `GET /api/network/devices`, with network.c's defaults.
+#[derive(Debug, Deserialize)]
+pub struct DevicesQuery {
+    pub max_devices: Option<u32>,
+    pub max_addresses: Option<u32>,
+}
+
+/// Pi-hole v6 GET /api/network/devices response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DevicesResponse {
+    pub devices: Vec<DeviceEntry>,
+}
+
+/// A device: the clients that share a hardware address.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeviceEntry {
+    /// The lowest client id of the device.
+    pub id: i64,
+    /// The MAC address, or `ip-<address>` without one.
+    pub hwaddr: String,
+    /// Not known, so `""`.
+    pub interface: String,
+    #[serde(rename = "firstSeen")]
+    pub first_seen: i64,
+    #[serde(rename = "lastQuery")]
+    pub last_query: i64,
+    #[serde(rename = "numQueries")]
+    pub num_queries: u64,
+    /// No vendor database, so `""`.
+    #[serde(rename = "macVendor")]
+    pub mac_vendor: String,
+    /// Most recently seen first.
+    pub ips: Vec<DeviceAddress>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DeviceAddress {
+    pub ip: String,
+    pub name: Option<String>,
+    #[serde(rename = "lastSeen")]
+    pub last_seen: i64,
+    #[serde(rename = "nameUpdated")]
+    pub name_updated: i64,
 }

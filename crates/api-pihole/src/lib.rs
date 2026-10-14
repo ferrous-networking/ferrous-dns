@@ -1,4 +1,5 @@
 pub mod crud;
+mod devices;
 pub mod dto;
 pub mod errors;
 pub mod extract;

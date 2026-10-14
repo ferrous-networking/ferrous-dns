@@ -136,6 +136,7 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::network::get_gateway))
         .routes(routes!(handlers::network::get_routes))
         .routes(routes!(handlers::network::get_interfaces))
+        .routes(routes!(handlers::network::get_devices))
         .routes(routes!(handlers::action::gravity))
         .routes(routes!(handlers::action::restartdns))
         .routes(routes!(handlers::action::flush_logs))
