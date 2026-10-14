@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::OriginalUri;
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode};
 use axum::response::Response;
 use axum::{middleware, Extension, Router};
 use utoipa_axum::router::OpenApiRouter;
@@ -148,7 +148,10 @@ pub fn create_pihole_router_with_openapi(
 
     // `/endpoints` lists the finished document, so it is built only now.
     let endpoints = Arc::new(handlers::endpoints::list_endpoints(&openapi));
-    let router = router.fallback(not_found).layer(Extension(endpoints));
+    let router = router
+        .fallback(not_found)
+        .method_not_allowed_fallback(method_not_allowed)
+        .layer(Extension(endpoints));
     (router, openapi)
 }
 
@@ -160,5 +163,16 @@ async fn not_found(OriginalUri(uri): OriginalUri) -> Response {
         "not_found",
         "Not found",
         Some(uri.path()),
+    )
+}
+
+/// FTL's answer for a method a route does not take, with the method as the
+/// hint; axum still adds the Allow header.
+async fn method_not_allowed(method: Method) -> Response {
+    pihole_error_response(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        "Method Not Allowed",
+        Some(method.as_str()),
     )
 }
