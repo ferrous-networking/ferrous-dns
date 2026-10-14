@@ -1000,6 +1000,58 @@ async fn summary_gravity_includes_last_update_field() {
 }
 
 #[tokio::test]
+async fn summary_gravity_last_update_is_the_newest_list_download() {
+    // FTL reports when gravity last ran; Ferrous stamps each list when it is
+    // downloaded, so the newest stamp is the last run that fetched anything.
+    let pool = helpers::create_test_db().await;
+    for (table, name, synced) in [
+        ("blocklist_sources", "older", "2026-10-01 10:00:00"),
+        ("whitelist_sources", "newer", "2026-10-02 08:30:00"),
+    ] {
+        sqlx::query(&format!(
+            "INSERT INTO {table} (name, url, last_synced_at) VALUES (?, ?, ?)"
+        ))
+        .bind(name)
+        .bind(format!("https://lists.example/{name}.txt"))
+        .bind(synced)
+        .execute(&pool)
+        .await
+        .expect("failed to insert list");
+    }
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = helpers::send(app, "GET", "/stats/summary").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let newest = chrono::NaiveDateTime::parse_from_str("2026-10-02 08:30:00", "%Y-%m-%d %H:%M:%S")
+        .expect("valid timestamp")
+        .and_utc()
+        .timestamp();
+    assert_eq!(json["gravity"]["last_update"], newest);
+}
+
+#[tokio::test]
+async fn summary_total_clients_counts_every_known_client() {
+    // As /info/ftl does: every client in the table, not only the active ones.
+    let pool = helpers::create_test_db().await;
+    helpers::insert_client(&pool, "10.0.0.1").await;
+    helpers::insert_query(&pool, "a.com", "10.0.0.1", false, false, None).await;
+    sqlx::query(
+        "INSERT INTO clients (ip_address, last_seen) VALUES ('10.0.0.9', '2026-01-01 00:00:00')",
+    )
+    .execute(&pool)
+    .await
+    .expect("failed to insert client");
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = helpers::send(app, "GET", "/stats/summary").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["clients"]["active"], 1);
+    assert_eq!(json["clients"]["total"], 2);
+}
+
+#[tokio::test]
 async fn history_matches_ftl_with_cached_and_forwarded_split() {
     let pool = helpers::create_test_db().await;
     for _ in 0..2 {
