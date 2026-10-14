@@ -5,9 +5,12 @@ use utoipa::ToSchema;
 ///
 /// `password` is the account password or an API token (Pi-hole's "app
 /// password"); `totp` is the second factor, required only when one is enrolled.
+/// A missing `password` is answered by the handler with FTL's own 400, and an
+/// empty one with a valid session returns that session.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
-    pub password: String,
+    #[serde(default)]
+    pub password: Option<String>,
     #[serde(default)]
     pub totp: Option<TotpCode>,
 }
@@ -34,14 +37,19 @@ impl TotpCode {
 /// Pi-hole v6 session object returned by GET/POST /api/auth.
 ///
 /// `sid` is `null` when there is no session; `validity` is the seconds left
-/// on it, or `-1` when there is none. `csrf` is always `null`: it only guards
-/// Pi-hole's cookie auth, which this API does not accept.
+/// on it, or `-1` when there is none. `totp` says whether the admin has a
+/// TOTP second factor enrolled. `csrf` is sent only with a valid session, as
+/// FTL does, and then as `null`: it only guards Pi-hole's cookie auth, which
+/// this API does not accept.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionInfo {
     pub valid: bool,
     pub totp: bool,
     pub sid: Option<String>,
-    pub csrf: Option<String>,
+    /// `None` omits the key; `Some(None)` sends `null`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub csrf: Option<Option<String>>,
     pub validity: i64,
     pub message: String,
 }

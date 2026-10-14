@@ -9,8 +9,8 @@ use ferrous_dns_application::ports::{
     TotpService, UserProvider,
 };
 use ferrous_dns_application::use_cases::{
-    AppPasswordLoginUseCase, CreateApiTokenUseCase, LoginRateLimiter, LoginUseCase, LogoutUseCase,
-    ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
+    AppPasswordLoginUseCase, CreateApiTokenUseCase, GetMfaStatusUseCase, LoginRateLimiter,
+    LoginUseCase, LogoutUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::{
     ApiToken, AuthConfig, AuthSession, DomainError, MfaChallenge, RecoveryCode, User, UserMfa,
@@ -52,7 +52,7 @@ pub async fn build_auth_state(totp_enrolled: bool) -> PiholeAuthState {
         ),
         verify_mfa: Arc::new(
             VerifyMfaUseCase::new(
-                mfa,
+                mfa.clone(),
                 totp,
                 hasher,
                 users.clone(),
@@ -70,6 +70,7 @@ pub async fn build_auth_state(totp_enrolled: bool) -> PiholeAuthState {
         )),
         logout: Arc::new(LogoutUseCase::new(sessions.clone())),
         validate_session: Arc::new(ValidateSessionUseCase::new(sessions)),
+        get_mfa_status: Arc::new(GetMfaStatusUseCase::new(mfa)),
     }
 }
 

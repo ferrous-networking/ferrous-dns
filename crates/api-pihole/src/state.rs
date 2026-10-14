@@ -1,8 +1,8 @@
 use ferrous_dns_application::ports::BlockFilterEnginePort;
 use ferrous_dns_application::use_cases::{
-    AppPasswordLoginUseCase, GetQueryLogStorageUseCase, GetTopAllowedDomainsUseCase,
-    GetTopBlockedClientsUseCase, LoginUseCase, LogoutUseCase, ValidateSessionUseCase,
-    VerifyMfaUseCase,
+    AppPasswordLoginUseCase, GetMfaStatusUseCase, GetQueryLogStorageUseCase,
+    GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, LoginUseCase, LogoutUseCase,
+    ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateGroupUseCase,
@@ -46,6 +46,9 @@ pub struct PiholeAuthState {
     pub app_password_login: Arc<AppPasswordLoginUseCase>,
     pub logout: Arc<LogoutUseCase>,
     pub validate_session: Arc<ValidateSessionUseCase>,
+    /// Whether the admin has TOTP enrolled, reported as `totp` in every
+    /// session object.
+    pub get_mfa_status: Arc<GetMfaStatusUseCase>,
 }
 
 impl PiholeAppState {
