@@ -58,6 +58,8 @@ pub const MOCK_BLOCKLIST_ID: i64 = 1;
 pub const MOCK_GROUP_BLOCKLIST_ID: i64 = 2;
 pub const MOCK_DENY_REGEX_ID: i64 = 1;
 pub const MOCK_ALLOW_REGEX_ID: i64 = 2;
+/// The first allowlist created gets this id.
+pub const MOCK_ALLOWLIST_ID: i64 = 1;
 
 /// How long before the app was built the test process "started", so uptimes
 /// are large enough to tell seconds from milliseconds.
@@ -120,7 +122,8 @@ impl DnsCachePort for StubDnsCache {
 /// - `regex.blocked.test` → blocked by the deny regex [`MOCK_DENY_REGEX_ID`]
 /// - `list.blocked.test` → blocked by the blocklist [`MOCK_BLOCKLIST_ID`]
 ///   and by the manual blocklist, which has no id
-/// - `allowlisted.test` → explicitly allowed by an allowlist (no id) and by
+/// - `allowlisted.test` → explicitly allowed by the allowlist
+///   [`MOCK_ALLOWLIST_ID`], by the manual allowlist, which has no id, and by
 ///   the allow regex [`MOCK_ALLOW_REGEX_ID`]
 /// - `group.blocked.test` → blocked by the blocklist
 ///   [`MOCK_GROUP_BLOCKLIST_ID`] in [`MOCK_CLIENT_GROUP`] only
@@ -186,6 +189,11 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
             ),
             "allowlisted.test" => (
                 vec![
+                    allow(
+                        AllowMatchKind::Allowlist,
+                        Some(MOCK_ALLOWLIST_ID),
+                        MatchType::Exact,
+                    ),
                     allow(AllowMatchKind::Allowlist, None, MatchType::Exact),
                     allow(
                         AllowMatchKind::Regex,

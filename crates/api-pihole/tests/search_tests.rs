@@ -227,6 +227,25 @@ async fn lists_of_every_group_are_searched() {
 }
 
 #[tokio::test]
+async fn allowlists_holding_the_domain_are_listed_in_gravity() {
+    // search.c: antigravity rows join the gravity array after the blocklists
+    // and are counted as `results.gravity.allow`.
+    let app = app_with_lists().await;
+
+    let search = search_for(&app, "/search/allowlisted.test").await;
+
+    assert_eq!(search.gravity.len(), 1, "the manual allowlist has no list");
+    let list = &search.gravity[0];
+    assert_eq!(list.domain, "allowlisted.test");
+    assert_eq!(list.address, ALLOWLIST);
+    assert_eq!(list.list_type, ftl::ListType::Allow);
+    assert_eq!(list.id, helpers::MOCK_ALLOWLIST_ID);
+    assert_eq!(search.results.gravity.allow, 1);
+    assert_eq!(search.results.gravity.block, 0);
+    assert_eq!(search.results.total, 1);
+}
+
+#[tokio::test]
 async fn n_caps_the_rows_but_not_the_counts() {
     let app = app().await;
     for domain in ["a.example.com", "b.example.com", "c.example.com"] {
