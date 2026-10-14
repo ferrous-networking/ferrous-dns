@@ -7,10 +7,9 @@ use std::net::IpAddr;
 
 use crate::{
     dto::clients::{
-        ClientSuggestionsResponse, ClientsResponse, CreateClientRequest, PiholeClientEntry,
-        UpdateClientRequest,
+        BatchDeleteRequest, ClientSuggestionsResponse, ClientsResponse, CreateClientRequest,
+        PiholeClientEntry, UpdateClientRequest,
     },
-    dto::domains::BatchDeleteRequest,
     errors::PiholeApiError,
     extract::PiholeJson,
     handlers::require_id,

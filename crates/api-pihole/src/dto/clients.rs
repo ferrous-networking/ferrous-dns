@@ -42,3 +42,9 @@ pub struct ClientsResponse {
 pub struct ClientSuggestionsResponse {
     pub suggestions: Vec<String>,
 }
+
+/// Pi-hole v6 batch delete request.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BatchDeleteRequest {
+    pub items: Vec<String>,
+}

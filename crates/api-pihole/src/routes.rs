@@ -59,6 +59,7 @@ pub fn create_pihole_router_with_openapi(
             handlers::domains::create_domain
         ))
         .routes(routes!(
+            handlers::domains::get_domain,
             handlers::domains::update_domain,
             handlers::domains::delete_domain
         ))

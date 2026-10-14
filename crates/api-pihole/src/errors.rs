@@ -46,6 +46,11 @@ pub(crate) fn pihole_error_response(
         .into_response()
 }
 
+/// Whether `err` answers 5xx, so its text belongs in the log, not in a reply.
+pub(crate) fn is_server_error(err: &DomainError) -> bool {
+    pihole_status_and_key(err).0.is_server_error()
+}
+
 fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
     match err {
         DomainError::NotFound(_)

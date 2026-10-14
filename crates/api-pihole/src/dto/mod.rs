@@ -1,6 +1,7 @@
 pub mod action;
 pub mod auth;
 pub mod clients;
+pub mod crud;
 pub mod dns;
 pub mod domains;
 pub mod groups;
