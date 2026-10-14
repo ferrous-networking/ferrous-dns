@@ -1332,9 +1332,14 @@ pub struct ClientSuggestion {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Padd {
+    // C (padd.c api_padd) always adds the four tops, as null when there are none.
+    #[serde(deserialize_with = "required_nullable")]
     pub recent_blocked: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     pub top_domain: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     pub top_blocked: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     pub top_client: Option<String>,
     pub active_clients: u64,
     pub gravity_size: u64,
@@ -1343,6 +1348,8 @@ pub struct Padd {
     pub cache: PaddCache,
     pub system: SystemData,
     pub node_name: String,
+    // C (info.c read_sys_property) answers null, never omits the key.
+    #[serde(deserialize_with = "required_nullable")]
     pub host_model: Option<String>,
     // C (padd.c api_padd) only adds `iface` and `version` when `full` is true (the default).
     pub iface: Option<PaddIface>,
@@ -1437,6 +1444,8 @@ pub struct PaddConfig {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PaddSensors {
+    // C (info.c get_sensors_obj) adds null when no CPU sensor is found.
+    #[serde(deserialize_with = "required_nullable")]
     pub cpu_temp: Option<f64>,
     pub hot_limit: f64,
     pub unit: String,

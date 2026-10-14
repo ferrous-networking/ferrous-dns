@@ -539,6 +539,8 @@ async fn protected_routes_reject_requests_without_a_session() {
         ("GET", "/queries", None),
         ("GET", "/stats/summary", None),
         ("GET", "/lists", None),
+        ("GET", "/padd", None),
+        ("GET", "/endpoints", None),
         (
             "POST",
             "/dns/blocking",
