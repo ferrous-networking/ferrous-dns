@@ -16,7 +16,7 @@ use crate::{
     },
     handlers::{
         domains::{managed_to_entry, regex_to_entry},
-        lists::stored_lists,
+        lists::{stored_lists, StoredList},
     },
     state::PiholeAppState,
 };
@@ -73,12 +73,12 @@ struct FilterMatches {
     allow_regexes: BTreeSet<i64>,
     deny_regexes: BTreeSet<i64>,
     blocklists: BTreeSet<i64>,
+    allowlists: BTreeSet<i64>,
 }
 
 impl FilterMatches {
-    /// Matches without a database id (the manual blocklist, managed domains
-    /// and allowlists, whose compiled entries keep no source) name no row,
-    /// so they are left out.
+    /// Matches without a database id (the manual block and allow lists and
+    /// managed domains) name no row, so they are left out.
     fn add(&mut self, explanation: FilterExplanation) {
         for m in explanation.block_matches {
             let Some(id) = m.source_id else { continue };
@@ -92,7 +92,7 @@ impl FilterMatches {
             let Some(id) = m.source_id else { continue };
             match m.kind {
                 AllowMatchKind::Regex => self.allow_regexes.insert(id),
-                AllowMatchKind::Allowlist => continue,
+                AllowMatchKind::Allowlist => self.allowlists.insert(id),
             };
         }
     }
@@ -102,14 +102,14 @@ impl FilterMatches {
 ///
 /// Lists what holds the domain, as FTL's search.c does: exact domain-list
 /// entries named by it (disabled ones included), the regex filters that
-/// match it, and the blocklists that contain it. With `partial=true`, exact
-/// entries and regex filters whose text contains the domain are listed too.
+/// match it, and the block then allow lists that contain it. With
+/// `partial=true`, exact entries and regex filters whose text contains the
+/// domain are listed too.
 ///
 /// Ferrous searches its compiled filter index rather than a gravity table,
-/// so `partial` cannot apply to lists, and `gravity` names only blocklists:
-/// allowlist entries are compiled without their source, so `results.gravity.allow`
-/// is always 0. A list's `domain` is the searched domain, not the list line
-/// that matched it. `debug` is accepted and echoed, but adds nothing.
+/// so `partial` cannot apply to lists. A list's `domain` is the searched
+/// domain, not the list line that matched it. `debug` is accepted and echoed,
+/// but adds nothing.
 #[utoipa::path(
     get,
     path = "/search/{domain}",
@@ -192,19 +192,31 @@ pub async fn search_domain(
         .map(regex_to_entry)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let blocklists: Vec<SearchGravityEntry> = stored_lists(&state, Some(ListType::Block))
-        .await?
-        .iter()
-        .filter(|l| matches.blocklists.contains(&l.id))
-        .map(|l| SearchGravityEntry {
-            domain: domain.clone(),
-            list: l.to_entry(),
-        })
-        .collect();
+    let lists_holding = |lists: Vec<StoredList>, ids: &BTreeSet<i64>| -> Vec<SearchGravityEntry> {
+        lists
+            .iter()
+            .filter(|l| ids.contains(&l.id))
+            .map(|l| SearchGravityEntry {
+                domain: domain.clone(),
+                list: l.to_entry(),
+            })
+            .collect()
+    };
+    let blocklists = lists_holding(
+        stored_lists(&state, Some(ListType::Block)).await?,
+        &matches.blocklists,
+    );
+    let allowlists = lists_holding(
+        stored_lists(&state, Some(ListType::Allow)).await?,
+        &matches.allowlists,
+    );
 
     let (exact, exact_count) = capped(exact, limit);
     let (regex, regex_count) = capped(regex, limit);
-    let (gravity, block_count) = capped(blocklists, limit);
+    // search.c searches gravity, then antigravity, each up to the limit.
+    let (mut gravity, block_count) = capped(blocklists, limit);
+    let (allow_gravity, allow_count) = capped(allowlists, limit);
+    gravity.extend(allow_gravity);
 
     Ok(Json(SearchResponse {
         search: SearchData {
@@ -220,10 +232,10 @@ pub async fn search_domain(
                     regex: regex_count,
                 },
                 gravity: SearchResultsGravity {
-                    allow: 0,
+                    allow: allow_count,
                     block: block_count,
                 },
-                total: exact_count + regex_count + block_count,
+                total: exact_count + regex_count + block_count + allow_count,
             },
             parameters: SearchParameters {
                 n: limit,

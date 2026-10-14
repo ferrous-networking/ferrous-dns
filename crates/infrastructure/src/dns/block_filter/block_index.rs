@@ -18,6 +18,10 @@ pub const MANUAL_SOURCE_BIT: u64 = 1u64 << 63;
 /// Bit index reserved for the global manual blocklist.
 pub const MANUAL_SOURCE_BIT_INDEX: usize = 63;
 
+/// Allowlist bit of an entry no source names: a managed allow domain, or a
+/// source past the 63 that get a bit of their own.
+pub const UNNAMED_ALLOW_BIT: u64 = 1u64 << 63;
+
 /// How the compiled index classifies a domain.
 ///
 /// The `Manual*` variants come from rules the operator wrote themselves — the
@@ -66,17 +70,22 @@ pub struct RegexRule {
 
 #[derive(Default)]
 pub struct AllowlistIndex {
+    /// The manual allowlist, which names no source.
     pub global_exact: DashSet<CompactString, FxBuildHasher>,
     pub global_wildcard: SuffixTrie,
-    pub group_exact: HashMap<i64, DashSet<CompactString, FxBuildHasher>>,
+    /// Per group, each entry with the bits of the sources that hold it (see
+    /// `bit_to_source`) or [`UNNAMED_ALLOW_BIT`].
+    pub group_exact: HashMap<i64, DashMap<CompactString, SourceBitSet, FxBuildHasher>>,
     pub group_wildcard: HashMap<i64, SuffixTrie>,
+    /// Reverse map from allowlist source bit (0..=62) to the owning source.
+    pub bit_to_source: Vec<Option<SourceDescriptor>>,
 }
 
 impl AllowlistIndex {
     #[inline]
     pub fn is_allowed(&self, domain: &str, group_id: i64) -> bool {
-        if let Some(set) = self.group_exact.get(&group_id) {
-            if set.contains(domain) {
+        if let Some(entries) = self.group_exact.get(&group_id) {
+            if entries.contains_key(domain) {
                 return true;
             }
         }
@@ -361,25 +370,13 @@ impl BlockIndex {
     /// Collect every allow rule (allowlist exact/wildcard, allow regex) matching `domain`.
     fn collect_allow_matches(&self, domain: &str, group_id: i64, out: &mut Vec<AllowMatch>) {
         let al = &self.allowlists;
-        if let Some(set) = al.group_exact.get(&group_id) {
-            if set.contains(domain) {
-                out.push(AllowMatch {
-                    kind: AllowMatchKind::Allowlist,
-                    source_id: None,
-                    name: "Group allowlist".to_string(),
-                    match_type: MatchType::Exact,
-                });
+        if let Some(entries) = al.group_exact.get(&group_id) {
+            if let Some(bits) = entries.get(domain) {
+                self.collect_allow_bits(*bits, MatchType::Exact, out);
             }
         }
         if let Some(trie) = al.group_wildcard.get(&group_id) {
-            if trie.lookup(domain) != 0 {
-                out.push(AllowMatch {
-                    kind: AllowMatchKind::Allowlist,
-                    source_id: None,
-                    name: "Group allowlist".to_string(),
-                    match_type: MatchType::Wildcard,
-                });
-            }
+            self.collect_allow_bits(trie.lookup(domain), MatchType::Wildcard, out);
         }
         if al.global_exact.contains(domain) {
             out.push(AllowMatch {
@@ -408,6 +405,32 @@ impl BlockIndex {
                     });
                 }
             }
+        }
+    }
+
+    /// One [`AllowMatch`] per allowlist source in `bits`, and one unnamed match
+    /// for [`UNNAMED_ALLOW_BIT`].
+    fn collect_allow_bits(
+        &self,
+        bits: SourceBitSet,
+        match_type: MatchType,
+        out: &mut Vec<AllowMatch>,
+    ) {
+        let mut remaining = bits;
+        while remaining != 0 {
+            let idx = remaining.trailing_zeros() as usize;
+            remaining &= remaining - 1;
+            let source = self
+                .allowlists
+                .bit_to_source
+                .get(idx)
+                .and_then(Option::as_ref);
+            out.push(AllowMatch {
+                kind: AllowMatchKind::Allowlist,
+                source_id: source.map(|s| s.id),
+                name: source.map_or_else(|| "Group allowlist".to_string(), |s| s.name.clone()),
+                match_type,
+            });
         }
     }
 }
