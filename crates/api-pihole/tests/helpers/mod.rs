@@ -426,6 +426,13 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .expect("Failed to create whitelist_source_groups table");
 
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/20260214000001_create_client_subnets.sql"
+    ))
+    .execute(&pool)
+    .await
+    .expect("Failed to create client_subnets table");
+
     pool
 }
 

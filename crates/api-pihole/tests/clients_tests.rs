@@ -128,7 +128,7 @@ async fn create_client_takes_a_string_or_an_array_and_reports_what_was_processed
 }
 
 #[tokio::test]
-async fn clients_that_are_not_ip_addresses_land_in_processed_errors() {
+async fn clients_that_are_not_addresses_or_subnets_land_in_processed_errors() {
     let app = app().await;
 
     let reply = create(
@@ -137,15 +137,77 @@ async fn clients_that_are_not_ip_addresses_land_in_processed_errors() {
     )
     .await;
 
-    assert_eq!(reply.processed.success.len(), 1);
+    assert_eq!(reply.processed.success.len(), 2);
     let failed: Vec<&str> = reply
         .processed
         .errors
         .iter()
         .map(|e| e.item.as_str())
         .collect();
-    assert_eq!(failed, ["10.0.0.0/24", "12:34:56:78:9a:bc", ":eth0"]);
-    assert_eq!(addresses(&list(&app, "/clients").await), ["10.0.0.4"]);
+    assert_eq!(failed, ["12:34:56:78:9a:bc", ":eth0"]);
+    assert_eq!(
+        addresses(&list(&app, "/clients").await),
+        ["10.0.0.4", "10.0.0.0/24"]
+    );
+}
+
+#[tokio::test]
+async fn a_subnet_client_is_stored_with_its_group_and_comment() {
+    let app = app().await;
+    let (_, kids) = send(
+        &app,
+        with_body("POST", "/groups", json!({ "name": "Kids" })),
+    )
+    .await;
+    let kids_id = kids["groups"][0]["id"].as_i64().expect("group id");
+
+    let created = create(
+        &app,
+        json!({ "client": "10.9.0.0/24", "comment": "lab", "groups": [kids_id] }),
+    )
+    .await;
+
+    assert_eq!(addresses(&created.clients), ["10.9.0.0/24"]);
+    let subnet = &created.clients[0];
+    assert_eq!(subnet.comment.as_deref(), Some("lab"));
+    assert_eq!(subnet.groups, [kids_id]);
+    assert_eq!(
+        subnet.name.as_deref(),
+        Some(""),
+        "only addresses have names"
+    );
+    assert!(subnet.date_added > 1_600_000_000);
+
+    let listed = list(&app, "/clients/10.9.0.0/24").await;
+    assert_eq!(addresses(&listed), ["10.9.0.0/24"]);
+    assert_eq!(listed[0].comment.as_deref(), Some("lab"));
+}
+
+#[tokio::test]
+async fn put_updates_a_subnet_and_delete_removes_it() {
+    let app = app().await;
+    create(&app, json!({ "client": "10.9.0.0/24", "comment": "lab" })).await;
+
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "PUT",
+            "/clients/10.9.0.0/24",
+            json!({ "comment": "lab v2" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::ClientsWriteReply>(&reply);
+    assert_eq!(reply.clients[0].comment.as_deref(), Some("lab v2"));
+    assert_eq!(reply.clients[0].groups, [0], "the group stays as it was");
+
+    let (status, _) = send(&app, delete("/clients/10.9.0.0/24")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body) = send(&app, delete("/clients/10.9.0.0/24")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({}));
 }
 
 #[tokio::test]
