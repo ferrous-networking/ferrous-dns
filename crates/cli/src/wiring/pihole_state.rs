@@ -5,7 +5,7 @@ use ferrous_dns_api_pihole::{
     },
     PiholeAppState,
 };
-use ferrous_dns_application::ports::BlockFilterEnginePort;
+use ferrous_dns_application::ports::{BlockFilterEnginePort, DnsCachePort};
 use ferrous_dns_application::use_cases::ReloadConfigUseCase;
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -22,6 +22,7 @@ pub fn build_pihole_state(
     use_cases: &UseCases,
     auth: &AuthServices,
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    dns_cache: Arc<dyn DnsCachePort>,
     config: Arc<RwLock<Config>>,
     reload_config: Option<Arc<ReloadConfigUseCase>>,
     https_port: u16,
@@ -78,6 +79,7 @@ pub fn build_pihole_state(
             reload_config,
             process_start: std::time::Instant::now(),
             https_port,
+            dns_cache,
         },
         auth: PiholeAuthState {
             login: auth.use_cases.login.clone(),

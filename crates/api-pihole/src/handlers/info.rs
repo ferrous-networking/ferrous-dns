@@ -5,15 +5,16 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, Method, Version};
 use axum::response::Response;
 use axum::{Extension, Json};
-use ferrous_dns_domain::{DomainAction, DomainError};
+use ferrous_dns_domain::{Config, DomainAction, DomainError};
 
 use crate::{
     crud::delete_reply,
     dto::info::{
-        AllowedDenied, ClientInfoResponse, ComponentVersion, CountResponse, DatabaseInfoResponse,
-        DnsmasqMetrics, DockerVersion, FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo,
-        FtlInfoResponse, FtlLocalVersion, HostInfoResponse, HttpHeader, LocalVersion,
-        LoginInfoResponse, MessagesResponse, RemoteVersion, SensorsInfo, SensorsResponse,
+        AllowedDenied, CacheMetrics, ClientInfoResponse, ComponentVersion, CountResponse,
+        DatabaseInfoResponse, DhcpMetrics, DnsMetrics, DnsmasqMetrics, DockerVersion, FtlClients,
+        FtlComponentVersion, FtlDatabaseInfo, FtlInfo, FtlInfoResponse, FtlLocalVersion,
+        HostInfoResponse, HttpHeader, LocalVersion, LoginInfoResponse, MessagesResponse, Metrics,
+        MetricsResponse, RemoteVersion, ReplyMetrics, SensorsInfo, SensorsResponse,
         SystemInfoResponse, TotalEnabled, VersionComponents, VersionResponse,
     },
     errors::PiholeApiError,
@@ -268,9 +269,65 @@ pub async fn get_ftl_info(
             mem_percent,
             cpu_percent: 0.0,
             allow_destructive: true,
-            dnsmasq: DnsmasqMetrics::default(),
+            dnsmasq: dnsmasq_metrics(&state),
         },
     }))
+}
+
+/// The dnsmasq counters Ferrous's cache has an equivalent for: entries
+/// inserted, and live entries freed before their expiry.
+fn dnsmasq_metrics(state: &PiholeAppState) -> DnsmasqMetrics {
+    let cache = state.system.dns_cache.cache_metrics_snapshot();
+    DnsmasqMetrics {
+        dns_cache_inserted: cache.insertions,
+        dns_cache_live_freed: cache.evictions,
+        ..DnsmasqMetrics::default()
+    }
+}
+
+/// dnsmasq's `cache-size`: the configured capacity, 0 with the cache off.
+pub(crate) fn cache_capacity(config: &Config) -> u64 {
+    if config.dns.cache_enabled {
+        config.dns.cache_max_entries as u64
+    } else {
+        0
+    }
+}
+
+/// Pi-hole v6 GET /api/info/metrics
+///
+/// dnsmasq's cache and reply counters and its DHCP counters (info.c
+/// api_info_metrics). The cache figures come from Ferrous's cache; the
+/// per-type content, the reply counters and DHCP have no equivalent and stay
+/// empty or 0.
+#[utoipa::path(
+    get,
+    path = "/info/metrics",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Cache, reply and DHCP counters", body = MetricsResponse)
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_metrics(State(state): State<PiholeAppState>) -> Json<MetricsResponse> {
+    let size = cache_capacity(&*state.system.config.read().await);
+    let cache = state.system.dns_cache.cache_metrics_snapshot();
+    Json(MetricsResponse {
+        metrics: Metrics {
+            dns: DnsMetrics {
+                cache: CacheMetrics {
+                    size,
+                    inserted: cache.insertions,
+                    evicted: cache.evictions,
+                    expired: cache.lazy_deletions,
+                    immortal: 0,
+                    content: Vec::new(),
+                },
+                replies: ReplyMetrics::default(),
+            },
+            dhcp: DhcpMetrics::default(),
+        },
+    })
 }
 
 /// Tallies `(action, enabled)` pairs into FTL's allowed/denied totals.

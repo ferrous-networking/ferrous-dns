@@ -159,8 +159,14 @@ async fn ftl_info_reports_cache_insertions_and_evictions_as_dnsmasq_counters() {
     let json = get_json(pool, "/info/ftl").await;
 
     let dnsmasq = &json["ftl"]["dnsmasq"];
-    assert_eq!(dnsmasq["dns_cache_inserted"], helpers::STUB_CACHE_INSERTIONS);
-    assert_eq!(dnsmasq["dns_cache_live_freed"], helpers::STUB_CACHE_EVICTIONS);
+    assert_eq!(
+        dnsmasq["dns_cache_inserted"],
+        helpers::STUB_CACHE_INSERTIONS
+    );
+    assert_eq!(
+        dnsmasq["dns_cache_live_freed"],
+        helpers::STUB_CACHE_EVICTIONS
+    );
 }
 
 #[tokio::test]

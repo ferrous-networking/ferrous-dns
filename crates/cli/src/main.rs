@@ -113,6 +113,7 @@ async fn async_main() -> anyhow::Result<()> {
             &use_cases,
             &auth,
             repos.block_filter_engine.clone(),
+            dns_services.cache.clone(),
             config_arc.clone(),
             config_services.reload.clone(),
             web_tls_config

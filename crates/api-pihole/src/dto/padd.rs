@@ -53,9 +53,9 @@ pub struct PaddQueries {
 pub struct PaddCache {
     /// Configured cache capacity, 0 with the cache off.
     pub size: u64,
-    /// Not tracked by Ferrous, so 0.
+    /// Entries inserted since start.
     pub inserted: u64,
-    /// Not tracked by Ferrous, so 0.
+    /// Live entries removed before their expiry, to make room or on request.
     pub evicted: u64,
 }
 

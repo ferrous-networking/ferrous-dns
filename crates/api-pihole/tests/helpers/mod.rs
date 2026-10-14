@@ -10,7 +10,10 @@ use ferrous_dns_api_pihole::state::{
     PiholeSystemState,
 };
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
-use ferrous_dns_application::ports::{BlockFilterEnginePort, FilterDecision};
+use ferrous_dns_application::ports::{
+    BlockFilterEnginePort, CacheEntryPage, CacheEntryQuery, CacheMetricsSnapshot, DnsCachePort,
+    FilterDecision,
+};
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateGroupUseCase,
     CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
@@ -64,6 +67,53 @@ pub const PROCESS_AGE: std::time::Duration = std::time::Duration::from_secs(5);
 pub const STUB_CACHE_INSERTIONS: u64 = 42;
 pub const STUB_CACHE_EVICTIONS: u64 = 7;
 pub const STUB_CACHE_EXPIRED: u64 = 3;
+
+/// A cache that holds nothing and reports the `STUB_CACHE_*` counters.
+struct StubDnsCache;
+
+impl DnsCachePort for StubDnsCache {
+    fn cache_size(&self) -> usize {
+        0
+    }
+
+    fn cache_metrics_snapshot(&self) -> CacheMetricsSnapshot {
+        CacheMetricsSnapshot {
+            insertions: STUB_CACHE_INSERTIONS,
+            evictions: STUB_CACHE_EVICTIONS,
+            lazy_deletions: STUB_CACHE_EXPIRED,
+            ..CacheMetricsSnapshot::default()
+        }
+    }
+
+    fn insert_permanent_record(
+        &self,
+        _domain: &str,
+        _record_type: ferrous_dns_domain::RecordType,
+        _addresses: Vec<IpAddr>,
+        _ttl: u32,
+    ) {
+    }
+
+    fn remove_record(&self, _domain: &str, _record_type: &ferrous_dns_domain::RecordType) -> bool {
+        false
+    }
+
+    fn is_permanent_record(
+        &self,
+        _domain: &str,
+        _record_type: &ferrous_dns_domain::RecordType,
+    ) -> bool {
+        false
+    }
+
+    fn list_entries(&self, _query: &CacheEntryQuery) -> CacheEntryPage {
+        CacheEntryPage {
+            entries: Vec::new(),
+            total: 0,
+            records_total: 0,
+        }
+    }
+}
 
 /// Domain decisions of the mock engine:
 /// - `regex.blocked.test` → blocked by the deny regex [`MOCK_DENY_REGEX_ID`]
@@ -534,6 +584,7 @@ async fn build_pihole_state(
                 .checked_sub(PROCESS_AGE)
                 .expect("monotonic clock is older than PROCESS_AGE"),
             https_port: 0,
+            dns_cache: Arc::new(StubDnsCache),
         },
         auth: auth::build_auth_state(totp_enrolled).await,
     }

@@ -1,4 +1,4 @@
-use ferrous_dns_application::ports::BlockFilterEnginePort;
+use ferrous_dns_application::ports::{BlockFilterEnginePort, DnsCachePort};
 use ferrous_dns_application::use_cases::{
     AppPasswordLoginUseCase, GetClientActivityUseCase, GetMfaStatusUseCase,
     GetQueryLogStorageUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
@@ -131,4 +131,6 @@ pub struct PiholeSystemState {
     /// Port the web server serves HTTPS on, or 0 for plain HTTP. Follows the
     /// TLS material that actually loaded, never `[server.web_tls] enabled`.
     pub https_port: u16,
+    /// The resolver's cache, for dnsmasq's cache counters.
+    pub dns_cache: Arc<dyn DnsCachePort>,
 }

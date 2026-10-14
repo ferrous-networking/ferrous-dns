@@ -52,7 +52,7 @@ pub async fn get_padd(
     )?;
     let (config, cache) = {
         let config = state.system.config.read().await;
-        (padd_config(&config), padd_cache(&config))
+        (padd_config(&config), padd_cache(&state, &config))
     };
     let (system, host, cpu_temp, iface) = tokio::task::spawn_blocking(move || {
         (
@@ -132,17 +132,12 @@ fn padd_config(config: &Config) -> PaddConfig {
     }
 }
 
-/// dnsmasq's `cache-size` is the configured capacity; Ferrous does not count
-/// insertions or evictions.
-fn padd_cache(config: &Config) -> PaddCache {
-    let size = if config.dns.cache_enabled {
-        config.dns.cache_max_entries as u64
-    } else {
-        0
-    };
+/// padd.c: dnsmasq's cache size, insertions and live entries freed.
+fn padd_cache(state: &PiholeAppState, config: &Config) -> PaddCache {
+    let metrics = state.system.dns_cache.cache_metrics_snapshot();
     PaddCache {
-        size,
-        inserted: 0,
-        evicted: 0,
+        size: info::cache_capacity(config),
+        inserted: metrics.insertions,
+        evicted: metrics.evictions,
     }
 }

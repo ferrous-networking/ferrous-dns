@@ -211,7 +211,8 @@ pub struct FtlClients {
     pub active: u64,
 }
 
-/// dnsmasq's internal counters. Ferrous has no dnsmasq, so all are 0.
+/// dnsmasq's internal counters. Ferrous has no dnsmasq: only the cache
+/// counters have an equivalent, every other one is 0.
 #[derive(Debug, Default, Serialize, ToSchema)]
 pub struct DnsmasqMetrics {
     pub dns_cache_inserted: u64,
@@ -245,6 +246,90 @@ pub struct DnsmasqMetrics {
     /// Sic: FTL spells it this way.
     pub dhcp_lease_actve: u64,
     pub dhcp_lease_unknown: u64,
+}
+
+/// Pi-hole v6 GET /api/info/metrics response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MetricsResponse {
+    pub metrics: Metrics,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Metrics {
+    pub dns: DnsMetrics,
+    pub dhcp: DhcpMetrics,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DnsMetrics {
+    pub cache: CacheMetrics,
+    pub replies: ReplyMetrics,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CacheMetrics {
+    /// Configured cache capacity, 0 with the cache off.
+    pub size: u64,
+    /// Entries inserted since start.
+    pub inserted: u64,
+    /// Live entries removed before their expiry.
+    pub evicted: u64,
+    /// Expired entries removed when a lookup found them.
+    pub expired: u64,
+    /// Not counted by Ferrous, so 0.
+    pub immortal: u64,
+    /// Per-type counts; Ferrous does not keep them, so empty.
+    pub content: Vec<CacheContent>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CacheContent {
+    #[serde(rename = "type")]
+    pub rr_type: u16,
+    pub name: String,
+    pub count: CacheContentCount,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CacheContentCount {
+    pub valid: u64,
+    pub stale: u64,
+}
+
+/// dnsmasq's reply counters; Ferrous has no dnsmasq, so all are 0.
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct ReplyMetrics {
+    pub local: u64,
+    pub forwarded: u64,
+    pub optimized: u64,
+    pub unanswered: u64,
+    pub auth: u64,
+    pub sum: u64,
+}
+
+/// dnsmasq's DHCP counters; Ferrous serves no DHCP, so all are 0.
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct DhcpMetrics {
+    pub ack: u64,
+    pub decline: u64,
+    pub discover: u64,
+    pub inform: u64,
+    pub nak: u64,
+    pub offer: u64,
+    pub release: u64,
+    pub request: u64,
+    pub noanswer: u64,
+    pub bootp: u64,
+    pub pxe: u64,
+    pub leases: DhcpLeaseMetrics,
+}
+
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct DhcpLeaseMetrics {
+    pub allocated_4: u64,
+    pub pruned_4: u64,
+    pub allocated_6: u64,
+    pub pruned_6: u64,
 }
 
 /// Pi-hole v6 GET /api/info/system response.
