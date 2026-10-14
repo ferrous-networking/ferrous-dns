@@ -1213,6 +1213,82 @@ async fn from_drops_older_queries() {
     assert_eq!(domains, vec!["new.com"]);
 }
 
+/// The domains of a `/queries` reply, newest first.
+fn domains(json: &Value) -> Vec<&str> {
+    json["queries"]
+        .as_array()
+        .expect("queries")
+        .iter()
+        .filter_map(|q| q["domain"].as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn until_drops_newer_queries() {
+    // queries.c: `until` bounds the window, exclusive (`timestamp < until`).
+    let pool = helpers::create_test_db().await;
+    for (domain, age) in [
+        ("old.com", "-3 hours"),
+        ("middle.com", "-90 minutes"),
+        ("new.com", "+0 seconds"),
+    ] {
+        insert_row(
+            &pool,
+            Row {
+                domain,
+                age: Some(age),
+                ..Default::default()
+            },
+        )
+        .await;
+    }
+    let app = helpers::create_pihole_test_app(pool).await;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+
+    let (status, json) = get(
+        &app,
+        &format!("/queries?from={}&until={}", now - 4 * 3_600, now - 3_600),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(domains(&json), ["middle.com", "old.com"]);
+    assert_eq!(json["recordsFiltered"], 2);
+}
+
+#[tokio::test]
+async fn type_other_selects_the_types_ftl_does_not_name() {
+    // FTL counts every query type outside its list as OTHER
+    // (dnsmasq_interface.c), and `type=OTHER` selects those.
+    let pool = helpers::create_test_db().await;
+    for (domain, record_type) in [
+        ("a.com", "A"),
+        ("caa.com", "CAA"),
+        ("https.com", "HTTPS"),
+        ("cname.com", "CNAME"),
+    ] {
+        insert_row(
+            &pool,
+            Row {
+                domain,
+                record_type: Some(record_type),
+                ..Default::default()
+            },
+        )
+        .await;
+    }
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = get(&app, "/queries?type=OTHER").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(domains(&json), ["cname.com", "caa.com"]);
+    assert_eq!(json["recordsFiltered"], 2);
+}
+
 #[tokio::test]
 async fn earliest_timestamps_report_the_oldest_query() {
     let pool = helpers::create_test_db().await;
