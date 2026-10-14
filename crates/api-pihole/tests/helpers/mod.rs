@@ -549,6 +549,39 @@ pub async fn create_pihole_test_app_with_config(
     create_pihole_router_with_openapi(state).0
 }
 
+/// Sends a body-less `method uri` to `app`, returning the status and the JSON
+/// body, or `Value::Null` when the body is empty or not JSON.
+pub async fn send(
+    app: Router,
+    method: &str,
+    uri: &str,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(method)
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
 /// The OpenAPI document served next to [`create_pihole_test_app`].
 pub async fn create_pihole_test_openapi(pool: sqlx::SqlitePool) -> utoipa::openapi::OpenApi {
     create_pihole_router_with_openapi(build_pihole_state(pool, false, false).await).1

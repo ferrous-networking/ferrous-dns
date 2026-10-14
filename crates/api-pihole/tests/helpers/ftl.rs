@@ -609,6 +609,65 @@ pub struct DatabaseOwnerGroup {
     pub name: Option<String>,
 }
 
+/// `GET /info/messages` — info.yaml:1145.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InfoMessages {
+    pub messages: Vec<InfoMessage>,
+    pub took: Option<f64>,
+}
+
+/// `messages[]` — info.yaml:1150.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InfoMessage {
+    pub id: i64,
+    pub timestamp: f64,
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub plain: String,
+    pub html: String,
+}
+
+/// `GET /info/messages/count` — info.yaml:1298.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Count {
+    pub count: i64,
+    pub took: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// /dhcp
+// ---------------------------------------------------------------------------
+
+/// `GET /dhcp/leases` — dhcp.yaml:70.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DhcpLeases {
+    pub leases: Vec<DhcpLease>,
+    pub took: Option<f64>,
+}
+
+/// `leases[]` — dhcp.yaml:77.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DhcpLease {
+    pub expires: i64,
+    pub name: String,
+    pub hwaddr: String,
+    pub ip: String,
+    pub clientid: String,
+}
+
+/// An empty JSON object — FTL's body for a 404 without an error envelope
+/// (`DELETE /info/messages/{id}` naming no message).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Empty {
+    pub took: Option<f64>,
+}
+
 // ---------------------------------------------------------------------------
 // /dns
 // ---------------------------------------------------------------------------

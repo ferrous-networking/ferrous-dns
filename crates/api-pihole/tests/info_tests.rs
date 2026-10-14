@@ -70,6 +70,43 @@ async fn version_contains_valid_semver() {
     );
 }
 
+#[tokio::test]
+async fn messages_list_is_empty() {
+    let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+    let (status, json) = helpers::send(app, "GET", "/info/messages").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let messages = helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoMessages>(&json);
+    assert!(messages.messages.is_empty());
+}
+
+#[tokio::test]
+async fn messages_count_is_zero() {
+    let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+    let (status, json) = helpers::send(app, "GET", "/info/messages/count").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        helpers::ftl::assert_ftl_shape::<helpers::ftl::Count>(&json).count,
+        0
+    );
+}
+
+#[tokio::test]
+async fn deleting_messages_that_do_not_exist_is_an_empty_not_found() {
+    // info.c api_info_messages DELETE: nothing deleted → 404 with `{}`.
+    for ids in ["7", "1,2,3"] {
+        let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+        let (status, json) = helpers::send(app, "DELETE", &format!("/info/messages/{ids}")).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND, "ids {ids}");
+        helpers::ftl::assert_ftl_shape::<helpers::ftl::Empty>(&json);
+    }
+}
+
 /// GETs `uri` from a fresh app over `pool`, asserting 200 and returning the JSON body.
 async fn get_json(pool: sqlx::SqlitePool, uri: &str) -> Value {
     let app = helpers::create_pihole_test_app(pool).await;
