@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use helpers::auth::{ADMIN_PASSWORD, APP_PASSWORD, TOTP_CODE};
+use helpers::ftl::{self, assert_ftl_shape};
 use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
@@ -53,6 +54,38 @@ fn get_with_header(uri: &str, header: &str, value: &str) -> Request<Body> {
         .expect("failed to build request")
 }
 
+fn post_auth_with_sid(body: Value, sid: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri("/auth")
+        .header("content-type", "application/json")
+        .header("X-FTL-SID", sid)
+        .body(Body::from(body.to_string()))
+        .expect("failed to build request")
+}
+
+fn delete_auth(sid: Option<&str>) -> Request<Body> {
+    let builder = Request::builder().method("DELETE").uri("/auth");
+    let builder = match sid {
+        Some(sid) => builder.header("X-FTL-SID", sid),
+        None => builder,
+    };
+    builder
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+/// FTL's session object, checked against the mirror; `csrf` is only sent
+/// with a valid session (auth.c `get_session_object`).
+fn assert_session_reply(json: &Value, has_session: bool) {
+    assert_ftl_shape::<ftl::AuthSession>(json);
+    assert_eq!(
+        json["session"].get("csrf").is_some(),
+        has_session,
+        "csrf must be sent only with a valid session: {json}"
+    );
+}
+
 /// Logs in with `password` and returns the session id.
 async fn login(app: &Router, password: &str) -> String {
     let (status, json) = send(app, post_auth(serde_json::json!({ "password": password }))).await;
@@ -74,11 +107,26 @@ async fn get_auth_returns_unauthenticated_session_when_no_active_session() {
 
     let (status, json) = send(&app, get("/auth")).await;
 
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
     assert_eq!(json["session"]["valid"], false);
     assert_eq!(json["session"]["totp"], false);
     assert!(json["session"]["sid"].is_null());
     assert_eq!(json["session"]["validity"], -1);
+    assert_eq!(json["session"]["message"], "no SID provided");
+}
+
+#[tokio::test]
+async fn get_auth_with_an_unknown_sid_is_unauthorized() {
+    let app = auth_app(false).await;
+
+    let (status, json) = send(&app, get_with_header("/auth", "X-FTL-SID", "not-a-session")).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["valid"], false);
+    assert!(json["session"]["sid"].is_null());
+    assert_eq!(json["session"]["message"], "session unknown");
 }
 
 #[tokio::test]
@@ -89,9 +137,57 @@ async fn get_auth_reflects_a_valid_session() {
     let (status, json) = send(&app, get_with_header("/auth", "X-FTL-SID", &sid)).await;
 
     assert_eq!(status, StatusCode::OK);
+    assert_session_reply(&json, true);
     assert_eq!(json["session"]["valid"], true);
     assert_eq!(json["session"]["sid"], sid.as_str());
     assert!(json["session"]["validity"].as_i64().unwrap() > 0);
+    assert_eq!(json["session"]["message"], "correct password");
+}
+
+#[tokio::test]
+async fn get_auth_answers_like_a_pihole_without_password_when_auth_is_disabled() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = send(&app, get("/auth")).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["valid"], true);
+    assert_eq!(json["session"]["totp"], false);
+    assert_eq!(json["session"]["message"], "no password set");
+}
+
+/// FTL's `totp` says whether the server has a second factor set up, in every
+/// session object, not whether this login used one.
+#[tokio::test]
+async fn every_session_reply_reports_an_enrolled_second_factor() {
+    let app = auth_app(true).await;
+
+    let (status, json) = send(
+        &app,
+        post_auth(serde_json::json!({ "password": APP_PASSWORD })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_eq!(json["session"]["totp"], true, "app-password login: {json}");
+    let sid = json["session"]["sid"].as_str().expect("sid").to_string();
+
+    let (_, json) = send(&app, get_with_header("/auth", "X-FTL-SID", &sid)).await;
+    assert_eq!(json["session"]["totp"], true, "GET with a session: {json}");
+
+    let (_, json) = send(&app, get("/auth")).await;
+    assert_eq!(
+        json["session"]["totp"], true,
+        "GET without a session: {json}"
+    );
+
+    let (_, json) = send(
+        &app,
+        post_auth(serde_json::json!({ "password": "wrong-password" })),
+    )
+    .await;
+    assert_eq!(json["session"]["totp"], true, "wrong password: {json}");
 }
 
 #[tokio::test]
@@ -129,6 +225,90 @@ async fn login_rejects_wrong_password_when_auth_is_enabled() {
     assert_eq!(json["session"]["valid"], false);
     assert_eq!(json["session"]["message"], "password incorrect");
     assert!(json["session"]["sid"].is_null());
+}
+
+#[tokio::test]
+async fn wrong_password_reply_is_ftls_session_object() {
+    let app = auth_app(false).await;
+
+    let (_, json) = send(
+        &app,
+        post_auth(serde_json::json!({ "password": "wrong-password" })),
+    )
+    .await;
+
+    assert_session_reply(&json, false);
+}
+
+#[tokio::test]
+async fn login_reply_is_ftls_session_object() {
+    let app = auth_app(false).await;
+
+    let (_, json) = send(
+        &app,
+        post_auth(serde_json::json!({ "password": ADMIN_PASSWORD })),
+    )
+    .await;
+
+    assert_session_reply(&json, true);
+}
+
+#[tokio::test]
+async fn login_without_a_password_is_a_bad_request() {
+    let app = auth_app(false).await;
+
+    let (status, json) = send(&app, post_auth(serde_json::json!({ "totp": 123456 }))).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(json["error"]["key"], "bad_request");
+    assert_eq!(
+        json["error"]["message"],
+        "No password found in JSON payload"
+    );
+}
+
+/// auth.c checks for the `password` key before it looks at the session.
+#[tokio::test]
+async fn login_without_a_password_is_a_bad_request_even_with_a_valid_sid() {
+    let app = auth_app(false).await;
+    let sid = login(&app, ADMIN_PASSWORD).await;
+
+    let (status, json) = send(&app, post_auth_with_sid(serde_json::json!({}), &sid)).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json["error"]["message"],
+        "No password found in JSON payload"
+    );
+}
+
+#[tokio::test]
+async fn login_with_an_empty_password_and_a_valid_sid_returns_the_session() {
+    let app = auth_app(false).await;
+    let sid = login(&app, ADMIN_PASSWORD).await;
+
+    let (status, json) = send(
+        &app,
+        post_auth_with_sid(serde_json::json!({ "password": "" }), &sid),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_session_reply(&json, true);
+    assert_eq!(json["session"]["valid"], true);
+    assert_eq!(json["session"]["sid"], sid.as_str());
+    assert_eq!(json["session"]["message"], "correct password");
+}
+
+#[tokio::test]
+async fn login_with_an_empty_password_and_no_session_is_unauthorized() {
+    let app = auth_app(false).await;
+
+    let (status, json) = send(&app, post_auth(serde_json::json!({ "password": "" }))).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["message"], "password incorrect");
 }
 
 #[tokio::test]
@@ -178,6 +358,20 @@ async fn login_answers_like_a_pihole_without_password_when_auth_is_disabled() {
     assert!(json["session"]["sid"].is_null());
     assert_eq!(json["session"]["validity"], -1);
     assert_eq!(json["session"]["message"], "no password set");
+}
+
+#[tokio::test]
+async fn login_without_a_password_is_a_bad_request_when_auth_is_disabled() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = send(&app, post_auth(serde_json::json!({}))).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json["error"]["message"],
+        "No password found in JSON payload"
+    );
 }
 
 #[tokio::test]
@@ -276,19 +470,19 @@ async fn each_wrong_password_counts_once_toward_the_lockout() {
     assert_eq!(json["error"]["key"], "rate_limiting");
 }
 
+/// With no password there is no session to end: auth.c answers 401 with the
+/// no-password session object.
 #[tokio::test]
-async fn logout_returns_no_content() {
+async fn logout_answers_like_a_pihole_without_password_when_auth_is_disabled() {
     let pool = helpers::create_test_db().await;
     let app = helpers::create_pihole_test_app(pool).await;
 
-    let request = Request::builder()
-        .method("DELETE")
-        .uri("/auth")
-        .body(Body::empty())
-        .expect("failed to build request");
-    let (status, _) = send(&app, request).await;
+    let (status, json) = send(&app, delete_auth(None)).await;
 
-    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["valid"], true);
+    assert_eq!(json["session"]["message"], "no password set");
 }
 
 #[tokio::test]
@@ -318,9 +512,23 @@ async fn logout_without_a_session_is_unauthorized() {
         .uri("/auth")
         .body(Body::empty())
         .expect("failed to build request");
-    let (status, _) = send(&app, request).await;
+    let (status, json) = send(&app, request).await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["valid"], false);
+    assert_eq!(json["session"]["message"], "no SID provided");
+}
+
+#[tokio::test]
+async fn logout_with_an_unknown_sid_is_unauthorized() {
+    let app = auth_app(false).await;
+
+    let (status, json) = send(&app, delete_auth(Some("not-a-session"))).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["message"], "session unknown");
 }
 
 #[tokio::test]

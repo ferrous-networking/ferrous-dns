@@ -230,6 +230,8 @@ pub struct AuthSession {
 pub struct Session {
     pub valid: bool,
     pub totp: bool,
+    // C (auth.c get_session_object) always adds `sid`, as null without a session.
+    #[serde(deserialize_with = "required_nullable")]
     pub sid: Option<String>,
     // C (auth.c get_session_object) omits `csrf` unless a session is valid.
     pub csrf: Option<String>,
