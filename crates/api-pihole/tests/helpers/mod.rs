@@ -19,9 +19,10 @@ use ferrous_dns_application::use_cases::{
     DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetClientsUseCase, GetGroupsUseCase,
     GetManagedDomainsUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
     GetRegexFiltersUseCase, GetTimelineUseCase, GetTopAllowedDomainsUseCase,
-    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase,
+    GetWhitelistSourcesUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{BlockSource, Config, DomainError};
@@ -338,6 +339,9 @@ async fn build_pihole_state(
                 query_log_repo.clone(),
             )),
             get_top_clients: Arc::new(GetTopClientsUseCase::new(query_log_repo.clone())),
+            get_top_blocked_clients: Arc::new(GetTopBlockedClientsUseCase::new(
+                query_log_repo.clone(),
+            )),
             get_recent_queries: Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone())),
         },
         blocking: PiholeBlockingState {

@@ -2,23 +2,27 @@ use axum::extract::{Query, State};
 use axum::Json;
 use chrono::{Timelike, Utc};
 use ferrous_dns_application::ports::TimeGranularity;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DnsProtocol, DomainError};
 use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::{
+    dto::queries::blocked_status,
     dto::stats::{
-        ClientSummary, GravitySummary, HistoryBucket, HistoryResponse, QuerySummary,
-        QueryTypesResponse, RecentBlockedResponse, SummaryResponse, TopClientEntry,
-        TopClientsResponse, TopDomainEntry, TopDomainsResponse,
+        ClientSummary, GravitySummary, HistoryBucket, HistoryResponse, QueryStatusCounts,
+        QuerySummary, QueryTypeCounts, QueryTypesResponse, RecentBlockedResponse, ReplyTypeCounts,
+        SummaryResponse, TopClientEntry, TopClientsResponse, TopDomainEntry, TopDomainsResponse,
     },
-    dto::upstreams::UpstreamsResponse,
+    dto::upstreams::{UpstreamEntry, UpstreamStatistics, UpstreamsResponse},
     errors::PiholeApiError,
     state::PiholeAppState,
 };
 
 pub const STATS_PERIOD_HOURS: f32 = 24.0;
 pub const TOP_ITEMS_LIMIT: u32 = 25;
+
+/// FTL's default for the `count` of `/stats/top_domains` and `/stats/top_clients`.
+const DEFAULT_TOP_COUNT: u32 = 10;
 
 const RECENT_BLOCKED_SCAN_LIMIT: u32 = 200;
 
@@ -30,6 +34,9 @@ const MAX_PERIOD_HOURS: f32 = 24.0 * 366.0 * 10.0;
 #[derive(Debug, Deserialize)]
 pub struct DatabaseQueryParams {
     pub(crate) from: Option<f32>,
+    /// FTL's name for the number of entries to return.
+    pub(crate) count: Option<u32>,
+    /// Ferrous's earlier name for `count`, still honoured.
     pub(crate) limit: Option<u32>,
     pub(crate) blocked: Option<bool>,
 }
@@ -43,7 +50,7 @@ impl DatabaseQueryParams {
     }
 
     pub(crate) fn limit(&self) -> u32 {
-        self.limit.unwrap_or(TOP_ITEMS_LIMIT)
+        self.count.or(self.limit).unwrap_or(DEFAULT_TOP_COUNT)
     }
 }
 
@@ -53,9 +60,7 @@ impl DatabaseQueryParams {
     path = "/stats/summary",
     tag = "pihole:stats",
     params(
-        ("from" = Option<f32>, Query, description = "Period in hours (default 24)"),
-        ("limit" = Option<u32>, Query, description = "Max items returned"),
-        ("blocked" = Option<bool>, Query, description = "Filter only blocked")
+        ("from" = Option<f32>, Query, description = "Period in hours (default 24)")
     ),
     responses(
         (status = 200, description = "Summary statistics", body = SummaryResponse)
@@ -78,14 +83,25 @@ pub async fn get_summary(
     };
 
     let cache_hits = stats.source_stats.get("cache").copied().unwrap_or(0);
+    let local_dns = stats.source_stats.get("local_dns").copied().unwrap_or(0);
     // Only upstream answers are forwarded; local records and failures are not.
     let forwarded = forwarded_count(&stats.source_stats);
 
-    let query_types: HashMap<String, u64> = stats
-        .queries_by_type
-        .into_iter()
-        .map(|(record_type, count)| (record_type.to_string(), count))
-        .collect();
+    let mut types = QueryTypeCounts::default();
+    for (record_type, count) in &stats.queries_by_type {
+        types.add(record_type.as_str(), *count);
+    }
+
+    let mut status = QueryStatusCounts::default();
+    for (source, count) in &stats.source_stats {
+        let name = match source.as_str() {
+            // FTL counts answers from local configuration as cached.
+            "cache" | "local_dns" => "CACHE",
+            upstream if is_upstream_key(upstream) => "FORWARDED",
+            block_source => blocked_status(block_source.parse().ok()),
+        };
+        status.add(name, *count);
+    }
 
     let domains_being_blocked = state.blocking.block_filter_engine.compiled_domain_count() as u64;
 
@@ -96,9 +112,11 @@ pub async fn get_summary(
             percent_blocked,
             unique_domains: 0,
             forwarded,
-            cached: cache_hits,
+            cached: cache_hits + local_dns,
             frequency: 0.0,
-            types: query_types,
+            types,
+            status,
+            replies: ReplyTypeCounts::default(),
         },
         clients: ClientSummary {
             active: stats.unique_clients,
@@ -107,11 +125,6 @@ pub async fn get_summary(
         gravity: GravitySummary {
             domains_being_blocked,
             last_update: 0,
-        },
-        status: if state.blocking.block_filter_engine.is_blocking_enabled() {
-            "enabled"
-        } else {
-            "disabled"
         },
     };
 
@@ -192,7 +205,7 @@ pub async fn get_history(
     tag = "pihole:stats",
     params(
         ("from" = Option<f32>, Query, description = "Period in hours"),
-        ("limit" = Option<u32>, Query, description = "Max items")
+        ("count" = Option<u32>, Query, description = "Max items (default 10)")
     ),
     responses(
         (status = 200, description = "Top blocked domains", body = TopDomainsResponse)
@@ -247,13 +260,16 @@ async fn top_domains(
 }
 
 /// Pi-hole v6 GET /api/stats/top_clients
+///
+/// Ranks clients by all their queries, or by blocked queries with `?blocked=true`.
 #[utoipa::path(
     get,
     path = "/stats/top_clients",
     tag = "pihole:stats",
     params(
         ("from" = Option<f32>, Query, description = "Period in hours"),
-        ("limit" = Option<u32>, Query, description = "Max items")
+        ("count" = Option<u32>, Query, description = "Max items (default 10)"),
+        ("blocked" = Option<bool>, Query, description = "Rank by blocked queries")
     ),
     responses(
         (status = 200, description = "Top clients", body = TopClientsResponse)
@@ -268,7 +284,17 @@ pub async fn get_top_clients(
     let limit = params.limit();
 
     let (clients_raw, stats) = tokio::join!(
-        state.query.get_top_clients.execute(limit, period),
+        async {
+            if params.blocked.unwrap_or(false) {
+                state
+                    .query
+                    .get_top_blocked_clients
+                    .execute(limit, period)
+                    .await
+            } else {
+                state.query.get_top_clients.execute(limit, period).await
+            }
+        },
         state.query.get_stats.execute(period),
     );
 
@@ -336,7 +362,7 @@ pub async fn get_query_types(
     tag = "pihole:stats",
     params(
         ("from" = Option<f32>, Query, description = "Period in hours"),
-        ("limit" = Option<u32>, Query, description = "Max items"),
+        ("count" = Option<u32>, Query, description = "Max items (default 10)"),
         ("blocked" = Option<bool>, Query, description = "Return top blocked instead of top allowed")
     ),
     responses(
@@ -354,7 +380,8 @@ pub async fn get_top_domains(
 
 /// Pi-hole v6 GET /api/stats/upstreams
 ///
-/// Returns upstream DNS server usage statistics.
+/// Returns where answers came from: the `blocklist` and `cache` pseudo-entries,
+/// then each upstream server (merged across pools) by descending count.
 #[utoipa::path(
     get,
     path = "/stats/upstreams",
@@ -373,19 +400,76 @@ pub async fn get_upstreams(
 ) -> Result<Json<UpstreamsResponse>, PiholeApiError> {
     let stats = state.query.get_stats.execute(params.period()).await?;
 
-    let upstreams: HashMap<String, u64> = stats
-        .source_stats
-        .into_iter()
-        .filter(|(key, _)| is_upstream_key(key))
-        .collect();
+    let mut per_server: HashMap<&str, u64> = HashMap::new();
+    for (key, count) in &stats.source_stats {
+        // Upstream keys are `{pool}:{server}`; the other keys have no colon.
+        if let Some((_pool, server)) = key.split_once(':') {
+            *per_server.entry(server).or_default() += count;
+        }
+    }
+    let forwarded_queries: u64 = per_server.values().sum();
 
-    let forwarded_queries: u64 = upstreams.values().sum();
+    let mut servers: Vec<(&str, u64)> = per_server.into_iter().collect();
+    servers.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+
+    let cached = ["cache", "local_dns"]
+        .iter()
+        .filter_map(|key| stats.source_stats.get(*key))
+        .sum();
+    let mut upstreams = vec![
+        pseudo_upstream("blocklist", stats.queries_blocked),
+        pseudo_upstream("cache", cached),
+    ];
+    upstreams.extend(
+        servers
+            .into_iter()
+            .map(|(server, count)| upstream_entry(server, count)),
+    );
 
     Ok(Json(UpstreamsResponse {
         upstreams,
         forwarded_queries,
         total_queries: stats.queries_total,
     }))
+}
+
+fn pseudo_upstream(name: &str, count: u64) -> UpstreamEntry {
+    UpstreamEntry {
+        ip: Some(name.to_string()),
+        name: Some(name.to_string()),
+        port: -1,
+        count,
+        statistics: UpstreamStatistics::default(),
+    }
+}
+
+/// An upstream as FTL lists it, from the server URL the query log records
+/// (e.g. `udp://1.1.1.1:53`). A server that no longer parses keeps its text
+/// as the name, with port -1.
+fn upstream_entry(server: &str, count: u64) -> UpstreamEntry {
+    let Ok(protocol) = server.parse::<DnsProtocol>() else {
+        return UpstreamEntry {
+            ip: None,
+            name: Some(server.to_string()),
+            port: -1,
+            count,
+            statistics: UpstreamStatistics::default(),
+        };
+    };
+    let port = match &protocol {
+        DnsProtocol::Udp { addr }
+        | DnsProtocol::Tcp { addr }
+        | DnsProtocol::Tls { addr, .. }
+        | DnsProtocol::Quic { addr, .. } => addr.port(),
+        DnsProtocol::Https { port, .. } | DnsProtocol::H3 { port, .. } => *port,
+    };
+    UpstreamEntry {
+        ip: protocol.socket_addr().map(|addr| addr.ip().to_string()),
+        name: protocol.hostname().map(str::to_owned),
+        port: i32::from(port),
+        count,
+        statistics: UpstreamStatistics::default(),
+    }
 }
 
 /// Pi-hole v6 GET /api/stats/recent_blocked

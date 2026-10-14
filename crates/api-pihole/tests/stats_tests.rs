@@ -97,9 +97,7 @@ async fn summary_response_matches_pihole_v6_schema() {
         "gravity.domains_being_blocked must be number"
     );
 
-    // status
-    assert!(json["status"].is_string(), "status must be string");
-    assert_eq!(json["status"], "enabled");
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsSummary>(&json);
 }
 
 #[tokio::test]
@@ -809,8 +807,8 @@ async fn upstreams_returns_required_fields() {
     let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
 
     assert!(
-        json["upstreams"].is_object(),
-        "response must have an 'upstreams' object field"
+        json["upstreams"].is_array(),
+        "response must have an 'upstreams' array field"
     );
     assert!(
         json["forwarded_queries"].is_number(),
@@ -820,6 +818,7 @@ async fn upstreams_returns_required_fields() {
         json["total_queries"].is_number(),
         "response must have a 'total_queries' number field"
     );
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsUpstreams>(&json);
 }
 
 #[tokio::test]
@@ -876,7 +875,7 @@ async fn get_json(app: axum::Router, uri: &str) -> Value {
 }
 
 #[tokio::test]
-async fn upstreams_exclude_cache_local_and_block_sources() {
+async fn upstreams_list_blocklist_and_cache_then_each_server() {
     let pool = helpers::create_test_db().await;
     for _ in 0..3 {
         helpers::insert_upstream_query(&pool, "a.example", "default", "1.1.1.1:53").await;
@@ -895,12 +894,20 @@ async fn upstreams_exclude_cache_local_and_block_sources() {
     let app = helpers::create_pihole_test_app(pool).await;
     let json = get_json(app, "/stats/upstreams").await;
 
+    let entries: Vec<(Value, Value, Value)> = json["upstreams"]
+        .as_array()
+        .expect("upstreams array")
+        .iter()
+        .map(|u| (u["ip"].clone(), u["port"].clone(), u["count"].clone()))
+        .collect();
     assert_eq!(
-        json["upstreams"],
-        serde_json::json!({
-            "default:1.1.1.1:53": 3,
-            "default:[2606:4700::1111]:53": 1,
-        })
+        entries,
+        vec![
+            ("blocklist".into(), (-1).into(), 4.into()),
+            ("cache".into(), (-1).into(), 1.into()),
+            ("1.1.1.1".into(), 53.into(), 3.into()),
+            ("2606:4700::1111".into(), 53.into(), 1.into()),
+        ]
     );
     assert_eq!(json["forwarded_queries"], 4);
     assert_eq!(json["total_queries"], 9);

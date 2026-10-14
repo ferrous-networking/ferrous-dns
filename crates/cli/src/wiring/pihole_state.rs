@@ -33,6 +33,7 @@ pub fn build_pihole_state(
             get_top_blocked_domains: use_cases.get_top_blocked_domains.clone(),
             get_top_allowed_domains: use_cases.get_top_allowed_domains.clone(),
             get_top_clients: use_cases.get_top_clients.clone(),
+            get_top_blocked_clients: use_cases.get_top_blocked_clients.clone(),
             get_recent_queries: use_cases.get_queries.clone(),
         },
         blocking: PiholeBlockingState {

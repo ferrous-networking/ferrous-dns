@@ -76,7 +76,12 @@ pub(crate) fn map_query_status(q: &QueryLog) -> &'static str {
     if !q.blocked {
         return if q.cache_hit { "CACHE" } else { "FORWARDED" };
     }
-    match q.block_source {
+    blocked_status(q.block_source)
+}
+
+/// The Pi-hole v6 status of a query blocked by `source`.
+pub(crate) fn blocked_status(source: Option<BlockSource>) -> &'static str {
+    match source {
         Some(BlockSource::RegexFilter) => "REGEX",
         Some(BlockSource::ManagedDomain) => "DENYLIST",
         Some(BlockSource::CnameCloaking) => "GRAVITY_CNAME",

@@ -76,8 +76,8 @@ pub use managed_domains::{
 };
 pub use queries::{
     CleanupOldQueryLogsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, PagedQueryInput, QueryRate, RateUnit,
+    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, PagedQueryInput, QueryRate, RateUnit,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,

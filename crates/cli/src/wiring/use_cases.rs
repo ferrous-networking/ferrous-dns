@@ -13,13 +13,13 @@ use ferrous_dns_application::use_cases::{
     GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
-    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase,
-    SyncArpCacheUseCase, SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase,
-    ToggleSafeSearchUseCase, UnblockServiceUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
-    UpdateWhitelistSourceUseCase,
+    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
+    GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase, SyncBlocklistSourcesUseCase,
+    SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -39,6 +39,7 @@ pub struct UseCases {
     pub get_top_blocked_domains: Arc<GetTopBlockedDomainsUseCase>,
     pub get_top_allowed_domains: Arc<GetTopAllowedDomainsUseCase>,
     pub get_top_clients: Arc<GetTopClientsUseCase>,
+    pub get_top_blocked_clients: Arc<GetTopBlockedClientsUseCase>,
     pub get_clients: Arc<GetClientsUseCase>,
     pub sync_arp: Arc<SyncArpCacheUseCase>,
     pub sync_hostnames: Arc<SyncHostnamesUseCase>,
@@ -128,6 +129,9 @@ impl UseCases {
                 repos.query_log.clone(),
             )),
             get_top_clients: Arc::new(GetTopClientsUseCase::new(repos.query_log.clone())),
+            get_top_blocked_clients: Arc::new(GetTopBlockedClientsUseCase::new(
+                repos.query_log.clone(),
+            )),
             get_clients: Arc::new(GetClientsUseCase::new(repos.client.clone())),
             sync_arp: Arc::new(SyncArpCacheUseCase::new(arp_reader, repos.client.clone())),
             sync_hostnames: Arc::new(SyncHostnamesUseCase::new(

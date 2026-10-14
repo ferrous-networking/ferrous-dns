@@ -584,6 +584,7 @@ pub(super) async fn get_top_clients(
     pool: &SqlitePool,
     limit: u32,
     period_hours: f32,
+    blocked_only: bool,
 ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
     let cutoff = hours_ago_cutoff(period_hours);
     let rows = sqlx::query(
@@ -592,11 +593,13 @@ pub(super) async fn get_top_clients(
          LEFT JOIN clients c ON q.client_ip = c.ip_address
          WHERE q.created_at >= ?
            AND q.query_source = 'client'
+           AND (? = 0 OR q.blocked = 1)
          GROUP BY q.client_ip
          ORDER BY count DESC
          LIMIT ?",
     )
     .bind(cutoff)
+    .bind(blocked_only)
     .bind(limit as i64)
     .fetch_all(pool)
     .await

@@ -1,6 +1,7 @@
 mod api_token_repository;
 mod arp_reader;
 mod block_filter_engine;
+mod blocked_client_stats_repository;
 mod blocked_service_repository;
 mod blocklist_repository;
 mod blocklist_source_creator;
@@ -53,6 +54,7 @@ mod wildcard_record_registry;
 pub use api_token_repository::{ApiKeyMaterial, ApiTokenRepository};
 pub use arp_reader::{ArpReader, ArpTable};
 pub use block_filter_engine::{BlockFilterEnginePort, FilterDecision};
+pub use blocked_client_stats_repository::BlockedClientStatsRepository;
 pub use blocked_service_repository::BlockedServiceRepository;
 pub use blocklist_repository::BlocklistRepository;
 pub use blocklist_source_creator::BlocklistSourceCreator;

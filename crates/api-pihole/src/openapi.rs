@@ -88,6 +88,9 @@ use crate::dto;
         dto::search::SearchResult,
         dto::stats::SummaryResponse,
         dto::stats::QuerySummary,
+        dto::stats::QueryTypeCounts,
+        dto::stats::QueryStatusCounts,
+        dto::stats::ReplyTypeCounts,
         dto::stats::ClientSummary,
         dto::stats::GravitySummary,
         dto::stats::HistoryResponse,
@@ -99,6 +102,8 @@ use crate::dto;
         dto::stats::QueryTypesResponse,
         dto::stats::RecentBlockedResponse,
         dto::upstreams::UpstreamsResponse,
+        dto::upstreams::UpstreamEntry,
+        dto::upstreams::UpstreamStatistics,
     ))
 )]
 pub(crate) struct PiholeApiDoc;

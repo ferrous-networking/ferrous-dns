@@ -115,7 +115,9 @@ async fn async_main() -> anyhow::Result<()> {
             repos.block_filter_engine.clone(),
             config_arc.clone(),
             config_services.reload.clone(),
-            web_tls_config.as_ref().map_or(0, |_| config.server.web_port),
+            web_tls_config
+                .as_ref()
+                .map_or(0, |_| config.server.web_port),
         )
     });
 
