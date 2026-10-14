@@ -10,6 +10,23 @@ pub struct LoginInfoResponse {
     pub https_port: u16,
 }
 
+/// Pi-hole v6 GET /api/info/client response: the request as the server
+/// received it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClientInfoResponse {
+    pub remote_addr: String,
+    pub http_version: String,
+    pub method: String,
+    pub headers: Vec<HttpHeader>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HttpHeader {
+    /// Lowercase: the HTTP stack normalises header names, FTL keeps their case.
+    pub name: String,
+    pub value: String,
+}
+
 /// Pi-hole v6 GET /api/info/messages response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MessagesResponse {

@@ -32,7 +32,8 @@ pub fn create_pihole_router_with_openapi(
             handlers::auth::login,
             handlers::auth::logout
         ))
-        .routes(routes!(handlers::info::get_login_info));
+        .routes(routes!(handlers::info::get_login_info))
+        .routes(routes!(handlers::info::get_client_info));
 
     let protected_routes = OpenApiRouter::new()
         .routes(routes!(handlers::stats::get_summary))

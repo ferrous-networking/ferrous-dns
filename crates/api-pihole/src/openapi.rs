@@ -74,6 +74,8 @@ use crate::dto;
         dto::history::ClientHistoryBucket,
         dto::history::HistoryClient,
         dto::info::LoginInfoResponse,
+        dto::info::ClientInfoResponse,
+        dto::info::HttpHeader,
         dto::info::MessagesResponse,
         dto::info::DiagnosisMessage,
         dto::info::CountResponse,

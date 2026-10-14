@@ -1,17 +1,20 @@
+use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
+use axum::http::{HeaderMap, Method, Version};
 use axum::response::Response;
-use axum::Json;
+use axum::{Extension, Json};
 use ferrous_dns_domain::{DomainAction, DomainError};
 
 use crate::{
     crud::delete_reply,
     dto::info::{
-        AllowedDenied, ComponentVersion, CountResponse, DatabaseInfoResponse, DnsmasqMetrics,
-        DockerVersion, FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo, FtlInfoResponse,
-        FtlLocalVersion, HostInfoResponse, LocalVersion, LoginInfoResponse, MessagesResponse,
-        RemoteVersion, SystemInfoResponse, TotalEnabled, VersionComponents, VersionResponse,
+        AllowedDenied, ClientInfoResponse, ComponentVersion, CountResponse, DatabaseInfoResponse,
+        DnsmasqMetrics, DockerVersion, FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo,
+        FtlInfoResponse, FtlLocalVersion, HostInfoResponse, HttpHeader, LocalVersion,
+        LoginInfoResponse, MessagesResponse, RemoteVersion, SystemInfoResponse, TotalEnabled,
+        VersionComponents, VersionResponse,
     },
     errors::PiholeApiError,
     host,
@@ -39,6 +42,51 @@ pub async fn get_login_info(State(state): State<PiholeAppState>) -> Json<LoginIn
         dns: true,
         https_port: state.system.https_port,
     })
+}
+
+/// Pi-hole v6 GET /api/info/client
+///
+/// Public, as in FTL: the caller's address, HTTP version, method and
+/// headers, as the server received them.
+#[utoipa::path(
+    get,
+    path = "/info/client",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "The request as received", body = ClientInfoResponse)
+    ),
+    security()
+)]
+pub async fn get_client_info(
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
+    method: Method,
+    version: Version,
+    headers: HeaderMap,
+) -> Json<ClientInfoResponse> {
+    let remote_addr = connect_info.map_or(Ipv4Addr::UNSPECIFIED.into(), |info| info.0 .0.ip());
+    Json(ClientInfoResponse {
+        remote_addr: remote_addr.to_string(),
+        http_version: http_version(version).to_string(),
+        method: method.to_string(),
+        headers: headers
+            .iter()
+            .map(|(name, value)| HttpHeader {
+                name: name.to_string(),
+                value: String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            })
+            .collect(),
+    })
+}
+
+/// The version as CivetWeb reports it, without the `HTTP/` prefix.
+fn http_version(version: Version) -> &'static str {
+    match version {
+        Version::HTTP_09 => "0.9",
+        Version::HTTP_10 => "1.0",
+        Version::HTTP_2 => "2",
+        Version::HTTP_3 => "3",
+        _ => "1.1",
+    }
 }
 
 /// Pi-hole v6 GET /api/info/messages
