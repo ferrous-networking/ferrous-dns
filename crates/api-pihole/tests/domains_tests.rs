@@ -175,6 +175,35 @@ async fn create_lowercases_exact_domains() {
 }
 
 #[tokio::test]
+async fn unicode_is_the_decoded_form_of_a_punycode_domain() {
+    // api_list.c: idn2_to_unicode on every entry, falling back to the stored
+    // text when it does not decode, as a regex does not.
+    let app = app().await;
+
+    let exact = create(&app, "deny/exact", json!({ "domain": "xn--bcher-kva.example" })).await;
+    let regex = create(
+        &app,
+        "deny/regex",
+        json!({ "domain": "(\\.|^)xn--bcher-kva\\.example$" }),
+    )
+    .await;
+
+    assert_eq!(exact.domains[0].unicode, "bücher.example");
+    assert_eq!(regex.domains[0].unicode, "(\\.|^)xn--bcher-kva\\.example$");
+}
+
+#[tokio::test]
+async fn create_stores_an_international_domain_as_punycode() {
+    // api_list.c: a non-ASCII exact domain goes through idn2_to_ascii first.
+    let app = app().await;
+
+    let reply = create(&app, "allow/exact", json!({ "domain": "Bücher.example" })).await;
+
+    assert_eq!(names(&reply.domains), ["xn--bcher-kva.example"]);
+    assert_eq!(reply.domains[0].unicode, "bücher.example");
+}
+
+#[tokio::test]
 async fn create_without_a_domain_is_a_bad_request() {
     let app = app().await;
 
