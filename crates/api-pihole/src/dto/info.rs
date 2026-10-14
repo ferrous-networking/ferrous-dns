@@ -10,6 +10,30 @@ pub struct LoginInfoResponse {
     pub https_port: u16,
 }
 
+/// Pi-hole v6 GET /api/info/messages response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessagesResponse {
+    pub messages: Vec<DiagnosisMessage>,
+}
+
+/// One of FTL's diagnosis messages (info.yaml). Ferrous raises none.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DiagnosisMessage {
+    pub id: i64,
+    /// Unix timestamp with fractional seconds.
+    pub timestamp: f64,
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub plain: String,
+    pub html: String,
+}
+
+/// Pi-hole v6 GET /api/info/messages/count response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CountResponse {
+    pub count: u64,
+}
+
 /// Pi-hole v6 GET /api/info/version response.
 ///
 /// FTL reports Pi-hole's components (core, web, FTL, docker); Ferrous is a

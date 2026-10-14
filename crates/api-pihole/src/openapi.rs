@@ -31,7 +31,8 @@ use crate::dto;
         (name = "pihole:action", description = "Administrative actions"),
         (name = "pihole:history", description = "Historic time-series data"),
         (name = "pihole:search", description = "Domain search across lists and filters"),
-        (name = "pihole:padd", description = "One-call summary for the PADD display")
+        (name = "pihole:padd", description = "One-call summary for the PADD display"),
+        (name = "pihole:dhcp", description = "DHCP leases (Ferrous serves no DHCP)")
     ),
     components(schemas(
         dto::action::ActionResponse,
@@ -51,6 +52,8 @@ use crate::dto;
         dto::crud::ProcessedError,
         dto::crud::StringOrArray,
         dto::crud::BatchDeleteItem,
+        dto::dhcp::LeasesResponse,
+        dto::dhcp::DhcpLease,
         dto::dns::BlockingStatus,
         dto::dns::BlockingStatusResponse,
         dto::dns::SetBlockingRequest,
@@ -71,6 +74,9 @@ use crate::dto;
         dto::history::ClientHistoryBucket,
         dto::history::HistoryClient,
         dto::info::LoginInfoResponse,
+        dto::info::MessagesResponse,
+        dto::info::DiagnosisMessage,
+        dto::info::CountResponse,
         dto::info::VersionResponse,
         dto::info::VersionComponents,
         dto::info::ComponentVersion,

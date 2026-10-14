@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
+use axum::response::Response;
 use axum::Json;
 use ferrous_dns_domain::{DomainAction, DomainError};
 
 use crate::{
+    crud::delete_reply,
     dto::info::{
-        AllowedDenied, ComponentVersion, DatabaseInfoResponse, DnsmasqMetrics, DockerVersion,
-        FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo, FtlInfoResponse,
-        FtlLocalVersion, HostInfoResponse, LocalVersion, LoginInfoResponse, RemoteVersion,
-        SystemInfoResponse, TotalEnabled, VersionComponents, VersionResponse,
+        AllowedDenied, ComponentVersion, CountResponse, DatabaseInfoResponse, DnsmasqMetrics,
+        DockerVersion, FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo, FtlInfoResponse,
+        FtlLocalVersion, HostInfoResponse, LocalVersion, LoginInfoResponse, MessagesResponse,
+        RemoteVersion, SystemInfoResponse, TotalEnabled, VersionComponents, VersionResponse,
     },
     errors::PiholeApiError,
     host,
@@ -37,6 +39,58 @@ pub async fn get_login_info(State(state): State<PiholeAppState>) -> Json<LoginIn
         dns: true,
         https_port: state.system.https_port,
     })
+}
+
+/// Pi-hole v6 GET /api/info/messages
+///
+/// FTL's diagnosis messages report dnsmasq and gravity warnings; Ferrous
+/// raises none, so the list is empty. A list that failed to download shows
+/// in the `status` of `/lists` instead.
+#[utoipa::path(
+    get,
+    path = "/info/messages",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Diagnosis messages, always none", body = MessagesResponse)
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_messages() -> Json<MessagesResponse> {
+    Json(MessagesResponse {
+        messages: Vec::new(),
+    })
+}
+
+/// Pi-hole v6 GET /api/info/messages/count
+#[utoipa::path(
+    get,
+    path = "/info/messages/count",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Number of diagnosis messages, always 0", body = CountResponse)
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_messages_count() -> Json<CountResponse> {
+    Json(CountResponse { count: 0 })
+}
+
+/// Pi-hole v6 DELETE /api/info/messages/{ids}
+///
+/// There is never a message to delete, so this is FTL's 404 with `{}` for
+/// ids that name none.
+#[utoipa::path(
+    delete,
+    path = "/info/messages/{ids}",
+    tag = "pihole:info",
+    params(("ids" = String, Path, description = "Message id, or comma-separated ids")),
+    responses(
+        (status = 404, description = "No such message")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn delete_messages(Path(_ids): Path<String>) -> Response {
+    delete_reply(0)
 }
 
 /// Pi-hole v6 GET /api/info/version
