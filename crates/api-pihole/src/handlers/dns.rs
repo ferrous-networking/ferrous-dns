@@ -8,6 +8,7 @@ use tokio::time::Instant;
 use crate::{
     dto::dns::{BlockingStatusResponse, SetBlockingRequest},
     errors::PiholeApiError,
+    extract::PiholeJson,
     state::{BlockingTimer, PiholeAppState},
 };
 
@@ -61,7 +62,7 @@ fn remaining_secs(timer: &BlockingTimer) -> Option<u64> {
 )]
 pub async fn set_blocking(
     State(state): State<PiholeAppState>,
-    Json(body): Json<SetBlockingRequest>,
+    PiholeJson(body): PiholeJson<SetBlockingRequest>,
 ) -> Result<Json<BlockingStatusResponse>, PiholeApiError> {
     let deadline = match body.timer.filter(|&seconds| seconds > 0) {
         Some(seconds) => Some(

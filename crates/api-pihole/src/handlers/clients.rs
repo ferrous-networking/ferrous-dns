@@ -12,6 +12,7 @@ use crate::{
     },
     dto::domains::BatchDeleteRequest,
     errors::PiholeApiError,
+    extract::PiholeJson,
     handlers::require_id,
     state::PiholeAppState,
 };
@@ -93,7 +94,7 @@ pub async fn list_all(
 )]
 pub async fn create_client(
     State(state): State<PiholeAppState>,
-    Json(body): Json<CreateClientRequest>,
+    PiholeJson(body): PiholeJson<CreateClientRequest>,
 ) -> Result<impl IntoResponse, PiholeApiError> {
     let ip: IpAddr = body
         .ip
@@ -126,7 +127,7 @@ pub async fn create_client(
 pub async fn update_client(
     State(state): State<PiholeAppState>,
     Path(client_ip): Path<String>,
-    Json(body): Json<UpdateClientRequest>,
+    PiholeJson(body): PiholeJson<UpdateClientRequest>,
 ) -> Result<Json<PiholeClientEntry>, PiholeApiError> {
     let id = find_client_id(&state, &client_ip).await?;
     let group_id = body.groups.as_ref().and_then(|g| g.first().copied());
@@ -201,7 +202,7 @@ pub async fn suggestions(
 )]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
-    Json(body): Json<BatchDeleteRequest>,
+    PiholeJson(body): PiholeJson<BatchDeleteRequest>,
 ) -> Result<StatusCode, PiholeApiError> {
     for ip in body
         .items

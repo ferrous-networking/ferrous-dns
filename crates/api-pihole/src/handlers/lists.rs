@@ -10,6 +10,7 @@ use crate::{
         PiholeListEntry, UpdateListRequest,
     },
     errors::PiholeApiError,
+    extract::PiholeJson,
     handlers::require_id,
     state::PiholeAppState,
 };
@@ -206,7 +207,7 @@ pub async fn list_all(
 pub async fn create_list(
     State(state): State<PiholeAppState>,
     Query(query): Query<ListTypeQuery>,
-    Json(body): Json<CreateListRequest>,
+    PiholeJson(body): PiholeJson<CreateListRequest>,
 ) -> Result<impl IntoResponse, PiholeApiError> {
     let list_type = require_type(query.r#type.as_deref())?;
     let group_ids = body.groups.unwrap_or_else(|| vec![1]);
@@ -293,7 +294,7 @@ pub async fn update_list(
     State(state): State<PiholeAppState>,
     Path(list): Path<String>,
     Query(query): Query<ListTypeQuery>,
-    Json(body): Json<UpdateListRequest>,
+    PiholeJson(body): PiholeJson<UpdateListRequest>,
 ) -> Result<Json<ListsResponse>, PiholeApiError> {
     let list_type = require_type(query.r#type.as_deref())?;
     let key = ListKey::parse(&list);
@@ -386,7 +387,7 @@ pub async fn delete_list(
 )]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
-    Json(body): Json<Vec<ListBatchDeleteItem>>,
+    PiholeJson(body): PiholeJson<Vec<ListBatchDeleteItem>>,
 ) -> Result<StatusCode, PiholeApiError> {
     // Parse every item first so a bad type deletes nothing.
     let targets = body

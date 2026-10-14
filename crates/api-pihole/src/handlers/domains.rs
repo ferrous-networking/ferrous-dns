@@ -10,6 +10,7 @@ use crate::{
         BatchDeleteRequest, CreateDomainRequest, DomainsListResponse, PiholeDomainEntry,
     },
     errors::PiholeApiError,
+    extract::PiholeJson,
     handlers::require_id,
     state::PiholeAppState,
 };
@@ -198,7 +199,7 @@ pub async fn list_by_type_kind(
 pub async fn create_domain(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind)): Path<(String, String)>,
-    Json(body): Json<CreateDomainRequest>,
+    PiholeJson(body): PiholeJson<CreateDomainRequest>,
 ) -> Result<impl IntoResponse, PiholeApiError> {
     let action = parse_action(&domain_type)?;
     let group_id = body
@@ -252,7 +253,7 @@ pub async fn create_domain(
 pub async fn update_domain(
     State(state): State<PiholeAppState>,
     Path((domain_type, kind, domain_name)): Path<(String, String, String)>,
-    Json(body): Json<CreateDomainRequest>,
+    PiholeJson(body): PiholeJson<CreateDomainRequest>,
 ) -> Result<Json<PiholeDomainEntry>, PiholeApiError> {
     // An unknown type keeps the entry's current action.
     let action = domain_type.parse::<DomainAction>().ok();
@@ -382,7 +383,7 @@ pub async fn delete_domain(
 )]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
-    Json(body): Json<BatchDeleteRequest>,
+    PiholeJson(body): PiholeJson<BatchDeleteRequest>,
 ) -> Result<StatusCode, PiholeApiError> {
     let all_managed = state.blocking.get_managed_domains.get_all().await?;
     let all_regex = state.blocking.get_regex_filters.get_all().await?;

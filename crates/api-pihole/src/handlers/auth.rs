@@ -14,6 +14,7 @@ use tracing::warn;
 use crate::{
     dto::auth::{AuthResponse, LoginRequest, SessionInfo},
     errors::{pihole_error_response, PiholeApiError},
+    extract::PiholeJson,
     middleware::extract_sid,
     state::PiholeAppState,
 };
@@ -83,7 +84,7 @@ pub async fn login(
     State(state): State<PiholeAppState>,
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
-    Json(body): Json<LoginRequest>,
+    PiholeJson(body): PiholeJson<LoginRequest>,
 ) -> Response {
     let (auth_enabled, admin) = {
         let config = state.system.config.read().await;
@@ -139,6 +140,7 @@ pub async fn login(
                     StatusCode::BAD_REQUEST,
                     "bad_request",
                     "No 2FA token found in JSON payload",
+                    None,
                 );
             };
             let verified = state
@@ -158,6 +160,7 @@ pub async fn login(
                     StatusCode::UNAUTHORIZED,
                     "unauthorized",
                     "Invalid 2FA token",
+                    None,
                 ),
                 Err(err) => PiholeApiError(err).into_response(),
             }

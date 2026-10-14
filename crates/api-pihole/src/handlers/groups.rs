@@ -8,6 +8,7 @@ use crate::{
     dto::domains::BatchDeleteRequest,
     dto::groups::{CreateGroupRequest, GroupsResponse, PiholeGroupEntry, UpdateGroupRequest},
     errors::PiholeApiError,
+    extract::PiholeJson,
     handlers::require_id,
     state::PiholeAppState,
 };
@@ -68,7 +69,7 @@ pub async fn list_all(
 )]
 pub async fn create_group(
     State(state): State<PiholeAppState>,
-    Json(body): Json<CreateGroupRequest>,
+    PiholeJson(body): PiholeJson<CreateGroupRequest>,
 ) -> Result<impl IntoResponse, PiholeApiError> {
     let result = state
         .groups
@@ -118,7 +119,7 @@ pub async fn get_by_name(
 pub async fn update_group(
     State(state): State<PiholeAppState>,
     Path(name): Path<String>,
-    Json(body): Json<UpdateGroupRequest>,
+    PiholeJson(body): PiholeJson<UpdateGroupRequest>,
 ) -> Result<Json<PiholeGroupEntry>, PiholeApiError> {
     let id = require_id(find_group(&state, &name).await?.id, "group")?;
     let result = state
@@ -165,7 +166,7 @@ pub async fn delete_group(
 )]
 pub async fn batch_delete(
     State(state): State<PiholeAppState>,
-    Json(body): Json<BatchDeleteRequest>,
+    PiholeJson(body): PiholeJson<BatchDeleteRequest>,
 ) -> Result<StatusCode, PiholeApiError> {
     let groups = state.groups.get_groups.get_all().await?;
     for item in &body.items {

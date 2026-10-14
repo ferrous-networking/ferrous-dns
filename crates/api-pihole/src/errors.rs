@@ -10,7 +10,7 @@ use tracing::error;
 /// Unified error type for Pi-hole compatible endpoints.
 ///
 /// Maps `DomainError` variants to the Pi-hole v6 JSON error format:
-/// `{ "error": { "key": "<key>", "message": "<message>" } }`.
+/// `{ "error": { "key": "<key>", "message": "<message>", "hint": null } }`.
 #[derive(Debug)]
 pub struct PiholeApiError(pub DomainError);
 
@@ -25,17 +25,23 @@ impl IntoResponse for PiholeApiError {
         let (status, key) = pihole_status_and_key(&self.0);
         if status == StatusCode::INTERNAL_SERVER_ERROR {
             error!(error = %self.0, "Pi-hole API request failed");
-            return pihole_error_response(status, key, "internal error");
+            return pihole_error_response(status, key, "internal error", None);
         }
-        pihole_error_response(status, key, &self.0.to_string())
+        pihole_error_response(status, key, &self.0.to_string(), None)
     }
 }
 
 /// A Pi-hole v6 error body, for replies with no `DomainError` behind them.
-pub(crate) fn pihole_error_response(status: StatusCode, key: &str, message: &str) -> Response {
+/// FTL always sends `hint`, as `null` when there is none.
+pub(crate) fn pihole_error_response(
+    status: StatusCode,
+    key: &str,
+    message: &str,
+    hint: Option<&str>,
+) -> Response {
     (
         status,
-        Json(json!({ "error": { "key": key, "message": message } })),
+        Json(json!({ "error": { "key": key, "message": message, "hint": hint } })),
     )
         .into_response()
 }
@@ -156,7 +162,7 @@ mod tests {
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
             body,
-            json!({ "error": { "key": "server_error", "message": "internal error" } })
+            json!({ "error": { "key": "server_error", "message": "internal error", "hint": null } })
         );
     }
 

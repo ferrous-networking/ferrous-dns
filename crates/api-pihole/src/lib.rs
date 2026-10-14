@@ -1,5 +1,6 @@
 pub mod dto;
 pub mod errors;
+pub mod extract;
 pub mod handlers;
 pub mod middleware;
 mod openapi;
