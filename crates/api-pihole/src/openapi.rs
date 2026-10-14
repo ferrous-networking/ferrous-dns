@@ -30,7 +30,7 @@ use crate::dto;
         (name = "pihole:info", description = "Runtime, host and database info"),
         (name = "pihole:action", description = "Administrative actions"),
         (name = "pihole:history", description = "Historic time-series data"),
-        (name = "pihole:search", description = "Filter evaluation")
+        (name = "pihole:search", description = "Domain search across lists and filters")
     ),
     components(schemas(
         dto::action::ActionResponse,
@@ -115,7 +115,13 @@ use crate::dto;
         dto::queries::SuggestionsResponse,
         dto::queries::QuerySuggestions,
         dto::search::SearchResponse,
-        dto::search::SearchResult,
+        dto::search::SearchData,
+        dto::search::SearchDomainEntry,
+        dto::search::SearchGravityEntry,
+        dto::search::SearchResults,
+        dto::search::SearchResultsDomains,
+        dto::search::SearchResultsGravity,
+        dto::search::SearchParameters,
         dto::stats::SummaryResponse,
         dto::stats::QuerySummary,
         dto::stats::QueryTypeCounts,

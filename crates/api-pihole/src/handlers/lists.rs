@@ -70,9 +70,9 @@ fn require_type(raw: Option<&str>) -> Result<ListType, CrudError> {
 }
 
 /// A list of either table.
-struct StoredList {
+pub(crate) struct StoredList {
     list_type: ListType,
-    id: i64,
+    pub(crate) id: i64,
     address: Option<Arc<str>>,
     comment: Option<Arc<str>>,
     enabled: bool,
@@ -118,7 +118,7 @@ impl StoredList {
         }
     }
 
-    fn to_entry(&self) -> PiholeListEntry {
+    pub(crate) fn to_entry(&self) -> PiholeListEntry {
         PiholeListEntry {
             address: self.address.as_deref().unwrap_or_default().to_string(),
             comment: reply_comment(self.comment.as_ref()),
@@ -148,7 +148,7 @@ impl StoredList {
 
 /// Lists of the given type (both when `None`), blocklists first, each in id
 /// order like FTL's table.
-async fn stored_lists(
+pub(crate) async fn stored_lists(
     state: &PiholeAppState,
     only: Option<ListType>,
 ) -> Result<Vec<StoredList>, DomainError> {

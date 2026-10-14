@@ -128,7 +128,7 @@ fn prepare_item(item: String, kind: DomainKind) -> Result<String, CrudError> {
     }
 }
 
-fn managed_to_entry(d: &ManagedDomain) -> Result<PiholeDomainEntry, DomainError> {
+pub(crate) fn managed_to_entry(d: &ManagedDomain) -> Result<PiholeDomainEntry, DomainError> {
     Ok(PiholeDomainEntry {
         domain: d.domain.to_string(),
         unicode: d.domain.to_string(),
@@ -143,7 +143,7 @@ fn managed_to_entry(d: &ManagedDomain) -> Result<PiholeDomainEntry, DomainError>
     })
 }
 
-fn regex_to_entry(r: &RegexFilter) -> Result<PiholeDomainEntry, DomainError> {
+pub(crate) fn regex_to_entry(r: &RegexFilter) -> Result<PiholeDomainEntry, DomainError> {
     Ok(PiholeDomainEntry {
         domain: r.pattern.to_string(),
         unicode: r.pattern.to_string(),
