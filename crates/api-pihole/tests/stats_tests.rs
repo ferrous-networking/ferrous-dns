@@ -1031,6 +1031,49 @@ async fn summary_gravity_last_update_is_the_newest_list_download() {
 }
 
 #[tokio::test]
+async fn summary_unique_domains_counts_distinct_client_domains() {
+    let pool = helpers::create_test_db().await;
+    for (domain, blocked) in [
+        ("a.example", false),
+        ("a.example", false),
+        ("b.example", false),
+        ("ads.example", true),
+    ] {
+        helpers::insert_query(&pool, domain, "10.0.0.1", blocked, false, None).await;
+    }
+    let app = helpers::create_pihole_test_app(pool).await;
+
+    let (status, json) = helpers::send(app, "GET", "/stats/summary").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["queries"]["unique_domains"], 3);
+}
+
+#[tokio::test]
+async fn query_frequency_is_the_rate_of_the_last_minute() {
+    // FTL averages queries per second over its last 30 s; Ferrous counts the
+    // last minute.
+    let pool = helpers::create_test_db().await;
+    for _ in 0..6 {
+        helpers::insert_query(&pool, "a.example", "10.0.0.1", false, false, None).await;
+    }
+    let expected = 6.0 / 60.0;
+
+    for (uri, pointer) in [
+        ("/stats/summary", "/queries/frequency"),
+        ("/info/ftl", "/ftl/query_frequency"),
+        ("/padd", "/queries/query_frequency"),
+    ] {
+        let app = helpers::create_pihole_test_app(pool.clone()).await;
+        let (status, json) = helpers::send(app, "GET", uri).await;
+
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        let frequency = json.pointer(pointer).and_then(Value::as_f64);
+        assert_eq!(frequency, Some(expected), "{uri} {pointer}");
+    }
+}
+
+#[tokio::test]
 async fn summary_total_clients_counts_every_known_client() {
     // As /info/ftl does: every client in the table, not only the active ones.
     let pool = helpers::create_test_db().await;
