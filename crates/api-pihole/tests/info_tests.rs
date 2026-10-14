@@ -317,6 +317,28 @@ async fn system_info_reports_memory_in_kilobytes_and_three_loads() {
     assert_eq!(system.cpu.load.percent.len(), 3);
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn cpu_use_of_the_host_and_the_process_is_reported() {
+    // Busy for a moment, so this process has CPU time to show.
+    let started = std::time::Instant::now();
+    let mut spin = 0u64;
+    while started.elapsed() < std::time::Duration::from_millis(200) {
+        spin = std::hint::black_box(spin.wrapping_add(1));
+    }
+
+    for (uri, pointers) in [
+        ("/info/system", ["/system/cpu/%cpu", "/system/ftl/%cpu"]),
+        ("/info/ftl", ["/ftl/%cpu", "/ftl/%cpu"]),
+    ] {
+        let json = get_json(helpers::create_test_db().await, uri).await;
+        for pointer in pointers {
+            let cpu = json.pointer(pointer).and_then(Value::as_f64);
+            assert!(cpu.is_some_and(|cpu| cpu > 0.0), "{uri} {pointer}: {cpu:?}");
+        }
+    }
+}
+
 #[tokio::test]
 async fn host_info_matches_the_ftl_schema() {
     let pool = helpers::create_test_db().await;
