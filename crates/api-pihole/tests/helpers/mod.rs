@@ -45,6 +45,10 @@ use tokio::sync::RwLock;
 pub const MOCK_GROUPED_CLIENT: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
 pub const MOCK_CLIENT_GROUP: i64 = 2;
 
+/// How long before the app was built the test process "started", so uptimes
+/// are large enough to tell seconds from milliseconds.
+pub const PROCESS_AGE: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Domain decisions of the mock engine:
 /// - `regex.blocked.test` → blocked by a regex filter
 /// - `list.blocked.test` → blocked by a blocklist
@@ -446,7 +450,9 @@ async fn build_pihole_state(
             cleanup_query_logs: Arc::new(CleanupOldQueryLogsUseCase::new(query_log_repo)),
             config: Arc::new(RwLock::new(config)),
             reload_config: None,
-            process_start: std::time::Instant::now(),
+            process_start: std::time::Instant::now()
+                .checked_sub(PROCESS_AGE)
+                .expect("monotonic clock is older than PROCESS_AGE"),
             https_port: 0,
         },
         auth: auth::build_auth_state(totp_enrolled).await,
