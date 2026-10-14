@@ -4,12 +4,12 @@ use axum::{http::StatusCode, Json};
 use chrono::{NaiveDateTime, Utc};
 use ferrous_dns_application::ports::TimeGranularity;
 use ferrous_dns_application::use_cases::PagedQueryInput;
-use ferrous_dns_domain::{DnsProtocol, DomainError};
+use ferrous_dns_domain::{DnsProtocol, DomainError, QueryStats};
 use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::{
-    dto::queries::blocked_status,
+    dto::queries::{blocked_status, upstream_port},
     dto::stats::{
         ClientSummary, DatabaseSummaryResponse, DatabaseTopClientEntry, DatabaseTopClientsResponse,
         GravitySummary, HistoryBucket, HistoryResponse, QueryStatusCounts, QuerySummary,
@@ -31,7 +31,7 @@ const DEFAULT_RECENT_BLOCKED_COUNT: u32 = 1;
 
 /// Longest `from` window honoured: past any retention, and small enough that
 /// the repository's hours-to-timestamp arithmetic cannot overflow.
-const MAX_PERIOD_HOURS: f32 = 24.0 * 366.0 * 10.0;
+pub(crate) const MAX_PERIOD_HOURS: f32 = 24.0 * 366.0 * 10.0;
 
 /// Width of a `/history` bucket, FTL's `OVERTIME_INTERVAL`.
 pub(crate) const HISTORY_BUCKET_SECS: i64 = 600;
@@ -490,18 +490,8 @@ pub async fn get_upstreams(
 
 async fn upstreams(state: &PiholeAppState, period: f32) -> Result<UpstreamsResponse, DomainError> {
     let stats = state.query.get_stats.execute(period).await?;
-
-    let mut per_server: HashMap<&str, u64> = HashMap::new();
-    for (key, count) in &stats.source_stats {
-        // Upstream keys are `{pool}:{server}`; the other keys have no colon.
-        if let Some((_pool, server)) = key.split_once(':') {
-            *per_server.entry(server).or_default() += count;
-        }
-    }
-    let forwarded_queries: u64 = per_server.values().sum();
-
-    let mut servers: Vec<(&str, u64)> = per_server.into_iter().collect();
-    servers.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    let servers = upstream_servers(&stats);
+    let forwarded_queries: u64 = servers.iter().map(|(_, count)| count).sum();
 
     let cached = ["cache", "local_dns"]
         .iter()
@@ -522,6 +512,21 @@ async fn upstreams(state: &PiholeAppState, period: f32) -> Result<UpstreamsRespo
         forwarded_queries,
         total_queries: stats.queries_total,
     })
+}
+
+/// Each upstream server that answered in `stats`, with its queries merged
+/// across pools, by descending count.
+pub(crate) fn upstream_servers(stats: &QueryStats) -> Vec<(&str, u64)> {
+    let mut per_server: HashMap<&str, u64> = HashMap::new();
+    for (key, count) in &stats.source_stats {
+        // Upstream keys are `{pool}:{server}`; the other keys have no colon.
+        if let Some((_pool, server)) = key.split_once(':') {
+            *per_server.entry(server).or_default() += count;
+        }
+    }
+    let mut servers: Vec<(&str, u64)> = per_server.into_iter().collect();
+    servers.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    servers
 }
 
 fn pseudo_upstream(name: &str, count: u64) -> UpstreamEntry {
@@ -547,17 +552,10 @@ fn upstream_entry(server: &str, count: u64) -> UpstreamEntry {
             statistics: UpstreamStatistics::default(),
         };
     };
-    let port = match &protocol {
-        DnsProtocol::Udp { addr }
-        | DnsProtocol::Tcp { addr }
-        | DnsProtocol::Tls { addr, .. }
-        | DnsProtocol::Quic { addr, .. } => addr.port(),
-        DnsProtocol::Https { port, .. } | DnsProtocol::H3 { port, .. } => *port,
-    };
     UpstreamEntry {
         ip: protocol.socket_addr().map(|addr| addr.ip().to_string()),
         name: protocol.hostname().map(str::to_owned),
-        port: i32::from(port),
+        port: i32::from(upstream_port(&protocol)),
         count,
         statistics: UpstreamStatistics::default(),
     }

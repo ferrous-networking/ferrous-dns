@@ -12,6 +12,8 @@ pub struct QueryLogStorage {
     pub stored_queries: u64,
     /// Unix time of the oldest stored client query, 0 when there is none.
     pub stored_earliest: f64,
+    /// Id of the newest stored client query, 0 when there is none.
+    pub newest_id: i64,
     /// Version of the SQLite library the log is stored with.
     pub sqlite_version: String,
 }

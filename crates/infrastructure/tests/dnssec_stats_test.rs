@@ -127,3 +127,13 @@ async fn dnssec_status_filter_exact_matches_one_status() {
     // No filter → all client rows (validated or not).
     assert_eq!(count_with_filter(&pool, None).await, 9);
 }
+
+#[tokio::test]
+async fn dnssec_status_filter_not_validated_matches_rows_without_a_status() {
+    let pool = migrated_pool().await;
+    seed(&pool).await;
+    assert_eq!(
+        count_with_filter(&pool, Some(DnssecStatusFilter::NotValidated)).await,
+        2
+    );
+}

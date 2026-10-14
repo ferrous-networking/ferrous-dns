@@ -133,6 +133,7 @@ pub(super) async fn get_recent_paged(
     let dnssec_clause = match filter.dnssec_status {
         Some(DnssecStatusFilter::Any) => " AND q.dnssec_status IS NOT NULL",
         Some(DnssecStatusFilter::Is(_)) => " AND q.dnssec_status = ?",
+        Some(DnssecStatusFilter::NotValidated) => " AND q.dnssec_status IS NULL",
         None => "",
     };
     let dns64_clause = match filter.dns64_synthesized {
@@ -159,6 +160,16 @@ pub(super) async fn get_recent_paged(
         protocol_clause,
     ]
     .concat();
+    // A snapshot page counts its matches within the snapshot too.
+    let newest_id = match page {
+        PageAt::Snapshot { newest_id, .. } => Some(newest_id),
+        PageAt::Offset(_) | PageAt::Cursor(_) => None,
+    };
+    let snapshot_clause = if newest_id.is_some() {
+        " AND q.id <= ?"
+    } else {
+        ""
+    };
 
     // Binds the `?` of `filters`, in the order its fragments are concatenated.
     macro_rules! bind_filters {
@@ -230,15 +241,36 @@ pub(super) async fn get_recent_paged(
                         .fetch_all(pool)
                         .await
                 }
+                PageAt::Snapshot { newest_id, offset } => {
+                    let sql = format!(
+                        select_query_log!(
+                            " WHERE q.created_at >= ?
+                                AND q.query_source = 'client'
+                                AND q.id <= ?{filters}
+                              ORDER BY q.created_at DESC, q.id DESC
+                              LIMIT ? OFFSET ?"
+                        ),
+                        filters = filters
+                    );
+                    let q = sqlx::query(&sql).bind(&cutoff).bind(newest_id);
+                    bind_filters!(q)
+                        .bind(fetch_limit)
+                        .bind(i64::from(offset))
+                        .fetch_all(pool)
+                        .await
+                }
             }
         },
         async {
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
-                 WHERE q.query_source = 'client' AND q.created_at >= ?{filters}"
+                 WHERE q.query_source = 'client' AND q.created_at >= ?{snapshot_clause}{filters}"
             );
-            let q = sqlx::query(&count_sql).bind(&cutoff);
+            let mut q = sqlx::query(&count_sql).bind(&cutoff);
+            if let Some(newest_id) = newest_id {
+                q = q.bind(newest_id);
+            }
             bind_filters!(q).fetch_one(pool).await
         },
         sqlx::query(
@@ -670,6 +702,7 @@ pub(super) async fn get_storage(
                 COALESCE(CAST(strftime('%s', MIN(created_at)) AS REAL), 0.0) AS stored_earliest,
                 COALESCE(SUM(created_at >= ?), 0) AS recent,
                 COALESCE(CAST(strftime('%s', MIN(CASE WHEN created_at >= ? THEN created_at END)) AS REAL), 0.0) AS recent_earliest,
+                COALESCE(MAX(id), 0) AS newest_id,
                 sqlite_version() AS sqlite_version
          FROM query_log
          WHERE query_source = 'client'",
@@ -685,6 +718,7 @@ pub(super) async fn get_storage(
         recent_earliest: row.get("recent_earliest"),
         stored_queries: row.get::<i64, _>("stored") as u64,
         stored_earliest: row.get("stored_earliest"),
+        newest_id: row.get("newest_id"),
         sqlite_version: row.get("sqlite_version"),
     })
 }

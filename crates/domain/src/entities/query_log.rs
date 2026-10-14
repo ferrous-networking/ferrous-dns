@@ -258,6 +258,9 @@ pub enum DnssecStatusFilter {
     /// Every row that received a determination (non-NULL status).
     Any,
     Is(DnssecStatus),
+    /// Rows that received no determination (NULL status). Not parsed from a
+    /// string: Pi-hole's `dnssec=UNKNOWN` is its only source.
+    NotValidated,
 }
 
 impl FromStr for DnssecStatusFilter {

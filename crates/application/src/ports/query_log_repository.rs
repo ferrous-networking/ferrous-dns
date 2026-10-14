@@ -25,6 +25,10 @@ pub enum PageAt {
     /// Continue after the row with this id: rows ordered strictly after its
     /// `(created_at, id)`, so a backwards clock step cannot skip rows.
     Cursor(i64),
+    /// Skip `offset` matching rows among those with an id up to `newest_id`:
+    /// the log as it stood when `newest_id` was its newest row, so rows logged
+    /// since cannot shift the pages. Pi-hole FTL's cursor paging.
+    Snapshot { newest_id: i64, offset: u32 },
 }
 
 impl Default for PageAt {

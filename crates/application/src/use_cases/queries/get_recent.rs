@@ -7,6 +7,10 @@ use std::sync::Arc;
 
 const MAX_LIMIT: u32 = 1_000;
 
+/// Cap of a [`PageAt::Snapshot`] page: Pi-hole FTL's `API_QUERIES_MAX_ROWS`,
+/// which also bounds its "every row" request.
+const MAX_SNAPSHOT_LIMIT: u32 = 10_000;
+
 /// Input for paginated query log fetching with optional filters.
 ///
 /// String filter fields are raw values from the HTTP layer; the use case
@@ -52,6 +56,7 @@ impl GetRecentQueriesUseCase {
     ///
     /// String parameters are validated and parsed into typed filter values.
     /// Invalid `category` or `record_type` returns `DomainError::InvalidInput`.
+    /// A page is capped at 1000 rows, or 10000 for a [`PageAt::Snapshot`].
     pub async fn execute_paged(
         &self,
         input: &PagedQueryInput<'_>,
@@ -85,9 +90,13 @@ impl GetRecentQueriesUseCase {
             protocol: parsed_protocol,
         };
 
+        let max_limit = match input.page {
+            PageAt::Snapshot { .. } => MAX_SNAPSHOT_LIMIT,
+            PageAt::Offset(_) | PageAt::Cursor(_) => MAX_LIMIT,
+        };
         self.repository
             .get_recent_paged(
-                input.limit.min(MAX_LIMIT),
+                input.limit.min(max_limit),
                 input.page,
                 input.period_hours,
                 &filter,

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    CacheStats, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
+    CacheStats, PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };
 use ferrous_dns_application::use_cases::{GetRecentQueriesUseCase, PagedQueryInput};
 use ferrous_dns_domain::{
@@ -146,6 +146,28 @@ async fn test_paged_limit_above_max_is_capped() {
     use_case.execute_paged(&input).await.unwrap();
 
     assert_eq!(*captured.lock().unwrap(), 1_000);
+}
+
+#[tokio::test]
+async fn test_snapshot_page_limit_is_capped_at_ftls_max() {
+    let captured = Arc::new(Mutex::new(0u32));
+    let repo = Arc::new(CaptureLimitRepository {
+        last_limit: captured.clone(),
+    });
+    let use_case = GetRecentQueriesUseCase::new(repo);
+
+    let input = PagedQueryInput {
+        limit: 50_000,
+        page: PageAt::Snapshot {
+            newest_id: 7,
+            offset: 0,
+        },
+        period_hours: 24.0,
+        ..Default::default()
+    };
+    use_case.execute_paged(&input).await.unwrap();
+
+    assert_eq!(*captured.lock().unwrap(), 10_000);
 }
 
 #[tokio::test]

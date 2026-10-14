@@ -168,7 +168,7 @@ async fn get_queries_with_length_param_limits_results() {
 }
 
 #[tokio::test]
-async fn suggestions_response_has_all_category_fields_at_root() {
+async fn suggestions_response_wraps_every_category() {
     let pool = helpers::create_test_db().await;
     let app = helpers::create_pihole_test_app(pool).await;
 
@@ -187,18 +187,23 @@ async fn suggestions_response_has_all_category_fields_at_root() {
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     let json: Value = serde_json::from_slice(&body).expect("json");
 
-    // Pi-hole v6 returns categories flat at root level (no wrapper)
-    assert!(json["domain"].is_array(), "domain must be an array");
-    assert!(json["client_ip"].is_array(), "client_ip must be an array");
-    assert!(
-        json["client_name"].is_array(),
-        "client_name must be an array"
-    );
-    assert!(json["upstream"].is_array(), "upstream must be an array");
-    assert!(json["type"].is_array(), "type must be an array");
-    assert!(json["status"].is_array(), "status must be an array");
-    assert!(json["reply"].is_array(), "reply must be an array");
-    assert!(json["dnssec"].is_array(), "dnssec must be an array");
+    // FTL wraps the categories in `suggestions` (queries.c api_queries_suggestions).
+    let suggestions = &json["suggestions"];
+    for category in [
+        "domain",
+        "client_ip",
+        "client_name",
+        "upstream",
+        "type",
+        "status",
+        "reply",
+        "dnssec",
+    ] {
+        assert!(
+            suggestions[category].is_array(),
+            "{category} must be an array"
+        );
+    }
 }
 
 #[tokio::test]
@@ -225,7 +230,7 @@ async fn suggestions_includes_queried_domains() {
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     let json: Value = serde_json::from_slice(&body).expect("json");
 
-    let domains = json["domain"].as_array().unwrap();
+    let domains = json["suggestions"]["domain"].as_array().unwrap();
     let domain_strs: Vec<&str> = domains.iter().filter_map(|v| v.as_str()).collect();
 
     assert!(
@@ -263,7 +268,7 @@ async fn suggestions_are_deduplicated() {
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     let json: Value = serde_json::from_slice(&body).expect("json");
 
-    let domains = json["domain"].as_array().unwrap();
+    let domains = json["suggestions"]["domain"].as_array().unwrap();
     let dup_count = domains
         .iter()
         .filter(|v| v.as_str() == Some("dup.com"))
@@ -397,7 +402,7 @@ async fn query_client_name_is_null_when_no_hostname() {
 }
 
 #[tokio::test]
-async fn query_cursor_is_present_as_null_when_not_paginating() {
+async fn query_cursor_is_present_when_not_paginating() {
     let pool = helpers::create_test_db().await;
     let app = helpers::create_pihole_test_app(pool).await;
 
@@ -535,16 +540,17 @@ async fn suggestions_populates_all_categories() {
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     let json: Value = serde_json::from_slice(&body).expect("json");
 
-    let domains = json["domain"].as_array().unwrap();
+    let suggestions = &json["suggestions"];
+    let domains = suggestions["domain"].as_array().unwrap();
     assert!(!domains.is_empty(), "domain suggestions must not be empty");
 
-    let ips = json["client_ip"].as_array().unwrap();
+    let ips = suggestions["client_ip"].as_array().unwrap();
     assert!(!ips.is_empty(), "client_ip suggestions must not be empty");
 
-    let types = json["type"].as_array().unwrap();
+    let types = suggestions["type"].as_array().unwrap();
     assert!(!types.is_empty(), "type suggestions must not be empty");
 
-    let statuses = json["status"].as_array().unwrap();
+    let statuses = suggestions["status"].as_array().unwrap();
     assert!(!statuses.is_empty(), "status suggestions must not be empty");
 }
 

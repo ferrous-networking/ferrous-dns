@@ -104,6 +104,7 @@ use crate::dto;
         dto::queries::PiholeEde,
         dto::queries::PiholeQueryEntry,
         dto::queries::SuggestionsResponse,
+        dto::queries::QuerySuggestions,
         dto::search::SearchResponse,
         dto::search::SearchResult,
         dto::stats::SummaryResponse,

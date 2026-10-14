@@ -1,4 +1,6 @@
-use ferrous_dns_application::ports::{PageAt, QueryLogRepository, TimeGranularity};
+use ferrous_dns_application::ports::{
+    PageAt, QueryLogRepository, QueryLogStorageRepository, TimeGranularity,
+};
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
     ClientProtocol, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
@@ -803,6 +805,54 @@ async fn test_offset_then_cursor_pages_cover_same_second_rows_once() {
     }
     seen.extend(rest.iter().map(|q| q.domain.as_ref()));
     assert_eq!(seen, ["q4.com", "q3.com", "q2.com", "q1.com"]);
+}
+
+/// A snapshot page reads the log as it stood at `newest_id`: rows logged
+/// later neither appear nor shift the offset, and the count stays within it.
+#[tokio::test]
+async fn test_snapshot_page_ignores_rows_logged_after_it() {
+    let pool = migrated_pool().await;
+    for domain in ["s1.com", "s2.com", "s3.com", "s4.com"] {
+        insert(
+            &pool,
+            Row {
+                domain,
+                ..Row::default()
+            },
+        )
+        .await;
+    }
+    let repo = repo(&pool);
+    let newest_id = repo.get_storage(24.0).await.unwrap().newest_id;
+    insert(
+        &pool,
+        Row {
+            domain: "late.com",
+            ..Row::default()
+        },
+    )
+    .await;
+
+    let page = repo
+        .get_recent_paged(
+            2,
+            PageAt::Snapshot {
+                newest_id,
+                offset: 1,
+            },
+            24.0,
+            &no_filter(),
+        )
+        .await
+        .unwrap();
+
+    let seen: Vec<&str> = page.queries.iter().map(|q| q.domain.as_ref()).collect();
+    assert_eq!(seen, ["s3.com", "s2.com"]);
+    assert_eq!(
+        page.records_filtered, 4,
+        "the late row is past the snapshot"
+    );
+    assert_eq!(page.records_total, 5);
 }
 
 #[tokio::test]
