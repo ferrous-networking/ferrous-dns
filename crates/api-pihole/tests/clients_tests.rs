@@ -3,507 +3,385 @@ mod helpers;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    Router,
 };
+use helpers::ftl::{self, assert_ftl_shape};
 use http_body_util::BodyExt;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tower::ServiceExt;
+
+/// Status and body; an empty body comes back as `null`.
+async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
+    let response = app.clone().oneshot(request).await.expect("request failed");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let body = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("invalid JSON")
+    };
+    (status, body)
+}
+
+fn get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+fn with_body(method: &str, uri: &str, body: Value) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .expect("failed to build request")
+}
+
+fn delete(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+async fn app_and_pool() -> (Router, sqlx::SqlitePool) {
+    let pool = helpers::create_test_db().await;
+    (helpers::create_pihole_test_app(pool.clone()).await, pool)
+}
+
+async fn app() -> Router {
+    app_and_pool().await.0
+}
+
+async fn create(app: &Router, body: Value) -> ftl::ClientsWriteReply {
+    let (status, reply) = send(app, with_body("POST", "/clients", body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{reply}");
+    assert_ftl_shape(&reply)
+}
+
+async fn list(app: &Router, uri: &str) -> Vec<ftl::ClientEntry> {
+    let (status, reply) = send(app, get(uri)).await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_ftl_shape::<ftl::ClientsReply>(&reply).clients
+}
+
+fn addresses(clients: &[ftl::ClientEntry]) -> Vec<&str> {
+    clients.iter().map(|c| c.client.as_str()).collect()
+}
 
 #[tokio::test]
 async fn list_clients_returns_empty_array_on_fresh_database() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+    let app = app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/clients")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    assert!(list(&app, "/clients").await.is_empty());
+}
 
-    assert_eq!(response.status(), StatusCode::OK);
+#[tokio::test]
+async fn list_clients_returns_entries_in_ftl_shape() {
+    let (app, pool) = app_and_pool().await;
+    helpers::insert_client(&pool, "192.168.1.99").await;
 
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+    let clients = list(&app, "/clients").await;
 
-    let clients = json["clients"]
-        .as_array()
-        .expect("clients must be an array");
-    assert!(
-        clients.is_empty(),
-        "clients must be empty on fresh database"
+    assert_eq!(addresses(&clients), ["192.168.1.99"]);
+    let entry = &clients[0];
+    assert_eq!(
+        entry.name.as_deref(),
+        Some(""),
+        "no hostname is \"\" in FTL"
     );
+    assert_eq!(entry.comment, None);
+    assert!(entry.date_added > 1_600_000_000, "unix seconds");
+    assert!(entry.date_modified >= entry.date_added);
 }
 
 #[tokio::test]
-async fn list_clients_returns_created_clients() {
-    let pool = helpers::create_test_db().await;
+async fn create_client_takes_a_string_or_an_array_and_reports_what_was_processed() {
+    let app = app().await;
 
-    // Create a client via POST
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "192.168.1.99" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let one = create(&app, json!({ "client": "10.0.0.1" })).await;
+    assert_eq!(addresses(&one.clients), ["10.0.0.1"]);
+    assert_eq!(one.processed.success[0].item, "10.0.0.1");
 
-    // List clients and verify it appears
-    let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/clients")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let clients = json["clients"]
-        .as_array()
-        .expect("clients must be an array");
-    assert!(
-        !clients.is_empty(),
-        "clients must contain the created client"
+    let many = create(&app, json!({ "client": ["10.0.0.2", "10.0.0.3"] })).await;
+    assert_eq!(
+        addresses(&many.clients),
+        ["10.0.0.3"],
+        "FTL reads back the last item"
     );
+    let written: Vec<&str> = many
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(written, ["10.0.0.2", "10.0.0.3"]);
+    assert!(many.processed.errors.is_empty());
+}
 
-    let ips: Vec<&str> = clients.iter().filter_map(|c| c["ip"].as_str()).collect();
-    assert!(
-        ips.contains(&"192.168.1.99"),
-        "created client IP must appear in the list"
+#[tokio::test]
+async fn clients_that_are_not_ip_addresses_land_in_processed_errors() {
+    let app = app().await;
+
+    let reply = create(
+        &app,
+        json!({ "client": ["10.0.0.4", "10.0.0.0/24", "12:34:56:78:9a:bc", ":eth0"] }),
+    )
+    .await;
+
+    assert_eq!(reply.processed.success.len(), 1);
+    let failed: Vec<&str> = reply
+        .processed
+        .errors
+        .iter()
+        .map(|e| e.item.as_str())
+        .collect();
+    assert_eq!(failed, ["10.0.0.0/24", "12:34:56:78:9a:bc", ":eth0"]);
+    assert_eq!(addresses(&list(&app, "/clients").await), ["10.0.0.4"]);
+}
+
+#[tokio::test]
+async fn a_post_where_every_client_fails_is_a_database_error() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("POST", "/clients", json!({ "client": "printer.lan" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let error = assert_ftl_shape::<ftl::ErrorReply>(&reply).error;
+    assert_eq!(error.key, "database_error");
+    assert_eq!(error.message, "Could not add to gravity database");
+}
+
+#[tokio::test]
+async fn a_post_without_a_client_is_a_bad_request() {
+    let app = app().await;
+
+    for body in [json!({}), json!({ "client": "" }), json!({ "client": [] })] {
+        let (status, reply) = send(&app, with_body("POST", "/clients", body.clone())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        let error = assert_ftl_shape::<ftl::ErrorReply>(&reply).error;
+        assert_eq!(error.key, "bad_request", "{body}");
+        assert_eq!(
+            error.message,
+            "Invalid request: No valid \"client\" in payload (must be either string or array)"
+        );
+    }
+}
+
+#[tokio::test]
+async fn client_groups_are_ftl_group_ids() {
+    let app = app().await;
+    let (status, kids) = send(
+        &app,
+        with_body("POST", "/groups", json!({ "name": "Kids" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{kids}");
+    let kids_id = kids["groups"][0]["id"].as_i64().expect("group id");
+
+    let default = create(&app, json!({ "client": "10.0.0.5", "groups": [0] })).await;
+    assert_eq!(default.clients[0].groups, [0], "Ferrous group 1 is FTL's 0");
+
+    let other = create(&app, json!({ "client": "10.0.0.6", "groups": [kids_id] })).await;
+    assert_eq!(other.clients[0].groups, [kids_id]);
+}
+
+#[tokio::test]
+async fn put_client_creates_a_missing_client_and_replies_with_what_was_processed() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/clients/10.0.0.10", json!({ "groups": [0] })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::ClientsWriteReply>(&reply);
+    assert_eq!(addresses(&reply.clients), ["10.0.0.10"]);
+    assert_eq!(reply.clients[0].groups, [0]);
+    assert_eq!(reply.processed.success[0].item, "10.0.0.10");
+}
+
+#[tokio::test]
+async fn put_client_moves_an_existing_client_to_other_groups() {
+    let (app, pool) = app_and_pool().await;
+    let (_, kids) = send(
+        &app,
+        with_body("POST", "/groups", json!({ "name": "Kids" })),
+    )
+    .await;
+    let kids_id = kids["groups"][0]["id"].as_i64().expect("group id");
+    helpers::insert_client(&pool, "10.0.0.11").await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/clients/10.0.0.11", json!({ "groups": [kids_id] })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::ClientsWriteReply>(&reply);
+    assert_eq!(reply.clients[0].groups, [kids_id]);
+}
+
+#[tokio::test]
+async fn get_client_returns_the_entry_or_an_empty_list() {
+    let (app, pool) = app_and_pool().await;
+    helpers::insert_client(&pool, "10.0.0.12").await;
+
+    assert_eq!(
+        addresses(&list(&app, "/clients/10.0.0.12").await),
+        ["10.0.0.12"]
     );
+    assert!(list(&app, "/clients/10.9.9.9").await.is_empty());
+    assert!(list(&app, "/clients/printer.lan").await.is_empty());
 }
 
 #[tokio::test]
-async fn create_client_returns_created_status() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn a_client_subnet_in_the_path_reaches_the_handler() {
+    let app = app().await;
 
-    let body = serde_json::json!({ "ip": "192.168.1.50" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert_eq!(json["ip"], "192.168.1.50");
+    assert!(list(&app, "/clients/10.0.0.0/24").await.is_empty());
+    let (status, body) = send(&app, delete("/clients/10.0.0.0/24")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({}));
 }
 
 #[tokio::test]
-async fn create_client_with_group() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn delete_client_answers_204_then_404_with_an_empty_object() {
+    let (app, pool) = app_and_pool().await;
+    helpers::insert_client(&pool, "10.0.0.20").await;
 
-    let body = serde_json::json!({ "ip": "10.0.0.5", "groups": [1] }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let (status, _) = send(&app, delete("/clients/10.0.0.20")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let groups = json["groups"].as_array().expect("groups must be an array");
-    let group_ids: Vec<i64> = groups.iter().filter_map(|g| g.as_i64()).collect();
-    assert!(group_ids.contains(&1), "groups must contain group id 1");
-}
-
-#[tokio::test]
-async fn create_client_with_invalid_ip_returns_error() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
-
-    let body = serde_json::json!({ "ip": "not-an-ip" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    let status = response.status().as_u16();
-    assert!(
-        (400..500).contains(&status),
-        "invalid IP must return a 4xx status, got {status}"
-    );
-}
-
-#[tokio::test]
-async fn update_client_changes_group() {
-    let pool = helpers::create_test_db().await;
-
-    // Create client
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "10.0.0.10" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    // Update client group
-    let app = helpers::create_pihole_test_app(pool).await;
-    let body = serde_json::json!({ "groups": [1] }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/clients/10.0.0.10")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn delete_client_returns_no_content() {
-    let pool = helpers::create_test_db().await;
-
-    // Create client
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "10.0.0.20" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    // Delete it
-    let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/clients/10.0.0.20")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-}
-
-#[tokio::test]
-async fn delete_nonexistent_client_returns_not_found() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/clients/99.99.99.99")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-async fn send(app: &axum::Router, method: &str, uri: &str, body: Option<Value>) -> StatusCode {
-    let body = body.map_or_else(Body::empty, |json| Body::from(json.to_string()));
-    app.clone()
-        .oneshot(
-            Request::builder()
-                .method(method)
-                .uri(uri)
-                .header("content-type", "application/json")
-                .body(body)
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed")
-        .status()
+    let (status, body) = send(&app, delete("/clients/10.0.0.20")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({}), "api_list_remove sends an empty object");
 }
 
 #[tokio::test]
 async fn non_canonical_ipv6_path_addresses_the_same_client() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
-    let created = send(
+    let (app, pool) = app_and_pool().await;
+    helpers::insert_client(&pool, "2001:db8::a").await;
+
+    let (status, _) = send(
         &app,
-        "POST",
-        "/clients",
-        Some(serde_json::json!({ "ip": "2001:db8::a" })),
+        with_body("PUT", "/clients/2001:DB8:0:0::A", json!({ "groups": [0] })),
     )
     .await;
-    assert_eq!(created, StatusCode::CREATED);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(addresses(&list(&app, "/clients").await), ["2001:db8::a"]);
 
-    let updated = send(
+    let (status, _) = send(&app, delete("/clients/2001:0db8::000a")).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(&app, delete("/clients/2001:db8::a")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn batch_delete_takes_ftl_item_objects() {
+    let (app, pool) = app_and_pool().await;
+    for ip in ["10.0.0.40", "10.0.0.41", "10.0.0.42"] {
+        helpers::insert_client(&pool, ip).await;
+    }
+
+    let (status, _) = send(
         &app,
-        "PUT",
-        "/clients/2001:DB8:0:0::A",
-        Some(serde_json::json!({ "groups": [1] })),
+        with_body(
+            "POST",
+            "/clients:batchDelete",
+            json!([{ "item": "10.0.0.40" }, { "item": "10.0.0.41" }]),
+        ),
     )
     .await;
-    assert_eq!(updated, StatusCode::OK);
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(addresses(&list(&app, "/clients").await), ["10.0.0.42"]);
 
-    let deleted = send(&app, "DELETE", "/clients/2001:0db8::000a", None).await;
-    assert_eq!(deleted, StatusCode::NO_CONTENT);
-    let deleted_again = send(&app, "DELETE", "/clients/2001:db8::a", None).await;
-    assert_eq!(deleted_again, StatusCode::NOT_FOUND);
+    let (status, body) = send(
+        &app,
+        with_body(
+            "POST",
+            "/clients:batchDelete",
+            json!([{ "item": "10.0.0.40" }]),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({}));
 }
 
 #[tokio::test]
-async fn non_ip_client_path_is_not_found() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn suggestions_are_devices_in_ftl_shape() {
+    let (app, pool) = app_and_pool().await;
+    for ip in ["10.0.0.30", "10.0.0.31", "fd00::31"] {
+        helpers::insert_client(&pool, ip).await;
+    }
+    sqlx::query(
+        "UPDATE clients SET mac_address = '12:34:56:78:9a:bc', hostname = 'laptop'
+         WHERE ip_address IN ('10.0.0.31', 'fd00::31')",
+    )
+    .execute(&pool)
+    .await
+    .expect("set mac");
 
-    assert_eq!(
-        send(&app, "DELETE", "/clients/printer.lan", None).await,
-        StatusCode::NOT_FOUND
-    );
-}
+    let (status, reply) = send(&app, get("/clients/_suggestions")).await;
 
-#[tokio::test]
-async fn suggestions_returns_suggestions_array() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let mut devices = assert_ftl_shape::<ftl::ClientSuggestions>(&reply).clients;
+    devices.sort_by(|a, b| a.hwaddr.cmp(&b.hwaddr));
+    assert_eq!(devices.len(), 2, "one device per hardware address");
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/clients/_suggestions")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert!(
-        json["suggestions"].is_array(),
-        "response must have a 'suggestions' array field"
-    );
-}
-
-#[tokio::test]
-async fn suggestions_includes_created_client() {
-    let pool = helpers::create_test_db().await;
-
-    // Create a client
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "10.0.0.30" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    // Get suggestions
-    let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/clients/_suggestions")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let suggestions = json["suggestions"]
-        .as_array()
-        .expect("suggestions must be an array");
-    let suggestion_strings: Vec<String> = suggestions
-        .iter()
-        .map(|s| s.as_str().unwrap_or_default().to_string())
+    let laptop = &devices[0];
+    assert_eq!(laptop.hwaddr.as_deref(), Some("12:34:56:78:9a:bc"));
+    let mut ips: Vec<&str> = laptop
+        .addresses
+        .as_deref()
+        .expect("addresses")
+        .split(',')
         .collect();
-    assert!(
-        suggestion_strings.iter().any(|s| s.contains("10.0.0.30")),
-        "suggestions must include the created client IP, got: {suggestion_strings:?}"
+    ips.sort_unstable();
+    assert_eq!(ips, ["10.0.0.31", "fd00::31"]);
+    assert_eq!(laptop.names.as_deref(), Some("laptop"));
+    assert!(laptop.last_query > 1_600_000_000, "unix seconds");
+
+    let unknown = &devices[1];
+    assert_eq!(
+        unknown.hwaddr.as_deref(),
+        Some("ip-10.0.0.30"),
+        "FTL's mock address for a device without a MAC"
     );
+    assert_eq!(unknown.addresses.as_deref(), Some("10.0.0.30"));
+    assert_eq!(unknown.names, None);
 }
 
 #[tokio::test]
-async fn batch_delete_clients_removes_specified() {
-    let pool = helpers::create_test_db().await;
+async fn suggestions_honour_count() {
+    let (app, pool) = app_and_pool().await;
+    for ip in ["10.0.0.50", "10.0.0.51", "10.0.0.52"] {
+        helpers::insert_client(&pool, ip).await;
+    }
 
-    // Create first client
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "10.0.0.40" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let (status, reply) = send(&app, get("/clients/_suggestions?count=2")).await;
 
-    // Create second client
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "ip": "10.0.0.41" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    // Batch delete both
-    let app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "items": ["10.0.0.40", "10.0.0.41"] }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/clients:batchDelete")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-
-    // Verify they are gone
-    let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/clients")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let clients = json["clients"]
-        .as_array()
-        .expect("clients must be an array");
-    let ips: Vec<&str> = clients.iter().filter_map(|c| c["ip"].as_str()).collect();
-    assert!(
-        !ips.contains(&"10.0.0.40"),
-        "10.0.0.40 must not be present after batch delete"
-    );
-    assert!(
-        !ips.contains(&"10.0.0.41"),
-        "10.0.0.41 must not be present after batch delete"
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_eq!(
+        assert_ftl_shape::<ftl::ClientSuggestions>(&reply)
+            .clients
+            .len(),
+        2
     );
 }
