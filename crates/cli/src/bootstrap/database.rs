@@ -50,7 +50,14 @@ pub async fn init_database(
 pub async fn close_database(pools: &[SqlitePool]) {
     let close_all = async {
         for pool in pools {
-            pool.close().await;
+            // sqlx's close() returns once every permit is back, so a connection a job
+            // returns during that wait goes back into the idle queue, still open.
+            loop {
+                pool.close().await;
+                if pool.size() == 0 {
+                    break;
+                }
+            }
         }
     };
     match tokio::time::timeout(CLOSE_TIMEOUT, close_all).await {
