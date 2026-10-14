@@ -125,6 +125,47 @@ async fn unknown_route_answers_ftls_not_found_error() {
 }
 
 #[tokio::test]
+async fn unsupported_method_answers_ftls_method_not_allowed_error() {
+    // Live FTL 6.7.1: DELETE /api/padd → 405 "method_not_allowed", the
+    // method as the hint, and an Allow header.
+    let app = Router::new().nest(
+        "/api",
+        helpers::create_pihole_test_app(helpers::create_test_db().await).await,
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/padd")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    let allow = response
+        .headers()
+        .get("allow")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(allow.contains("GET"), "Allow header: {allow:?}");
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let reply = assert_ftl_shape::<ErrorReply>(&json);
+    assert_eq!(reply.error.key, "method_not_allowed");
+    assert_eq!(reply.error.message, "Method Not Allowed");
+    assert_eq!(reply.error.hint.as_deref(), Some("DELETE"));
+}
+
+#[tokio::test]
 async fn known_route_without_a_session_still_answers_401() {
     let (status, json) = get_unauthenticated("/api/stats/summary").await;
 
