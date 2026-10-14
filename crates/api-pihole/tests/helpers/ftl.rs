@@ -676,6 +676,100 @@ pub struct SensorTemp {
 /// `GET /info/messages` — info.yaml:1145.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct InfoMetrics {
+    pub metrics: Metrics,
+    pub took: Option<f64>,
+}
+
+/// `metrics` — info.c:1075-1150 (api_info_metrics).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Metrics {
+    pub dns: MetricsDns,
+    pub dhcp: MetricsDhcp,
+}
+
+/// `metrics.dns` — info.c:1139-1141.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsDns {
+    pub cache: MetricsCache,
+    pub replies: MetricsReplies,
+}
+
+/// `metrics.dns.cache` — info.c:1079-1104.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsCache {
+    pub size: u64,
+    pub inserted: u64,
+    pub evicted: u64,
+    pub expired: u64,
+    pub immortal: u64,
+    pub content: Vec<MetricsCacheContent>,
+}
+
+/// `metrics.dns.cache.content[]` — info.c:1095-1102.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsCacheContent {
+    #[serde(rename = "type")]
+    pub rr_type: u64,
+    pub name: String,
+    pub count: MetricsCacheCount,
+}
+
+/// `content[].count` — info.c:1098-1101.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsCacheCount {
+    pub valid: u64,
+    pub stale: u64,
+}
+
+/// `metrics.dns.replies` — info.c:1106-1117.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsReplies {
+    pub local: u64,
+    pub forwarded: u64,
+    pub optimized: u64,
+    pub unanswered: u64,
+    pub auth: u64,
+    pub sum: u64,
+}
+
+/// `metrics.dhcp` — info.c:1119-1137.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsDhcp {
+    pub ack: u64,
+    pub decline: u64,
+    pub discover: u64,
+    pub inform: u64,
+    pub nak: u64,
+    pub offer: u64,
+    pub release: u64,
+    pub request: u64,
+    pub noanswer: u64,
+    pub bootp: u64,
+    pub pxe: u64,
+    pub leases: MetricsDhcpLeases,
+}
+
+/// `metrics.dhcp.leases` — info.c:1132-1137.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsDhcpLeases {
+    pub allocated_4: u64,
+    pub pruned_4: u64,
+    pub allocated_6: u64,
+    pub pruned_6: u64,
+}
+
+/// `GET /info/messages` — info.yaml:1145.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InfoMessages {
     pub messages: Vec<InfoMessage>,
     pub took: Option<f64>,

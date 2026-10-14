@@ -133,6 +133,37 @@ async fn messages_list_is_empty() {
 }
 
 #[tokio::test]
+async fn metrics_report_the_cache_counters() {
+    let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+    let (status, json) = helpers::send(app, "GET", "/info/metrics").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let metrics = helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoMetrics>(&json).metrics;
+    let cache = metrics.dns.cache;
+    // dnsmasq's cache-size is the capacity, as /padd reports it.
+    assert_eq!(
+        cache.size,
+        ferrous_dns_domain::Config::default().dns.cache_max_entries as u64
+    );
+    assert_eq!(cache.inserted, helpers::STUB_CACHE_INSERTIONS);
+    assert_eq!(cache.evicted, helpers::STUB_CACHE_EVICTIONS);
+    assert_eq!(cache.expired, helpers::STUB_CACHE_EXPIRED);
+    assert_eq!(metrics.dns.replies.sum, 0);
+    assert_eq!(metrics.dhcp.ack, 0);
+}
+
+#[tokio::test]
+async fn ftl_info_reports_cache_insertions_and_evictions_as_dnsmasq_counters() {
+    let pool = helpers::create_test_db().await;
+    let json = get_json(pool, "/info/ftl").await;
+
+    let dnsmasq = &json["ftl"]["dnsmasq"];
+    assert_eq!(dnsmasq["dns_cache_inserted"], helpers::STUB_CACHE_INSERTIONS);
+    assert_eq!(dnsmasq["dns_cache_live_freed"], helpers::STUB_CACHE_EVICTIONS);
+}
+
+#[tokio::test]
 async fn messages_count_is_zero() {
     let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
 

@@ -59,6 +59,12 @@ pub const MOCK_ALLOW_REGEX_ID: i64 = 2;
 /// are large enough to tell seconds from milliseconds.
 pub const PROCESS_AGE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// What the stub DNS cache reports: insertions, evictions, and expired
+/// entries removed on access.
+pub const STUB_CACHE_INSERTIONS: u64 = 42;
+pub const STUB_CACHE_EVICTIONS: u64 = 7;
+pub const STUB_CACHE_EXPIRED: u64 = 3;
+
 /// Domain decisions of the mock engine:
 /// - `regex.blocked.test` → blocked by the deny regex [`MOCK_DENY_REGEX_ID`]
 /// - `list.blocked.test` → blocked by the blocklist [`MOCK_BLOCKLIST_ID`]

@@ -184,3 +184,16 @@ async fn padd_config_reflects_ferrous_settings() {
     assert_eq!(padd.config.dns_num_upstreams, 2);
     assert_eq!(padd.config.privacy_level, 0);
 }
+
+#[tokio::test]
+async fn padd_cache_counts_insertions_and_evictions() {
+    let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+    let json = get_json(&app, "/padd").await;
+
+    let cache = assert_ftl_shape::<Padd>(&json).cache;
+    // padd.c: `inserted` and `evicted` are dnsmasq's cache insertions and
+    // live entries freed.
+    assert_eq!(cache.inserted, helpers::STUB_CACHE_INSERTIONS);
+    assert_eq!(cache.evicted, helpers::STUB_CACHE_EVICTIONS);
+}
