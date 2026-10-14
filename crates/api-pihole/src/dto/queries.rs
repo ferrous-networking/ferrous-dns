@@ -1,4 +1,3 @@
-use ferrous_dns_domain::config::BlockResponseMode;
 use ferrous_dns_domain::{
     BlockSource, DnsProtocol, DnssecStatus, QueryLog, RecordType, UpstreamAddr,
 };
@@ -189,54 +188,6 @@ pub(crate) fn dnssec_name(status: Option<DnssecStatus>) -> &'static str {
         Some(DnssecStatus::Bogus) => "BOGUS",
         Some(DnssecStatus::Indeterminate) => "ABANDONED",
         None => "UNKNOWN",
-    }
-}
-
-/// The FTL reply type of `q`, from what Ferrous logs of its answer:
-///
-/// | Ferrous log                                   | `reply.type` |
-/// |-----------------------------------------------|--------------|
-/// | blocked as an NXDOMAIN hijack                 | `NXDOMAIN` |
-/// | rate limited (`RATE_LIMITED`)                 | `REFUSED` |
-/// | rate limited by truncation (`RATE_LIMITED_TC`) | `OTHER` |
-/// | any other block                               | what `block_mode` answers: `null_ip` → `IP` for A/AAAA and `NODATA` otherwise, `nxdomain` → `NXDOMAIN`, `nodata` → `NODATA`, `refused` → `REFUSED` |
-/// | `NOERROR` or `LOCAL_DNS` with addresses       | `IP` |
-/// | `NOERROR` for A/AAAA without addresses        | `NODATA` |
-/// | `NOERROR` for another type                    | `OTHER`: its records are not logged |
-/// | `LOCAL_DNS` without addresses                 | `UNKNOWN`: a local NXDOMAIN and a non-address local answer log alike |
-/// | `SAFE_SEARCH`                                 | `CNAME` |
-/// | `NXDOMAIN`, `SERVFAIL`, `REFUSED`             | the same |
-/// | `TIMEOUT`                                     | `NONE` |
-/// | anything else                                 | `UNKNOWN` |
-///
-/// A block reads the current `block_mode`, which may differ from the one the
-/// query was answered under.
-pub(crate) fn reply_type(q: &QueryLog, block_mode: BlockResponseMode) -> &'static str {
-    let has_addresses = q.answers.as_ref().is_some_and(|a| !a.is_empty());
-    let is_address_query = matches!(q.record_type, RecordType::A | RecordType::AAAA);
-    if q.blocked {
-        return match (q.block_source, q.response_status) {
-            (Some(BlockSource::NxdomainHijack), _) => "NXDOMAIN",
-            (_, Some("RATE_LIMITED")) => "REFUSED",
-            (_, Some("RATE_LIMITED_TC")) => "OTHER",
-            _ => match block_mode {
-                BlockResponseMode::NullIp if is_address_query => "IP",
-                BlockResponseMode::NullIp | BlockResponseMode::NoData => "NODATA",
-                BlockResponseMode::NxDomain => "NXDOMAIN",
-                BlockResponseMode::Refused => "REFUSED",
-            },
-        };
-    }
-    match q.response_status {
-        Some("NOERROR" | "LOCAL_DNS") if has_addresses => "IP",
-        Some("NOERROR") if is_address_query => "NODATA",
-        Some("NOERROR") => "OTHER",
-        Some("SAFE_SEARCH") => "CNAME",
-        Some("NXDOMAIN") => "NXDOMAIN",
-        Some("SERVFAIL") => "SERVFAIL",
-        Some("REFUSED") => "REFUSED",
-        Some("TIMEOUT") => "NONE",
-        _ => "UNKNOWN",
     }
 }
 

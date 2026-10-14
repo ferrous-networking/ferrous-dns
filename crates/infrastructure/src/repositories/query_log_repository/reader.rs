@@ -6,13 +6,42 @@ use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, Q
 use ferrous_dns_domain::entities::query_log::{
     ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
 };
-use ferrous_dns_domain::{DomainError, QueryLog, QueryStats};
+use ferrous_dns_domain::{BlockResponseMode, DomainError, QueryLog, QueryStats};
 use sqlx::{Row, SqlitePool};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, instrument};
 
 /// SQL mirror of `BlockSource::is_malware`; the rollup backfill carries the same list.
 const MALWARE_FILTER: &str = " AND q.block_source IN ('dns_tunneling', 'dns_rebinding', 'nxdomain_hijack', 'response_ip_filter', 'dga_detection')";
+
+/// SQL mirror of `QueryLog::reply_kind`, yielding `ReplyKind::as_str`; change
+/// both together. `block_mode` picks the branch for an ordinary block.
+fn reply_kind_sql(block_mode: BlockResponseMode) -> String {
+    let blocked = match block_mode {
+        BlockResponseMode::NullIp => {
+            "CASE WHEN q.record_type IN ('A', 'AAAA') THEN 'IP' ELSE 'NODATA' END"
+        }
+        BlockResponseMode::NoData => "'NODATA'",
+        BlockResponseMode::NxDomain => "'NXDOMAIN'",
+        BlockResponseMode::Refused => "'REFUSED'",
+    };
+    format!(
+        "CASE
+            WHEN q.blocked = 1 THEN CASE
+                WHEN q.block_source = 'nxdomain_hijack' THEN 'NXDOMAIN'
+                WHEN q.response_status = 'RATE_LIMITED' THEN 'REFUSED'
+                WHEN q.response_status = 'RATE_LIMITED_TC' THEN 'OTHER'
+                ELSE {blocked} END
+            WHEN q.response_status IN ('NOERROR', 'LOCAL_DNS')
+                 AND q.answers IS NOT NULL AND q.answers <> '' THEN 'IP'
+            WHEN q.response_status = 'NOERROR' AND q.record_type IN ('A', 'AAAA') THEN 'NODATA'
+            WHEN q.response_status = 'NOERROR' THEN 'OTHER'
+            WHEN q.response_status = 'SAFE_SEARCH' THEN 'CNAME'
+            WHEN q.response_status IN ('NXDOMAIN', 'SERVFAIL', 'REFUSED') THEN q.response_status
+            WHEN q.response_status = 'TIMEOUT' THEN 'NONE'
+            ELSE 'UNKNOWN' END"
+    )
+}
 
 /// Every column `row_to_query_log` reads, joined to the client hostname, followed by `$tail`.
 macro_rules! select_query_log {
@@ -161,6 +190,9 @@ pub(super) async fn get_recent_paged(
         let placeholders = vec!["?"; filter.excluded_record_types.len()].join(", ");
         format!(" AND q.record_type NOT IN ({placeholders})")
     };
+    let reply_clause = filter.reply.map_or_else(String::new, |reply| {
+        format!(" AND ({}) = ?", reply_kind_sql(reply.block_mode))
+    });
     let filters = [
         domain_clause,
         category_clause,
@@ -172,6 +204,7 @@ pub(super) async fn get_recent_paged(
         protocol_clause,
         until_clause,
         &excluded_types_clause,
+        &reply_clause,
     ]
     .concat();
     // A snapshot page counts its matches within the snapshot too.
@@ -209,6 +242,9 @@ pub(super) async fn get_recent_paged(
             }
             for record_type in &filter.excluded_record_types {
                 q = q.bind(record_type.as_str());
+            }
+            if let Some(reply) = filter.reply {
+                q = q.bind(reply.kind.as_str());
             }
             q
         }};

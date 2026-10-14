@@ -1,4 +1,5 @@
 use super::block_source::BlockSource;
+use crate::config::BlockResponseMode;
 use crate::dns_record::RecordType;
 use crate::DomainError;
 use std::collections::HashMap;
@@ -33,6 +34,69 @@ pub struct QueryLogFilter {
     pub until: Option<i64>,
     /// Record types left out.
     pub excluded_record_types: Vec<RecordType>,
+    /// Only queries answered with this kind of reply.
+    pub reply: Option<ReplyFilter>,
+}
+
+/// What a logged query was answered with, as far as the log tells; see
+/// [`QueryLog::reply_kind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyKind {
+    Ip,
+    NoData,
+    NxDomain,
+    Cname,
+    Refused,
+    ServFail,
+    /// No reply came.
+    NoReply,
+    Other,
+    Unknown,
+}
+
+impl ReplyKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReplyKind::Ip => "IP",
+            ReplyKind::NoData => "NODATA",
+            ReplyKind::NxDomain => "NXDOMAIN",
+            ReplyKind::Cname => "CNAME",
+            ReplyKind::Refused => "REFUSED",
+            ReplyKind::ServFail => "SERVFAIL",
+            ReplyKind::NoReply => "NONE",
+            ReplyKind::Other => "OTHER",
+            ReplyKind::Unknown => "UNKNOWN",
+        }
+    }
+}
+
+impl FromStr for ReplyKind {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        [
+            ReplyKind::Ip,
+            ReplyKind::NoData,
+            ReplyKind::NxDomain,
+            ReplyKind::Cname,
+            ReplyKind::Refused,
+            ReplyKind::ServFail,
+            ReplyKind::NoReply,
+            ReplyKind::Other,
+            ReplyKind::Unknown,
+        ]
+        .into_iter()
+        .find(|kind| kind.as_str().eq_ignore_ascii_case(s))
+        .ok_or_else(|| DomainError::InvalidInput(format!("invalid reply kind: '{s}'")))
+    }
+}
+
+/// Selects queries by [`ReplyKind`]. Blocked queries are classified under
+/// `block_mode`, as [`QueryLog::reply_kind`] classifies them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplyFilter {
+    pub kind: ReplyKind,
+    pub block_mode: BlockResponseMode,
 }
 
 /// Category filter for query log pagination.
@@ -185,6 +249,56 @@ pub struct QueryLog {
 
     pub group_id: Option<i64>,
     pub block_source: Option<BlockSource>,
+}
+
+impl QueryLog {
+    /// The kind of reply the query got, from what the log keeps of it:
+    ///
+    /// | Logged                                         | Kind |
+    /// |------------------------------------------------|------|
+    /// | blocked as an NXDOMAIN hijack                  | `NxDomain` |
+    /// | rate limited (`RATE_LIMITED`)                  | `Refused` |
+    /// | rate limited by truncation (`RATE_LIMITED_TC`) | `Other` |
+    /// | any other block                                | what `block_mode` answers: `null_ip` → `Ip` for A/AAAA and `NoData` otherwise, `nxdomain` → `NxDomain`, `nodata` → `NoData`, `refused` → `Refused` |
+    /// | `NOERROR` or `LOCAL_DNS` with addresses        | `Ip` |
+    /// | `NOERROR` for A/AAAA without addresses         | `NoData` |
+    /// | `NOERROR` for another type                     | `Other`: its records are not logged |
+    /// | `LOCAL_DNS` without addresses                  | `Unknown`: a local NXDOMAIN and a non-address local answer log alike |
+    /// | `SAFE_SEARCH`                                  | `Cname` |
+    /// | `NXDOMAIN`, `SERVFAIL`, `REFUSED`              | the same |
+    /// | `TIMEOUT`                                      | `NoReply` |
+    /// | anything else                                  | `Unknown` |
+    ///
+    /// The query log repository mirrors this in SQL to filter on it; change
+    /// both together.
+    pub fn reply_kind(&self, block_mode: BlockResponseMode) -> ReplyKind {
+        let has_addresses = self.answers.as_ref().is_some_and(|a| !a.is_empty());
+        let is_address_query = matches!(self.record_type, RecordType::A | RecordType::AAAA);
+        if self.blocked {
+            return match (self.block_source, self.response_status) {
+                (Some(BlockSource::NxdomainHijack), _) => ReplyKind::NxDomain,
+                (_, Some("RATE_LIMITED")) => ReplyKind::Refused,
+                (_, Some("RATE_LIMITED_TC")) => ReplyKind::Other,
+                _ => match block_mode {
+                    BlockResponseMode::NullIp if is_address_query => ReplyKind::Ip,
+                    BlockResponseMode::NullIp | BlockResponseMode::NoData => ReplyKind::NoData,
+                    BlockResponseMode::NxDomain => ReplyKind::NxDomain,
+                    BlockResponseMode::Refused => ReplyKind::Refused,
+                },
+            };
+        }
+        match self.response_status {
+            Some("NOERROR" | "LOCAL_DNS") if has_addresses => ReplyKind::Ip,
+            Some("NOERROR") if is_address_query => ReplyKind::NoData,
+            Some("NOERROR") => ReplyKind::Other,
+            Some("SAFE_SEARCH") => ReplyKind::Cname,
+            Some("NXDOMAIN") => ReplyKind::NxDomain,
+            Some("SERVFAIL") => ReplyKind::ServFail,
+            Some("REFUSED") => ReplyKind::Refused,
+            Some("TIMEOUT") => ReplyKind::NoReply,
+            _ => ReplyKind::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

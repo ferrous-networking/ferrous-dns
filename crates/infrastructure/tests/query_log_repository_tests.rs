@@ -1241,6 +1241,7 @@ async fn test_combined_all_filters() {
         protocol: None,
         until: None,
         excluded_record_types: Vec::new(),
+        reply: None,
     };
     let result = repo(&pool)
         .get_recent_paged(100, PageAt::Offset(0), 24.0, &filter)
