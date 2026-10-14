@@ -1,4 +1,6 @@
-use axum::{middleware, Router};
+use std::sync::Arc;
+
+use axum::{middleware, Extension, Router};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -118,14 +120,20 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::action::gravity))
         .routes(routes!(handlers::action::restartdns))
         .routes(routes!(handlers::action::flush_logs))
+        .routes(routes!(handlers::padd::get_padd))
+        .routes(routes!(handlers::endpoints::get_endpoints))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             require_pihole_auth,
         ));
 
-    OpenApiRouter::with_openapi(PiholeApiDoc::openapi())
+    let (router, openapi) = OpenApiRouter::with_openapi(PiholeApiDoc::openapi())
         .merge(public_routes)
         .merge(protected_routes)
         .with_state(state)
-        .split_for_parts()
+        .split_for_parts();
+
+    // `/endpoints` lists the finished document, so it is built only now.
+    let endpoints = Arc::new(handlers::endpoints::list_endpoints(&openapi));
+    (router.layer(Extension(endpoints)), openapi)
 }

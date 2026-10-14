@@ -1,10 +1,10 @@
-//! Reads of the machine Ferrous runs on, for the `/info/*` routes. They read
-//! the same `/proc` and `/sys` files FTL does; where a file is missing (or off
-//! Linux) a value is 0 or null. All of them block, so call them from
-//! `spawn_blocking`.
+//! Reads of the machine Ferrous runs on, for the `/info/*` routes and
+//! `/padd`. They read the same `/proc` and `/sys` files FTL does; where a
+//! file is missing (or off Linux) a value is 0 or null. All of them block,
+//! so call them from `spawn_blocking`.
 
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::dto::info::{
     DatabaseOwner, DatabaseOwnerGroup, DatabaseOwnerUser, DmiBoard, DmiProduct, DmiVendor, HostDmi,
@@ -157,6 +157,42 @@ pub(crate) fn read_host() -> HostInfo {
             },
         },
     }
+}
+
+/// hwmon chips FTL takes for the CPU's temperature (info.c get_sensors_obj).
+const CPU_SENSOR_NAMES: [&str; 4] = ["k10temp", "coretemp", "cpu_thermal", "soc_thermal"];
+
+/// The CPU temperature in °C, picked as FTL does: the first hwmon chip named
+/// like a CPU sensor, then its first non-zero `temp*_input`. Null when none.
+pub(crate) fn read_cpu_temp() -> Option<f64> {
+    let mut chips: Vec<PathBuf> = std::fs::read_dir("/sys/class/hwmon")
+        .ok()?
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .collect();
+    chips.sort();
+    let chip = chips.into_iter().find(|chip| {
+        std::fs::read_to_string(chip.join("name"))
+            .is_ok_and(|name| CPU_SENSOR_NAMES.contains(&name.trim()))
+    })?;
+
+    let mut inputs: Vec<(u32, PathBuf)> = std::fs::read_dir(&chip)
+        .ok()?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let file_name = entry.file_name().into_string().ok()?;
+            let id = file_name
+                .strip_prefix("temp")?
+                .strip_suffix("_input")?
+                .parse()
+                .ok()?;
+            Some((id, entry.path()))
+        })
+        .collect();
+    inputs.sort();
+    inputs.iter().find_map(|(_, path)| {
+        let millidegrees: i64 = std::fs::read_to_string(path).ok()?.trim().parse().ok()?;
+        (millidegrees != 0).then(|| millidegrees as f64 / 1000.0)
+    })
 }
 
 /// The database file's `stat`, as FTL reports it for its own database.

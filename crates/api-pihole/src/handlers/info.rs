@@ -50,6 +50,13 @@ pub async fn get_login_info(State(state): State<PiholeAppState>) -> Json<LoginIn
     security(("session_id" = []))
 )]
 pub async fn get_version() -> Json<VersionResponse> {
+    Json(VersionResponse {
+        version: version_components(),
+    })
+}
+
+/// Ferrous's version as each Pi-hole component; `/padd` embeds it too.
+pub(crate) fn version_components() -> VersionComponents {
     let version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let hash = option_env!("GIT_HASH").map(str::to_owned);
     let component = || ComponentVersion {
@@ -63,28 +70,26 @@ pub async fn get_version() -> Json<VersionResponse> {
             hash: hash.clone(),
         },
     };
-    Json(VersionResponse {
-        version: VersionComponents {
-            core: component(),
-            web: component(),
-            ftl: FtlComponentVersion {
-                local: FtlLocalVersion {
-                    branch: "main".to_string(),
-                    version: version.clone(),
-                    hash: hash.clone(),
-                    date: None,
-                },
-                remote: RemoteVersion {
-                    version: version.clone(),
-                    hash: hash.clone(),
-                },
+    VersionComponents {
+        core: component(),
+        web: component(),
+        ftl: FtlComponentVersion {
+            local: FtlLocalVersion {
+                branch: "main".to_string(),
+                version: version.clone(),
+                hash: hash.clone(),
+                date: None,
             },
-            docker: DockerVersion {
-                local: None,
-                remote: None,
+            remote: RemoteVersion {
+                version: version.clone(),
+                hash: hash.clone(),
             },
         },
-    })
+        docker: DockerVersion {
+            local: None,
+            remote: None,
+        },
+    }
 }
 
 /// Pi-hole v6 GET /api/info/ftl

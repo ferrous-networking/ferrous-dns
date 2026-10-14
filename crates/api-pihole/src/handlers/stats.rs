@@ -136,7 +136,14 @@ pub async fn get_summary(
     State(state): State<PiholeAppState>,
     Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<SummaryResponse>, PiholeApiError> {
-    let period = params.period();
+    Ok(Json(summary(&state, params.period()).await?))
+}
+
+/// The `/stats/summary` reply over the last `period` hours; `/padd` reuses it.
+pub(crate) async fn summary(
+    state: &PiholeAppState,
+    period: f32,
+) -> Result<SummaryResponse, DomainError> {
     let stats = state.query.get_stats.execute(period).await?;
 
     let total = stats.queries_total;
@@ -170,7 +177,7 @@ pub async fn get_summary(
 
     let domains_being_blocked = state.blocking.block_filter_engine.compiled_domain_count() as u64;
 
-    let response = SummaryResponse {
+    Ok(SummaryResponse {
         queries: QuerySummary {
             total,
             blocked,
@@ -191,9 +198,7 @@ pub async fn get_summary(
             domains_being_blocked,
             last_update: 0,
         },
-    };
-
-    Ok(Json(response))
+    })
 }
 
 /// Start of every `/history` bucket, oldest first, ending with the current
@@ -288,7 +293,7 @@ pub async fn get_top_blocked(
     ))
 }
 
-async fn top_domains(
+pub(crate) async fn top_domains(
     state: &PiholeAppState,
     period: f32,
     limit: u32,
@@ -370,14 +375,15 @@ pub async fn get_top_clients(
     }))
 }
 
-struct RankedClients {
-    clients: Vec<(String, Option<String>, u64)>,
-    total_queries: u64,
-    blocked_queries: u64,
+pub(crate) struct RankedClients {
+    /// `(ip, hostname, count)`, highest count first.
+    pub(crate) clients: Vec<(String, Option<String>, u64)>,
+    pub(crate) total_queries: u64,
+    pub(crate) blocked_queries: u64,
 }
 
 /// Clients by all their queries, or by blocked queries when `blocked`.
-async fn top_clients(
+pub(crate) async fn top_clients(
     state: &PiholeAppState,
     period: f32,
     limit: u32,
@@ -580,21 +586,30 @@ pub async fn get_recent_blocked(
     State(state): State<PiholeAppState>,
     Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<RecentBlockedResponse>, PiholeApiError> {
+    let count = params.count.unwrap_or(DEFAULT_RECENT_BLOCKED_COUNT);
+    Ok(Json(RecentBlockedResponse {
+        blocked: recent_blocked(&state, count).await?,
+    }))
+}
+
+/// The `count` most recently blocked domains, newest first, at least one.
+pub(crate) async fn recent_blocked(
+    state: &PiholeAppState,
+    count: u32,
+) -> Result<Vec<String>, DomainError> {
     let input = PagedQueryInput {
-        limit: params.count.unwrap_or(DEFAULT_RECENT_BLOCKED_COUNT).max(1),
+        limit: count.max(1),
         period_hours: STATS_PERIOD_HOURS,
         category: Some("blocked"),
         ..Default::default()
     };
     let page = state.query.get_recent_queries.execute_paged(&input).await?;
 
-    let blocked = page
+    Ok(page
         .queries
         .into_iter()
         .map(|q| q.domain.to_string())
-        .collect();
-
-    Ok(Json(RecentBlockedResponse { blocked }))
+        .collect())
 }
 
 /// `source_stats` keys upstreams as `"{pool}:{server}"`; the other keys
