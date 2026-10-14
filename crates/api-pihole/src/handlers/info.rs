@@ -13,8 +13,8 @@ use crate::{
         AllowedDenied, ClientInfoResponse, ComponentVersion, CountResponse, DatabaseInfoResponse,
         DnsmasqMetrics, DockerVersion, FtlClients, FtlComponentVersion, FtlDatabaseInfo, FtlInfo,
         FtlInfoResponse, FtlLocalVersion, HostInfoResponse, HttpHeader, LocalVersion,
-        LoginInfoResponse, MessagesResponse, RemoteVersion, SystemInfoResponse, TotalEnabled,
-        VersionComponents, VersionResponse,
+        LoginInfoResponse, MessagesResponse, RemoteVersion, SensorsInfo, SensorsResponse,
+        SystemInfoResponse, TotalEnabled, VersionComponents, VersionResponse,
     },
     errors::PiholeApiError,
     host,
@@ -107,6 +107,33 @@ pub async fn get_messages() -> Json<MessagesResponse> {
     Json(MessagesResponse {
         messages: Vec::new(),
     })
+}
+
+/// Pi-hole v6 GET /api/info/sensors
+///
+/// Every hwmon chip with its temperatures, and the CPU's picked out, as FTL
+/// reads them from `/sys/class/hwmon`.
+#[utoipa::path(
+    get,
+    path = "/info/sensors",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Temperature sensors", body = SensorsResponse)
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_sensors() -> Result<Json<SensorsResponse>, PiholeApiError> {
+    let list = tokio::task::spawn_blocking(host::read_hwmon)
+        .await
+        .map_err(|e| DomainError::IoError(e.to_string()))?;
+    Ok(Json(SensorsResponse {
+        sensors: SensorsInfo {
+            cpu_temp: host::cpu_temp(&list),
+            list,
+            hot_limit: host::HOT_LIMIT,
+            unit: host::TEMPERATURE_UNIT,
+        },
+    }))
 }
 
 /// Pi-hole v6 GET /api/info/messages/count

@@ -127,6 +127,7 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::info::get_host_info))
         .routes(routes!(handlers::info::get_database_info))
         .routes(routes!(handlers::info::get_messages))
+        .routes(routes!(handlers::info::get_sensors))
         .routes(routes!(handlers::info::get_messages_count))
         .routes(routes!(handlers::info::delete_messages))
         .routes(routes!(handlers::dhcp::get_leases))

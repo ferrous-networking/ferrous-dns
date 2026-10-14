@@ -29,6 +29,45 @@ pub struct HttpHeader {
 
 /// Pi-hole v6 GET /api/info/messages response.
 #[derive(Debug, Serialize, ToSchema)]
+pub struct SensorsResponse {
+    pub sensors: SensorsInfo,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SensorsInfo {
+    pub list: Vec<SensorChip>,
+    /// First temperature of the CPU sensor, null when none is found.
+    pub cpu_temp: Option<f64>,
+    /// FTL's default `webserver.api.temp.limit`; Ferrous has no such setting.
+    pub hot_limit: f64,
+    pub unit: &'static str,
+}
+
+/// One hwmon chip under `/sys/class/hwmon`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SensorChip {
+    /// The chip's `name` file, or its directory name without one.
+    pub name: String,
+    /// The `hwmonN` directory.
+    pub path: String,
+    /// The device the chip belongs to, null when the entry is not a link.
+    pub source: Option<String>,
+    pub temps: Vec<SensorTemp>,
+}
+
+/// A non-zero temperature input of a chip, in °C.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SensorTemp {
+    pub name: Option<String>,
+    pub value: f64,
+    pub max: Option<f64>,
+    pub crit: Option<f64>,
+    /// `tempN`.
+    pub sensor: String,
+}
+
+/// Pi-hole v6 GET /api/info/messages response.
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MessagesResponse {
     pub messages: Vec<DiagnosisMessage>,
 }

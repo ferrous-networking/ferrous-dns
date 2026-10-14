@@ -14,11 +14,6 @@ use crate::{
 
 use super::{info, stats};
 
-/// FTL's defaults for `webserver.api.temp.limit` and `webserver.api.temp.unit`;
-/// Ferrous has neither setting and reads temperatures in °C.
-const HOT_LIMIT: f64 = 60.0;
-const TEMPERATURE_UNIT: &str = "C";
-
 #[derive(Debug, Deserialize)]
 pub struct PaddParams {
     /// Adds `iface` and `version`; padd.c defaults it to true.
@@ -107,8 +102,8 @@ pub async fn get_padd(
         pid: std::process::id(),
         sensors: PaddSensors {
             cpu_temp,
-            hot_limit: HOT_LIMIT,
-            unit: TEMPERATURE_UNIT,
+            hot_limit: host::HOT_LIMIT,
+            unit: host::TEMPERATURE_UNIT,
         },
     }))
 }

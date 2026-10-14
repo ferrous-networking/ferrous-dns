@@ -4,12 +4,12 @@
 //! so call them from `spawn_blocking`.
 
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::dto::info::{
     DatabaseOwner, DatabaseOwnerGroup, DatabaseOwnerUser, DmiBoard, DmiProduct, DmiVendor, HostDmi,
-    HostInfo, HostUname, ProcessUsage, RamInfo, SwapInfo, SystemCpu, SystemInfo, SystemLoad,
-    SystemMemory,
+    HostInfo, HostUname, ProcessUsage, RamInfo, SensorChip, SensorTemp, SwapInfo, SystemCpu,
+    SystemInfo, SystemLoad, SystemMemory,
 };
 
 /// FTL caps the process memory share just below 100%.
@@ -162,37 +162,125 @@ pub(crate) fn read_host() -> HostInfo {
 /// hwmon chips FTL takes for the CPU's temperature (info.c get_sensors_obj).
 const CPU_SENSOR_NAMES: [&str; 4] = ["k10temp", "coretemp", "cpu_thermal", "soc_thermal"];
 
-/// The CPU temperature in °C, picked as FTL does: the first hwmon chip named
-/// like a CPU sensor, then its first non-zero `temp*_input`. Null when none.
-pub(crate) fn read_cpu_temp() -> Option<f64> {
-    let mut chips: Vec<PathBuf> = std::fs::read_dir("/sys/class/hwmon")
-        .ok()?
-        .filter_map(|entry| Some(entry.ok()?.path()))
-        .collect();
-    chips.sort();
-    let chip = chips.into_iter().find(|chip| {
-        std::fs::read_to_string(chip.join("name"))
-            .is_ok_and(|name| CPU_SENSOR_NAMES.contains(&name.trim()))
-    })?;
+/// FTL's defaults for `webserver.api.temp.limit` and `webserver.api.temp.unit`;
+/// Ferrous has neither setting and reads temperatures in °C.
+pub(crate) const HOT_LIMIT: f64 = 60.0;
+pub(crate) const TEMPERATURE_UNIT: &str = "C";
 
-    let mut inputs: Vec<(u32, PathBuf)> = std::fs::read_dir(&chip)
-        .ok()?
+/// The CPU temperature in °C, picked as FTL does: the first hwmon chip named
+/// like a CPU sensor, then its first non-zero temperature. Null when none.
+pub(crate) fn read_cpu_temp() -> Option<f64> {
+    cpu_temp(&read_hwmon())
+}
+
+pub(crate) fn cpu_temp(chips: &[SensorChip]) -> Option<f64> {
+    chips
+        .iter()
+        .find(|chip| CPU_SENSOR_NAMES.contains(&chip.name.as_str()))?
+        .temps
+        .first()
+        .map(|temp| temp.value)
+}
+
+/// Every hwmon chip and its non-zero temperatures, as FTL lists them
+/// (info.c get_hwmon_sensors). FTL keeps readdir's order; these come in
+/// index order so the reply is stable.
+pub(crate) fn read_hwmon() -> Vec<SensorChip> {
+    read_hwmon_at(Path::new("/sys/class/hwmon"))
+}
+
+fn read_hwmon_at(root: &Path) -> Vec<SensorChip> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<(u32, String)> = entries
         .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let file_name = entry.file_name().into_string().ok()?;
-            let id = file_name
-                .strip_prefix("temp")?
-                .strip_suffix("_input")?
-                .parse()
-                .ok()?;
-            Some((id, entry.path()))
+            let dir = entry.ok()?.file_name().into_string().ok()?;
+            let index = dir.strip_prefix("hwmon")?.parse().unwrap_or(u32::MAX);
+            Some((index, dir))
         })
         .collect();
-    inputs.sort();
-    inputs.iter().find_map(|(_, path)| {
-        let millidegrees: i64 = std::fs::read_to_string(path).ok()?.trim().parse().ok()?;
-        (millidegrees != 0).then(|| millidegrees as f64 / 1000.0)
+    dirs.sort();
+    dirs.into_iter()
+        .map(|(_, dir)| read_hwmon_chip(&root.join(&dir), dir))
+        .collect()
+}
+
+fn read_hwmon_chip(path: &Path, dir: String) -> SensorChip {
+    let name = std::fs::read_to_string(path.join("name"))
+        .ok()
+        .and_then(|name| first_line(&name))
+        .unwrap_or_else(|| dir.clone());
+    let source = std::fs::read_link(path)
+        .ok()
+        .map(|target| hwmon_source(&target.to_string_lossy()));
+
+    let mut ids: Vec<u32> = std::fs::read_dir(path)
+        .map(|entries| {
+            entries
+                .filter_map(|entry| {
+                    let file_name = entry.ok()?.file_name().into_string().ok()?;
+                    file_name
+                        .strip_prefix("temp")?
+                        .strip_suffix("_input")?
+                        .parse()
+                        .ok()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    ids.sort_unstable();
+    let temps = ids
+        .into_iter()
+        .filter_map(|id| read_hwmon_temp(path, id))
+        .collect();
+
+    SensorChip {
+        name,
+        path: dir,
+        source,
+        temps,
+    }
+}
+
+/// One `temp<id>_*` group, skipped when its input reads 0 (info.c
+/// read_hwmon_sensors). The kernel reports millidegrees Celsius.
+fn read_hwmon_temp(chip: &Path, id: u32) -> Option<SensorTemp> {
+    let file = |suffix: &str| chip.join(format!("temp{id}_{suffix}"));
+    let celsius = |suffix: &str| read_millidegrees(&file(suffix)).map(|raw| raw as f64 / 1000.0);
+    read_millidegrees(&file("input")).filter(|&raw| raw != 0)?;
+    Some(SensorTemp {
+        name: std::fs::read_to_string(file("label"))
+            .ok()
+            .and_then(|label| first_line(&label)),
+        value: celsius("input")?,
+        max: celsius("max"),
+        crit: celsius("crit"),
+        sensor: format!("temp{id}"),
     })
+}
+
+fn read_millidegrees(path: &Path) -> Option<i64> {
+    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+/// What `fgets` keeps of a sysfs value: the text before the first newline,
+/// or nothing for an empty file.
+fn first_line(text: &str) -> Option<String> {
+    (!text.is_empty()).then(|| text.lines().next().unwrap_or_default().to_string())
+}
+
+/// The device behind a hwmon link, as files.c get_hwmon_target trims it:
+/// `../../devices/platform/coretemp.0/hwmon/hwmon3` → `devices/platform/coretemp.0`.
+fn hwmon_source(target: &str) -> String {
+    let mut source = target;
+    while let Some(rest) = source.strip_prefix("../") {
+        source = rest;
+    }
+    match source.find("/hwmon") {
+        Some(end) => source[..end].to_string(),
+        None => source.to_string(),
+    }
 }
 
 /// The database file's `stat`, as FTL reports it for its own database.
@@ -402,6 +490,7 @@ fn c_chars_to_string(field: &[libc::c_char]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn permission_string_prints_mode_bits_as_ls_does() {
@@ -442,5 +531,95 @@ mod tests {
         assert_eq!(file.mtime, meta.mtime());
         assert_eq!(file.owner.user.uid, meta.uid());
         assert_eq!(file.owner.group.gid, meta.gid());
+    }
+
+    /// A sysfs-like tree under the temp dir: `class/hwmon` holds the chips,
+    /// one of them a link into `devices/` as on a real system.
+    fn fake_hwmon(test: &str) -> PathBuf {
+        let base =
+            std::env::temp_dir().join(format!("ferrous-hwmon-{test}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("class/hwmon");
+        let write = |path: PathBuf, text: &str| {
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, text).expect("write");
+        };
+
+        write(root.join("hwmon0/name"), "nvme\n");
+        write(root.join("hwmon0/temp1_input"), "45850\n");
+        write(root.join("hwmon0/temp1_label"), "Composite\n");
+        write(root.join("hwmon0/temp1_max"), "82850\n");
+        write(root.join("hwmon0/temp1_crit"), "89850\n");
+
+        let device = base.join("devices/platform/coretemp.0/hwmon/hwmon10");
+        write(device.join("name"), "coretemp\n");
+        write(device.join("temp2_input"), "52000\n");
+        write(device.join("temp2_label"), "Core 0\n");
+        write(device.join("temp1_input"), "57000\n");
+        write(device.join("temp1_label"), "Package id 0\n");
+        write(device.join("temp3_input"), "0\n");
+        std::os::unix::fs::symlink(
+            "../../devices/platform/coretemp.0/hwmon/hwmon10",
+            root.join("hwmon10"),
+        )
+        .expect("symlink");
+
+        std::fs::create_dir_all(root.join("hwmon2")).expect("mkdir");
+        base
+    }
+
+    #[test]
+    fn hwmon_lists_every_chip_in_index_order_with_its_nonzero_temperatures() {
+        let base = fake_hwmon("list");
+
+        let chips = read_hwmon_at(&base.join("class/hwmon"));
+        std::fs::remove_dir_all(&base).expect("cleanup");
+
+        let names: Vec<(&str, &str)> = chips
+            .iter()
+            .map(|c| (c.path.as_str(), c.name.as_str()))
+            .collect();
+        // hwmon2 has no name file, so FTL names it after its directory.
+        assert_eq!(
+            names,
+            [
+                ("hwmon0", "nvme"),
+                ("hwmon2", "hwmon2"),
+                ("hwmon10", "coretemp")
+            ]
+        );
+
+        let nvme = &chips[0];
+        assert_eq!(nvme.source, None, "not a link");
+        assert_eq!(nvme.temps.len(), 1);
+        assert_eq!(nvme.temps[0].name.as_deref(), Some("Composite"));
+        assert_eq!(nvme.temps[0].value, 45.85);
+        assert_eq!(nvme.temps[0].max, Some(82.85));
+        assert_eq!(nvme.temps[0].crit, Some(89.85));
+        assert_eq!(nvme.temps[0].sensor, "temp1");
+
+        assert!(chips[1].temps.is_empty());
+
+        let core = &chips[2];
+        assert_eq!(core.source.as_deref(), Some("devices/platform/coretemp.0"));
+        let temps: Vec<(&str, f64)> = core
+            .temps
+            .iter()
+            .map(|t| (t.sensor.as_str(), t.value))
+            .collect();
+        assert_eq!(temps, [("temp1", 57.0), ("temp2", 52.0)], "temp3 reads 0");
+        assert_eq!(core.temps[1].max, None);
+        assert_eq!(core.temps[1].crit, None);
+    }
+
+    #[test]
+    fn cpu_temperature_is_the_first_reading_of_the_cpu_chip() {
+        let base = fake_hwmon("cpu");
+
+        let chips = read_hwmon_at(&base.join("class/hwmon"));
+        std::fs::remove_dir_all(&base).expect("cleanup");
+
+        assert_eq!(cpu_temp(&chips), Some(57.0));
+        assert_eq!(cpu_temp(&chips[..2]), None, "no CPU-named chip");
     }
 }
