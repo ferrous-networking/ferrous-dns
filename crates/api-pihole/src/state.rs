@@ -1,7 +1,8 @@
 use ferrous_dns_application::ports::BlockFilterEnginePort;
 use ferrous_dns_application::use_cases::{
-    AppPasswordLoginUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
-    LoginUseCase, LogoutUseCase, ValidateSessionUseCase, VerifyMfaUseCase,
+    AppPasswordLoginUseCase, GetQueryLogStorageUseCase, GetTopAllowedDomainsUseCase,
+    GetTopBlockedClientsUseCase, LoginUseCase, LogoutUseCase, ValidateSessionUseCase,
+    VerifyMfaUseCase,
 };
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateGroupUseCase,
@@ -63,6 +64,7 @@ pub struct PiholeQueryState {
     pub get_top_allowed_domains: Arc<GetTopAllowedDomainsUseCase>,
     pub get_top_clients: Arc<GetTopClientsUseCase>,
     pub get_top_blocked_clients: Arc<GetTopBlockedClientsUseCase>,
+    pub get_query_log_storage: Arc<GetQueryLogStorageUseCase>,
     pub get_recent_queries: Arc<GetRecentQueriesUseCase>,
 }
 

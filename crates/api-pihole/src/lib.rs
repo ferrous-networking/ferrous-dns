@@ -2,6 +2,7 @@ pub mod dto;
 pub mod errors;
 pub mod extract;
 pub mod handlers;
+mod host;
 pub mod middleware;
 mod openapi;
 pub mod routes;

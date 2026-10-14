@@ -8,8 +8,8 @@ use crate::dns::cache::coarse_clock::coarse_now_secs;
 use async_trait::async_trait;
 use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
-    BlockedClientStatsRepository, PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity,
-    TimelineBucket,
+    BlockedClientStatsRepository, PageAt, PagedQueryResult, QueryLogRepository, QueryLogStorage,
+    QueryLogStorageRepository, TimeGranularity, TimelineBucket,
 };
 use ferrous_dns_domain::entities::query_log::{DnssecStats, QueryLogFilter};
 use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QueryStats};
@@ -197,5 +197,12 @@ impl BlockedClientStatsRepository for SqliteQueryLogRepository {
         period_hours: f32,
     ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
         reader::get_top_clients(&self.read_pool, limit, period_hours, true).await
+    }
+}
+
+#[async_trait]
+impl QueryLogStorageRepository for SqliteQueryLogRepository {
+    async fn get_storage(&self, period_hours: f32) -> Result<QueryLogStorage, DomainError> {
+        reader::get_storage(&self.read_pool, period_hours).await
     }
 }

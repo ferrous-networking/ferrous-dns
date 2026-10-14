@@ -29,6 +29,7 @@ mod nxdomain_hijack_store;
 mod password_hasher;
 mod ptr_record_registry;
 mod query_log_repository;
+mod query_log_storage_repository;
 mod regex_filter_repository;
 mod response_ip_filter_eviction_target;
 mod response_ip_filter_store;
@@ -87,6 +88,7 @@ pub use ptr_record_registry::PtrRecordRegistry;
 pub use query_log_repository::{
     CacheStats, PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };
+pub use query_log_storage_repository::{QueryLogStorage, QueryLogStorageRepository};
 pub use regex_filter_repository::{RegexFilterRepository, RegexFilterUpdate};
 pub use response_ip_filter_eviction_target::ResponseIpFilterEvictionTarget;
 pub use response_ip_filter_store::ResponseIpFilterStore;

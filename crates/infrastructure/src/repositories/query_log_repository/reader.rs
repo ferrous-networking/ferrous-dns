@@ -2,7 +2,7 @@ use super::helpers::{row_to_query_log, window_start_bucket};
 use super::rollup;
 use crate::repositories::{db_err, hours_ago_cutoff, seconds_ago_cutoff, sql_ts};
 use chrono::{TimeDelta, Utc};
-use ferrous_dns_application::ports::{PageAt, PagedQueryResult};
+use ferrous_dns_application::ports::{PageAt, PagedQueryResult, QueryLogStorage};
 use ferrous_dns_domain::entities::query_log::{
     ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
 };
@@ -614,6 +614,38 @@ pub(super) async fn get_top_clients(
             (ip, hostname, count)
         })
         .collect())
+}
+
+/// One pass over the client rows of the window index: the whole log, the
+/// period's share of it, and the oldest timestamp of each.
+#[instrument(skip(pool))]
+pub(super) async fn get_storage(
+    pool: &SqlitePool,
+    period_hours: f32,
+) -> Result<QueryLogStorage, DomainError> {
+    let cutoff = hours_ago_cutoff(period_hours);
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS stored,
+                COALESCE(CAST(strftime('%s', MIN(created_at)) AS REAL), 0.0) AS stored_earliest,
+                COALESCE(SUM(created_at >= ?), 0) AS recent,
+                COALESCE(CAST(strftime('%s', MIN(CASE WHEN created_at >= ? THEN created_at END)) AS REAL), 0.0) AS recent_earliest,
+                sqlite_version() AS sqlite_version
+         FROM query_log
+         WHERE query_source = 'client'",
+    )
+    .bind(&cutoff)
+    .bind(&cutoff)
+    .fetch_one(pool)
+    .await
+    .map_err(db_err("Failed to read query log storage"))?;
+
+    Ok(QueryLogStorage {
+        recent_queries: row.get::<i64, _>("recent") as u64,
+        recent_earliest: row.get("recent_earliest"),
+        stored_queries: row.get::<i64, _>("stored") as u64,
+        stored_earliest: row.get("stored_earliest"),
+        sqlite_version: row.get("sqlite_version"),
+    })
 }
 
 pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u64, DomainError> {

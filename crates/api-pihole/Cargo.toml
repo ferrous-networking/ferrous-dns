@@ -14,7 +14,6 @@ serde_json.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 tokio.workspace = true
-hostname = "0.4"
 libc = "0.2"
 utoipa.workspace = true
 utoipa-axum.workspace = true

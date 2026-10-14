@@ -11,15 +11,15 @@ use ferrous_dns_application::use_cases::{
     DeleteWhitelistSourceUseCase, GetBlockFilterStatsUseCase, GetBlockedServicesUseCase,
     GetBlocklistSourcesUseCase, GetBlocklistUseCase, GetCacheStatsUseCase, GetClientSubnetsUseCase,
     GetClientsUseCase, GetCustomServicesUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
-    GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
-    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
-    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetWhitelistSourcesUseCase,
-    GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase, SyncBlocklistSourcesUseCase,
-    SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateCustomServiceUseCase,
-    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
-    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    GetQueryLogStorageUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
+    GetRegexFiltersUseCase, GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase,
+    GetServiceCatalogUseCase, GetTimelineUseCase, GetTopAllowedDomainsUseCase,
+    GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase,
+    SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
+    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -40,6 +40,7 @@ pub struct UseCases {
     pub get_top_allowed_domains: Arc<GetTopAllowedDomainsUseCase>,
     pub get_top_clients: Arc<GetTopClientsUseCase>,
     pub get_top_blocked_clients: Arc<GetTopBlockedClientsUseCase>,
+    pub get_query_log_storage: Arc<GetQueryLogStorageUseCase>,
     pub get_clients: Arc<GetClientsUseCase>,
     pub sync_arp: Arc<SyncArpCacheUseCase>,
     pub sync_hostnames: Arc<SyncHostnamesUseCase>,
@@ -130,6 +131,9 @@ impl UseCases {
             )),
             get_top_clients: Arc::new(GetTopClientsUseCase::new(repos.query_log.clone())),
             get_top_blocked_clients: Arc::new(GetTopBlockedClientsUseCase::new(
+                repos.query_log.clone(),
+            )),
+            get_query_log_storage: Arc::new(GetQueryLogStorageUseCase::new(
                 repos.query_log.clone(),
             )),
             get_clients: Arc::new(GetClientsUseCase::new(repos.client.clone())),
