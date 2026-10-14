@@ -32,7 +32,8 @@ use crate::dto;
         (name = "pihole:history", description = "Historic time-series data"),
         (name = "pihole:search", description = "Domain search across lists and filters"),
         (name = "pihole:padd", description = "One-call summary for the PADD display"),
-        (name = "pihole:dhcp", description = "DHCP leases (Ferrous serves no DHCP)")
+        (name = "pihole:dhcp", description = "DHCP leases (Ferrous serves no DHCP)"),
+        (name = "pihole:network", description = "Gateways, routes, interfaces and devices")
     ),
     components(schemas(
         dto::action::ActionResponse,
@@ -135,6 +136,14 @@ use crate::dto;
         dto::lists::UpdateListRequest,
         dto::lists::ListsResponse,
         dto::lists::ListsWriteResponse,
+        dto::network::GatewayResponse,
+        dto::network::GatewayEntry,
+        dto::network::RoutesResponse,
+        dto::network::RouteEntry,
+        dto::network::InterfacesResponse,
+        dto::network::InterfaceEntry,
+        dto::network::InterfaceStats,
+        dto::network::InterfaceAddress,
         dto::padd::PaddResponse,
         dto::padd::PaddQueries,
         dto::padd::PaddCache,

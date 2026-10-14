@@ -10,6 +10,7 @@ pub mod groups;
 pub mod history;
 pub mod info;
 pub mod lists;
+pub mod network;
 pub mod padd;
 pub mod queries;
 pub mod search;
