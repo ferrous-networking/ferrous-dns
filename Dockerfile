@@ -1,4 +1,4 @@
-FROM rust:1.98-alpine AS builder
+FROM rust:1.99-alpine AS builder
 
 # perl and make build the OpenSSL that the `vendored` feature compiles into the binary.
 RUN apk add --no-cache \
