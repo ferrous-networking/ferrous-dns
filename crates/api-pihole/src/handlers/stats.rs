@@ -1,7 +1,9 @@
 use axum::extract::{Query, State};
-use axum::Json;
-use chrono::{Timelike, Utc};
+use axum::response::{IntoResponse, Response};
+use axum::{http::StatusCode, Json};
+use chrono::{NaiveDateTime, Utc};
 use ferrous_dns_application::ports::TimeGranularity;
+use ferrous_dns_application::use_cases::PagedQueryInput;
 use ferrous_dns_domain::{DnsProtocol, DomainError};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -9,30 +11,39 @@ use std::collections::HashMap;
 use crate::{
     dto::queries::blocked_status,
     dto::stats::{
-        ClientSummary, GravitySummary, HistoryBucket, HistoryResponse, QueryStatusCounts,
-        QuerySummary, QueryTypeCounts, QueryTypesResponse, RecentBlockedResponse, ReplyTypeCounts,
+        ClientSummary, DatabaseSummaryResponse, DatabaseTopClientEntry, DatabaseTopClientsResponse,
+        GravitySummary, HistoryBucket, HistoryResponse, QueryStatusCounts, QuerySummary,
+        QueryTypeCounts, QueryTypesResponse, RecentBlockedResponse, ReplyTypeCounts,
         SummaryResponse, TopClientEntry, TopClientsResponse, TopDomainEntry, TopDomainsResponse,
     },
     dto::upstreams::{UpstreamEntry, UpstreamStatistics, UpstreamsResponse},
-    errors::PiholeApiError,
+    errors::{pihole_error_response, PiholeApiError},
     state::PiholeAppState,
 };
 
 pub const STATS_PERIOD_HOURS: f32 = 24.0;
-pub const TOP_ITEMS_LIMIT: u32 = 25;
 
 /// FTL's default for the `count` of `/stats/top_domains` and `/stats/top_clients`.
 const DEFAULT_TOP_COUNT: u32 = 10;
 
-const RECENT_BLOCKED_SCAN_LIMIT: u32 = 200;
+/// FTL's default for the `count` of `/stats/recent_blocked`.
+const DEFAULT_RECENT_BLOCKED_COUNT: u32 = 1;
 
 /// Longest `from` window honoured: past any retention, and small enough that
 /// the repository's hours-to-timestamp arithmetic cannot overflow.
 const MAX_PERIOD_HOURS: f32 = 24.0 * 366.0 * 10.0;
 
-/// Query parameters for database endpoints (`/stats/database/*`).
+/// Width of a `/history` bucket, FTL's `OVERTIME_INTERVAL`.
+pub(crate) const HISTORY_BUCKET_SECS: i64 = 600;
+
+/// Buckets in `/history` and `/history/clients`: 24 hours plus the current
+/// one. Glance pihole-v6 expects exactly this many.
+const HISTORY_BUCKETS: i64 = 145;
+
+/// Query parameters of the live `/stats/*` endpoints.
 #[derive(Debug, Deserialize)]
-pub struct DatabaseQueryParams {
+pub struct StatsQueryParams {
+    /// Ferrous extension: the window in hours back from now (default 24).
     pub(crate) from: Option<f32>,
     /// FTL's name for the number of entries to return.
     pub(crate) count: Option<u32>,
@@ -41,7 +52,7 @@ pub struct DatabaseQueryParams {
     pub(crate) blocked: Option<bool>,
 }
 
-impl DatabaseQueryParams {
+impl StatsQueryParams {
     pub(crate) fn period(&self) -> f32 {
         match self.from {
             Some(hours) if hours.is_finite() => hours.clamp(0.0, MAX_PERIOD_HOURS),
@@ -51,6 +62,60 @@ impl DatabaseQueryParams {
 
     pub(crate) fn limit(&self) -> u32 {
         self.count.or(self.limit).unwrap_or(DEFAULT_TOP_COUNT)
+    }
+}
+
+/// Query parameters of `/stats/database/*`: FTL's window as Unix timestamps.
+#[derive(Debug, Deserialize)]
+pub struct DatabaseQueryParams {
+    from: Option<f64>,
+    until: Option<f64>,
+    count: Option<u32>,
+    blocked: Option<bool>,
+}
+
+impl DatabaseQueryParams {
+    /// Hours from `from` until now. `until` is required as in FTL, but read
+    /// as now: the query-log stores only answer windows that end now.
+    fn period(&self) -> Result<f32, DatabaseStatsError> {
+        // stats_database.c rejects a missing or sub-1 timestamp alike.
+        let valid = |timestamp: Option<f64>| timestamp.filter(|t| *t >= 1.0);
+        let (Some(from), Some(_until)) = (valid(self.from), valid(self.until)) else {
+            return Err(DatabaseStatsError::MissingWindow);
+        };
+        let hours = (Utc::now().timestamp() as f64 - from) / 3_600.0;
+        Ok((hours as f32).clamp(0.0, MAX_PERIOD_HOURS))
+    }
+
+    fn limit(&self) -> u32 {
+        self.count.unwrap_or(DEFAULT_TOP_COUNT)
+    }
+}
+
+/// A failed `/stats/database/*` request.
+pub enum DatabaseStatsError {
+    /// `from` or `until` is missing, answered as stats_database.c does.
+    MissingWindow,
+    Domain(DomainError),
+}
+
+impl From<DomainError> for DatabaseStatsError {
+    fn from(err: DomainError) -> Self {
+        Self::Domain(err)
+    }
+}
+
+impl IntoResponse for DatabaseStatsError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::MissingWindow => pihole_error_response(
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                "You need to specify both \"from\" and \"until\" in the request.",
+                None,
+            ),
+            Self::Domain(err) => PiholeApiError(err).into_response(),
+        }
     }
 }
 
@@ -69,7 +134,7 @@ impl DatabaseQueryParams {
 )]
 pub async fn get_summary(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<SummaryResponse>, PiholeApiError> {
     let period = params.period();
     let stats = state.query.get_stats.execute(period).await?;
@@ -131,16 +196,32 @@ pub async fn get_summary(
     Ok(Json(response))
 }
 
+/// Start of every `/history` bucket, oldest first, ending with the current
+/// one, and the window in hours from the oldest start until now.
+pub(crate) fn history_buckets() -> (Vec<i64>, f32) {
+    let now = Utc::now().timestamp();
+    let newest = now - now.rem_euclid(HISTORY_BUCKET_SECS);
+    let oldest = newest - (HISTORY_BUCKETS - 1) * HISTORY_BUCKET_SECS;
+    let starts = (0..HISTORY_BUCKETS)
+        .map(|i| oldest + i * HISTORY_BUCKET_SECS)
+        .collect();
+    (starts, (now - oldest) as f32 / 3_600.0)
+}
+
+/// FTL stamps each bucket at its centre (overTime.c).
+pub(crate) fn bucket_centre(start: i64) -> i64 {
+    start + HISTORY_BUCKET_SECS / 2
+}
+
 /// Pi-hole v6 GET /api/stats/history and GET /api/history
 ///
-/// Glance pihole-v6 expects exactly 145 buckets of 10-minute intervals (24h + 1).
-/// Buckets with no queries are padded with zeros to guarantee the exact count.
+/// Always 145 buckets of 10 minutes; buckets with no queries are zero.
 #[utoipa::path(
     get,
     path = "/stats/history",
     tag = "pihole:stats",
     params(
-        ("from" = Option<f32>, Query, description = "Period in hours (default 25)")
+        ("from" = Option<f32>, Query, description = "Period in hours to read (default: the 145 buckets)")
     ),
     responses(
         (status = 200, description = "Time-series history of queries", body = HistoryResponse)
@@ -149,48 +230,34 @@ pub async fn get_summary(
 )]
 pub async fn get_history(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<HistoryResponse>, PiholeApiError> {
-    const BUCKET_COUNT: usize = 145;
-    const BUCKET_MINUTES: i64 = 10;
-
-    // Fetch slightly more than 24h to cover all 145 buckets regardless of alignment.
-    let period_hours = params.from.unwrap_or(25.0);
+    let (starts, window_hours) = history_buckets();
+    let period_hours = params.from.unwrap_or(window_hours);
     let buckets = state
         .query
         .get_timeline
         .execute(period_hours, TimeGranularity::TenMinutes)
         .await?;
 
-    // Build lookup: "YYYY-MM-DD HH:MM:00" → (total, blocked, unblocked)
-    let bucket_map: HashMap<String, (u64, u64, u64)> = buckets
+    let by_start: HashMap<i64, _> = buckets
         .into_iter()
-        .map(|b| (b.timestamp, (b.total, b.blocked, b.unblocked)))
+        .filter_map(|b| {
+            let start = NaiveDateTime::parse_from_str(&b.timestamp, "%Y-%m-%d %H:%M:%S").ok()?;
+            Some((start.and_utc().timestamp(), b))
+        })
         .collect();
 
-    // The newest bucket starts at the current 10-minute boundary.
-    let now = Utc::now();
-    let current_minute = (now.minute() / BUCKET_MINUTES as u32) * BUCKET_MINUTES as u32;
-    let grid_end = now
-        .with_minute(current_minute)
-        .unwrap_or(now)
-        .with_second(0)
-        .unwrap_or(now)
-        .with_nanosecond(0)
-        .unwrap_or(now);
-
-    let history: Vec<HistoryBucket> = (0..BUCKET_COUNT)
-        .map(|i| {
-            let offset_minutes = BUCKET_MINUTES * (BUCKET_COUNT as i64 - 1 - i as i64);
-            let bucket_time = grid_end - chrono::Duration::minutes(offset_minutes);
-            let key = bucket_time.format("%Y-%m-%d %H:%M:%S").to_string();
-            let (total, blocked, forwarded) = bucket_map.get(&key).copied().unwrap_or((0, 0, 0));
+    let history = starts
+        .into_iter()
+        .map(|start| {
+            let bucket = by_start.get(&start);
             HistoryBucket {
-                timestamp: bucket_time.timestamp(),
-                total,
-                blocked,
-                cached: 0,
-                forwarded,
+                timestamp: bucket_centre(start),
+                total: bucket.map_or(0, |b| b.total),
+                cached: bucket.map_or(0, |b| b.cached),
+                blocked: bucket.map_or(0, |b| b.blocked),
+                forwarded: bucket.map_or(0, |b| b.forwarded),
             }
         })
         .collect();
@@ -214,19 +281,19 @@ pub async fn get_history(
 )]
 pub async fn get_top_blocked(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<TopDomainsResponse>, PiholeApiError> {
-    Ok(Json(top_domains(&state, &params, true).await?))
+    Ok(Json(
+        top_domains(&state, params.period(), params.limit(), true).await?,
+    ))
 }
 
 async fn top_domains(
     state: &PiholeAppState,
-    params: &DatabaseQueryParams,
+    period: f32,
+    limit: u32,
     blocked: bool,
 ) -> Result<TopDomainsResponse, DomainError> {
-    let period = params.period();
-    let limit = params.limit();
-
     let (domain_list, stats) = tokio::join!(
         async {
             if blocked {
@@ -278,14 +345,47 @@ async fn top_domains(
 )]
 pub async fn get_top_clients(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<TopClientsResponse>, PiholeApiError> {
-    let period = params.period();
-    let limit = params.limit();
+    let ranked = top_clients(
+        &state,
+        params.period(),
+        params.limit(),
+        params.blocked.unwrap_or(false),
+    )
+    .await?;
 
-    let (clients_raw, stats) = tokio::join!(
+    Ok(Json(TopClientsResponse {
+        clients: ranked
+            .clients
+            .into_iter()
+            .map(|(ip, hostname, count)| TopClientEntry {
+                ip,
+                name: hostname.unwrap_or_default(),
+                count,
+            })
+            .collect(),
+        total_queries: ranked.total_queries,
+        blocked_queries: ranked.blocked_queries,
+    }))
+}
+
+struct RankedClients {
+    clients: Vec<(String, Option<String>, u64)>,
+    total_queries: u64,
+    blocked_queries: u64,
+}
+
+/// Clients by all their queries, or by blocked queries when `blocked`.
+async fn top_clients(
+    state: &PiholeAppState,
+    period: f32,
+    limit: u32,
+    blocked: bool,
+) -> Result<RankedClients, DomainError> {
+    let (clients, stats) = tokio::join!(
         async {
-            if params.blocked.unwrap_or(false) {
+            if blocked {
                 state
                     .query
                     .get_top_blocked_clients
@@ -297,22 +397,13 @@ pub async fn get_top_clients(
         },
         state.query.get_stats.execute(period),
     );
-
-    let clients = clients_raw?
-        .into_iter()
-        .map(|(ip, hostname, count)| TopClientEntry {
-            ip,
-            name: hostname.unwrap_or_default(),
-            count,
-        })
-        .collect();
     let stats = stats?;
 
-    Ok(Json(TopClientsResponse {
-        clients,
+    Ok(RankedClients {
+        clients: clients?,
         total_queries: stats.queries_total,
         blocked_queries: stats.queries_blocked,
-    }))
+    })
 }
 
 /// Pi-hole v6 GET /api/stats/query_types
@@ -330,27 +421,21 @@ pub async fn get_top_clients(
 )]
 pub async fn get_query_types(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<QueryTypesResponse>, PiholeApiError> {
-    let period = params.period();
+    Ok(Json(query_types(&state, params.period()).await?))
+}
+
+async fn query_types(
+    state: &PiholeAppState,
+    period: f32,
+) -> Result<QueryTypesResponse, DomainError> {
     let stats = state.query.get_stats.execute(period).await?;
-
-    let total: u64 = stats.queries_by_type.values().sum();
-
-    let querytypes: HashMap<String, f64> = stats
-        .queries_by_type
-        .into_iter()
-        .map(|(record_type, count)| {
-            let pct = if total > 0 {
-                (count as f64 / total as f64) * 100.0
-            } else {
-                0.0
-            };
-            (record_type.to_string(), pct)
-        })
-        .collect();
-
-    Ok(Json(QueryTypesResponse { querytypes }))
+    let mut types = QueryTypeCounts::default();
+    for (record_type, count) in &stats.queries_by_type {
+        types.add(record_type.as_str(), *count);
+    }
+    Ok(QueryTypesResponse { types })
 }
 
 /// Pi-hole v6 GET /api/stats/top_domains
@@ -372,10 +457,12 @@ pub async fn get_query_types(
 )]
 pub async fn get_top_domains(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<TopDomainsResponse>, PiholeApiError> {
     let blocked = params.blocked.unwrap_or(false);
-    Ok(Json(top_domains(&state, &params, blocked).await?))
+    Ok(Json(
+        top_domains(&state, params.period(), params.limit(), blocked).await?,
+    ))
 }
 
 /// Pi-hole v6 GET /api/stats/upstreams
@@ -396,9 +483,13 @@ pub async fn get_top_domains(
 )]
 pub async fn get_upstreams(
     State(state): State<PiholeAppState>,
-    Query(params): Query<DatabaseQueryParams>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<UpstreamsResponse>, PiholeApiError> {
-    let stats = state.query.get_stats.execute(params.period()).await?;
+    Ok(Json(upstreams(&state, params.period()).await?))
+}
+
+async fn upstreams(state: &PiholeAppState, period: f32) -> Result<UpstreamsResponse, DomainError> {
+    let stats = state.query.get_stats.execute(period).await?;
 
     let mut per_server: HashMap<&str, u64> = HashMap::new();
     for (key, count) in &stats.source_stats {
@@ -426,11 +517,11 @@ pub async fn get_upstreams(
             .map(|(server, count)| upstream_entry(server, count)),
     );
 
-    Ok(Json(UpstreamsResponse {
+    Ok(UpstreamsResponse {
         upstreams,
         forwarded_queries,
         total_queries: stats.queries_total,
-    }))
+    })
 }
 
 fn pseudo_upstream(name: &str, count: u64) -> UpstreamEntry {
@@ -474,31 +565,38 @@ fn upstream_entry(server: &str, count: u64) -> UpstreamEntry {
 
 /// Pi-hole v6 GET /api/stats/recent_blocked
 ///
-/// Returns the most recently blocked domain.
+/// Returns the most recently blocked domains, newest first, one per query.
 #[utoipa::path(
     get,
     path = "/stats/recent_blocked",
     tag = "pihole:stats",
+    params(
+        ("count" = Option<u32>, Query, description = "Number of domains (default 1)")
+    ),
     responses(
-        (status = 200, description = "Most recently blocked domain", body = RecentBlockedResponse)
+        (status = 200, description = "Most recently blocked domains", body = RecentBlockedResponse)
     ),
     security(("session_id" = []))
 )]
 pub async fn get_recent_blocked(
     State(state): State<PiholeAppState>,
+    Query(params): Query<StatsQueryParams>,
 ) -> Result<Json<RecentBlockedResponse>, PiholeApiError> {
-    let queries = state
-        .query
-        .get_recent_queries
-        .execute(RECENT_BLOCKED_SCAN_LIMIT, STATS_PERIOD_HOURS)
-        .await?;
+    let input = PagedQueryInput {
+        limit: params.count.unwrap_or(DEFAULT_RECENT_BLOCKED_COUNT).max(1),
+        period_hours: STATS_PERIOD_HOURS,
+        category: Some("blocked"),
+        ..Default::default()
+    };
+    let page = state.query.get_recent_queries.execute_paged(&input).await?;
 
-    let domain = queries
+    let blocked = page
+        .queries
         .into_iter()
-        .find(|q| q.blocked)
-        .map(|q| q.domain.to_string());
+        .map(|q| q.domain.to_string())
+        .collect();
 
-    Ok(Json(RecentBlockedResponse { domain }))
+    Ok(Json(RecentBlockedResponse { blocked }))
 }
 
 /// `source_stats` keys upstreams as `"{pool}:{server}"`; the other keys
@@ -513,4 +611,156 @@ fn forwarded_count(source_stats: &HashMap<String, u64>) -> u64 {
         .filter(|(key, _)| is_upstream_key(key))
         .map(|(_, count)| count)
         .sum()
+}
+
+/// Pi-hole v6 GET /api/stats/database/summary
+#[utoipa::path(
+    get,
+    path = "/stats/database/summary",
+    tag = "pihole:stats",
+    params(
+        ("from" = f64, Query, description = "Window start, Unix timestamp"),
+        ("until" = f64, Query, description = "Window end, Unix timestamp; read as now")
+    ),
+    responses(
+        (status = 200, description = "Long-term summary", body = DatabaseSummaryResponse),
+        (status = 400, description = "`from` or `until` missing")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_database_summary(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<DatabaseSummaryResponse>, DatabaseStatsError> {
+    let period = params.period()?;
+    let stats = state.query.get_stats.execute(period).await?;
+
+    let sum_queries = stats.queries_total;
+    let sum_blocked = stats.queries_blocked;
+    let percent_blocked = if sum_queries > 0 {
+        (sum_blocked as f64 / sum_queries as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(Json(DatabaseSummaryResponse {
+        sum_queries,
+        sum_blocked,
+        percent_blocked,
+        total_clients: stats.unique_clients,
+    }))
+}
+
+/// Pi-hole v6 GET /api/stats/database/top_domains
+#[utoipa::path(
+    get,
+    path = "/stats/database/top_domains",
+    tag = "pihole:stats",
+    params(
+        ("from" = f64, Query, description = "Window start, Unix timestamp"),
+        ("until" = f64, Query, description = "Window end, Unix timestamp; read as now"),
+        ("count" = Option<u32>, Query, description = "Max items (default 10)"),
+        ("blocked" = Option<bool>, Query, description = "Return top blocked instead of top allowed")
+    ),
+    responses(
+        (status = 200, description = "Long-term top domains", body = TopDomainsResponse),
+        (status = 400, description = "`from` or `until` missing")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_database_top_domains(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<TopDomainsResponse>, DatabaseStatsError> {
+    let period = params.period()?;
+    let blocked = params.blocked.unwrap_or(false);
+    Ok(Json(
+        top_domains(&state, period, params.limit(), blocked).await?,
+    ))
+}
+
+/// Pi-hole v6 GET /api/stats/database/top_clients
+#[utoipa::path(
+    get,
+    path = "/stats/database/top_clients",
+    tag = "pihole:stats",
+    params(
+        ("from" = f64, Query, description = "Window start, Unix timestamp"),
+        ("until" = f64, Query, description = "Window end, Unix timestamp; read as now"),
+        ("count" = Option<u32>, Query, description = "Max items (default 10)"),
+        ("blocked" = Option<bool>, Query, description = "Rank by blocked queries")
+    ),
+    responses(
+        (status = 200, description = "Long-term top clients", body = DatabaseTopClientsResponse),
+        (status = 400, description = "`from` or `until` missing")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_database_top_clients(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<DatabaseTopClientsResponse>, DatabaseStatsError> {
+    let period = params.period()?;
+    let blocked = params.blocked.unwrap_or(false);
+    let ranked = top_clients(&state, period, params.limit(), blocked).await?;
+
+    Ok(Json(DatabaseTopClientsResponse {
+        clients: ranked
+            .clients
+            .into_iter()
+            .map(|(ip, hostname, count)| DatabaseTopClientEntry {
+                ip,
+                name: hostname.filter(|name| !name.is_empty()),
+                count,
+            })
+            .collect(),
+        total_queries: ranked.total_queries,
+        blocked_queries: ranked.blocked_queries,
+    }))
+}
+
+/// Pi-hole v6 GET /api/stats/database/upstreams
+#[utoipa::path(
+    get,
+    path = "/stats/database/upstreams",
+    tag = "pihole:stats",
+    params(
+        ("from" = f64, Query, description = "Window start, Unix timestamp"),
+        ("until" = f64, Query, description = "Window end, Unix timestamp; read as now")
+    ),
+    responses(
+        (status = 200, description = "Long-term upstream usage", body = UpstreamsResponse),
+        (status = 400, description = "`from` or `until` missing")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_database_upstreams(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<UpstreamsResponse>, DatabaseStatsError> {
+    let period = params.period()?;
+    Ok(Json(upstreams(&state, period).await?))
+}
+
+/// Pi-hole v6 GET /api/stats/database/query_types
+#[utoipa::path(
+    get,
+    path = "/stats/database/query_types",
+    tag = "pihole:stats",
+    params(
+        ("from" = f64, Query, description = "Window start, Unix timestamp"),
+        ("until" = f64, Query, description = "Window end, Unix timestamp; read as now")
+    ),
+    responses(
+        (status = 200, description = "Long-term query type counts", body = QueryTypesResponse),
+        (status = 400, description = "`from` or `until` missing")
+    ),
+    security(("session_id" = []))
+)]
+pub async fn get_database_query_types(
+    State(state): State<PiholeAppState>,
+    Query(params): Query<DatabaseQueryParams>,
+) -> Result<Json<QueryTypesResponse>, DatabaseStatsError> {
+    let period = params.period()?;
+    Ok(Json(query_types(&state, period).await?))
 }

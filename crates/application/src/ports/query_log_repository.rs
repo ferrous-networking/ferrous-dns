@@ -62,6 +62,10 @@ pub struct TimelineBucket {
     pub total: u64,
     pub blocked: u64,
     pub unblocked: u64,
+    /// Answered from the cache or a local record.
+    pub cached: u64,
+    /// Answered by an upstream server.
+    pub forwarded: u64,
     pub malware_detected: u64,
 }
 

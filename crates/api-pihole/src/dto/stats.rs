@@ -1,5 +1,4 @@
 use serde::Serialize;
-use std::collections::HashMap;
 use utoipa::ToSchema;
 
 /// Pi-hole v6 GET /api/stats/summary response.
@@ -145,9 +144,9 @@ pub struct GravitySummary {
     pub last_update: i64,
 }
 
-/// Pi-hole v6 GET /api/stats/history response.
+/// Pi-hole v6 GET /api/history response.
 ///
-/// Each bucket covers 10 minutes. The full 24h window yields 144 buckets.
+/// 145 buckets of 10 minutes, oldest first, each stamped at its centre.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryResponse {
     pub history: Vec<HistoryBucket>,
@@ -157,8 +156,10 @@ pub struct HistoryResponse {
 pub struct HistoryBucket {
     pub timestamp: i64,
     pub total: u64,
-    pub blocked: u64,
+    /// Answered from the cache or a local record, as FTL counts them.
     pub cached: u64,
+    pub blocked: u64,
+    /// Answered by an upstream server.
     pub forwarded: u64,
 }
 
@@ -193,16 +194,41 @@ pub struct TopClientEntry {
     pub count: u64,
 }
 
-/// Pi-hole v6 GET /api/stats/query_types response.
+/// Pi-hole v6 GET /api/stats/query_types and /api/stats/database/query_types response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct QueryTypesResponse {
-    /// Keys are DNS record type names (e.g. "A", "AAAA", "MX").
-    /// Values are percentages (0.0-100.0).
-    pub querytypes: HashMap<String, f64>,
+    pub types: QueryTypeCounts,
 }
 
 /// Pi-hole v6 GET /api/stats/recent_blocked response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct RecentBlockedResponse {
-    pub domain: Option<String>,
+    /// Most recently blocked domains, newest first; one entry per query.
+    pub blocked: Vec<String>,
+}
+
+/// Pi-hole v6 GET /api/stats/database/summary response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DatabaseSummaryResponse {
+    pub sum_queries: u64,
+    pub sum_blocked: u64,
+    pub percent_blocked: f64,
+    pub total_clients: u64,
+}
+
+/// Pi-hole v6 GET /api/stats/database/top_clients response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DatabaseTopClientsResponse {
+    pub clients: Vec<DatabaseTopClientEntry>,
+    pub total_queries: u64,
+    pub blocked_queries: u64,
+}
+
+/// One client of the long-term top list; unlike the live list, an unknown
+/// name is `null`.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DatabaseTopClientEntry {
+    pub ip: String,
+    pub name: Option<String>,
+    pub count: u64,
 }

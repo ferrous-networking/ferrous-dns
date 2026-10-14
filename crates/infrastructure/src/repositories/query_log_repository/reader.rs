@@ -2,7 +2,7 @@ use super::helpers::{row_to_query_log, window_start_bucket};
 use super::rollup;
 use crate::repositories::{db_err, hours_ago_cutoff, seconds_ago_cutoff, sql_ts};
 use chrono::{TimeDelta, Utc};
-use ferrous_dns_application::ports::{PageAt, PagedQueryResult, QueryLogStorage};
+use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, QueryLogStorage};
 use ferrous_dns_domain::entities::query_log::{
     ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
 };
@@ -612,6 +612,47 @@ pub(super) async fn get_top_clients(
             let hostname: Option<String> = r.get("hostname");
             let count = r.get::<i64, _>("count") as u64;
             (ip, hostname, count)
+        })
+        .collect())
+}
+
+/// Per-bucket counts from the raw log: the rollups do not keep the client.
+/// Clients outside `clients` come back with a NULL ip, one row per bucket.
+#[instrument(skip(pool, clients))]
+pub(super) async fn get_client_activity(
+    pool: &SqlitePool,
+    clients: &[String],
+    bucket_secs: u32,
+    period_hours: f32,
+) -> Result<Vec<ClientActivity>, DomainError> {
+    let cutoff = hours_ago_cutoff(period_hours);
+    let clients_json = serde_json::to_string(clients)
+        .map_err(|e| DomainError::InvalidInput(format!("invalid client list: {e}")))?;
+    let rows = sqlx::query(
+        "SELECT (CAST(strftime('%s', created_at) AS INTEGER) / ?) * ? AS bucket,
+                CASE WHEN client_ip IN (SELECT value FROM json_each(?))
+                     THEN client_ip END AS client,
+                COUNT(*) AS count
+         FROM query_log
+         WHERE created_at >= ?
+           AND query_source = 'client'
+         GROUP BY bucket, client
+         ORDER BY bucket ASC",
+    )
+    .bind(i64::from(bucket_secs))
+    .bind(i64::from(bucket_secs))
+    .bind(clients_json)
+    .bind(cutoff)
+    .fetch_all(pool)
+    .await
+    .map_err(db_err("Failed to fetch client activity"))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ClientActivity {
+            bucket: r.get("bucket"),
+            client_ip: r.get("client"),
+            count: r.get::<i64, _>("count") as u64,
         })
         .collect())
 }

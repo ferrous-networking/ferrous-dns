@@ -37,27 +37,12 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::stats::get_top_domains))
         .routes(routes!(handlers::stats::get_upstreams))
         .routes(routes!(handlers::stats::get_recent_blocked))
-        // Aliases stay outside the spec to avoid duplicate operation ids.
-        .route(
-            "/stats/database/summary",
-            axum::routing::get(handlers::stats::get_summary),
-        )
-        .route(
-            "/stats/database/top_domains",
-            axum::routing::get(handlers::stats::get_top_domains),
-        )
-        .route(
-            "/stats/database/top_clients",
-            axum::routing::get(handlers::stats::get_top_clients),
-        )
-        .route(
-            "/stats/database/upstreams",
-            axum::routing::get(handlers::stats::get_upstreams),
-        )
-        .route(
-            "/stats/database/query_types",
-            axum::routing::get(handlers::stats::get_query_types),
-        )
+        .routes(routes!(handlers::stats::get_database_summary))
+        .routes(routes!(handlers::stats::get_database_top_domains))
+        .routes(routes!(handlers::stats::get_database_top_clients))
+        .routes(routes!(handlers::stats::get_database_upstreams))
+        .routes(routes!(handlers::stats::get_database_query_types))
+        // The alias stays outside the spec to avoid a duplicate operation id.
         .route("/history", axum::routing::get(handlers::stats::get_history))
         .routes(routes!(handlers::history::get_history_clients))
         .routes(routes!(handlers::queries::get_queries))
