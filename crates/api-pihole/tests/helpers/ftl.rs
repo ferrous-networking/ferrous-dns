@@ -628,6 +628,51 @@ pub struct HttpHeader {
     pub value: String,
 }
 
+/// `GET /info/sensors` — info.c:770-780 (api_info_sensors).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InfoSensors {
+    pub sensors: Sensors,
+    pub took: Option<f64>,
+}
+
+/// `sensors` — info.c:698-768 (get_sensors_obj with the list).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Sensors {
+    pub list: Vec<SensorChip>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub cpu_temp: Option<f64>,
+    pub hot_limit: f64,
+    pub unit: String,
+}
+
+/// `list[]` — info.c:441-452 (get_hwmon_sensors).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SensorChip {
+    pub name: String,
+    pub path: String,
+    // C: JSON_COPY_STR_TO_OBJECT turns a missing symlink target into null.
+    #[serde(deserialize_with = "required_nullable")]
+    pub source: Option<String>,
+    pub temps: Vec<SensorTemp>,
+}
+
+/// `temps[]` — info.c:298-365 (read_hwmon_sensors).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SensorTemp {
+    #[serde(deserialize_with = "required_nullable")]
+    pub name: Option<String>,
+    pub value: f64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub max: Option<f64>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub crit: Option<f64>,
+    pub sensor: String,
+}
+
 /// `GET /info/messages` — info.yaml:1145.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

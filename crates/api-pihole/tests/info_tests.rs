@@ -109,6 +109,19 @@ async fn client_info_is_public_and_echoes_the_request() {
 }
 
 #[tokio::test]
+async fn sensors_match_the_ftl_schema() {
+    let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
+
+    let (status, json) = helpers::send(app, "GET", "/info/sensors").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let sensors = helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoSensors>(&json).sensors;
+    // FTL's defaults for webserver.api.temp.limit and .unit.
+    assert_eq!(sensors.hot_limit, 60.0);
+    assert_eq!(sensors.unit, "C");
+}
+
+#[tokio::test]
 async fn messages_list_is_empty() {
     let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
 
