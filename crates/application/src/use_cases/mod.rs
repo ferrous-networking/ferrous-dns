@@ -52,6 +52,7 @@ pub use blocklist_sources::{
 pub use cache::GetCacheStatsUseCase;
 pub use client_subnets::{
     CreateClientSubnetUseCase, DeleteClientSubnetUseCase, GetClientSubnetsUseCase,
+    UpdateClientSubnetUseCase,
 };
 pub use clients::{
     CleanupOldClientsUseCase, CreateManualClientUseCase, DeleteClientUseCase, GetClientsUseCase,

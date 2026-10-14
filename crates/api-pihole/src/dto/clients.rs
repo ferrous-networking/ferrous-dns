@@ -6,11 +6,11 @@ use crate::dto::crud::{Processed, StringOrArray};
 /// Pi-hole v6 client entry.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeClientEntry {
-    /// The client's IP address.
+    /// The client's IP address, or a subnet in CIDR form.
     pub client: String,
-    /// Its hostname; empty when unknown, as FTL sends it.
+    /// Its hostname; empty when unknown or for a subnet, as FTL sends it.
     pub name: String,
-    /// Always null: Ferrous keeps no comment for a client.
+    /// Null when there is none.
     pub comment: Option<String>,
     /// FTL group ids; the default group is 0, and an empty list means none
     /// was assigned.
@@ -22,20 +22,21 @@ pub struct PiholeClientEntry {
     pub date_modified: i64,
 }
 
-/// Pi-hole v6 POST /api/clients request. A `comment` is accepted and not
-/// stored.
+/// Pi-hole v6 POST /api/clients request.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateClientRequest {
-    /// One IP address, or an array of them.
+    /// One IP address or subnet, or an array of them.
     pub client: Option<StringOrArray>,
+    pub comment: Option<String>,
     /// FTL group ids; only the first is assigned.
     pub groups: Option<Vec<i64>>,
 }
 
-/// Pi-hole v6 PUT /api/clients/:client request. A `comment` is accepted and
-/// not stored.
+/// Pi-hole v6 PUT /api/clients/:client request.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateClientRequest {
+    /// Replaces the stored comment; none clears it, as in FTL.
+    pub comment: Option<String>,
     /// FTL group ids; only the first is assigned, and the group stays as it
     /// is when omitted.
     pub groups: Option<Vec<i64>>,

@@ -99,6 +99,36 @@ impl ClientSubnetRepository for SqliteClientSubnetRepository {
     }
 
     #[instrument(skip(self))]
+    async fn update(
+        &self,
+        id: i64,
+        group_id: i64,
+        comment: Option<String>,
+    ) -> Result<ClientSubnet, DomainError> {
+        let row = sqlx::query_as::<_, SubnetRow>(
+            "UPDATE client_subnets SET group_id = ?, comment = ?, updated_at = ?
+             WHERE id = ?
+             RETURNING id, subnet_cidr, group_id, comment, created_at, updated_at",
+        )
+        .bind(group_id)
+        .bind(&comment)
+        .bind(sql_now())
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            if is_fk_violation(&e) {
+                DomainError::GroupNotFound(group_id)
+            } else {
+                db_err("Failed to update client subnet")(e)
+            }
+        })?;
+
+        row.map(Self::row_to_subnet)
+            .ok_or_else(|| DomainError::SubnetNotFound(format!("Subnet {id} not found")))
+    }
+
+    #[instrument(skip(self))]
     async fn delete(&self, id: i64) -> Result<(), DomainError> {
         let result = sqlx::query("DELETE FROM client_subnets WHERE id = ?")
             .bind(id)

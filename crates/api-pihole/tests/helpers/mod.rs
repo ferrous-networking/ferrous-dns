@@ -15,16 +15,17 @@ use ferrous_dns_application::ports::{
     FilterDecision,
 };
 use ferrous_dns_application::use_cases::{
-    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateGroupUseCase,
-    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
-    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
-    DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetClientActivityUseCase,
-    GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryLogStorageUseCase,
-    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
-    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
-    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
-    GetWhitelistSourcesUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
+    CreateGroupUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
+    CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
+    DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase,
+    GetClientActivityUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetGroupsUseCase,
+    GetManagedDomainsUseCase, GetQueryLogStorageUseCase, GetQueryRateUseCase, GetQueryStatsUseCase,
+    GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
+    GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
+    GetTopClientsUseCase, GetUniqueDomainsUseCase, GetWhitelistSourcesUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase, UpdateClientUseCase,
     UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
     UpdateWhitelistSourceUseCase,
 };
@@ -35,7 +36,9 @@ use ferrous_dns_domain::{
 };
 use ferrous_dns_infrastructure::repositories::{
     blocklist_source_repository::SqliteBlocklistSourceRepository,
-    client_repository::SqliteClientRepository, group_repository::SqliteGroupRepository,
+    client_repository::SqliteClientRepository,
+    client_subnet_repository::SqliteClientSubnetRepository,
+    group_repository::SqliteGroupRepository,
     managed_domain_repository::SqliteManagedDomainRepository,
     query_log_repository::SqliteQueryLogRepository,
     regex_filter_repository::SqliteRegexFilterRepository,
@@ -452,6 +455,7 @@ async fn build_pihole_state(
 ) -> PiholeAppState {
     let db_config = DatabaseConfig::default();
     let client_repo = Arc::new(SqliteClientRepository::new(pool.clone(), &db_config));
+    let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
     let query_log_repo = Arc::new(SqliteQueryLogRepository::new(
         pool.clone(),
         pool.clone(),
@@ -591,6 +595,21 @@ async fn build_pihole_state(
             )),
             delete_client: Arc::new(DeleteClientUseCase::new(
                 client_repo,
+                block_filter_engine.clone(),
+            )),
+            get_client_subnets: Arc::new(GetClientSubnetsUseCase::new(subnet_repo.clone())),
+            create_client_subnet: Arc::new(CreateClientSubnetUseCase::new(
+                subnet_repo.clone(),
+                group_repo.clone(),
+                block_filter_engine.clone(),
+            )),
+            update_client_subnet: Arc::new(UpdateClientSubnetUseCase::new(
+                subnet_repo.clone(),
+                group_repo.clone(),
+                block_filter_engine.clone(),
+            )),
+            delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(
+                subnet_repo,
                 block_filter_engine.clone(),
             )),
         },

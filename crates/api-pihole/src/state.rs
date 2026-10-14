@@ -6,16 +6,17 @@ use ferrous_dns_application::use_cases::{
     VerifyMfaUseCase,
 };
 use ferrous_dns_application::use_cases::{
-    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateGroupUseCase,
-    CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
-    CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientUseCase,
-    DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
-    DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetClientsUseCase, GetGroupsUseCase,
-    GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
-    GetRegexFiltersUseCase, GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase,
-    GetUniqueDomainsUseCase, GetWhitelistSourcesUseCase, ReloadConfigUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
+    CreateGroupUseCase, CreateManagedDomainUseCase, CreateManualClientUseCase,
+    CreateRegexFilterUseCase, CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase,
+    DeleteClientSubnetUseCase, DeleteClientUseCase, DeleteGroupUseCase, DeleteManagedDomainUseCase,
+    DeleteRegexFilterUseCase, DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase,
+    GetClientSubnetsUseCase, GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
+    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
+    GetWhitelistSourcesUseCase, ReloadConfigUseCase, UpdateBlocklistSourceUseCase,
+    UpdateClientSubnetUseCase, UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -126,6 +127,11 @@ pub struct PiholeClientState {
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub update_client: Arc<UpdateClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
+    /// Subnets are FTL's CIDR clients.
+    pub get_client_subnets: Arc<GetClientSubnetsUseCase>,
+    pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
+    pub update_client_subnet: Arc<UpdateClientSubnetUseCase>,
+    pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
 }
 
 #[derive(Clone)]

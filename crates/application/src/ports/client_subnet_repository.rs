@@ -16,6 +16,14 @@ pub trait ClientSubnetRepository: Send + Sync {
 
     async fn get_all(&self) -> Result<Vec<ClientSubnet>, DomainError>;
 
+    /// Replaces the group and comment of the subnet `id`.
+    async fn update(
+        &self,
+        id: i64,
+        group_id: i64,
+        comment: Option<String>,
+    ) -> Result<ClientSubnet, DomainError>;
+
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
 
     async fn exists(&self, network: IpNetwork) -> Result<bool, DomainError>;

@@ -74,6 +74,10 @@ pub fn build_pihole_state(
             create_manual_client: use_cases.create_manual_client.clone(),
             update_client: use_cases.update_client.clone(),
             delete_client: use_cases.delete_client.clone(),
+            get_client_subnets: use_cases.get_client_subnets.clone(),
+            create_client_subnet: use_cases.create_client_subnet.clone(),
+            update_client_subnet: use_cases.update_client_subnet.clone(),
+            delete_client_subnet: use_cases.delete_client_subnet.clone(),
         },
         system: PiholeSystemState {
             cleanup_query_logs: use_cases.cleanup_query_logs.clone(),

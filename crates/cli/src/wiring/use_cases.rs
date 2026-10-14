@@ -18,9 +18,10 @@ use ferrous_dns_application::use_cases::{
     GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
     GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase,
     SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
-    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
+    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase,
+    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -57,6 +58,7 @@ pub struct UseCases {
     pub get_client_subnets: Arc<GetClientSubnetsUseCase>,
     pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
+    pub update_client_subnet: Arc<UpdateClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub update_client: Arc<UpdateClientUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
@@ -169,6 +171,11 @@ impl UseCases {
             )),
             delete_client_subnet: Arc::new(DeleteClientSubnetUseCase::new(
                 repos.client_subnet.clone(),
+                repos.block_filter_engine.clone(),
+            )),
+            update_client_subnet: Arc::new(UpdateClientSubnetUseCase::new(
+                repos.client_subnet.clone(),
+                repos.group.clone(),
                 repos.block_filter_engine.clone(),
             )),
             create_manual_client: Arc::new(CreateManualClientUseCase::new(
