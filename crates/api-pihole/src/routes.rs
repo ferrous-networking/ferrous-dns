@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
+use axum::extract::OriginalUri;
+use axum::http::StatusCode;
+use axum::response::Response;
 use axum::{middleware, Extension, Router};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::{
-    handlers, middleware::require_pihole_auth, openapi::PiholeApiDoc, state::PiholeAppState,
+    errors::pihole_error_response, handlers, middleware::require_pihole_auth,
+    openapi::PiholeApiDoc, state::PiholeAppState,
 };
 
 /// Builds the Axum router for all Pi-hole v6 compatible endpoints together
@@ -139,5 +143,17 @@ pub fn create_pihole_router_with_openapi(
 
     // `/endpoints` lists the finished document, so it is built only now.
     let endpoints = Arc::new(handlers::endpoints::list_endpoints(&openapi));
-    (router.layer(Extension(endpoints)), openapi)
+    let router = router.fallback(not_found).layer(Extension(endpoints));
+    (router, openapi)
+}
+
+/// FTL's answer for a path it does not route (api.c), given before any
+/// authentication check, with the full request path as the hint.
+async fn not_found(OriginalUri(uri): OriginalUri) -> Response {
+    pihole_error_response(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "Not found",
+        Some(uri.path()),
+    )
 }

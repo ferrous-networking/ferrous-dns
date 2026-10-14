@@ -129,7 +129,10 @@ async fn known_route_without_a_session_still_answers_401() {
     let (status, json) = get_unauthenticated("/api/stats/summary").await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
-    assert_eq!(assert_ftl_shape::<ErrorReply>(&json).error.key, "unauthorized");
+    assert_eq!(
+        assert_ftl_shape::<ErrorReply>(&json).error.key,
+        "unauthorized"
+    );
 }
 
 #[tokio::test]
