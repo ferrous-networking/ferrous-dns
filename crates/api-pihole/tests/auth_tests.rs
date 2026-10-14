@@ -520,6 +520,101 @@ async fn logout_without_a_session_is_unauthorized() {
     assert_eq!(json["session"]["message"], "no SID provided");
 }
 
+fn delete_with_sid(uri: &str, sid: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header("X-FTL-SID", sid)
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+/// The `/auth/sessions` list as seen through `sid`.
+async fn list_sessions(app: &Router, sid: &str) -> Vec<ftl::SessionEntry> {
+    let (status, json) = send(app, get_with_header("/auth/sessions", "X-FTL-SID", sid)).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+    assert_ftl_shape::<ftl::AuthSessions>(&json).sessions
+}
+
+#[tokio::test]
+async fn sessions_lists_every_live_session_and_marks_the_presented_one() {
+    let app = auth_app(false).await;
+    let first = login(&app, ADMIN_PASSWORD).await;
+    login(&app, APP_PASSWORD).await;
+
+    let sessions = list_sessions(&app, &first).await;
+
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions.iter().filter(|s| s.current_session).count(), 1);
+    for session in &sessions {
+        assert!(session.valid);
+        assert!(session.valid_until > session.login_at);
+        assert!(session.last_active >= session.login_at);
+    }
+    let ids: std::collections::HashSet<i64> = sessions.iter().map(|s| s.id).collect();
+    assert_eq!(ids.len(), 2, "ids must tell the sessions apart");
+}
+
+#[tokio::test]
+async fn deleting_a_session_by_its_id_ends_only_that_session() {
+    let app = auth_app(false).await;
+    let mine = login(&app, ADMIN_PASSWORD).await;
+    let other = login(&app, ADMIN_PASSWORD).await;
+    let other_id = list_sessions(&app, &mine)
+        .await
+        .into_iter()
+        .find(|s| !s.current_session)
+        .expect("the other session")
+        .id;
+
+    let (status, _) = send(
+        &app,
+        delete_with_sid(&format!("/auth/session/{other_id}"), &mine),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = send(&app, get_with_header("/stats/summary", "X-FTL-SID", &other)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(&app, get_with_header("/stats/summary", "X-FTL-SID", &mine)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn deleting_a_session_id_that_names_none_is_a_bad_request() {
+    // auth.c api_auth_session_delete.
+    let app = auth_app(false).await;
+    let sid = login(&app, ADMIN_PASSWORD).await;
+
+    for (id, message) in [
+        ("abc", "Missing or invalid session ID"),
+        ("-5", "Session ID out of bounds"),
+        ("12345", "Session ID not in use"),
+    ] {
+        let (status, json) = send(&app, delete_with_sid(&format!("/auth/session/{id}"), &sid)).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST, "id {id}");
+        let reply = assert_ftl_shape::<ftl::ErrorReply>(&json);
+        assert_eq!(reply.error.key, "bad_request");
+        assert_eq!(reply.error.message, message, "id {id}");
+    }
+}
+
+#[tokio::test]
+async fn sessions_routes_need_a_session() {
+    let app = auth_app(false).await;
+
+    let (status, _) = send(&app, get("/auth/sessions")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let request = Request::builder()
+        .method("DELETE")
+        .uri("/auth/session/1")
+        .body(Body::empty())
+        .expect("failed to build request");
+    let (status, _) = send(&app, request).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
 #[tokio::test]
 async fn logout_with_an_unknown_sid_is_unauthorized() {
     let app = auth_app(false).await;

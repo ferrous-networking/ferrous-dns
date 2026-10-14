@@ -239,6 +239,42 @@ pub struct Session {
     pub message: Option<String>,
 }
 
+/// `GET /auth/sessions` — auth.c:325-361 (get_all_sessions).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthSessions {
+    pub sessions: Vec<SessionEntry>,
+    pub took: Option<f64>,
+}
+
+/// `sessions[]` — auth.c:334-355.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionEntry {
+    pub id: i64,
+    pub current_session: bool,
+    pub valid: bool,
+    pub tls: SessionTls,
+    pub login_at: i64,
+    pub last_active: i64,
+    pub valid_until: i64,
+    pub remote_addr: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub user_agent: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub x_forwarded_for: Option<String>,
+    pub app: bool,
+    pub cli: bool,
+}
+
+/// `sessions[].tls` — auth.c:338-341.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionTls {
+    pub login: bool,
+    pub mixed: bool,
+}
+
 // ---------------------------------------------------------------------------
 // /info
 // ---------------------------------------------------------------------------
