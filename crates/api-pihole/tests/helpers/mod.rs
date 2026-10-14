@@ -467,6 +467,16 @@ pub async fn create_pihole_test_app(pool: sqlx::SqlitePool) -> Router {
     create_pihole_router_with_openapi(build_pihole_state(pool, false, false).await).0
 }
 
+/// [`create_pihole_test_app`] with `configure` applied to its live config.
+pub async fn create_pihole_test_app_with_config(
+    pool: sqlx::SqlitePool,
+    configure: impl FnOnce(&mut Config),
+) -> Router {
+    let state = build_pihole_state(pool, false, false).await;
+    configure(&mut *state.system.config.write().await);
+    create_pihole_router_with_openapi(state).0
+}
+
 /// The OpenAPI document served next to [`create_pihole_test_app`].
 pub async fn create_pihole_test_openapi(pool: sqlx::SqlitePool) -> utoipa::openapi::OpenApi {
     create_pihole_router_with_openapi(build_pihole_state(pool, false, false).await).1
