@@ -851,6 +851,88 @@ async fn blocked_reply_type_follows_the_configured_block_mode() {
 }
 
 #[tokio::test]
+async fn reply_filter_selects_exactly_the_rows_of_that_reply_type() {
+    // The filter runs in SQL and reply.type is computed in Rust; over every
+    // combination of the logged columns, each `reply=` must return exactly
+    // the rows whose reply.type it names, under every block mode.
+    let pool = helpers::create_test_db().await;
+    let statuses = [
+        None,
+        Some("NOERROR"),
+        Some("NXDOMAIN"),
+        Some("SERVFAIL"),
+        Some("REFUSED"),
+        Some("TIMEOUT"),
+        Some("BLOCKED"),
+        Some("LOCAL_DNS"),
+        Some("RATE_LIMITED"),
+        Some("RATE_LIMITED_TC"),
+        Some("SAFE_SEARCH"),
+        Some("NXDOMAIN_HIJACK"),
+    ];
+    let mut rows = 0;
+    for status in statuses {
+        for (blocked, block_source) in [
+            (false, None),
+            (true, Some("blocklist")),
+            (true, Some("nxdomain_hijack")),
+        ] {
+            for record_type in ["A", "AAAA", "TXT"] {
+                for answers in [None, Some("1.2.3.4")] {
+                    rows += 1;
+                    let domain = format!("r{rows}.test");
+                    insert_row(
+                        &pool,
+                        Row {
+                            domain: &domain,
+                            record_type: Some(record_type),
+                            blocked,
+                            block_source,
+                            response_status: status,
+                            answers,
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+                }
+            }
+        }
+    }
+
+    for mode in [
+        BlockResponseMode::NullIp,
+        BlockResponseMode::NxDomain,
+        BlockResponseMode::NoData,
+        BlockResponseMode::Refused,
+    ] {
+        let app = helpers::create_pihole_test_app_with_config(pool.clone(), |c| {
+            c.blocking.block_mode = mode
+        })
+        .await;
+        let mut seen = std::collections::BTreeSet::new();
+        for reply in [
+            "UNKNOWN", "NODATA", "NXDOMAIN", "CNAME", "IP", "DOMAIN", "RRNAME", "SERVFAIL",
+            "REFUSED", "NOTIMP", "OTHER", "DNSSEC", "NONE", "BLOB",
+        ] {
+            let (status, json) = get(&app, &format!("/queries?reply={reply}&length=0")).await;
+
+            assert_eq!(status, StatusCode::OK, "{reply}");
+            let queries = json["queries"].as_array().expect("queries");
+            for query in queries {
+                assert_eq!(query["reply"]["type"], reply, "{mode:?} {query}");
+                assert!(
+                    seen.insert(query["domain"].as_str().expect("domain").to_string()),
+                    "{mode:?}: {} matched twice",
+                    query["domain"]
+                );
+            }
+            assert_eq!(json["recordsFiltered"], queries.len(), "{mode:?} {reply}");
+        }
+        assert_eq!(seen.len(), rows, "{mode:?}: every row has one reply type");
+    }
+}
+
+#[tokio::test]
 async fn dnssec_uses_ftl_names() {
     let pool = helpers::create_test_db().await;
     for (domain, status) in [
