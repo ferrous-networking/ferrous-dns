@@ -1095,6 +1095,7 @@ dependencies = [
  "ferrous-dns-infrastructure",
  "futures",
  "http-body-util",
+ "idna",
  "libc",
  "serde",
  "serde_json",

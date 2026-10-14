@@ -116,7 +116,17 @@ fn prepare_item(item: String, kind: DomainKind) -> Result<String, CrudError> {
     match kind {
         DomainKind::Exact => {
             reject_unsafe_item(&item, false)?;
-            let item = item.to_lowercase();
+            // api_list.c: a non-ASCII domain is stored as punycode.
+            let item = if item.is_ascii() {
+                item.to_lowercase()
+            } else {
+                idna::domain_to_ascii(&item).map_err(|err| {
+                    CrudError::bad_request(
+                        "Invalid request: Invalid domain name",
+                        Some(err.to_string()),
+                    )
+                })?
+            };
             ManagedDomain::validate_domain(&item)
                 .map_err(|_| CrudError::bad_request("Invalid domain", Some(item.clone())))?;
             Ok(item)
@@ -131,7 +141,7 @@ fn prepare_item(item: String, kind: DomainKind) -> Result<String, CrudError> {
 pub(crate) fn managed_to_entry(d: &ManagedDomain) -> Result<PiholeDomainEntry, DomainError> {
     Ok(PiholeDomainEntry {
         domain: d.domain.to_string(),
-        unicode: d.domain.to_string(),
+        unicode: unicode(&d.domain),
         r#type: d.action.to_str(),
         kind: "exact",
         comment: reply_comment(d.comment.as_ref()),
@@ -146,7 +156,7 @@ pub(crate) fn managed_to_entry(d: &ManagedDomain) -> Result<PiholeDomainEntry, D
 pub(crate) fn regex_to_entry(r: &RegexFilter) -> Result<PiholeDomainEntry, DomainError> {
     Ok(PiholeDomainEntry {
         domain: r.pattern.to_string(),
-        unicode: r.pattern.to_string(),
+        unicode: unicode(&r.pattern),
         r#type: r.action.to_str(),
         kind: "regex",
         comment: reply_comment(r.comment.as_ref()),
@@ -156,6 +166,15 @@ pub(crate) fn regex_to_entry(r: &RegexFilter) -> Result<PiholeDomainEntry, Domai
         date_added: unix_seconds(r.created_at.as_deref()),
         date_modified: unix_seconds(r.updated_at.as_deref()),
     })
+}
+
+/// The entry with its punycode labels decoded, or as stored when it does
+/// not decode, as FTL does for every entry (api_list.c idn2_to_unicode_lzlz).
+fn unicode(entry: &str) -> String {
+    match idna::domain_to_unicode(entry) {
+        (decoded, Ok(())) => decoded,
+        (_, Err(_)) => entry.to_string(),
+    }
 }
 
 /// A stored entry of one of the four lists.

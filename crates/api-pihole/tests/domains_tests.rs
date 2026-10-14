@@ -180,7 +180,12 @@ async fn unicode_is_the_decoded_form_of_a_punycode_domain() {
     // text when it does not decode, as a regex does not.
     let app = app().await;
 
-    let exact = create(&app, "deny/exact", json!({ "domain": "xn--bcher-kva.example" })).await;
+    let exact = create(
+        &app,
+        "deny/exact",
+        json!({ "domain": "xn--bcher-kva.example" }),
+    )
+    .await;
     let regex = create(
         &app,
         "deny/regex",
