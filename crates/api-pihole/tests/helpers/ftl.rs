@@ -609,6 +609,25 @@ pub struct DatabaseOwnerGroup {
     pub name: Option<String>,
 }
 
+/// `GET /info/client` — info.c:63-88 (api_info_client).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InfoClient {
+    pub remote_addr: String,
+    pub http_version: String,
+    pub method: String,
+    pub headers: Vec<HttpHeader>,
+    pub took: Option<f64>,
+}
+
+/// `headers[]` — info.c:76-83.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
 /// `GET /info/messages` — info.yaml:1145.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -71,6 +71,44 @@ async fn version_contains_valid_semver() {
 }
 
 #[tokio::test]
+async fn client_info_is_public_and_echoes_the_request() {
+    // api.c: /api/info/client is one of the few routes without require_auth.
+    let app =
+        helpers::create_pihole_test_app_with_auth(helpers::create_test_db().await, false).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/info/client")
+                .header("x-probe", "ferrous")
+                .body(Body::empty())
+                .expect("failed to build request"),
+        )
+        .await
+        .expect("request failed");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+    let client = helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoClient>(&json);
+    assert_eq!(client.method, "GET");
+    assert_eq!(client.http_version, "1.1");
+    assert!(
+        client
+            .headers
+            .iter()
+            .any(|h| h.name.eq_ignore_ascii_case("x-probe") && h.value == "ferrous"),
+        "headers: {:?}",
+        client.headers
+    );
+}
+
+#[tokio::test]
 async fn messages_list_is_empty() {
     let app = helpers::create_pihole_test_app(helpers::create_test_db().await).await;
 
