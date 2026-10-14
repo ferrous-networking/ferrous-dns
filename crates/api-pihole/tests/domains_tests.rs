@@ -3,496 +3,573 @@ mod helpers;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    Router,
 };
+use helpers::ftl::{self, assert_ftl_shape};
 use http_body_util::BodyExt;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tower::ServiceExt;
+
+/// Status and body; an empty body comes back as `null`.
+async fn send(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
+    let response = app.clone().oneshot(request).await.expect("request failed");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("failed to read body")
+        .to_bytes();
+    let body = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("invalid JSON")
+    };
+    (status, body)
+}
+
+fn get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+fn with_body(method: &str, uri: &str, body: Value) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .expect("failed to build request")
+}
+
+fn delete(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .body(Body::empty())
+        .expect("failed to build request")
+}
+
+async fn app() -> Router {
+    helpers::create_pihole_test_app(helpers::create_test_db().await).await
+}
+
+/// POSTs `body` to `/domains/{type}/{kind}` and requires a 201.
+async fn create(app: &Router, list: &str, body: Value) -> ftl::DomainsWriteReply {
+    let (status, reply) = send(app, with_body("POST", &format!("/domains/{list}"), body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{reply}");
+    assert_ftl_shape(&reply)
+}
+
+async fn list(app: &Router, uri: &str) -> Vec<ftl::DomainEntry> {
+    let (status, reply) = send(app, get(uri)).await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_ftl_shape::<ftl::DomainsReply>(&reply).domains
+}
+
+fn names(entries: &[ftl::DomainEntry]) -> Vec<&str> {
+    entries.iter().map(|d| d.domain.as_str()).collect()
+}
 
 #[tokio::test]
 async fn list_all_domains_returns_empty_array_on_fresh_database() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+    let app = app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/domains")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    assert!(list(&app, "/domains").await.is_empty());
+}
 
-    assert_eq!(response.status(), StatusCode::OK);
+#[tokio::test]
+async fn listed_entries_carry_ftl_fields_and_types() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "ads.example.com" })).await;
 
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+    let domains = list(&app, "/domains").await;
 
-    let domains = json["domains"]
-        .as_array()
-        .expect("domains must be an array");
-    assert!(
-        domains.is_empty(),
-        "domains must be empty on a fresh database"
+    assert_eq!(domains.len(), 1);
+    let entry = &domains[0];
+    assert_eq!(entry.domain, "ads.example.com");
+    assert_eq!(entry.unicode, "ads.example.com");
+    assert_eq!(entry.domain_type, ftl::DomainType::Deny);
+    assert_eq!(entry.kind, ftl::DomainKind::Exact);
+    assert_eq!(entry.comment, None, "no comment is sent as null");
+    assert!(entry.enabled);
+    assert!(entry.date_added > 1_600_000_000, "unix seconds");
+    assert!(entry.date_modified >= entry.date_added);
+}
+
+#[tokio::test]
+async fn entries_of_the_default_group_report_ftl_group_zero() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "ads.example.com" })).await;
+
+    let domains = list(&app, "/domains").await;
+
+    assert_eq!(
+        domains[0].groups,
+        vec![0],
+        "Ferrous group 1 is FTL's Default (0)"
     );
 }
 
 #[tokio::test]
-async fn list_all_domains_includes_created_exact_domain() {
-    let pool = helpers::create_test_db().await;
+async fn create_replies_with_the_entry_and_what_was_processed() {
+    let app = app().await;
 
-    // Create a deny/exact domain first.
-    let create_app = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "ads.example.com" }).to_string();
-    let create_response = create_app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/deny/exact")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let reply = create(&app, "deny/exact", json!({ "domain": "ads.example.com" })).await;
 
-    // List all domains and verify the created one appears.
-    let list_app = helpers::create_pihole_test_app(pool).await;
-    let response = list_app
-        .oneshot(
-            Request::builder()
-                .uri("/domains")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let domains = json["domains"]
-        .as_array()
-        .expect("domains must be an array");
-    assert!(
-        !domains.is_empty(),
-        "domains list must not be empty after creation"
-    );
-
-    let found = domains
+    assert_eq!(names(&reply.domains), ["ads.example.com"]);
+    assert_eq!(reply.domains[0].domain_type, ftl::DomainType::Deny);
+    let success: Vec<&str> = reply
+        .processed
+        .success
         .iter()
-        .any(|d| d["domain"].as_str() == Some("ads.example.com"));
-    assert!(found, "ads.example.com must appear in the domains list");
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["ads.example.com"]);
+    assert!(reply.processed.errors.is_empty());
 }
 
 #[tokio::test]
-async fn create_exact_deny_domain_returns_created() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn create_allow_exact_and_deny_regex_land_in_their_lists() {
+    let app = app().await;
 
-    let body = serde_json::json!({ "domain": "ads.example.com" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/deny/exact")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let allow = create(&app, "allow/exact", json!({ "domain": "safe.com" })).await;
+    let regex = create(&app, "deny/regex", json!({ "domain": ".*\\.ads\\..*" })).await;
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert_eq!(json["domain"], "ads.example.com");
-    assert_eq!(json["type"], "deny");
-    assert_eq!(json["kind"], "exact");
-    assert_eq!(json["enabled"], true);
+    assert_eq!(allow.domains[0].domain_type, ftl::DomainType::Allow);
+    assert_eq!(allow.domains[0].kind, ftl::DomainKind::Exact);
+    assert_eq!(regex.domains[0].domain_type, ftl::DomainType::Deny);
+    assert_eq!(regex.domains[0].kind, ftl::DomainKind::Regex);
 }
 
 #[tokio::test]
-async fn create_exact_allow_domain_returns_created() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn create_accepts_an_array_of_domains() {
+    let app = app().await;
 
-    let body = serde_json::json!({ "domain": "safe.com" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/allow/exact")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let reply = create(&app, "deny/exact", json!({ "domain": ["a.com", "b.com"] })).await;
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert_eq!(json["type"], "allow");
-    assert_eq!(json["kind"], "exact");
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["a.com", "b.com"]);
+    // api_list_write replies with a read of the last item only.
+    assert_eq!(names(&reply.domains), ["b.com"]);
+    assert_eq!(
+        names(&list(&app, "/domains/deny/exact").await),
+        ["a.com", "b.com"]
+    );
 }
 
 #[tokio::test]
-async fn create_regex_deny_domain_returns_created() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn create_lowercases_exact_domains() {
+    let app = app().await;
 
-    let body = serde_json::json!({ "domain": ".*\\.ads\\..*" }).to_string();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/deny/regex")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let reply = create(&app, "deny/exact", json!({ "domain": "Ads.Example.COM" })).await;
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert_eq!(json["kind"], "regex");
-    assert_eq!(json["type"], "deny");
+    assert_eq!(names(&reply.domains), ["ads.example.com"]);
 }
 
 #[tokio::test]
-async fn list_by_type_deny_returns_only_deny_entries() {
-    let pool = helpers::create_test_db().await;
+async fn create_without_a_domain_is_a_bad_request() {
+    let app = app().await;
 
-    // Create an allow domain.
-    let app1 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "safe.com" }).to_string();
-    app1.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/allow/exact")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
-    )
-    .await
-    .expect("request failed");
+    for body in [json!({}), json!({ "domain": "" }), json!({ "domain": [] })] {
+        let (status, reply) = send(&app, with_body("POST", "/domains/deny/exact", body)).await;
 
-    // Create a deny domain.
-    let app2 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "bad.com" }).to_string();
-    app2.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/deny/exact")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
-    )
-    .await
-    .expect("request failed");
-
-    // List only deny domains.
-    let app3 = helpers::create_pihole_test_app(pool).await;
-    let response = app3
-        .oneshot(
-            Request::builder()
-                .uri("/domains/deny")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let domains = json["domains"]
-        .as_array()
-        .expect("domains must be an array");
-    for entry in domains {
-        assert_eq!(
-            entry["type"], "deny",
-            "all entries returned by /domains/deny must have type == deny"
-        );
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+        let error = assert_ftl_shape::<ftl::ErrorReply>(&reply).error;
+        assert_eq!(error.key, "bad_request");
     }
 }
 
 #[tokio::test]
-async fn list_by_type_with_invalid_type_returns_bad_request() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn duplicate_create_is_a_database_error() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "dup.com" })).await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/domains/invalid")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "POST",
+            "/domains/deny/exact",
+            json!({ "domain": "dup.com" }),
+        ),
+    )
+    .await;
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    let error = assert_ftl_shape::<ftl::ErrorReply>(&reply).error;
+    assert_eq!(error.key, "database_error");
+    assert_eq!(error.message, "Could not add to gravity database");
+    assert_eq!(error.hint.as_deref(), Some("The item is already present"));
 }
 
 #[tokio::test]
-async fn list_by_type_kind_returns_filtered_results() {
-    let pool = helpers::create_test_db().await;
+async fn partly_duplicate_create_reports_the_duplicate_in_processed_errors() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "dup.com" })).await;
 
-    // Create deny/exact.
-    let app1 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "exact-deny.com" }).to_string();
-    app1.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/deny/exact")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
+    let reply = create(
+        &app,
+        "deny/exact",
+        json!({ "domain": ["dup.com", "new.com"] }),
     )
-    .await
-    .expect("request failed");
+    .await;
 
-    // Create deny/regex.
-    let app2 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": ".*\\.tracker\\..*" }).to_string();
-    app2.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/deny/regex")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
-    )
-    .await
-    .expect("request failed");
-
-    // List only deny/exact.
-    let app3 = helpers::create_pihole_test_app(pool).await;
-    let response = app3
-        .oneshot(
-            Request::builder()
-                .uri("/domains/deny/exact")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let domains = json["domains"]
-        .as_array()
-        .expect("domains must be an array");
-    for entry in domains {
-        assert_eq!(
-            entry["kind"], "exact",
-            "all entries returned by /domains/deny/exact must have kind == exact"
-        );
-    }
+    let success: Vec<&str> = reply
+        .processed
+        .success
+        .iter()
+        .map(|s| s.item.as_str())
+        .collect();
+    assert_eq!(success, ["new.com"]);
+    assert_eq!(reply.processed.errors.len(), 1);
+    assert_eq!(reply.processed.errors[0].item, "dup.com");
+    assert_eq!(
+        reply.processed.errors[0].error,
+        "The item is already present"
+    );
 }
 
 #[tokio::test]
-async fn update_domain_changes_fields() {
-    let pool = helpers::create_test_db().await;
+async fn create_translates_ftl_group_ids() {
+    let app = app().await;
+    let (status, group) = send(
+        &app,
+        with_body("POST", "/groups", json!({ "name": "Kids" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{group}");
+    let kids = group["groups"][0]["id"].as_i64().expect("group id");
 
-    // Create the domain first.
-    let app1 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "upd.com" }).to_string();
-    let create_response = app1
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/deny/exact")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let default = create(
+        &app,
+        "deny/exact",
+        json!({ "domain": "a.com", "groups": [0] }),
+    )
+    .await;
+    let custom = create(
+        &app,
+        "deny/exact",
+        json!({ "domain": "b.com", "groups": [kids] }),
+    )
+    .await;
 
-    // Update the domain with a comment.
-    let app2 = helpers::create_pihole_test_app(pool).await;
-    let update_body = serde_json::json!({ "domain": "upd.com", "comment": "updated" }).to_string();
-    let response = app2
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/domains/deny/exact/upd.com")
-                .header("content-type", "application/json")
-                .body(Body::from(update_body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    assert_eq!(default.domains[0].groups, vec![0]);
+    assert_eq!(custom.domains[0].groups, vec![kids]);
+}
 
-    assert_eq!(response.status(), StatusCode::OK);
+#[tokio::test]
+async fn list_by_type_returns_only_that_type() {
+    let app = app().await;
+    create(&app, "allow/exact", json!({ "domain": "safe.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "bad.com" })).await;
 
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+    assert_eq!(names(&list(&app, "/domains/deny").await), ["bad.com"]);
+}
 
-    assert_eq!(json["comment"], "updated");
+#[tokio::test]
+async fn list_by_type_and_kind_returns_only_that_list() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "exact-deny.com" })).await;
+    create(&app, "deny/regex", json!({ "domain": ".*\\.tracker\\..*" })).await;
+
+    assert_eq!(
+        names(&list(&app, "/domains/deny/exact").await),
+        ["exact-deny.com"]
+    );
+}
+
+#[tokio::test]
+async fn list_by_kind_spans_both_types() {
+    let app = app().await;
+    create(&app, "allow/exact", json!({ "domain": "safe.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "bad.com" })).await;
+    create(&app, "deny/regex", json!({ "domain": "^ads" })).await;
+
+    let exact = list(&app, "/domains/exact").await;
+
+    assert_eq!(names(&exact), ["safe.com", "bad.com"]);
+    assert_eq!(names(&list(&app, "/domains/regex").await), ["^ads"]);
+}
+
+#[tokio::test]
+async fn a_single_segment_that_is_not_a_type_or_kind_filters_by_domain() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "bad.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "other.com" })).await;
+
+    assert_eq!(names(&list(&app, "/domains/bad.com").await), ["bad.com"]);
+    assert!(list(&app, "/domains/invalid").await.is_empty());
+}
+
+#[tokio::test]
+async fn type_and_domain_filters_one_type() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "bad.com" })).await;
+
+    assert_eq!(
+        names(&list(&app, "/domains/deny/bad.com").await),
+        ["bad.com"]
+    );
+    assert!(list(&app, "/domains/allow/bad.com").await.is_empty());
+    assert_eq!(
+        names(&list(&app, "/domains/exact/bad.com").await),
+        ["bad.com"]
+    );
+}
+
+#[tokio::test]
+async fn get_one_domain_by_type_kind_and_name() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "bad.com" })).await;
+    create(&app, "deny/exact", json!({ "domain": "other.com" })).await;
+
+    assert_eq!(
+        names(&list(&app, "/domains/deny/exact/bad.com").await),
+        ["bad.com"]
+    );
+    assert!(list(&app, "/domains/allow/exact/bad.com").await.is_empty());
+}
+
+#[tokio::test]
+async fn create_on_an_unknown_list_is_a_uri_error() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("POST", "/domains/foo/exact", json!({ "domain": "a.com" })),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    assert_eq!(
+        assert_ftl_shape::<ftl::ErrorReply>(&reply).error.key,
+        "uri_error"
+    );
+}
+
+#[tokio::test]
+async fn update_takes_the_domain_from_the_uri() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "upd.com" })).await;
+
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "PUT",
+            "/domains/deny/exact/upd.com",
+            json!({ "comment": "updated" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::DomainsWriteReply>(&reply);
+    assert_eq!(names(&reply.domains), ["upd.com"]);
+    assert_eq!(reply.domains[0].comment.as_deref(), Some("updated"));
+    assert_eq!(reply.processed.success[0].item, "upd.com");
+}
+
+#[tokio::test]
+async fn update_replaces_omitted_fields_with_their_defaults() {
+    let app = app().await;
+    create(
+        &app,
+        "deny/exact",
+        json!({ "domain": "upd.com", "comment": "old", "enabled": false }),
+    )
+    .await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/domains/deny/exact/upd.com", json!({})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let entry = &assert_ftl_shape::<ftl::DomainsWriteReply>(&reply).domains[0];
+    assert_eq!(entry.comment, None, "an omitted comment is cleared");
+    assert!(entry.enabled, "an omitted enabled defaults to true");
+}
+
+#[tokio::test]
+async fn update_creates_a_missing_entry() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "PUT",
+            "/domains/allow/exact/new.com",
+            json!({ "comment": "c" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::DomainsWriteReply>(&reply);
+    assert_eq!(names(&reply.domains), ["new.com"]);
+    assert_eq!(
+        names(&list(&app, "/domains/allow/exact").await),
+        ["new.com"]
+    );
+}
+
+#[tokio::test]
+async fn update_moves_an_entry_from_the_body_list_to_the_uri_list() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "moved.com" })).await;
+
+    // domains.yaml: PUT allow/exact/abc.com with type=deny, kind=exact
+    // moves abc.com from exact denied to exact allowed.
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "PUT",
+            "/domains/allow/exact/moved.com",
+            json!({ "type": "deny", "kind": "exact" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::DomainsWriteReply>(&reply);
+    assert_eq!(reply.domains[0].domain_type, ftl::DomainType::Allow);
+    assert!(list(&app, "/domains/deny").await.is_empty());
+    assert_eq!(
+        names(&list(&app, "/domains/allow/exact").await),
+        ["moved.com"]
+    );
+}
+
+#[tokio::test]
+async fn update_moves_an_exact_entry_to_the_regex_list() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "moved.com" })).await;
+
+    let (status, reply) = send(
+        &app,
+        with_body(
+            "PUT",
+            "/domains/deny/regex/moved.com",
+            json!({ "type": "deny", "kind": "exact" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert!(list(&app, "/domains/exact").await.is_empty());
+    assert_eq!(
+        names(&list(&app, "/domains/deny/regex").await),
+        ["moved.com"]
+    );
+}
+
+#[tokio::test]
+async fn update_on_an_unknown_list_is_a_uri_error() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/domains/foo/exact/a.com", json!({})),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    assert_eq!(
+        assert_ftl_shape::<ftl::ErrorReply>(&reply).error.key,
+        "uri_error"
+    );
 }
 
 #[tokio::test]
 async fn delete_domain_returns_no_content() {
-    let pool = helpers::create_test_db().await;
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "del.com" })).await;
 
-    // Create the domain first.
-    let app1 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "del.com" }).to_string();
-    let create_response = app1
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains/deny/exact")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let (status, _) = send(&app, delete("/domains/deny/exact/del.com")).await;
 
-    // Delete the domain.
-    let app2 = helpers::create_pihole_test_app(pool).await;
-    let response = app2
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/domains/deny/exact/del.com")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(list(&app, "/domains").await.is_empty());
 }
 
 #[tokio::test]
-async fn delete_nonexistent_domain_returns_not_found() {
-    let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
+async fn delete_nonexistent_domain_is_an_empty_not_found() {
+    let app = app().await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/domains/deny/exact/ghost.com")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let (status, body) = send(&app, delete("/domains/deny/exact/ghost.com")).await;
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body, json!({}), "api_list_remove sends an empty object");
 }
 
 #[tokio::test]
-async fn batch_delete_domains_removes_specified() {
-    let pool = helpers::create_test_db().await;
-
-    // Create b1.com.
-    let app1 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "b1.com" }).to_string();
-    app1.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/deny/exact")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
+async fn batch_delete_removes_the_listed_items() {
+    let app = app().await;
+    create(
+        &app,
+        "deny/exact",
+        json!({ "domain": ["b1.com", "b2.com"] }),
     )
-    .await
-    .expect("request failed");
+    .await;
+    create(&app, "deny/regex", json!({ "domain": "^b3" })).await;
 
-    // Create b2.com.
-    let app2 = helpers::create_pihole_test_app(pool.clone()).await;
-    let body = serde_json::json!({ "domain": "b2.com" }).to_string();
-    app2.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/domains/deny/exact")
-            .header("content-type", "application/json")
-            .body(Body::from(body))
-            .expect("failed to build request"),
+    let (status, body) = send(
+        &app,
+        with_body(
+            "POST",
+            "/domains:batchDelete",
+            json!([
+                { "item": "b1.com", "type": "deny", "kind": "exact" },
+                { "item": "^b3", "type": "deny", "kind": "regex" }
+            ]),
+        ),
     )
-    .await
-    .expect("request failed");
+    .await;
 
-    // Batch delete both.
-    let app3 = helpers::create_pihole_test_app(pool).await;
-    let delete_body = serde_json::json!({ "items": ["b1.com", "b2.com"] }).to_string();
-    let response = app3
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/domains:batchDelete")
-                .header("content-type", "application/json")
-                .body(Body::from(delete_body))
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    assert_eq!(names(&list(&app, "/domains").await), ["b2.com"]);
+}
 
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+#[tokio::test]
+async fn batch_delete_only_matches_the_given_type_and_kind() {
+    let app = app().await;
+    create(&app, "deny/exact", json!({ "domain": "keep.com" })).await;
+
+    let (status, body) = send(
+        &app,
+        with_body(
+            "POST",
+            "/domains:batchDelete",
+            json!([{ "item": "keep.com", "type": "allow", "kind": "exact" }]),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body, json!({}));
+    assert_eq!(names(&list(&app, "/domains").await), ["keep.com"]);
+}
+
+#[tokio::test]
+async fn batch_delete_without_type_and_kind_is_a_bad_request() {
+    let app = app().await;
+
+    let (status, reply) = send(
+        &app,
+        with_body("POST", "/domains:batchDelete", json!([{ "item": "a.com" }])),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{reply}");
+    assert_eq!(
+        assert_ftl_shape::<ftl::ErrorReply>(&reply).error.key,
+        "bad_request"
+    );
 }
