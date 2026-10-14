@@ -43,6 +43,7 @@ use crate::dto;
         dto::clients::UpdateClientRequest,
         dto::clients::ClientsResponse,
         dto::clients::ClientSuggestionsResponse,
+        dto::dns::BlockingStatus,
         dto::dns::BlockingStatusResponse,
         dto::dns::SetBlockingRequest,
         dto::domains::PiholeDomainEntry,

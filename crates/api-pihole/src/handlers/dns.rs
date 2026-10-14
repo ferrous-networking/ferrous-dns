@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::{
-    dto::dns::{BlockingStatusResponse, SetBlockingRequest},
+    dto::dns::{BlockingStatus, BlockingStatusResponse, SetBlockingRequest},
     errors::PiholeApiError,
     extract::PiholeJson,
     state::{BlockingTimer, PiholeAppState},
@@ -25,30 +25,36 @@ use crate::{
 pub async fn get_blocking(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<BlockingStatusResponse>, PiholeApiError> {
-    let timer = state
-        .blocking
-        .blocking_timer
-        .lock()
-        .await
-        .as_ref()
-        .and_then(remaining_secs);
-    let blocking = state.blocking.block_filter_engine.is_blocking_enabled();
-    Ok(Json(BlockingStatusResponse { blocking, timer }))
+    let slot = state.blocking.blocking_timer.lock().await;
+    Ok(Json(blocking_status(&state, slot.as_ref())))
 }
 
-/// Whole seconds left, rounded up so a pending timer never reads as 0.
-fn remaining_secs(timer: &BlockingTimer) -> Option<u64> {
+fn blocking_status(
+    state: &PiholeAppState,
+    timer: Option<&BlockingTimer>,
+) -> BlockingStatusResponse {
+    BlockingStatusResponse {
+        blocking: BlockingStatus::from_enabled(
+            state.blocking.block_filter_engine.is_blocking_enabled(),
+        ),
+        timer: timer.and_then(remaining_secs),
+    }
+}
+
+/// Seconds left on a pending timer, as FTL reports them (fractional).
+fn remaining_secs(timer: &BlockingTimer) -> Option<f64> {
     let left = timer.deadline.saturating_duration_since(Instant::now());
     if timer.task.is_finished() || left.is_zero() {
         return None;
     }
-    Some(left.as_secs() + u64::from(left.subsec_nanos() > 0))
+    Some(left.as_secs_f64())
 }
 
 /// Pi-hole v6 POST /api/dns/blocking
 ///
 /// Sets the blocking mode. With a `timer` (seconds) the mode flips back once
-/// it elapses. Every request replaces any pending timer.
+/// it elapses. Every request replaces any pending timer. As in FTL, the reply
+/// is the resulting state.
 #[utoipa::path(
     post,
     path = "/dns/blocking",
@@ -64,10 +70,11 @@ pub async fn set_blocking(
     State(state): State<PiholeAppState>,
     PiholeJson(body): PiholeJson<SetBlockingRequest>,
 ) -> Result<Json<BlockingStatusResponse>, PiholeApiError> {
-    let deadline = match body.timer.filter(|&seconds| seconds > 0) {
+    let deadline = match body.timer_secs() {
         Some(seconds) => Some(
-            Instant::now()
-                .checked_add(Duration::from_secs(seconds))
+            Duration::try_from_secs_f64(seconds)
+                .ok()
+                .and_then(|timer| Instant::now().checked_add(timer))
                 .ok_or_else(|| {
                     DomainError::InvalidInput(format!("timer {seconds} is too large"))
                 })?,
@@ -93,8 +100,5 @@ pub async fn set_blocking(
         *slot = Some(BlockingTimer { deadline, task });
     }
 
-    Ok(Json(BlockingStatusResponse {
-        blocking: body.blocking,
-        timer: deadline.and(body.timer),
-    }))
+    Ok(Json(blocking_status(&state, slot.as_ref())))
 }

@@ -28,8 +28,7 @@ async fn get_blocking_returns_status() {
     let body = resp.into_body().collect().await.expect("body").to_bytes();
     let json: Value = serde_json::from_slice(&body).expect("json");
 
-    assert!(json["blocking"].is_boolean());
-    assert!(json["blocking"].as_bool().unwrap());
+    assert_eq!(json["blocking"], "enabled");
 }
 
 #[tokio::test]
@@ -92,9 +91,11 @@ async fn get_status(app: &axum::Router) -> Value {
 }
 
 async fn blocking_enabled(app: &axum::Router) -> bool {
-    get_status(app).await["blocking"]
-        .as_bool()
-        .expect("blocking must be a bool")
+    match get_status(app).await["blocking"].as_str() {
+        Some("enabled") => true,
+        Some("disabled") => false,
+        other => panic!("blocking must be enabled or disabled, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -125,7 +126,7 @@ async fn disable_with_timer_re_enables_blocking_when_it_expires() {
     tokio::time::pause();
 
     let reply = post_blocking(&app, r#"{"blocking":false,"timer":60}"#).await;
-    assert_eq!(reply["timer"], 60);
+    assert_eq!(reply["timer"].as_f64(), Some(60.0));
     // Let the spawned timer task arm its sleep before the clock moves.
     tokio::task::yield_now().await;
 
@@ -149,15 +150,15 @@ async fn get_reports_the_seconds_left_on_a_pending_timer() {
 
     post_blocking(&app, r#"{"blocking":false,"timer":60}"#).await;
     let status = get_status(&app).await;
-    assert_eq!(status["blocking"], false);
-    let left = status["timer"].as_u64().expect("timer must be a number");
+    assert_eq!(status["blocking"], "disabled");
+    let left = status["timer"].as_f64().expect("timer must be a number");
     assert!(
-        (1..=60).contains(&left),
+        left > 0.0 && left <= 60.0,
         "timer {left} must be within (0, 60]"
     );
 
     tokio::time::advance(std::time::Duration::from_secs(20)).await;
-    assert_eq!(get_status(&app).await["timer"], 40);
+    assert_eq!(get_status(&app).await["timer"].as_f64(), Some(40.0));
 }
 
 #[tokio::test]
@@ -168,7 +169,7 @@ async fn enable_with_timer_disables_blocking_when_it_expires() {
 
     post_blocking(&app, r#"{"blocking":false}"#).await;
     let reply = post_blocking(&app, r#"{"blocking":true,"timer":5}"#).await;
-    assert_eq!(reply["timer"], 5);
+    assert_eq!(reply["timer"].as_f64(), Some(5.0));
     assert!(
         blocking_enabled(&app).await,
         "enabled until the timer fires"
