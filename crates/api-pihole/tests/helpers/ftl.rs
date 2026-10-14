@@ -1705,6 +1705,123 @@ pub struct PaddSensors {
 }
 
 // ---------------------------------------------------------------------------
+// /network
+// ---------------------------------------------------------------------------
+
+/// `GET /network/gateway` — network.c:35-118 (get_gateway, not detailed).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkGateway {
+    pub gateway: Vec<GatewayEntry>,
+    pub took: Option<f64>,
+}
+
+/// `gateway[]` — network.c:58-99.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GatewayEntry {
+    pub family: String,
+    // C: JSON_COPY_STR_TO_OBJECT sends null for a route without one.
+    #[serde(deserialize_with = "required_nullable")]
+    pub interface: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub address: Option<String>,
+    pub local: Vec<String>,
+}
+
+/// `GET /network/routes` — network.c:131-145, netlink.c:179-446.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkRoutes {
+    pub routes: Vec<Route>,
+    pub took: Option<f64>,
+}
+
+/// `routes[]` — netlink.c nlparsemsg_route without `detailed`: the first six
+/// keys and `dst` are always there, the rest only with their attribute.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    pub table: u32,
+    pub family: String,
+    pub protocol: String,
+    pub scope: String,
+    #[serde(rename = "type")]
+    pub route_type: String,
+    pub flags: Vec<String>,
+    pub dst: String,
+    pub src: Option<String>,
+    pub gateway: Option<String>,
+    pub prefsrc: Option<String>,
+    pub newdst: Option<String>,
+    pub via: Option<String>,
+    pub oif: Option<String>,
+    pub iif: Option<String>,
+    pub priority: Option<u32>,
+    pub pref: Option<u8>,
+}
+
+/// `GET /network/interfaces` — network.c:147-162, netlink.c nllinks + nladdrs.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkInterfaces {
+    pub interfaces: Vec<NetworkInterface>,
+    pub took: Option<f64>,
+}
+
+/// `interfaces[]` — netlink.c:679-1330 (nlparsemsg_link, not detailed).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkInterface {
+    pub name: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub speed: Option<i64>,
+    #[serde(rename = "type")]
+    pub link_type: Option<String>,
+    pub flags: Vec<String>,
+    pub state: Option<String>,
+    pub carrier: Option<bool>,
+    pub proto_down: Option<bool>,
+    pub address: Option<String>,
+    pub broadcast: Option<String>,
+    pub perm_address: Option<String>,
+    pub stats: Option<InterfaceStats>,
+    pub addresses: Option<Vec<InterfaceAddress>>,
+}
+
+/// `interfaces[].stats` — netlink.c:950-974 (stats64; YAML lacks `bits`).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterfaceStats {
+    pub rx_bytes: PaddByteCount,
+    pub tx_bytes: PaddByteCount,
+    pub bits: u8,
+}
+
+/// `interfaces[].addresses[]` — netlink.c:448-677 (nlparsemsg_address).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterfaceAddress {
+    pub family: String,
+    pub scope: String,
+    pub flags: Vec<String>,
+    pub prefixlen: u8,
+    pub address: Option<String>,
+    pub address_type: Option<String>,
+    pub local: Option<String>,
+    pub local_type: Option<String>,
+    pub broadcast: Option<String>,
+    pub broadcast_type: Option<String>,
+    pub anycast: Option<String>,
+    pub anycast_type: Option<String>,
+    pub label: Option<String>,
+    pub prefered: Option<u64>,
+    pub valid: Option<u64>,
+    pub cstamp: Option<f64>,
+    pub tstamp: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
 // /endpoints
 // ---------------------------------------------------------------------------
 
