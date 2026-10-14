@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::{
+    crud::unix_seconds,
     dto::queries::{blocked_status, upstream_port},
     dto::stats::{
         ClientSummary, DatabaseSummaryResponse, DatabaseTopClientEntry, DatabaseTopClientsResponse,
@@ -144,7 +145,12 @@ pub(crate) async fn summary(
     state: &PiholeAppState,
     period: f32,
 ) -> Result<SummaryResponse, DomainError> {
-    let stats = state.query.get_stats.execute(period).await?;
+    let (stats, blocklists, allowlists, clients) = tokio::try_join!(
+        state.query.get_stats.execute(period),
+        state.lists.get_blocklist_sources.get_all(),
+        state.lists.get_whitelist_sources.get_all(),
+        state.clients.get_clients.get_stats(),
+    )?;
 
     let total = stats.queries_total;
     let blocked = stats.queries_blocked;
@@ -176,6 +182,15 @@ pub(crate) async fn summary(
     }
 
     let domains_being_blocked = state.blocking.block_filter_engine.compiled_domain_count() as u64;
+    // FTL reports when gravity last ran. Each list is stamped when it is
+    // downloaded, so the newest stamp is the last run that fetched one.
+    let last_update = blocklists
+        .iter()
+        .map(|list| list.last_synced_at.as_deref())
+        .chain(allowlists.iter().map(|list| list.last_synced_at.as_deref()))
+        .map(unix_seconds)
+        .max()
+        .unwrap_or(0);
 
     Ok(SummaryResponse {
         queries: QuerySummary {
@@ -192,11 +207,11 @@ pub(crate) async fn summary(
         },
         clients: ClientSummary {
             active: stats.unique_clients,
-            total: stats.unique_clients,
+            total: clients.total_clients,
         },
         gravity: GravitySummary {
             domains_being_blocked,
-            last_update: 0,
+            last_update,
         },
     })
 }
