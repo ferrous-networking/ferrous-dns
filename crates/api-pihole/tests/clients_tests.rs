@@ -184,6 +184,28 @@ async fn a_subnet_client_is_stored_with_its_group_and_comment() {
 }
 
 #[tokio::test]
+async fn an_address_client_keeps_its_comment() {
+    let app = app().await;
+
+    let created = create(&app, json!({ "client": "10.0.0.30", "comment": "printer" })).await;
+    assert_eq!(created.clients[0].comment.as_deref(), Some("printer"));
+    assert_eq!(
+        list(&app, "/clients/10.0.0.30").await[0].comment.as_deref(),
+        Some("printer")
+    );
+
+    // api_list.c: a write without a comment stores none.
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/clients/10.0.0.30", json!({ "groups": [0] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    let reply = assert_ftl_shape::<ftl::ClientsWriteReply>(&reply);
+    assert_eq!(reply.clients[0].comment, None);
+}
+
+#[tokio::test]
 async fn put_updates_a_subnet_and_delete_removes_it() {
     let app = app().await;
     create(&app, json!({ "client": "10.9.0.0/24", "comment": "lab" })).await;
