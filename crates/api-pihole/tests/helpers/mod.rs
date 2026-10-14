@@ -443,6 +443,7 @@ async fn build_pihole_state(
             config: Arc::new(RwLock::new(config)),
             reload_config: None,
             process_start: std::time::Instant::now(),
+            https_port: 0,
         },
         auth: auth::build_auth_state(totp_enrolled).await,
     }

@@ -92,16 +92,6 @@ async fn async_main() -> anyhow::Result<()> {
         wiring::build_auth_services(&repos, config_arc.clone(), effective_config_path.as_deref())
             .await;
 
-    let pihole_state = config.server.pihole_compat.then(|| {
-        wiring::build_pihole_state(
-            &use_cases,
-            &auth,
-            repos.block_filter_engine.clone(),
-            config_arc.clone(),
-            config_services.reload.clone(),
-        )
-    });
-
     // The session cookie's `Secure` flag must follow the transport actually in
     // use, so the web TLS material is loaded before the state is built: with
     // `enabled = true` and no certificate on disk the server falls back to
@@ -116,6 +106,18 @@ async fn async_main() -> anyhow::Result<()> {
     } else {
         None
     };
+
+    // Pi-hole's `https_port` follows the same live transport.
+    let pihole_state = config.server.pihole_compat.then(|| {
+        wiring::build_pihole_state(
+            &use_cases,
+            &auth,
+            repos.block_filter_engine.clone(),
+            config_arc.clone(),
+            config_services.reload.clone(),
+            web_tls_config.as_ref().map_or(0, |_| config.server.web_port),
+        )
+    });
 
     let udp_fallback_shed = shed.udp_fallback.clone();
     let app_state = wiring::build_app_state(

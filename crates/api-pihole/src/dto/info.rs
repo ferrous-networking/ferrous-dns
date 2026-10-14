@@ -1,6 +1,15 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
+/// Pi-hole v6 GET /api/info/login response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LoginInfoResponse {
+    /// Whether the DNS server is up; FTL reports false only after a failure.
+    pub dns: bool,
+    /// HTTPS port of the web server, 0 when it serves plain HTTP.
+    pub https_port: u16,
+}
+
 /// Pi-hole v6 GET /api/info/version response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct VersionResponse {

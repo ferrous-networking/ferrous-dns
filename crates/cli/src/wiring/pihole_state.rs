@@ -16,12 +16,15 @@ use super::UseCases;
 
 /// Constructs [`PiholeAppState`] by reusing the `Arc` use cases already
 /// wired for the Ferrous dashboard API — zero duplication of business logic.
+/// `https_port` is the port serving HTTPS, or 0 when the web server runs
+/// plain HTTP.
 pub fn build_pihole_state(
     use_cases: &UseCases,
     auth: &AuthServices,
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     config: Arc<RwLock<Config>>,
     reload_config: Option<Arc<ReloadConfigUseCase>>,
+    https_port: u16,
 ) -> PiholeAppState {
     PiholeAppState {
         query: PiholeQueryState {
@@ -71,6 +74,7 @@ pub fn build_pihole_state(
             config,
             reload_config,
             process_start: std::time::Instant::now(),
+            https_port,
         },
         auth: PiholeAuthState {
             login: auth.use_cases.login.clone(),

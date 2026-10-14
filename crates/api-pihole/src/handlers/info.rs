@@ -4,13 +4,34 @@ use axum::Json;
 use crate::{
     dto::info::{
         DatabaseInfoResponse, DiskInfo, FtlDatabaseInfo, FtlInfoResponse, HostInfoResponse,
-        MemoryInfo, SystemInfoResponse, VersionResponse,
+        LoginInfoResponse, MemoryInfo, SystemInfoResponse, VersionResponse,
     },
     errors::PiholeApiError,
     state::PiholeAppState,
 };
 
 use super::stats::STATS_PERIOD_HOURS;
+
+/// Pi-hole v6 GET /api/info/login
+///
+/// Public, as in FTL: clients such as Homarr probe it to tell Pi-hole v6
+/// from v5, which has no such route. Ferrous does not track a failed DNS
+/// listener, so `dns` is always true.
+#[utoipa::path(
+    get,
+    path = "/info/login",
+    tag = "pihole:info",
+    responses(
+        (status = 200, description = "Login page info", body = LoginInfoResponse)
+    ),
+    security()
+)]
+pub async fn get_login_info(State(state): State<PiholeAppState>) -> Json<LoginInfoResponse> {
+    Json(LoginInfoResponse {
+        dns: true,
+        https_port: state.system.https_port,
+    })
+}
 
 /// Pi-hole v6 GET /api/info/version
 #[utoipa::path(

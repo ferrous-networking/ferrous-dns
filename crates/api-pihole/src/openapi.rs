@@ -55,6 +55,7 @@ use crate::dto;
         dto::groups::GroupsResponse,
         dto::history::HistoryClientsResponse,
         dto::history::ClientHistoryEntry,
+        dto::info::LoginInfoResponse,
         dto::info::VersionResponse,
         dto::info::FtlInfoResponse,
         dto::info::FtlDatabaseInfo,

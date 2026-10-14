@@ -13,18 +13,20 @@ use crate::{
 /// Pi-hole dashboards, plugins, and automations work without modification;
 /// expose the spec under the same `nest` prefix (e.g. `/openapi.json` + `/docs`).
 ///
-/// As on Pi-hole, only `/auth` is public; every other route sits behind
-/// [`require_pihole_auth`].
+/// As on Pi-hole, only `/auth` and `/info/login` are public; every other
+/// route sits behind [`require_pihole_auth`].
 pub fn create_pihole_router_with_openapi(
     state: PiholeAppState,
 ) -> (Router, utoipa::openapi::OpenApi) {
     use utoipa::OpenApi;
 
-    let public_routes = OpenApiRouter::new().routes(routes!(
-        handlers::auth::get_session,
-        handlers::auth::login,
-        handlers::auth::logout
-    ));
+    let public_routes = OpenApiRouter::new()
+        .routes(routes!(
+            handlers::auth::get_session,
+            handlers::auth::login,
+            handlers::auth::logout
+        ))
+        .routes(routes!(handlers::info::get_login_info));
 
     let protected_routes = OpenApiRouter::new()
         .routes(routes!(handlers::stats::get_summary))

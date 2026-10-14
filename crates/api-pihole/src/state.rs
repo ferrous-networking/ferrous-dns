@@ -121,4 +121,7 @@ pub struct PiholeSystemState {
     /// Absent when the server runs without a config file.
     pub reload_config: Option<Arc<ReloadConfigUseCase>>,
     pub process_start: std::time::Instant,
+    /// Port the web server serves HTTPS on, or 0 for plain HTTP. Follows the
+    /// TLS material that actually loaded, never `[server.web_tls] enabled`.
+    pub https_port: u16,
 }
