@@ -1177,72 +1177,79 @@ DELETE /api/groups/{id}/schedule
 When `pihole_compat = true`, the Pi-hole v6 endpoints below are available at
 `/api/*` (and the native API moves to `/ferrous/api/*`). The compatibility layer
 is **not read-only** — it implements full CRUD for domains, lists, groups and
-clients, a blocking toggle, and the Pi-hole action endpoints.
+clients, a blocking toggle, and the Pi-hole action endpoints. Every route answers
+with the response shapes and types of Pi-hole's FTL, and request bodies are read
+as JSON whatever their `Content-Type`.
 
-With `[auth]` enabled, every endpoint except `/api/auth` needs the `sid` from
-`POST /api/auth` in an `X-FTL-SID` header (or a `sid` header, or `?sid=`); the
-native `X-Api-Key` header is not read here — send an API token as the password
-instead. See [Pi-hole Compatibility > Authentication](features/pihole-compat.md#authentication).
+With `[auth]` enabled, every endpoint except `/api/auth` and `/api/info/login`
+needs the `sid` from `POST /api/auth` in an `X-FTL-SID` header (or a `sid`
+header, or `?sid=`); the native `X-Api-Key` header is not read here — send an
+API token as the password instead. See [Pi-hole Compatibility > Authentication](features/pihole-compat.md#authentication).
 
 **Auth & session**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/auth` | Pi-hole v6 login (session-based) |
-| `GET` | `/api/auth` | Session status |
+| `POST` | `/api/auth` | Pi-hole v6 login (session-based). Public |
+| `GET` | `/api/auth` | Session status; `401` with the session object without a valid session. Public |
 | `DELETE` | `/api/auth` | Logout |
+| `GET` | `/api/info/login` | `{"dns": true, "https_port": N}` (`0` on plain HTTP). Public |
 
 **Stats & history**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/stats/summary` | Dashboard summary stats |
-| `GET` | `/api/stats/history` | Query history timeline (also at `/api/history`) |
-| `GET` | `/api/stats/top_blocked` | Top blocked domains |
-| `GET` | `/api/stats/top_clients` | Top querying clients |
-| `GET` | `/api/stats/top_domains` | Top allowed domains (`?blocked=true` for blocked) |
-| `GET` | `/api/stats/query_types` | Query type distribution |
-| `GET` | `/api/stats/upstreams` | Upstream usage |
-| `GET` | `/api/stats/recent_blocked` | Most recently blocked domain |
-| `GET` | `/api/history/clients` | Per-client query totals (last 24 h) |
-
-Several of these are mirrored under `/api/stats/database/*` for Pi-hole clients.
+| `GET` | `/api/stats/summary` | Dashboard summary stats, with `types`, `status` and `replies` counters |
+| `GET` | `/api/history` | Query timeline, 145 ten-minute buckets (also at `/api/stats/history`) |
+| `GET` | `/api/history/clients` | Per-client series in the same buckets (`N`, default 10) |
+| `GET` | `/api/stats/top_domains` | Top allowed domains (`?blocked=true` for blocked); `count` (default 10) |
+| `GET` | `/api/stats/top_blocked` | Top blocked domains; `count` |
+| `GET` | `/api/stats/top_clients` | Top clients (`?blocked=true` ranks by blocked queries); `count` |
+| `GET` | `/api/stats/query_types` | Query count per type |
+| `GET` | `/api/stats/upstreams` | Array of answer sources: `blocklist`, `cache`, then each upstream |
+| `GET` | `/api/stats/recent_blocked` | Most recently blocked domains; `count` (default 1) |
+| `GET` | `/api/stats/database/summary` | Long-term summary; Unix `from` and `until` required |
+| `GET` | `/api/stats/database/top_domains` | Long-term top domains; Unix `from` and `until` required |
+| `GET` | `/api/stats/database/top_clients` | Long-term top clients; Unix `from` and `until` required |
+| `GET` | `/api/stats/database/upstreams` | Long-term upstream usage; Unix `from` and `until` required |
+| `GET` | `/api/stats/database/query_types` | Long-term query type counts; Unix `from` and `until` required |
 
 **Queries & search**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/queries` | Paginated query log (filters: domain, client, status, …) |
-| `GET` | `/api/queries/suggestions` | Filter suggestions |
-| `GET` | `/api/search/{domain}` | Check if a domain would be blocked |
+| `GET` | `/api/queries` | Query log (filters: `from`, `domain`, `client_ip`, `client_name`, `upstream`, `type`, `status`, `dnssec`, …; paging: `length`, `start`, `cursor`) |
+| `GET` | `/api/queries/suggestions` | Filter values (`count`, default 30) |
+| `GET` | `/api/search/{domain}` | Domain-list entries, regex filters and blocklists that hold the domain (`partial`, `N`) |
 
 **DNS blocking toggle**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/dns/blocking` | Current blocking status (`timer`: seconds left, or `null`) |
-| `POST` | `/api/dns/blocking` | Set blocking (optional `timer`: flip back after N seconds) |
+| `GET` | `/api/dns/blocking` | `blocking`: `"enabled"` or `"disabled"`; `timer`: seconds left, or `null` |
+| `POST` | `/api/dns/blocking` | Set blocking (optional `timer`: flip back after N seconds, fractions accepted) |
 
 **Domains (CRUD)**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/domains` | List all domains |
-| `GET` | `/api/domains/{type}` | List by type (`allow`/`deny`) |
+| `GET` | `/api/domains/{type}` | List by type (`allow`/`deny`) or kind (`exact`/`regex`) |
 | `GET` | `/api/domains/{type}/{kind}` | List by type and kind (`exact`/`regex`) |
-| `POST` | `/api/domains/{type}/{kind}` | Create a domain |
-| `PUT` | `/api/domains/{type}/{kind}/{domain}` | Update a domain |
+| `GET` | `/api/domains/{type}/{kind}/{domain}` | Get one domain |
+| `POST` | `/api/domains/{type}/{kind}` | Add one domain or several |
+| `PUT` | `/api/domains/{type}/{kind}/{domain}` | Replace or create a domain |
 | `DELETE` | `/api/domains/{type}/{kind}/{domain}` | Delete a domain |
-| `POST` | `/api/domains:batchDelete` | Batch delete |
+| `POST` | `/api/domains:batchDelete` | Batch delete (`[{item, type, kind}]`) |
 
 **Lists / adlists (CRUD)**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/lists` | List adlists (optional `?type=allow\|block`) |
-| `POST` | `/api/lists?type=allow\|block` | Create an adlist |
+| `POST` | `/api/lists?type=allow\|block` | Add one adlist or several |
 | `GET` | `/api/lists/{list}` | Lists with this address or id (optional `?type=`) |
-| `PUT` | `/api/lists/{list}?type=allow\|block` | Update an adlist |
+| `PUT` | `/api/lists/{list}?type=allow\|block` | Replace or create an adlist |
 | `DELETE` | `/api/lists/{list}?type=allow\|block` | Delete an adlist |
 | `POST` | `/api/lists:batchDelete` | Batch delete (`[{item, type}]`) |
 
@@ -1251,39 +1258,48 @@ Several of these are mirrored under `/api/stats/database/*` for Pi-hole clients.
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/groups` | List groups |
-| `POST` | `/api/groups` | Create a group |
+| `POST` | `/api/groups` | Add one group or several |
 | `GET` | `/api/groups/{name}` | Get a group |
-| `PUT` | `/api/groups/{name}` | Update a group |
+| `PUT` | `/api/groups/{name}` | Replace, create or rename a group |
 | `DELETE` | `/api/groups/{name}` | Delete a group |
-| `POST` | `/api/groups:batchDelete` | Batch delete |
+| `POST` | `/api/groups:batchDelete` | Batch delete (`[{item}]`) |
 
 **Clients (CRUD)**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/clients` | List clients (`limit`, `offset`) |
-| `POST` | `/api/clients` | Create a client |
-| `GET` | `/api/clients/_suggestions` | IP/hostname suggestions |
-| `PUT` | `/api/clients/{client}` | Update a client (by IP) |
+| `GET` | `/api/clients` | List clients |
+| `POST` | `/api/clients` | Add one client or several (by IP) |
+| `GET` | `/api/clients/{client}` | Get a client (by IP) |
+| `GET` | `/api/clients/_suggestions` | Devices the resolver has seen (`count`, default 50) |
+| `PUT` | `/api/clients/{client}` | Update or create a client (by IP) |
 | `DELETE` | `/api/clients/{client}` | Delete a client (by IP) |
-| `POST` | `/api/clients:batchDelete` | Batch delete |
+| `POST` | `/api/clients:batchDelete` | Batch delete (`[{item}]`) |
 
 **Info**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/info/version` | Version info |
-| `GET` | `/api/info/ftl` | FTL daemon info |
-| `GET` | `/api/info/system` | Host system info |
-| `GET` | `/api/info/host` | Host hostname |
-| `GET` | `/api/info/database` | Query database info |
+| `GET` | `/api/info/version` | Version of each component (`core`, `web`, `ftl`, `docker`) |
+| `GET` | `/api/info/ftl` | Resolver process info and counts |
+| `GET` | `/api/info/system` | Host uptime, memory (kB), processes and load |
+| `GET` | `/api/info/host` | Kernel `uname`, device model and DMI identifiers |
+| `GET` | `/api/info/database` | Database file and stored query counts |
+
+**PADD and endpoint list**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/padd` | One-call summary for PADD (`full`, default true) |
+| `GET` | `/api/endpoints` | Every documented route by HTTP method |
 
 **Actions**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `POST` | `/api/action/gravity` | Trigger a blocklist (gravity) reload |
+| `POST` | `/api/action/gravity` | Reload the blocklists, streaming `text/plain` progress like `pihole -g` |
 | `POST` | `/api/action/restartdns` | Reload configuration in-memory |
-| `POST` | `/api/action/flush/logs` | Clean up old query logs |
+| `POST` | `/api/action/flush/logs` | Delete every stored query |
 
-See [Pi-hole Compatibility](features/pihole-compat.md) for details.
+See [Pi-hole Compatibility](features/pihole-compat.md) for details, the reply
+shapes that changed in v0.9.23, and the [limitations](features/pihole-compat.md#limitations).
