@@ -73,6 +73,14 @@ pub fn create_pihole_router_with_openapi(
             handlers::lists::update_list,
             handlers::lists::delete_list
         ))
+        // FTL takes the rest of the URI as a list address, slashes and all.
+        // The route stays out of the spec, which documents it as `{list}`.
+        .route(
+            "/lists/{list}/{*rest}",
+            axum::routing::get(handlers::lists::get_list)
+                .put(handlers::lists::update_list)
+                .delete(handlers::lists::delete_list),
+        )
         .routes(routes!(handlers::lists::batch_delete))
         .routes(routes!(
             handlers::groups::list_all,
@@ -90,9 +98,17 @@ pub fn create_pihole_router_with_openapi(
         ))
         .routes(routes!(handlers::clients::suggestions))
         .routes(routes!(
+            handlers::clients::get_client,
             handlers::clients::update_client,
             handlers::clients::delete_client
         ))
+        // The same for a client subnet such as 10.0.0.0/24.
+        .route(
+            "/clients/{client}/{*rest}",
+            axum::routing::get(handlers::clients::get_client)
+                .put(handlers::clients::update_client)
+                .delete(handlers::clients::delete_client),
+        )
         .routes(routes!(handlers::clients::batch_delete))
         .routes(routes!(handlers::info::get_version))
         .routes(routes!(handlers::info::get_ftl_info))

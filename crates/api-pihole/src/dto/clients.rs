@@ -1,33 +1,43 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::dto::crud::{Processed, StringOrArray};
+
 /// Pi-hole v6 client entry.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeClientEntry {
-    pub id: i64,
-    pub ip: String,
+    /// The client's IP address.
+    pub client: String,
+    /// Its hostname; empty when unknown, as FTL sends it.
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Always null: Ferrous keeps no comment for a client.
     pub comment: Option<String>,
+    /// FTL group ids; the default group is 0, and an empty list means none
+    /// was assigned.
     pub groups: Vec<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub date_added: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub date_modified: Option<String>,
+    pub id: i64,
+    /// Unix seconds: when the client was added or first seen.
+    pub date_added: i64,
+    /// Unix seconds: its last change, which includes its last query.
+    pub date_modified: i64,
 }
 
-/// Pi-hole v6 POST /api/clients request.
+/// Pi-hole v6 POST /api/clients request. A `comment` is accepted and not
+/// stored.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateClientRequest {
-    pub ip: String,
-    pub comment: Option<String>,
+    /// One IP address, or an array of them.
+    pub client: Option<StringOrArray>,
+    /// FTL group ids; only the first is assigned.
     pub groups: Option<Vec<i64>>,
 }
 
-/// Pi-hole v6 PUT /api/clients/:client request.
+/// Pi-hole v6 PUT /api/clients/:client request. A `comment` is accepted and
+/// not stored.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateClientRequest {
-    pub comment: Option<String>,
+    /// FTL group ids; only the first is assigned, and the group stays as it
+    /// is when omitted.
     pub groups: Option<Vec<i64>>,
 }
 
@@ -37,14 +47,38 @@ pub struct ClientsResponse {
     pub clients: Vec<PiholeClientEntry>,
 }
 
+/// Pi-hole v6 POST/PUT client response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClientsWriteResponse {
+    pub clients: Vec<PiholeClientEntry>,
+    pub processed: Processed,
+}
+
+/// `?count=` of GET /api/clients/_suggestions.
+#[derive(Debug, Deserialize)]
+pub struct ClientSuggestionsQuery {
+    pub count: Option<u32>,
+}
+
 /// Pi-hole v6 GET /api/clients/_suggestions response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ClientSuggestionsResponse {
-    pub suggestions: Vec<String>,
+    pub clients: Vec<ClientSuggestion>,
 }
 
-/// Pi-hole v6 batch delete request.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct BatchDeleteRequest {
-    pub items: Vec<String>,
+/// One device the resolver has seen, as FTL's network table describes it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ClientSuggestion {
+    /// MAC address, or FTL's `ip-<address>` when none is known.
+    pub hwaddr: Option<String>,
+    /// Always null: Ferrous has no vendor database.
+    #[serde(rename = "macVendor")]
+    pub mac_vendor: Option<String>,
+    /// Unix seconds of the device's last query.
+    #[serde(rename = "lastQuery")]
+    pub last_query: i64,
+    /// Comma-separated IP addresses.
+    pub addresses: Option<String>,
+    /// Comma-separated hostnames, if any are known.
+    pub names: Option<String>,
 }

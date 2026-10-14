@@ -48,6 +48,11 @@ pub(crate) fn from_ftl_group_id(id: i64) -> i64 {
     }
 }
 
+/// FTL group ids as Ferrous numbers them, for entries that keep several.
+pub(crate) fn from_ftl_group_ids(ids: Vec<i64>) -> Vec<i64> {
+    ids.into_iter().map(from_ftl_group_id).collect()
+}
+
 /// The group a write assigns. Ferrous keeps one group per entry, so only
 /// the first of FTL's `groups` array is used.
 pub(crate) fn first_group(groups: Option<&[i64]>) -> Option<i64> {

@@ -1,7 +1,7 @@
 use axum::{
     body::Bytes,
-    extract::{FromRequest, Request},
-    http::StatusCode,
+    extract::{FromRequest, FromRequestParts, Path, Request},
+    http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::de::DeserializeOwned;
@@ -45,4 +45,24 @@ where
 
 fn bad_request(message: &str, hint: Option<&str>) -> Response {
     pihole_error_response(StatusCode::BAD_REQUEST, "bad_request", message, hint)
+}
+
+/// The item a URI names. FTL takes the rest of the URI as the last
+/// parameter, so a list address or a client subnet keeps its slashes: the
+/// router also matches `{item}/{*rest}`, and the pieces are joined back here.
+pub struct UriItem(pub String);
+
+impl<S> FromRequestParts<S> for UriItem
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Path(params) = Path::<Vec<(String, String)>>::from_request_parts(parts, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let segments: Vec<String> = params.into_iter().map(|(_, value)| value).collect();
+        Ok(Self(segments.join("/")))
+    }
 }

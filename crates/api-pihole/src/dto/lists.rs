@@ -1,7 +1,7 @@
-use ferrous_dns_domain::DomainError;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use utoipa::ToSchema;
+
+use crate::dto::crud::{Processed, StringOrArray};
 
 /// Pi-hole v6 list type. Blocklist and allowlist sources live in separate
 /// tables, so a list is only identified by its address together with its type.
@@ -12,19 +12,15 @@ pub enum ListType {
     Block,
 }
 
-impl FromStr for ListType {
-    type Err = DomainError;
-
+impl ListType {
     /// Case-insensitive, as in Pi-hole FTL.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    pub fn parse(s: &str) -> Option<Self> {
         if s.eq_ignore_ascii_case("allow") {
-            Ok(Self::Allow)
+            Some(Self::Allow)
         } else if s.eq_ignore_ascii_case("block") {
-            Ok(Self::Block)
+            Some(Self::Block)
         } else {
-            Err(DomainError::InvalidInput(format!(
-                "Invalid list type {s:?} (should be either \"allow\" or \"block\")"
-            )))
+            None
         }
     }
 }
@@ -39,32 +35,44 @@ pub struct ListTypeQuery {
 /// Pi-hole v6 adlist/list entry.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PiholeListEntry {
-    pub id: i64,
     pub address: String,
-    pub enabled: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
-    pub r#type: ListType,
+    /// FTL group ids; the default group is 0.
     pub groups: Vec<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub date_added: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub date_modified: Option<String>,
+    pub enabled: bool,
+    /// Database id, unique only within one list type.
+    pub id: i64,
+    /// Unix seconds.
+    pub date_added: i64,
+    /// Unix seconds.
+    pub date_modified: i64,
+    pub r#type: ListType,
+    /// Unix seconds of the last successful download; 0 when never.
+    pub date_updated: i64,
+    /// Always 0: Ferrous does not count the domains of a list.
     pub number: u64,
-    pub status: u8,
+    /// Always 0, as `number`.
+    pub invalid_domains: u64,
+    /// Always 0, as `number`.
+    pub abp_entries: u64,
+    /// FTL's list status: 1 once a download has succeeded, else 0 (unknown).
+    pub status: i64,
 }
 
 /// Pi-hole v6 POST /api/lists request; the type comes from `?type=`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateListRequest {
-    pub address: String,
+    /// One list URL, or an array of them.
+    pub address: Option<StringOrArray>,
     pub comment: Option<String>,
+    /// FTL group ids; the default group when omitted.
     pub groups: Option<Vec<i64>>,
     pub enabled: Option<bool>,
 }
 
 /// Pi-hole v6 PUT /api/lists/{list} request; the list comes from the path
-/// and `?type=`.
+/// and `?type=`. The list is replaced: an omitted `comment` is cleared and
+/// `enabled` defaults to true, while omitted `groups` stay as they are.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateListRequest {
     pub comment: Option<String>,
@@ -72,17 +80,15 @@ pub struct UpdateListRequest {
     pub enabled: Option<bool>,
 }
 
-/// One entry of the Pi-hole v6 POST /api/lists:batchDelete body.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ListBatchDeleteItem {
-    /// List address (or numeric id).
-    pub item: String,
-    /// `allow` or `block`
-    pub r#type: String,
-}
-
-/// Pi-hole v6 list response envelope.
+/// Pi-hole v6 lists response.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ListsResponse {
     pub lists: Vec<PiholeListEntry>,
+}
+
+/// Pi-hole v6 POST/PUT list response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ListsWriteResponse {
+    pub lists: Vec<PiholeListEntry>,
+    pub processed: Processed,
 }
