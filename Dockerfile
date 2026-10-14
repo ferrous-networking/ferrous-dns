@@ -1,9 +1,12 @@
 FROM rust:1.98-alpine AS builder
 
+# perl and make build the OpenSSL that the `vendored` feature compiles into the binary.
 RUN apk add --no-cache \
+    make \
     musl-dev \
     openssl-dev \
     openssl-libs-static \
+    perl \
     pkgconfig
 
 WORKDIR /app
@@ -13,6 +16,8 @@ COPY crates/cli/Cargo.toml ./crates/cli/
 COPY crates/domain/Cargo.toml ./crates/domain/
 COPY crates/application/Cargo.toml ./crates/application/
 COPY crates/infrastructure/Cargo.toml ./crates/infrastructure/
+# Cargo refuses a manifest whose [[bench]] files are missing, even when it builds no benches.
+COPY crates/infrastructure/benches/ ./crates/infrastructure/benches/
 COPY crates/jobs/Cargo.toml ./crates/jobs/
 COPY crates/api/Cargo.toml ./crates/api/
 COPY crates/api-pihole/Cargo.toml ./crates/api-pihole/
