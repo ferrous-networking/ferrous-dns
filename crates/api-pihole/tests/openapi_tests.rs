@@ -13,12 +13,14 @@ async fn served_spec_documents_routes_but_not_aliases() {
         "/stats/database/summary",
         "/dns/blocking",
         "/domains/{type}/{kind}",
+        // FTL's route; /stats/history is only a Ferrous alias.
+        "/history",
     ] {
         assert!(paths.contains_key(documented), "missing path {documented}");
     }
     assert!(
-        !paths.contains_key("/history"),
-        "alias /history must stay undocumented"
+        !paths.contains_key("/stats/history"),
+        "alias /stats/history must stay undocumented"
     );
 }
 
