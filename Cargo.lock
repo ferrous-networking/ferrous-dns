@@ -1093,6 +1093,7 @@ dependencies = [
  "ferrous-dns-application",
  "ferrous-dns-domain",
  "ferrous-dns-infrastructure",
+ "futures",
  "http-body-util",
  "libc",
  "serde",
