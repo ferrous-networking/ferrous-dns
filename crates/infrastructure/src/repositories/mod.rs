@@ -71,6 +71,12 @@ pub(crate) fn seconds_ago_cutoff(seconds: i64) -> String {
     ms_ago_cutoff(seconds.saturating_mul(1000))
 }
 
+/// A Unix time as a cutoff, or `None` past chrono's range, where it bounds
+/// nothing a stored row could hold.
+pub(crate) fn unix_cutoff(seconds: i64) -> Option<String> {
+    DateTime::<Utc>::from_timestamp(seconds, 0).map(sql_ts)
+}
+
 /// `map_err` adapter: logs `ctx` with the sqlx error and yields `DomainError::DatabaseError`.
 pub(crate) fn db_err(ctx: &'static str) -> impl FnOnce(sqlx::Error) -> DomainError {
     move |e| {

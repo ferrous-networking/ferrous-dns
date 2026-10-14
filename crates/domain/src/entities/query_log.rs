@@ -29,6 +29,10 @@ pub struct QueryLogFilter {
     pub dns64_synthesized: Option<bool>,
     /// Exact match on the transport the client used to reach the resolver.
     pub protocol: Option<ClientProtocol>,
+    /// Only queries logged before this Unix time.
+    pub until: Option<i64>,
+    /// Record types left out.
+    pub excluded_record_types: Vec<RecordType>,
 }
 
 /// Category filter for query log pagination.

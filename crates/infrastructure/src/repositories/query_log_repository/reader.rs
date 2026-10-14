@@ -1,6 +1,6 @@
 use super::helpers::{row_to_query_log, window_start_bucket};
 use super::rollup;
-use crate::repositories::{db_err, hours_ago_cutoff, seconds_ago_cutoff, sql_ts};
+use crate::repositories::{db_err, hours_ago_cutoff, seconds_ago_cutoff, sql_ts, unix_cutoff};
 use chrono::{TimeDelta, Utc};
 use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, QueryLogStorage};
 use ferrous_dns_domain::entities::query_log::{
@@ -149,6 +149,18 @@ pub(super) async fn get_recent_paged(
         Some(ClientProtocol::Doq) => " AND q.protocol = 'doq'",
         None => "",
     };
+    let until = filter.until.and_then(unix_cutoff);
+    let until_clause = if until.is_some() {
+        " AND q.created_at < ?"
+    } else {
+        ""
+    };
+    let excluded_types_clause = if filter.excluded_record_types.is_empty() {
+        String::new()
+    } else {
+        let placeholders = vec!["?"; filter.excluded_record_types.len()].join(", ");
+        format!(" AND q.record_type NOT IN ({placeholders})")
+    };
     let filters = [
         domain_clause,
         category_clause,
@@ -158,6 +170,8 @@ pub(super) async fn get_recent_paged(
         dnssec_clause,
         dns64_clause,
         protocol_clause,
+        until_clause,
+        &excluded_types_clause,
     ]
     .concat();
     // A snapshot page counts its matches within the snapshot too.
@@ -189,6 +203,12 @@ pub(super) async fn get_recent_paged(
             }
             if let Some(DnssecStatusFilter::Is(status)) = filter.dnssec_status {
                 q = q.bind(status.as_str());
+            }
+            if let Some(ref until) = until {
+                q = q.bind(until);
+            }
+            for record_type in &filter.excluded_record_types {
+                q = q.bind(record_type.as_str());
             }
             q
         }};

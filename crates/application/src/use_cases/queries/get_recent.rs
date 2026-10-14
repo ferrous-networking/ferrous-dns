@@ -31,6 +31,10 @@ pub struct PagedQueryInput<'a> {
     pub dns64: Option<bool>,
     /// Transport filter: `udp`, `tcp`, `dot`, `doh` or `doq`.
     pub protocol: Option<&'a str>,
+    /// Only queries logged before this Unix time.
+    pub until: Option<i64>,
+    /// Record types left out.
+    pub excluded_record_types: Vec<RecordType>,
 }
 
 pub struct GetRecentQueriesUseCase {
@@ -88,6 +92,8 @@ impl GetRecentQueriesUseCase {
             dnssec_status: input.dnssec_status,
             dns64_synthesized: input.dns64,
             protocol: parsed_protocol,
+            until: input.until,
+            excluded_record_types: input.excluded_record_types.clone(),
         };
 
         let max_limit = match input.page {

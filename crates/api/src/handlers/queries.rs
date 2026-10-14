@@ -66,6 +66,7 @@ pub async fn get_queries(
         dnssec_status,
         dns64: params.dns64,
         protocol: params.protocol.as_deref(),
+        ..Default::default()
     };
 
     let result = state.query.get_queries.execute_paged(&input).await?;

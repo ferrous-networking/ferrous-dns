@@ -5,7 +5,7 @@ use axum::Json;
 use chrono::Utc;
 use ferrous_dns_application::ports::{PageAt, PagedQueryResult};
 use ferrous_dns_application::use_cases::PagedQueryInput;
-use ferrous_dns_domain::{DnssecStatus, DnssecStatusFilter, DomainError};
+use ferrous_dns_domain::{DnssecStatus, DnssecStatusFilter, DomainError, RecordType};
 use serde::Deserialize;
 
 use crate::{
@@ -33,11 +33,9 @@ const DEFAULT_SUGGESTIONS_COUNT: u32 = 30;
 
 /// Query parameters of `GET /queries`, as FTL's `api_queries` reads them.
 ///
-/// `until` is accepted but read as now: the query log only answers windows
-/// that end now. `domain`, `client_ip` and `client_name` match as substrings,
-/// with any `*` at their ends dropped, where FTL matches exactly or by
-/// wildcard; the three share one client filter, so only the first given
-/// applies.
+/// `domain`, `client_ip` and `client_name` match as substrings, with any `*`
+/// at their ends dropped, where FTL matches exactly or by wildcard; the three
+/// share one client filter, so only the first given applies.
 #[derive(Debug, Deserialize)]
 pub struct QueryParams {
     from: Option<f64>,
@@ -92,6 +90,8 @@ impl IntoResponse for QueriesError {
 struct Selection {
     category: Option<&'static str>,
     record_type: Option<&'static str>,
+    /// For `OTHER`: every type FTL names, left out.
+    excluded_record_types: Vec<RecordType>,
     dnssec: Option<DnssecStatusFilter>,
     upstream: Option<String>,
     /// A filter no query Ferrous logs can match, such as a status it never
@@ -151,11 +151,16 @@ fn select_status(selection: &mut Selection, status: &str) -> Result<(), QueriesE
     Ok(())
 }
 
-/// `type`: `OTHER` (every type outside FTL's list) is accepted but does not
-/// filter; Ferrous never logs `ANY`.
+/// `type`: `OTHER` is every type outside FTL's list, as FTL counts them
+/// (dnsmasq_interface.c); Ferrous never logs `ANY`.
 fn select_type(selection: &mut Selection, query_type: &str) -> Result<(), QueriesError> {
     match ftl_name(&FTL_QUERY_TYPES, query_type, "Requested type is invalid")? {
-        "OTHER" => {}
+        "OTHER" => {
+            selection.excluded_record_types = FTL_QUERY_TYPES
+                .iter()
+                .filter_map(|name| name.parse().ok())
+                .collect();
+        }
         "ANY" => selection.is_empty = true,
         name => selection.record_type = Some(name),
     }
@@ -221,15 +226,16 @@ fn hours_since(from: f64) -> f32 {
 /// Pages through the query log newest first. The first page pins `cursor` to
 /// the newest query; sending it back with `start` pages through that snapshot,
 /// unshifted by queries logged since. `length` 0 or below asks for every
-/// query, capped at 10000 as FTL caps it. `reply` is validated but does not
-/// filter: the log keeps no reply type to filter on.
+/// query, capped at 10000 as FTL caps it. `until` is exclusive, as in
+/// queries.c. `reply` is validated but does not filter: the log keeps no
+/// reply type to filter on.
 #[utoipa::path(
     get,
     path = "/queries",
     tag = "pihole:queries",
     params(
         ("from" = Option<f64>, Query, description = "Only queries at or after this Unix time"),
-        ("until" = Option<f64>, Query, description = "Accepted; read as now"),
+        ("until" = Option<f64>, Query, description = "Only queries before this Unix time"),
         ("domain" = Option<String>, Query, description = "Filter by domain (substring)"),
         ("client_ip" = Option<String>, Query, description = "Filter by client IP (substring)"),
         ("client_name" = Option<String>, Query, description = "Filter by client name (substring)"),
@@ -339,6 +345,11 @@ pub async fn get_queries(
             record_type: selection.record_type,
             upstream: selection.upstream.as_deref(),
             dnssec_status: selection.dnssec,
+            until: params
+                .until
+                .filter(|until| until.is_finite())
+                .map(|until| until as i64),
+            excluded_record_types: selection.excluded_record_types.clone(),
             ..Default::default()
         };
         state.query.get_recent_queries.execute_paged(&input).await?
