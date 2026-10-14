@@ -91,6 +91,10 @@ impl QueryLogRepository for CaptureLimitRepository {
         unimplemented!()
     }
 
+    async fn count_distinct_domains(&self, _: f32) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
+
     async fn get_top_clients(
         &self,
         _: u32,

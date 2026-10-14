@@ -78,7 +78,7 @@ pub use queries::{
     CleanupOldQueryLogsUseCase, GetClientActivityUseCase, GetQueryLogStorageUseCase,
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
     GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, PagedQueryInput, QueryRate, RateUnit,
+    GetTopClientsUseCase, GetUniqueDomainsUseCase, PagedQueryInput, QueryRate, RateUnit,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,

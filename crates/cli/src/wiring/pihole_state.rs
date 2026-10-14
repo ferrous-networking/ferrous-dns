@@ -38,6 +38,8 @@ pub fn build_pihole_state(
             get_client_activity: use_cases.get_client_activity.clone(),
             get_query_log_storage: use_cases.get_query_log_storage.clone(),
             get_recent_queries: use_cases.get_queries.clone(),
+            get_query_rate: use_cases.get_query_rate.clone(),
+            get_unique_domains: use_cases.get_unique_domains.clone(),
         },
         blocking: PiholeBlockingState {
             block_filter_engine,

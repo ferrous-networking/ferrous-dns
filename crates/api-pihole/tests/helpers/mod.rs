@@ -21,10 +21,11 @@ use ferrous_dns_application::use_cases::{
     DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
     DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetClientActivityUseCase,
     GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase, GetQueryLogStorageUseCase,
-    GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
-    GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
-    GetTopClientsUseCase, GetWhitelistSourcesUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
+    GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
+    GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
+    GetWhitelistSourcesUseCase, UpdateBlocklistSourceUseCase, UpdateClientUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
     UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::config::DatabaseConfig;
@@ -477,6 +478,8 @@ async fn build_pihole_state(
             get_client_activity: Arc::new(GetClientActivityUseCase::new(query_log_repo.clone())),
             get_query_log_storage: Arc::new(GetQueryLogStorageUseCase::new(query_log_repo.clone())),
             get_recent_queries: Arc::new(GetRecentQueriesUseCase::new(query_log_repo.clone())),
+            get_query_rate: Arc::new(GetQueryRateUseCase::new(query_log_repo.clone())),
+            get_unique_domains: Arc::new(GetUniqueDomainsUseCase::new(query_log_repo.clone())),
         },
         blocking: PiholeBlockingState {
             block_filter_engine: block_filter_engine.clone(),

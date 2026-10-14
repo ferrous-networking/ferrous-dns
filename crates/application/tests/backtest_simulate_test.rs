@@ -80,6 +80,9 @@ impl QueryLogRepository for FakeQueryLog {
     ) -> Result<Vec<(String, u64)>, DomainError> {
         Ok(self.corpus.clone())
     }
+    async fn count_distinct_domains(&self, _p: f32) -> Result<u64, DomainError> {
+        Ok(self.corpus.len() as u64)
+    }
     async fn get_top_clients(
         &self,
         _l: u32,

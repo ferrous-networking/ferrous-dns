@@ -11,11 +11,11 @@ use ferrous_dns_application::use_cases::{
     CreateWhitelistSourceUseCase, DeleteBlocklistSourceUseCase, DeleteClientUseCase,
     DeleteGroupUseCase, DeleteManagedDomainUseCase, DeleteRegexFilterUseCase,
     DeleteWhitelistSourceUseCase, GetBlocklistSourcesUseCase, GetClientsUseCase, GetGroupsUseCase,
-    GetManagedDomainsUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
+    GetManagedDomainsUseCase, GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase,
     GetRegexFiltersUseCase, GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase,
-    GetWhitelistSourcesUseCase, ReloadConfigUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
-    UpdateWhitelistSourceUseCase,
+    GetUniqueDomainsUseCase, GetWhitelistSourcesUseCase, ReloadConfigUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientUseCase, UpdateGroupUseCase,
+    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -73,6 +73,10 @@ pub struct PiholeQueryState {
     pub get_client_activity: Arc<GetClientActivityUseCase>,
     pub get_query_log_storage: Arc<GetQueryLogStorageUseCase>,
     pub get_recent_queries: Arc<GetRecentQueriesUseCase>,
+    /// FTL's query `frequency`.
+    pub get_query_rate: Arc<GetQueryRateUseCase>,
+    /// FTL's `unique_domains`.
+    pub get_unique_domains: Arc<GetUniqueDomainsUseCase>,
 }
 
 #[derive(Clone)]

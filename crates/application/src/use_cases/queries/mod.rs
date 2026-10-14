@@ -9,6 +9,7 @@ pub mod get_top_allowed_domains;
 pub mod get_top_blocked_clients;
 pub mod get_top_blocked_domains;
 pub mod get_top_clients;
+pub mod get_unique_domains;
 
 pub use cleanup_old_query_logs::CleanupOldQueryLogsUseCase;
 pub use get_client_activity::GetClientActivityUseCase;
@@ -21,3 +22,4 @@ pub use get_top_allowed_domains::GetTopAllowedDomainsUseCase;
 pub use get_top_blocked_clients::GetTopBlockedClientsUseCase;
 pub use get_top_blocked_domains::GetTopBlockedDomainsUseCase;
 pub use get_top_clients::GetTopClientsUseCase;
+pub use get_unique_domains::GetUniqueDomainsUseCase;

@@ -460,6 +460,11 @@ async fn test_top_domains_split_by_verdict() {
         repo.get_distinct_recent_domains(2, 24.0).await.unwrap(),
         owned(&[("tracker.example.com", 5), ("safe.example.com", 4)])
     );
+    assert_eq!(
+        repo.count_distinct_domains(24.0).await.unwrap(),
+        3,
+        "client domains of either verdict; the internal lookup is left out"
+    );
 }
 
 #[tokio::test]

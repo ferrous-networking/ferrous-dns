@@ -612,6 +612,24 @@ pub(super) async fn get_top_domains(
 }
 
 #[instrument(skip(pool))]
+pub(super) async fn count_distinct_domains(
+    pool: &SqlitePool,
+    period_hours: f32,
+) -> Result<u64, DomainError> {
+    let row = sqlx::query(
+        "SELECT COUNT(DISTINCT domain) AS count
+         FROM query_log
+         WHERE created_at >= ? AND query_source = 'client'",
+    )
+    .bind(hours_ago_cutoff(period_hours))
+    .fetch_one(pool)
+    .await
+    .map_err(db_err("Failed to count distinct domains"))?;
+
+    Ok(row.get::<i64, _>("count") as u64)
+}
+
+#[instrument(skip(pool))]
 pub(super) async fn get_top_clients(
     pool: &SqlitePool,
     limit: u32,

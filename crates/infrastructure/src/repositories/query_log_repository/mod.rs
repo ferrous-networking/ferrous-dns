@@ -177,6 +177,10 @@ impl QueryLogRepository for SqliteQueryLogRepository {
         reader::get_top_domains(&self.read_pool, DomainVerdict::Any, limit, period_hours).await
     }
 
+    async fn count_distinct_domains(&self, period_hours: f32) -> Result<u64, DomainError> {
+        reader::count_distinct_domains(&self.read_pool, period_hours).await
+    }
+
     async fn get_top_clients(
         &self,
         limit: u32,

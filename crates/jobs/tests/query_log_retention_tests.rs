@@ -182,6 +182,10 @@ impl QueryLogRepository for MockQueryLogRepository {
         Ok(Vec::new())
     }
 
+    async fn count_distinct_domains(&self, _period_hours: f32) -> Result<u64, DomainError> {
+        Ok(0)
+    }
+
     async fn get_top_clients(
         &self,
         _limit: u32,

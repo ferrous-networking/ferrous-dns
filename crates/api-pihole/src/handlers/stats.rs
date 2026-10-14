@@ -3,7 +3,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{http::StatusCode, Json};
 use chrono::{NaiveDateTime, Utc};
 use ferrous_dns_application::ports::TimeGranularity;
-use ferrous_dns_application::use_cases::PagedQueryInput;
+use ferrous_dns_application::use_cases::{PagedQueryInput, RateUnit};
 use ferrous_dns_domain::{DnsProtocol, DomainError, QueryStats};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -23,6 +23,13 @@ use crate::{
 };
 
 pub const STATS_PERIOD_HOURS: f32 = 24.0;
+
+/// FTL's query `frequency`: queries per second, here over the last minute
+/// (FTL averages its last 30 seconds).
+pub(crate) async fn query_frequency(state: &PiholeAppState) -> Result<f64, DomainError> {
+    let rate = state.query.get_query_rate.execute(RateUnit::Minute).await?;
+    Ok(rate.queries as f64 / 60.0)
+}
 
 /// FTL's default for the `count` of `/stats/top_domains` and `/stats/top_clients`.
 const DEFAULT_TOP_COUNT: u32 = 10;
@@ -145,11 +152,13 @@ pub(crate) async fn summary(
     state: &PiholeAppState,
     period: f32,
 ) -> Result<SummaryResponse, DomainError> {
-    let (stats, blocklists, allowlists, clients) = tokio::try_join!(
+    let (stats, blocklists, allowlists, clients, unique_domains, frequency) = tokio::try_join!(
         state.query.get_stats.execute(period),
         state.lists.get_blocklist_sources.get_all(),
         state.lists.get_whitelist_sources.get_all(),
         state.clients.get_clients.get_stats(),
+        state.query.get_unique_domains.execute(period),
+        query_frequency(state),
     )?;
 
     let total = stats.queries_total;
@@ -197,10 +206,10 @@ pub(crate) async fn summary(
             total,
             blocked,
             percent_blocked,
-            unique_domains: 0,
+            unique_domains,
             forwarded,
             cached: cache_hits + local_dns,
-            frequency: 0.0,
+            frequency,
             types,
             status,
             replies: ReplyTypeCounts::default(),

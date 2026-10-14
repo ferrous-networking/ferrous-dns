@@ -121,6 +121,9 @@ impl QueryLogRepository for CountingQueryLog {
     ) -> Result<Vec<(String, u64)>, DomainError> {
         unimplemented!()
     }
+    async fn count_distinct_domains(&self, _period_hours: f32) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
     async fn get_top_clients(
         &self,
         _limit: u32,

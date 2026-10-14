@@ -235,13 +235,14 @@ pub(crate) fn version_components() -> VersionComponents {
 pub async fn get_ftl_info(
     State(state): State<PiholeAppState>,
 ) -> Result<Json<FtlInfoResponse>, PiholeApiError> {
-    let (groups, blocklists, allowlists, domains, regexes, clients) = tokio::try_join!(
+    let (groups, blocklists, allowlists, domains, regexes, clients, query_frequency) = tokio::try_join!(
         state.groups.get_groups.get_all(),
         state.lists.get_blocklist_sources.get_all(),
         state.lists.get_whitelist_sources.get_all(),
         state.blocking.get_managed_domains.get_all(),
         state.blocking.get_regex_filters.get_all(),
         state.clients.get_clients.get_stats(),
+        super::stats::query_frequency(&state),
     )?;
     let mem_percent = tokio::task::spawn_blocking(host::read_process_mem_percent)
         .await
@@ -259,7 +260,7 @@ pub async fn get_ftl_info(
                 regex: count_by_action(regexes.iter().map(|r| (r.action, r.enabled))),
             },
             privacy_level: 0,
-            query_frequency: 0.0,
+            query_frequency,
             clients: FtlClients {
                 total: clients.total_clients,
                 active: clients.active_24h,
