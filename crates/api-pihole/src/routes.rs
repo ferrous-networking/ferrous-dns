@@ -44,8 +44,12 @@ pub fn create_pihole_router_with_openapi(
         .routes(routes!(handlers::stats::get_database_top_clients))
         .routes(routes!(handlers::stats::get_database_upstreams))
         .routes(routes!(handlers::stats::get_database_query_types))
-        // The alias stays outside the spec to avoid a duplicate operation id.
-        .route("/history", axum::routing::get(handlers::stats::get_history))
+        // The Ferrous alias stays outside the spec to avoid a duplicate
+        // operation id.
+        .route(
+            "/stats/history",
+            axum::routing::get(handlers::stats::get_history),
+        )
         .routes(routes!(handlers::history::get_history_clients))
         .routes(routes!(handlers::queries::get_queries))
         .routes(routes!(handlers::queries::get_suggestions))

@@ -13,7 +13,7 @@ const API_PREFIX: &str = "/api";
 ///
 /// Lists the routes of the served OpenAPI document, so the list cannot drift
 /// from what the router answers. Routes kept out of the document stay out
-/// here too: the `/history` alias of `/stats/history` and the `{*rest}`
+/// here too: the `/stats/history` alias of `/history` and the `{*rest}`
 /// routes that take a list or client address with slashes in it.
 #[utoipa::path(
     get,

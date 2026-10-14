@@ -218,12 +218,12 @@ pub(crate) fn bucket_centre(start: i64) -> i64 {
     start + HISTORY_BUCKET_SECS / 2
 }
 
-/// Pi-hole v6 GET /api/stats/history and GET /api/history
+/// Pi-hole v6 GET /api/history, also served at /api/stats/history
 ///
 /// Always 145 buckets of 10 minutes; buckets with no queries are zero.
 #[utoipa::path(
     get,
-    path = "/stats/history",
+    path = "/history",
     tag = "pihole:stats",
     params(
         ("from" = Option<f32>, Query, description = "Period in hours to read (default: the 145 buckets)")
