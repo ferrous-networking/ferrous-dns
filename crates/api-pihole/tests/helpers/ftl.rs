@@ -1821,6 +1821,48 @@ pub struct InterfaceAddress {
     pub tstamp: Option<f64>,
 }
 
+/// `GET /network/devices` — network.c:165-281 (api_network_devices_GET).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkDevices {
+    pub devices: Vec<NetworkDevice>,
+    pub took: Option<f64>,
+}
+
+/// `devices[]` — network.c:207-255.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkDevice {
+    pub id: i64,
+    // C: JSON_COPY_STR_TO_OBJECT sends null for a missing value.
+    #[serde(deserialize_with = "required_nullable")]
+    pub hwaddr: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub interface: Option<String>,
+    #[serde(rename = "firstSeen")]
+    pub first_seen: i64,
+    #[serde(rename = "lastQuery")]
+    pub last_query: i64,
+    #[serde(rename = "numQueries")]
+    pub num_queries: i64,
+    #[serde(rename = "macVendor", deserialize_with = "required_nullable")]
+    pub mac_vendor: Option<String>,
+    pub ips: Vec<DeviceAddress>,
+}
+
+/// `devices[].ips[]` — network.c:226-231.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceAddress {
+    pub ip: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub name: Option<String>,
+    #[serde(rename = "lastSeen")]
+    pub last_seen: i64,
+    #[serde(rename = "nameUpdated")]
+    pub name_updated: i64,
+}
+
 // ---------------------------------------------------------------------------
 // /endpoints
 // ---------------------------------------------------------------------------
