@@ -244,9 +244,10 @@ pub async fn get_ftl_info(
         state.clients.get_clients.get_stats(),
         super::stats::query_frequency(&state),
     )?;
-    let mem_percent = tokio::task::spawn_blocking(host::read_process_mem_percent)
-        .await
-        .map_err(|e| DomainError::IoError(e.to_string()))?;
+    let (mem_percent, cpu) =
+        tokio::task::spawn_blocking(|| (host::read_process_mem_percent(), host::cpu_usage()))
+            .await
+            .map_err(|e| DomainError::IoError(e.to_string()))?;
 
     Ok(Json(FtlInfoResponse {
         ftl: FtlInfo {
@@ -268,7 +269,7 @@ pub async fn get_ftl_info(
             pid: std::process::id(),
             uptime: state.system.process_start.elapsed().as_millis() as u64,
             mem_percent,
-            cpu_percent: 0.0,
+            cpu_percent: cpu.process,
             allow_destructive: true,
             dnsmasq: dnsmasq_metrics(&state),
         },

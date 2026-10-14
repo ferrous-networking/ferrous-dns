@@ -5,6 +5,7 @@
 
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::sync::{Mutex, PoisonError};
 
 use crate::dto::info::{
     DatabaseOwner, DatabaseOwnerGroup, DatabaseOwnerUser, DmiBoard, DmiProduct, DmiVendor, HostDmi,
@@ -14,6 +15,32 @@ use crate::dto::info::{
 
 /// FTL caps the process memory share just below 100%.
 const MAX_PROCESS_MEM_PERCENT: f64 = 99.9;
+
+/// How often FTL recomputes CPU use (gc.c CPU_AVERAGE_INTERVAL).
+const CPU_INTERVAL_SECS: f64 = 10.0;
+
+/// The last CPU sample and the use computed from it; see [`cpu_usage`].
+static CPU_SAMPLE: Mutex<Option<(CpuTimes, CpuUsage)>> = Mutex::new(None);
+
+/// Busy CPU time of the host and of this process, in seconds, read at
+/// `uptime` seconds since boot.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct CpuTimes {
+    uptime: f64,
+    /// user + nice + system of `/proc/stat` (procps.c parse_proc_stat).
+    total: f64,
+    /// utime + stime of `/proc/self/stat` (procps.c parse_proc_self_stat).
+    process: f64,
+    /// When this process started, in seconds since boot.
+    process_start: f64,
+}
+
+/// CPU use in percent of all configured processors.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct CpuUsage {
+    pub total: f64,
+    pub process: f64,
+}
 
 /// `/proc/meminfo` values, in kB.
 #[derive(Default)]
@@ -93,6 +120,7 @@ pub(crate) fn read_system() -> SystemInfo {
     let (raw, procs) = read_loadavg();
     let nprocs = configured_processors();
     let load_percent = raw.map(|load| percent(load, nprocs as f64));
+    let cpu = cpu_usage();
     SystemInfo {
         uptime: read_host_uptime(),
         memory: SystemMemory {
@@ -102,7 +130,7 @@ pub(crate) fn read_system() -> SystemInfo {
         procs,
         cpu: SystemCpu {
             nprocs,
-            cpu_percent: 0.0,
+            cpu_percent: cpu.total,
             load: SystemLoad {
                 raw,
                 percent: load_percent,
@@ -110,9 +138,102 @@ pub(crate) fn read_system() -> SystemInfo {
         },
         ftl: ProcessUsage {
             mem_percent: process_mem_percent(mem.total),
-            cpu_percent: 0.0,
+            cpu_percent: cpu.process,
         },
     }
+}
+
+/// CPU use as FTL reports it (daemon.c calc_cpu_usage): busy time over an
+/// interval, per configured processor. FTL samples every 10 seconds from
+/// startup. Here the sample is taken on request and kept for 10 seconds;
+/// the first request reports the averages since boot and since this
+/// process started.
+pub(crate) fn cpu_usage() -> CpuUsage {
+    let Some(now) = read_cpu_times() else {
+        return CpuUsage::default();
+    };
+    let mut sample = CPU_SAMPLE.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((last, usage)) = *sample {
+        if now.uptime - last.uptime < CPU_INTERVAL_SECS {
+            return usage;
+        }
+    }
+    let since = sample.map_or(
+        CpuTimes {
+            process_start: now.process_start,
+            ..CpuTimes::default()
+        },
+        |(last, _)| last,
+    );
+    let usage = cpu_usage_between(&since, &now, configured_processors());
+    *sample = Some((now, usage));
+    usage
+}
+
+/// The process never reads above the host: their counters tick apart, so
+/// FTL caps it (daemon.c get_ftl_cpu_percentage).
+fn cpu_usage_between(since: &CpuTimes, now: &CpuTimes, nprocs: u64) -> CpuUsage {
+    let percent = |busy: f64, seconds: f64| {
+        if seconds > 0.0 && nprocs > 0 {
+            100.0 * busy / seconds / nprocs as f64
+        } else {
+            0.0
+        }
+    };
+    let total = percent(now.total - since.total, now.uptime - since.uptime);
+    let process = percent(
+        now.process - since.process,
+        now.uptime - since.uptime.max(now.process_start),
+    );
+    CpuUsage {
+        total,
+        process: process.min(total),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_cpu_times() -> Option<CpuTimes> {
+    // SAFETY: sysconf takes no pointers and only reads a system setting.
+    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if ticks <= 0 {
+        return None;
+    }
+    let ticks = ticks as f64;
+    let uptime: f64 = std::fs::read_to_string("/proc/uptime")
+        .ok()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    let stat = std::fs::read_to_string("/proc/stat").ok()?;
+    let total: u64 = stat
+        .lines()
+        .find_map(|line| line.strip_prefix("cpu "))?
+        .split_whitespace()
+        .take(3)
+        .map(|field| field.parse::<u64>().ok())
+        .sum::<Option<u64>>()?;
+    let (process, start) = parse_self_stat(&std::fs::read_to_string("/proc/self/stat").ok()?)?;
+    Some(CpuTimes {
+        uptime,
+        total: total as f64 / ticks,
+        process: process as f64 / ticks,
+        process_start: start as f64 / ticks,
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_cpu_times() -> Option<CpuTimes> {
+    None
+}
+
+/// utime + stime (fields 14 and 15) and starttime (field 22) of
+/// `/proc/self/stat`, in clock ticks. The command name in field 2 may hold
+/// spaces, so the fields are counted after its closing parenthesis.
+fn parse_self_stat(stat: &str) -> Option<(u64, u64)> {
+    let fields: Vec<&str> = stat.rsplit_once(')')?.1.split_whitespace().collect();
+    let field = |n: usize| fields.get(n - 3)?.parse::<u64>().ok();
+    Some((field(14)? + field(15)?, field(22)?))
 }
 
 /// This process's resident memory as a share of the host's.
@@ -514,6 +635,67 @@ mod tests {
         assert_eq!(ram.used, 400);
         assert_eq!(ram.used_percent, 40.0);
         assert_eq!(ram.available, 600);
+    }
+
+    #[test]
+    fn cpu_use_is_busy_time_per_processor_over_the_interval() {
+        let since = CpuTimes {
+            uptime: 100.0,
+            total: 50.0,
+            process: 2.0,
+            process_start: 10.0,
+        };
+        let now = CpuTimes {
+            uptime: 110.0,
+            total: 58.0,
+            process: 3.0,
+            ..since
+        };
+
+        // 8 busy seconds of 10 on 4 processors; the process used 1 of them.
+        let usage = cpu_usage_between(&since, &now, 4);
+        assert_eq!(usage.total, 20.0);
+        assert_eq!(usage.process, 2.5);
+    }
+
+    #[test]
+    fn first_cpu_sample_averages_since_boot_and_since_the_process_started() {
+        let now = CpuTimes {
+            uptime: 1000.0,
+            total: 400.0,
+            process: 9.0,
+            process_start: 910.0,
+        };
+        let boot = CpuTimes {
+            process_start: now.process_start,
+            ..CpuTimes::default()
+        };
+
+        let usage = cpu_usage_between(&boot, &now, 2);
+        assert_eq!(usage.total, 20.0, "400 s over 1000 s on 2 processors");
+        assert_eq!(usage.process, 5.0, "9 s over the 90 s since it started");
+    }
+
+    #[test]
+    fn process_cpu_use_never_reads_above_the_host() {
+        let since = CpuTimes::default();
+        let now = CpuTimes {
+            uptime: 10.0,
+            total: 1.0,
+            process: 2.0,
+            process_start: 0.0,
+        };
+
+        let usage = cpu_usage_between(&since, &now, 1);
+        assert_eq!(usage.process, usage.total);
+    }
+
+    #[test]
+    fn self_stat_fields_are_counted_after_the_command_name() {
+        let stat = "4242 (ferrous dns) S 1 4242 4242 0 -1 4194560 100 0 0 0 \
+                    150 30 0 0 20 0 8 0 777 123456 789";
+
+        assert_eq!(parse_self_stat(stat), Some((180, 777)));
     }
 
     #[test]
