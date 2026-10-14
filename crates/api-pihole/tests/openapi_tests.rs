@@ -10,17 +10,16 @@ async fn served_spec_documents_routes_but_not_aliases() {
         "/auth",
         "/info/login",
         "/stats/summary",
+        "/stats/database/summary",
         "/dns/blocking",
         "/domains/{type}/{kind}",
     ] {
         assert!(paths.contains_key(documented), "missing path {documented}");
     }
-    for alias in ["/stats/database/summary", "/history"] {
-        assert!(
-            !paths.contains_key(alias),
-            "alias {alias} must stay undocumented"
-        );
-    }
+    assert!(
+        !paths.contains_key("/history"),
+        "alias /history must stay undocumented"
+    );
 }
 
 #[tokio::test]

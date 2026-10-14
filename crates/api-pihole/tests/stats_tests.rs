@@ -583,110 +583,34 @@ async fn top_clients_counts_are_per_source_ip() {
 }
 
 #[tokio::test]
-async fn query_types_returns_object_under_querytypes_key() {
+async fn query_types_counts_queries_under_ftl_type_keys() {
     let pool = helpers::create_test_db().await;
-    let app = helpers::create_pihole_test_app(pool).await;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/stats/query_types")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert!(
-        json["querytypes"].is_object(),
-        "response must have a 'querytypes' object field"
-    );
-}
-
-#[tokio::test]
-async fn query_types_percentages_sum_to_100_when_queries_are_present() {
-    let pool = helpers::create_test_db().await;
-
-    // insert_query inserts record_type = 'A'
+    // insert_query logs record_type 'A'
     for _ in 0..4 {
         helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
     }
 
     let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/stats/query_types")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let json = get_json(app, "/stats/query_types").await;
 
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let types = json["querytypes"]
-        .as_object()
-        .expect("querytypes must be object");
-    assert!(
-        !types.is_empty(),
-        "querytypes must not be empty when queries have been inserted"
-    );
-    let total: f64 = types.values().filter_map(|v| v.as_f64()).sum();
-    assert!(
-        (total - 100.0).abs() < 0.01,
-        "percentages must sum to ~100.0, got {total}"
-    );
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsQueryTypes>(&json);
+    assert_eq!(json["types"]["A"], 4);
+    assert_eq!(json["types"]["AAAA"], 0);
+    assert_eq!(json["types"]["OTHER"], 0);
 }
 
 #[tokio::test]
-async fn query_types_returns_zero_percentages_when_no_queries_logged() {
+async fn query_types_lists_every_type_key_when_no_queries_logged() {
     let pool = helpers::create_test_db().await;
     let app = helpers::create_pihole_test_app(pool).await;
+    let json = get_json(app, "/stats/query_types").await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/stats/query_types")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    let types = json["querytypes"]
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsQueryTypes>(&json);
+    assert!(json["types"]
         .as_object()
-        .expect("querytypes must be object");
-
-    // With no data the map must be empty (no divide-by-zero entries)
-    assert!(
-        types.is_empty(),
-        "querytypes must be empty when no queries have been logged"
-    );
+        .expect("types object")
+        .values()
+        .all(|count| count == 0));
 }
 
 #[tokio::test]
@@ -928,79 +852,35 @@ async fn out_of_range_period_is_clamped_instead_of_overflowing() {
 }
 
 #[tokio::test]
-async fn recent_blocked_returns_domain_field() {
+async fn recent_blocked_returns_an_empty_list_when_nothing_was_blocked() {
     let pool = helpers::create_test_db().await;
+    helpers::insert_query(&pool, "good.com", "10.0.0.1", false, false, None).await;
     let app = helpers::create_pihole_test_app(pool).await;
 
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/stats/recent_blocked")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
+    let json = get_json(app, "/stats/recent_blocked").await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
-    assert!(
-        json.get("domain").is_some(),
-        "response must have a 'domain' key"
-    );
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsRecentBlocked>(&json);
+    assert_eq!(json["blocked"], serde_json::json!([]));
 }
 
 #[tokio::test]
-async fn recent_blocked_returns_most_recently_blocked_domain() {
+async fn recent_blocked_lists_count_blocked_domains_newest_first() {
     let pool = helpers::create_test_db().await;
-
-    // 2 allowed queries
-    helpers::insert_query(&pool, "good.com", "10.0.0.1", false, false, None).await;
-    helpers::insert_query(&pool, "safe.org", "10.0.0.1", false, false, None).await;
-
-    // 1 blocked query
-    helpers::insert_query(
-        &pool,
-        "ads.evil.com",
-        "10.0.0.1",
-        true,
-        false,
-        Some("blocklist"),
-    )
-    .await;
-
+    for domain in ["first.ads", "second.ads", "third.ads"] {
+        helpers::insert_query(&pool, domain, "10.0.0.1", true, false, Some("blocklist")).await;
+        helpers::insert_query(&pool, "good.com", "10.0.0.1", false, false, None).await;
+    }
     let app = helpers::create_pihole_test_app(pool).await;
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/stats/recent_blocked")
-                .body(Body::empty())
-                .expect("failed to build request"),
-        )
-        .await
-        .expect("request failed");
 
-    assert_eq!(response.status(), StatusCode::OK);
+    // FTL's default count is 1.
+    let json = get_json(app.clone(), "/stats/recent_blocked").await;
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsRecentBlocked>(&json);
+    assert_eq!(json["blocked"], serde_json::json!(["third.ads"]));
 
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("failed to read body")
-        .to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
-
+    let json = get_json(app, "/stats/recent_blocked?count=2").await;
     assert_eq!(
-        json["domain"], "ads.evil.com",
-        "most recently blocked domain must be ads.evil.com"
+        json["blocked"],
+        serde_json::json!(["third.ads", "second.ads"])
     );
 }
 
@@ -1117,4 +997,174 @@ async fn summary_gravity_includes_last_update_field() {
         json["gravity"]["last_update"].is_number(),
         "gravity.last_update must be a number"
     );
+}
+
+#[tokio::test]
+async fn history_matches_ftl_with_cached_and_forwarded_split() {
+    let pool = helpers::create_test_db().await;
+    for _ in 0..2 {
+        helpers::insert_query(&pool, "cached.com", "10.0.0.1", false, true, None).await;
+    }
+    helpers::insert_local_dns_query(&pool, "nas.lan").await;
+    helpers::insert_upstream_query(&pool, "remote.example", "default", "1.1.1.1:53").await;
+    helpers::insert_query(&pool, "ads.com", "10.0.0.1", true, false, Some("blocklist")).await;
+
+    let app = helpers::create_pihole_test_app(pool).await;
+    let json = get_json(app, "/history").await;
+
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::History>(&json);
+    let history = json["history"].as_array().expect("history array");
+    assert_eq!(history.len(), 145, "Glance expects 145 buckets");
+    let bucket = history
+        .iter()
+        .find(|b| b["total"] != 0)
+        .expect("a bucket with the queries");
+    // FTL counts local records as cached; forwarded is upstream answers only.
+    assert_eq!(bucket["total"], 5);
+    assert_eq!(bucket["cached"], 3);
+    assert_eq!(bucket["blocked"], 1);
+    assert_eq!(bucket["forwarded"], 1);
+}
+
+#[tokio::test]
+async fn history_timestamps_are_bucket_centres() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool).await;
+    let json = get_json(app, "/stats/history").await;
+
+    // overTime.c centres each 10-minute slot: start + 300.
+    for bucket in json["history"].as_array().expect("history array") {
+        let ts = bucket["timestamp"].as_i64().expect("integer timestamp");
+        assert_eq!(ts % 600, 300, "timestamp {ts} is not a bucket centre");
+    }
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after epoch")
+        .as_secs()
+}
+
+/// `from`/`until` covering the last hour, as Unix timestamps.
+fn last_hour() -> String {
+    let now = unix_now();
+    format!("from={}&until={}", now - 3_600, now + 60)
+}
+
+const DATABASE_ROUTES: [&str; 5] = [
+    "/stats/database/summary",
+    "/stats/database/top_domains",
+    "/stats/database/top_clients",
+    "/stats/database/upstreams",
+    "/stats/database/query_types",
+];
+
+#[tokio::test]
+async fn database_stats_require_from_and_until() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool).await;
+    let now = unix_now();
+
+    for route in DATABASE_ROUTES {
+        for query in [
+            String::new(),
+            format!("?from={now}"),
+            format!("?until={now}"),
+        ] {
+            let uri = format!("{route}{query}");
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(&uri)
+                        .body(Body::empty())
+                        .expect("failed to build request"),
+                )
+                .await
+                .expect("request failed");
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{uri}");
+            let bytes = response
+                .into_body()
+                .collect()
+                .await
+                .expect("failed to read body")
+                .to_bytes();
+            let json: Value = serde_json::from_slice(&bytes).expect("invalid JSON");
+            helpers::ftl::assert_ftl_shape::<helpers::ftl::ErrorReply>(&json);
+            assert_eq!(json["error"]["key"], "bad_request", "{uri}");
+            assert_eq!(
+                json["error"]["message"],
+                "You need to specify both \"from\" and \"until\" in the request.",
+                "{uri}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn database_summary_matches_ftl() {
+    let pool = helpers::create_test_db().await;
+    helpers::insert_client(&pool, "10.0.0.1").await;
+    helpers::insert_client(&pool, "10.0.0.2").await;
+    for _ in 0..3 {
+        helpers::insert_query(&pool, "example.com", "10.0.0.1", false, false, None).await;
+    }
+    helpers::insert_query(&pool, "ads.com", "10.0.0.2", true, false, Some("blocklist")).await;
+
+    let app = helpers::create_pihole_test_app(pool).await;
+    let json = get_json(app, &format!("/stats/database/summary?{}", last_hour())).await;
+
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsDatabaseSummary>(&json);
+    assert_eq!(json["sum_queries"], 4);
+    assert_eq!(json["sum_blocked"], 1);
+    assert_eq!(json["percent_blocked"], 25.0);
+    assert_eq!(json["total_clients"], 2);
+}
+
+#[tokio::test]
+async fn database_top_lists_match_ftl() {
+    let pool = helpers::create_test_db().await;
+    for _ in 0..2 {
+        helpers::insert_upstream_query(&pool, "remote.example", "default", "1.1.1.1:53").await;
+    }
+    helpers::insert_query(&pool, "ads.com", "10.0.0.2", true, false, Some("blocklist")).await;
+    let app = helpers::create_pihole_test_app(pool).await;
+    let window = last_hour();
+
+    let json = get_json(
+        app.clone(),
+        &format!("/stats/database/top_domains?{window}"),
+    )
+    .await;
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsDatabaseTopDomains>(&json);
+    assert_eq!(json["domains"][0]["domain"], "remote.example");
+    assert_eq!(json["domains"][0]["count"], 2);
+
+    let json = get_json(
+        app.clone(),
+        &format!("/stats/database/top_domains?{window}&blocked=true"),
+    )
+    .await;
+    assert_eq!(json["domains"][0]["domain"], "ads.com");
+
+    let json = get_json(
+        app.clone(),
+        &format!("/stats/database/top_clients?{window}"),
+    )
+    .await;
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsDatabaseTopClients>(&json);
+    assert_eq!(json["clients"][0]["ip"], "10.0.0.1");
+    assert_eq!(json["clients"][0]["count"], 2);
+    // A client without a stored name is null in FTL's long-term top list.
+    assert!(json["clients"][0]["name"].is_null(), "{json}");
+
+    let json = get_json(app.clone(), &format!("/stats/database/upstreams?{window}")).await;
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsDatabaseUpstreams>(&json);
+    assert_eq!(json["forwarded_queries"], 2);
+    assert_eq!(json["total_queries"], 3);
+
+    let json = get_json(app, &format!("/stats/database/query_types?{window}")).await;
+    helpers::ftl::assert_ftl_shape::<helpers::ftl::StatsDatabaseQueryTypes>(&json);
+    assert_eq!(json["types"]["A"], 3);
 }
