@@ -56,7 +56,7 @@ pub use client_subnets::{
 };
 pub use clients::{
     CleanupOldClientsUseCase, CreateManualClientUseCase, DeleteClientUseCase, GetClientsUseCase,
-    SyncArpCacheUseCase, SyncHostnamesUseCase, UpdateClientUseCase,
+    SetClientCommentUseCase, SyncArpCacheUseCase, SyncHostnamesUseCase, UpdateClientUseCase,
 };
 pub use config::{ConfigOverrides, ReloadConfigUseCase};
 pub use custom_services::{

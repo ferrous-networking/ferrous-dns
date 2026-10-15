@@ -332,6 +332,25 @@ impl ClientRepository for SqliteClientRepository {
     }
 
     #[instrument(skip(self))]
+    async fn set_comment(&self, id: i64, comment: Option<String>) -> Result<(), DomainError> {
+        let result = sqlx::query("UPDATE clients SET comment = ?, updated_at = ? WHERE id = ?")
+            .bind(&comment)
+            .bind(sql_now())
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err("Failed to set client comment"))?;
+
+        if result.rows_affected() == 0 {
+            return Err(DomainError::ClientNotFound(format!(
+                "Client {id} not found"
+            )));
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
     async fn delete(&self, id: i64) -> Result<(), DomainError> {
         let result = sqlx::query("DELETE FROM clients WHERE id = ?")
             .bind(id)

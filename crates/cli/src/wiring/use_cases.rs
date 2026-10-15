@@ -16,12 +16,12 @@ use ferrous_dns_application::use_cases::{
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
     GetTimelineUseCase, GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase,
     GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
-    GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase, SyncArpCacheUseCase,
-    SyncBlocklistSourcesUseCase, SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
-    UnblockServiceUseCase, UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase,
-    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
-    UpdateWhitelistSourceUseCase,
+    GetWhitelistSourcesUseCase, GetWhitelistUseCase, ManageTimeSlotsUseCase,
+    SetClientCommentUseCase, SyncArpCacheUseCase, SyncBlocklistSourcesUseCase,
+    SyncHostnamesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase, UnblockServiceUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase, UpdateClientUseCase,
+    UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
+    UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
@@ -61,6 +61,7 @@ pub struct UseCases {
     pub update_client_subnet: Arc<UpdateClientSubnetUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub update_client: Arc<UpdateClientUseCase>,
+    pub set_client_comment: Arc<SetClientCommentUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
     pub get_blocklist_sources: Arc<GetBlocklistSourcesUseCase>,
     pub create_blocklist_source: Arc<CreateBlocklistSourceUseCase>,
@@ -188,6 +189,7 @@ impl UseCases {
                 repos.group.clone(),
                 repos.block_filter_engine.clone(),
             )),
+            set_client_comment: Arc::new(SetClientCommentUseCase::new(repos.client.clone())),
             delete_client: Arc::new(DeleteClientUseCase::new(
                 repos.client.clone(),
                 repos.block_filter_engine.clone(),

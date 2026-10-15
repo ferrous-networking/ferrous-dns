@@ -12,6 +12,7 @@ pub(crate) type ClientRow = (
     Option<i64>,
     Option<i64>,
     Option<i64>,
+    Option<String>,
 );
 
 macro_rules! client_select {
@@ -23,7 +24,8 @@ macro_rules! client_select {
             query_count,
             CAST(strftime('%s', last_mac_update) AS INTEGER) as last_mac_update,
             CAST(strftime('%s', last_hostname_update) AS INTEGER) as last_hostname_update,
-            group_id
+            group_id,
+            comment
      FROM clients",
             $tail
         )
@@ -69,6 +71,7 @@ pub(crate) fn row_to_client(row: ClientRow) -> Option<Client> {
         last_mac_update,
         last_hostname_update,
         group_id,
+        comment,
     ) = row;
 
     Some(Client {
@@ -82,5 +85,6 @@ pub(crate) fn row_to_client(row: ClientRow) -> Option<Client> {
         last_mac_update,
         last_hostname_update,
         group_id,
+        comment: comment.map(|s| Arc::from(s.as_str())),
     })
 }

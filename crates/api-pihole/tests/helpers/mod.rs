@@ -25,8 +25,8 @@ use ferrous_dns_application::use_cases::{
     GetRecentQueriesUseCase, GetRegexFiltersUseCase, GetTimelineUseCase,
     GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
     GetTopClientsUseCase, GetUniqueDomainsUseCase, GetWhitelistSourcesUseCase,
-    UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase, UpdateClientUseCase,
-    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    SetClientCommentUseCase, UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase,
+    UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
     UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::config::DatabaseConfig;
@@ -297,7 +297,8 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             last_hostname_update DATETIME,
             group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            comment TEXT
         )",
     )
     .execute(&pool)
@@ -593,6 +594,7 @@ async fn build_pihole_state(
                 group_repo.clone(),
                 block_filter_engine.clone(),
             )),
+            set_client_comment: Arc::new(SetClientCommentUseCase::new(client_repo.clone())),
             delete_client: Arc::new(DeleteClientUseCase::new(
                 client_repo,
                 block_filter_engine.clone(),

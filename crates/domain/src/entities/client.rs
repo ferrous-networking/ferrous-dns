@@ -13,6 +13,7 @@ pub struct Client {
     pub last_mac_update: Option<i64>,
     pub last_hostname_update: Option<i64>,
     pub group_id: Option<i64>,
+    pub comment: Option<Arc<str>>,
 }
 
 #[derive(Debug, Clone)]

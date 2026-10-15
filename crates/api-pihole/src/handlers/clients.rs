@@ -55,7 +55,7 @@ fn client_to_entry(c: &Client) -> Result<PiholeClientEntry, DomainError> {
     Ok(PiholeClientEntry {
         client: c.ip_address.to_string(),
         name: c.hostname.as_deref().unwrap_or_default().to_string(),
-        comment: None,
+        comment: reply_comment(c.comment.as_ref()),
         groups: c.group_id.map(to_ftl_group_id).into_iter().collect(),
         id: require_id(c.id, "client")?,
         date_added: unix_seconds(c.first_seen.as_deref()),
@@ -146,12 +146,15 @@ async fn write_client(
     write: Write,
 ) -> Result<(), DomainError> {
     match ClientItem::parse(item) {
-        ClientItem::Address(ip) => state
-            .clients
-            .create_manual_client
-            .execute(ip, group_id, None, None)
-            .await
-            .map(drop),
+        ClientItem::Address(ip) => {
+            let client = state
+                .clients
+                .create_manual_client
+                .execute(ip, group_id, None, None)
+                .await?;
+            let id = require_id(client.id, "client")?;
+            state.clients.set_client_comment.execute(id, comment).await
+        }
         ClientItem::Subnet(cidr) => match find_subnet(state, &cidr).await? {
             Some(_) if write == Write::Create => {
                 Err(DomainError::AlreadyExists(format!("Subnet {cidr}")))

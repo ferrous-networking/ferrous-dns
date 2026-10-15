@@ -73,6 +73,7 @@ pub fn build_pihole_state(
             get_clients: use_cases.get_clients.clone(),
             create_manual_client: use_cases.create_manual_client.clone(),
             update_client: use_cases.update_client.clone(),
+            set_client_comment: use_cases.set_client_comment.clone(),
             delete_client: use_cases.delete_client.clone(),
             get_client_subnets: use_cases.get_client_subnets.clone(),
             create_client_subnet: use_cases.create_client_subnet.clone(),

@@ -18,6 +18,7 @@ fn create_test_client(id: i64, ip: &str) -> Client {
         last_mac_update: None,
         last_hostname_update: None,
         group_id: Some(1),
+        comment: None,
     }
 }
 
@@ -40,6 +41,7 @@ fn create_test_client_with_data(
         last_mac_update: mac.map(|_| chrono::Utc::now().timestamp()),
         last_hostname_update: hostname.map(|_| chrono::Utc::now().timestamp()),
         group_id: Some(1),
+        comment: None,
     }
 }
 

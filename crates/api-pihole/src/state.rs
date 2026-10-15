@@ -14,9 +14,10 @@ use ferrous_dns_application::use_cases::{
     GetClientSubnetsUseCase, GetClientsUseCase, GetGroupsUseCase, GetManagedDomainsUseCase,
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
     GetTimelineUseCase, GetTopBlockedDomainsUseCase, GetTopClientsUseCase, GetUniqueDomainsUseCase,
-    GetWhitelistSourcesUseCase, ReloadConfigUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientSubnetUseCase, UpdateClientUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
-    UpdateRegexFilterUseCase, UpdateWhitelistSourceUseCase,
+    GetWhitelistSourcesUseCase, ReloadConfigUseCase, SetClientCommentUseCase,
+    UpdateBlocklistSourceUseCase, UpdateClientSubnetUseCase, UpdateClientUseCase,
+    UpdateGroupUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateWhitelistSourceUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::Arc;
@@ -126,6 +127,7 @@ pub struct PiholeClientState {
     pub get_clients: Arc<GetClientsUseCase>,
     pub create_manual_client: Arc<CreateManualClientUseCase>,
     pub update_client: Arc<UpdateClientUseCase>,
+    pub set_client_comment: Arc<SetClientCommentUseCase>,
     pub delete_client: Arc<DeleteClientUseCase>,
     /// Subnets are FTL's CIDR clients.
     pub get_client_subnets: Arc<GetClientSubnetsUseCase>,

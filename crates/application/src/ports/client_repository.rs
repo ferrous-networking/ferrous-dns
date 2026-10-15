@@ -41,5 +41,8 @@ pub trait ClientRepository: Send + Sync {
 
     async fn assign_group(&self, client_id: i64, group_id: i64) -> Result<(), DomainError>;
 
+    /// Replaces the comment of the client `id`; `None` clears it.
+    async fn set_comment(&self, id: i64, comment: Option<String>) -> Result<(), DomainError>;
+
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
 }

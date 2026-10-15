@@ -51,6 +51,7 @@ pub fn make_client(id: i64, ip: &str) -> Client {
         last_mac_update: None,
         last_hostname_update: None,
         group_id: Some(1),
+        comment: None,
     }
 }
 
@@ -208,5 +209,14 @@ impl ClientRepository for MockClientRepository {
             .remove(&id)
             .map(|_| ())
             .ok_or_else(|| DomainError::ClientNotFound(format!("Client {id} not found")))
+    }
+
+    async fn set_comment(&self, id: i64, comment: Option<String>) -> Result<(), DomainError> {
+        let mut clients = self.clients.write().await;
+        let client = clients
+            .get_mut(&id)
+            .ok_or_else(|| DomainError::ClientNotFound(format!("Client {id} not found")))?;
+        client.comment = comment.map(Arc::from);
+        Ok(())
     }
 }

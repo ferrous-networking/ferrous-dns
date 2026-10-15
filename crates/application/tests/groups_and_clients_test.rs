@@ -20,6 +20,7 @@ fn client_in_default_group(id: i64, ip: &str) -> Client {
         last_mac_update: None,
         last_hostname_update: None,
         group_id: Some(1),
+        comment: None,
     }
 }
 
