@@ -563,6 +563,84 @@ async fn a_sync_downloads_a_held_list_again() {
     assert_ne!(blocklist_sync_date(&pool).await, STAMP);
 }
 
+async fn blocklist_status(pool: &SqlitePool) -> Option<i64> {
+    sqlx::query("SELECT last_status FROM blocklist_sources")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .get("last_status")
+}
+
+/// Syncs `engine`'s one list, answering its download with `status` and `body`.
+async fn sync_answering(
+    engine: &Arc<BlockFilterEngine>,
+    listener: &TcpListener,
+    status: &str,
+    body: &str,
+) {
+    let refresher = engine.clone();
+    let refresh = tokio::spawn(async move { refresher.refresh_lists().await });
+    let (request, _) = receive_request(listener).await;
+    respond(request, status, body).await;
+    timeout(Duration::from_secs(5), refresh)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn each_download_records_the_list_status_as_gravity_does() {
+    // gravity.sh: 1 downloaded and changed, 2 unchanged, 3 failed but a copy
+    // is in use, 4 failed with no copy.
+    let (pool, _dir) = test_pool().await;
+    let (engine, listener) = engine_holding_a_list(&pool).await;
+    assert_eq!(blocklist_status(&pool).await, Some(1), "first download");
+
+    sync_answering(&engine, &listener, "200 OK", "held.test\n").await;
+    assert_eq!(blocklist_status(&pool).await, Some(2), "same content again");
+
+    sync_answering(&engine, &listener, "200 OK", "fresh.test\n").await;
+    assert_eq!(blocklist_status(&pool).await, Some(1), "content changed");
+
+    sync_answering(&engine, &listener, "503 Service Unavailable", "").await;
+    assert_eq!(blocklist_status(&pool).await, Some(3), "failed, copy kept");
+
+    // An unrelated rebuild reuses the copy and leaves the status alone.
+    engine.reload().await.unwrap();
+    assert_eq!(blocklist_status(&pool).await, Some(3));
+}
+
+#[tokio::test]
+async fn a_list_that_never_downloaded_records_no_copy() {
+    let (pool, _dir) = test_pool().await;
+    let engine = BlockFilterEngine::new(
+        pool.clone(),
+        DEFAULT_GROUP_ID,
+        Arc::new(ScheduleStateStore::new()),
+        true,
+    )
+    .await
+    .unwrap();
+    engine.reload().await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    SqliteBlocklistSourceRepository::new(pool.clone())
+        .create(
+            "Dead list".to_owned(),
+            Some(format!("{base_url}/dead")),
+            vec![DEFAULT_GROUP_ID],
+            None,
+            true,
+        )
+        .await
+        .unwrap();
+
+    sync_answering(&engine, &listener, "404 Not Found", "").await;
+
+    assert_eq!(blocklist_status(&pool).await, Some(4));
+}
+
 #[tokio::test]
 async fn a_sync_whose_download_fails_keeps_the_held_copy() {
     let (pool, _dir) = test_pool().await;

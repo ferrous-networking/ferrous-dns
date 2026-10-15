@@ -123,6 +123,25 @@ async fn a_downloaded_list_reports_when_and_that_it_succeeded() {
 }
 
 #[tokio::test]
+async fn list_status_reports_how_the_last_download_went() {
+    // gravity.sh: 2 unchanged, 3 failed with a copy in use, 4 failed with none.
+    for (status, synced) in [(2, true), (3, true), (4, false)] {
+        let (app, pool) = app_and_pool().await;
+        create(&app, "allow", "https://allow.list/hosts").await;
+        sqlx::query("UPDATE whitelist_sources SET last_status = ?, last_synced_at = ?")
+            .bind(status)
+            .bind(synced.then_some("2024-01-15T12:30:00Z"))
+            .execute(&pool)
+            .await
+            .expect("record the status");
+
+        let lists = list(&app, "/lists?type=allow").await;
+
+        assert_eq!(lists[0].status, status);
+    }
+}
+
+#[tokio::test]
 async fn create_list_takes_its_type_from_the_query() {
     let app = app().await;
 
