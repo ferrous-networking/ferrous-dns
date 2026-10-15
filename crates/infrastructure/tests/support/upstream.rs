@@ -3,10 +3,11 @@
 #![allow(dead_code)]
 
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
-use hickory_proto::rr::rdata::A;
-use hickory_proto::rr::{RData, Record, RecordType};
+use hickory_proto::rr::rdata::{A, CNAME};
+use hickory_proto::rr::{Name, RData, Record, RecordType};
 use hickory_proto::serialize::binary::BinEncodable;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -17,6 +18,8 @@ use tokio::net::UdpSocket;
 pub enum Answer {
     /// An A record with this address for A queries; NODATA for other types.
     Address(Ipv4Addr),
+    /// A CNAME to the target name, followed by the target's A record.
+    Cname(&'static str, Ipv4Addr),
     NxDomain,
     /// No reply at all, as a server that is down.
     Silent,
@@ -113,12 +116,29 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
     match answer {
         Answer::Silent => return None,
         Answer::NxDomain => resp.metadata.response_code = ResponseCode::NXDomain,
-        Answer::Address(_) => resp.metadata.response_code = ResponseCode::NoError,
+        Answer::Address(_) | Answer::Cname(..) => {
+            resp.metadata.response_code = ResponseCode::NoError
+        }
     }
     for q in &req.queries {
         resp.add_query(q.clone());
-        if let (Answer::Address(ip), RecordType::A) = (answer, q.query_type()) {
-            resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
+        if q.query_type() != RecordType::A {
+            continue;
+        }
+        match answer {
+            Answer::Address(ip) => {
+                resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
+            }
+            Answer::Cname(target, ip) => {
+                let target = Name::from_str(target).unwrap();
+                resp.add_answer(Record::from_rdata(
+                    q.name().clone(),
+                    300,
+                    RData::CNAME(CNAME(target.clone())),
+                ));
+                resp.add_answer(Record::from_rdata(target, 300, RData::A(A(ip))));
+            }
+            Answer::NxDomain | Answer::Silent => {}
         }
     }
     Some(resp.to_bytes().unwrap())
