@@ -7,7 +7,9 @@ use axum::{
 };
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
-use ferrous_dns_infrastructure::dns::{CachedAddresses, CachedData, DnsCache};
+use ferrous_dns_infrastructure::dns::{
+    BorrowedKey, CachedAddresses, CachedData, DnsCache, DnsCacheAccess,
+};
 use helpers::TestApp;
 use http_body_util::BodyExt;
 use serde_json::Value;
@@ -242,4 +244,58 @@ async fn test_delete_cache_entry_returns_bad_request_for_unknown_type() {
     let status = delete_status(app, "/cache/entries?domain=present.test&type=NOPE").await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+/// Caches `domain` A in client group `group`'s own view.
+fn seed_in_group(cache: &DnsCache, domain: &str, group: u32, ip: &str) {
+    coarse_clock::tick();
+    DnsCacheAccess::insert(
+        cache,
+        BorrowedKey::new(domain, RecordType::A).in_view(group),
+        make_ip_data(ip),
+        300,
+        None,
+        true,
+    );
+}
+
+#[tokio::test]
+async fn test_get_cache_entries_reports_the_group_of_a_split_horizon_entry() {
+    let TestApp {
+        router: app, cache, ..
+    } = test_app().await;
+    seed(&cache, &["corp.test"]);
+    seed_in_group(&cache, "corp.test", 3, "10.1.1.1");
+
+    let json = get_json(app, "/cache/entries?domain=corp.test").await;
+
+    assert_eq!(json["total"], 2);
+    let data = json["data"].as_array().unwrap();
+    let shared = data.iter().find(|e| e["group_id"].is_null()).unwrap();
+    let grouped = data.iter().find(|e| e["group_id"] == 3).unwrap();
+    assert_eq!(shared["answers"][0], "1.2.3.4");
+    assert_eq!(grouped["answers"][0], "10.1.1.1");
+}
+
+#[tokio::test]
+async fn test_delete_cache_entry_removes_only_the_named_group_view() {
+    let TestApp {
+        router: app, cache, ..
+    } = test_app().await;
+    seed(&cache, &["corp.test"]);
+    seed_in_group(&cache, "corp.test", 3, "10.1.1.1");
+
+    let status = delete_status(
+        app.clone(),
+        "/cache/entries?domain=corp.test&type=A&group_id=3",
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let json = get_json(app.clone(), "/cache/entries?domain=corp.test").await;
+    assert_eq!(json["total"], 1);
+    assert!(json["data"][0]["group_id"].is_null());
+
+    let status = delete_status(app, "/cache/entries?domain=corp.test&type=A&group_id=3").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

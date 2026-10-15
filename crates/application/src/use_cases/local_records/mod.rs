@@ -104,7 +104,7 @@ impl LiveRecordSinks {
         if let Some(cache) = &self.cache {
             let record_type = RecordType::from(changed.record_type);
             // Removing first also retires the old answer from every thread's L1.
-            cache.remove_record(&fqdn, &record_type);
+            cache.remove_record(&fqdn, &record_type, None);
             if let Some(owner) = records.iter().rev().find(same_name) {
                 cache.insert_permanent_record(
                     &fqdn,

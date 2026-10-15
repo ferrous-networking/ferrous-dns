@@ -79,6 +79,9 @@ pub struct DeleteCacheEntryQuery {
     pub domain: String,
     #[serde(rename = "type")]
     pub record_type: String,
+    /// The client group whose own view holds the entry, as listed; absent
+    /// for the view every client shares.
+    pub group_id: Option<i64>,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -87,6 +90,9 @@ pub struct CacheEntryResponse {
     #[serde(rename = "type")]
     #[schema(value_type = String)]
     pub record_type: &'static str,
+    /// The client group whose own view holds this split-horizon answer;
+    /// `null` for the view every client shares.
+    pub group_id: Option<i64>,
     /// Addresses for A/AAAA entries; empty for every other record type.
     pub answers: Vec<String>,
     pub canonical_name: Option<String>,

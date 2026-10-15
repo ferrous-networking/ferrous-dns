@@ -176,11 +176,13 @@ pub async fn delete_cache_entry(
 
     // A permanent entry is a local DNS record, and nothing reloads it: evicting
     // it here would silently unpublish the name until the next restart. Send the
-    // operator to the page that owns the record instead.
-    if state
-        .dns
-        .cache
-        .is_permanent_record(&params.domain, &record_type)
+    // operator to the page that owns the record instead. Local records live in
+    // the view every client shares.
+    if params.group_id.is_none()
+        && state
+            .dns
+            .cache
+            .is_permanent_record(&params.domain, &record_type)
     {
         return Err(ApiError(DomainError::InvalidInput(format!(
             "{} {} is a local DNS record — remove it in Local DNS settings",
@@ -189,7 +191,11 @@ pub async fn delete_cache_entry(
         ))));
     }
 
-    if !state.dns.cache.remove_record(&params.domain, &record_type) {
+    if !state
+        .dns
+        .cache
+        .remove_record(&params.domain, &record_type, params.group_id)
+    {
         return Err(ApiError(DomainError::NotFound(format!(
             "cache entry {} {}",
             params.domain,
@@ -197,7 +203,7 @@ pub async fn delete_cache_entry(
         ))));
     }
 
-    debug!(domain = %params.domain, record_type = %record_type, "Cache entry removed");
+    debug!(domain = %params.domain, record_type = %record_type, group_id = ?params.group_id, "Cache entry removed");
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -206,6 +212,7 @@ fn to_entry_response(entry: &CacheEntrySnapshot) -> CacheEntryResponse {
     CacheEntryResponse {
         domain: entry.domain.clone(),
         record_type: entry.record_type.as_str(),
+        group_id: entry.group_id,
         answers: entry
             .answers
             .iter()

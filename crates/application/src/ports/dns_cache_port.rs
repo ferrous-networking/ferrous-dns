@@ -32,6 +32,10 @@ pub struct CacheMetricsSnapshot {
 pub struct CacheEntrySnapshot {
     pub domain: String,
     pub record_type: RecordType,
+    /// The client group whose own view holds the entry: a split-horizon
+    /// answer from a pool routed for that group. `None` for the view every
+    /// client shares.
+    pub group_id: Option<i64>,
     /// Addresses for A/AAAA entries; empty for every other record type.
     pub answers: Vec<IpAddr>,
     /// Target of a CNAME entry.
@@ -144,7 +148,9 @@ pub trait DnsCachePort: Send + Sync {
         addresses: Vec<IpAddr>,
         ttl: u32,
     );
-    fn remove_record(&self, domain: &str, record_type: &RecordType) -> bool;
+    /// Removes the entry from `group_id`'s own view, or from the view every
+    /// client shares when `None`, where every local record lives.
+    fn remove_record(&self, domain: &str, record_type: &RecordType, group_id: Option<i64>) -> bool;
     /// Whether the entry is permanent — a local DNS record, not a cached
     /// upstream answer. Nothing reloads a permanent entry once it is removed,
     /// so callers that expose eviction to users need to know the difference.

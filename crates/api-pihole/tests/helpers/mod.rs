@@ -100,7 +100,12 @@ impl DnsCachePort for StubDnsCache {
     ) {
     }
 
-    fn remove_record(&self, _domain: &str, _record_type: &ferrous_dns_domain::RecordType) -> bool {
+    fn remove_record(
+        &self,
+        _domain: &str,
+        _record_type: &ferrous_dns_domain::RecordType,
+        _group_id: Option<i64>,
+    ) -> bool {
         false
     }
 

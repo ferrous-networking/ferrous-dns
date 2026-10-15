@@ -12,6 +12,7 @@ use axum::{extract::State, http::StatusCode, Json};
 use ferrous_dns_domain::{
     Config, DnsConfig, DnsProtocol, DnssecMode, DomainError, UpstreamPool, UpstreamStrategy,
 };
+use std::collections::{BTreeSet, HashSet};
 use tokio::sync::OwnedMutexGuard;
 use tracing::{debug, error, info, instrument, Instrument};
 
@@ -132,6 +133,33 @@ fn merge_config_update(
     let pools_provided = apply_config_update(&mut merged, request)?;
     merged.validate().map_err(|e| e.to_string())?;
     Ok((merged, pools_provided))
+}
+
+/// Rejects a pool routed for a client group that does not exist: its domains
+/// would be routed for nobody, with nothing to say so.
+async fn check_pool_groups(state: &AppState, pools: &[UpstreamPool]) -> Result<(), SaveResponse> {
+    let wanted: BTreeSet<i64> = pools
+        .iter()
+        .flat_map(|p| p.groups.iter().copied())
+        .collect();
+    if wanted.is_empty() {
+        return Ok(());
+    }
+    let known: HashSet<i64> = state
+        .groups
+        .get_groups
+        .get_all()
+        .await
+        .map_err(|e| not_saved(format!("Could not read the client groups: {e}")))?
+        .iter()
+        .filter_map(|group| group.id)
+        .collect();
+    match wanted.iter().find(|id| !known.contains(id)) {
+        Some(id) => Err(rejected(format!(
+            "A pool is routed for client group {id}, which does not exist"
+        ))),
+        None => Ok(()),
+    }
 }
 
 /// Merges `request` into `cfg`; returns whether the upstream pools were replaced.
@@ -383,6 +411,9 @@ async fn save_config_update(
     // reload_pools swaps only once every manager rebuilt, so a failure leaves
     // both the resolver and the file untouched.
     if pools_provided {
+        if let Err(response) = check_pool_groups(&state, &candidate.dns.pools).await {
+            return response;
+        }
         if let Err(e) = state
             .dns
             .reload_upstream
