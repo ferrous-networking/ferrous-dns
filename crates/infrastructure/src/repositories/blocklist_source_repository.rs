@@ -28,6 +28,7 @@ impl From<SourceRecord> for BlocklistSource {
             created_at: r.created_at,
             updated_at: r.updated_at,
             last_synced_at: r.last_synced_at,
+            last_status: r.last_status,
         }
     }
 }

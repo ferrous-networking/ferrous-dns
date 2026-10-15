@@ -1,3 +1,4 @@
+use super::blocklist_source::ListSyncStatus;
 use crate::value_objects::validators;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -13,6 +14,8 @@ pub struct WhitelistSource {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub last_synced_at: Option<String>,
+    /// How the last download of the list went; `None` before the first try.
+    pub last_status: Option<ListSyncStatus>,
 }
 
 impl WhitelistSource {

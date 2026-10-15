@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use ferrous_dns_domain::{BlocklistSource, DomainError, WhitelistSource};
+use ferrous_dns_domain::{BlocklistSource, DomainError, ListSyncStatus, WhitelistSource};
 
 use crate::{
     crud::{
@@ -23,12 +23,20 @@ use crate::{
     state::PiholeAppState,
 };
 
-/// FTL's status of a list whose download succeeded. Ferrous records only
-/// successful downloads, so FTL's codes for a failed one never appear.
-const STATUS_DOWNLOADED: i64 = 1;
-
-/// FTL's status of a list gravity has not processed.
-const STATUS_UNKNOWN: i64 = 0;
+/// FTL's `adlist.status` (gravity.sh): 0 when gravity has not processed the
+/// list, then 1 updated, 2 unchanged, 3 failed with the cached copy in use, 4
+/// failed with none.
+fn ftl_status(status: Option<ListSyncStatus>, last_synced_at: Option<&str>) -> i64 {
+    match status {
+        Some(ListSyncStatus::Updated) => 1,
+        Some(ListSyncStatus::Unchanged) => 2,
+        Some(ListSyncStatus::FailedKeptCopy) => 3,
+        Some(ListSyncStatus::FailedNoCopy) => 4,
+        // Downloaded before the status was recorded.
+        None if last_synced_at.is_some() => 1,
+        None => 0,
+    }
+}
 
 /// The `{list}` path segment. Pi-hole addresses a list by its URL. A bare
 /// number is a Ferrous extension naming the database id, which is only
@@ -80,6 +88,7 @@ pub(crate) struct StoredList {
     created_at: Option<String>,
     updated_at: Option<String>,
     last_synced_at: Option<String>,
+    last_status: Option<ListSyncStatus>,
 }
 
 impl StoredList {
@@ -94,6 +103,7 @@ impl StoredList {
             created_at: s.created_at,
             updated_at: s.updated_at,
             last_synced_at: s.last_synced_at,
+            last_status: s.last_status,
         })
     }
 
@@ -108,6 +118,7 @@ impl StoredList {
             created_at: s.created_at,
             updated_at: s.updated_at,
             last_synced_at: s.last_synced_at,
+            last_status: s.last_status,
         })
     }
 
@@ -137,11 +148,7 @@ impl StoredList {
             number: 0,
             invalid_domains: 0,
             abp_entries: 0,
-            status: if self.last_synced_at.is_some() {
-                STATUS_DOWNLOADED
-            } else {
-                STATUS_UNKNOWN
-            },
+            status: ftl_status(self.last_status, self.last_synced_at.as_deref()),
         }
     }
 }

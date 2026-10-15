@@ -1,7 +1,7 @@
 //! SQL shared by the blocklist and whitelist source repositories; the schemas differ only in table names.
 
 use super::{db_err, is_unique_violation, sql_now};
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, ListSyncStatus};
 use sqlx::{SqliteExecutor, SqlitePool};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,6 +40,7 @@ pub(super) struct SourceRecord {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub last_synced_at: Option<String>,
+    pub last_status: Option<ListSyncStatus>,
 }
 
 type SourceRow = (
@@ -51,12 +52,15 @@ type SourceRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<i64>,
 );
 
-const COLUMNS: &str = "id, name, url, comment, enabled, created_at, updated_at, last_synced_at";
+const COLUMNS: &str =
+    "id, name, url, comment, enabled, created_at, updated_at, last_synced_at, last_status";
 
 fn record(row: SourceRow, group_ids: Vec<i64>) -> SourceRecord {
-    let (id, name, url, comment, enabled, created_at, updated_at, last_synced_at) = row;
+    let (id, name, url, comment, enabled, created_at, updated_at, last_synced_at, last_status) =
+        row;
     SourceRecord {
         id,
         name: Arc::from(name),
@@ -67,6 +71,7 @@ fn record(row: SourceRow, group_ids: Vec<i64>) -> SourceRecord {
         created_at,
         updated_at,
         last_synced_at,
+        last_status: last_status.and_then(ListSyncStatus::from_code),
     }
 }
 
