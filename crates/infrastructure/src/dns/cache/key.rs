@@ -18,6 +18,9 @@ pub(crate) fn normalize_domain(domain: &str) -> Cow<'_, str> {
 pub struct CacheKey {
     pub domain: CompactString,
     pub record_type: RecordType,
+    /// The client group whose split-horizon answer this is, or 0 for the
+    /// view every client shares. Fits the padding after `record_type`.
+    pub view: u32,
 }
 
 impl CacheKey {
@@ -35,6 +38,7 @@ impl CacheKey {
         Self {
             domain,
             record_type,
+            view: 0,
         }
     }
 
@@ -49,22 +53,37 @@ impl CacheKey {
         Self {
             domain: CompactString::from(domain),
             record_type,
+            view: 0,
         }
+    }
+
+    /// The same key in another group's view.
+    #[inline]
+    pub fn in_view(mut self, view: u32) -> Self {
+        self.view = view;
+        self
     }
 }
 
+// The shared view hashes as keys did before views existed, so the bloom and
+// the shards are unchanged for every name no group routes on its own.
 impl Hash for CacheKey {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.domain.as_str().hash(state);
         std::mem::discriminant(&self.record_type).hash(state);
+        if self.view != 0 {
+            self.view.hash(state);
+        }
     }
 }
 
 impl PartialEq for CacheKey {
     #[inline]
     fn eq(&self, other: &CacheKey) -> bool {
-        self.record_type == other.record_type && self.domain == other.domain
+        self.record_type == other.record_type
+            && self.view == other.view
+            && self.domain == other.domain
     }
 }
 
@@ -74,6 +93,7 @@ impl PartialEq for CacheKey {
 pub struct BorrowedKey<'a> {
     pub domain: &'a str,
     pub record_type: RecordType,
+    pub view: u32,
 }
 
 impl<'a> BorrowedKey<'a> {
@@ -89,7 +109,15 @@ impl<'a> BorrowedKey<'a> {
         Self {
             domain,
             record_type,
+            view: 0,
         }
+    }
+
+    /// The same key in another group's view.
+    #[inline]
+    pub fn in_view(mut self, view: u32) -> Self {
+        self.view = view;
+        self
     }
 }
 
@@ -98,5 +126,8 @@ impl<'a> Hash for BorrowedKey<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.domain.hash(state);
         std::mem::discriminant(&self.record_type).hash(state);
+        if self.view != 0 {
+            self.view.hash(state);
+        }
     }
 }

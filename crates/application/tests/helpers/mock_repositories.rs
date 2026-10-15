@@ -17,13 +17,16 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// The (domain, group) of every query a `MockDnsResolver` saw.
+type SeenGroups = Arc<std::sync::Mutex<Vec<(String, Option<i64>)>>>;
+
 #[derive(Clone)]
 pub struct MockDnsResolver {
     responses: Arc<RwLock<HashMap<String, DnsResolution>>>,
     should_fail: Arc<RwLock<bool>>,
     cache_responses: Arc<std::sync::RwLock<HashMap<String, DnsResolution>>>,
     error_responses: Arc<std::sync::RwLock<HashMap<String, DomainError>>>,
-    seen_groups: Arc<std::sync::Mutex<Vec<(String, Option<i64>)>>>,
+    seen_groups: SeenGroups,
 }
 
 impl MockDnsResolver {

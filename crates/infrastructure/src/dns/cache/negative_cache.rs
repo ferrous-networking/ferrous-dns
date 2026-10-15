@@ -73,9 +73,10 @@ impl NegativeDnsCache {
         }
     }
 
-    /// Remaining TTL and whether the local DNS server gave the answer.
-    pub fn get(&self, domain: &str, record_type: &RecordType) -> Option<(u32, bool)> {
-        let key = CacheKey::from_lowercase(domain, *record_type);
+    /// Remaining TTL and whether the local DNS server gave the answer, in
+    /// cache view `view` (0 for the one every client shares).
+    pub fn get(&self, domain: &str, record_type: &RecordType, view: u32) -> Option<(u32, bool)> {
+        let key = CacheKey::from_lowercase(domain, *record_type).in_view(view);
         let now = coarse_now_secs();
 
         match self.cache.get(&key) {
@@ -96,20 +97,27 @@ impl NegativeDnsCache {
         }
     }
 
-    pub fn insert(&self, domain: &str, record_type: RecordType, ttl: u32, local_dns: bool) {
+    pub fn insert(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        ttl: u32,
+        local_dns: bool,
+        view: u32,
+    ) {
         let ttl = negative_ttl(Some(ttl));
         let now = coarse_now_secs();
         self.cache
             .evict_if_full::<EVICTION_BATCH_SIZE>(self.max_entries, |entry| {
                 now >= entry.expires_at_secs()
             });
-        let key = CacheKey::from_lowercase(domain, record_type);
+        let key = CacheKey::from_lowercase(domain, record_type).in_view(view);
         self.cache
             .insert(key, NegativeEntry::new(now + ttl as u64, local_dns));
     }
 
-    pub fn remove(&self, domain: &str, record_type: &RecordType) {
-        let key = CacheKey::from_lowercase(domain, *record_type);
+    pub fn remove(&self, domain: &str, record_type: &RecordType, view: u32) {
+        let key = CacheKey::from_lowercase(domain, *record_type).in_view(view);
         self.cache.remove(&key);
     }
 
@@ -155,16 +163,16 @@ mod tests {
             *entry.value_mut() = NegativeEntry::new(u64::MAX, false);
         }
 
-        cache.insert("new.example", RecordType::A, 600, false);
+        cache.insert("new.example", RecordType::A, 600, false, 0);
 
         // A bounded scan finds no expired entries and evicts one fallback key.
         // Filtering before taking the budget would remove the expired suffix.
         assert_eq!(cache.len(), capacity);
-        assert!(cache.get("new.example", &RecordType::A).is_some());
+        assert!(cache.get("new.example", &RecordType::A, 0).is_some());
 
         // The expired suffix the insert did not inspect is reclaimed by the sweep.
         assert_eq!(cache.purge_expired(1), capacity - EVICTION_BATCH_SIZE);
         assert_eq!(cache.len(), EVICTION_BATCH_SIZE);
-        assert!(cache.get("new.example", &RecordType::A).is_some());
+        assert!(cache.get("new.example", &RecordType::A, 0).is_some());
     }
 }

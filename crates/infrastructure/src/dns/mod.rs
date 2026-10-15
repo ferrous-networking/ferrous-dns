@@ -21,8 +21,8 @@ pub mod wire_response;
 
 pub use block_filter::BlockFilterEngine;
 pub use cache::{
-    CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, ColdThresholds, DnsCache,
-    DnsCacheAccess, DnsCacheConfig, EvictionStrategy, LocalRecordStatus, RefreshRequest,
+    BorrowedKey, CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, ColdThresholds,
+    DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, LocalRecordStatus, RefreshRequest,
     RefreshSchedule, RefreshSenders, ScheduledRefresh, TimerInbox,
 };
 pub use cache_maintenance::DnsCacheMaintenance;

@@ -50,8 +50,9 @@ const BLOOM_TARGET_FP_RATE: f64 = 0.01;
 /// The TTL a stale hit reports (RFC 8767 §4).
 pub(crate) const STALE_SERVE_TTL: u32 = 2;
 
-/// Message carried by the serve-stale repair queue.
-pub type RefreshRequest = (Arc<str>, RecordType);
+/// Message carried by the serve-stale repair queue: the entry's name, type
+/// and cache view.
+pub type RefreshRequest = (Arc<str>, RecordType, u32);
 
 /// What the cache hands the refresh worker, wired up by cache maintenance.
 ///
@@ -166,13 +167,25 @@ impl DnsCache {
         domain: &str,
         record_type: &RecordType,
     ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)> {
+        self.get_in(domain, record_type, 0)
+    }
+
+    /// [`Self::get`] in cache view `view`: 0 for the view every client
+    /// shares, else the group whose split-horizon answers it holds.
+    pub fn get_in(
+        &self,
+        domain: &str,
+        record_type: &RecordType,
+        view: u32,
+    ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)> {
         let domain = normalize_domain(domain);
         let domain = domain.as_ref();
 
         // Hits leave the bloom alone: `rotate_bloom` re-seeds every live key,
         // so reads never decide membership. L1 mirrors L2's address answers,
-        // so only an A or AAAA probe is worth its lookup.
-        if matches!(record_type, RecordType::A | RecordType::AAAA) {
+        // so only an A or AAAA probe is worth its lookup. L1 is keyed by name
+        // alone, so it only ever holds the shared view.
+        if view == 0 && matches!(record_type, RecordType::A | RecordType::AAAA) {
             if let Some((arc_data, dnssec_status, local_dns, remaining_ttl, l1_hits)) =
                 l1_get(domain, record_type)
             {
@@ -191,11 +204,11 @@ impl DnsCache {
             }
         }
 
-        let borrowed = BorrowedKey::new(domain, *record_type);
+        let borrowed = BorrowedKey::new(domain, *record_type).in_view(view);
         let in_bloom = self.bloom.check(&borrowed);
 
         if !in_bloom {
-            if let Some((remaining_ttl, local_dns)) = self.negative.get(domain, record_type) {
+            if let Some((remaining_ttl, local_dns)) = self.negative.get(domain, record_type, view) {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
                 return Some((
                     CachedData::NegativeResponse,
@@ -208,7 +221,7 @@ impl DnsCache {
             return None;
         }
 
-        let key = CacheKey::from_lowercase(domain, *record_type);
+        let key = CacheKey::from_lowercase(domain, *record_type).in_view(view);
 
         if let Some(entry) = self.cache.get(&key) {
             let record = entry.value();
@@ -225,7 +238,7 @@ impl DnsCache {
                     if record.try_set_refreshing()
                         && senders
                             .stale
-                            .try_send((Arc::from(domain), key.record_type))
+                            .try_send((Arc::from(domain), key.record_type, view))
                             .is_err()
                     {
                         record.clear_refreshing();
@@ -255,7 +268,9 @@ impl DnsCache {
                     self.rearm_refresh(&key, record);
                 }
                 let remaining_ttl = record.remaining_ttl_at_secs(now_secs);
-                self.promote_to_l1(domain, record_type, record, now_secs);
+                if view == 0 {
+                    self.promote_to_l1(domain, record_type, record, now_secs);
+                }
                 return Some((
                     record.data.clone(),
                     Some(record.dnssec_status),
@@ -265,7 +280,7 @@ impl DnsCache {
             }
         }
 
-        if let Some((remaining_ttl, local_dns)) = self.negative.get(domain, record_type) {
+        if let Some((remaining_ttl, local_dns)) = self.negative.get(domain, record_type, view) {
             self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
             return Some((
                 CachedData::NegativeResponse,
@@ -288,21 +303,26 @@ impl DnsCache {
         ttl: u32,
         dnssec_status: Option<CachedDnssecStatus>,
     ) {
-        self.store(domain, record_type, data, ttl, dnssec_status, false);
+        let domain = normalize_domain(domain);
+        let key = BorrowedKey::new(domain.as_ref(), record_type);
+        self.store(key, data, ttl, dnssec_status, false);
     }
 
+    /// Stores under `key`, whose view says which clients it answers.
     /// `local_dns` marks an answer from the local DNS server, which its hits report.
     fn store(
         &self,
-        domain: &str,
-        record_type: RecordType,
+        key: BorrowedKey<'_>,
         data: CachedData,
         ttl: u32,
         dnssec_status: Option<CachedDnssecStatus>,
         local_dns: bool,
     ) {
-        let domain = normalize_domain(domain);
-        let domain = domain.as_ref();
+        let BorrowedKey {
+            domain,
+            record_type,
+            view,
+        } = key;
 
         if data.is_negative() {
             // Negative cache enforces its own `[MIN_NEGATIVE_TTL, MAX_NEGATIVE_TTL]`
@@ -312,7 +332,8 @@ impl DnsCache {
             // break the refresh/access-window cycle, while deflating negatives
             // would defeat the 300s floor that keeps NXDOMAINs from escaping
             // to upstream on every repeated miss.
-            self.negative.insert(domain, record_type, ttl, local_dns);
+            self.negative
+                .insert(domain, record_type, ttl, local_dns, view);
             return;
         }
 
@@ -321,8 +342,8 @@ impl DnsCache {
             debug!(domain = %domain, record_type = %record_type, "Answer does not re-section; not cached");
             return;
         };
-        let key = CacheKey::from_lowercase(domain, record_type);
-        let maybe_l1_addresses = data.as_ip_addresses().cloned();
+        let key = CacheKey::from_lowercase(domain, record_type).in_view(view);
+        let maybe_l1_addresses = data.as_ip_addresses().filter(|_| view == 0).cloned();
 
         let record = CachedRecord::new(data, ttl, record_type, dnssec_status);
         let mut record = if local_dns {
@@ -458,6 +479,21 @@ impl DnsCache {
         }
     }
 
+    /// [`Self::remove`] in cache view `view`. A group's view never holds a
+    /// local record nor an L1 copy, so only its own entry goes.
+    pub fn remove_in(&self, domain: &str, record_type: &RecordType, view: u32) -> bool {
+        if view == 0 {
+            return self.remove(domain, record_type);
+        }
+        let key = CacheKey::new(domain, *record_type).in_view(view);
+        if self.cache.remove(&key).is_none() {
+            return false;
+        }
+        self.metrics.evictions.fetch_add(1, AtomicOrdering::Relaxed);
+        info!(domain = %key.domain, record_type = %record_type, view, "Removed record from cache");
+        true
+    }
+
     pub fn clear(&self) {
         // Permanent entries are configuration, not cached upstream answers:
         // local DNS records live here and nothing reloads them, so dropping them
@@ -468,6 +504,7 @@ impl DnsCache {
                 let key = CacheKey {
                     domain: types.key().clone(),
                     record_type,
+                    view: 0,
                 };
                 if let Some(record) = self.cache.get(&key) {
                     preserved.push((key, record.data.clone(), record.ttl));
@@ -523,9 +560,12 @@ impl DnsCache {
     }
 
     pub fn get_remaining_ttl(&self, domain: &str, record_type: &RecordType) -> Option<u32> {
-        let key = CacheKey::new(domain, *record_type);
+        self.remaining_ttl_of(&CacheKey::new(domain, *record_type))
+    }
+
+    pub(crate) fn remaining_ttl_of(&self, key: &CacheKey) -> Option<u32> {
         self.cache
-            .get(&key)
+            .get(key)
             .map(|entry| entry.remaining_ttl_at_secs(coarse_now_secs()))
     }
 
@@ -647,20 +687,19 @@ impl DnsCache {
     /// renew the entry, `in_secs` from now. Called while that renewal still
     /// holds the entry, so compaction cannot arm it first; a renewal or a
     /// re-arm that won the entry in the meantime keeps its own timer.
-    pub(crate) fn schedule_retry(&self, domain: &str, record_type: RecordType, in_secs: u64) {
+    pub(crate) fn schedule_retry(&self, key: &CacheKey, in_secs: u64) {
         let Some(inbox) = self.timer_inbox() else {
             return;
         };
-        let key = CacheKey::new(domain, record_type);
         let due_at_secs = coarse_now_secs() + in_secs;
         let armed = self
             .cache
-            .get(&key)
+            .get(key)
             .is_some_and(|entry| entry.try_rearm_lapsed_refresh(due_at_secs));
         if armed {
             let timer = ScheduledRefresh {
                 due_at_secs,
-                key,
+                key: key.clone(),
                 retry: true,
             };
             self.push_or_release(inbox, timer);
@@ -686,9 +725,21 @@ impl DnsCache {
         dnssec_status: Option<CachedDnssecStatus>,
     ) -> bool {
         let domain = normalize_domain(domain);
-        let domain = domain.as_ref();
-        let key = CacheKey::from_lowercase(domain, *record_type);
-        let Some(ttl) = new_ttl.or_else(|| self.cache.get(&key).map(|entry| entry.ttl)) else {
+        let key = CacheKey::from_lowercase(domain.as_ref(), *record_type);
+        self.refresh_record_of(&key, new_ttl, new_data, dnssec_status)
+    }
+
+    /// [`Self::refresh_record`] for `key`, in whatever view it names.
+    pub(crate) fn refresh_record_of(
+        &self,
+        key: &CacheKey,
+        new_ttl: Option<u32>,
+        new_data: CachedData,
+        dnssec_status: Option<CachedDnssecStatus>,
+    ) -> bool {
+        let domain = key.domain.as_str();
+        let record_type = &key.record_type;
+        let Some(ttl) = new_ttl.or_else(|| self.cache.get(key).map(|entry| entry.ttl)) else {
             return false;
         };
         let ttl = self.clamp_ttl(ttl);
@@ -696,7 +747,7 @@ impl DnsCache {
             return false;
         };
         let now = coarse_now_secs();
-        let timer = if let Some(mut entry) = self.cache.get_mut(&key) {
+        let timer = if let Some(mut entry) = self.cache.get_mut(key) {
             let record = entry.value_mut();
             if record.is_permanent() || record.is_marked_for_deletion() {
                 return false;
@@ -713,7 +764,10 @@ impl DnsCache {
             record.note_refreshed();
             record.clear_refreshing();
 
-            let maybe_l1_addresses = new_data.as_ip_addresses().cloned();
+            let maybe_l1_addresses = new_data
+                .as_ip_addresses()
+                .filter(|_| key.view == 0)
+                .cloned();
             record.data = new_data;
 
             if let Some(addresses) = maybe_l1_addresses {
@@ -732,7 +786,7 @@ impl DnsCache {
 
             // A renewed TTL is worthless if the bloom gate no longer admits the
             // key, so re-arm it here too instead of waiting for the next rotation.
-            self.bloom.set(&key);
+            self.bloom.set(key);
 
             // The new lifetime gets its own timer, which replaces whatever the
             // entry had pending: that one now fires stale.
@@ -1036,8 +1090,9 @@ impl DnsCacheAccess for DnsCache {
         &self,
         domain: &str,
         record_type: &RecordType,
+        view: u32,
     ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)> {
-        DnsCache::get(self, domain, record_type)
+        DnsCache::get_in(self, domain, record_type, view)
     }
 
     fn local_record_status(&self, domain: &str, record_type: &RecordType) -> LocalRecordStatus {
@@ -1059,14 +1114,13 @@ impl DnsCacheAccess for DnsCache {
 
     fn insert(
         &self,
-        domain: &str,
-        record_type: RecordType,
+        key: BorrowedKey<'_>,
         data: CachedData,
         ttl: u32,
         dnssec_status: Option<CachedDnssecStatus>,
         local_dns: bool,
     ) {
-        self.store(domain, record_type, data, ttl, dnssec_status, local_dns);
+        self.store(key, data, ttl, dnssec_status, local_dns);
     }
 
     fn record_transient_upstream_error(&self) {

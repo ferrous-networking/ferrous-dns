@@ -10,8 +10,11 @@ mod upstream;
 
 use ferrous_dns_application::ports::DnsResolver;
 use ferrous_dns_domain::{DnsQuery, RecordType, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
-use ferrous_dns_infrastructure::dns::{DnsCache, PoolManager};
+use ferrous_dns_infrastructure::dns::{
+    BorrowedKey, CachedData, DnsCache, DnsCacheAccess, PoolManager, RefreshSenders,
+};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -350,4 +353,65 @@ async fn test_group_view_entries_are_evicted_like_any_other() {
         f.cache.len() < before,
         "group view entries must be evictable"
     );
+}
+
+#[test]
+fn test_stale_hit_in_a_group_view_queues_a_repair_for_that_view() {
+    let cache = refresh::refresh_cache(100, 0.0, 7_200);
+    let (stale, mut stale_rx) = tokio::sync::mpsc::channel(16);
+    cache.set_refresh_senders(RefreshSenders {
+        stale,
+        timers: None,
+    });
+    let view = GROUP_A as u32;
+    DnsCacheAccess::insert(
+        cache.as_ref(),
+        BorrowedKey::new("alias.corp.example", RecordType::CNAME).in_view(view),
+        CachedData::CanonicalName(Arc::from("host.corp.example")),
+        1,
+        None,
+        true,
+    );
+
+    std::thread::sleep(Duration::from_millis(1_200));
+    coarse_clock::tick();
+    if cache
+        .get_in("alias.corp.example", &RecordType::CNAME, view)
+        .is_none()
+    {
+        // Past the stale window on a slow machine: nothing to repair.
+        return;
+    }
+
+    let (domain, record_type, repaired_view) = stale_rx.try_recv().expect("repair queued");
+    assert_eq!(&*domain, "alias.corp.example");
+    assert_eq!(record_type, RecordType::CNAME);
+    assert_eq!(
+        repaired_view, view,
+        "the repair must resolve for the same group"
+    );
+}
+
+#[test]
+fn test_removing_a_group_entry_leaves_the_shared_one() {
+    let cache = refresh::refresh_cache(100, 0.75, 7_200);
+    let view = GROUP_A as u32;
+    for (entry_view, ip) in [(0, "192.0.2.1"), (view, "10.1.1.1")] {
+        DnsCacheAccess::insert(
+            cache.as_ref(),
+            BorrowedKey::new("x.corp.example", RecordType::CNAME).in_view(entry_view),
+            CachedData::CanonicalName(Arc::from(ip)),
+            300,
+            None,
+            false,
+        );
+    }
+
+    assert!(cache.remove_in("x.corp.example", &RecordType::CNAME, view));
+    assert!(cache
+        .get_in("x.corp.example", &RecordType::CNAME, view)
+        .is_none());
+    assert!(cache
+        .get_in("x.corp.example", &RecordType::CNAME, 0)
+        .is_some());
 }

@@ -1,4 +1,5 @@
 use super::data::{CachedData, CachedDnssecStatus};
+use super::key::BorrowedKey;
 use ferrous_dns_domain::RecordType;
 
 /// How permanent records at a name apply to the requested record type.
@@ -14,21 +15,23 @@ pub enum LocalRecordStatus {
 
 pub trait DnsCacheAccess: Send + Sync {
     /// A hit's data, DNSSEC status, remaining TTL, and whether the local DNS
-    /// server gave the answer.
+    /// server gave the answer, from cache view `view` (0 for the one every
+    /// client shares).
     fn get(
         &self,
         domain: &str,
         record_type: &RecordType,
+        view: u32,
     ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)>;
 
     /// Checks the requested type and name ownership in one lookup.
     fn local_record_status(&self, domain: &str, record_type: &RecordType) -> LocalRecordStatus;
 
-    /// `local_dns` marks an answer from the local DNS server, which its hits report.
+    /// Stores under `key`, in the view it names. `local_dns` marks an answer
+    /// from the local DNS server, which its hits report.
     fn insert(
         &self,
-        domain: &str,
-        record_type: RecordType,
+        key: BorrowedKey<'_>,
         data: CachedData,
         ttl: u32,
         dnssec_status: Option<CachedDnssecStatus>,

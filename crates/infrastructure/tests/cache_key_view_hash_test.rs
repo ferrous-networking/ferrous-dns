@@ -67,3 +67,35 @@ fn test_uppercase_name_hashes_as_its_lowercase_form() {
         reference_hash("www.example.com", RecordType::A)
     );
 }
+
+#[test]
+fn test_group_view_key_hashes_alike_borrowed_and_owned() {
+    for name in NAMES {
+        for record_type in TYPES {
+            for view in [1, 3, u32::MAX] {
+                let owned = CacheKey::new(name, record_type).in_view(view);
+                let borrowed = BorrowedKey::new(name, record_type).in_view(view);
+                assert_eq!(
+                    hash_of(&owned),
+                    hash_of(&borrowed),
+                    "{name} {record_type} view {view}: the bloom would miss this entry"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_views_of_one_name_are_distinct_keys() {
+    let shared = CacheKey::new("corp.example", RecordType::A);
+    let group_a = CacheKey::new("corp.example", RecordType::A).in_view(3);
+    let group_b = CacheKey::new("corp.example", RecordType::A).in_view(4);
+    assert_ne!(shared, group_a);
+    assert_ne!(group_a, group_b);
+    assert_ne!(hash_of(&shared), hash_of(&group_a));
+    assert_ne!(hash_of(&group_a), hash_of(&group_b));
+    assert_eq!(
+        group_a,
+        CacheKey::new("CORP.example", RecordType::A).in_view(3)
+    );
+}

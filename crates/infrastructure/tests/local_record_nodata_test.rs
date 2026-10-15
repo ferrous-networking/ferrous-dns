@@ -257,7 +257,9 @@ async fn test_non_address_permanent_entry_survives_clear_without_owning_missing_
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_coalesced_followers_keep_local_nodata() {
-    use ferrous_dns_infrastructure::dns::{CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus};
+    use ferrous_dns_infrastructure::dns::{
+        BorrowedKey, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
+    };
     use std::sync::{mpsc, Mutex};
     use std::time::Duration;
     use tokio::sync::Notify;
@@ -273,8 +275,9 @@ async fn test_coalesced_followers_keep_local_nodata() {
             &self,
             domain: &str,
             kind: &RecordType,
+            view: u32,
         ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)> {
-            self.cache.get(domain, kind)
+            self.cache.get_in(domain, kind, view)
         }
 
         fn local_record_status(&self, domain: &str, kind: &RecordType) -> LocalRecordStatus {
@@ -296,14 +299,13 @@ async fn test_coalesced_followers_keep_local_nodata() {
 
         fn insert(
             &self,
-            domain: &str,
-            kind: RecordType,
+            key: BorrowedKey<'_>,
             data: CachedData,
             ttl: u32,
             status: Option<CachedDnssecStatus>,
             local_dns: bool,
         ) {
-            DnsCacheAccess::insert(&*self.cache, domain, kind, data, ttl, status, local_dns);
+            DnsCacheAccess::insert(&*self.cache, key, data, ttl, status, local_dns);
         }
     }
 

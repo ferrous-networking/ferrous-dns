@@ -13,8 +13,8 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, DnsCacheAccess, DnsCacheConfig,
-    EvictionStrategy, LocalRecordStatus,
+    BorrowedKey, CachedAddresses, CachedData, CachedDnssecStatus, DnsCache, DnsCacheAccess,
+    DnsCacheConfig, EvictionStrategy, LocalRecordStatus,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -81,8 +81,7 @@ fn make_query(domain: &str, record_type: RecordType) -> DnsQuery {
 fn preload(cache: &dyn DnsCacheAccess, domain: &str, record_type: RecordType, addr: &str) {
     let ip: IpAddr = addr.parse().unwrap();
     cache.insert(
-        domain,
-        record_type,
+        BorrowedKey::new(domain, record_type),
         CachedData::IpAddresses(CachedAddresses {
             addresses: Arc::new(vec![ip]),
         }),
@@ -165,10 +164,11 @@ async fn should_wake_followers_with_cached_result_when_leader_finds_cache_hit() 
             &self,
             domain: &str,
             record_type: &RecordType,
+            view: u32,
         ) -> Option<(CachedData, Option<CachedDnssecStatus>, Option<u32>, bool)> {
             let is_target = domain == self.target_domain && *record_type == self.target_type;
             if !is_target {
-                return self.inner.get(domain, record_type);
+                return self.inner.get(domain, record_type, view);
             }
             let hit_index = self.hits.fetch_add(1, Ordering::SeqCst);
             match hit_index {
@@ -185,12 +185,12 @@ async fn should_wake_followers_with_cached_result_when_leader_finds_cache_hit() 
                         .take()
                         .expect("gate receiver was consumed twice — test bug");
                     let _ = rx.recv();
-                    self.inner.get(domain, record_type)
+                    self.inner.get(domain, record_type, view)
                 }
                 // Any later call (the follower's fallback `check_cache` on a
                 // watch-closed path, should the wake-up ever regress)
                 // delegates to the inner cache.
-                _ => self.inner.get(domain, record_type),
+                _ => self.inner.get(domain, record_type, view),
             }
         }
 
@@ -200,15 +200,13 @@ async fn should_wake_followers_with_cached_result_when_leader_finds_cache_hit() 
 
         fn insert(
             &self,
-            domain: &str,
-            record_type: RecordType,
+            key: BorrowedKey<'_>,
             data: CachedData,
             ttl: u32,
             dnssec_status: Option<CachedDnssecStatus>,
             local_dns: bool,
         ) {
-            self.inner
-                .insert(domain, record_type, data, ttl, dnssec_status, local_dns);
+            self.inner.insert(key, data, ttl, dnssec_status, local_dns);
         }
     }
 

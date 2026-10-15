@@ -1,8 +1,9 @@
-use super::super::cache::key::CacheKey;
+use super::super::cache::key::{BorrowedKey, CacheKey};
 use super::super::cache::negative_cache::{negative_ttl, MIN_NEGATIVE_TTL};
 use super::super::cache::{
     CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
 };
+use super::super::load_balancer::{Route, UpstreamRouter};
 use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
@@ -76,6 +77,9 @@ pub struct CachedResolver {
     cache: Arc<dyn DnsCacheAccess>,
     cache_ttl: u32,
     inflight: InflightMap,
+    /// Picks the cache view a client group's query reads and fills. Without
+    /// one, every query uses the view all clients share.
+    router: Option<Arc<dyn UpstreamRouter>>,
 }
 
 impl CachedResolver {
@@ -94,18 +98,46 @@ impl CachedResolver {
                 FxBuildHasher,
                 inflight_shards,
             ),
+            router: None,
         }
     }
 
-    fn check_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+    /// Keeps the answers a client group's own conditional pool gives apart
+    /// from every other client's.
+    pub fn with_router(mut self, router: Arc<dyn UpstreamRouter>) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    /// The cache view `domain` is read from for `group`.
+    #[inline]
+    fn view(&self, domain: &str, group: Option<i64>) -> u32 {
+        match &self.router {
+            Some(router) if group.is_some() => router.view(domain, group),
+            _ => 0,
+        }
+    }
+
+    fn route(&self, query: &DnsQuery) -> Option<Route> {
+        self.router
+            .as_ref()
+            .and_then(|router| router.route(&query.domain, query.group_id))
+    }
+
+    fn check_cache_str(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        view: u32,
+    ) -> Option<DnsResolution> {
         let local_status = self.cache.local_record_status(domain, &record_type);
         let (data, dnssec_status, min_ttl, local_answer) = match local_status {
             // A configured address owns the name, not only its record type.
             // Answer before ordinary cached data so stale upstream data cannot win.
             LocalRecordStatus::MissingType => (CachedData::NegativeResponse, None, None, false),
-            LocalRecordStatus::Present | LocalRecordStatus::NotLocal => {
-                self.cache.get(domain, &record_type)?
-            }
+            // A local record answers every client, so it lives in the shared view.
+            LocalRecordStatus::Present => self.cache.get(domain, &record_type, 0)?,
+            LocalRecordStatus::NotLocal => self.cache.get(domain, &record_type, view)?,
         };
 
         // A local server's NXDOMAIN must not read as `local_dns`, which on an
@@ -148,13 +180,13 @@ impl CachedResolver {
     }
 
     fn check_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
-        self.check_cache_str(query.domain.as_ref(), query.record_type)
+        let view = self.view(&query.domain, query.group_id);
+        self.check_cache_str(query.domain.as_ref(), query.record_type, view)
     }
 
-    fn insert_negative(&self, query: &DnsQuery, ttl: u32, local_dns: bool) {
+    fn insert_negative(&self, key: &CacheKey, ttl: u32, local_dns: bool) {
         self.cache.insert(
-            query.domain.as_ref(),
-            query.record_type,
+            borrowed(key),
             CachedData::NegativeResponse,
             ttl,
             Some(CachedDnssecStatus::Insecure),
@@ -162,7 +194,15 @@ impl CachedResolver {
         );
     }
 
-    fn store_in_cache(&self, query: &DnsQuery, resolution: &DnsResolution) {
+    /// Stores `resolution` under `key`. `routed` says a conditional pool
+    /// answered it.
+    fn store_in_cache(
+        &self,
+        query: &DnsQuery,
+        key: &CacheKey,
+        routed: bool,
+        resolution: &DnsResolution,
+    ) {
         // Never cache an unvalidated (Bogus/Indeterminate) result. Under Strict it
         // must SERVFAIL on every query, so the fast cache path must not be able to
         // serve it; under Permissive, re-validating it each time is fine.
@@ -181,8 +221,7 @@ impl CachedResolver {
                 // No answer records means NXDOMAIN or NODATA, which lives for
                 // the SOA's negative TTL rather than the default one.
                 Some(wire_data) => self.cache.insert(
-                    query.domain.as_ref(),
-                    query.record_type,
+                    borrowed(key),
                     CachedData::WireData(wire_data.clone()),
                     resolution.min_ttl.map_or_else(
                         || negative_ttl(resolution.negative_soa_ttl),
@@ -192,7 +231,7 @@ impl CachedResolver {
                     resolution.local_dns,
                 ),
                 None => self.insert_negative(
-                    query,
+                    key,
                     resolution.negative_soa_ttl.unwrap_or(MIN_NEGATIVE_TTL),
                     resolution.local_dns,
                 ),
@@ -202,8 +241,7 @@ impl CachedResolver {
 
         let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
         self.cache.insert(
-            query.domain.as_ref(),
-            query.record_type,
+            borrowed(key),
             CachedData::IpAddresses(CachedAddresses {
                 addresses: Arc::clone(&resolution.addresses),
             }),
@@ -215,10 +253,12 @@ impl CachedResolver {
         // Also cache the chain's final target under its own name, so a direct
         // query for it does not go upstream. `min_ttl` already spans the whole
         // chain, and the DNSSEC status is inherited, never elevated.
+        // Not when a conditional pool answered: the target is another name,
+        // which that pool does not answer for everyone.
         //
         // TODO(bailiwick): the response parser accepts any CNAME target, so an
         // untrusted upstream could plant a cross-bailiwick target here.
-        if let Some(final_target) = resolution.cname_chain.last() {
+        if let Some(final_target) = resolution.cname_chain.last().filter(|_| !routed) {
             let target_name: &str = final_target.as_ref();
             // Cache keys are case-insensitive, so a case-variant self-loop
             // would write the same entry twice. A local name is configuration:
@@ -229,9 +269,9 @@ impl CachedResolver {
                     .local_record_status(target_name, &query.record_type)
                     == LocalRecordStatus::NotLocal
             {
+                let target = CacheKey::new(target_name, query.record_type);
                 self.cache.insert(
-                    target_name,
-                    query.record_type,
+                    borrowed(&target),
                     CachedData::IpAddresses(CachedAddresses {
                         addresses: Arc::clone(&resolution.addresses),
                     }),
@@ -284,6 +324,7 @@ impl CachedResolver {
         &self,
         query: &DnsQuery,
         key: CacheKey,
+        routed: bool,
     ) -> Result<DnsResolution, DomainError> {
         let mut guard = InflightLeaderGuard {
             inflight: &self.inflight,
@@ -293,7 +334,9 @@ impl CachedResolver {
 
         // Another leader may have filled the cache between our election and
         // now; serve that and hand it to our followers instead of going upstream.
-        if let Some(cached) = self.check_cache(query) {
+        if let Some(cached) =
+            self.check_cache_str(query.domain.as_ref(), query.record_type, guard.key.view)
+        {
             self.publish_inflight(&guard.key, &cached);
             guard.defuse();
             return Self::cached_outcome(cached);
@@ -303,16 +346,16 @@ impl CachedResolver {
 
         match &result {
             Ok(resolution) => {
-                self.store_in_cache(query, resolution);
+                self.store_in_cache(query, &guard.key, routed, resolution);
                 self.publish_inflight(&guard.key, resolution);
                 guard.defuse();
             }
             // Only an authoritative "no such name" is safe to cache: a
             // transient failure cached as NXDOMAIN would outlive the outage by
             // the whole negative TTL. The guard releases the followers.
-            Err(DomainError::NxDomain) => self.insert_negative(query, MIN_NEGATIVE_TTL, false),
+            Err(DomainError::NxDomain) => self.insert_negative(&guard.key, MIN_NEGATIVE_TTL, false),
             Err(DomainError::LocalNxDomain) => {
-                self.insert_negative(query, MIN_NEGATIVE_TTL, true);
+                self.insert_negative(&guard.key, MIN_NEGATIVE_TTL, true);
             }
             Err(_) => self.cache.record_transient_upstream_error(),
         }
@@ -365,21 +408,28 @@ impl DnsResolver for CachedResolver {
         &self,
         domain: &str,
         record_type: RecordType,
-        _group_id: Option<i64>,
+        group_id: Option<i64>,
     ) -> Option<DnsResolution> {
-        self.check_cache_str(domain, record_type)
+        let view = self.view(domain, group_id);
+        self.check_cache_str(domain, record_type, view)
     }
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
         // No cache probe before registering: callers probe with `try_cache`
         // first, and the leader re-checks once its guard is in place, which is
         // also what closes the race with a leader that just finished.
-        let key = CacheKey::new(query.domain.as_ref(), query.record_type);
+        let route = self.route(query);
+        let view = route.map_or(0, |route| route.view);
+        let key = CacheKey::new(query.domain.as_ref(), query.record_type).in_view(view);
         let (is_leader, rx) = self.register_or_join_inflight(&key);
 
         if !is_leader {
             return self.resolve_as_follower(query, rx).await;
         }
-        self.resolve_as_leader(query, key).await
+        self.resolve_as_leader(query, key, route.is_some()).await
     }
+}
+
+fn borrowed(key: &CacheKey) -> BorrowedKey<'_> {
+    BorrowedKey::new(key.domain.as_str(), key.record_type).in_view(key.view)
 }

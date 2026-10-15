@@ -527,7 +527,7 @@ async fn test_stale_repair_goes_ahead_of_due_backlog() {
     );
     worker
         .stale
-        .send((Arc::from("urgent.example"), RecordType::A))
+        .send((Arc::from("urgent.example"), RecordType::A, 0))
         .await
         .unwrap();
     // The worker has taken the repair off the queue before a permit frees.
@@ -641,7 +641,7 @@ async fn repair(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
     let worker = start_worker(cache, resolver, no_ranking(), false);
     worker
         .stale
-        .send((Arc::from("queued-0.com"), RecordType::A))
+        .send((Arc::from("queued-0.com"), RecordType::A, 0))
         .await
         .expect("send failed");
     tokio::time::sleep(Duration::from_millis(200)).await;

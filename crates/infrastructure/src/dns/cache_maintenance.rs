@@ -1,14 +1,14 @@
 use super::cache::negative_cache::negative_ttl;
 use super::cache::{
-    coarse_clock, CachedAddresses, CachedData, CachedDnssecStatus, ColdThresholds, DnsCache,
-    DueRefresh, RefreshRequest, RefreshSchedule, TimerInbox,
+    coarse_clock, CacheKey, CachedAddresses, CachedData, CachedDnssecStatus, ColdThresholds,
+    DnsCache, DueRefresh, RefreshRequest, RefreshSchedule, TimerInbox,
 };
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     CacheCompactionOutcome, CacheMaintenancePort, DnsResolver, QueryLogRepository,
 };
-use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, QueryLog, QuerySource, RecordType};
+use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, QueryLog, QuerySource};
 use std::collections::{BinaryHeap, VecDeque};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
@@ -132,27 +132,31 @@ impl DnsCacheMaintenance {
         }
     }
 
-    /// Resolves `domain` again and stores the answer. A serve-stale repair
+    /// Resolves `key` again and stores the answer. A serve-stale repair
     /// has a client waiting and always stores; a renewal on a timer declines
     /// an answer that would not extend a live entry (see
-    /// [`RefreshOutcome::Declined`]).
+    /// [`RefreshOutcome::Declined`]). An entry in a group's view is resolved
+    /// for that group, through the pool routed for it.
     async fn refresh_entry(
         cache: &DnsCache,
         resolver: &dyn DnsResolver,
         query_log: Option<&dyn QueryLogRepository>,
-        domain: &str,
-        record_type: &RecordType,
+        key: &CacheKey,
         origin: RefreshOrigin,
     ) -> Result<RefreshOutcome, DomainError> {
         let start = Instant::now();
+        let domain = key.domain.as_str();
+        let record_type = &key.record_type;
+        let group_id = (key.view != 0).then(|| i64::from(key.view));
 
         debug!(
             domain = %domain,
             record_type = %record_type,
+            view = key.view,
             "Refreshing cache entry (will revalidate DNSSEC if enabled)"
         );
 
-        let query = DnsQuery::new(domain, *record_type);
+        let query = DnsQuery::new(domain, *record_type).with_group(group_id);
         let resolution = resolver.resolve(&query).await?;
         let response_time = start.elapsed().as_micros() as u64;
 
@@ -164,7 +168,7 @@ impl DnsCacheMaintenance {
         // answer nobody validated.
         match resolution.dnssec_status {
             Some(DnssecStatus::Bogus) => {
-                cache.remove(domain, record_type);
+                cache.remove_in(domain, record_type, key.view);
                 return Ok(RefreshOutcome::Removed);
             }
             Some(DnssecStatus::Indeterminate) => return Ok(RefreshOutcome::Kept),
@@ -190,13 +194,13 @@ impl DnsCacheMaintenance {
         // Only a positive answer to a live entry is declined: past expiry any
         // answer beats a stale one, and a negative TTL is the zone's own.
         if origin != RefreshOrigin::Stale && resolution.min_ttl.is_some() {
-            let remaining = cache.get_remaining_ttl(domain, record_type).unwrap_or(0);
+            let remaining = cache.remaining_ttl_of(key).unwrap_or(0);
             if remaining > 0 && cache.clamp_ttl(ttl) <= remaining {
                 return Ok(RefreshOutcome::Declined);
             }
         }
 
-        if !cache.refresh_record(domain, record_type, Some(ttl), new_data, dnssec_status) {
+        if !cache.refresh_record_of(key, Some(ttl), new_data, dnssec_status) {
             return Ok(RefreshOutcome::Kept);
         }
 
@@ -220,7 +224,7 @@ impl DnsCacheMaintenance {
                 timestamp: None,
                 query_source: QuerySource::Internal,
                 protocol: None,
-                group_id: None,
+                group_id,
                 block_source: None,
             };
 
@@ -376,27 +380,25 @@ impl RefreshWorker {
     }
 
     fn start_next(&mut self, permit: OwnedSemaphorePermit) {
-        let (domain, record_type, origin) =
-            if let Some((domain, record_type)) = self.stale.pop_front() {
-                (domain, record_type, RefreshOrigin::Stale)
-            } else if let Some(due) = self.due.pop() {
-                let now = coarse_clock::coarse_now_secs();
-                if !self.cache.start_claimed_refresh(&due.key, now) {
-                    return;
-                }
-                let origin = if due.retry {
-                    RefreshOrigin::Retry
-                } else {
-                    RefreshOrigin::Due
-                };
-                (
-                    Arc::from(due.key.domain.as_str()),
-                    due.key.record_type,
-                    origin,
-                )
-            } else {
+        let (key, origin) = if let Some((domain, record_type, view)) = self.stale.pop_front() {
+            (
+                CacheKey::new(&domain, record_type).in_view(view),
+                RefreshOrigin::Stale,
+            )
+        } else if let Some(due) = self.due.pop() {
+            let now = coarse_clock::coarse_now_secs();
+            if !self.cache.start_claimed_refresh(&due.key, now) {
                 return;
+            }
+            let origin = if due.retry {
+                RefreshOrigin::Retry
+            } else {
+                RefreshOrigin::Due
             };
+            (due.key, origin)
+        } else {
+            return;
+        };
 
         let cache = Arc::clone(&self.cache);
         let resolver = Arc::clone(&self.resolver);
@@ -406,12 +408,11 @@ impl RefreshWorker {
                 &cache,
                 resolver.as_ref(),
                 query_log.as_deref(),
-                &domain,
-                &record_type,
+                &key,
                 origin,
             )
             .await;
-            Self::follow_up(&cache, &domain, record_type, origin, &outcome);
+            Self::follow_up(&cache, &key, origin, &outcome);
             drop(permit);
         });
     }
@@ -423,11 +424,11 @@ impl RefreshWorker {
     /// compaction from arming a second one.
     fn follow_up(
         cache: &DnsCache,
-        domain: &str,
-        record_type: RecordType,
+        key: &CacheKey,
         origin: RefreshOrigin,
         outcome: &Result<RefreshOutcome, DomainError>,
     ) {
+        let domain = key.domain.as_str();
         match outcome {
             Ok(RefreshOutcome::Renewed) => {
                 // `cache_optimistic_refreshes` counts renewals ahead of
@@ -438,7 +439,7 @@ impl RefreshWorker {
                         .optimistic_refreshes
                         .fetch_add(1, AtomicOrdering::Relaxed);
                 }
-                debug!(domain = %domain, record_type = %record_type, ?origin, "Cache entry refreshed");
+                debug!(domain = %domain, record_type = %key.record_type, ?origin, "Cache entry refreshed");
                 return;
             }
             Ok(other) => {
@@ -448,13 +449,11 @@ impl RefreshWorker {
                 debug!(domain = %domain, ?origin, error = %e, "Background refresh failed");
             }
         }
-        let remaining = cache
-            .get_remaining_ttl(domain, &record_type)
-            .map_or(0, u64::from);
+        let remaining = cache.remaining_ttl_of(key).map_or(0, u64::from);
         if let Some(in_secs) = origin.retry_in(outcome, remaining) {
-            cache.schedule_retry(domain, record_type, in_secs);
+            cache.schedule_retry(key, in_secs);
         }
-        cache.reset_refreshing(domain, &record_type);
+        cache.reset_refreshing_of(key);
     }
 }
 

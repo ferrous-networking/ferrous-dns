@@ -506,7 +506,7 @@ fn start_worker(cache: &Arc<DnsCache>, pm: Arc<PoolManager>) -> Worker {
 }
 
 fn request() -> RefreshRequest {
-    (Arc::from(DOMAIN), RecordType::A)
+    (Arc::from(DOMAIN), RecordType::A, 0)
 }
 
 /// Waits until `upstream` has seen `count` queries, then gives the worker a

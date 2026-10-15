@@ -1,6 +1,6 @@
 use super::super::cache::DnsCache;
 use super::super::dnssec::{DnssecCache, TrustAnchorStore};
-use super::super::load_balancer::PoolManager;
+use super::super::load_balancer::{PoolManager, UpstreamRouter};
 use super::cache_layer::CachedResolver;
 use super::core::CoreResolver;
 use super::dns64_layer::Dns64Resolver;
@@ -131,6 +131,8 @@ impl ResolverBuilder {
             "Building DNS resolver"
         );
 
+        // The pools decide which answers belong to one client group alone.
+        let router: Arc<dyn UpstreamRouter> = Arc::clone(&self.pool_manager) as _;
         let core = CoreResolver::new(
             self.pool_manager,
             self.query_timeout_ms,
@@ -159,12 +161,10 @@ impl ResolverBuilder {
         }
 
         if let Some(cache) = self.cache {
-            resolver = Arc::new(CachedResolver::new(
-                resolver,
-                cache.cache,
-                cache.ttl,
-                cache.inflight_shards,
-            ));
+            resolver = Arc::new(
+                CachedResolver::new(resolver, cache.cache, cache.ttl, cache.inflight_shards)
+                    .with_router(Arc::clone(&router)),
+            );
         }
 
         // Wildcard local records answer above the cache. A cache key is matched

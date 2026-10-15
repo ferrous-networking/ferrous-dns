@@ -62,7 +62,8 @@ fn test_stale_entry_sends_to_refresh_channel() {
 
     let msg = rx.try_recv();
     assert!(msg.is_ok(), "Stale hit must send domain to refresh channel");
-    let (domain, record_type) = msg.unwrap();
+    let (domain, record_type, view) = msg.unwrap();
+    assert_eq!(view, 0);
     assert_eq!(&*domain, "stale-chan.com");
     assert_eq!(record_type, RecordType::CNAME);
 
@@ -243,7 +244,8 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
         "Entrada com timer de refresh armado ainda deve poder agendar o reparo \
          serve-stale no canal rápido"
     );
-    let (domain, record_type) = msg.expect("mensagem de reparo stale ausente");
+    let (domain, record_type, view) = msg.expect("mensagem de reparo stale ausente");
+    assert_eq!(view, 0);
     assert_eq!(&*domain, "queued-stale.com");
     assert_eq!(record_type, RecordType::CNAME);
 }

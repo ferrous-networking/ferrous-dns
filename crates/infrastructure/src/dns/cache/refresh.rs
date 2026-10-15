@@ -146,8 +146,11 @@ impl DnsCache {
     }
 
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {
-        let key = CacheKey::new(domain, *record_type);
-        if let Some(entry) = self.cache.get(&key) {
+        self.reset_refreshing_of(&CacheKey::new(domain, *record_type));
+    }
+
+    pub(crate) fn reset_refreshing_of(&self, key: &CacheKey) {
+        if let Some(entry) = self.cache.get(key) {
             entry.clear_refreshing();
         }
     }

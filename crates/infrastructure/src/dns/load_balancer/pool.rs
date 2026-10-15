@@ -19,6 +19,10 @@ const MAX_ADDRS_PER_FAMILY: usize = 4;
 pub struct PoolManager {
     /// Live set of pools, swappable at runtime so upstream changes apply without a restart.
     pools: ArcSwap<PoolSet>,
+    /// Whether some pool is routed for a client group, so the cache's per-query
+    /// view lookup costs one atomic load for everyone who routes nothing per group.
+    /// Never false while the live set holds a group route.
+    has_group_routes: AtomicBool,
     health_checker: Option<Arc<HealthChecker>>,
     /// Anti-spoofing hardening applied to upstream queries of every record type
     /// (DNS Cookies + 0x20).
@@ -128,6 +132,7 @@ impl PoolManager {
         let pool_set = Self::build_pools(pools, &host_resolver, false).await?;
 
         Ok(Self {
+            has_group_routes: AtomicBool::new(pool_set.routes.has_group_routes()),
             pools: ArcSwap::from_pointee(pool_set),
             health_checker,
             hardening: HardeningOpts::default(),
@@ -170,7 +175,14 @@ impl PoolManager {
     /// Atomically swaps a previously [`prepared`](PoolManager::prepare) pool set into
     /// the live query path. Infallible — the fallible work happened in `prepare`.
     pub fn apply(&self, prepared: PreparedPools) {
+        let has_group_routes = prepared.0.routes.has_group_routes();
+        if has_group_routes {
+            self.has_group_routes.store(true, Ordering::Release);
+        }
         self.pools.store(Arc::new(prepared.0));
+        if !has_group_routes {
+            self.has_group_routes.store(false, Ordering::Release);
+        }
         info!(
             "Upstream pools reloaded ({} pools)",
             self.pools.load().pools.len()
@@ -643,10 +655,10 @@ impl UpstreamRouter for PoolManager {
     }
 
     fn view(&self, domain: &str, group: Option<i64>) -> u32 {
-        let set = self.pools.load();
-        if group.is_none() || !set.routes.has_group_routes() {
+        if group.is_none() || !self.has_group_routes.load(Ordering::Acquire) {
             return 0;
         }
+        let set = self.pools.load();
         set.routes
             .lookup(domain, group)
             .map_or(0, |(_, route)| route.view)
