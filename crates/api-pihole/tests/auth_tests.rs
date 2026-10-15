@@ -228,6 +228,27 @@ async fn login_rejects_wrong_password_when_auth_is_enabled() {
 }
 
 #[tokio::test]
+async fn login_with_wrong_password_and_live_session_is_401() {
+    // A wrong password is refused whatever session the request presents,
+    // and the presented session keeps working.
+    let app = auth_app(false).await;
+    let sid = login(&app, ADMIN_PASSWORD).await;
+
+    let (status, json) = send(
+        &app,
+        post_auth_with_sid(serde_json::json!({ "password": "wrong-password" }), &sid),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_session_reply(&json, false);
+    assert_eq!(json["session"]["valid"], false);
+    assert!(json["session"]["sid"].is_null());
+    let (status, _) = send(&app, get_with_header("/stats/summary", "X-FTL-SID", &sid)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn wrong_password_reply_is_ftls_session_object() {
     let app = auth_app(false).await;
 
