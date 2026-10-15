@@ -1,8 +1,10 @@
 use super::PoolManager;
+use crate::dns::cache::DnsCache;
 use async_trait::async_trait;
 use ferrous_dns_application::ports::UpstreamReloadPort;
 use ferrous_dns_domain::{DomainError, UpstreamPool};
 use std::sync::Arc;
+use tracing::info;
 
 /// Applies upstream pool changes to the live resolver(s) without a restart.
 ///
@@ -11,11 +13,22 @@ use std::sync::Arc;
 /// of them are kept in sync when pools change.
 pub struct UpstreamReloadAdapter {
     pool_managers: Vec<Arc<PoolManager>>,
+    /// Cleared when a reload changes where a name is routed, so an answer
+    /// cached under the old routing is not served after it.
+    cache: Option<Arc<DnsCache>>,
 }
 
 impl UpstreamReloadAdapter {
     pub fn new(pool_managers: Vec<Arc<PoolManager>>) -> Self {
-        Self { pool_managers }
+        Self {
+            pool_managers,
+            cache: None,
+        }
+    }
+
+    pub fn with_cache(mut self, cache: Arc<DnsCache>) -> Self {
+        self.cache = Some(cache);
+        self
     }
 }
 
@@ -33,8 +46,17 @@ impl UpstreamReloadPort for UpstreamReloadAdapter {
                 .map(|pm| pm.prepare(pools.clone())),
         )
         .await?;
+        let routing_changed = self
+            .pool_managers
+            .first()
+            .zip(prepared.first())
+            .is_some_and(|(pm, p)| pm.routing_changes(p));
         for (pm, p) in self.pool_managers.iter().zip(prepared) {
             pm.apply(p);
+        }
+        if let (true, Some(cache)) = (routing_changed, &self.cache) {
+            cache.clear();
+            info!("Conditional pool routing changed: DNS cache cleared");
         }
         Ok(())
     }

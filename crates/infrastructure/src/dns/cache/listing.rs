@@ -1,4 +1,5 @@
 use super::coarse_clock::coarse_now_secs;
+use super::key::CacheKey;
 use super::record::CachedRecord;
 use super::storage::DnsCache;
 use ferrous_dns_application::ports::{
@@ -48,7 +49,7 @@ impl DnsCache {
                 }
             }
 
-            matched.push(snapshot_from(key.domain.as_str(), record, now));
+            matched.push(snapshot_from(key, record, now));
         }
 
         let total = matched.len();
@@ -68,7 +69,7 @@ impl DnsCache {
     }
 }
 
-fn snapshot_from(domain: &str, record: &CachedRecord, now_secs: u64) -> CacheEntrySnapshot {
+fn snapshot_from(key: &CacheKey, record: &CachedRecord, now_secs: u64) -> CacheEntrySnapshot {
     let is_permanent = record.is_permanent();
     let remaining_ttl = if is_permanent {
         None
@@ -78,8 +79,9 @@ fn snapshot_from(domain: &str, record: &CachedRecord, now_secs: u64) -> CacheEnt
     };
 
     CacheEntrySnapshot {
-        domain: domain.to_string(),
+        domain: key.domain.to_string(),
         record_type: record.record_type,
+        group_id: (key.view != 0).then(|| i64::from(key.view)),
         answers: record
             .data
             .as_ip_addresses()
@@ -118,10 +120,11 @@ fn sort_entries(entries: &mut [CacheEntrySnapshot], sort: CacheEntrySort, order:
 }
 
 /// The `DashMap` has no stable iteration order, so equal sort keys are broken
-/// by `(domain, record type)` — always ascending, so paging is reproducible
-/// in both directions.
+/// by `(domain, record type, group)` — always ascending, so paging is
+/// reproducible in both directions.
 fn tie_break(a: &CacheEntrySnapshot, b: &CacheEntrySnapshot) -> Ordering {
     a.domain
         .cmp(&b.domain)
         .then_with(|| a.record_type.to_u16().cmp(&b.record_type.to_u16()))
+        .then_with(|| a.group_id.cmp(&b.group_id))
 }

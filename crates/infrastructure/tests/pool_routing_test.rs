@@ -363,3 +363,20 @@ async fn test_only_conditional_pools_is_rejected() {
     .await;
     assert!(matches!(result, Err(DomainError::ConfigError(_))));
 }
+
+#[tokio::test]
+async fn test_a_sibling_under_the_parent_of_a_routed_domain_is_not_routed() {
+    let public = Upstream::spawn(Answer::Address(PUBLIC_IP)).await;
+    let deep = Upstream::spawn(Answer::Address(OFFICE_A_IP)).await;
+    let pm = manager(vec![
+        default_pool("public", 1, &public),
+        conditional_pool("deep", &deep, &["a.b.example"], &[], false),
+    ])
+    .await;
+    assert_eq!(resolve_ip(&pm, None, "x.a.b.example").await, OFFICE_A_IP);
+    assert_eq!(resolve_ip(&pm, None, "x.b.example").await, PUBLIC_IP);
+    assert_eq!(resolve_ip(&pm, None, "b.example").await, PUBLIC_IP);
+    assert_eq!(resolve_ip(&pm, None, "example").await, PUBLIC_IP);
+    assert_eq!(pm.route("X.A.B.EXAMPLE.", None).map(|r| r.view), Some(0));
+    assert_eq!(pm.route(&"a.".repeat(200), None), None);
+}

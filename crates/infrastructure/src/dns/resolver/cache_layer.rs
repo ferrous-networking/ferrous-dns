@@ -11,6 +11,7 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHA
 use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, RecordType};
 use rustc_hash::FxBuildHasher;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::watch;
 
@@ -80,6 +81,9 @@ pub struct CachedResolver {
     /// Picks the cache view a client group's query reads and fills. Without
     /// one, every query uses the view all clients share.
     router: Option<Arc<dyn UpstreamRouter>>,
+    /// The router's [`UpstreamRouter::group_routes_flag`], read inline so a
+    /// cache hit skips the router while no route is scoped to a group.
+    group_routes: Arc<AtomicBool>,
 }
 
 impl CachedResolver {
@@ -99,12 +103,14 @@ impl CachedResolver {
                 inflight_shards,
             ),
             router: None,
+            group_routes: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Keeps the answers a client group's own conditional pool gives apart
     /// from every other client's.
     pub fn with_router(mut self, router: Arc<dyn UpstreamRouter>) -> Self {
+        self.group_routes = router.group_routes_flag();
         self.router = Some(router);
         self
     }
@@ -113,7 +119,9 @@ impl CachedResolver {
     #[inline]
     fn view(&self, domain: &str, group: Option<i64>) -> u32 {
         match &self.router {
-            Some(router) if group.is_some() => router.view(domain, group),
+            Some(router) if group.is_some() && self.group_routes.load(Ordering::Acquire) => {
+                router.view(domain, group)
+            }
             _ => 0,
         }
     }

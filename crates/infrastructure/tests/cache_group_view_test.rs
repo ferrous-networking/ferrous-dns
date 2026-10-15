@@ -8,7 +8,7 @@ mod refresh;
 #[path = "support/upstream.rs"]
 mod upstream;
 
-use ferrous_dns_application::ports::DnsResolver;
+use ferrous_dns_application::ports::{CacheEntryQuery, CacheEntrySnapshot, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, RecordType, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
@@ -414,4 +414,122 @@ fn test_removing_a_group_entry_leaves_the_shared_one() {
     assert!(cache
         .get_in("x.corp.example", &RecordType::CNAME, 0)
         .is_some());
+}
+
+// ── R5: with group routes configured, a name none of them routes behaves
+// exactly as it did before views existed ─────────────────────────────────
+
+const UNROUTED: &str = "www.example.com";
+
+fn listed(cache: &DnsCache, domain: &str) -> Vec<CacheEntrySnapshot> {
+    cache
+        .list_entries(&CacheEntryQuery {
+            domain: Some(domain.to_string()),
+            ..Default::default()
+        })
+        .entries
+        .into_iter()
+        .filter(|entry| entry.domain == domain)
+        .collect()
+}
+
+#[tokio::test]
+async fn test_unrouted_name_is_one_shared_entry_for_every_group() {
+    let f = fixture().await;
+    for group in [Some(GROUP_A), Some(GROUP_B), Some(OTHER_GROUP), None] {
+        assert_eq!(resolve(&f.stack, UNROUTED, group).await, ips(PUBLIC_IP));
+    }
+    assert_eq!(f.public.queries(), 1, "every group must share the entry");
+    assert_eq!(listed(&f.cache, UNROUTED).len(), 1);
+}
+
+#[tokio::test]
+async fn test_unrouted_name_still_takes_the_l1_fast_path() {
+    let f = fixture().await;
+    resolve(&f.stack, UNROUTED, Some(GROUP_A)).await;
+    for _ in 0..5 {
+        assert_eq!(
+            probe(&f.stack, UNROUTED, Some(GROUP_A)),
+            Some(ips(PUBLIC_IP))
+        );
+    }
+    // L1 absorbs the probes on this thread and hands them over at most once
+    // a second, so the L2 record has not counted them yet.
+    let hits = listed(&f.cache, UNROUTED)[0].hits;
+    assert!(
+        hits < 5,
+        "the probes reached L2 ({hits} hits): L1 was skipped"
+    );
+}
+
+#[tokio::test]
+async fn test_group_view_entry_is_counted_in_l2_on_every_probe() {
+    let f = fixture().await;
+    resolve(&f.stack, NAME, Some(GROUP_A)).await;
+    for _ in 0..5 {
+        probe(&f.stack, NAME, Some(GROUP_A));
+    }
+    let hits = listed(&f.cache, NAME)[0].hits;
+    assert!(
+        hits >= 5,
+        "a group view must never be served from L1 ({hits} hits)"
+    );
+}
+
+#[tokio::test]
+async fn test_unrouted_name_coalesces_across_groups() {
+    let f = fixture().await;
+    f.public.set_delay(Duration::from_millis(200));
+
+    let qa = query(UNROUTED, Some(GROUP_A));
+    let qb = query(UNROUTED, Some(GROUP_B));
+    let qn = query(UNROUTED, None);
+    let (a, b, n) = tokio::join!(
+        f.stack.resolve(&qa),
+        f.stack.resolve(&qb),
+        f.stack.resolve(&qn)
+    );
+
+    for result in [a, b, n] {
+        assert_eq!(*result.unwrap().addresses, ips(PUBLIC_IP));
+    }
+    assert_eq!(
+        f.public.queries(),
+        1,
+        "the shared view must coalesce every group"
+    );
+}
+
+#[tokio::test]
+async fn test_refresh_renews_a_shared_entry_through_the_default_pools() {
+    let f = fixture_with(refresh::refresh_cache(100, 0.0, u64::MAX)).await;
+    let maintenance = ResolverBuilder::new(Arc::clone(&f.pm), TIMEOUT_MS).build();
+    let _worker = refresh::start_worker(&f.cache, maintenance, refresh::no_ranking(), true);
+
+    assert_eq!(
+        resolve(&f.stack, UNROUTED, Some(GROUP_A)).await,
+        ips(PUBLIC_IP)
+    );
+
+    let renewed = refresh::wait_until(Duration::from_secs(5), || f.public.queries() >= 2).await;
+    assert!(renewed, "the shared entry was not renewed");
+    assert_eq!(f.office_a.queries() + f.office_b.queries(), 0);
+}
+
+#[tokio::test]
+async fn test_cname_target_of_an_unrouted_answer_is_still_cached() {
+    let f = fixture().await;
+    f.public.set(Answer::Cname("lb.cdn.example.", PUBLIC_IP));
+
+    assert_eq!(
+        resolve(&f.stack, UNROUTED, Some(GROUP_A)).await,
+        ips(PUBLIC_IP)
+    );
+
+    assert!(
+        TARGET_FORMS
+            .iter()
+            .any(|target| probe(&f.stack, target, None) == Some(ips(PUBLIC_IP))),
+        "the chain target of an unrouted answer must stay cached"
+    );
 }

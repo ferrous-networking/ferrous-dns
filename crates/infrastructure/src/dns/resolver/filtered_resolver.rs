@@ -28,7 +28,7 @@ impl DnsResolver for FilteredResolver {
         record_type: RecordType,
         group_id: Option<i64>,
     ) -> Option<DnsResolution> {
-        let transformed = self.filters.apply_str(domain)?;
+        let transformed = self.filters.apply_str(domain, group_id)?;
         self.inner
             .try_cache_str(transformed.as_ref(), record_type, group_id)
     }

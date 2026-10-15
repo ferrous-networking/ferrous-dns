@@ -1,15 +1,16 @@
 //! The cache operations the refresh scheduling and the L1 hit accounting
 //! touch, measured in isolation: an L1 hit on one thread and on eight threads
 //! sharing one hot name, an L2 hit, an insert that arms its refresh timer,
-//! and the timer work a 200k-entry cache costs per minute.
+//! and the timer work a 200k-entry cache costs per minute. `l2_hit_group_view`
+//! is an address answer in a client group's own view, which L1 never holds.
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::cache::CacheKey;
 use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshSchedule,
-    RefreshSenders, ScheduledRefresh, TimerInbox,
+    BorrowedKey, CachedAddresses, CachedData, DnsCache, DnsCacheAccess, DnsCacheConfig,
+    EvictionStrategy, RefreshSchedule, RefreshSenders, ScheduledRefresh, TimerInbox,
 };
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
@@ -19,6 +20,8 @@ use tokio::sync::mpsc;
 
 const HOT_NAME: &str = "www.example.com";
 const L2_NAME: &str = "alias.example.com";
+const GROUP_VIEW_NAME: &str = "host.corp.example";
+const GROUP_VIEW: u32 = 3;
 const CONTENDED_THREADS: u64 = 8;
 const MAINTENANCE_ENTRIES: usize = 200_000;
 const INSERT_NAMES: usize = 100_000;
@@ -117,6 +120,20 @@ fn cache_hits(c: &mut Criterion) {
     });
     group.bench_function("l2_hit", |b| {
         b.iter(|| cache.get(black_box(L2_NAME), &RecordType::A))
+    });
+    DnsCacheAccess::insert(
+        cache.as_ref(),
+        BorrowedKey::new(GROUP_VIEW_NAME, RecordType::A).in_view(GROUP_VIEW),
+        address(),
+        3600,
+        None,
+        true,
+    );
+    assert!(cache
+        .get_in(GROUP_VIEW_NAME, &RecordType::A, GROUP_VIEW)
+        .is_some());
+    group.bench_function("l2_hit_group_view", |b| {
+        b.iter(|| cache.get_in(black_box(GROUP_VIEW_NAME), &RecordType::A, GROUP_VIEW))
     });
 
     let insert_cache = self::cache(MAINTENANCE_ENTRIES);

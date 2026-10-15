@@ -4,7 +4,9 @@
 //! record, for an address answer and for a cached upstream wire answer, plus
 //! the wire answer to a client sending a DNS Cookie, a signed wire answer
 //! (fetched with DO=1) to clients that did not set DO, and an eight-record
-//! wire answer, whose every TTL a hit counts down.
+//! wire answer, whose every TTL a hit counts down. The `router_*` cases add
+//! the pool router production attaches: with no group routes, with group
+//! routes the name does not match, and for a name in a group's own view.
 
 #[path = "../tests/support/ports.rs"]
 mod ports;
@@ -18,15 +20,18 @@ use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
     BlockResponseMode, ClientProtocol, DnsCookiesConfig, DnsQuery, DomainError, RecordType,
+    UpstreamPool,
 };
 use ferrous_dns_infrastructure::database::create_write_pool;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::fast_path::{self, FastPathKind};
+use ferrous_dns_infrastructure::dns::load_balancer::UpstreamRouter;
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use ferrous_dns_infrastructure::dns::wire_response::{self, RESPONSE_BUF_LEN};
 use ferrous_dns_infrastructure::dns::{
-    BlockFilterEngine, CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy,
+    BlockFilterEngine, BorrowedKey, CachedAddresses, CachedData, DnsCache, DnsCacheAccess,
+    DnsCacheConfig, EvictionStrategy, PoolManager,
 };
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query};
@@ -43,6 +48,9 @@ const A_NAME: &str = "www.example.com";
 const MX_NAME: &str = "mail.example.com";
 const SIGNED_NAME: &str = "signed.example.com";
 const MANY_NAME: &str = "many.example.com";
+/// Cached in the view of group 1, the default group every bench client is in.
+const GROUP_VIEW_NAME: &str = "host.corp.example";
+const GROUP_VIEW: u32 = 1;
 
 /// Every probe is served from the cache; an upstream call means a broken setup.
 struct NoUpstream;
@@ -150,8 +158,31 @@ fn query(name: &str, qtype: u16, edns: bool) -> Vec<u8> {
     query_with_options(name, qtype, edns, &[])
 }
 
+/// The pool router of a deployment: `group_routes` adds a pool that answers
+/// `corp.example` for group 1 alone.
+fn router(runtime: &tokio::runtime::Runtime, group_routes: bool) -> Arc<dyn UpstreamRouter> {
+    let mut pools = vec![UpstreamPool {
+        name: "public".into(),
+        servers: vec!["udp://127.0.0.1:9".into()],
+        ..Default::default()
+    }];
+    if group_routes {
+        pools.push(UpstreamPool {
+            name: "office".into(),
+            servers: vec!["udp://127.0.0.1:9".into()],
+            domains: vec!["corp.example".into()],
+            groups: vec![i64::from(GROUP_VIEW)],
+            internal: true,
+            ..Default::default()
+        });
+    }
+    let pm = runtime.block_on(PoolManager::new(pools, None)).unwrap();
+    Arc::new(pm)
+}
+
 fn handler(
     runtime: &tokio::runtime::Runtime,
+    router: Option<Arc<dyn UpstreamRouter>>,
 ) -> (DnsServerHandler, DnsServerHandler, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let url = format!("sqlite:{}", dir.path().join("bench.db").display());
@@ -202,8 +233,21 @@ fn handler(
         3600,
         None,
     );
-    let resolver: Arc<CachedResolver> =
-        Arc::new(CachedResolver::new(Arc::new(NoUpstream), cache, 300, 4));
+    let mut resolver = CachedResolver::new(Arc::new(NoUpstream), cache.clone(), 300, 4);
+    if let Some(router) = router {
+        DnsCacheAccess::insert(
+            cache.as_ref(),
+            BorrowedKey::new(GROUP_VIEW_NAME, RecordType::A).in_view(GROUP_VIEW),
+            CachedData::IpAddresses(CachedAddresses {
+                addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(10, 1, 1, 1))]),
+            }),
+            3600,
+            None,
+            true,
+        );
+        resolver = resolver.with_router(router);
+    }
+    let resolver = Arc::new(resolver);
     let policy = BlockPolicy {
         mode: BlockResponseMode::NullIp,
         ttl: 60,
@@ -255,7 +299,9 @@ fn udp_cache_hit(c: &mut Criterion) {
         .enable_all()
         .build()
         .unwrap();
-    let (handler, unfiltered, _dir) = handler(&runtime);
+    let (filtered, unfiltered, _dir) = handler(&runtime, None);
+    let (routed, _, _routed_dir) = handler(&runtime, Some(router(&runtime, false)));
+    let (group_routed, _, _group_dir) = handler(&runtime, Some(router(&runtime, true)));
     let mut out = [0u8; RESPONSE_BUF_LEN];
 
     let mut group = c.benchmark_group("udp_cache_hit");
@@ -276,14 +322,29 @@ fn udp_cache_hit(c: &mut Criterion) {
         ("mx_plain_signed", query(SIGNED_NAME, 15, false)),
         ("mx8_edns", query(MANY_NAME, 15, true)),
     ] {
-        assert_ne!(serve(&handler, &raw, &mut out), 0, "{label} must hit");
+        assert_ne!(serve(&filtered, &raw, &mut out), 0, "{label} must hit");
         group.bench_function(label, |b| {
-            b.iter(|| serve(&handler, black_box(&raw), &mut out))
+            b.iter(|| serve(&filtered, black_box(&raw), &mut out))
         });
     }
     let raw = query(A_NAME, 1, true);
     group.bench_function("a_edns_unfiltered", |b| {
         b.iter(|| serve(&unfiltered, black_box(&raw), &mut out))
+    });
+    group.bench_function("router_a_edns", |b| {
+        b.iter(|| serve(&routed, black_box(&raw), &mut out))
+    });
+    group.bench_function("router_a_edns_with_group_routes", |b| {
+        b.iter(|| serve(&group_routed, black_box(&raw), &mut out))
+    });
+    let raw_view = query(GROUP_VIEW_NAME, 1, true);
+    assert_ne!(
+        serve(&group_routed, &raw_view, &mut out),
+        0,
+        "the group view entry must hit"
+    );
+    group.bench_function("router_a_edns_group_view", |b| {
+        b.iter(|| serve(&group_routed, black_box(&raw_view), &mut out))
     });
     group.finish();
 }

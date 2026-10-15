@@ -7,9 +7,9 @@
 mod upstream;
 
 use ferrous_dns_application::ports::DnsResolver;
-use ferrous_dns_domain::{DnsQuery, RecordType, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{DnsQuery, DomainError, RecordType, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::dnssec::{DnssecCache, TrustAnchorStore};
-use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
+use ferrous_dns_infrastructure::dns::resolver::{NonFqdn, QueryFilters, ResolverBuilder};
 use ferrous_dns_infrastructure::dns::PoolManager;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -219,4 +219,35 @@ async fn test_unrouted_names_keep_their_existing_routes() {
         .unwrap();
     assert_eq!(*lan.addresses, [IpAddr::V4(ROUTER_IP)]);
     assert_eq!(f.gov.queries() + f.office.queries(), 0);
+}
+
+#[tokio::test]
+async fn test_block_private_ptr_lets_a_routed_reverse_zone_through() {
+    let f = fixture().await;
+    // No local DNS server, so private PTRs are blocked as the wiring does it.
+    let stack = ResolverBuilder::new(Arc::clone(&f.pm), TIMEOUT_MS)
+        .with_filters(QueryFilters::new(true, NonFqdn::Pass))
+        .build();
+
+    stack
+        .resolve(&query("5.0.1.10.in-addr.arpa", RecordType::PTR, GROUP_A))
+        .await
+        .expect("the office's reverse zone must reach its pool");
+    assert_eq!(f.office.queries(), 1);
+
+    for (name, group) in [
+        ("5.0.2.10.in-addr.arpa", GROUP_A),
+        ("5.0.1.10.in-addr.arpa", GROUP_B),
+    ] {
+        let result = stack.resolve(&query(name, RecordType::PTR, group)).await;
+        assert!(
+            matches!(result, Err(DomainError::FilteredQuery(_))),
+            "{name} for group {group} must stay blocked: {result:?}"
+        );
+    }
+    assert!(stack
+        .try_cache_str("5.0.2.10.in-addr.arpa", RecordType::PTR, Some(GROUP_A))
+        .is_none());
+    assert_eq!(f.office.queries(), 1);
+    assert_eq!(f.public.queries(), 0);
 }

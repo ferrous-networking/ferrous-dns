@@ -45,12 +45,15 @@ pub fn build_config_services(
     overrides: ConfigOverrides,
 ) -> ConfigServices {
     let writer: Arc<Mutex<()>> = Arc::default();
-    let reload_upstream: Arc<dyn UpstreamReloadPort> = Arc::new(UpstreamReloadAdapter::new(
-        std::iter::once(dns_services.pool_manager.clone())
-            .chain(dns_services.dnssec_pool_manager.clone())
-            .chain(dns_services.maintenance_pool_manager.clone())
-            .collect(),
-    ));
+    let reload_upstream: Arc<dyn UpstreamReloadPort> = Arc::new(
+        UpstreamReloadAdapter::new(
+            std::iter::once(dns_services.pool_manager.clone())
+                .chain(dns_services.dnssec_pool_manager.clone())
+                .chain(dns_services.maintenance_pool_manager.clone())
+                .collect(),
+        )
+        .with_cache(dns_services.cache.clone()),
+    );
     let reload = path.clone().map(|path| {
         Arc::new(ReloadConfigUseCase::new(
             config.clone(),

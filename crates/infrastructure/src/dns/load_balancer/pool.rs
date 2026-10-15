@@ -22,7 +22,7 @@ pub struct PoolManager {
     /// Whether some pool is routed for a client group, so the cache's per-query
     /// view lookup costs one atomic load for everyone who routes nothing per group.
     /// Never false while the live set holds a group route.
-    has_group_routes: AtomicBool,
+    has_group_routes: Arc<AtomicBool>,
     health_checker: Option<Arc<HealthChecker>>,
     /// Anti-spoofing hardening applied to upstream queries of every record type
     /// (DNS Cookies + 0x20).
@@ -132,7 +132,7 @@ impl PoolManager {
         let pool_set = Self::build_pools(pools, &host_resolver, false).await?;
 
         Ok(Self {
-            has_group_routes: AtomicBool::new(pool_set.routes.has_group_routes()),
+            has_group_routes: Arc::new(AtomicBool::new(pool_set.routes.has_group_routes())),
             pools: ArcSwap::from_pointee(pool_set),
             health_checker,
             hardening: HardeningOpts::default(),
@@ -187,6 +187,12 @@ impl PoolManager {
             "Upstream pools reloaded ({} pools)",
             self.pools.load().pools.len()
         );
+    }
+
+    /// Whether applying `prepared` would route some name differently than
+    /// the live set does.
+    pub fn routing_changes(&self, prepared: &PreparedPools) -> bool {
+        self.pools.load().routes.differs_from(&prepared.0.routes)
     }
 
     /// Whether some server has no address yet because its hostname lookup failed.
@@ -662,6 +668,10 @@ impl UpstreamRouter for PoolManager {
         set.routes
             .lookup(domain, group)
             .map_or(0, |(_, route)| route.view)
+    }
+
+    fn group_routes_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.has_group_routes)
     }
 }
 

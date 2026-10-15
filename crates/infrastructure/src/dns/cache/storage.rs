@@ -162,6 +162,7 @@ impl DnsCache {
 
     /// A hit's data, DNSSEC status, remaining TTL, and whether the local DNS
     /// server gave the answer.
+    #[inline]
     pub fn get(
         &self,
         domain: &str,
@@ -1065,8 +1066,19 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
         self.insert_permanent(domain, record_type, data, ttl);
     }
 
-    fn remove_record(&self, domain: &str, record_type: &ferrous_dns_domain::RecordType) -> bool {
-        self.remove(domain, record_type)
+    fn remove_record(
+        &self,
+        domain: &str,
+        record_type: &ferrous_dns_domain::RecordType,
+        group_id: Option<i64>,
+    ) -> bool {
+        match group_id {
+            None => self.remove(domain, record_type),
+            Some(id) => u32::try_from(id)
+                .ok()
+                .filter(|view| *view != 0)
+                .is_some_and(|view| self.remove_in(domain, record_type, view)),
+        }
     }
 
     fn is_permanent_record(

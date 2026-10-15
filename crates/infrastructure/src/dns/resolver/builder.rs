@@ -175,7 +175,10 @@ impl ResolverBuilder {
         }
 
         if let Some(filters) = self.filters {
-            resolver = Arc::new(FilteredResolver::new(resolver, filters));
+            resolver = Arc::new(FilteredResolver::new(
+                resolver,
+                filters.with_router(Arc::clone(&router)),
+            ));
         }
 
         if let Some(map) = self.local_ptr_map {

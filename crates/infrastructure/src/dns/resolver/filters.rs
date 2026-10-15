@@ -1,3 +1,4 @@
+use crate::dns::load_balancer::UpstreamRouter;
 use ferrous_dns_domain::{DnsQuery, DomainError, FqdnFilter, PrivateIpFilter};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -16,6 +17,9 @@ pub enum NonFqdn {
 pub struct QueryFilters {
     block_private_ptr: bool,
     non_fqdn: NonFqdn,
+    /// Lets a private reverse zone a conditional pool answers through
+    /// `block_private_ptr`, as an office's own server answers it.
+    router: Option<Arc<dyn UpstreamRouter>>,
 }
 
 impl QueryFilters {
@@ -25,11 +29,17 @@ impl QueryFilters {
         Self {
             block_private_ptr,
             non_fqdn,
+            router: None,
         }
     }
 
+    pub fn with_router(mut self, router: Arc<dyn UpstreamRouter>) -> Self {
+        self.router = Some(router);
+        self
+    }
+
     pub fn apply(&self, mut query: DnsQuery) -> Result<DnsQuery, DomainError> {
-        match self.decide(&query.domain) {
+        match self.decide(&query.domain, query.group_id) {
             Ok(Cow::Borrowed(_)) => Ok(query),
             Ok(Cow::Owned(qualified)) => {
                 debug!(
@@ -49,12 +59,20 @@ impl QueryFilters {
 
     /// Same decision as [`apply`](Self::apply) on a borrowed name, so the cache
     /// fast path pays no `Arc` allocation. `None` means the query is dropped.
-    pub fn apply_str<'a>(&self, domain: &'a str) -> Option<Cow<'a, str>> {
-        self.decide(domain).ok()
+    /// `group_id` is the asking client's group.
+    pub fn apply_str<'a>(&self, domain: &'a str, group_id: Option<i64>) -> Option<Cow<'a, str>> {
+        self.decide(domain, group_id).ok()
     }
 
-    fn decide<'a>(&self, domain: &'a str) -> Result<Cow<'a, str>, &'static str> {
-        if self.block_private_ptr && PrivateIpFilter::is_private_ptr_query(domain) {
+    fn decide<'a>(
+        &self,
+        domain: &'a str,
+        group_id: Option<i64>,
+    ) -> Result<Cow<'a, str>, &'static str> {
+        if self.block_private_ptr
+            && PrivateIpFilter::is_private_ptr_query(domain)
+            && !self.is_routed(domain, group_id)
+        {
             return Err("Private PTR query blocked");
         }
 
@@ -67,5 +85,11 @@ impl QueryFilters {
             }
             NonFqdn::Block | NonFqdn::Qualify(_) | NonFqdn::Pass => Ok(Cow::Borrowed(domain)),
         }
+    }
+
+    fn is_routed(&self, domain: &str, group_id: Option<i64>) -> bool {
+        self.router
+            .as_ref()
+            .is_some_and(|router| router.route(domain, group_id).is_some())
     }
 }

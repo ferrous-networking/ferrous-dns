@@ -1,7 +1,11 @@
-use crate::dns::cache::key::normalize_domain;
 use ferrous_dns_domain::{DomainError, UpstreamPool};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+/// Longest query name a lookup lowercases on the stack; DNS names stop at 253 bytes.
+const MAX_NAME_LEN: usize = 255;
 
 /// The conditional pool route a name takes for one client group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,14 +29,41 @@ pub trait UpstreamRouter: Send + Sync {
     fn view(&self, domain: &str, group: Option<i64>) -> u32 {
         self.route(domain, group).map_or(0, |route| route.view)
     }
+
+    /// Set while some route is scoped to a client group. Readers that only
+    /// need [`Self::view`] check it first, so a deployment without group
+    /// routes pays one atomic load per query and no lookup.
+    fn group_routes_flag(&self) -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(true))
+    }
 }
 
-/// The pools claiming one routed domain.
+/// The pools claiming one routed domain. An entry with neither is a parent
+/// of a routed domain, there so a lookup knows to look deeper.
 #[derive(Default)]
 struct DomainRoutes {
     every_client: Option<usize>,
     by_group: SmallVec<[(u32, usize); 2]>,
 }
+
+impl DomainRoutes {
+    /// The pool and cache view this domain's routes give `group`: its own
+    /// route first, then the one for every client.
+    fn matching(&self, group: Option<u32>) -> Option<(usize, u32)> {
+        group
+            .and_then(|group| {
+                self.by_group
+                    .iter()
+                    .find(|(g, _)| *g == group)
+                    .map(|(_, index)| (*index, group))
+            })
+            .or(self.every_client.map(|index| (index, 0)))
+    }
+}
+
+/// One route as configured: domain, client group (`None` for every client),
+/// pool name and whether the pool is internal.
+type RouteEntry = (Box<str>, Option<u32>, Box<str>, bool);
 
 /// Which pool answers each routed domain, indexed by position in the pool
 /// set it was built from. Keys are config, so the Fx hasher is safe here.
@@ -41,6 +72,9 @@ pub(super) struct PoolRoutes {
     by_domain: FxHashMap<Box<str>, DomainRoutes>,
     internal: Vec<bool>,
     has_group_routes: bool,
+    /// Every route the set holds, sorted, so two sets can tell whether a
+    /// reload changed where any name goes.
+    signature: Vec<RouteEntry>,
 }
 
 impl PoolRoutes {
@@ -66,6 +100,28 @@ impl PoolRoutes {
                 })
                 .collect::<Result<SmallVec<[u32; 4]>, DomainError>>()?;
             for domain in pool.normalized_domains()? {
+                if groups.is_empty() {
+                    routes.signature.push((
+                        domain.as_str().into(),
+                        None,
+                        pool.name.as_str().into(),
+                        pool.internal,
+                    ));
+                }
+                for group in &groups {
+                    routes.signature.push((
+                        domain.as_str().into(),
+                        Some(*group),
+                        pool.name.as_str().into(),
+                        pool.internal,
+                    ));
+                }
+                for (dot, _) in domain.match_indices('.') {
+                    routes
+                        .by_domain
+                        .entry(domain[dot + 1..].into())
+                        .or_default();
+                }
                 let entry = routes.by_domain.entry(domain.into_boxed_str()).or_default();
                 if groups.is_empty() {
                     entry.every_client.get_or_insert(index);
@@ -78,11 +134,18 @@ impl PoolRoutes {
             }
             routes.has_group_routes |= pool.is_conditional() && !groups.is_empty();
         }
+        routes.signature.sort();
+        routes.signature.dedup();
         Ok(routes)
     }
 
     pub(super) fn has_group_routes(&self) -> bool {
         self.has_group_routes
+    }
+
+    /// Whether some name is routed differently by `other`.
+    pub(super) fn differs_from(&self, other: &PoolRoutes) -> bool {
+        self.signature != other.signature
     }
 
     /// The pool and route for `domain`. The most specific routed domain
@@ -92,26 +155,39 @@ impl PoolRoutes {
         if self.by_domain.is_empty() {
             return None;
         }
-        let normalized = normalize_domain(domain);
-        let mut name = normalized.strip_suffix('.').unwrap_or(&normalized);
+        let name = domain.strip_suffix('.').unwrap_or(domain);
+        let mut buf = [0u8; MAX_NAME_LEN];
+        let name = if name.bytes().any(|b| b.is_ascii_uppercase()) {
+            // Longer than any DNS name, so no route can match it.
+            let lowered = buf.get_mut(..name.len())?;
+            lowered.copy_from_slice(name.as_bytes());
+            lowered.make_ascii_lowercase();
+            std::str::from_utf8(lowered).ok()?
+        } else {
+            name
+        };
         let group = group.and_then(|id| u32::try_from(id).ok());
+
+        // From the top-level label down: a suffix the map does not hold has
+        // no routed domain under it, so most names stop after one probe.
+        let mut best = None;
+        let mut prefix_end = name.len();
         loop {
-            if let Some(routes) = self.by_domain.get(name) {
-                let scoped = group.and_then(|group| {
-                    routes
-                        .by_group
-                        .iter()
-                        .find(|(g, _)| *g == group)
-                        .map(|(_, index)| (*index, group))
-                });
-                if let Some((index, view)) = scoped.or(routes.every_client.map(|index| (index, 0)))
-                {
-                    let internal = self.internal[index];
-                    return Some((index, Route { view, internal }));
-                }
+            let start = name[..prefix_end].rfind('.').map_or(0, |dot| dot + 1);
+            let Some(routes) = self.by_domain.get(&name[start..]) else {
+                break;
+            };
+            if let Some(found) = routes.matching(group) {
+                best = Some(found);
             }
-            let (_, parent) = name.split_once('.')?;
-            name = parent;
+            if start == 0 {
+                break;
+            }
+            prefix_end = start - 1;
         }
+        best.map(|(index, view)| {
+            let internal = self.internal[index];
+            (index, Route { view, internal })
+        })
     }
 }
