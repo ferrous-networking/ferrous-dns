@@ -136,13 +136,19 @@
                 return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
             },
 
+            // A name can be cached once for every client and once per group
+            // that routes it to its own pool.
+            entryKey(entry) {
+                return `${entry.domain}|${entry.type}|${entry.group_id ?? ''}`;
+            },
+
             async removeEntry(entry) {
-                const marker = entry.domain + '|' + entry.type;
-                this.removing = marker;
+                this.removing = this.entryKey(entry);
                 try {
                     const res = await apiFetch(
                         `${API_BASE}/cache/entries?domain=${encodeURIComponent(entry.domain)}`
-                        + `&type=${encodeURIComponent(entry.type)}`,
+                        + `&type=${encodeURIComponent(entry.type)}`
+                        + (entry.group_id != null ? `&group_id=${entry.group_id}` : ''),
                         {method: 'DELETE'}
                     );
                     if (res.ok || res.status === 404) {

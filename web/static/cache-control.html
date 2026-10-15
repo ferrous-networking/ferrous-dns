@@ -136,7 +136,7 @@
             </tr>
             </thead>
             <tbody>
-            <template x-for="entry in entries" :key="entry.domain + '|' + entry.type">
+            <template x-for="entry in entries" :key="entryKey(entry)">
                 <tr>
                     <td style="font-size:12px" x-text="formatCachedAt(entry.cached_at)"></td>
                     <td style="font-family:monospace;font-size:14px;max-width:0;overflow:hidden">
@@ -162,6 +162,11 @@
                                 </span>
                             </template>
                             <span x-text="entry.domain" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="entry.domain"></span>
+                            <template x-if="entry.group_id != null">
+                                <span class="badge" style="flex-shrink:0;background:rgba(139,92,246,0.1);color:#8B5CF6;font-family:inherit"
+                                      :title="'Split-horizon answer for client group ' + entry.group_id + ' only'"
+                                      x-text="'group ' + entry.group_id"></span>
+                            </template>
                         </div>
                     </td>
                     <td class="col-type"><span class="badge" style="background:rgba(59,130,246,0.1);color:#3B82F6"
@@ -195,7 +200,7 @@
                     <td class="col-action">
                         <template x-if="!entry.permanent">
                             <button type="button" class="btn-action btn-action-remove"
-                                :disabled="removing === entry.domain + '|' + entry.type"
+                                :disabled="removing === entryKey(entry)"
                                 @click="removeEntry(entry)">Remove
                             </button>
                         </template>

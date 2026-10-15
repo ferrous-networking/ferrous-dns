@@ -63,6 +63,8 @@
             },
             upstreamHealth: [],
             expandedUpstreams: [],
+            // Client groups a conditional pool can be routed for.
+            clientGroups: [],
             // Pool server fields show their format error once left, or all of them after a save attempt.
             serverTouched: {},
             showServerErrors: false,
@@ -106,7 +108,7 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus()]);
+                await Promise.all([this.loadConfig(), this.loadDnsSettings(), this.loadHealthStatus(), this.loadCacheStats(), this.loadStats(), this.loadSystemStatus(), this.loadUsers(), this.loadApiTokens(), this.loadActiveSessions(), this.loadTlsStatus(), this.loadClientGroups()]);
                 scheduleLucide(100);
                 this.startPolling();
                 this._onVisibility = () => {
@@ -267,11 +269,19 @@
                     console.error('Load cache stats error:', e)
                 }
             },
+            async loadClientGroups() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/groups`);
+                    if (res.ok) this.clientGroups = await res.json()
+                } catch (e) {
+                    console.error('Load client groups error:', e)
+                }
+            },
             getServerHealth(s) {
                 return this.healthStatus[s] || 'Unknown'
             },
             addPool() {
-                this.config.dns.pools.push({name: '', strategy: 'parallel', priority: 1, servers: ['']});
+                this.config.dns.pools.push({name: '', strategy: 'parallel', priority: 1, servers: [''], domains: [], groups: [], internal: false});
                 scheduleLucide(50)
             },
             removePool(idx) {
@@ -296,8 +306,93 @@
                     strategy: p.strategy,
                     priority: p.priority,
                     servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0),
-                    weight: p.weight ?? null
+                    weight: p.weight ?? null,
+                    ...this.poolRouting(p)
                 })));
+            },
+            // The routing fields as saved: blank domains dropped, and groups and
+            // the internal flag only on a pool that has domains, as the form shows them.
+            poolRouting(p) {
+                const domains = (p.domains || []).map(d => d.trim()).filter(d => d.length > 0);
+                return {
+                    domains,
+                    groups: domains.length > 0 ? [...(p.groups || [])].sort((a, b) => a - b) : [],
+                    internal: domains.length > 0 && !!p.internal
+                };
+            },
+            hasDomains(pool) {
+                return (pool.domains || []).some(d => d.trim().length > 0);
+            },
+            domainsText(pool) {
+                return (pool.domains || []).join('\n');
+            },
+            setDomainsText(pool, text) {
+                pool.domains = text.split('\n');
+            },
+            togglePoolGroup(pool, id) {
+                const groups = pool.groups || [];
+                pool.groups = groups.includes(id) ? groups.filter(g => g !== id) : [...groups, id];
+            },
+            // Mirrors normalize_route_domain (crates/domain/src/config/upstream.rs):
+            // only what the backend rejects too is flagged, with its message.
+            routeDomainError(domain) {
+                let d = domain.trim();
+                if (d.startsWith('.')) d = d.slice(1);
+                if (d.endsWith('.')) d = d.slice(0, -1);
+                if (d.includes('*')) return 'a wildcard is not needed: a domain already covers every name under it';
+                if (!/^[\x00-\x7F]*$/.test(d)) {
+                    try {
+                        d = new URL(`http://${d}/`).hostname;
+                    } catch {
+                        return 'not a valid domain name';
+                    }
+                }
+                d = d.toLowerCase();
+                if (!d) return 'Domain cannot be empty';
+                if (d.length > 253) return 'Domain cannot exceed 253 characters';
+                for (const label of d.split('.')) {
+                    if (!label) return 'Domain cannot contain an empty label';
+                    if (label.length > 63) return 'Domain label cannot exceed 63 characters';
+                    if (!/^[A-Za-z0-9_-]+$/.test(label)) {
+                        return 'Domain contains invalid characters (only alphanumeric, hyphens and underscores are allowed)';
+                    }
+                }
+                return '';
+            },
+            // The domain as the resolver matches it, for spotting one claimed twice.
+            routeDomainKey(domain) {
+                let d = domain.trim().replace(/^\./, '').replace(/\.$/, '');
+                if (!/^[\x00-\x7F]*$/.test(d)) {
+                    try { d = new URL(`http://${d}/`).hostname; } catch { /* reported above */ }
+                }
+                return d.toLowerCase();
+            },
+            // Mirrors validate_pool_routes, messages included.
+            firstRoutingError(pools) {
+                if (pools.length > 0 && pools.every(p => this.poolRouting(p).domains.length > 0)) {
+                    return 'At least one pool must have no domains, to answer every other query';
+                }
+                const claimed = new Map();
+                for (const p of pools) {
+                    const routing = this.poolRouting(p);
+                    for (const domain of routing.domains) {
+                        const reason = this.routeDomainError(domain);
+                        if (reason) return `Pool '${p.name}': domain '${domain}': ${reason}`;
+                    }
+                    const scopes = routing.groups.length > 0 ? routing.groups : [null];
+                    for (const domain of new Set(routing.domains.map(d => this.routeDomainKey(d)))) {
+                        for (const scope of scopes) {
+                            const key = `${domain}\u0000${scope}`;
+                            const owner = claimed.get(key);
+                            if (owner !== undefined && owner !== p.name) {
+                                const clients = scope === null ? 'every client' : `client group ${scope}`;
+                                return `Domain '${domain}' is routed to both pool '${owner}' and pool '${p.name}' for ${clients}`;
+                            }
+                            claimed.set(key, p.name);
+                        }
+                    }
+                }
+                return '';
             },
             // Mirrors DnsProtocol::from_str (crates/domain/src/value_objects/dns_protocol.rs),
             // messages included, so a mistyped upstream is explained before saving. It only
@@ -416,7 +511,7 @@
                 // Strip blank server inputs and drop empty pools before saving — an empty
                 // or malformed upstream would otherwise break the server on its next boot.
                 const cleanedPools = (this.config.dns.pools || [])
-                    .map(p => ({...p, servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0)}))
+                    .map(p => ({...p, servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0), ...this.poolRouting(p)}))
                     .filter(p => p.servers.length > 0);
                 if ((this.config.dns.pools || []).length > 0 && cleanedPools.length === 0) {
                     this.showAlert('error', 'Each pool needs at least one server. Add a server or remove the empty pool.');
@@ -431,6 +526,11 @@
                 if (invalidServer) {
                     this.showServerErrors = true;
                     this.showAlert('error', 'Failed to save: ' + invalidServer);
+                    return;
+                }
+                const routingError = poolsChanged ? this.firstRoutingError(cleanedPools) : '';
+                if (routingError) {
+                    this.showAlert('error', 'Failed to save: ' + routingError);
                     return;
                 }
                 const dnsPayload = {...this.config.dns};

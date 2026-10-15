@@ -810,6 +810,32 @@
                             </button>
                         </div>
                     </div>
+                    <div style="margin-top:16px">
+                        <label class="form-label">Domains</label>
+                        <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">One per line. Leave empty for a default pool. A pool with domains answers those domains and every name under them, and nothing else, e.g. <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">corp.example</code> or <code style="font-size:11px;background:var(--bg-secondary);padding:1px 5px;border-radius:3px">1.10.in-addr.arpa</code>.</p>
+                        <textarea rows="3" :value="domainsText(pool)" @input="setDomainsText(pool, $event.target.value)"
+                                  placeholder="corp.example" style="width:100%;font-family:monospace;font-size:13px"></textarea>
+                    </div>
+                    <div x-show="hasDomains(pool)" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+                        <div>
+                            <label class="form-label">Client groups</label>
+                            <p style="font-size:12px;color:var(--text-tertiary);margin:0 0 8px">None checked: the domains are routed for every client.</p>
+                            <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+                                <template x-for="group in clientGroups" :key="group.id">
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-primary)">
+                                        <input type="checkbox" :checked="(pool.groups || []).includes(group.id)" @change="togglePoolGroup(pool, group.id)">
+                                        <span x-text="group.name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--text-primary)">
+                                <input type="checkbox" x-model="pool.internal"> Internal zone
+                            </label>
+                            <p style="font-size:12px;color:var(--text-tertiary);margin:4px 0 0">For an unsigned internal zone: its answers skip DNSSEC validation and rebinding protection, like the local DNS server's. Leave off for a public zone.</p>
+                        </div>
+                    </div>
                 </div>
             </template>
             <div x-show="config.dns.pools.length===0"
