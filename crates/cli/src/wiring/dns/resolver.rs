@@ -213,6 +213,7 @@ mod tests {
                 priority: 1,
                 servers: vec![format!("udp://{upstream}")],
                 weight: None,
+                ..Default::default()
             }],
             None,
         )

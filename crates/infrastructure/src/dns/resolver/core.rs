@@ -1,5 +1,5 @@
 use crate::dns::forwarding::DnsForwarder;
-use crate::dns::load_balancer::PoolManager;
+use crate::dns::load_balancer::{PoolManager, UpstreamRouter};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 use ferrous_dns_domain::{DnsQuery, DomainError, PrivateIpFilter};
@@ -131,17 +131,24 @@ impl DnsResolver for CoreResolver {
             "CoreResolver: performing upstream query"
         );
 
-        if self.local_dns_server.is_some() && PrivateIpFilter::is_private_ptr_query(&query.domain) {
-            return self.resolve_local_tld(query).await;
-        }
-
-        if self.is_local_tld(&query.domain) {
+        let is_local = (self.local_dns_server.is_some()
+            && PrivateIpFilter::is_private_ptr_query(&query.domain))
+            || self.is_local_tld(&query.domain);
+        // A conditional pool is the more specific route: an office's reverse
+        // zone, or a domain under `local_domain`, goes to the pool that names it.
+        if is_local
+            && self
+                .pool_manager
+                .route(&query.domain, query.group_id)
+                .is_none()
+        {
             return self.resolve_local_tld(query).await;
         }
 
         let result = self
             .pool_manager
-            .query(
+            .query_for(
+                query.group_id,
                 &query.domain,
                 &query.record_type,
                 self.query_timeout_ms,
@@ -149,6 +156,7 @@ impl DnsResolver for CoreResolver {
             )
             .await?;
 
+        let internal = result.internal;
         let addresses = Arc::new(result.response.addresses);
         let upstream_server = Some(result.server_display);
         let cname_chain = result.response.cname_chain;
@@ -167,7 +175,9 @@ impl DnsResolver for CoreResolver {
         Ok(DnsResolution {
             addresses,
             cache_hit: false,
-            local_dns: false,
+            // An internal pool's answers are trusted like the local DNS
+            // server's: no DNSSEC validation, no rebinding protection.
+            local_dns: internal,
             local_nxdomain: false,
             dnssec_status: None,
             cname_chain: if cname_chain.is_empty() {

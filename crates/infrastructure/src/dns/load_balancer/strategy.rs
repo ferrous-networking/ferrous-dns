@@ -16,6 +16,8 @@ pub struct UpstreamResult {
     pub latency_ms: u64,
     pub pool_name: Arc<str>,
     pub server_display: Arc<str>,
+    /// The answer came from a conditional pool for an internal zone.
+    pub internal: bool,
 }
 
 pub struct QueryContext<'a> {

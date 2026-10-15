@@ -361,7 +361,12 @@ impl DnsResolver for CachedResolver {
         self.check_cache(query)
     }
 
-    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+    fn try_cache_str(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        _group_id: Option<i64>,
+    ) -> Option<DnsResolution> {
         self.check_cache_str(domain, record_type)
     }
 

@@ -157,6 +157,7 @@ fn pool(
         priority,
         servers: servers.iter().map(|r| r.url()).collect(),
         weight: None,
+        ..Default::default()
     }
 }
 

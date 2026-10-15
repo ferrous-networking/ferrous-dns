@@ -165,8 +165,13 @@ impl DnsResolver for LocalWildcardResolver {
         self.inner.try_cache(query)
     }
 
-    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
-        self.inner.try_cache_str(domain, record_type)
+    fn try_cache_str(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        group_id: Option<i64>,
+    ) -> Option<DnsResolution> {
+        self.inner.try_cache_str(domain, record_type, group_id)
     }
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {

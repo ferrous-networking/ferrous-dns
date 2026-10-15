@@ -91,9 +91,14 @@ impl DnsResolver for LocalPtrResolver {
         None
     }
 
-    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+    fn try_cache_str(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        group_id: Option<i64>,
+    ) -> Option<DnsResolution> {
         if record_type != RecordType::PTR {
-            return self.inner.try_cache_str(domain, record_type);
+            return self.inner.try_cache_str(domain, record_type, group_id);
         }
         None
     }

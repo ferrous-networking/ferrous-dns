@@ -50,7 +50,8 @@ impl Dns64Resolver {
         }
 
         // Through the inner stack, so the A answer is DNSSEC-validated too.
-        let a_query = DnsQuery::new(Arc::clone(&query.domain), RecordType::A);
+        let a_query =
+            DnsQuery::new(Arc::clone(&query.domain), RecordType::A).with_group(query.group_id);
         let Ok(a_res) = self.inner.resolve(&a_query).await else {
             return Ok(res); // no A either — keep the original NODATA
         };
@@ -112,7 +113,8 @@ impl Dns64Resolver {
         };
 
         let v4_arpa = ipv4_to_arpa(v4);
-        let v4_query = DnsQuery::new(Arc::from(v4_arpa.as_str()), RecordType::PTR);
+        let v4_query =
+            DnsQuery::new(Arc::from(v4_arpa.as_str()), RecordType::PTR).with_group(query.group_id);
         let Ok(v4_res) = self.inner.resolve(&v4_query).await else {
             return self.inner.resolve(query).await;
         };

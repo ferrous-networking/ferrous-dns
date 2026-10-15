@@ -476,6 +476,7 @@ mod tests {
             priority: 1,
             servers: vec![upstream.to_string()],
             weight: None,
+            ..Default::default()
         }];
 
         let database_url = format!("sqlite:{}", config.database.path);

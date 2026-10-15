@@ -104,6 +104,12 @@ pub struct UpstreamPoolResponse {
     pub priority: u8,
     pub servers: Vec<String>,
     pub weight: Option<u32>,
+    /// Domains the pool answers, as configured; empty for a default pool.
+    pub domains: Vec<String>,
+    /// Client group ids the domains are routed for; empty for every client.
+    pub groups: Vec<i64>,
+    /// Answers skip DNSSEC validation and rebinding protection.
+    pub internal: bool,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -236,6 +242,15 @@ pub struct PoolUpdate {
     /// doesn't silently drop a weight set in the config file.
     #[serde(default)]
     pub weight: Option<u32>,
+    /// Domains the pool answers; empty or absent for a default pool.
+    #[serde(default)]
+    pub domains: Vec<String>,
+    /// Client group ids the domains are routed for; empty for every client.
+    #[serde(default)]
+    pub groups: Vec<i64>,
+    /// Answers skip DNSSEC validation and rebinding protection.
+    #[serde(default)]
+    pub internal: bool,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]

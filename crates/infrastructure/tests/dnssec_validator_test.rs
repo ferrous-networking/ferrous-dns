@@ -25,6 +25,7 @@ async fn make_pool_manager(server: String) -> Arc<PoolManager> {
         priority: 1,
         servers: vec![server],
         weight: None,
+        ..Default::default()
     };
     Arc::new(PoolManager::new(vec![pool], None).await.unwrap())
 }

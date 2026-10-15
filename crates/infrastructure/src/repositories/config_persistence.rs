@@ -390,6 +390,16 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
                 if let Some(weight) = pool.weight {
                     table.insert("weight", toml_edit::value(weight as i64));
                 }
+                if pool.is_conditional() {
+                    table.insert("domains", toml_edit::Item::Value(str_array(&pool.domains)));
+                    if !pool.groups.is_empty() {
+                        let groups: toml_edit::Array = pool.groups.iter().copied().collect();
+                        table.insert("groups", toml_edit::Item::Value(groups.into()));
+                    }
+                    if pool.internal {
+                        table.insert("internal", toml_edit::value(true));
+                    }
+                }
                 aot.push(table);
             }
             dns.insert("pools", toml_edit::Item::ArrayOfTables(aot));

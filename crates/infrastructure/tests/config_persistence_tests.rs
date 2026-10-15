@@ -154,6 +154,7 @@ fn test_save_pools_writes_all_fields() {
             "https://cloudflare-dns.com/dns-query".to_string(),
         ],
         weight: Some(10),
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -189,6 +190,7 @@ fn test_save_pools_without_weight_omits_field() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -206,6 +208,73 @@ fn test_save_pools_without_weight_omits_field() {
 }
 
 #[test]
+fn test_save_conditional_pool_writes_routing_fields_and_reloads_them() {
+    let mut config = load_config(default_config_toml());
+    config.dns.pools.push(UpstreamPool {
+        name: "office-a".to_string(),
+        strategy: UpstreamStrategy::Failover,
+        servers: vec!["udp://10.1.0.10:53".to_string()],
+        domains: vec!["corp.example".to_string(), "рф".to_string()],
+        groups: vec![3, 7],
+        internal: true,
+        ..Default::default()
+    });
+
+    let doc = save_and_reparse(&config, default_config_toml());
+    let pools = doc["dns"]["pools"].as_array_of_tables().unwrap();
+    let pool = pools.iter().last().unwrap();
+    let domains: Vec<&str> = pool["domains"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(domains, ["corp.example", "рф"]);
+    let groups: Vec<i64> = pool["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_integer().unwrap())
+        .collect();
+    assert_eq!(groups, [3, 7]);
+    assert!(pool["internal"].as_bool().unwrap());
+
+    let reloaded = load_config(&doc.to_string());
+    reloaded.validate().unwrap();
+    assert_eq!(reloaded.dns.pools, config.dns.pools);
+}
+
+#[test]
+fn test_save_default_pool_omits_routing_fields() {
+    let config = load_config(default_config_toml());
+
+    let doc = save_and_reparse(&config, default_config_toml());
+    for pool in doc["dns"]["pools"].as_array_of_tables().unwrap().iter() {
+        assert!(pool.get("domains").is_none());
+        assert!(pool.get("groups").is_none());
+        assert!(pool.get("internal").is_none());
+    }
+}
+
+#[test]
+fn test_save_conditional_pool_for_every_client_omits_groups_and_internal() {
+    let mut config = load_config(default_config_toml());
+    config.dns.pools.push(UpstreamPool {
+        name: "gov".to_string(),
+        servers: vec!["udp://195.208.4.1:53".to_string()],
+        domains: vec!["ru".to_string()],
+        ..Default::default()
+    });
+
+    let doc = save_and_reparse(&config, default_config_toml());
+    let pools = doc["dns"]["pools"].as_array_of_tables().unwrap();
+    let pool = pools.iter().last().unwrap();
+    assert!(pool.get("domains").is_some());
+    assert!(pool.get("groups").is_none());
+    assert!(pool.get("internal").is_none());
+}
+
+#[test]
 fn test_save_multiple_pools_preserves_order() {
     let mut config = load_config(default_config_toml());
     config.dns.pools = vec![
@@ -215,6 +284,7 @@ fn test_save_multiple_pools_preserves_order() {
             priority: 1,
             servers: vec!["https://a.example.com".to_string()],
             weight: None,
+            ..Default::default()
         },
         UpstreamPool {
             name: "second".to_string(),
@@ -222,6 +292,7 @@ fn test_save_multiple_pools_preserves_order() {
             priority: 2,
             servers: vec!["https://b.example.com".to_string()],
             weight: None,
+            ..Default::default()
         },
         UpstreamPool {
             name: "third".to_string(),
@@ -229,6 +300,7 @@ fn test_save_multiple_pools_preserves_order() {
             priority: 3,
             servers: vec!["https://c.example.com".to_string()],
             weight: None,
+            ..Default::default()
         },
     ];
 
@@ -265,6 +337,7 @@ fn test_pool_strategy_parallel_roundtrips() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -293,6 +366,7 @@ fn test_pool_strategy_failover_roundtrips() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -321,6 +395,7 @@ fn test_pool_strategy_balanced_roundtrips() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -349,6 +424,7 @@ fn test_save_pools_preserves_health_check() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -380,6 +456,7 @@ fn test_save_pools_preserves_upstream_servers() {
         priority: 1,
         servers: vec!["https://primary.example.com".to_string()],
         weight: None,
+        ..Default::default()
     }];
 
     let doc = save_and_reparse(&config, default_config_toml());
@@ -423,6 +500,7 @@ fn test_full_config_save_and_reload_preserves_weight() {
         priority: 1,
         servers: vec!["https://example.com".to_string()],
         weight: Some(10),
+        ..Default::default()
     }];
 
     let dir = tempfile::tempdir().unwrap();

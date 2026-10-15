@@ -262,6 +262,7 @@ async fn live_root_chain_verifier() -> ChainVerifier {
         priority: 1,
         servers: vec!["udp://1.1.1.1:53".into()],
         weight: None,
+        ..Default::default()
     };
 
     let pool_manager = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());

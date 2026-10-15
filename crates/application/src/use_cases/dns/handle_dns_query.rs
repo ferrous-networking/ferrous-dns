@@ -511,7 +511,9 @@ impl HandleDnsQueryUseCase {
             min_ttl,
             dnssec_status,
             ..
-        } = self.resolver.try_cache_str(domain, record_type)?;
+        } = self
+            .resolver
+            .try_cache_str(domain, record_type, Some(group_id))?;
         let wire = upstream_wire_data.as_deref()?;
         // The cache reports what every entry has left; the reply's TTLs need it.
         let remaining = min_ttl?;
@@ -551,7 +553,9 @@ impl HandleDnsQueryUseCase {
         let tsc_start = tsc_timer::now();
         let (group_id, explicitly_allowed) = self.cache_gate(domain, client_ip)?;
 
-        let resolution = self.resolver.try_cache_str(domain, record_type)?;
+        let resolution = self
+            .resolver
+            .try_cache_str(domain, record_type, Some(group_id))?;
         if resolution.addresses.is_empty() {
             return None;
         }
@@ -749,14 +753,16 @@ impl HandleDnsQueryUseCase {
             }
         }
 
-        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type);
+        let dns_query = DnsQuery::new(Arc::clone(&request.domain), request.record_type)
+            .with_group(Some(group_id));
 
         if let Some(cname_target) = self
             .safe_search
             .as_deref()
             .and_then(|ss| ss.cname_for(&request.domain, group_id))
         {
-            let safe_query = DnsQuery::new(Arc::from(cname_target), request.record_type);
+            let safe_query = DnsQuery::new(Arc::from(cname_target), request.record_type)
+                .with_group(Some(group_id));
             // `resolve` expects the caller to have probed the cache already.
             let resolution = match self.resolver.try_cache(&safe_query) {
                 Some(cached) if cached.has_response_data() => cached,

@@ -83,6 +83,7 @@ async fn resolver(router: SocketAddr) -> Arc<dyn DnsResolver> {
         priority: 1,
         servers: vec![format!("udp://{router}")],
         weight: None,
+        ..Default::default()
     };
     let manager = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());
     let cache = Arc::new(DnsCache::new(DnsCacheConfig {

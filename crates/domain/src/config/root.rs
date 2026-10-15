@@ -8,7 +8,7 @@ use super::dns64::Dns64Config;
 use super::legacy;
 use super::logging::LoggingConfig;
 use super::server::ServerConfig;
-use super::upstream::UpstreamPool;
+use super::upstream::{validate_pool_routes, UpstreamPool};
 use crate::errors::domain_error::DomainError;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -59,7 +59,7 @@ impl Config {
                 strategy: self.dns.default_strategy,
                 priority: 1,
                 servers: self.dns.upstream_servers.clone(),
-                weight: None,
+                ..UpstreamPool::default()
             });
         }
     }
@@ -88,6 +88,7 @@ impl Config {
                 )));
             }
         }
+        validate_pool_routes(&self.dns.pools)?;
 
         Ok(())
     }

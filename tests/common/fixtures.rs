@@ -122,6 +122,7 @@ impl TestQueryBuilder {
         DnsQuery {
             domain: self.domain.into(),
             record_type: self.record_type,
+            group_id: None,
         }
     }
 }

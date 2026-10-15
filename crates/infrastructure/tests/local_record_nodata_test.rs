@@ -96,7 +96,11 @@ async fn test_local_nodata_tracks_live_record_families() {
     insert_local(&cache, name, A, "192.0.2.11");
 
     assert_local_nodata(&answer(&*resolver, &aaaa).await);
-    assert_local_nodata(&resolver.try_cache_str("FAMILIES.LOCAL.TEST", AAAA).unwrap());
+    assert_local_nodata(
+        &resolver
+            .try_cache_str("FAMILIES.LOCAL.TEST", AAAA, None)
+            .unwrap(),
+    );
     assert_address(&answer(&*resolver, &a).await, "192.0.2.11");
     assert_local_nodata(&answer(&*resolver, &txt).await);
 

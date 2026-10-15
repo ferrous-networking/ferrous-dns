@@ -106,6 +106,14 @@ fn parse_pools(pools: Vec<PoolUpdate>) -> Result<Vec<UpstreamPool>, String> {
             priority: p.priority,
             servers,
             weight: p.weight,
+            domains: p
+                .domains
+                .into_iter()
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty())
+                .collect(),
+            groups: p.groups,
+            internal: p.internal,
         });
     }
     if validated.is_empty() {

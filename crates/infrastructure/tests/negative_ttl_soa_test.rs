@@ -96,6 +96,7 @@ async fn test_soa_ttl_used_when_present() {
     let query = DnsQuery {
         domain: Arc::from("nxdomain.example.com"),
         record_type: RecordType::A,
+        group_id: None,
     };
     let _ = resolver.resolve(&query).await;
 
@@ -126,6 +127,7 @@ async fn test_soa_ttl_below_min_clamped_to_300() {
     let query = DnsQuery {
         domain: Arc::from("low-ttl.example.com"),
         record_type: RecordType::A,
+        group_id: None,
     };
     let _ = resolver.resolve(&query).await;
 
@@ -154,6 +156,7 @@ async fn test_soa_ttl_above_max_clamped_to_3600() {
     let query = DnsQuery {
         domain: Arc::from("high-ttl.example.com"),
         record_type: RecordType::A,
+        group_id: None,
     };
     let _ = resolver.resolve(&query).await;
 
@@ -183,6 +186,7 @@ async fn test_fallback_to_tracker_when_no_soa() {
     let query = DnsQuery {
         domain: Arc::from("no-soa.example.com"),
         record_type: RecordType::A,
+        group_id: None,
     };
     let _ = resolver.resolve(&query).await;
 

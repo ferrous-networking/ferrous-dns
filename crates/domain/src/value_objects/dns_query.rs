@@ -5,6 +5,10 @@ use std::sync::Arc;
 pub struct DnsQuery {
     pub domain: Arc<str>,
     pub record_type: RecordType,
+    /// The asking client's group, which picks the conditional pools routed for
+    /// it. `None` for a query no client asked, such as a cache refresh of an
+    /// answer every client shares.
+    pub group_id: Option<i64>,
 }
 
 impl DnsQuery {
@@ -12,6 +16,12 @@ impl DnsQuery {
         Self {
             domain: domain.into(),
             record_type,
+            group_id: None,
         }
+    }
+
+    pub fn with_group(mut self, group_id: Option<i64>) -> Self {
+        self.group_id = group_id;
+        self
     }
 }

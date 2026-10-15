@@ -202,6 +202,7 @@ impl TestAppBuilder {
             priority: 1,
             servers: vec!["8.8.8.8:53".to_string()],
             weight: None,
+            ..Default::default()
         };
         let pool_manager = Arc::new(
             PoolManager::new(vec![upstream], None)

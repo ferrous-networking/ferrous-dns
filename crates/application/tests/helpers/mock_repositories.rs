@@ -23,6 +23,7 @@ pub struct MockDnsResolver {
     should_fail: Arc<RwLock<bool>>,
     cache_responses: Arc<std::sync::RwLock<HashMap<String, DnsResolution>>>,
     error_responses: Arc<std::sync::RwLock<HashMap<String, DomainError>>>,
+    seen_groups: Arc<std::sync::Mutex<Vec<(String, Option<i64>)>>>,
 }
 
 impl MockDnsResolver {
@@ -32,7 +33,13 @@ impl MockDnsResolver {
             should_fail: Arc::new(RwLock::new(false)),
             cache_responses: Arc::new(std::sync::RwLock::new(HashMap::new())),
             error_responses: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            seen_groups: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
+    }
+
+    /// The (domain, group) of every cache probe and resolution, in order.
+    pub fn seen_groups(&self) -> Vec<(String, Option<i64>)> {
+        self.seen_groups.lock().unwrap().clone()
     }
 
     pub fn set_cached_response(&self, domain: &str, resolution: DnsResolution) {
@@ -81,6 +88,10 @@ impl Default for MockDnsResolver {
 #[async_trait]
 impl DnsResolver for MockDnsResolver {
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        self.seen_groups
+            .lock()
+            .unwrap()
+            .push((query.domain.to_string(), query.group_id));
         if *self.should_fail.read().await {
             return Err(DomainError::InvalidDomainName(
                 "Mock resolver failed".to_string(),
@@ -107,6 +118,10 @@ impl DnsResolver for MockDnsResolver {
     }
 
     fn try_cache(&self, query: &DnsQuery) -> Option<DnsResolution> {
+        self.seen_groups
+            .lock()
+            .unwrap()
+            .push((query.domain.to_string(), query.group_id));
         self.cache_responses
             .read()
             .unwrap()
@@ -1375,6 +1390,7 @@ pub struct MockBlockFilterEngine {
     blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     cname_blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     explicitly_allowed_domains: Arc<std::sync::RwLock<HashSet<String>>>,
+    client_group: Arc<std::sync::RwLock<i64>>,
 }
 
 impl MockBlockFilterEngine {
@@ -1385,7 +1401,13 @@ impl MockBlockFilterEngine {
             blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             cname_blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             explicitly_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
+            client_group: Arc::new(std::sync::RwLock::new(1)),
         }
+    }
+
+    /// The group every client resolves to (1, the default group, unless set).
+    pub fn set_client_group(&self, group_id: i64) {
+        *self.client_group.write().unwrap() = group_id;
     }
 
     pub async fn reload_count(&self) -> u32 {
@@ -1426,7 +1448,7 @@ impl Default for MockBlockFilterEngine {
 #[async_trait]
 impl BlockFilterEnginePort for MockBlockFilterEngine {
     fn resolve_group(&self, _ip: IpAddr) -> i64 {
-        1
+        *self.client_group.read().unwrap()
     }
 
     fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {

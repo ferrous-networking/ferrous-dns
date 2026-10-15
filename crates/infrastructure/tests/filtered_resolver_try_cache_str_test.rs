@@ -39,7 +39,12 @@ impl DnsResolver for StubCacheResolver {
             .cloned()
     }
 
-    fn try_cache_str(&self, domain: &str, _record_type: RecordType) -> Option<DnsResolution> {
+    fn try_cache_str(
+        &self,
+        domain: &str,
+        _record_type: RecordType,
+        _group_id: Option<i64>,
+    ) -> Option<DnsResolution> {
         self.entries.read().unwrap().get(domain).cloned()
     }
 }
@@ -61,7 +66,7 @@ fn try_cache_str_returns_none_for_private_ptr_when_blocked() {
 
     assert!(
         resolver
-            .try_cache_str("1.10.0.10.in-addr.arpa", RecordType::PTR)
+            .try_cache_str("1.10.0.10.in-addr.arpa", RecordType::PTR, None)
             .is_none(),
         "private PTR must be blocked before reaching cache"
     );
@@ -76,7 +81,7 @@ fn try_cache_str_appends_local_domain_and_finds_rewritten_cache_entry() {
         QueryFilters::new(false, NonFqdn::Qualify("lan".to_string())),
     );
 
-    let result = resolver.try_cache_str("nas", RecordType::A);
+    let result = resolver.try_cache_str("nas", RecordType::A, None);
     assert!(
         result.is_some(),
         "single-label domain must be rewritten to nas.lan and found in cache"
@@ -96,7 +101,7 @@ fn try_cache_str_does_not_rewrite_fqdn_when_local_domain_configured() {
         QueryFilters::new(false, NonFqdn::Qualify("lan".to_string())),
     );
 
-    let result = resolver.try_cache_str("google.com", RecordType::A);
+    let result = resolver.try_cache_str("google.com", RecordType::A, None);
     assert!(result.is_some());
 }
 
@@ -106,7 +111,7 @@ fn try_cache_str_and_try_cache_return_equivalent_results_for_hit() {
     inner.insert("example.com", ip_resolution("1.2.3.4"));
     let resolver = filtered(&inner, QueryFilters::new(false, NonFqdn::Pass));
 
-    let via_str = resolver.try_cache_str("example.com", RecordType::A);
+    let via_str = resolver.try_cache_str("example.com", RecordType::A, None);
     let query = DnsQuery::new("example.com", RecordType::A);
     let via_query = resolver.try_cache(&query);
 

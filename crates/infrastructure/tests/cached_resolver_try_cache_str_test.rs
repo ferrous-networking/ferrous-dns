@@ -47,7 +47,7 @@ fn make_resolver(cache: Arc<dyn DnsCacheAccess>) -> Arc<CachedResolver> {
 fn try_cache_str_returns_none_on_empty_cache() {
     let resolver = make_resolver(make_cache());
     assert!(resolver
-        .try_cache_str("example.com", RecordType::A)
+        .try_cache_str("example.com", RecordType::A, None)
         .is_none());
 }
 
@@ -75,7 +75,7 @@ async fn try_cache_str_returns_hit_after_upstream_resolve_populates_cache() {
     let query = DnsQuery::new("cached.example", RecordType::A);
     resolver.resolve(&query).await.unwrap();
 
-    let hit = resolver.try_cache_str("cached.example", RecordType::A);
+    let hit = resolver.try_cache_str("cached.example", RecordType::A, None);
     assert!(hit.is_some());
     let res = hit.unwrap();
     assert!(res.cache_hit);
@@ -102,7 +102,7 @@ async fn try_cache_str_and_try_cache_return_equivalent_results() {
     let query = DnsQuery::new("parity.example", RecordType::A);
     resolver.resolve(&query).await.unwrap();
 
-    let via_str = resolver.try_cache_str("parity.example", RecordType::A);
+    let via_str = resolver.try_cache_str("parity.example", RecordType::A, None);
     let via_query = resolver.try_cache(&query);
 
     assert!(via_str.is_some() && via_query.is_some());
@@ -130,11 +130,11 @@ async fn try_cache_str_misses_for_different_record_type() {
     resolver.resolve(&query).await.unwrap();
 
     assert!(resolver
-        .try_cache_str("typed.example", RecordType::A)
+        .try_cache_str("typed.example", RecordType::A, None)
         .is_some());
     assert!(
         resolver
-            .try_cache_str("typed.example", RecordType::AAAA)
+            .try_cache_str("typed.example", RecordType::AAAA, None)
             .is_none(),
         "AAAA must not hit A-only cache entry"
     );
@@ -187,7 +187,9 @@ async fn entries_cached_without_a_determination_report_none() {
         .unwrap();
 
     for name in ["nas.home.lan", "plain.example"] {
-        let hit = resolver.try_cache_str(name, RecordType::A).expect("cached");
+        let hit = resolver
+            .try_cache_str(name, RecordType::A, None)
+            .expect("cached");
         assert_eq!(hit.dnssec_status, None, "{name}");
     }
 }

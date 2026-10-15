@@ -75,6 +75,7 @@ async fn manager(addr: SocketAddr, qname_0x20: bool) -> Arc<PoolManager> {
         priority: 1,
         servers: vec![format!("udp://{addr}")],
         weight: None,
+        ..Default::default()
     };
     Arc::new(
         PoolManager::new(vec![pool], None)
@@ -214,6 +215,7 @@ async fn assert_cache_hit_miss(echo_cookie: bool) {
     let query = DnsQuery {
         domain: Arc::from("example.com"),
         record_type: RecordType::A,
+        group_id: None,
     };
 
     let first = resolver

@@ -22,9 +22,15 @@ impl DnsResolver for FilteredResolver {
         self.inner.try_cache(&filtered_query)
     }
 
-    fn try_cache_str(&self, domain: &str, record_type: RecordType) -> Option<DnsResolution> {
+    fn try_cache_str(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        group_id: Option<i64>,
+    ) -> Option<DnsResolution> {
         let transformed = self.filters.apply_str(domain)?;
-        self.inner.try_cache_str(transformed.as_ref(), record_type)
+        self.inner
+            .try_cache_str(transformed.as_ref(), record_type, group_id)
     }
 
     async fn resolve(&self, query: &DnsQuery) -> Result<DnsResolution, DomainError> {

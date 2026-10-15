@@ -11,6 +11,7 @@ fn pool(server: &str) -> UpstreamPool {
         priority: 1,
         servers: vec![server.into()],
         weight: None,
+        ..Default::default()
     }
 }
 

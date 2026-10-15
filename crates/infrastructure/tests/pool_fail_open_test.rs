@@ -73,6 +73,7 @@ async fn all_unhealthy_but_reachable_servers_still_resolve() {
         priority: 1,
         servers: vec![server],
         weight: None,
+        ..Default::default()
     };
     let pm = PoolManager::new(vec![pool], Some(checker)).await.unwrap();
     let domain: Arc<str> = Arc::from("example.com");

@@ -21,6 +21,7 @@ async fn hardened_pm(server: &str, qname_0x20: bool) -> Arc<PoolManager> {
         priority: 1,
         servers: vec![server.to_string()],
         weight: None,
+        ..Default::default()
     };
     Arc::new(
         PoolManager::new(vec![pool], None)

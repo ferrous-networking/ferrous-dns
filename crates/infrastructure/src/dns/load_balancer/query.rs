@@ -68,5 +68,6 @@ pub(super) async fn query_server(
         } else {
             display
         },
+        internal: false,
     })
 }

@@ -307,6 +307,7 @@ async fn validator_with_cache(h: &Hierarchy, cache: Arc<DnssecCache>) -> DnssecV
         priority: 1,
         servers: vec![format!("udp://{addr}")],
         weight: None,
+        ..Default::default()
     };
     let pm = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());
     DnssecValidator::new(pm, h.anchor.clone(), cache, 2_000)

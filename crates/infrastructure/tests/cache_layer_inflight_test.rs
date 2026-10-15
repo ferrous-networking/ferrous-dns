@@ -55,6 +55,7 @@ fn make_query(domain: &str) -> DnsQuery {
     DnsQuery {
         domain: Arc::from(domain),
         record_type: RecordType::A,
+        group_id: None,
     }
 }
 
