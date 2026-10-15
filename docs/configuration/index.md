@@ -510,6 +510,16 @@ servers  = [
     "https://dns.google/dns-query",
 ]
 
+# A conditional pool answers only its domains and every name under them;
+# see Conditional Forwarding in dns.md.
+# [[dns.pools]]
+# name     = "office"
+# strategy = "Failover"
+# servers  = ["udp://10.0.0.10:53"]
+# domains  = ["corp.example"]
+# groups   = [2]      # client group ids; omit for every client
+# internal = true     # unsigned internal zone: no DNSSEC, no rebinding protection
+
 # ── Health Checks ─────────────────────────────────────────────────────────────
 
 [dns.health_check]

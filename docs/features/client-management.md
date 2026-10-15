@@ -45,7 +45,8 @@ Each group can have its own:
 | **Allowlist** | Domains always allowed for this group |
 | **Safe Search** | Force safe search on search engines |
 | **Scheduling** | Time-based blocking rules |
-| **Upstream** | Use different upstream DNS pools (planned) |
+| **Conditional forwarding** | Send chosen domains to this group's own upstream pool (split-horizon), cached apart from other groups — see [Conditional Forwarding](../configuration/dns.md#conditional-forwarding) |
+| **Upstream** | A different default upstream for every query (planned) |
 
 ---
 

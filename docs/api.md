@@ -235,7 +235,25 @@ Partial update — only include the sections you want to change:
 }
 ```
 
-The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode` or `dnssec_mode`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, or a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295` — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
+**Upstream pools** (hot-applied). `pools` replaces the whole list. A pool with `domains` is a [conditional pool](configuration/dns.md#conditional-forwarding); `groups` and `internal` only apply to one:
+
+```json
+{
+  "dns": {
+    "pools": [
+      { "name": "public", "strategy": "parallel", "priority": 1,
+        "servers": ["https://cloudflare-dns.com/dns-query"] },
+      { "name": "office-a", "strategy": "failover", "priority": 1,
+        "servers": ["udp://10.1.0.10:53"],
+        "domains": ["corp.example"], "groups": [2], "internal": true }
+    ]
+  }
+}
+```
+
+`GET /api/config` returns `domains`, `groups` and `internal` on every pool, empty or `false` for a default pool. When a save changes where some name is routed, the DNS cache is cleared.
+
+The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode` or `dnssec_mode`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
 
 The file is rewritten atomically (a synced temp file renamed over it), so a crash mid-save leaves the old or the new file, never a truncated one. The new file keeps the old one's mode, owner and group. When the file cannot be replaced — a Docker single-file bind mount, a directory the server cannot write, or an owner or group the server cannot give the new file — it is rewritten in place instead.
 
@@ -588,7 +606,7 @@ Returns the entries currently held in the positive cache, with filtering, orderi
 | `sort` | string | `hits`, `cached_at`, `expires_at`, `domain`, or `type` (default: `cached_at`) |
 | `order` | string | `asc` or `desc` (default: `desc`) |
 
-The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "offset": 0 }`, where `total` counts the entries matching the filters and `records_total` counts every entry in the cache. Each item carries `domain`, `type`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries.
+The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "offset": 0 }`, where `total` counts the entries matching the filters and `records_total` counts every entry in the cache. Each item carries `domain`, `type`, `group_id`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries. `group_id` is `null` for the entries every client shares; a split-horizon answer from a [conditional pool](configuration/dns.md#conditional-forwarding) routed for one client group carries that group's id, and the same name can be listed once per group.
 
 `hits` counts only lookups served from the shared cache — queries absorbed by the per-thread L1 cache are not included, so hot A/AAAA records report fewer hits than they actually served.
 
@@ -598,7 +616,7 @@ The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "
 DELETE /api/cache/entries?domain=example.com&type=A
 ```
 
-Removes a single cache entry. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
+Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
 
 ---
 

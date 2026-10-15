@@ -26,9 +26,9 @@ local_dns_server = "10.0.0.1:53"
 | `default_strategy` | `"Parallel"` | Default strategy for `upstream_servers`: `"Parallel"`, `"Balanced"`, or `"Failover"` |
 | `dnssec_mode` | `"Permissive"` | DNSSEC enforcement: `"Off"`, `"Permissive"`, or `"Strict"` (see [DNSSEC](#dnssec)) |
 | `dnssec_trust_anchor_file` | — | Path to a trust anchor file replacing the embedded IANA root anchors (see [Trust anchors](#trust-anchors)) |
-| `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
+| `block_private_ptr` | `true` | Block PTR lookups for private/RFC-1918 IP ranges, except reverse zones a [conditional pool](#conditional-forwarding) answers |
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
-| `local_domain` | — | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools — see [Conditional Forwarding](#conditional-forwarding) |
+| `local_domain` | — | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, names under `local_domain`, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
@@ -94,6 +94,11 @@ servers = [
 | `strategy` | Resolution strategy (see below) |
 | `priority` | Lower number = higher priority. The highest-priority healthy pool is used |
 | `servers` | List of upstream servers (URL format) |
+| `domains` | Domains this pool answers, with every name under them — a [conditional pool](#conditional-forwarding). Leave out for a default pool |
+| `groups` | Client group ids the pool's `domains` are routed for. Leave out to route them for every client |
+| `internal` | `true` for an unsigned internal zone: its answers skip DNSSEC validation and rebinding protection |
+
+A pool with `domains` is skipped for every other name, so at least one pool must have no `domains`.
 
 ### Strategies
 
@@ -226,7 +231,38 @@ This means reverse DNS lookups work without any extra configuration, including f
 
 ## Conditional Forwarding
 
-Queries for one domain can go to an internal resolver — your router, an Active Directory domain controller, a home-lab DNS server — while every other query follows the upstream pools. Set `local_domain` to that domain and `local_dns_server` to the resolver:
+Queries for chosen domains can go to their own upstream pool (an office DNS server, an Active Directory domain controller, a national resolver) while every other query follows the default pools. List the domains in the pool:
+
+```toml
+[[dns.pools]]
+name     = "gov"
+strategy = "Failover"
+servers  = ["udp://195.208.4.1:53", "udp://195.208.5.1:53"]
+domains  = ["ru", "рф", "su"]
+
+[[dns.pools]]
+name     = "office-a"
+strategy = "Failover"
+servers  = ["udp://10.1.0.10:53"]
+domains  = ["corp.example", "1.10.in-addr.arpa"]
+groups   = [3]          # Clients > Groups: the group's id
+internal = true
+```
+
+- **Which names.** A pool with `domains` answers those domains and every name under them, and is never asked anything else. The most specific domain wins: with pools for `example` and `corp.example`, `a.corp.example` goes to the second. Domains can be written in Unicode (`рф`) or punycode (`xn--p1ai`), and reverse zones such as `1.10.in-addr.arpa` work too. At least one pool must have no `domains`.
+- **Which clients.** `groups` limits the pool to clients in those groups; leave it out to apply the pool to every client. For the same domain, a pool for the client's group wins over a pool for every client. Each group's answers are cached apart, so one group never receives another group's answer.
+- **No fallback.** When the pool cannot answer, the client gets `SERVFAIL`. The query is never retried on the default pools, so internal names do not leak to public resolvers and a national zone is never resolved anywhere else.
+- **DNSSEC and rebinding.** Both apply as usual, which is what a public zone such as a ccTLD needs; its DS and DNSKEY lookups go through the same pool. For an internal, unsigned zone, set `internal = true`. Its answers then skip DNSSEC validation, so they resolve under `dnssec_mode = "Strict"`, are exempt from [DNS rebinding protection](../features/malware-detection.md#dns-rebinding-protection), and show as Local DNS in the query log, like `local_dns_server` answers.
+- **Precedence.** Local records answer first. A conditional pool beats `local_domain`, the private-range PTRs sent to `local_dns_server`, and `block_private_ptr`.
+
+In the dashboard, the fields are **Domains**, **Client groups** and **Internal zone** on each pool under **Settings > DNS Advanced > Upstream DNS Pools**. Changes apply without a restart. When the routing changes, the DNS cache is cleared, so answers cached under the old routing are not served.
+
+!!! note "DNSSEC in group pools"
+    DS and DNSKEY lookups follow only pools that apply to every client. A group pool that keeps validation on has its chain of trust fetched through those pools or the default ones. Internal zones set `internal = true`, so they are not affected.
+
+### One domain through `local_domain`
+
+`local_domain` plus `local_dns_server` still route a single LAN domain to your router, for every client:
 
 ```toml
 [dns]
@@ -234,15 +270,10 @@ local_domain     = "corp.internal"
 local_dns_server = "10.0.0.10:53"   # AD / internal DNS server
 ```
 
-- `corp.internal` and every name under it are sent to `10.0.0.10:53`, never to the upstream pools. A single-label name such as `fileserver` becomes `fileserver.corp.internal` first, unless `block_non_fqdn` is on.
-- Reverse (PTR) lookups for private address ranges go to the same server.
-- When that server answers NXDOMAIN, fails or does not answer, the client gets NXDOMAIN; the name is not retried upstream.
-- Its answers skip DNSSEC validation, so an unsigned internal zone still resolves under `dnssec_mode = "Strict"`, and they are exempt from [DNS rebinding protection](../features/malware-detection.md#dns-rebinding-protection).
+Besides forwarding `corp.internal` and every name under it, this qualifies single-label names (`fileserver` becomes `fileserver.corp.internal`, unless `block_non_fqdn` is on) and sends private-range PTRs to the same server. A conditional pool does neither. When that server answers NXDOMAIN, fails or does not answer, the client gets NXDOMAIN; the name is not retried upstream. Its answers skip DNSSEC validation and rebinding protection. In the dashboard both are under **Settings > DNS Settings** (**Block local domain from internet** and **Local DNS server**); a change applies after a restart.
 
-In the dashboard both are under **Settings > DNS Settings** (**Block local domain from internet** and **Local DNS server**); a change applies after a restart.
-
-!!! note "One domain, one server"
-    This forwards one domain to one server, for every client. Forwarding several domains to different servers, or per client group, is not supported.
+!!! warning "Don't use `local_domain` for a public zone"
+    Setting `local_domain` to a TLD such as `ru` turns off DNSSEC validation and rebinding protection for the whole TLD, and sends every single-label name to that server. Use a conditional pool instead.
 
 ---
 
@@ -260,6 +291,7 @@ Ferrous DNS validates DNSSEC signatures (chain of trust from the root KSK, RSA/E
 - **CD bit** (Checking Disabled, RFC 4035): when a client sets CD, enforcement is skipped for that query so the client can perform its own validation — Strict mode will not `SERVFAIL` it.
 - **Fail-closed**: `Insecure` is served only when a signed proof shows the name sits below an unsigned delegation. An answer stripped of its signatures or its denial proof is `Bogus`, and a chain that could not be fetched (timeouts, unreachable upstream) is `Indeterminate`; Strict rejects both. Neither is cached, so the next query revalidates.
 - **Upstreams must pass DNSSEC records through.** A forwarder that drops RRSIG/NSEC/NSEC3 (some home routers do) makes signed names `Bogus`. `ds_denials_unproven` at `GET /api/dnssec/stats` counts that case; watch it under `Permissive` before switching to `Strict`.
+- **Conditional pools.** Answers from a [conditional pool](#conditional-forwarding) marked `internal = true` are not validated. DS and DNSKEY lookups follow conditional pools for every client, so a national zone routed to its own resolvers is validated through them.
 
 ```toml title="ferrous-dns.toml"
 [dns]
@@ -380,6 +412,8 @@ local_dns_server = "192.168.1.1:53"
 ```
 
 `local_dns_server` points to your router or DHCP server. Ferrous DNS uses it for three distinct purposes. In the dashboard it is **Settings > DNS Settings > Local DNS server**; a change applies after a restart.
+
+To send more than one domain, or a domain per client group, to an internal server, use a [conditional pool](#conditional-forwarding).
 
 !!! note "Answers from the router are validated"
     Queries to `local_dns_server` get the same anti-spoofing as upstream pools: the answer must come from the router's address and match the transaction ID, the question and the DNS Cookie, and a truncated answer is retried over TCP. With `qname_case_randomization = true` the query name's case is randomized here too — if your router rewrites the case of names, every answer fails that check and the log shows `Local DNS server query failed`; turn 0x20 off in that case. See [Security Hardening](../features/security-hardening.md#upstream-response-validation).

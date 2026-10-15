@@ -92,10 +92,15 @@ servers  = [
 | `priority` | Lower number = higher priority. The highest-priority pool with at least one healthy server is always used |
 | `servers` | List of upstream server URLs |
 | `weight` | Optional relative weight for the pool (`int`, default unset). Accepted, persisted, and exposed via the API, but **not yet consumed** by the load balancer — the `Balanced` strategy is plain round-robin. Reserved for future weighted distribution |
+| `domains` | Domains the pool answers, with every name under them: a conditional pool, skipped for every other name. See [Conditional Forwarding](../configuration/dns.md#conditional-forwarding) |
+| `groups` | Client group ids a conditional pool's `domains` are routed for; empty for every client |
+| `internal` | A conditional pool for an unsigned internal zone: no DNSSEC validation, no rebinding protection |
 
 ### Pool Routing
 
-When a query arrives, Ferrous DNS selects the pool with:
+When a query arrives, Ferrous DNS first checks the conditional pools. If one answers the name, for the client's group or for every client, only that pool is asked. If it cannot answer, the client gets `SERVFAIL`; the name is never retried on another pool.
+
+Every other name goes to the default pools, those without `domains`. Ferrous DNS selects the pool with:
 
 1. The **lowest priority number** (highest priority)
 2. At least **one healthy upstream** in rotation
@@ -403,13 +408,11 @@ success_threshold = 1
 
 ### Internal Network (Split DNS)
 
-Route an internal domain to a local resolver, everything else to DoH:
+Route internal domains to the internal resolver, everything else to DoH:
 
 ```toml
 [dns]
 query_timeout    = 3
-local_domain     = "corp"
-local_dns_server = "10.0.0.10:53"   # internal AD/DNS server
 
 [[dns.pools]]
 name     = "public"
@@ -419,9 +422,38 @@ servers  = [
     "https://cloudflare-dns.com/dns-query",
     "https://dns.google/dns-query",
 ]
+
+[[dns.pools]]
+name     = "corp"
+strategy = "Failover"
+servers  = ["udp://10.0.0.10:53", "udp://10.0.0.11:53"]   # internal AD/DNS servers
+domains  = ["corp", "10.in-addr.arpa"]
+internal = true
 ```
 
-Queries for `corp` and every name under it go to `10.0.0.10:53`; everything else uses the `public` pool. Only one domain can be routed this way — see [Conditional Forwarding](../configuration/dns.md#conditional-forwarding).
+Queries for `corp`, every name under it, and reverse lookups in `10.0.0.0/8` go to the internal servers; everything else uses the `public` pool.
+
+When each office has its own DNS server for the same corporate domain, give each office's client group its own pool. Each group gets its own office's answers, cached apart from the other offices':
+
+```toml
+[[dns.pools]]
+name     = "office-a"
+strategy = "Failover"
+servers  = ["udp://10.1.0.10:53"]
+domains  = ["corp"]
+groups   = [2]          # the "Office A" client group
+internal = true
+
+[[dns.pools]]
+name     = "office-b"
+strategy = "Failover"
+servers  = ["udp://10.2.0.10:53"]
+domains  = ["corp"]
+groups   = [3]          # the "Office B" client group
+internal = true
+```
+
+See [Conditional Forwarding](../configuration/dns.md#conditional-forwarding).
 
 ---
 

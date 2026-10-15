@@ -257,11 +257,11 @@ qname_case_randomization = false
 | `query_timeout` | `int` | `3` | Seconds to wait for an upstream response before trying the next server |
 | `default_strategy` | `str` | `"Parallel"` | Default resolution strategy for `upstream_servers`: `"Parallel"` or `"Sequential"` |
 | `dnssec_mode` | `str` | `"Permissive"` | DNSSEC enforcement: `"Off"` (no validation), `"Permissive"` (validate + tag, no SERVFAIL), `"Strict"` (SERVFAIL on Bogus or Indeterminate). The legacy `dnssec_enabled` bool is still accepted (`true` → Permissive, `false` → Off) |
-| `block_private_ptr` | `bool` | `true` | Block PTR lookups for private/RFC-1918 IP ranges |
+| `block_private_ptr` | `bool` | `true` | Block PTR lookups for private/RFC-1918 IP ranges, except reverse zones a [conditional pool](dns.md#conditional-forwarding) answers |
 | `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
 | `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection) |
 | `rebinding_allowlist` | `list` | `[]` | Domains exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels) |
-| `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools — see [Conditional Forwarding](dns.md#conditional-forwarding) |
+| `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](dns.md#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups, client hostname resolution and names under `local_domain`: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
 | `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
@@ -292,6 +292,13 @@ servers  = [
     "tls://8.8.8.8:853",
     "tls://8.8.4.4:853",
 ]
+
+# A conditional pool: only names under these domains, and nothing else.
+[[dns.pools]]
+name     = "gov"
+strategy = "Failover"
+servers  = ["udp://195.208.4.1:53"]
+domains  = ["ru", "рф"]
 ```
 
 | Option | Type | Default | Description |
@@ -300,6 +307,9 @@ servers  = [
 | `strategy` | `str` | `"Parallel"` | Resolution strategy: `"Parallel"`, `"Balanced"`, or `"Failover"` |
 | `priority` | `int` | `1` | Pool priority; lower value = higher priority |
 | `servers` | `list` | `[]` | List of upstream server URIs |
+| `domains` | `list` | `[]` | Domains the pool answers, with every name under them; such a pool is skipped for every other name. Empty for a default pool, and at least one pool must be one — see [Conditional Forwarding](dns.md#conditional-forwarding) |
+| `groups` | `list` | `[]` | Client group ids the `domains` are routed for; empty routes them for every client. Requires `domains` |
+| `internal` | `bool` | `false` | Unsigned internal zone: answers skip DNSSEC validation and rebinding protection. Requires `domains` |
 
 !!! info "Supported URI schemes"
     ```
