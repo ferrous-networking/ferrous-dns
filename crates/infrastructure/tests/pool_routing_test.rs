@@ -380,3 +380,109 @@ async fn test_a_sibling_under_the_parent_of_a_routed_domain_is_not_routed() {
     assert_eq!(pm.route("X.A.B.EXAMPLE.", None).map(|r| r.view), Some(0));
     assert_eq!(pm.route(&"a.".repeat(200), None), None);
 }
+
+// ── Health checks: a conditional pool's servers may refuse names outside
+// their own zone, so they are asked for that zone instead ──────────────────
+
+use ferrous_dns_domain::DnsProtocol;
+use ferrous_dns_infrastructure::dns::load_balancer::{HealthChecker, ServerStatus};
+use std::time::Duration;
+
+fn protocol(upstream: &Upstream) -> Arc<DnsProtocol> {
+    Arc::new(upstream.url().parse().unwrap())
+}
+
+async fn wait_for_status(checker: &HealthChecker, protocol: &Arc<DnsProtocol>, want: ServerStatus) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    while checker.get_status(protocol) != want {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{protocol} never became {want:?}, is {:?}",
+            checker.get_status(protocol)
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn test_conditional_pool_servers_are_health_checked_with_their_zone() {
+    let public = Upstream::spawn(Answer::Address(PUBLIC_IP)).await;
+    let office = Upstream::spawn(Answer::Zone("corp.example.", OFFICE_A_IP)).await;
+    let pm = manager(vec![
+        default_pool("public", 1, &public),
+        conditional_pool(
+            "office",
+            &office,
+            &["Corp.Example", "1.10.in-addr.arpa"],
+            &[GROUP_A],
+            true,
+        ),
+    ])
+    .await;
+
+    let checker = Arc::new(HealthChecker::new(1, 1));
+    let probes = pm.get_health_probes();
+    let running = Arc::clone(&checker);
+    tokio::spawn(async move { running.run_probes(move || probes.clone(), 60, 500).await });
+
+    wait_for_status(&checker, &protocol(&office), ServerStatus::Healthy).await;
+    wait_for_status(&checker, &protocol(&public), ServerStatus::Healthy).await;
+    assert!(office.asked().contains(&(
+        "corp.example.".to_string(),
+        hickory_proto::rr::RecordType::SOA
+    )));
+    assert!(public
+        .asked()
+        .contains(&("google.com.".to_string(), hickory_proto::rr::RecordType::A)));
+}
+
+#[tokio::test]
+async fn test_a_zone_only_server_probed_with_google_com_would_look_down() {
+    let office = Upstream::spawn(Answer::Zone("corp.example.", OFFICE_A_IP)).await;
+    let checker = Arc::new(HealthChecker::new(1, 1));
+    let probed = protocol(&office);
+    let running = Arc::clone(&checker);
+    tokio::spawn(async move {
+        running
+            .run(move || vec![Arc::clone(&probed)], 60, 500)
+            .await
+    });
+
+    wait_for_status(&checker, &protocol(&office), ServerStatus::Unhealthy).await;
+}
+
+#[tokio::test]
+async fn test_routed_failover_pool_skips_a_server_its_zone_probe_found_down() {
+    let public = Upstream::spawn(Answer::Address(PUBLIC_IP)).await;
+    let dead = Upstream::spawn(Answer::Silent).await;
+    let office = Upstream::spawn(Answer::Zone("corp.example.", OFFICE_A_IP)).await;
+    let checker = Arc::new(HealthChecker::new(1, 1));
+    let pool = UpstreamPool {
+        servers: vec![dead.url(), office.url()],
+        ..conditional_pool("office", &office, &["corp.example"], &[], true)
+    };
+    let pm = PoolManager::new(
+        vec![default_pool("public", 1, &public), pool],
+        Some(Arc::clone(&checker)),
+    )
+    .await
+    .unwrap();
+    let probes = pm.get_health_probes();
+    let running = Arc::clone(&checker);
+    tokio::spawn(async move { running.run_probes(move || probes.clone(), 60, 300).await });
+    wait_for_status(&checker, &protocol(&office), ServerStatus::Healthy).await;
+    wait_for_status(&checker, &protocol(&dead), ServerStatus::Unhealthy).await;
+
+    // Both are also probed; count only what the query adds.
+    let (dead_before, public_before) = (dead.queries(), public.queries());
+    assert_eq!(
+        resolve_ip(&pm, None, "host.corp.example").await,
+        OFFICE_A_IP
+    );
+    assert_eq!(
+        dead.queries(),
+        dead_before,
+        "the server found down was still asked first"
+    );
+    assert_eq!(public.queries(), public_before);
+}

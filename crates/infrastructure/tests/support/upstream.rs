@@ -20,6 +20,10 @@ pub enum Answer {
     Address(Ipv4Addr),
     /// A CNAME to the target name, followed by the target's A record.
     Cname(&'static str, Ipv4Addr),
+    /// Authoritative for one zone (an absolute name): names under it get the
+    /// address, or NODATA for other types; anything else is REFUSED, as an
+    /// internal server that does not recurse answers.
+    Zone(&'static str, Ipv4Addr),
     NxDomain,
     /// No reply at all, as a server that is down.
     Silent,
@@ -119,6 +123,17 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
         Answer::Address(_) | Answer::Cname(..) => {
             resp.metadata.response_code = ResponseCode::NoError
         }
+        Answer::Zone(zone, _) => {
+            let inside = req.queries.iter().all(|q| {
+                let name = q.name().to_ascii().to_ascii_lowercase();
+                name == zone || name.ends_with(&format!(".{zone}"))
+            });
+            resp.metadata.response_code = if inside {
+                ResponseCode::NoError
+            } else {
+                ResponseCode::Refused
+            };
+        }
     }
     for q in &req.queries {
         resp.add_query(q.clone());
@@ -127,6 +142,9 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
         }
         match answer {
             Answer::Address(ip) => {
+                resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
+            }
+            Answer::Zone(_, ip) if resp.metadata.response_code == ResponseCode::NoError => {
                 resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
             }
             Answer::Cname(target, ip) => {
@@ -138,7 +156,7 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
                 ));
                 resp.add_answer(Record::from_rdata(target, 300, RData::A(A(ip))));
             }
-            Answer::NxDomain | Answer::Silent => {}
+            Answer::Zone(..) | Answer::NxDomain | Answer::Silent => {}
         }
     }
     Some(resp.to_bytes().unwrap())

@@ -127,6 +127,8 @@ success_threshold = 2   # Consecutive successes to restore a server
 
 A server is temporarily excluded from rotation when `failure_threshold` consecutive checks fail, and restored after `success_threshold` consecutive successes.
 
+Each check asks a server for `google.com`. A [conditional pool](#conditional-forwarding)'s servers are asked for the SOA of the pool's first domain instead, so an internal server that answers only its own zone and refuses everything else is not marked down.
+
 ---
 
 ## Local DNS Records {#local-records}
@@ -252,6 +254,7 @@ internal = true
 - **Which names.** A pool with `domains` answers those domains and every name under them, and is never asked anything else. The most specific domain wins: with pools for `example` and `corp.example`, `a.corp.example` goes to the second. Domains can be written in Unicode (`рф`) or punycode (`xn--p1ai`), and reverse zones such as `1.10.in-addr.arpa` work too. At least one pool must have no `domains`.
 - **Which clients.** `groups` limits the pool to clients in those groups; leave it out to apply the pool to every client. For the same domain, a pool for the client's group wins over a pool for every client. Each group's answers are cached apart, so one group never receives another group's answer.
 - **No fallback.** When the pool cannot answer, the client gets `SERVFAIL`. The query is never retried on the default pools, so internal names do not leak to public resolvers and a national zone is never resolved anywhere else.
+- **Health checks.** The pool's servers are checked with a query for its first domain, not `google.com`, so a server that answers only its own zone stays healthy. A pool whose servers are all marked down still asks them, as the default pools do.
 - **DNSSEC and rebinding.** Both apply as usual, which is what a public zone such as a ccTLD needs; its DS and DNSKEY lookups go through the same pool. For an internal, unsigned zone, set `internal = true`. Its answers then skip DNSSEC validation, so they resolve under `dnssec_mode = "Strict"`, are exempt from [DNS rebinding protection](../features/malware-detection.md#dns-rebinding-protection), and show as Local DNS in the query log, like `local_dns_server` answers.
 - **Precedence.** Local records answer first. A conditional pool beats `local_domain`, the private-range PTRs sent to `local_dns_server`, and `block_private_ptr`.
 

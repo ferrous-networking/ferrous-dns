@@ -86,11 +86,11 @@ pub(super) fn start_health_checker_task(
     let timeout = config.dns.health_check.timeout;
     tokio::spawn(async move {
         checker
-            .run(
+            .run_probes(
                 move || {
                     pm_weak
                         .upgrade()
-                        .map(|pm| pm.get_all_arc_protocols())
+                        .map(|pm| pm.get_health_probes())
                         .unwrap_or_default()
                 },
                 interval,

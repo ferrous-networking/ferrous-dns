@@ -1,4 +1,5 @@
 use super::health::HealthChecker;
+use super::health::HealthProbe;
 use super::query::{all_servers_failed, is_servfail};
 use super::routes::{PoolRoutes, Route, UpstreamRouter};
 use super::strategy::{QueryContext, ServerDisplays, Strategy, UpstreamResult};
@@ -46,6 +47,9 @@ struct PoolWithStrategy {
     server_groups: Vec<ServerGroup>,
     name_arc: Arc<str>,
     server_displays: ServerDisplays,
+    /// The zone a conditional pool's servers are health-checked with: they
+    /// may refuse any name outside their own domains.
+    probe_zone: Option<Arc<str>>,
 }
 
 /// The live pools and the routing built from them, swapped as one so a route
@@ -269,6 +273,7 @@ impl PoolManager {
                 .iter()
                 .map(|p| (Arc::clone(p), Arc::from(p.to_string())))
                 .collect();
+            let probe_zone = pool.normalized_domains()?.into_iter().next().map(Arc::from);
             pools_with_strategy.push(PoolWithStrategy {
                 config: pool,
                 strategy,
@@ -276,6 +281,7 @@ impl PoolManager {
                 server_groups,
                 name_arc,
                 server_displays,
+                probe_zone,
             });
         }
         pools_with_strategy.sort_by_key(|p| p.config.priority);
@@ -627,6 +633,21 @@ impl PoolManager {
             .pools
             .iter()
             .flat_map(|p| p.server_protocols.iter().cloned())
+            .collect()
+    }
+
+    /// Every server with the zone it is health-checked with: none for a
+    /// default pool's servers, the first routed domain for a conditional one's.
+    pub fn get_health_probes(&self) -> Vec<HealthProbe> {
+        self.pools
+            .load()
+            .pools
+            .iter()
+            .flat_map(|p| {
+                p.server_protocols
+                    .iter()
+                    .map(|protocol| (Arc::clone(protocol), p.probe_zone.clone()))
+            })
             .collect()
     }
 

@@ -32,6 +32,13 @@ pub struct HealthChecker {
     success_threshold: u8,
 }
 
+/// A server to probe, and the zone it answers when it answers only some
+/// domains: a conditional pool's server, which may well refuse `google.com`.
+pub type HealthProbe = (Arc<DnsProtocol>, Option<Arc<str>>);
+
+/// What a server that answers every name is asked.
+const DEFAULT_PROBE_NAME: &str = "google.com";
+
 impl HealthChecker {
     pub fn new(failure_threshold: u8, success_threshold: u8) -> Self {
         Self {
@@ -52,7 +59,30 @@ impl HealthChecker {
     ) where
         F: Fn() -> Vec<Arc<DnsProtocol>> + Send + 'static,
     {
-        let initial = protocols_provider();
+        self.run_probes(
+            move || {
+                protocols_provider()
+                    .into_iter()
+                    .map(|p| (p, None))
+                    .collect()
+            },
+            interval_seconds,
+            timeout_ms,
+        )
+        .await
+    }
+
+    /// [`Self::run`] for servers that may answer only their own zone: each one
+    /// is asked for that zone's SOA instead of `google.com`.
+    pub async fn run_probes<F>(
+        self: Arc<Self>,
+        probes_provider: F,
+        interval_seconds: u64,
+        timeout_ms: u64,
+    ) where
+        F: Fn() -> Vec<HealthProbe> + Send + 'static,
+    {
+        let initial = probes_provider();
         info!(
             servers = initial.len(),
             interval_seconds, "Health checker running"
@@ -69,12 +99,12 @@ impl HealthChecker {
             check_interval.tick().await;
             // Re-fetch the live protocol set each tick so servers added via a hot
             // pool reload are probed, and removed servers stop being probed.
-            let protocols = protocols_provider();
+            let probes = probes_provider();
             // Drop health entries for servers no longer in the live set, so removed
             // upstreams stop being reported as healthy/unhealthy and rotating
             // hostname IPs don't accumulate stale entries across reloads.
-            self.retain_live(&protocols);
-            self.check_all(&protocols, timeout_ms).await;
+            self.retain_live(&probes);
+            self.check_all(&probes, timeout_ms).await;
         }
     }
 
@@ -82,19 +112,31 @@ impl HealthChecker {
     /// per tick with the live pool set so a hot reload that drops a server — or
     /// re-resolves a hostname to fresh addresses — doesn't leave its status lingering
     /// in the map nor let the map grow unbounded across reloads.
-    fn retain_live(&self, protocols: &[Arc<DnsProtocol>]) {
-        let live: HashSet<Arc<DnsProtocol>> = protocols.iter().cloned().collect();
+    fn retain_live(&self, probes: &[HealthProbe]) {
+        let live: HashSet<Arc<DnsProtocol>> = probes.iter().map(|(p, _)| Arc::clone(p)).collect();
         self.health_map.retain(|k, _| live.contains(k));
     }
 
-    async fn check_all(&self, protocols: &[Arc<DnsProtocol>], timeout_ms: u64) {
-        let Ok(query_bytes) = MessageBuilder::build_query("google.com", &RecordType::A, false)
+    async fn check_all(&self, probes: &[HealthProbe], timeout_ms: u64) {
+        let Ok(default_query) =
+            MessageBuilder::build_query(DEFAULT_PROBE_NAME, &RecordType::A, false)
         else {
             return;
         };
-        let futs: Vec<_> = protocols
+        let queries: Vec<Vec<u8>> = probes
             .iter()
-            .map(|p| self.check_server(p, &query_bytes, timeout_ms))
+            .map(|(_, zone)| {
+                zone.as_deref()
+                    .and_then(|zone| {
+                        MessageBuilder::build_query(zone, &RecordType::SOA, false).ok()
+                    })
+                    .unwrap_or_else(|| default_query.clone())
+            })
+            .collect();
+        let futs: Vec<_> = probes
+            .iter()
+            .zip(&queries)
+            .map(|((p, _), query)| self.check_server(p, query, timeout_ms))
             .collect();
         futures::future::join_all(futs).await;
     }
