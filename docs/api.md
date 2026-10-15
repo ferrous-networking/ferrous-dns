@@ -1181,7 +1181,7 @@ clients, a blocking toggle, and the Pi-hole action endpoints. Every route answer
 with the response shapes and types of Pi-hole's FTL, and request bodies are read
 as JSON whatever their `Content-Type`.
 
-With `[auth]` enabled, every endpoint except `/api/auth` and `/api/info/login`
+With `[auth]` enabled, every endpoint except `/api/auth`, `/api/info/login` and `/api/info/client`
 needs the `sid` from `POST /api/auth` in an `X-FTL-SID` header (or a `sid`
 header, or `?sid=`); the native `X-Api-Key` header is not read here — send an
 API token as the password instead. See [Pi-hole Compatibility > Authentication](features/pihole-compat.md#authentication).
@@ -1193,6 +1193,8 @@ API token as the password instead. See [Pi-hole Compatibility > Authentication](
 | `POST` | `/api/auth` | Pi-hole v6 login (session-based). Public |
 | `GET` | `/api/auth` | Session status; `401` with the session object without a valid session. Public |
 | `DELETE` | `/api/auth` | Logout |
+| `GET` | `/api/auth/sessions` | Live sessions; `current_session` marks the presented one |
+| `DELETE` | `/api/auth/session/{id}` | End the session listed under `id` |
 | `GET` | `/api/info/login` | `{"dns": true, "https_port": N}` (`0` on plain HTTP). Public |
 
 **Stats & history**
@@ -1218,9 +1220,9 @@ API token as the password instead. See [Pi-hole Compatibility > Authentication](
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/queries` | Query log (filters: `from`, `domain`, `client_ip`, `client_name`, `upstream`, `type`, `status`, `dnssec`, …; paging: `length`, `start`, `cursor`) |
+| `GET` | `/api/queries` | Query log (filters: `from`, `until`, `domain`, `client_ip`, `client_name`, `upstream`, `type`, `status`, `reply`, `dnssec`, …; paging: `length`, `start`, `cursor`) |
 | `GET` | `/api/queries/suggestions` | Filter values (`count`, default 30) |
-| `GET` | `/api/search/{domain}` | Domain-list entries, regex filters and blocklists that hold the domain (`partial`, `N`) |
+| `GET` | `/api/search/{domain}` | Domain-list entries, regex filters, blocklists and allowlists that hold the domain (`partial`, `N`) |
 
 **DNS blocking toggle**
 
@@ -1269,22 +1271,36 @@ API token as the password instead. See [Pi-hole Compatibility > Authentication](
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/clients` | List clients |
-| `POST` | `/api/clients` | Add one client or several (by IP) |
-| `GET` | `/api/clients/{client}` | Get a client (by IP) |
+| `POST` | `/api/clients` | Add one client or several (by IP or subnet) |
+| `GET` | `/api/clients/{client}` | Get a client (by IP or subnet) |
 | `GET` | `/api/clients/_suggestions` | Devices the resolver has seen (`count`, default 50) |
-| `PUT` | `/api/clients/{client}` | Update or create a client (by IP) |
-| `DELETE` | `/api/clients/{client}` | Delete a client (by IP) |
+| `PUT` | `/api/clients/{client}` | Update or create a client (by IP or subnet) |
+| `DELETE` | `/api/clients/{client}` | Delete a client (by IP or subnet) |
 | `POST` | `/api/clients:batchDelete` | Batch delete (`[{item}]`) |
 
 **Info**
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
+| `GET` | `/api/info/client` | The caller's address, method and headers. Public |
 | `GET` | `/api/info/version` | Version of each component (`core`, `web`, `ftl`, `docker`) |
 | `GET` | `/api/info/ftl` | Resolver process info and counts |
 | `GET` | `/api/info/system` | Host uptime, memory (kB), processes and load |
 | `GET` | `/api/info/host` | Kernel `uname`, device model and DMI identifiers |
+| `GET` | `/api/info/sensors` | Temperature sensors (hwmon) |
+| `GET` | `/api/info/metrics` | DNS cache counters |
+| `GET` | `/api/info/messages` | Diagnosis messages (always empty), also `/count` and `DELETE /{id}` |
 | `GET` | `/api/info/database` | Database file and stored query counts |
+
+**Network and DHCP**
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/network/gateway` | Default routes with their interface addresses |
+| `GET` | `/api/network/routes` | Routing table |
+| `GET` | `/api/network/interfaces` | Interfaces with their addresses |
+| `GET` | `/api/network/devices` | Devices built from the known clients (`max_devices`, `max_addresses`) |
+| `GET` | `/api/dhcp/leases` | Always empty: Ferrous serves no DHCP |
 
 **PADD and endpoint list**
 

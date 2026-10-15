@@ -49,7 +49,9 @@ Request bodies are read as JSON whatever their `Content-Type` says, as FTL does
 (Homarr, for one, sends `text/plain`). A body that does not parse gets `400`
 `bad_request`, and every error reply is FTL's envelope:
 `{"error": {"key": "...", "message": "...", "hint": null}}`, where `hint` is a
-string or `null`.
+string or `null`. A path FTL does not route is answered `404` `not_found` with
+the path as `hint`, before any session check, and a known path with the wrong
+method `405` `method_not_allowed` with the method as `hint`.
 
 !!! tip "Interactive spec"
     The Pi-hole layer publishes its own OpenAPI document at `GET /api/openapi.json`
@@ -64,6 +66,8 @@ string or `null`.
 | `POST` | `/api/auth` | Login — returns a session token (`sid`). Public |
 | `GET` | `/api/auth` | Current session; `401` with the session object when there is no valid one. Public |
 | `DELETE` | `/api/auth` | Logout — invalidate session |
+| `GET` | `/api/auth/sessions` | Every live session, oldest first; `current_session` marks the one the request presented |
+| `DELETE` | `/api/auth/session/{id}` | End the session listed under `id`. `400` `bad_request` when `id` is not a number, is negative, or names no live session |
 | `GET` | `/api/info/login` | `{"dns": true, "https_port": N}`, which clients such as Homarr probe to detect Pi-hole v6. Public |
 
 ### Statistics & history
@@ -100,9 +104,9 @@ Each takes the window as Unix timestamps in `from` and `until`; both are require
 |:-------|:---------|:------------|
 | `GET` | `/api/queries` | Query log, newest first. Filters: `from`, `until`, `domain`, `client_ip` (alias `client`), `client_name`, `upstream` (`ip#port`, `blocklist`, `cache` or `permitted`), `type`, `status`, `reply`, `dnssec`, `disk`. Paging: `length` (default 100, `0` or below for all, capped at 10000), `start`, `cursor`; `draw` is echoed |
 | `GET` | `/api/queries/suggestions` | Filter values: top domains and clients of the last 24 h (`count`, default 30), upstreams as `ip#port`, and every FTL type, status, reply and DNSSEC name |
-| `GET` | `/api/search/{domain}` | What holds the domain: exact domain-list entries, matching regex filters, and blocklists that contain it. `partial`, `N` (rows per kind, default 20, at most 10000), `debug` |
+| `GET` | `/api/search/{domain}` | What holds the domain: exact domain-list entries, matching regex filters, and the blocklists then the allowlists that contain it. `partial`, `N` (rows per kind, default 20, at most 10000), `debug` |
 
-The first `/api/queries` page pins `cursor` to the newest query; send it back with `start` to page through that snapshot, unshifted by queries logged since. A cursor past the newest query, or a filter value FTL does not know, is answered `400`.
+The first `/api/queries` page pins `cursor` to the newest query; send it back with `start` to page through that snapshot, unshifted by queries logged since. A cursor past the newest query, or a filter value FTL does not know, is answered `400`. `until` is exclusive, `type=OTHER` selects every query type outside FTL's list, and `reply` selects by the same reply type each entry reports.
 
 ### DNS blocking toggle
 
@@ -147,7 +151,7 @@ Domains, groups, clients and lists share FTL's conventions:
 | `DELETE` | `/api/lists/{list}?type=allow\|block` | Delete an adlist |
 | `POST` | `/api/lists:batchDelete` | Batch delete: `[{"item": "<address>", "type": "block"}]` |
 
-As in Pi-hole v6, `{list}` is the list's address, URL-encoded or not, and `type` says which table it lives in: blocklists and allowlists are stored separately, so the same address — or the same numeric id, which `{list}` also accepts — can name one of each. `POST`, `PUT` and `DELETE` require `?type=`; a missing or unknown type is rejected with `400` and changes nothing. A `batchDelete` item without a known type matches nothing, and `?type=` on `batchDelete` overrides every item's type. `GET /api/lists/{list}` without `type` returns the matches of both types. Each list in a reply carries `"type": "allow"` or `"type": "block"`, `date_updated` (the last successful download), and `status` (`1` once downloaded, else `0`).
+As in Pi-hole v6, `{list}` is the list's address, URL-encoded or not, and `type` says which table it lives in: blocklists and allowlists are stored separately, so the same address — or the same numeric id, which `{list}` also accepts — can name one of each. `POST`, `PUT` and `DELETE` require `?type=`; a missing or unknown type is rejected with `400` and changes nothing. A `batchDelete` item without a known type matches nothing, and `?type=` on `batchDelete` overrides every item's type. `GET /api/lists/{list}` without `type` returns the matches of both types. Each list in a reply carries `"type": "allow"` or `"type": "block"`, `date_updated` (the last successful download), and `status`, Pi-hole's code for how its last download went: `0` not tried yet, `1` updated, `2` unchanged, `3` failed with the previous copy still in use, `4` failed with no copy.
 
 !!! warning "Changed in v0.9.19"
     Earlier versions ignored the list type on `/api/lists/{id}`, so an allowlist whose id matched a blocklist could not be read, updated or deleted — the request hit the blocklist instead. `type` in replies was `0`/`1` and is now `"block"`/`"allow"`; the type moved from the `POST` body to `?type=`; `PUT` no longer renames a list; and `batchDelete` takes Pi-hole's `[{item, type}]` array instead of `{"items": [...]}`.
@@ -168,25 +172,42 @@ As in Pi-hole v6, `{list}` is the list's address, URL-encoded or not, and `type`
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/clients` | List all clients |
-| `POST` | `/api/clients` | Add one client or several: `client` is an IP address or an array of them |
-| `GET` | `/api/clients/{client}` | One client (by IP); an empty list when unknown |
+| `POST` | `/api/clients` | Add one client or several: `client` is an IP address or a subnet (`10.0.0.0/24`), or an array of them |
+| `GET` | `/api/clients/{client}` | One client (by IP or subnet); an empty list when unknown |
 | `GET` | `/api/clients/_suggestions` | Devices the resolver has seen, most recently active first: `{"clients": [{hwaddr, macVendor, lastQuery, addresses, names}]}`; `count` (default 50) |
-| `PUT` | `/api/clients/{client}` | Update a client (by IP), or create it |
-| `DELETE` | `/api/clients/{client}` | Delete a client (by IP) |
-| `POST` | `/api/clients:batchDelete` | Batch delete: `[{"item": "<ip>"}]` |
+| `PUT` | `/api/clients/{client}` | Update a client (by IP or subnet), or create it |
+| `DELETE` | `/api/clients/{client}` | Delete a client (by IP or subnet) |
+| `POST` | `/api/clients:batchDelete` | Batch delete: `[{"item": "<ip or subnet>"}]` |
 
-Each client carries `client` (its IP), `name` (`""` when unknown), `date_added` (when it was added or first seen) and `date_modified` (its last change, its last query included).
+Each client carries `client` (its IP or subnet), `name` (`""` when unknown, and always for a subnet), `comment`, `date_added` (when it was added or first seen) and `date_modified` (its last change, its last query included). A subnet client is a Ferrous [client subnet](../api.md#client-subnets): every address in it uses its group. As in FTL, a write replaces the `comment`, so a `PUT` without one clears it.
 
 ### Info
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `GET` | `/api/info/login` | Public. `https_port` is the web port when the web server serves HTTPS, `0` on plain HTTP |
+| `GET` | `/api/info/client` | Public. The caller's address, HTTP version, method and request headers |
 | `GET` | `/api/info/version` | `{"version": {"core", "web", "ftl", "docker"}}`, each with `local` and `remote` |
 | `GET` | `/api/info/ftl` | Resolver process info and domain/client counts, under `ftl` (`uptime` in milliseconds) |
 | `GET` | `/api/info/system` | Uptime, memory (kB), processes and load, under `system` |
 | `GET` | `/api/info/host` | Kernel `uname`, device `model` and `dmi` identifiers, under `host` |
+| `GET` | `/api/info/sensors` | Every hwmon chip with its temperatures, and the CPU's, under `sensors` |
+| `GET` | `/api/info/metrics` | DNS cache counters (`size`, `inserted`, `evicted`, `expired`), and FTL's reply and DHCP counters, under `metrics` |
+| `GET` | `/api/info/messages` | FTL's diagnosis messages; always empty, Ferrous raises none |
+| `GET` | `/api/info/messages/count` | `{"count": 0}` |
+| `DELETE` | `/api/info/messages/{id}` | `404` with `{}`, since there is no message to delete |
 | `GET` | `/api/info/database` | Database file `size` and metadata, and stored query counts |
+
+### Network and DHCP
+
+| Method | Endpoint | Description |
+|:-------|:---------|:------------|
+| `GET` | `/api/network/gateway` | Default routes, each with its interface's addresses of the same family |
+| `GET` | `/api/network/routes` | The kernel's routing table |
+| `GET` | `/api/network/interfaces` | Every interface with its type, flags, state, speed, byte counters and addresses |
+| `GET` | `/api/network/devices` | Devices built from the known clients: the clients sharing a MAC address are one device, with their addresses most recently seen first; `max_devices` (default 10), `max_addresses` (default 3) |
+| `GET` | `/api/dhcp/leases` | `{"leases": []}`: Ferrous serves no DHCP |
+| `DELETE` | `/api/dhcp/leases/{ip}` | `400` `bad_request`, with FTL's hint `DHCP is not enabled` |
 
 ### PADD and endpoint list
 
@@ -208,7 +229,7 @@ Each client carries `client` (its IP), `name` (`""` when unknown), `date_added` 
 !!! warning "Changed in v0.9.23"
     Replies now follow FTL's schemas field for field. Integrations written against earlier versions should check these routes and fields:
 
-    - **Requests and errors**: bodies are read as JSON whatever the `Content-Type`; one that does not parse is `400` `bad_request`. Every error carries `hint`.
+    - **Requests and errors**: bodies are read as JSON whatever the `Content-Type`; one that does not parse is `400` `bad_request`. Every error carries `hint`. An unknown path is a JSON `404` `not_found` and a wrong method a JSON `405` `method_not_allowed` (both had an empty body).
     - **Blocking**: `blocking` in replies is `"enabled"`/`"disabled"` (was `true`/`false`); `timer` is fractional seconds in replies, and a fractional `timer` is accepted in requests.
     - **Info**: `/info/version` is nested by component; `/info/ftl`, `/info/system` and `/info/host` are wrapped in `ftl`, `system` and `host`. FTL uptime is in milliseconds, memory in kB, `system.disk` is gone, `/info/host` reports `uname`/`model`/`dmi` instead of `hostname`, and `/info/database` reports `size` instead of `filesize`.
     - **Auth**: `GET /auth` without a valid session is `401` (was `200`); `totp` says whether 2FA is enrolled; `csrf` is left out without a valid session; `POST /auth` without `password` is `400`; `DELETE /auth` with `[auth]` disabled is `401`.
@@ -229,22 +250,26 @@ Each client carries `client` (its IP), `name` (`""` when unknown), `date_added` 
         - `GET` on a missing group or list is `200` with an empty array (was `404`).
         - `PUT /domains/...` takes no `domain` in the body; `PUT /groups/{name}` with `name` renames.
         - Clients use `client` instead of `ip`, and `limit`/`offset` are gone; `/clients/_suggestions` is `{"clients": [...]}` of devices.
-        - Lists gain `date_updated`, `number`, `invalid_domains` and `abp_entries`; `status` is the download state (was a copy of `enabled`).
+        - A client can be a subnet, and its `comment` is stored (was always `null`).
+        - Lists gain `date_updated`, `number`, `invalid_domains` and `abp_entries`; `status` is Pi-hole's download code `0`–`4` (was a copy of `enabled`).
+        - `unicode` on a domain entry is its decoded international form, and a non-ASCII exact domain is stored as punycode (was rejected).
     - **Actions**: `restartdns` and `flush/logs` reply `{"status": "success"}` only; `gravity` streams `text/plain`.
-    - **New routes**: `GET /api/info/login`, `/api/padd`, `/api/endpoints`, `/api/domains/{type}/{kind}/{domain}` and `/api/clients/{client}`.
+    - **Values that were `0`**: `unique_domains`, `frequency`/`query_frequency`, `gravity.last_update`, `%cpu`, `/padd` `cache.inserted`/`evicted` and the `dnsmasq.dns_cache_*` counters now carry real values; `clients.total` counts every known client.
+    - **Search**: allowlists that hold the domain are listed in `gravity` and counted in `results.gravity.allow`.
+    - **New routes**: `GET /api/info/login`, `/api/info/client`, `/api/info/sensors`, `/api/info/metrics`, `/api/info/messages*`, `/api/auth/sessions`, `DELETE /api/auth/session/{id}`, `/api/network/{gateway,routes,interfaces,devices}`, `/api/dhcp/leases*`, `/api/padd`, `/api/endpoints`, `/api/domains/{type}/{kind}/{domain}` and `/api/clients/{client}`.
 
 ---
 
 ## Authentication
 
-With `[auth] enabled = true` (the default), every endpoint requires a session except `/api/auth` and `/api/info/login`, which are public — the same rule as a Pi-hole that has a password set. With `[auth] enabled = false` the API is open, like a Pi-hole without a password: `GET` and `POST /api/auth` answer `{"valid": true, "sid": null, "validity": -1}`, and `DELETE /api/auth` answers `401`, since there is no session to end.
+With `[auth] enabled = true` (the default), every endpoint requires a session except `/api/auth`, `/api/info/login` and `/api/info/client`, which are public — the same rule as a Pi-hole that has a password set. With `[auth] enabled = false` the API is open, like a Pi-hole without a password: `GET` and `POST /api/auth` answer `{"valid": true, "sid": null, "validity": -1}`, and `DELETE /api/auth` answers `401`, since there is no session to end.
 
 The login flow is Pi-hole v6's:
 
 1. `POST /api/auth` with `{"password": "..."}` returns `session.sid`. The password can be:
     - the **admin password** from `[auth.admin]` — the Pi-hole API always logs in as that account, since Pi-hole has a single password; or
     - an **API token** (Settings > API > API Tokens), the equivalent of Pi-hole's *app password*. As on Pi-hole, it skips the second factor, so use one for unattended integrations — it is what the Home Assistant Pi-hole v6 integration asks for as its "API key".
-2. If the admin account has TOTP enabled, send the code in the same request: `{"password": "...", "totp": 123456}`. Without it the reply is `400` (`bad_request`); a wrong code is `401` (`unauthorized`). A body without `password` is `400`, and an empty `password` sent with a valid `sid` returns that session.
+2. If the admin account has TOTP enabled, send the code in the same request: `{"password": "...", "totp": 123456}`. Without it the reply is `400` (`bad_request`); a wrong code is `401` (`unauthorized`). A body without `password` is `400`, and an empty `password` sent with a valid `sid` returns that session. A wrong password is `401` even when a valid `sid` comes with it; that session stays valid.
 3. Send the `sid` with every later request, in the `X-FTL-SID` header, a `sid` header, or the `?sid=` query parameter. Anything else gets `401` with `{"error": {"key": "unauthorized", ...}}`.
 4. `DELETE /api/auth` with the same `sid` ends the session.
 
@@ -346,8 +371,10 @@ Every route served under `/api/*` answers with FTL's response shapes and types. 
 
 ### FTL routes not served
 
-- **Used only by the Pi-hole web interface**: `/info/client`, `/info/messages*`, `/info/sensors`, `/info/metrics`, `/auth/sessions`, `/auth/session/{id}`, `/auth/app`, `/auth/totp`, `/action/flush/network`, `/action/flush/arp`, `/history/database*`, `/logs/{dnsmasq,ftl,webserver}`
-- **No equivalent in Ferrous DNS**: `/config*`, `/network/*`, `/dhcp/leases*` (Ferrous serves no DHCP), `/teleporter` (different backup format)
+They answer FTL's JSON `404` `not_found`.
+
+- **Used only by the Pi-hole web interface**: `/auth/app` and `/auth/totp` (manage app passwords and 2FA in the Ferrous dashboard), `/action/flush/network`, `/action/flush/arp`, `DELETE /network/devices/{id}` (a device is built from client settings, which deleting would lose), `/history/database*`, `/logs/{dnsmasq,ftl,webserver}`
+- **No equivalent in Ferrous DNS**: `/config*`, `/teleporter` (different backup format)
 - **The Pi-hole web interface itself**: it authenticates with the `sid` cookie and an `X-FTL-CSRF` header, which this API does not accept. Use the Ferrous DNS dashboard.
 
 ### Values Ferrous DNS does not track
@@ -356,21 +383,26 @@ These fields keep FTL's type but carry a neutral value, or behave differently fr
 
 | Endpoint | Neutral values and differences |
 |:---------|:-------------------------------|
-| `/stats/summary` | `unique_domains`, `frequency`, every `replies.*` and `gravity.last_update` are `0`; `clients.total` equals `clients.active` |
+| `/stats/summary` | Every `replies.*` is `0`. `frequency` is queries per second over the last minute (FTL averages 30 seconds); `unique_domains` counts the distinct domains of the window; `gravity.last_update` is the newest list download, since Ferrous has no gravity run; `clients.total` counts every known client |
 | `/stats/upstreams` | `statistics.response` and `statistics.variance` are `0` (no per-server timing) |
 | `/stats/database/*` | `until` is accepted but read as now; windows are minute-aligned; `total_clients` counts clients seen since `from` |
-| `/info/ftl` | `antigravity`, `privacy_level`, `query_frequency`, `%cpu` and every `dnsmasq.*` counter are `0`; `allow_destructive` is always `true` |
-| `/info/system` | `%cpu` is `0` |
+| `/info/ftl` | `antigravity` and `privacy_level` are `0`; of the `dnsmasq.*` counters only `dns_cache_inserted` and `dns_cache_live_freed` (evictions) are counted, the rest are `0`; `query_frequency` is as in the summary; `%cpu` is sampled on request and kept 10 seconds, the first sample averaging since the process started; `allow_destructive` is always `true` |
+| `/info/system` | `%cpu` is sampled as in `/info/ftl`, the first sample averaging since boot |
+| `/info/sensors` | Chips come in `hwmonN` order rather than directory order; `hot_limit` (`60`) and `unit` (`C`) are FTL's defaults |
+| `/info/metrics` | `cache.expired` counts expired entries removed on lookup; `cache.immortal` is `0` and `cache.content` empty; every `replies.*` and `dhcp.*` counter is `0` |
+| `/info/client` | Header names are lowercase |
 | `/info/database` | The file type is `Regular file` or `Unknown`; owner names come from `/etc/passwd` and `/etc/group`, `null` when not found |
-| `/queries` | `until` is read as now. `reply` and `type=OTHER` are validated but do not filter; a blocked `status` selects every blocked query; `status=CACHE` misses local records. `domain`, `client_ip` and `client_name` match as substrings with `*` only at the ends, and only one client filter applies at a time; `upstream` takes no wildcards. The `reply.type` of a blocked query follows the current block mode. `cname` and `list_id` are `null`, `ede` is `{"code": -1, "text": null}` |
-| `/search/{domain}` | `partial` does not apply to lists; allowlists never appear in `gravity` (`results.gravity.allow` is `0`); the manual blocklist and managed domains name no source; `gravity[].domain` is the searched domain, not the list line; `debug` adds nothing |
-| `/domains` | `unicode` repeats `domain` (no IDN decoding); one group per entry; an invalid regex lands in `processed.errors`; no `Location` header |
-| `/clients` | IP addresses only (no CIDR, MAC, hostname or interface); `comment` is not stored, so always `null`; `GET` lists every known client, including discovered ones; `POST` of a known IP updates it rather than failing as a duplicate; `macVendor` is `null` |
-| `/lists` | `number`, `invalid_domains` and `abp_entries` are `0`; `status` is only `0` or `1`; lookup by numeric id is a Ferrous extension |
-| `/padd` | `%cpu`, `query_frequency`, `cache.inserted`, `cache.evicted` and `privacy_level` are `0`; DHCP fields are `false` or `""`; `sensors.hot_limit` (`60`) and `unit` (`C`) are FTL's defaults |
+| `/auth/sessions` | `id` is a number derived from the session, not a slot index; `app` and `cli` are `false` and `x_forwarded_for` is `null`, as Ferrous does not record them; `tls.login` says whether the web server serves HTTPS |
+| `/network/*` | Read from `/proc` and `/sys` rather than netlink: routes leave out the IPv4 local table and report `protocol` as `unspec`, and interface addresses carry no flags or lifetimes. Devices are built from clients; their `interface` and `macVendor` are `""` |
+| `/queries` | A blocked `status` selects every blocked query; `status=CACHE` misses local records. `domain`, `client_ip` and `client_name` match as substrings with `*` only at the ends, and only one client filter applies at a time; `upstream` takes no wildcards. The `reply.type` of a blocked query, and the `reply` filter, follow the current block mode; the reply types Ferrous never logs (`DOMAIN`, `RRNAME`, `NOTIMP`, `DNSSEC`, `BLOB`) select nothing. `cname` and `list_id` are `null`, `ede` is `{"code": -1, "text": null}` |
+| `/search/{domain}` | `partial` does not apply to lists; the manual block and allow lists and managed domains name no source; `gravity[].domain` is the searched domain, not the list line; `debug` adds nothing |
+| `/domains` | One group per entry; an invalid regex lands in `processed.errors`; no `Location` header |
+| `/clients` | IP addresses and subnets only (no MAC, hostname or interface); one group per client; address and subnet ids come from separate sequences; `GET` lists every known client, including discovered ones; `POST` of a known IP updates it rather than failing as a duplicate; `macVendor` is `null` |
+| `/lists` | `number`, `invalid_domains` and `abp_entries` are `0`. `status` `2` means the download matched the copy in use, as Ferrous makes no conditional request. Copies are kept in memory, so after a restart a list whose download fails is `4` rather than `3`. Lookup by numeric id is a Ferrous extension |
+| `/padd` | `%cpu` and `query_frequency` as in `/info/ftl`; `privacy_level` is `0`; DHCP fields are `false` or `""`; `sensors.hot_limit` (`60`) and `unit` (`C`) are FTL's defaults |
 | `/endpoints` | Lists the documented routes only, not the `/stats/history` alias or the routes that take a list or client address containing `/` |
 
 ### Other differences
 
 - `restartdns` reloads configuration in-memory (upstream pools included, command-line overrides kept); it does not restart the process, and `gravity` reloads Ferrous's blocklists rather than running Pi-hole's gravity database pipeline
-- Gravity Sync is not supported (different database format)
+- Gravity Sync and Nebula Sync are not supported: they copy Pi-hole's gravity database, `/teleporter` archives and `/config`, which have no Ferrous equivalent
