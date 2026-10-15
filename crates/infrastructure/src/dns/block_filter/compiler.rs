@@ -718,11 +718,13 @@ pub(super) async fn compile_block_index(
     })
 }
 
+/// The `(source_id, group_id)` assignments that use one list.
+type ListAssignments = Vec<(i64, i64)>;
+
 struct AllowlistLoad {
     manual_rows: Vec<SqliteRow>,
-    /// Each downloaded list with the `(source_id, group_id)` assignments that
-    /// use it.
-    sources: Vec<(Vec<(i64, i64)>, Arc<str>)>,
+    /// Each downloaded list with the assignments that use it.
+    sources: Vec<(ListAssignments, Arc<str>)>,
     /// Every enabled source with a list, by id.
     names: Vec<(i64, String)>,
 }
@@ -749,7 +751,7 @@ async fn load_allowlists(
     .map_err(|e| DomainError::DatabaseError(e.to_string()))?;
 
     // Fetch a URL once, retaining every (source, group) assignment that uses it.
-    let mut urls: HashMap<String, Vec<(i64, i64)>> = HashMap::new();
+    let mut urls: HashMap<String, ListAssignments> = HashMap::new();
     let mut names: HashMap<i64, String> = HashMap::new();
     for row in source_rows {
         let url: String = row.get("url");

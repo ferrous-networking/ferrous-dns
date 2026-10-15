@@ -769,29 +769,25 @@ mod tests {
             |interface| interface != "docker0",
         );
 
-        let summary: Vec<(u32, &str, &str, &str, &str, Option<u32>)> = routes
+        let summary: Vec<String> = routes
             .iter()
             .map(|r| {
-                (
-                    r.table,
-                    r.family,
-                    r.scope,
-                    r.route_type,
-                    r.dst.as_str(),
-                    r.priority,
+                format!(
+                    "{} {} {} {} {} {:?}",
+                    r.table, r.family, r.scope, r.route_type, r.dst, r.priority
                 )
             })
             .collect();
         assert_eq!(
             summary,
             [
-                (254, "inet", "link", "unicast", "192.168.2.0", Some(100)),
-                (254, "inet", "universe", "unicast", "default", Some(100)),
-                (254, "inet", "link", "unicast", "172.17.0.0", None),
-                (254, "inet6", "universe", "unicast", "fe80::", Some(256)),
-                (254, "inet6", "universe", "unicast", "default", Some(1024)),
-                (255, "inet6", "universe", "local", "::1", Some(0)),
-                (255, "inet6", "universe", "multicast", "ff00::", Some(256)),
+                "254 inet link unicast 192.168.2.0 Some(100)",
+                "254 inet universe unicast default Some(100)",
+                "254 inet link unicast 172.17.0.0 None",
+                "254 inet6 universe unicast fe80:: Some(256)",
+                "254 inet6 universe unicast default Some(1024)",
+                "255 inet6 universe local ::1 Some(0)",
+                "255 inet6 universe multicast ff00:: Some(256)",
             ],
             "the lo ::/0 reject placeholder is left out"
         );
