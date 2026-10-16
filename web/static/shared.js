@@ -140,11 +140,13 @@ function showRestartBanner() {
     main.insertBefore(banner, main.children[1] || null);
 }
 
-// --- Server version label (sidebar footer) ---
+// --- Server version label (sidebar footer), linked to its release notes ---
 
 function showServerVersion() {
     const el = document.getElementById('server-version');
-    if (el && window.FERROUS_VERSION) el.textContent = 'v' + window.FERROUS_VERSION;
+    if (!el || !window.FERROUS_VERSION) return;
+    el.textContent = 'v' + window.FERROUS_VERSION;
+    el.href = `https://github.com/ferrous-networking/ferrous-dns/releases/tag/v${window.FERROUS_VERSION}`;
 }
 
 // --- UI that follows the server config: the DNSSEC UI and the restart banner ---

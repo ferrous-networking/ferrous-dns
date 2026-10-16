@@ -56,8 +56,11 @@
             <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
         </div>
     </nav>
-    <div id="server-version" style="font-size:11px;color:var(--text-tertiary);padding:0 24px 4px"></div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border-color)">
+    <div class="sidebar-meta">
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+    </div>
+    <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
             <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
         </a>

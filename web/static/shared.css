@@ -176,6 +176,31 @@ textarea:disabled {
     height: 18px
 }
 
+.sidebar-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 8px;
+    font-size: 12px
+}
+
+.sidebar-meta a {
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color .2s
+}
+
+.sidebar-meta a:hover {
+    color: var(--text-primary)
+}
+
+.sidebar-meta svg {
+    width: 14px;
+    height: 14px
+}
+
 .sidebar-footer {
     margin-top: auto;
     padding: 16px;
