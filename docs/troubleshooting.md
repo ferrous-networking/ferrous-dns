@@ -294,7 +294,6 @@ Use the RPi-optimized profile from the [cache configuration](configuration/cache
 ```toml
 [dns]
 cache_max_entries = 50000
-cache_compaction_interval = 300
 
 [database]
 sqlite_cache_size_kb = 8192

@@ -42,9 +42,9 @@ Every name is prefixed `ferrousdns_`, and counters carry the OpenMetrics `_total
 | `cache_evictions` | counter | Entries evicted under pressure |
 | `cache_optimistic_refreshes` | counter | Popular entries refreshed before expiry |
 | `cache_stale_hits` | counter | Stale entries served while a refresh was queued |
-| `cache_optimistic_refresh_shed` | counter | Renewals given up on: a refresh timer that could not be armed in a burst of inserts, or a due entry that died waiting for its turn. Sustained non-zero means renewals fall behind what is due |
+| `cache_optimistic_refresh_shed` | counter | Renewals given up on: a due entry that died waiting for its turn. Sustained non-zero means renewals fall behind what is due |
 | `cache_lazy_deletions` | counter | Expired entries reclaimed on access |
-| `cache_compactions` | counter | Compaction passes |
+| `cache_compactions` | counter | Entries removed by their own timer once expired, positive or negative |
 | `cache_batch_evictions` | counter | Batch eviction passes |
 | `cache_transient_upstream_errors` | counter | Upstream errors absorbed without failing the query |
 | `cache_entries` | gauge | Entries currently held |

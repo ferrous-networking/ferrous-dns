@@ -108,7 +108,7 @@ pub fn render_metrics(
         ),
         (
             "cache_compactions",
-            "DNS cache compactions",
+            "DNS cache entries removed by their own timer once expired",
             cache.compactions,
         ),
         (
@@ -128,7 +128,7 @@ pub fn render_metrics(
         ),
         (
             "cache_optimistic_refresh_shed",
-            "Renewals ahead of expiry given up on: timer queue full, or entry died waiting",
+            "Renewals ahead of expiry given up on: the entry died waiting",
             cache.optimistic_refresh_shed,
         ),
     ];

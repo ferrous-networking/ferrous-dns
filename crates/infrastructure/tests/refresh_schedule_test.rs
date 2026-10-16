@@ -1,9 +1,9 @@
 //! When an entry falls due for renewal, and the timer store that holds it
-//! until then.
+//! until then, along with the timers that remove entries.
 
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::{
-    refresh_due_at, CacheKey, RefreshSchedule, ScheduledRefresh, REFRESH_LEAD_SECS,
+    refresh_due_at, CacheKey, RefreshSchedule, ScheduledRefresh, TimerKind, REFRESH_LEAD_SECS,
 };
 
 const INSERTED: u64 = 1_000_000;
@@ -12,11 +12,11 @@ fn due_offset(ttl: u32, threshold: f64) -> u64 {
     refresh_due_at(INSERTED, ttl, threshold) - INSERTED
 }
 
-fn timer(domain: &str, due_at_secs: u64, retry: bool) -> ScheduledRefresh {
+fn timer(domain: &str, due_at_secs: u64, kind: TimerKind) -> ScheduledRefresh {
     ScheduledRefresh {
         due_at_secs,
         key: CacheKey::new(domain, RecordType::A),
-        retry,
+        kind,
     }
 }
 
@@ -98,23 +98,25 @@ fn test_due_invariants_hold_for_every_ttl() {
 #[test]
 fn test_take_due_returns_what_is_due_earliest_first() {
     let mut schedule = RefreshSchedule::default();
-    schedule.register(timer("late.example", 30, false));
-    schedule.register(timer("early.example", 10, false));
-    schedule.register(timer("retry.example", 20, true));
-    schedule.register(timer("future.example", 31, false));
+    schedule.register(timer("late.example", 30, TimerKind::Due));
+    schedule.register(timer("early.example", 10, TimerKind::Due));
+    schedule.register(timer("retry.example", 20, TimerKind::Retry));
+    schedule.register(timer("missing.example", 25, TimerKind::NegativeExpiry));
+    schedule.register(timer("future.example", 31, TimerKind::Due));
 
     let due = schedule.take_due(30);
 
-    let order: Vec<(&str, bool)> = due
+    let order: Vec<(&str, TimerKind)> = due
         .iter()
-        .map(|timer| (timer.key.domain.as_str(), timer.retry))
+        .map(|timer| (timer.key.domain.as_str(), timer.kind))
         .collect();
     assert_eq!(
         order,
         vec![
-            ("early.example", false),
-            ("retry.example", true),
-            ("late.example", false)
+            ("early.example", TimerKind::Due),
+            ("retry.example", TimerKind::Retry),
+            ("missing.example", TimerKind::NegativeExpiry),
+            ("late.example", TimerKind::Due)
         ]
     );
     assert_eq!(schedule.len(), 1);
@@ -127,7 +129,7 @@ fn test_take_due_returns_what_is_due_earliest_first() {
 fn test_timers_due_in_the_same_second_are_all_taken() {
     let mut schedule = RefreshSchedule::default();
     for i in 0..1_000 {
-        schedule.register(timer(&format!("same-{i}.example"), 42, false));
+        schedule.register(timer(&format!("same-{i}.example"), 42, TimerKind::Due));
     }
 
     assert!(schedule.take_due(41).is_empty());
@@ -138,7 +140,12 @@ fn test_timers_due_in_the_same_second_are_all_taken() {
 fn test_sweep_drops_rejected_timers_and_keeps_the_count() {
     let mut schedule = RefreshSchedule::default();
     for i in 1..=10u64 {
-        schedule.register(timer(&format!("t-{i}.example"), i, i % 3 == 0));
+        let kind = if i % 3 == 0 {
+            TimerKind::Retry
+        } else {
+            TimerKind::Due
+        };
+        schedule.register(timer(&format!("t-{i}.example"), i, kind));
     }
 
     let keep =
@@ -154,13 +161,28 @@ fn test_sweep_drops_rejected_timers_and_keeps_the_count() {
     assert_eq!(due, vec!["t-2.example", "t-3.example"]);
 }
 
+/// `keep` asks about positive entries, so a sweep leaves negative expiries
+/// alone: each removes its own entry when it fires.
+#[test]
+fn test_sweep_leaves_negative_expiries_alone() {
+    let mut schedule = RefreshSchedule::default();
+    schedule.register(timer("gone.example", 5, TimerKind::Due));
+    schedule.register(timer("missing.example", 5, TimerKind::NegativeExpiry));
+
+    assert_eq!(schedule.sweep(0, usize::MAX, |_| false), None);
+
+    let due = schedule.take_due(5);
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].kind, TimerKind::NegativeExpiry);
+}
+
 /// A sweep spreads over steps of `budget` timers, resuming where it left off,
 /// and ends once every second has been visited.
 #[test]
 fn test_sweep_resumes_until_every_timer_is_visited() {
     let mut schedule = RefreshSchedule::default();
     for i in 1..=100u64 {
-        schedule.register(timer(&format!("t-{i}.example"), i, false));
+        schedule.register(timer(&format!("t-{i}.example"), i, TimerKind::Due));
     }
 
     let mut from = 0;

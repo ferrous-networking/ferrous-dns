@@ -16,10 +16,12 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
-use ferrous_dns_infrastructure::dns::{CachedData, ColdThresholds, DnsCache, ScheduledRefresh};
+use ferrous_dns_infrastructure::dns::{
+    CachedData, ColdThresholds, DnsCache, ScheduledRefresh, TimerKind,
+};
 use refresh::{
-    address, cached_addresses, cname, no_ranking, refresh_cache, start_worker, wait_until, NEW_IP,
-    OLD_IP,
+    address, cached_addresses, cname, no_ranking, refresh_cache, start_worker,
+    start_worker_retrying_after, wait_until, NEW_IP, OLD_IP,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -344,14 +346,11 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
     cache.insert("later.example", RecordType::A, address(OLD_IP), 3600, None);
     let now = coarse_clock::coarse_now_secs();
     for domain in ["later.example", "missing.example"] {
-        worker
-            .timers
-            .push(ScheduledRefresh {
-                due_at_secs: now,
-                key: CacheKey::new(domain, RecordType::A),
-                retry: false,
-            })
-            .unwrap();
+        worker.timers.push(ScheduledRefresh {
+            due_at_secs: now,
+            key: CacheKey::new(domain, RecordType::A),
+            kind: TimerKind::Due,
+        });
     }
 
     tokio::time::sleep(Duration::from_millis(2_200)).await;
@@ -464,23 +463,26 @@ async fn test_every_upstream_servfailing_gets_exactly_one_retry() {
     );
 }
 
+/// A renewal that failed with no retry of its own waits
+/// `cache_compaction_interval` for its next try: never one per hit.
 #[tokio::test]
-async fn test_other_failures_wait_for_compaction_to_retry() {
+async fn test_other_failures_wait_the_compaction_interval_to_retry() {
     let cache = create_cache_with(200, 0.0);
     let resolver = FailingResolver::new(DomainError::TransportTimeout {
         server: "udp://192.0.2.53:53".into(),
     });
-    let _worker = start_worker(
+    let _worker = start_worker_retrying_after(
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
         true,
+        5,
     );
     cache.insert("slow.example", RecordType::A, cname(), 300, None);
 
     assert!(wait_until(Duration::from_secs(4), || resolver.count() >= 1).await);
     tokio::time::sleep(Duration::from_millis(2_200)).await;
-    assert_eq!(resolver.count(), 1, "a timeout is not retried on its own");
+    assert_eq!(resolver.count(), 1, "a timeout is not retried at once");
     // Nor by the clients asking for it.
     for _ in 0..5 {
         assert!(cache.get("slow.example", &RecordType::A).is_some());
@@ -492,11 +494,9 @@ async fn test_other_failures_wait_for_compaction_to_retry() {
         "a hit must not retry a failing renewal"
     );
 
-    cache.compact();
-
     assert!(
-        wait_until(Duration::from_secs(3), || resolver.count() >= 2).await,
-        "compaction must give it another try"
+        wait_until(Duration::from_secs(4), || resolver.count() >= 2).await,
+        "the compaction interval later it gets another try"
     );
 }
 

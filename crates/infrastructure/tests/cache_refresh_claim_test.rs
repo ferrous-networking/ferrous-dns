@@ -2,9 +2,10 @@
 //! to the worker, and what it arms next.
 //!
 //! An entry inside the access window is claimed, one outside it is parked
-//! until a hit brings it back, a permanent entry never is, a claimed entry is
-//! not claimed twice, a timer that is no longer the entry's claims nothing,
-//! and hot entries rank before cold ones.
+//! until a hit brings it back (with the timer that removes it once it dies),
+//! a permanent entry never is, a claimed entry is not claimed twice, a timer
+//! that is no longer the entry's claims nothing, and hot entries rank before
+//! cold ones.
 
 #[path = "support/refresh.rs"]
 mod refresh;
@@ -12,14 +13,15 @@ mod refresh;
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::{
-    CachedData, ColdThresholds, DnsCache, RefreshSenders, ScheduledRefresh, TimerInbox,
+    CachedData, ColdThresholds, DnsCache, ScheduledRefresh, TimerInbox, TimerKind,
 };
-use refresh::{address, cname, drain, no_ranking, refresh_cache, wire_timers};
+use refresh::{
+    address, cname, drain, no_ranking, refresh_cache, wire_timers, wire_timers_renewing,
+};
 use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 const IP: &str = "192.0.2.9";
 
@@ -59,7 +61,7 @@ fn wait_secs(secs: u64) {
 fn test_insert_arms_a_timer_for_the_second_the_entry_falls_due() {
     coarse_clock::tick();
     let cache = cache(0.75, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     let now = coarse_clock::coarse_now_secs();
 
     cache.insert("armed.example", RecordType::A, address(IP), 3600, None);
@@ -75,9 +77,10 @@ fn test_insert_arms_a_timer_for_the_second_the_entry_falls_due() {
 }
 
 #[test]
-fn test_permanent_and_negative_entries_arm_nothing() {
+fn test_permanent_entries_arm_nothing_and_negative_ones_only_their_expiry() {
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
+    let now = coarse_clock::coarse_now_secs();
 
     cache.insert_permanent("local.example", RecordType::A, address(IP), 300);
     cache.insert(
@@ -88,12 +91,19 @@ fn test_permanent_and_negative_entries_arm_nothing() {
         None,
     );
 
-    assert!(drain(&timers).is_empty());
-    let now = coarse_clock::coarse_now_secs() + 1;
+    let armed = drain(&timers);
+    assert_eq!(armed.len(), 1, "only the negative entry arms: {armed:?}");
+    assert_eq!(armed[0].kind, TimerKind::NegativeExpiry);
+    assert_eq!(armed[0].key.domain, "missing.example");
+    assert!(
+        (now + 300..=now + 301).contains(&armed[0].due_at_secs),
+        "a negative entry's timer fires when it expires"
+    );
+    let now = now + 1;
     let fired = ScheduledRefresh {
         due_at_secs: now,
         key: CacheKey::new("local.example", RecordType::A),
-        retry: false,
+        kind: TimerKind::Due,
     };
     assert!(
         cache
@@ -101,32 +111,40 @@ fn test_permanent_and_negative_entries_arm_nothing() {
             .is_none(),
         "a local record is never renewed"
     );
+    assert!(
+        cache.is_permanent("local.example", &RecordType::A),
+        "nor removed"
+    );
 }
 
-/// With optimistic refresh off, nothing is armed: no insert, hit or
-/// compaction leaves the entry with a timer that could claim it.
+/// With optimistic refresh off, an insert arms only the timer that removes
+/// the entry once it dies, and no insert or hit leaves it with a timer that
+/// could claim it.
 #[test]
-fn test_without_optimistic_refresh_nothing_is_armed() {
+fn test_without_optimistic_refresh_only_the_expiry_is_armed() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (stale, _stale_rx) = mpsc::channel(16);
-    cache.set_refresh_senders(RefreshSenders {
-        stale,
-        timers: None,
-    });
+    let (timers, _stale) = wire_timers_renewing(&cache, false);
     let inserted = coarse_clock::coarse_now_secs();
 
     cache.insert("plain.example", RecordType::A, cname(), 300, None);
     wait_secs(1);
     assert!(cache.get("plain.example", &RecordType::A).is_some());
-    cache.compact();
+
+    let armed = drain(&timers);
+    assert_eq!(armed.len(), 1, "one timer, the expiry: {armed:?}");
+    assert!(
+        (inserted + 600..=inserted + 601).contains(&armed[0].due_at_secs),
+        "it dies at the end of its stale grace, two TTLs after insertion; got {} from {inserted}",
+        armed[0].due_at_secs
+    );
 
     let now = coarse_clock::coarse_now_secs();
     for due_at_secs in inserted..=now + 1 {
         let fired = ScheduledRefresh {
             due_at_secs,
             key: CacheKey::new("plain.example", RecordType::A),
-            retry: false,
+            kind: TimerKind::Due,
         };
         assert!(
             cache
@@ -135,13 +153,14 @@ fn test_without_optimistic_refresh_nothing_is_armed() {
             "no timer is pending, so none fired at {due_at_secs} claims the entry"
         );
     }
+    assert_eq!(cache.len(), 1, "and none removes a live entry");
 }
 
 #[test]
 fn test_due_entry_inside_the_access_window_is_claimed_once() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("due.example", RecordType::A, address(IP), 300, None);
     let timer = armed(&timers, "due.example");
 
@@ -161,7 +180,7 @@ fn test_due_entry_inside_the_access_window_is_claimed_once() {
 fn test_timer_that_is_not_the_entrys_pending_one_claims_nothing() {
     coarse_clock::tick();
     let cache = cache(0.75, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("early.example", RecordType::A, address(IP), 3600, None);
     let pending = armed(&timers, "early.example");
     let now = coarse_clock::coarse_now_secs();
@@ -196,7 +215,7 @@ fn test_timer_that_is_not_the_entrys_pending_one_claims_nothing() {
 fn test_timer_of_an_entry_renewed_since_claims_nothing() {
     coarse_clock::tick();
     let cache = cache(0.5, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("renewed.example", RecordType::A, address(IP), 300, None);
     let first = armed(&timers, "renewed.example");
 
@@ -228,7 +247,7 @@ fn test_timer_of_an_entry_renewed_since_claims_nothing() {
 fn test_insert_over_an_entry_being_renewed_arms_the_new_one() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("raced.example", RecordType::A, cname(), 300, None);
     let first = armed(&timers, "raced.example");
     assert!(cache
@@ -249,14 +268,16 @@ fn test_insert_over_an_entry_being_renewed_arms_the_new_one() {
 }
 
 /// An entry nobody asked for within the access window is parked when its
-/// timer fires, and the next hit arms a new one, due at once.
+/// timer fires, with the timer that removes it once it dies, and the next
+/// hit arms a new renewal, due at once.
 #[test]
 fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
     coarse_clock::tick();
     let cache = cache(0.0, 0);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("idle.example", RecordType::A, cname(), 300, None);
     let timer = armed(&timers, "idle.example");
+    let inserted = timer.due_at_secs - 1;
 
     wait_secs(1);
     let now = coarse_clock::coarse_now_secs();
@@ -266,9 +287,19 @@ fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
             .is_none(),
         "an entry idle past the access window is not renewed"
     );
-    assert!(drain(&timers).is_empty(), "nor armed again by itself");
-    cache.compact();
-    assert!(drain(&timers).is_empty(), "compaction leaves it parked too");
+    let expiry = armed(&timers, "idle.example");
+    assert_eq!(
+        expiry.due_at_secs,
+        inserted + 600,
+        "parked, it keeps the timer that removes it once it dies"
+    );
+    assert!(
+        cache
+            .claim_due_refresh(&expiry, now, &no_ranking())
+            .is_none(),
+        "that timer never claims a renewal"
+    );
+    assert!(drain(&timers).is_empty(), "nor is anything else armed");
 
     assert!(cache.get("idle.example", &RecordType::A).is_some());
     let rearmed = armed(&timers, "idle.example");
@@ -291,7 +322,7 @@ fn test_entry_outside_the_access_window_rearms_on_its_next_hit() {
 fn test_unasked_renewal_continues_only_for_ttls_of_a_minute_or_more() {
     coarse_clock::tick();
     let cache = cache(0.75, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("short.example", RecordType::A, cname(), 30, None);
     cache.insert("long.example", RecordType::A, cname(), 60, None);
 
@@ -329,7 +360,7 @@ fn test_unasked_renewal_continues_only_for_ttls_of_a_minute_or_more() {
 #[test]
 fn test_hits_on_an_armed_entry_arm_no_second_timer() {
     let cache = cache(0.75, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("busy.example", RecordType::A, cname(), 300, None);
     for _ in 0..10 {
         assert!(cache.get("busy.example", &RecordType::A).is_some());
@@ -338,51 +369,13 @@ fn test_hits_on_an_armed_entry_arm_no_second_timer() {
     assert_eq!(drain(&timers).len(), 1);
 }
 
-/// A full inbox sheds the timer and leaves the entry with none. Its hits do
-/// not each try again while the inbox is full; compaction arms it again.
+/// The inbox never turns a timer away, so a burst that lands on one thread
+/// loses none: an entry without its timer would never be renewed nor removed.
 #[test]
-fn test_shed_timer_is_rearmed_by_compaction_not_by_each_hit() {
-    coarse_clock::tick();
-    let cache = cache(0.5, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 1);
-    cache.insert("first.example", RecordType::A, cname(), 3600, None);
-    cache.insert("second.example", RecordType::A, cname(), 2, None);
-
-    assert_eq!(
-        cache
-            .metrics()
-            .optimistic_refresh_shed
-            .load(Ordering::Relaxed),
-        1,
-        "the second timer found this thread's shard full"
-    );
-    assert_eq!(armed(&timers, "first.example").key.domain, "first.example");
-
-    for _ in 0..5 {
-        assert!(cache.get("second.example", &RecordType::A).is_some());
-    }
-    assert!(
-        drain(&timers).is_empty(),
-        "hits must not retry a shed timer"
-    );
-
-    cache.compact();
-    let rearmed = armed(&timers, "second.example");
-    assert!(
-        cache
-            .claim_due_refresh(&rearmed, rearmed.due_at_secs, &no_ranking())
-            .is_some(),
-        "the re-armed timer is the entry's pending one"
-    );
-}
-
-/// A shard holds its whole capacity, so a burst that lands on one thread
-/// loses none of its timers.
-#[test]
-fn test_a_burst_on_one_thread_can_fill_its_whole_shard() {
+fn test_a_burst_on_one_thread_loses_no_timer() {
     let cache = cache(0.75, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 100);
-    for i in 0..100 {
+    let (timers, _stale) = wire_timers(&cache);
+    for i in 0..10_000 {
         cache.insert(
             &format!("burst-{i}.example"),
             RecordType::A,
@@ -398,9 +391,9 @@ fn test_a_burst_on_one_thread_can_fill_its_whole_shard() {
             .optimistic_refresh_shed
             .load(Ordering::Relaxed),
         0,
-        "a burst on one thread may use all of its shard"
+        "no timer is shed"
     );
-    assert_eq!(drain(&timers).len(), 100);
+    assert_eq!(drain(&timers).len(), 10_000);
 }
 
 /// An expired entry still inside its stale grace is worth renewing: clients
@@ -410,7 +403,7 @@ fn test_a_burst_on_one_thread_can_fill_its_whole_shard() {
 fn test_stale_entry_still_in_grace_is_claimed() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("stale.example", RecordType::A, cname(), 3, None);
     let timer = armed(&timers, "stale.example");
 
@@ -422,13 +415,13 @@ fn test_stale_entry_still_in_grace_is_claimed() {
         .is_some());
 }
 
-/// A claimed renewal whose entry died waiting for a permit is given up and
-/// counted as shed.
+/// A claimed renewal whose entry died waiting for a permit is given up,
+/// counted as shed, and the dead entry removed.
 #[test]
 fn test_claim_whose_entry_died_waiting_is_counted_as_shed() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("late.example", RecordType::A, cname(), 300, None);
     let timer = armed(&timers, "late.example");
     assert!(cache
@@ -444,6 +437,7 @@ fn test_claim_whose_entry_died_waiting_is_counted_as_shed() {
             .load(Ordering::Relaxed),
         1
     );
+    assert!(cache.is_empty(), "the dead entry is removed");
     assert!(
         !cache.start_claimed_refresh(&timer.key, timer.due_at_secs),
         "the claim was given up"
@@ -456,7 +450,7 @@ fn test_claim_whose_entry_died_waiting_is_counted_as_shed() {
 fn test_claim_waiting_for_a_permit_does_not_block_a_stale_repair() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, mut stale) = wire_timers(&cache, 16);
+    let (timers, mut stale) = wire_timers(&cache);
     cache.insert("waiting.example", RecordType::A, cname(), 3, None);
     let timer = armed(&timers, "waiting.example");
     assert!(cache
@@ -481,7 +475,7 @@ fn test_claim_waiting_for_a_permit_does_not_block_a_stale_repair() {
 fn test_due_renewals_rank_hot_before_cold() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("cold.example", RecordType::A, cname(), 300, None);
     cache.insert("hot.example", RecordType::A, cname(), 300, None);
     for _ in 0..5 {
@@ -511,7 +505,7 @@ fn test_due_renewals_rank_hot_before_cold() {
 fn test_renewal_rebases_the_hit_rate_used_for_ranking() {
     coarse_clock::tick();
     let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("renewed.example", RecordType::A, cname(), 300, None);
     cache.insert("untouched.example", RecordType::A, cname(), 300, None);
     for _ in 0..5 {
@@ -535,49 +529,4 @@ fn test_renewal_rebases_the_hit_rate_used_for_ranking() {
 
     assert_eq!(due.pop().unwrap().key.domain, "untouched.example");
     assert_eq!(due.pop().unwrap().key.domain, "renewed.example");
-}
-
-/// A renewal that failed without a retry leaves the entry with no timer.
-/// Hits do not arm one; compaction does.
-#[test]
-fn test_compaction_rearms_an_entry_whose_renewal_failed() {
-    coarse_clock::tick();
-    let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
-    cache.insert("failing.example", RecordType::A, cname(), 300, None);
-    let timer = armed(&timers, "failing.example");
-    assert!(cache
-        .claim_due_refresh(&timer, timer.due_at_secs, &no_ranking())
-        .is_some());
-    assert!(cache.start_claimed_refresh(&timer.key, timer.due_at_secs));
-    // The renewal failed: the worker releases the entry and arms nothing.
-    cache.reset_refreshing("failing.example", &RecordType::A);
-
-    assert!(cache.get("failing.example", &RecordType::A).is_some());
-    assert!(
-        drain(&timers).is_empty(),
-        "a hit must not turn a failing upstream into one retry per hit"
-    );
-
-    cache.compact();
-    let rearmed = armed(&timers, "failing.example");
-    assert!(cache
-        .claim_due_refresh(&rearmed, rearmed.due_at_secs, &no_ranking())
-        .is_some());
-}
-
-/// An entry with a timer pending, early or overdue, is left alone.
-#[test]
-fn test_compaction_leaves_entries_with_a_pending_timer_alone() {
-    coarse_clock::tick();
-    let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers(&cache, 16);
-    cache.insert("on-time.example", RecordType::A, cname(), 3600, None);
-    cache.insert("overdue.example", RecordType::A, cname(), 300, None);
-    drain(&timers);
-
-    wait_secs(1);
-    cache.compact();
-
-    assert!(drain(&timers).is_empty());
 }

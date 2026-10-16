@@ -29,12 +29,14 @@ fn make_cname_data(name: &str) -> CachedData {
     CachedData::CanonicalName(Arc::from(name))
 }
 
-/// Wires only the stale queue, which is the one serve-stale hits feed.
+/// Wires the stale queue, which is the one serve-stale hits feed, with
+/// nothing renewed ahead of expiry.
 fn wire_stale_queue(cache: &DnsCache, capacity: usize) -> mpsc::Receiver<RefreshRequest> {
     let (stale_tx, stale_rx) = mpsc::channel(capacity);
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        timers: None,
+        timers: Arc::new(TimerInbox::new()),
+        renew_ahead: false,
     });
     stale_rx
 }
@@ -204,10 +206,11 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
     // com TTL 2, voltaria a perguntar, e a entrada morreria no fim do grace.
     let cache = create_stale_cache();
     let (stale_tx, mut stale_rx) = mpsc::channel(16);
-    let timers = Arc::new(TimerInbox::new(16));
+    let timers = Arc::new(TimerInbox::new());
     cache.set_refresh_senders(RefreshSenders {
         stale: stale_tx,
-        timers: Some(Arc::clone(&timers)),
+        timers: Arc::clone(&timers),
+        renew_ahead: true,
     });
 
     // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros

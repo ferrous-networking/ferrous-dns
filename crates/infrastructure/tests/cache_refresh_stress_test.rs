@@ -64,14 +64,14 @@ fn address() -> CachedData {
 type Receivers = (mpsc::Receiver<RefreshRequest>, Arc<TimerInbox>);
 
 /// Wires the cache's refresh channels; timers wait in the inbox until a
-/// worker starts on it. The inserts below all come from this thread, so its
-/// shard has to hold every one of them.
+/// worker starts on it.
 fn wire(cache: &DnsCache) -> Receivers {
     let (stale, stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(ENTRIES * 2));
+    let timers = Arc::new(TimerInbox::new());
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        timers: Some(Arc::clone(&timers)),
+        timers: Arc::clone(&timers),
+        renew_ahead: true,
     });
     (stale_rx, timers)
 }
@@ -84,11 +84,12 @@ fn start_worker(cache: &Arc<DnsCache>, resolver: Arc<CountingResolver>, receiver
         resolver,
         None,
         stale_rx,
-        Some(timers),
+        timers,
         ColdThresholds {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },
+        300,
     );
 }
 

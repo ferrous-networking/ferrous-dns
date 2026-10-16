@@ -97,6 +97,7 @@ impl NegativeDnsCache {
         }
     }
 
+    /// Stores the entry and returns the second it expires.
     pub fn insert(
         &self,
         domain: &str,
@@ -104,7 +105,7 @@ impl NegativeDnsCache {
         ttl: u32,
         local_dns: bool,
         view: u32,
-    ) {
+    ) -> u64 {
         let ttl = negative_ttl(Some(ttl));
         let now = coarse_now_secs();
         self.cache
@@ -112,8 +113,10 @@ impl NegativeDnsCache {
                 now >= entry.expires_at_secs()
             });
         let key = CacheKey::from_lowercase(domain, record_type).in_view(view);
+        let expires_at_secs = now + ttl as u64;
         self.cache
-            .insert(key, NegativeEntry::new(now + ttl as u64, local_dns));
+            .insert(key, NegativeEntry::new(expires_at_secs, local_dns));
+        expires_at_secs
     }
 
     pub fn remove(&self, domain: &str, record_type: &RecordType, view: u32) {
@@ -125,13 +128,12 @@ impl NegativeDnsCache {
         self.cache.clear();
     }
 
-    /// Removes every entry expired at `now_secs` and returns how many went.
-    ///
-    /// The insert path only samples a bounded prefix of the map, so expired
-    /// entries elsewhere would otherwise hold capacity until read again.
-    pub fn purge_expired(&self, now_secs: u64) -> usize {
+    /// Removes `key` if it expired by `now_secs`, for the timer its insert
+    /// armed. An entry stored over it since keeps its own, later expiry.
+    pub fn remove_expired(&self, key: &CacheKey, now_secs: u64) -> bool {
         self.cache
-            .retain(|_, entry| now_secs < entry.expires_at_secs())
+            .remove_if(key, |_, entry| entry.expires_at_secs() <= now_secs)
+            .is_some()
     }
 
     pub fn len(&self) -> usize {
@@ -148,14 +150,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn eviction_stays_bounded_and_compaction_reclaims_the_rest() {
+    fn eviction_stays_bounded_and_expiry_reclaims_the_rest() {
         let capacity = EVICTION_BATCH_SIZE * 2;
         let cache = NegativeDnsCache::new(capacity);
-        for i in 0..capacity {
-            cache.cache.insert(
-                CacheKey::new(&format!("zone{i}.example"), RecordType::A),
-                NegativeEntry::new(0, false),
-            );
+        let keys: Vec<CacheKey> = (0..capacity)
+            .map(|i| CacheKey::new(&format!("zone{i}.example"), RecordType::A))
+            .collect();
+        for key in &keys {
+            cache
+                .cache
+                .insert(key.clone(), NegativeEntry::new(0, false));
         }
         // Keep the sampled prefix live and leave the rest expired. Updating
         // values preserves iteration order; release every guard before insert.
@@ -170,9 +174,32 @@ mod tests {
         assert_eq!(cache.len(), capacity);
         assert!(cache.get("new.example", &RecordType::A, 0).is_some());
 
-        // The expired suffix the insert did not inspect is reclaimed by the sweep.
-        assert_eq!(cache.purge_expired(1), capacity - EVICTION_BATCH_SIZE);
+        // The expired suffix the insert did not inspect goes as each entry's
+        // own expiry fires; the live prefix stays.
+        let expired = keys
+            .iter()
+            .filter(|key| cache.remove_expired(key, 1))
+            .count();
+        assert_eq!(expired, capacity - EVICTION_BATCH_SIZE);
         assert_eq!(cache.len(), EVICTION_BATCH_SIZE);
         assert!(cache.get("new.example", &RecordType::A, 0).is_some());
+    }
+
+    #[test]
+    fn expiry_keeps_an_entry_stored_over_the_expired_one() {
+        let cache = NegativeDnsCache::new(16);
+        let first = cache.insert("gone.example", RecordType::A, 300, false, 0);
+        let key = CacheKey::new("gone.example", RecordType::A);
+
+        assert!(!cache.remove_expired(&key, first - 1), "not expired yet");
+        cache
+            .cache
+            .insert(key.clone(), NegativeEntry::new(first + 300, false));
+        assert!(
+            !cache.remove_expired(&key, first),
+            "the first expiry must not remove the entry stored over it"
+        );
+        assert!(cache.remove_expired(&key, first + 300));
+        assert!(cache.is_empty());
     }
 }

@@ -188,10 +188,10 @@ async fn test_renewal_of_an_expired_entry_stores_any_answer() {
     );
 }
 
-/// Compaction must leave alone an entry whose declined renewal already has
-/// its one more attempt pending.
+/// A declined renewal gets its one more attempt and nothing else: no other
+/// timer re-queries it before then.
 #[tokio::test]
-async fn test_compaction_does_not_requery_a_declined_renewal() {
+async fn test_a_declined_renewal_is_not_requeried_before_its_retry() {
     let cache = cache(0.5);
     let resolver = FixedTtlResolver::new(1);
     start(&cache, resolver.clone() as Arc<dyn DnsResolver>);
@@ -207,7 +207,6 @@ async fn test_compaction_does_not_requery_a_declined_renewal() {
         .await
     );
     tokio::time::sleep(Duration::from_millis(300)).await;
-    cache.compact();
     let requeried = wait_until(Duration::from_millis(2_500), || {
         resolver.calls_since(inserted).len() >= 2
     })
@@ -215,7 +214,7 @@ async fn test_compaction_does_not_requery_a_declined_renewal() {
 
     assert!(
         !requeried,
-        "compaction re-queried a declined renewal; calls at {:?}",
+        "a declined renewal was re-queried before its retry; calls at {:?}",
         resolver.calls_since(inserted)
     );
 }

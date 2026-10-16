@@ -12,6 +12,7 @@ pub struct CacheMetrics {
     pub optimistic_refreshes: AtomicU64,
     pub stale_hits: AtomicU64,
     pub lazy_deletions: AtomicU64,
+    /// Entries removed by their own timer once dead, positive or negative.
     pub compactions: AtomicU64,
     pub batch_evictions: AtomicU64,
 
@@ -24,10 +25,9 @@ pub struct CacheMetrics {
     /// scheduled behind it, so a non-zero value means the channel is undersized.
     pub stale_refresh_drops: AtomicU64,
 
-    /// Renewals given up on: a refresh timer that found the worker's queue
-    /// full, or a due entry that died while waiting for a permit. Each one is
-    /// an entry renewed late or not at all; a sustained non-zero rate means
-    /// renewals fall behind what is due.
+    /// Renewals given up on: a due entry that died while waiting for a
+    /// permit. Each one is an entry not renewed in time; a sustained non-zero
+    /// rate means renewals fall behind what is due.
     pub optimistic_refresh_shed: AtomicU64,
 }
 

@@ -77,7 +77,7 @@ cache_max_ttl = 86400                   # Maximum TTL; caps values returned by u
 # upstream link instead of a measurement of this server.
 cache_max_entries = 500000              # Maximum number of entries the cache can hold
 cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", or "lru"
-cache_compaction_interval = 600         # Seconds between full cache compaction runs (removes expired entries)
+cache_compaction_interval = 600         # Seconds a failed renewal waits for its next try; expired entries leave the cache by themselves
 cache_batch_eviction_percentage = 0.1   # Fraction of cache to evict in one pass when full (0.1 = 10%)
 cache_adaptive_thresholds = false       # Automatically tune eviction thresholds based on observed hit rates
 # Number of internal cache shards (DashMap).

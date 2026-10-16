@@ -12,10 +12,11 @@ const FLAG_PERMANENT: u8 = 0b100;
 const FLAG_LOCAL_DNS: u8 = 0b1_0000;
 const STALE_GRACE_PERIOD_MULTIPLIER: u64 = 2;
 
-/// [`HotCounters::refresh_timer`] when no timer is pending and compaction
-/// arms the next one: a renewal failed or was declined for good, the timer
-/// was shed, or refreshes are off. Hits leave it alone, so a failing upstream
-/// is retried once per compaction pass, not once per hit.
+/// [`HotCounters::refresh_timer`] when no renewal is pending: one is running,
+/// or refreshes are off and the entry's pending timer is its expiry. A renewal
+/// that ends without renewing arms the next one for later, never on a hit, so
+/// a failing upstream is retried once per `cache_compaction_interval`, not
+/// once per hit.
 const TIMER_LAPSED: u64 = 0;
 /// [`HotCounters::refresh_timer`] when the entry's timer fired while nobody
 /// was using it. Its next hit arms a new one.
@@ -196,6 +197,12 @@ impl CachedRecord {
         now_secs >= self.expires_at_secs && age < max_stale_age
     }
 
+    /// Past its stale grace: no client can be served it any more.
+    #[inline(always)]
+    pub fn is_dead_at_secs(&self, now_secs: u64) -> bool {
+        self.is_expired_at_secs(now_secs) && !self.is_stale_usable_at_secs(now_secs)
+    }
+
     /// The instant past which the entry stops being usable at all.
     ///
     /// Serving stale keeps an expired entry alive for `STALE_GRACE_PERIOD_MULTIPLIER`
@@ -248,11 +255,6 @@ impl CachedRecord {
             .fetch_and(!FLAG_REFRESHING, AtomicOrdering::Release);
     }
 
-    #[inline(always)]
-    pub(crate) fn is_refreshing(&self) -> bool {
-        self.flags.load(AtomicOrdering::Relaxed) & FLAG_REFRESHING != 0
-    }
-
     /// The second this entry falls due for renewal; see [`refresh_due_at`].
     #[inline(always)]
     pub(crate) fn refresh_due_at_secs(&self, threshold: f64) -> u64 {
@@ -266,16 +268,10 @@ impl CachedRecord {
         *self.counters.refresh_timer.get_mut() = due_at_secs;
     }
 
-    /// Leaves the record with no timer, under the map's write guard.
+    /// Leaves the record with no renewal pending, under the map's write guard.
     #[inline]
     pub(crate) fn lapse_refresh_timer(&mut self) {
         *self.counters.refresh_timer.get_mut() = TIMER_LAPSED;
-    }
-
-    /// Parks a lapsed record nobody uses, under the map's write guard.
-    #[inline]
-    pub(crate) fn park_lapsed_refresh(&mut self) {
-        *self.counters.refresh_timer.get_mut() = TIMER_PARKED;
     }
 
     /// Whether a hit should arm a new timer. One load on the line the hit
@@ -283,11 +279,6 @@ impl CachedRecord {
     #[inline(always)]
     pub(crate) fn is_refresh_parked(&self) -> bool {
         self.counters.refresh_timer.load(AtomicOrdering::Relaxed) == TIMER_PARKED
-    }
-
-    #[inline(always)]
-    pub(crate) fn is_refresh_lapsed(&self) -> bool {
-        self.counters.refresh_timer.load(AtomicOrdering::Relaxed) == TIMER_LAPSED
     }
 
     #[inline]
@@ -312,12 +303,6 @@ impl CachedRecord {
         self.swap_refresh_timer(TIMER_CLAIMED, TIMER_LAPSED)
     }
 
-    /// Gives a claimed timer up without a renewal: the entry is dead.
-    #[inline]
-    pub(crate) fn lapse_claimed_refresh(&self) {
-        self.swap_refresh_timer(TIMER_CLAIMED, TIMER_LAPSED);
-    }
-
     /// Parks a claimed timer: nobody is using the entry.
     #[inline]
     pub(crate) fn park_claimed_refresh(&self) {
@@ -340,13 +325,6 @@ impl CachedRecord {
     #[inline]
     pub(crate) fn try_rearm_lapsed_refresh(&self, due_at_secs: u64) -> bool {
         self.swap_refresh_timer(TIMER_LAPSED, due_at_secs)
-    }
-
-    /// Drops the timer due at `due_at_secs` the worker never received, so
-    /// compaction arms it again.
-    #[inline]
-    pub(crate) fn release_refresh_timer(&self, due_at_secs: u64) {
-        self.swap_refresh_timer(due_at_secs, TIMER_LAPSED);
     }
 
     /// Hits per minute accumulated since the last renewal.

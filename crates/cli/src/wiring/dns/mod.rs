@@ -6,7 +6,7 @@ use crate::server::dns::connection_limiter::ConnectionLimiter;
 use crate::server::dns::MAX_UPSTREAM_BOUND_QUERIES;
 use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
-    CacheMaintenancePort, DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
+    DgaEvictionTarget, DgaFlagStore, DnssecStatsPort, NxdomainHijackIpStore,
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
     ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore, WildcardRecordRegistry,
 };
@@ -25,7 +25,6 @@ use ferrous_dns_infrastructure::dns::{
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
-    MAINTENANCE_INTERVAL_SECS,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -47,9 +46,6 @@ pub struct DnsServices {
     /// whenever the cache is enabled. Kept so hot upstream reloads also reach it.
     pub maintenance_pool_manager: Option<Arc<PoolManager>>,
     pub health_checker: Arc<HealthChecker>,
-    /// Present whenever the cache is enabled; the optimistic scan runs only
-    /// with `cache_optimistic_refresh`, serve-stale repairs always.
-    pub cache_maintenance: Option<Arc<dyn CacheMaintenancePort>>,
     /// Live PTR map for local records. Always present, so a record added from
     /// the admin UI reverse-resolves without a restart.
     pub ptr_registry: Arc<dyn PtrRecordRegistry>,
@@ -122,7 +118,7 @@ impl DnsServices {
             );
         }
 
-        let (cache_maintenance, maintenance_pool_manager) = Self::setup_cache_maintenance(
+        let maintenance_pool_manager = Self::setup_cache_maintenance(
             config,
             &dns_cache,
             &health_checker,
@@ -356,7 +352,6 @@ impl DnsServices {
             dnssec_stats,
             maintenance_pool_manager,
             health_checker,
-            cache_maintenance,
             ptr_registry,
             wildcard_registry,
             local_dns_server,
@@ -366,6 +361,8 @@ impl DnsServices {
         })
     }
 
+    /// Starts the worker that renews, expires and evicts cache entries, and
+    /// returns the pool manager its renewals resolve through.
     async fn setup_cache_maintenance(
         config: &Config,
         cache: &Arc<DnsCache>,
@@ -373,28 +370,14 @@ impl DnsServices {
         upstream_layers: &resolver::UpstreamLayers,
         local_dns_server: Option<SocketAddr>,
         repos: &Repositories,
-    ) -> anyhow::Result<(
-        Option<Arc<dyn CacheMaintenancePort>>,
-        Option<Arc<PoolManager>>,
-    )> {
+    ) -> anyhow::Result<Option<Arc<PoolManager>>> {
         if !config.dns.cache_enabled {
-            return Ok((None, None));
+            return Ok(None);
         }
 
-        // Eviction and compaction run regardless: nothing else bounds the cache.
-        let maintenance = DnsCacheMaintenance::new(cache.clone(), MAINTENANCE_INTERVAL_SECS);
-
-        // The worker collects timers once a second, so each of the inbox's 16
-        // shards has to hold a second of the inserts and renewals the threads
-        // pushing to it make: anything past that is shed, and compaction arms
-        // the entry again. Sized off the cache, with a floor for small ones.
-        // A shard grows as it fills, so the bound (~10 MB of timers over all
-        // shards) is only reached under a burst that size.
-        let timers = config.dns.cache_optimistic_refresh.then(|| {
-            Arc::new(TimerInbox::new(
-                (config.dns.cache_max_entries / 4).clamp(4_096, 16_384),
-            ))
-        });
+        // Wired with optimistic refresh off too: every entry's expiry is a
+        // timer, and eviction and serve-stale repairs run on the same worker.
+        let timers = Arc::new(TimerInbox::new());
         // The stale queue is shallower on purpose: those items are
         // latency-sensitive and served first, so it only has to absorb a
         // burst, not a backlog — the client interaction is over long before a
@@ -402,9 +385,8 @@ impl DnsServices {
         let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(128);
         cache.set_refresh_senders(RefreshSenders {
             stale: stale_tx,
-            // Without it no entry arms a timer: nothing is renewed ahead of
-            // expiry, and serve-stale repairs still run.
-            timers: timers.clone(),
+            timers: Arc::clone(&timers),
+            renew_ahead: config.dns.cache_optimistic_refresh,
         });
 
         let thresholds = ColdThresholds {
@@ -420,7 +402,6 @@ impl DnsServices {
             .builder(Arc::clone(&maintenance_pool_manager))
             .build();
 
-        // Started even with optimistic refresh off: serve-stale repairs arrive on the stale queue.
         DnsCacheMaintenance::start_refresh_worker(
             cache.clone(),
             resolver_for_maintenance,
@@ -428,12 +409,10 @@ impl DnsServices {
             stale_rx,
             timers,
             thresholds,
+            config.dns.cache_compaction_interval,
         );
 
-        Ok((
-            Some(Arc::new(maintenance) as Arc<dyn CacheMaintenancePort>),
-            Some(maintenance_pool_manager),
-        ))
+        Ok(Some(maintenance_pool_manager))
     }
 }
 

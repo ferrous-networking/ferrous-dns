@@ -1,8 +1,8 @@
 pub mod bloom;
 pub mod coarse_clock;
-pub mod compaction;
 pub mod data;
 pub mod eviction;
+pub mod expiry;
 pub mod key;
 pub mod l1;
 pub mod listing;
@@ -23,6 +23,6 @@ pub use port::{DnsCacheAccess, LocalRecordStatus};
 pub use record::CachedRecord;
 pub use refresh::{ColdThresholds, DueRefresh};
 pub use schedule::{
-    refresh_due_at, RefreshSchedule, ScheduledRefresh, TimerInbox, REFRESH_LEAD_SECS,
+    refresh_due_at, RefreshSchedule, ScheduledRefresh, TimerInbox, TimerKind, REFRESH_LEAD_SECS,
 };
 pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest, RefreshSenders};

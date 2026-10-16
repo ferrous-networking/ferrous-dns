@@ -60,7 +60,7 @@ cache_adaptive_thresholds = false
 | `cache_max_ttl` | `86400` | Maximum TTL — records with higher TTLs are clamped |
 | `cache_max_entries` | `200000` | Maximum entries in L2 cache |
 | `cache_eviction_strategy` | `"hit_rate"` | Eviction policy (see below) |
-| `cache_compaction_interval` | `600` | Seconds between full compaction runs (removes expired entries) |
+| `cache_compaction_interval` | `600` | Seconds a renewal that failed waits for its next try (expired entries leave the cache by themselves) |
 | `cache_batch_eviction_percentage` | `0.1` | Fraction of cache evicted in one pass when full (0.1 = 10%) |
 | `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | auto | L2 cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
@@ -90,9 +90,9 @@ Names are case-insensitive (`hitrate` and `lfuk` are accepted too). Any other va
 
 For most home and office deployments, `"hit_rate"` gives the best results as it preserves entries for frequently visited sites regardless of recency.
 
-Eviction runs on a fixed 60-second maintenance cycle and compaction every `cache_compaction_interval` seconds, whether or not optimistic refresh is enabled. Inserts do not evict, so between cycles the cache can briefly exceed `cache_max_entries`; each cycle that finds it at or over the limit removes `cache_batch_eviction_percentage` of `cache_max_entries`.
+Nothing scans the cache on a schedule to remove entries. The cache's background worker checks its size every second: once it reaches `cache_max_entries`, it removes `cache_batch_eviction_percentage` of `cache_max_entries` by the strategy above, and again on the next second for as long as the cache stays full. Inserts do not evict, so the cache can exceed `cache_max_entries` by about a second of inserts. An expired entry leaves the cache the second it stops being servable, at the end of its stale-serve grace period (two TTLs after it was stored or last renewed): every entry carries a timer for that second. Both happen whether or not optimistic refresh is enabled.
 
-The negative-response and DNSSEC-material caches use bounded expiration sampling when full, falling back to an arbitrary eviction if the sample finds no expired entries. Inserting a new entry does not scan the entire live cache. Because the sample covers a fixed slice of the map, expired negative entries elsewhere are reclaimed by the `cache_compaction_interval` sweep instead. DNSSEC material has no periodic sweep: it is keyed per zone, so a re-validated zone replaces its own entry, and only zones that are never queried again keep expired keys until they are evicted.
+The negative-response and DNSSEC-material caches use bounded expiration sampling when full, falling back to an arbitrary eviction if the sample finds no expired entries. Inserting a new entry does not scan the entire live cache. A negative entry also leaves the cache by its own timer the second it expires. DNSSEC material has no expiry timer: it is keyed per zone, so a re-validated zone replaces its own entry, and only zones that are never queried again keep expired keys until they are evicted.
 
 ---
 
@@ -134,16 +134,16 @@ The half-TTL bound keeps a TTL just above a minute from being renewed every few 
 
 **A renewal never shortens an entry**: a caching upstream such as Cloudflare or Quad9 answers with what is left of its own copy, and two of its anycast nodes can be minutes apart. A renewal ahead of expiry that would end the entry sooner than it already ends, or at the same time, is not applied: the entry keeps its answer and is tried once more a second before it expires, when the upstream's copy has usually rolled over. If that attempt does not extend it either, it is renewed at expiry, where any answer is taken: at most three queries, and the entry does not go stale waiting for a client. Once an entry has expired, any answer is taken.
 
-**When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, a renewal ahead of expiry is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried by the next compaction pass, every `cache_compaction_interval` seconds, for as long as the entry is in use. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
+**When a renewal fails**: the cached answer keeps serving until its TTL ends. If every upstream answered SERVFAIL, which is usually transient, a renewal ahead of expiry is retried once, halfway through the life the entry has left. Any other failure (a timeout, REFUSED, a DNSSEC validation that could not run) is retried `cache_compaction_interval` seconds later, and again after each further failure, for as long as the entry is in use and alive. Clients asking for the entry in the meantime do not trigger extra retries. A renewal whose answer validates as DNSSEC Bogus removes the entry instead.
 
 !!! note "Minimum Hit Rate and Minimum Frequency rank, they do not exclude"
-    Every due entry is renewed. `cache_min_hit_rate` and `cache_min_frequency` only come into play when more entries are due at once than the worker runs in parallel: entries that clear both thresholds go first, and within each group the ones closest to being unusable. Neither threshold stops an entry from being renewed. Watch `cache_optimistic_refresh_shed` on `/metrics`: it counts timers that could not be armed in a burst of inserts and entries that died waiting for their turn. A sustained non-zero value means renewals fall behind what is due.
+    Every due entry is renewed. `cache_min_hit_rate` and `cache_min_frequency` only come into play when more entries are due at once than the worker runs in parallel: entries that clear both thresholds go first, and within each group the ones closest to being unusable. Neither threshold stops an entry from being renewed. Watch `cache_optimistic_refresh_shed` on `/metrics`: it counts entries that died waiting for their turn. A sustained non-zero value means renewals fall behind what is due.
 
 !!! note "Serve-stale repairs go first"
     When an entry has expired but is still inside its stale-serve grace period, the client is handed the stale answer and a repair is queued. A repair always goes ahead of renewals that are merely due, because someone is already waiting on the fresh result. Serve-stale repairs run whenever the cache is enabled, including with `cache_optimistic_refresh = false`; that option only turns off renewal ahead of expiry.
 
 !!! info "Entries outside the access window are not renewed"
-    If a cached entry has not been accessed within `cache_access_window_secs` (default 12 hours) when it falls due, it is not renewed — regardless of how many hits it accumulated in the past. The entry is left to expire naturally and is eventually removed by compaction or eviction. This prevents the cache from wasting upstream queries renewing domains that were popular in the past but are no longer being visited (e.g. a travel site accessed once and never again). If the name is asked for again before it expires, it is renewed again on its next due time.
+    If a cached entry has not been accessed within `cache_access_window_secs` (default 12 hours) when it falls due, it is not renewed — regardless of how many hits it accumulated in the past. The entry is left to expire naturally and leaves the cache at the end of its stale-serve grace period, unless eviction removes it first. This prevents the cache from wasting upstream queries renewing domains that were popular in the past but are no longer being visited (e.g. a travel site accessed once and never again). If the name is asked for again before it expires, it is renewed again on its next due time.
 
 ---
 

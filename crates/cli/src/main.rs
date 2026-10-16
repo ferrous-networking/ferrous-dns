@@ -73,13 +73,7 @@ async fn async_main() -> anyhow::Result<()> {
         config_arc.clone(),
     );
 
-    bootstrap::spawn_jobs(
-        &use_cases,
-        &repos,
-        &config,
-        wal_pool,
-        dns_services.cache_maintenance.clone(),
-    );
+    bootstrap::spawn_jobs(&use_cases, &repos, &config, wal_pool);
 
     let effective_config_path: Option<Arc<str>> = config_path.as_deref().map(Arc::from);
     let config_services = wiring::app_state::build_config_services(

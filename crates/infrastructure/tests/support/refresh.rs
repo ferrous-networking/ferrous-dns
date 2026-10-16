@@ -17,6 +17,9 @@ use tokio::sync::mpsc;
 
 pub const OLD_IP: &str = "192.0.2.1";
 pub const NEW_IP: &str = "192.0.2.2";
+/// `cache_compaction_interval` for workers whose tests never wait that long
+/// for a failed renewal's next try.
+pub const RETRY_LAPSED_AFTER_SECS: u64 = 300;
 
 pub fn refresh_cache(
     max_entries: usize,
@@ -65,44 +68,70 @@ pub struct Worker {
 }
 
 /// Wires `cache` to a new worker over `resolver`, as the cli wiring does,
-/// and keeps the coarse clock ticking. With `optimistic` off nothing arms a
-/// timer, and only serve-stale repairs reach the worker.
+/// and keeps the coarse clock ticking. With `optimistic` off nothing is
+/// renewed ahead of expiry: entries arm only the timer that removes them, and
+/// serve-stale repairs still reach the worker.
 pub fn start_worker(
     cache: &Arc<DnsCache>,
     resolver: Arc<dyn DnsResolver>,
     thresholds: ColdThresholds,
     optimistic: bool,
 ) -> Worker {
+    start_worker_retrying_after(
+        cache,
+        resolver,
+        thresholds,
+        optimistic,
+        RETRY_LAPSED_AFTER_SECS,
+    )
+}
+
+/// [`start_worker`] whose failed renewals wait `retry_lapsed_after_secs`
+/// for their next try.
+pub fn start_worker_retrying_after(
+    cache: &Arc<DnsCache>,
+    resolver: Arc<dyn DnsResolver>,
+    thresholds: ColdThresholds,
+    optimistic: bool,
+    retry_lapsed_after_secs: u64,
+) -> Worker {
     let _ticker = coarse_clock::start_clock_ticker();
     let (stale, stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new(4_096));
-    let wired = optimistic.then(|| Arc::clone(&timers));
+    let timers = Arc::new(TimerInbox::new());
     cache.set_refresh_senders(RefreshSenders {
         stale: stale.clone(),
-        timers: wired.clone(),
+        timers: Arc::clone(&timers),
+        renew_ahead: optimistic,
     });
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         resolver,
         None,
         stale_rx,
-        wired,
+        Arc::clone(&timers),
         thresholds,
+        retry_lapsed_after_secs,
     );
     Worker { stale, timers }
 }
 
 /// Wires `cache` to an inbox and a repair queue the test reads in place of
-/// a worker. `capacity` bounds each inbox shard.
-pub fn wire_timers(
+/// a worker, renewing ahead of expiry.
+pub fn wire_timers(cache: &DnsCache) -> (Arc<TimerInbox>, mpsc::Receiver<RefreshRequest>) {
+    wire_timers_renewing(cache, true)
+}
+
+/// [`wire_timers`] with optimistic refresh on or off.
+pub fn wire_timers_renewing(
     cache: &DnsCache,
-    capacity: usize,
+    renew_ahead: bool,
 ) -> (Arc<TimerInbox>, mpsc::Receiver<RefreshRequest>) {
     let (stale, stale_rx) = mpsc::channel(16);
-    let inbox = Arc::new(TimerInbox::new(capacity));
+    let inbox = Arc::new(TimerInbox::new());
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        timers: Some(Arc::clone(&inbox)),
+        timers: Arc::clone(&inbox),
+        renew_ahead,
     });
     (inbox, stale_rx)
 }

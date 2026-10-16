@@ -22,8 +22,8 @@ pub struct CacheMetricsSnapshot {
     /// Serve-stale repairs dropped because the stale queue was full. A client
     /// got a stale answer with no renewal scheduled behind it.
     pub stale_refresh_drops: u64,
-    /// Renewals ahead of expiry given up on: a refresh timer that found the
-    /// worker's queue full, or a due entry that died waiting for a permit.
+    /// Renewals ahead of expiry given up on: a due entry that died waiting
+    /// for a permit.
     pub optimistic_refresh_shed: u64,
 }
 

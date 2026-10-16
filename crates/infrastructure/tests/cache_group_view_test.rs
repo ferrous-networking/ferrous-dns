@@ -13,7 +13,7 @@ use ferrous_dns_domain::{DnsQuery, RecordType, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
 use ferrous_dns_infrastructure::dns::{
-    BorrowedKey, CachedData, DnsCache, DnsCacheAccess, PoolManager, RefreshSenders,
+    BorrowedKey, CachedData, DnsCache, DnsCacheAccess, PoolManager, RefreshSenders, TimerInbox,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -361,7 +361,8 @@ fn test_stale_hit_in_a_group_view_queues_a_repair_for_that_view() {
     let (stale, mut stale_rx) = tokio::sync::mpsc::channel(16);
     cache.set_refresh_senders(RefreshSenders {
         stale,
-        timers: None,
+        timers: Arc::new(TimerInbox::new()),
+        renew_ahead: false,
     });
     let view = GROUP_A as u32;
     DnsCacheAccess::insert(

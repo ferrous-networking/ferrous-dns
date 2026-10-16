@@ -379,7 +379,7 @@ cache_adaptive_thresholds        = false
 | `cache_max_ttl` | `int` | `86400` | Maximum TTL; records with higher TTLs are clamped |
 | `cache_max_entries` | `int` | `200000` | Maximum number of entries in the L2 cache |
 | `cache_eviction_strategy` | `str` | `"hit_rate"` | Eviction policy: `"hit_rate"`, `"lfu"`, `"lfu-k"` or `"lru"` (case-insensitive). Any other value in the file runs as `"hit_rate"` with a warning; the API rejects it |
-| `cache_compaction_interval` | `int` | `600` | Seconds between compaction runs that remove expired entries |
+| `cache_compaction_interval` | `int` | `600` | Seconds a renewal that failed waits for its next try; expired entries leave the cache by themselves |
 | `cache_batch_eviction_percentage` | `float` | `0.1` | Fraction of the cache evicted in one pass when full (0.1 = 10%) |
 | `cache_adaptive_thresholds` | `bool` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | `int` | auto | L2 cache shard count; auto = 4 x CPU cores rounded up to next power of 2 |

@@ -1,26 +1,24 @@
 use super::cache::negative_cache::negative_ttl;
 use super::cache::{
     coarse_clock, CacheKey, CachedAddresses, CachedData, CachedDnssecStatus, ColdThresholds,
-    DnsCache, DueRefresh, RefreshRequest, RefreshSchedule, TimerInbox,
+    DnsCache, DueRefresh, RefreshRequest, RefreshSchedule, TimerInbox, TimerKind,
 };
 
-use async_trait::async_trait;
-use ferrous_dns_application::ports::{
-    CacheCompactionOutcome, CacheMaintenancePort, DnsResolver, QueryLogRepository,
-};
+use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
 use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, QueryLog, QuerySource};
 use std::collections::{BinaryHeap, VecDeque};
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, info};
 
-/// Minimum bloom rotation interval in maintenance cycles. Rotation re-seeds
-/// every live key, so this only bounds how often that `O(entries)` pass runs.
-const MIN_BLOOM_ROTATION_CYCLES: u64 = 3;
+/// Bloom rotation runs every `cache_min_ttl`, in whole minutes, and at least
+/// this many minutes apart. Rotation re-seeds every live key, so this only
+/// bounds how often that `O(entries)` pass runs.
+const MIN_BLOOM_ROTATION_MINUTES: u64 = 3;
 
 /// Renewals running at once. This bounds the upstream load refreshes put on
 /// at any instant, and is the only limit on them: throughput follows what is
@@ -75,8 +73,9 @@ impl RefreshOrigin {
     /// expiry, where any answer is taken: an expired entry never declines, so
     /// that ends it in at most three queries. Every upstream answering
     /// SERVFAIL is usually transient, so a first timer gets one retry halfway
-    /// through what is left. Any other case is left to compaction, or to
-    /// serve-stale once the entry expires.
+    /// through what is left. Any other case waits `cache_compaction_interval`
+    /// for its next renewal ([`DnsCache::rearm_lapsed`]), or for serve-stale
+    /// once the entry expires.
     fn retry_in(
         self,
         outcome: &Result<RefreshOutcome, DomainError>,
@@ -95,43 +94,11 @@ impl RefreshOrigin {
     }
 }
 
-/// Infrastructure adapter implementing `CacheMaintenancePort`.
-pub struct DnsCacheMaintenance {
-    cache: Arc<DnsCache>,
-    /// Counts maintenance cycles to throttle bloom rotation.
-    bloom_cycle_counter: AtomicU64,
-    /// Number of maintenance cycles between bloom rotations.
-    bloom_rotation_cycles: u64,
-}
+/// Keeps the cache renewed, bounded and clean: renewals, expiry, eviction and
+/// bloom rotation all run on the worker [`Self::start_refresh_worker`] spawns.
+pub struct DnsCacheMaintenance;
 
 impl DnsCacheMaintenance {
-    /// Eviction and bloom rotation, run every `cycle_interval_secs`, and
-    /// compaction. Renewals do not depend on that cadence: they run on
-    /// [`Self::start_refresh_worker`].
-    pub fn new(cache: Arc<DnsCache>, cycle_interval_secs: u64) -> Self {
-        // Rotation only bounds how long bits left behind by removed keys
-        // linger: `rotate_bloom` re-seeds every live entry into the new slot,
-        // so an entry's visibility does not depend on this cadence.
-        let min_ttl = cache.min_ttl() as u64;
-        let interval = cycle_interval_secs.max(1);
-        let bloom_rotation_cycles = (min_ttl / interval).max(MIN_BLOOM_ROTATION_CYCLES);
-
-        info!(
-            bloom_rotation_cycles,
-            min_ttl,
-            cycle_interval_secs,
-            "Bloom rotation throttled to every {} maintenance cycles (~{} seconds)",
-            bloom_rotation_cycles,
-            bloom_rotation_cycles * interval,
-        );
-
-        Self {
-            cache,
-            bloom_cycle_counter: AtomicU64::new(0),
-            bloom_rotation_cycles,
-        }
-    }
-
     /// Resolves `key` again and stores the answer. A serve-stale repair
     /// has a client waiting and always stores; a renewal on a timer declines
     /// an answer that would not extend a live entry (see
@@ -245,29 +212,44 @@ impl DnsCacheMaintenance {
         Ok(RefreshOutcome::Renewed)
     }
 
-    /// Spawns the worker that renews cache entries.
+    /// Spawns the worker that renews cache entries and removes them.
     ///
     /// It takes serve-stale repairs from `stale_rx`, always first, and the
-    /// refresh timers the cache arms in `timers` as it stores and renews
+    /// timers the cache arms in `timers` as it stores, renews and parks
     /// entries. Each second it collects the timers armed since the last tick
-    /// and claims those that came due. Up to `MAX_CONCURRENT_REFRESHES`
+    /// and takes those that came due: a renewal is claimed, a dead entry or an
+    /// expired negative one removed. Up to `MAX_CONCURRENT_REFRESHES`
     /// renewals run at once; when more are due, hot ones (by `thresholds`)
-    /// go first. `timers` is `None` with optimistic refresh off, and only
-    /// repairs arrive.
+    /// go first. A renewal that ends without renewing and gets no retry waits
+    /// `retry_lapsed_after_secs` (`cache_compaction_interval`) for its next.
+    ///
+    /// The same tick evicts a cache that reached `cache_max_entries` and
+    /// rotates the bloom filter on its period, each on a blocking thread.
     pub fn start_refresh_worker(
         cache: Arc<DnsCache>,
         resolver: Arc<dyn DnsResolver>,
         query_log: Option<Arc<dyn QueryLogRepository>>,
         stale_rx: mpsc::Receiver<RefreshRequest>,
-        timers: Option<Arc<TimerInbox>>,
+        timers: Arc<TimerInbox>,
         thresholds: ColdThresholds,
+        retry_lapsed_after_secs: u64,
     ) {
         let base_sweep_at = cache.max_entries().saturating_mul(SWEEP_FACTOR);
+        // Rotation only bounds how long bits left behind by removed keys
+        // linger: `rotate_bloom` re-seeds every live entry into the new slot,
+        // so an entry's visibility does not depend on this cadence.
+        let bloom_rotation_secs =
+            (u64::from(cache.min_ttl()) / 60).max(MIN_BLOOM_ROTATION_MINUTES) * 60;
+        info!(
+            bloom_rotation_secs,
+            "Bloom rotation throttled to every {} seconds", bloom_rotation_secs,
+        );
         let worker = RefreshWorker {
             cache,
             resolver,
             query_log,
             thresholds,
+            retry_lapsed_after_secs,
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_REFRESHES)),
             timers,
             schedule: RefreshSchedule::default(),
@@ -276,6 +258,10 @@ impl DnsCacheMaintenance {
             base_sweep_at,
             sweep_at: base_sweep_at,
             sweep_from: None,
+            ticks: 0,
+            bloom_rotation_secs,
+            evicting: Arc::default(),
+            rotating: Arc::default(),
         };
         tokio::spawn(worker.run(stale_rx));
     }
@@ -286,9 +272,10 @@ struct RefreshWorker {
     resolver: Arc<dyn DnsResolver>,
     query_log: Option<Arc<dyn QueryLogRepository>>,
     thresholds: ColdThresholds,
+    retry_lapsed_after_secs: u64,
     permits: Arc<Semaphore>,
     /// Collected on the tick; arming a timer never wakes this task.
-    timers: Option<Arc<TimerInbox>>,
+    timers: Arc<TimerInbox>,
     schedule: RefreshSchedule,
     /// Repairs waiting for a permit, in arrival order.
     stale: VecDeque<RefreshRequest>,
@@ -302,6 +289,12 @@ struct RefreshWorker {
     sweep_at: usize,
     /// The second the sweep in progress resumes from.
     sweep_from: Option<u64>,
+    ticks: u64,
+    bloom_rotation_secs: u64,
+    /// Set while an eviction pass runs, so a slow one is not stacked on.
+    evicting: Arc<AtomicBool>,
+    /// Set while a bloom rotation runs.
+    rotating: Arc<AtomicBool>,
 }
 
 impl RefreshWorker {
@@ -339,10 +332,8 @@ impl RefreshWorker {
 
     /// Registers every timer armed since the last tick.
     fn collect_timers(&mut self) {
-        if let Some(timers) = &self.timers {
-            let schedule = &mut self.schedule;
-            timers.drain(|timer| schedule.register(timer));
-        }
+        let schedule = &mut self.schedule;
+        self.timers.drain(|timer| schedule.register(timer));
     }
 
     fn claim_due(&mut self) {
@@ -352,11 +343,44 @@ impl RefreshWorker {
         self.collect_timers();
         let now = coarse_clock::coarse_now_secs();
         for timer in self.schedule.take_due(now) {
-            if let Some(due) = self.cache.claim_due_refresh(&timer, now, &self.thresholds) {
+            if timer.kind == TimerKind::NegativeExpiry {
+                self.cache.expire_negative(&timer.key, now);
+            } else if let Some(due) = self.cache.claim_due_refresh(&timer, now, &self.thresholds) {
                 self.due.push(due);
             }
         }
         self.sweep_step();
+        self.maintain();
+    }
+
+    /// Evicts a cache that reached `cache_max_entries` and rotates the bloom
+    /// filter when its period comes round. Both are passes over the cache, so
+    /// each runs on a blocking thread, one at a time, while this task carries
+    /// on with renewals; a cache still full on the next tick is evicted again.
+    fn maintain(&mut self) {
+        self.ticks += 1;
+        if self.cache.is_over_capacity() {
+            Self::run_pass(&self.evicting, &self.cache, DnsCache::evict_entries);
+        }
+        if self.ticks.is_multiple_of(self.bloom_rotation_secs) {
+            Self::run_pass(&self.rotating, &self.cache, |cache| {
+                cache.rotate_bloom();
+            });
+        }
+    }
+
+    /// Runs `pass` on a blocking thread, unless the one `running` tracks has
+    /// not finished yet.
+    fn run_pass(running: &Arc<AtomicBool>, cache: &Arc<DnsCache>, pass: fn(&DnsCache)) {
+        if running.swap(true, AtomicOrdering::AcqRel) {
+            return;
+        }
+        let running = PassRunning(Arc::clone(running));
+        let cache = Arc::clone(cache);
+        tokio::task::spawn_blocking(move || {
+            let _running = running;
+            pass(&cache);
+        });
     }
 
     /// Drops a slice of the timers whose entry is gone. They would cost
@@ -403,6 +427,7 @@ impl RefreshWorker {
         let cache = Arc::clone(&self.cache);
         let resolver = Arc::clone(&self.resolver);
         let query_log = self.query_log.clone();
+        let retry_lapsed_after_secs = self.retry_lapsed_after_secs;
         tokio::spawn(async move {
             let outcome = DnsCacheMaintenance::refresh_entry(
                 &cache,
@@ -412,21 +437,21 @@ impl RefreshWorker {
                 origin,
             )
             .await;
-            Self::follow_up(&cache, &key, origin, &outcome);
+            Self::follow_up(&cache, &key, origin, &outcome, retry_lapsed_after_secs);
             drop(permit);
         });
     }
 
     /// Everything that happens after a renewal, in one place. A renewal that
     /// stored the answer armed the next timer itself. One that did not gets
-    /// its one more attempt here, if any, before it lets go of the entry:
-    /// arming it while the renewal still holds the entry is what keeps
-    /// compaction from arming a second one.
+    /// its one more attempt here, if any, or else its next renewal
+    /// `retry_lapsed_after_secs` away, armed before it lets go of the entry.
     fn follow_up(
         cache: &DnsCache,
         key: &CacheKey,
         origin: RefreshOrigin,
         outcome: &Result<RefreshOutcome, DomainError>,
+        retry_lapsed_after_secs: u64,
     ) {
         let domain = key.domain.as_str();
         match outcome {
@@ -450,56 +475,20 @@ impl RefreshWorker {
             }
         }
         let remaining = cache.remaining_ttl_of(key).map_or(0, u64::from);
-        if let Some(in_secs) = origin.retry_in(outcome, remaining) {
-            cache.schedule_retry(key, in_secs);
+        match origin.retry_in(outcome, remaining) {
+            Some(in_secs) => cache.schedule_retry(key, in_secs),
+            None => cache.rearm_lapsed(key, retry_lapsed_after_secs),
         }
         cache.reset_refreshing_of(key);
     }
 }
 
-#[async_trait]
-impl CacheMaintenancePort for DnsCacheMaintenance {
-    async fn run_eviction_cycle(&self) -> Result<(), DomainError> {
-        coarse_clock::tick();
+/// Clears a pass's running flag when the pass ends, even by a panic, so the
+/// next tick can start another.
+struct PassRunning(Arc<AtomicBool>);
 
-        if self.cache.is_over_capacity() {
-            let cache_for_evict = Arc::clone(&self.cache);
-            if let Err(e) =
-                tokio::task::spawn_blocking(move || cache_for_evict.evict_entries()).await
-            {
-                debug!(error = %e, "Eviction task panicked");
-            }
-        }
-
-        let cycle = self
-            .bloom_cycle_counter
-            .fetch_add(1, AtomicOrdering::Relaxed)
-            + 1;
-        if cycle.is_multiple_of(self.bloom_rotation_cycles) {
-            let cache_for_bloom = Arc::clone(&self.cache);
-            if let Err(e) =
-                tokio::task::spawn_blocking(move || cache_for_bloom.rotate_bloom()).await
-            {
-                debug!(error = %e, "Bloom rotation task panicked");
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn run_compaction_cycle(&self) -> Result<CacheCompactionOutcome, DomainError> {
-        let cache_for_compact = Arc::clone(&self.cache);
-        let removed = match tokio::task::spawn_blocking(move || cache_for_compact.compact()).await {
-            Ok(count) => count,
-            Err(e) => {
-                debug!(error = %e, "Compaction task panicked");
-                0
-            }
-        };
-
-        Ok(CacheCompactionOutcome {
-            entries_removed: removed,
-            cache_size: self.cache.len(),
-        })
+impl Drop for PassRunning {
+    fn drop(&mut self) {
+        self.0.store(false, AtomicOrdering::Release);
     }
 }

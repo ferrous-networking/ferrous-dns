@@ -486,21 +486,23 @@ struct Worker {
 fn start_worker(cache: &Arc<DnsCache>, pm: Arc<PoolManager>) -> Worker {
     let _ticker = coarse_clock::start_clock_ticker();
     let (stale, stale_rx) = mpsc::channel(16);
-    let timers = Arc::new(TimerInbox::new(16));
+    let timers = Arc::new(TimerInbox::new());
     cache.set_refresh_senders(RefreshSenders {
         stale: stale.clone(),
-        timers: Some(Arc::clone(&timers)),
+        timers: Arc::clone(&timers),
+        renew_ahead: true,
     });
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         Arc::new(CoreResolver::new(pm, TIMEOUT_MS, false)),
         None,
         stale_rx,
-        Some(timers),
+        timers,
         ColdThresholds {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },
+        300,
     );
     Worker { stale }
 }

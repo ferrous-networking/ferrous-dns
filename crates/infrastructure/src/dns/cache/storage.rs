@@ -5,7 +5,7 @@ use super::key::{normalize_domain, BorrowedKey, CacheKey};
 use super::l1::{l1_clear, l1_get, l1_insert};
 use super::negative_cache::NegativeDnsCache;
 use super::port::{DnsCacheAccess, LocalRecordStatus};
-use super::schedule::{ScheduledRefresh, TimerInbox};
+use super::schedule::{ScheduledRefresh, TimerInbox, TimerKind};
 use super::{CacheMetrics, CachedData, CachedDnssecStatus, CachedRecord};
 use compact_str::CompactString;
 use dashmap::mapref::one::RefMut;
@@ -58,14 +58,16 @@ pub type RefreshRequest = (Arc<str>, RecordType, u32);
 ///
 /// Separate because they are served differently: a serve-stale repair has a
 /// client waiting on it and always goes first, while a timer only says when
-/// an entry falls due.
+/// an entry falls due or dies.
 pub struct RefreshSenders {
     /// Serve-stale repairs: a client already holds a stale answer and is
     /// waiting on the real one.
     pub stale: mpsc::Sender<RefreshRequest>,
-    /// Refresh timers, armed as entries are stored and renewed. `None` when
-    /// `cache_optimistic_refresh` is off: nothing is renewed ahead of expiry.
-    pub timers: Option<Arc<TimerInbox>>,
+    /// Timers, armed as entries are stored, renewed and parked.
+    pub timers: Arc<TimerInbox>,
+    /// `cache_optimistic_refresh`. Off, nothing is renewed ahead of expiry,
+    /// and an entry's only timer is the one that removes it once it dies.
+    pub renew_ahead: bool,
 }
 
 pub struct DnsCacheConfig {
@@ -154,8 +156,8 @@ impl DnsCache {
         self.cache.is_empty()
     }
 
-    /// Locks every shard in turn, so it belongs on the maintenance cycle, never
-    /// on a per-query path.
+    /// Locks every shard in turn, so it belongs on the worker's tick, never on
+    /// a per-query path.
     pub(crate) fn is_over_capacity(&self) -> bool {
         self.cache.len() >= self.max_entries
     }
@@ -333,8 +335,16 @@ impl DnsCache {
             // break the refresh/access-window cycle, while deflating negatives
             // would defeat the 300s floor that keeps NXDOMAINs from escaping
             // to upstream on every repeated miss.
-            self.negative
+            let expires_at_secs = self
+                .negative
                 .insert(domain, record_type, ttl, local_dns, view);
+            if let Some(inbox) = self.timer_inbox() {
+                inbox.push(ScheduledRefresh {
+                    due_at_secs: expires_at_secs,
+                    key: CacheKey::from_lowercase(domain, record_type).in_view(view),
+                    kind: TimerKind::NegativeExpiry,
+                });
+            }
             return;
         }
 
@@ -354,16 +364,7 @@ impl DnsCache {
         };
         let expires_secs = record.expires_at_secs;
         // Armed before it is visible, so nothing else can arm it as well.
-        let timer = self.arming_inbox(ttl).map(|inbox| {
-            let due_at_secs = record.refresh_due_at_secs(self.refresh_threshold);
-            record.set_refresh_timer(due_at_secs);
-            let timer = ScheduledRefresh {
-                due_at_secs,
-                key: key.clone(),
-                retry: false,
-            };
-            (inbox, timer)
-        });
+        let timer = self.first_timer(&key, &mut record);
 
         self.bloom.set(&key);
         match self.cache.entry(key) {
@@ -382,7 +383,7 @@ impl DnsCache {
         }
 
         if let Some((inbox, timer)) = timer {
-            self.push_or_release(inbox, timer);
+            inbox.push(timer);
         }
 
         if let Some(addresses) = maybe_l1_addresses {
@@ -618,48 +619,50 @@ impl DnsCache {
         }
     }
 
-    /// Where refresh timers go, while optimistic refresh is on and its worker
-    /// is wired up.
+    /// Where timers go, once the worker is wired up.
     #[inline]
     pub(super) fn timer_inbox(&self) -> Option<&Arc<TimerInbox>> {
-        self.refresh_senders
-            .get()
-            .and_then(|senders| senders.timers.as_ref())
+        self.refresh_senders.get().map(|senders| &senders.timers)
     }
 
-    /// [`Self::timer_inbox`] for an entry of `ttl`: one that expires at once
-    /// is never renewed ahead of expiry.
+    /// [`Self::timer_inbox`] for renewing an entry of `ttl` ahead of expiry:
+    /// only while optimistic refresh is on, and never one that expires at once.
     #[inline]
-    fn arming_inbox(&self, ttl: u32) -> Option<&Arc<TimerInbox>> {
+    pub(super) fn renewing_inbox(&self, ttl: u32) -> Option<&Arc<TimerInbox>> {
         if ttl == 0 {
             return None;
         }
-        self.timer_inbox()
+        self.refresh_senders
+            .get()
+            .filter(|senders| senders.renew_ahead)
+            .map(|senders| &senders.timers)
     }
 
-    /// Hands `timer` to the worker. A full inbox gives it back, counted as
-    /// shed; the caller then lapses the entry, so compaction arms it again.
-    #[inline]
-    fn push_refresh_timer(
+    /// The timer a record stored or renewed now starts with: its renewal, or
+    /// its expiry when it is not renewed ahead of expiry. Sets the record's
+    /// pending timer to match; the caller holds the record exclusively.
+    fn first_timer(
         &self,
-        inbox: &TimerInbox,
-        timer: ScheduledRefresh,
-    ) -> Result<(), ScheduledRefresh> {
-        inbox.push(timer).inspect_err(|_| {
-            self.metrics
-                .optimistic_refresh_shed
-                .fetch_add(1, AtomicOrdering::Relaxed);
-        })
-    }
-
-    /// [`Self::push_refresh_timer`] for a caller holding no guard on the
-    /// entry, which is looked up again to lapse it if the inbox is full.
-    pub(super) fn push_or_release(&self, inbox: &TimerInbox, timer: ScheduledRefresh) {
-        if let Err(timer) = self.push_refresh_timer(inbox, timer) {
-            if let Some(entry) = self.cache.get(&timer.key) {
-                entry.release_refresh_timer(timer.due_at_secs);
+        key: &CacheKey,
+        record: &mut CachedRecord,
+    ) -> Option<(&Arc<TimerInbox>, ScheduledRefresh)> {
+        let (inbox, due_at_secs) = match self.renewing_inbox(record.ttl) {
+            Some(inbox) => {
+                let due_at_secs = record.refresh_due_at_secs(self.refresh_threshold);
+                record.set_refresh_timer(due_at_secs);
+                (inbox, due_at_secs)
             }
-        }
+            None => {
+                record.lapse_refresh_timer();
+                (self.timer_inbox()?, record.refresh_deadline_secs())
+            }
+        };
+        let timer = ScheduledRefresh {
+            due_at_secs,
+            key: key.clone(),
+            kind: TimerKind::Due,
+        };
+        Some((inbox, timer))
     }
 
     /// Arms a parked entry that is in use again, for the second it falls due
@@ -667,27 +670,24 @@ impl DnsCache {
     /// the entry, which is why it is passed in rather than looked up.
     #[cold]
     fn rearm_refresh(&self, key: &CacheKey, record: &CachedRecord) {
-        let Some(inbox) = self.arming_inbox(record.ttl) else {
+        let Some(inbox) = self.renewing_inbox(record.ttl) else {
             return;
         };
         let due_at_secs = record.refresh_due_at_secs(self.refresh_threshold);
         if !record.try_unpark_refresh(due_at_secs) {
             return;
         }
-        let timer = ScheduledRefresh {
+        inbox.push(ScheduledRefresh {
             due_at_secs,
             key: key.clone(),
-            retry: false,
-        };
-        if self.push_refresh_timer(inbox, timer).is_err() {
-            record.release_refresh_timer(due_at_secs);
-        }
+            kind: TimerKind::Due,
+        });
     }
 
     /// Arms the one more attempt a renewal on a timer gets when it did not
     /// renew the entry, `in_secs` from now. Called while that renewal still
-    /// holds the entry, so compaction cannot arm it first; a renewal or a
-    /// re-arm that won the entry in the meantime keeps its own timer.
+    /// holds the entry; a renewal or a re-arm that won the entry in the
+    /// meantime keeps its own timer.
     pub(crate) fn schedule_retry(&self, key: &CacheKey, in_secs: u64) {
         let Some(inbox) = self.timer_inbox() else {
             return;
@@ -698,12 +698,11 @@ impl DnsCache {
             .get(key)
             .is_some_and(|entry| entry.try_rearm_lapsed_refresh(due_at_secs));
         if armed {
-            let timer = ScheduledRefresh {
+            inbox.push(ScheduledRefresh {
                 due_at_secs,
                 key: key.clone(),
-                retry: true,
-            };
-            self.push_or_release(inbox, timer);
+                kind: TimerKind::Retry,
+            });
         }
     }
 
@@ -791,28 +790,13 @@ impl DnsCache {
 
             // The new lifetime gets its own timer, which replaces whatever the
             // entry had pending: that one now fires stale.
-            match self.arming_inbox(ttl) {
-                Some(inbox) => {
-                    let due_at_secs = record.refresh_due_at_secs(self.refresh_threshold);
-                    record.set_refresh_timer(due_at_secs);
-                    let timer = ScheduledRefresh {
-                        due_at_secs,
-                        key: key.clone(),
-                        retry: false,
-                    };
-                    Some((inbox, timer))
-                }
-                None => {
-                    record.lapse_refresh_timer();
-                    None
-                }
-            }
+            self.first_timer(key, record)
         } else {
             return false;
         };
 
         if let Some((inbox, timer)) = timer {
-            self.push_or_release(inbox, timer);
+            inbox.push(timer);
         }
         true
     }

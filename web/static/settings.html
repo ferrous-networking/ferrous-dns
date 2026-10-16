@@ -1360,7 +1360,7 @@
                             <i data-lucide="archive" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Compaction Interval</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Interval between full cache compaction passes that remove expired entries. Each pass also retries the renewal of entries whose last refresh failed, for example on an upstream timeout. Lower values free memory and retry failed renewals sooner; higher values reduce CPU overhead at the cost of holding stale entries slightly longer.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">How long an entry whose renewal failed, for example on an upstream timeout, waits before its renewal is tried again. Lower values retry sooner; higher values ask a failing upstream less often. Expired entries leave the cache on their own, the second they can no longer be served.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
                         <input type="number" x-model.number="config.dns.cache_compaction_interval" min="60" style="width:100%;text-align:right">
