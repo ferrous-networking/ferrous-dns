@@ -181,6 +181,7 @@
             expandedUpstreams: [],
             // Client groups a conditional pool can be routed for.
             clientGroups: [],
+            clientGroupsLoaded: false,
             // Pool server fields show their format error once left, or all of them after a save attempt.
             serverTouched: {},
             showServerErrors: false,
@@ -404,7 +405,10 @@
             async loadClientGroups() {
                 try {
                     const res = await apiFetch(`${API_BASE}/groups`);
-                    if (res.ok) this.clientGroups = await res.json()
+                    if (res.ok) {
+                        this.clientGroups = await res.json();
+                        this.clientGroupsLoaded = true;
+                    }
                 } catch (e) {
                     console.error('Load client groups error:', e)
                 }
@@ -464,6 +468,25 @@
             togglePoolGroup(pool, id) {
                 const groups = pool.groups || [];
                 pool.groups = groups.includes(id) ? groups.filter(g => g !== id) : [...groups, id];
+            },
+            // Every client group, then each id the pool still names that no longer
+            // exists, so it shows checked and can be unchecked.
+            poolGroupOptions(pool) {
+                const known = new Set(this.clientGroups.map(g => g.id));
+                const missing = (pool.groups || []).filter(id => !known.has(id)).map(id => ({
+                    id,
+                    name: this.clientGroupsLoaded ? `Group ${id} (deleted)` : `Group ${id}`,
+                    missing: this.clientGroupsLoaded
+                }));
+                return [...this.clientGroups, ...missing];
+            },
+            // Mirrors check_pool_groups (crates/api/src/handlers/config/update.rs), message included.
+            missingGroupError(pools) {
+                if (!this.clientGroupsLoaded) return '';
+                const known = new Set(this.clientGroups.map(g => g.id));
+                const wanted = [...new Set(pools.flatMap(p => this.poolRouting(p).groups))].sort((a, b) => a - b);
+                const id = wanted.find(g => !known.has(g));
+                return id === undefined ? '' : `A pool is routed for client group ${id}, which does not exist`;
             },
             // Mirrors normalize_route_domain (crates/domain/src/config/upstream.rs):
             // only what the backend rejects too is flagged, with its message.
@@ -747,7 +770,9 @@
                     this.showAlert('error', 'Failed to save: ' + invalidServer);
                     return;
                 }
-                const routingError = poolsChanged ? this.firstRoutingError(cleanedPools) : '';
+                const routingError = poolsChanged
+                    ? this.firstRoutingError(cleanedPools) || this.missingGroupError(cleanedPools)
+                    : '';
                 if (routingError) {
                     this.showAlert('error', 'Failed to save: ' + routingError);
                     return;

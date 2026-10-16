@@ -139,7 +139,8 @@ fn merge_config_update(
 }
 
 /// Rejects a pool routed for a client group that does not exist: its domains
-/// would be routed for nobody, with nothing to say so.
+/// would be routed for nobody, with nothing to say so. `missingGroupError` in
+/// `web/static/settings.js` mirrors this check and its message.
 async fn check_pool_groups(state: &AppState, pools: &[UpstreamPool]) -> Result<(), SaveResponse> {
     let wanted: BTreeSet<i64> = pools
         .iter()
