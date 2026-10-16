@@ -1,3 +1,4 @@
+use super::coarse_clock::coarse_now_secs;
 use super::key::CacheKey;
 use super::record::CachedRecord;
 use super::schedule::{ScheduledRefresh, TimerKind, REFRESH_LEAD_SECS};
@@ -37,6 +38,12 @@ pub struct DueRefresh {
 impl DueRefresh {
     fn rank(&self) -> (bool, u64) {
         (self.is_cold, self.deadline_secs)
+    }
+
+    /// Whether the entry died waiting for a permit. A claim holds no timer,
+    /// so the worker checks this itself rather than wait for the permit.
+    pub fn has_died_by(&self, now_secs: u64) -> bool {
+        self.deadline_secs <= now_secs
     }
 }
 
@@ -110,9 +117,11 @@ impl DnsCache {
             // A hit that read the state before the park armed nothing; the
             // access it recorded is visible now, so it is not missed.
             if !self.is_worth_renewing(record, now_secs) || !record.try_reclaim_parked_refresh() {
+                // Until a hit wants it again, the only timer it needs is the
+                // one that removes it at its death.
                 let dead_at_secs = record.refresh_deadline_secs();
                 drop(entry);
-                self.arm_expiry(&timer.key, dead_at_secs);
+                self.arm_timer(timer.key.clone(), dead_at_secs, TimerKind::Due);
                 return None;
             }
         }
@@ -133,8 +142,9 @@ impl DnsCache {
     /// renewals fell behind what was due, and removes it.
     ///
     /// The claim held no in-flight bit while it waited, so a client served
-    /// stale meanwhile could still queue its own repair, whose end arms the
-    /// entry's next timer.
+    /// stale meanwhile could still queue its own repair. That repair may
+    /// already be past arming the entry's next timer, so standing down for it
+    /// arms one here; a renewal that lands first replaces it.
     pub fn start_claimed_refresh(&self, key: &CacheKey, now_secs: u64) -> bool {
         let Some(entry) = self.cache.get(key) else {
             return false;
@@ -145,13 +155,50 @@ impl DnsCache {
         }
         if record.is_marked_for_deletion() || record.is_dead_at_secs(now_secs) {
             drop(entry);
-            self.metrics
-                .optimistic_refresh_shed
-                .fetch_add(1, AtomicOrdering::Relaxed);
-            self.remove_dead(key, now_secs);
+            self.give_up_dead_claim(key, now_secs);
             return false;
         }
-        record.try_set_refreshing()
+        if record.try_set_refreshing() {
+            return true;
+        }
+        drop(entry);
+        self.rearm_lapsed(key);
+        false
+    }
+
+    /// Gives up a claimed renewal whose entry died waiting for a permit:
+    /// counted as shed, since renewals fell behind what was due, and the
+    /// entry removed.
+    pub(crate) fn give_up_dead_claim(&self, key: &CacheKey, now_secs: u64) {
+        self.metrics
+            .optimistic_refresh_shed
+            .fetch_add(1, AtomicOrdering::Relaxed);
+        self.remove_dead(key, now_secs);
+    }
+
+    /// Arms the next renewal of an entry whose renewal ended without renewing
+    /// it and gets no retry of its own: `cache_compaction_interval` from now,
+    /// or the second it dies if that comes first, when the timer removes it
+    /// instead. An entry with a timer pending, such as one a renewal or a
+    /// re-arm armed in the meantime, keeps it.
+    ///
+    /// Only this timer retries it, never a hit, so a failing upstream is asked
+    /// once per interval, not once per hit.
+    pub(crate) fn rearm_lapsed(&self, key: &CacheKey) {
+        let Some(entry) = self.cache.get(key) else {
+            return;
+        };
+        if !self.renews_ahead(entry.ttl) {
+            return;
+        }
+        let due_at_secs = coarse_now_secs()
+            .saturating_add(self.retry_lapsed_after_secs)
+            .min(entry.refresh_deadline_secs());
+        if !entry.try_rearm_lapsed_refresh(due_at_secs) {
+            return;
+        }
+        drop(entry);
+        self.arm_timer(key.clone(), due_at_secs, TimerKind::Due);
     }
 
     pub fn reset_refreshing(&self, domain: &str, record_type: &RecordType) {

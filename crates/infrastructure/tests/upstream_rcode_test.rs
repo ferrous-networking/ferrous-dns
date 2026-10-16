@@ -10,7 +10,7 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::{CachedResolver, CoreResolver};
 use ferrous_dns_infrastructure::dns::{
     CachedAddresses, CachedData, ColdThresholds, DnsCache, DnsCacheAccess, DnsCacheConfig,
-    DnsCacheMaintenance, EvictionStrategy, PoolManager, RefreshRequest, RefreshSenders, TimerInbox,
+    DnsCacheMaintenance, EvictionStrategy, PoolManager, RefreshRequest,
 };
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::{A, SOA};
@@ -446,6 +446,8 @@ fn create_cache() -> Arc<DnsCache> {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     }))
 }
 
@@ -486,23 +488,16 @@ struct Worker {
 fn start_worker(cache: &Arc<DnsCache>, pm: Arc<PoolManager>) -> Worker {
     let _ticker = coarse_clock::start_clock_ticker();
     let (stale, stale_rx) = mpsc::channel(16);
-    let timers = Arc::new(TimerInbox::new());
-    cache.set_refresh_senders(RefreshSenders {
-        stale: stale.clone(),
-        timers: Arc::clone(&timers),
-        renew_ahead: true,
-    });
+    cache.set_stale_repairs(stale.clone());
     DnsCacheMaintenance::start_refresh_worker(
         Arc::clone(cache),
         Arc::new(CoreResolver::new(pm, TIMEOUT_MS, false)),
         None,
         stale_rx,
-        timers,
         ColdThresholds {
             min_hit_rate: 0.0,
             min_frequency: 0,
         },
-        300,
     );
     Worker { stale }
 }

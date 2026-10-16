@@ -20,6 +20,8 @@ fn create_cache(min_ttl: u32) -> DnsCache {
         lfuk_k_value: 0.5,
         min_ttl,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     })
 }
 

@@ -8,12 +8,14 @@
 //!
 //! Removal works the same way. An entry nobody renews gets a timer for the
 //! second it stops being usable, and a timer that finds its entry dead removes
-//! it. Every entry the cache can lose has one timer pending at all times, so
-//! no pass over the cache has to look for dead entries either.
+//! it. Every entry the cache can lose has at least one timer pending at all
+//! times, so no pass over the cache has to look for dead entries either.
 //!
-//! A timer holds only the key and its second. The record keeps the second of
-//! its one pending timer, so a timer that fires for any other second is
-//! stale: a renewal or a re-arm since replaced it.
+//! A timer holds only the key and its second; what it does when it fires is
+//! read from the record. A dead entry is removed by whichever timer finds it.
+//! A live one is renewed only by the timer whose second the record holds as
+//! its pending renewal: any other is stale, and spends nothing. So a timer
+//! left over by a renewal or a re-arm is harmless.
 
 use super::key::CacheKey;
 use std::collections::BTreeMap;
@@ -38,8 +40,8 @@ thread_local! {
 /// What a timer is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerKind {
-    /// The entry's renewal, or its expiry: the record says which when it
-    /// fires. One that finds the entry dead removes it.
+    /// A positive entry's timer. It removes the entry if dead, renews it if
+    /// this is its pending renewal, and is stale otherwise.
     Due,
     /// The one more attempt a renewal on a timer gets when it did not renew
     /// the entry. It gets no further one.
@@ -188,47 +190,107 @@ impl RefreshSchedule {
     }
 
     /// One step of a sweep that drops the timers `keep` rejects, such as
-    /// those whose entry was evicted. It visits the seconds from `from` on
-    /// until it has looked at `budget` timers, and returns the second to
-    /// resume from, or `None` once it has been through them all. The first
-    /// step (from 0) also sweeps the retries, of which there are few. Negative
-    /// expiries are left alone: `keep` asks about positive entries, and none
-    /// outlives `MAX_NEGATIVE_TTL` anyway.
+    /// those whose entry was evicted. It visits the positive entries' timers
+    /// from `from` on, then the negative expiries, until it has looked at
+    /// `budget` timers, and returns where to resume, or `None` once it has
+    /// been through them all. The first step also sweeps the retries, of
+    /// which there are few.
     pub fn sweep(
         &mut self,
-        from: u64,
+        from: SweepFrom,
         budget: usize,
-        mut keep: impl FnMut(&CacheKey) -> bool,
-    ) -> Option<u64> {
+        mut keep: impl FnMut(&CacheKey, TimerKind) -> bool,
+    ) -> Option<SweepFrom> {
         let mut removed = 0;
-        if from == 0 {
+        if from == SweepFrom::START {
             self.retries.retain(|_, keys| {
                 let before = keys.len();
-                keys.retain(&mut keep);
+                keys.retain(|key| keep(key, TimerKind::Retry));
                 removed += before - keys.len();
                 !keys.is_empty()
             });
         }
-        let mut visited = 0;
-        let mut emptied = Vec::new();
+        let mut budget = budget;
         let mut resume = None;
-        for (&second, keys) in self.timers.range_mut(from..) {
-            if visited >= budget {
-                resume = Some(second);
-                break;
-            }
-            visited += keys.len();
-            let before = keys.len();
-            keys.retain(&mut keep);
-            removed += before - keys.len();
-            if keys.is_empty() {
-                emptied.push(second);
-            }
+        if from.kind == TimerKind::Due {
+            resume = sweep_lane(
+                &mut self.timers,
+                from.second,
+                &mut budget,
+                &mut removed,
+                |key| keep(key, TimerKind::Due),
+            )
+            .map(|second| SweepFrom {
+                kind: TimerKind::Due,
+                second,
+            });
         }
-        for second in emptied {
-            self.timers.remove(&second);
+        if resume.is_none() {
+            let start = if from.kind == TimerKind::NegativeExpiry {
+                from.second
+            } else {
+                0
+            };
+            resume = sweep_lane(
+                &mut self.negatives,
+                start,
+                &mut budget,
+                &mut removed,
+                |key| keep(key, TimerKind::NegativeExpiry),
+            )
+            .map(|second| SweepFrom {
+                kind: TimerKind::NegativeExpiry,
+                second,
+            });
         }
         self.len -= removed;
         resume
     }
+}
+
+/// Where a sweep resumes: in the lane of `kind`, `Due` or `NegativeExpiry`,
+/// at `second`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SweepFrom {
+    pub kind: TimerKind,
+    pub second: u64,
+}
+
+impl SweepFrom {
+    /// The first step of a sweep.
+    pub const START: Self = Self {
+        kind: TimerKind::Due,
+        second: 0,
+    };
+}
+
+/// Sweeps `lane` from `from` on until `budget` timers have been looked at,
+/// adding what it dropped to `removed`. Returns the second to resume from,
+/// or `None` once it reached the end.
+fn sweep_lane(
+    lane: &mut BTreeMap<u64, Vec<CacheKey>>,
+    from: u64,
+    budget: &mut usize,
+    removed: &mut usize,
+    mut keep: impl FnMut(&CacheKey) -> bool,
+) -> Option<u64> {
+    let mut emptied = Vec::new();
+    let mut resume = None;
+    for (&second, keys) in lane.range_mut(from..) {
+        if *budget == 0 {
+            resume = Some(second);
+            break;
+        }
+        *budget = budget.saturating_sub(keys.len());
+        let before = keys.len();
+        keys.retain(&mut keep);
+        *removed += before - keys.len();
+        if keys.is_empty() {
+            emptied.push(second);
+        }
+    }
+    for second in emptied {
+        lane.remove(&second);
+    }
+    resume
 }

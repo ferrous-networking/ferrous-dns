@@ -13,7 +13,7 @@ use ferrous_dns_domain::{DnsQuery, RecordType, UpstreamPool, UpstreamStrategy};
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
 use ferrous_dns_infrastructure::dns::{
-    BorrowedKey, CachedData, DnsCache, DnsCacheAccess, PoolManager, RefreshSenders, TimerInbox,
+    BorrowedKey, CachedData, DnsCache, DnsCacheAccess, PoolManager,
 };
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -245,7 +245,7 @@ async fn test_refresh_renews_a_group_entry_through_the_group_pool() {
     // Due a second after it is stored, and never cold.
     let f = fixture_with(refresh::refresh_cache(100, 0.0, u64::MAX)).await;
     let maintenance = ResolverBuilder::new(Arc::clone(&f.pm), TIMEOUT_MS).build();
-    let _worker = refresh::start_worker(&f.cache, maintenance, refresh::no_ranking(), true);
+    let _worker = refresh::start_worker(&f.cache, maintenance, refresh::no_ranking());
 
     assert_eq!(
         resolve(&f.stack, NAME, Some(GROUP_A)).await,
@@ -359,11 +359,7 @@ async fn test_group_view_entries_are_evicted_like_any_other() {
 fn test_stale_hit_in_a_group_view_queues_a_repair_for_that_view() {
     let cache = refresh::refresh_cache(100, 0.0, 7_200);
     let (stale, mut stale_rx) = tokio::sync::mpsc::channel(16);
-    cache.set_refresh_senders(RefreshSenders {
-        stale,
-        timers: Arc::new(TimerInbox::new()),
-        renew_ahead: false,
-    });
+    cache.set_stale_repairs(stale);
     let view = GROUP_A as u32;
     DnsCacheAccess::insert(
         cache.as_ref(),
@@ -505,7 +501,7 @@ async fn test_unrouted_name_coalesces_across_groups() {
 async fn test_refresh_renews_a_shared_entry_through_the_default_pools() {
     let f = fixture_with(refresh::refresh_cache(100, 0.0, u64::MAX)).await;
     let maintenance = ResolverBuilder::new(Arc::clone(&f.pm), TIMEOUT_MS).build();
-    let _worker = refresh::start_worker(&f.cache, maintenance, refresh::no_ranking(), true);
+    let _worker = refresh::start_worker(&f.cache, maintenance, refresh::no_ranking());
 
     assert_eq!(
         resolve(&f.stack, UNROUTED, Some(GROUP_A)).await,

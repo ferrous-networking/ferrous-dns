@@ -21,7 +21,7 @@ fn cache(refresh_threshold: f64) -> Arc<DnsCache> {
 }
 
 fn start(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
-    start_worker(cache, resolver, no_ranking(), true);
+    start_worker(cache, resolver, no_ranking());
 }
 
 /// Answers every query with one address and a fixed TTL, recording the

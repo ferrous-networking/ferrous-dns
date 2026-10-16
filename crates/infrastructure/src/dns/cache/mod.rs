@@ -23,6 +23,7 @@ pub use port::{DnsCacheAccess, LocalRecordStatus};
 pub use record::CachedRecord;
 pub use refresh::{ColdThresholds, DueRefresh};
 pub use schedule::{
-    refresh_due_at, RefreshSchedule, ScheduledRefresh, TimerInbox, TimerKind, REFRESH_LEAD_SECS,
+    refresh_due_at, RefreshSchedule, ScheduledRefresh, SweepFrom, TimerInbox, TimerKind,
+    REFRESH_LEAD_SECS,
 };
-pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest, RefreshSenders};
+pub use storage::{DnsCache, DnsCacheConfig, RefreshRequest};

@@ -36,6 +36,8 @@ pub(super) fn build_cache(config: &Config) -> Arc<DnsCache> {
             lfuk_k_value: 0.5,
             min_ttl: config.dns.cache_min_ttl,
             max_ttl: config.dns.cache_max_ttl,
+            renew_ahead: config.dns.cache_optimistic_refresh,
+            retry_lapsed_after_secs: config.dns.cache_compaction_interval,
         }))
     } else {
         Arc::new(DnsCache::new(DnsCacheConfig {
@@ -51,6 +53,8 @@ pub(super) fn build_cache(config: &Config) -> Arc<DnsCache> {
             lfuk_k_value: 0.5,
             min_ttl: config.dns.cache_min_ttl,
             max_ttl: config.dns.cache_max_ttl,
+            renew_ahead: false,
+            retry_lapsed_after_secs: config.dns.cache_compaction_interval,
         }))
     }
 }

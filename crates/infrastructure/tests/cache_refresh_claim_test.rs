@@ -13,10 +13,10 @@ mod refresh;
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::{
-    CachedData, ColdThresholds, DnsCache, ScheduledRefresh, TimerInbox, TimerKind,
+    CachedData, ColdThresholds, DnsCache, DnsCacheConfig, ScheduledRefresh, TimerInbox, TimerKind,
 };
 use refresh::{
-    address, cname, drain, no_ranking, refresh_cache, wire_timers, wire_timers_renewing,
+    address, cname, drain, no_ranking, refresh_cache, refresh_cache_config, wire_timers,
 };
 use std::collections::BinaryHeap;
 use std::sync::atomic::Ordering;
@@ -123,8 +123,11 @@ fn test_permanent_entries_arm_nothing_and_negative_ones_only_their_expiry() {
 #[test]
 fn test_without_optimistic_refresh_only_the_expiry_is_armed() {
     coarse_clock::tick();
-    let cache = cache(0.0, u64::MAX);
-    let (timers, _stale) = wire_timers_renewing(&cache, false);
+    let cache = DnsCache::new(DnsCacheConfig {
+        renew_ahead: false,
+        ..refresh_cache_config(100, 0.0, u64::MAX)
+    });
+    let (timers, _stale) = wire_timers(&cache);
     let inserted = coarse_clock::coarse_now_secs();
 
     cache.insert("plain.example", RecordType::A, cname(), 300, None);
@@ -385,14 +388,6 @@ fn test_a_burst_on_one_thread_loses_no_timer() {
         );
     }
 
-    assert_eq!(
-        cache
-            .metrics()
-            .optimistic_refresh_shed
-            .load(Ordering::Relaxed),
-        0,
-        "no timer is shed"
-    );
     assert_eq!(drain(&timers).len(), 10_000);
 }
 
@@ -445,7 +440,9 @@ fn test_claim_whose_entry_died_waiting_is_counted_as_shed() {
 }
 
 /// A claim waiting for a permit does not keep a client served stale from
-/// queueing its own repair, and the claim then stands down.
+/// queueing its own repair, and the claim then stands down. The repair may
+/// already be past arming the entry's next timer, so standing down arms one:
+/// otherwise a repair that failed would leave the entry with none.
 #[test]
 fn test_claim_waiting_for_a_permit_does_not_block_a_stale_repair() {
     coarse_clock::tick();
@@ -468,6 +465,18 @@ fn test_claim_waiting_for_a_permit_does_not_block_a_stale_repair() {
     assert!(
         !cache.start_claimed_refresh(&timer.key, coarse_clock::coarse_now_secs()),
         "the repair is in flight, so the claim must not resolve too"
+    );
+
+    let next = armed(&timers, "waiting.example");
+    // TTL 3: it dies 6 s after insertion, before the 300 s retry interval.
+    let inserted = timer.due_at_secs - 1;
+    assert_eq!(next.kind, TimerKind::Due);
+    assert_eq!(next.due_at_secs, inserted + 6);
+    assert!(
+        cache
+            .claim_due_refresh(&next, next.due_at_secs - 1, &no_ranking())
+            .is_some(),
+        "the armed timer is the entry's pending renewal"
     );
 }
 

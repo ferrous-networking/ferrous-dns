@@ -173,6 +173,8 @@ impl Server {
             lfuk_k_value: 0.5,
             min_ttl: 0,
             max_ttl: 86_400,
+            renew_ahead: true,
+            retry_lapsed_after_secs: 300,
         }));
         for (name, record_type, data) in entries {
             cache.insert(name, record_type, data, 300, None);

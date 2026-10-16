@@ -1,9 +1,9 @@
 //! The eviction branch that does not score candidates.
 //!
 //! `evict_entries` falls back to it whenever the cache already sits at or below
-//! half of `max_entries` — which happens when compaction drops a burst of
-//! short-TTL entries between the maintenance cycle's capacity check and the
-//! eviction it triggers.
+//! half of `max_entries` — which happens when expiry timers drop a burst of
+//! short-TTL entries between the refresh worker's capacity check and the
+//! eviction it starts on a blocking thread.
 //!
 //! That branch used to remove a key while still holding the dashmap shard guard
 //! it was iterating, so it deadlocked on its own shard and took the whole cache
@@ -41,6 +41,8 @@ fn make_cache(max_entries: usize) -> Arc<DnsCache> {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     }))
 }
 

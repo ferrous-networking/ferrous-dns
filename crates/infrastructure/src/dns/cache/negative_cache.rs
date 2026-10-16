@@ -128,6 +128,11 @@ impl NegativeDnsCache {
         self.cache.clear();
     }
 
+    /// Whether `key` is held, expired or not.
+    pub fn contains(&self, key: &CacheKey) -> bool {
+        self.cache.get(key).is_some()
+    }
+
     /// Removes `key` if it expired by `now_secs`, for the timer its insert
     /// armed. An entry stored over it since keeps its own, later expiry.
     pub fn remove_expired(&self, key: &CacheKey, now_secs: u64) -> bool {

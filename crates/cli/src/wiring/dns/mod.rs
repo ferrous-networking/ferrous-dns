@@ -21,7 +21,7 @@ use ferrous_dns_infrastructure::dns::{
     dnssec::DnssecStatsAdapter,
     resolver::{LocalPtrResolver, LocalWildcardResolver, PtrRegistry, WildcardRegistry},
     ColdThresholds, DgaDetector, HealthChecker, NxdomainHijackDetector, PoolManager,
-    RefreshSenders, ResponseIpFilterDetector, TimerInbox, TunnelingDetector,
+    ResponseIpFilterDetector, TunnelingDetector,
 };
 use ferrous_dns_jobs::{
     DgaEvictionJob, NxdomainHijackEvictionJob, ResponseIpFilterEvictionJob, TunnelingEvictionJob,
@@ -375,19 +375,12 @@ impl DnsServices {
             return Ok(None);
         }
 
-        // Wired with optimistic refresh off too: every entry's expiry is a
-        // timer, and eviction and serve-stale repairs run on the same worker.
-        let timers = Arc::new(TimerInbox::new());
         // The stale queue is shallower on purpose: those items are
         // latency-sensitive and served first, so it only has to absorb a
         // burst, not a backlog — the client interaction is over long before a
         // deep one would drain.
         let (stale_tx, stale_rx) = tokio::sync::mpsc::channel(128);
-        cache.set_refresh_senders(RefreshSenders {
-            stale: stale_tx,
-            timers: Arc::clone(&timers),
-            renew_ahead: config.dns.cache_optimistic_refresh,
-        });
+        cache.set_stale_repairs(stale_tx);
 
         let thresholds = ColdThresholds {
             min_hit_rate: config.dns.cache_min_hit_rate,
@@ -402,14 +395,14 @@ impl DnsServices {
             .builder(Arc::clone(&maintenance_pool_manager))
             .build();
 
+        // Started with optimistic refresh off too: every entry's expiry is a
+        // timer, and eviction and serve-stale repairs run on the same worker.
         DnsCacheMaintenance::start_refresh_worker(
             cache.clone(),
             resolver_for_maintenance,
             Some(repos.query_log.clone()),
             stale_rx,
-            timers,
             thresholds,
-            config.dns.cache_compaction_interval,
         );
 
         Ok(Some(maintenance_pool_manager))
@@ -560,7 +553,7 @@ mod tests {
     }
 
     /// An entry past its serve-stale window leaves the cache by itself, with
-    /// optimistic refresh on or off: no compaction pass has to come round first.
+    /// optimistic refresh on or off: no job has to come round first.
     #[tokio::test]
     async fn a_dead_entry_leaves_the_cache_without_a_job() {
         use ferrous_dns_domain::RecordType;

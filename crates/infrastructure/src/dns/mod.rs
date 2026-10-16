@@ -23,7 +23,7 @@ pub use block_filter::BlockFilterEngine;
 pub use cache::{
     BorrowedKey, CachedAddresses, CachedData, CachedDnssecStatus, CachedRecord, ColdThresholds,
     DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy, LocalRecordStatus, RefreshRequest,
-    RefreshSchedule, RefreshSenders, ScheduledRefresh, TimerInbox, TimerKind,
+    RefreshSchedule, ScheduledRefresh, SweepFrom, TimerInbox, TimerKind,
 };
 pub use cache_maintenance::DnsCacheMaintenance;
 pub use dga_detection::DgaDetector;

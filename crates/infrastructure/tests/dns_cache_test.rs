@@ -24,6 +24,8 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     })
 }
 
@@ -59,6 +61,8 @@ fn create_cache(
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     })
 }
 
@@ -76,6 +80,8 @@ fn create_cache_with_ttl_limits(min_ttl: u32, max_ttl: u32) -> DnsCache {
         lfuk_k_value: 0.5,
         min_ttl,
         max_ttl,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     })
 }
 
@@ -426,6 +432,8 @@ fn test_lru_eviction_protects_recently_accessed_entry() {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     });
 
     // Inserir 3 entradas no tick T: last_access = T para todas
@@ -471,6 +479,8 @@ fn test_hit_rate_eviction_protects_high_hit_entries() {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     });
 
     cache.insert(
@@ -549,6 +559,8 @@ fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     });
 
     // Entradas com poucos hits (abaixo do min_frequency=5) têm score negativo
@@ -634,6 +646,8 @@ fn test_single_scan_evicts_exact_count() {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     });
 
     // Inserir max_entries entradas
@@ -776,8 +790,6 @@ fn test_lfuk_new_entries_evicted_in_order_not_urgently() {
     );
 }
 
-// ─── Testes de compaction ─────────────────────────────────────────────────────
-
 // ─── Testes de eviction policies ─────────────────────────────────────────────
 
 /// Scores an entry that was inserted and last read at `now_secs`.
@@ -807,6 +819,8 @@ fn test_lru_evicts_least_recently_used() {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     });
 
     coarse_clock::tick();

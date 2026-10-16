@@ -3,7 +3,8 @@
 
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::{
-    refresh_due_at, CacheKey, RefreshSchedule, ScheduledRefresh, TimerKind, REFRESH_LEAD_SECS,
+    refresh_due_at, CacheKey, RefreshSchedule, ScheduledRefresh, SweepFrom, TimerKind,
+    REFRESH_LEAD_SECS,
 };
 
 const INSERTED: u64 = 1_000_000;
@@ -148,9 +149,10 @@ fn test_sweep_drops_rejected_timers_and_keeps_the_count() {
         schedule.register(timer(&format!("t-{i}.example"), i, kind));
     }
 
-    let keep =
-        |key: &CacheKey| key.domain.ends_with("2.example") || key.domain.ends_with("3.example");
-    assert_eq!(schedule.sweep(0, usize::MAX, keep), None);
+    let keep = |key: &CacheKey, _: TimerKind| {
+        key.domain.ends_with("2.example") || key.domain.ends_with("3.example")
+    };
+    assert_eq!(schedule.sweep(SweepFrom::START, usize::MAX, keep), None);
 
     assert_eq!(schedule.len(), 2);
     let due: Vec<String> = schedule
@@ -161,34 +163,55 @@ fn test_sweep_drops_rejected_timers_and_keeps_the_count() {
     assert_eq!(due, vec!["t-2.example", "t-3.example"]);
 }
 
-/// `keep` asks about positive entries, so a sweep leaves negative expiries
-/// alone: each removes its own entry when it fires.
+/// A sweep drops the negative expiries whose entry is gone too, asking `keep`
+/// about each with its kind.
 #[test]
-fn test_sweep_leaves_negative_expiries_alone() {
+fn test_sweep_drops_negative_expiries_whose_entry_is_gone() {
     let mut schedule = RefreshSchedule::default();
-    schedule.register(timer("gone.example", 5, TimerKind::Due));
-    schedule.register(timer("missing.example", 5, TimerKind::NegativeExpiry));
+    schedule.register(timer("live.example", 5, TimerKind::Due));
+    schedule.register(timer("evicted.example", 5, TimerKind::NegativeExpiry));
+    schedule.register(timer("missing.example", 6, TimerKind::NegativeExpiry));
 
-    assert_eq!(schedule.sweep(0, usize::MAX, |_| false), None);
+    let keep = |key: &CacheKey, kind: TimerKind| match kind {
+        TimerKind::NegativeExpiry => key.domain == "missing.example",
+        _ => true,
+    };
+    assert_eq!(schedule.sweep(SweepFrom::START, usize::MAX, keep), None);
 
-    let due = schedule.take_due(5);
-    assert_eq!(due.len(), 1);
-    assert_eq!(due[0].kind, TimerKind::NegativeExpiry);
+    assert_eq!(schedule.len(), 2);
+    let due: Vec<(String, TimerKind)> = schedule
+        .take_due(u64::MAX)
+        .into_iter()
+        .map(|timer| (timer.key.domain.to_string(), timer.kind))
+        .collect();
+    assert_eq!(
+        due,
+        vec![
+            ("live.example".to_string(), TimerKind::Due),
+            ("missing.example".to_string(), TimerKind::NegativeExpiry)
+        ]
+    );
 }
 
 /// A sweep spreads over steps of `budget` timers, resuming where it left off,
-/// and ends once every second has been visited.
+/// through the positive timers and then the negative ones, and ends once
+/// every second of both has been visited.
 #[test]
 fn test_sweep_resumes_until_every_timer_is_visited() {
     let mut schedule = RefreshSchedule::default();
-    for i in 1..=100u64 {
+    for i in 1..=50u64 {
         schedule.register(timer(&format!("t-{i}.example"), i, TimerKind::Due));
+        schedule.register(timer(
+            &format!("n-{i}.example"),
+            i,
+            TimerKind::NegativeExpiry,
+        ));
     }
 
-    let mut from = 0;
+    let mut from = SweepFrom::START;
     let mut steps = 0;
-    while let Some(next) = schedule.sweep(from, 10, |_| false) {
-        assert!(next > from, "each step moves forward");
+    while let Some(next) = schedule.sweep(from, 10, |_, _| false) {
+        assert_ne!(next, from, "each step moves forward");
         from = next;
         steps += 1;
     }

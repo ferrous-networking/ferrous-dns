@@ -17,11 +17,11 @@ use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::forwarding::ResponseParser;
 use ferrous_dns_infrastructure::dns::{
-    CachedData, ColdThresholds, DnsCache, ScheduledRefresh, TimerKind,
+    CachedData, ColdThresholds, DnsCache, DnsCacheConfig, ScheduledRefresh, TimerKind,
 };
 use refresh::{
-    address, cached_addresses, cname, no_ranking, refresh_cache, start_worker,
-    start_worker_retrying_after, wait_until, NEW_IP, OLD_IP,
+    address, cached_addresses, cname, no_ranking, refresh_cache, refresh_cache_config,
+    start_worker, wait_until, NEW_IP, OLD_IP,
 };
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,6 +31,15 @@ use tokio::sync::Semaphore;
 
 fn create_cache_with(max_entries: usize, refresh_threshold: f64) -> Arc<DnsCache> {
     refresh_cache(max_entries, refresh_threshold, u64::MAX)
+}
+
+/// [`create_cache_with`] with optimistic refresh off: nothing is renewed
+/// ahead of expiry, and only serve-stale repairs reach the worker.
+fn create_cache_without_renewal(max_entries: usize, refresh_threshold: f64) -> Arc<DnsCache> {
+    Arc::new(DnsCache::new(DnsCacheConfig {
+        renew_ahead: false,
+        ..refresh_cache_config(max_entries, refresh_threshold, u64::MAX)
+    }))
 }
 
 fn insert_entries(cache: &DnsCache, count: usize, ttl: u32) {
@@ -183,7 +192,6 @@ async fn test_entry_is_renewed_before_it_expires() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     coarse_clock::tick();
     let inserted_at = coarse_clock::coarse_now_secs();
@@ -242,7 +250,6 @@ async fn test_renewal_arms_the_next_renewal() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("loop.example", RecordType::A, cname(), 2, None);
     let (stop, client) = keep_asking(&cache, "loop.example", Duration::from_millis(300));
@@ -270,7 +277,6 @@ async fn test_short_ttl_stops_renewing_once_nobody_asks() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("once.example", RecordType::A, cname(), 4, None);
 
@@ -297,7 +303,6 @@ async fn test_a_burst_of_due_entries_is_all_renewed() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     insert_entries(&cache, 200, 300);
 
@@ -319,7 +324,6 @@ async fn test_idle_entry_is_renewed_again_once_it_is_used() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("idle.example", RecordType::A, cname(), 300, None);
 
@@ -341,7 +345,6 @@ async fn test_timer_for_an_entry_not_yet_due_spends_no_query() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("later.example", RecordType::A, address(OLD_IP), 3600, None);
     let now = coarse_clock::coarse_now_secs();
@@ -379,7 +382,6 @@ async fn test_renewal_never_shortens_a_valid_entry() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("anycast.example", RecordType::A, address(OLD_IP), 6, None);
 
@@ -421,7 +423,6 @@ async fn test_declined_renewal_is_settled_by_expiry() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     cache.insert("stingy.example", RecordType::A, address(OLD_IP), 10, None);
 
@@ -444,7 +445,6 @@ async fn test_every_upstream_servfailing_gets_exactly_one_retry() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     // Due a second in; the retry lands halfway through the 7 s left.
     cache.insert("flaky.example", RecordType::A, address(OLD_IP), 8, None);
@@ -467,16 +467,19 @@ async fn test_every_upstream_servfailing_gets_exactly_one_retry() {
 /// `cache_compaction_interval` for its next try: never one per hit.
 #[tokio::test]
 async fn test_other_failures_wait_the_compaction_interval_to_retry() {
-    let cache = create_cache_with(200, 0.0);
+    // The coarse clock can lag a second behind, so 6 s leaves the checks
+    // below at +3.7 s more than a second of margin.
+    let cache = Arc::new(DnsCache::new(DnsCacheConfig {
+        retry_lapsed_after_secs: 6,
+        ..refresh_cache_config(200, 0.0, u64::MAX)
+    }));
     let resolver = FailingResolver::new(DomainError::TransportTimeout {
         server: "udp://192.0.2.53:53".into(),
     });
-    let _worker = start_worker_retrying_after(
+    let _worker = start_worker(
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
-        5,
     );
     cache.insert("slow.example", RecordType::A, cname(), 300, None);
 
@@ -495,7 +498,7 @@ async fn test_other_failures_wait_the_compaction_interval_to_retry() {
     );
 
     assert!(
-        wait_until(Duration::from_secs(4), || resolver.count() >= 2).await,
+        wait_until(Duration::from_secs(5), || resolver.count() >= 2).await,
         "the compaction interval later it gets another try"
     );
 }
@@ -515,7 +518,6 @@ async fn test_stale_repair_goes_ahead_of_due_backlog() {
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        true,
     );
     insert_entries(&cache, 20, 300);
 
@@ -559,7 +561,6 @@ async fn test_due_backlog_starts_hot_entries_first() {
             min_hit_rate: 0.0,
             min_frequency: 3,
         },
-        true,
     );
     coarse_clock::tick();
     // 36 entries fall due in the same second, for 16 permits; 10 are hot.
@@ -598,13 +599,12 @@ async fn test_due_backlog_starts_hot_entries_first() {
 
 #[tokio::test]
 async fn test_stale_repair_runs_with_optimistic_refresh_off() {
-    let cache = create_cache_with(200, 0.0);
+    let cache = create_cache_without_renewal(200, 0.0);
     let resolver = RecordingResolver::new(Some(300));
     let _worker = start_worker(
         &cache,
         resolver.clone() as Arc<dyn DnsResolver>,
         no_ranking(),
-        false,
     );
     // TTL 3 (grace 6 s): the coarse clock moves in whole seconds, so a 2 s
     // grace leaves no margin after the sleep.
@@ -638,7 +638,7 @@ impl DnsResolver for BogusResolver {
 
 /// Runs one serve-stale repair of `queued-0.com` A against `resolver`.
 async fn repair(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
-    let worker = start_worker(cache, resolver, no_ranking(), false);
+    let worker = start_worker(cache, resolver, no_ranking());
     worker
         .stale
         .send((Arc::from("queued-0.com"), RecordType::A, 0))
@@ -651,7 +651,7 @@ async fn repair(cache: &Arc<DnsCache>, resolver: Arc<dyn DnsResolver>) {
 /// answer: cache hits skip DNSSEC enforcement, so Strict mode would serve it.
 #[tokio::test]
 async fn test_bogus_refresh_drops_the_entry_instead_of_renewing_it() {
-    let cache = create_cache_with(200, 0.0);
+    let cache = create_cache_without_renewal(200, 0.0);
     insert_entries(&cache, 1, 300);
 
     repair(&cache, Arc::new(BogusResolver)).await;
@@ -681,7 +681,7 @@ impl DnsResolver for IndeterminateResolver {
 /// until its own TTL ends, and the unvalidated answer does not replace it.
 #[tokio::test]
 async fn test_indeterminate_refresh_keeps_the_validated_entry() {
-    let cache = create_cache_with(200, 0.0);
+    let cache = create_cache_without_renewal(200, 0.0);
     insert_entries(&cache, 1, 300);
 
     repair(&cache, Arc::new(IndeterminateResolver)).await;
@@ -761,7 +761,7 @@ async fn ttl_after_repair(cache: &Arc<DnsCache>, resolver: WireResolver) -> (Cac
 /// for the hours its positive answer had.
 #[tokio::test]
 async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
-    let cache = create_cache_with(200, 0.0);
+    let cache = create_cache_without_renewal(200, 0.0);
     cache.insert(
         "queued-0.com",
         RecordType::A,
@@ -783,7 +783,7 @@ async fn test_refresh_into_nxdomain_takes_the_negative_ttl() {
 /// A cached NXDOMAIN is renewed for the SOA's current negative TTL.
 #[tokio::test]
 async fn test_negative_entry_renewal_follows_the_new_soa_ttl() {
-    let cache = create_cache_with(200, 0.0);
+    let cache = create_cache_without_renewal(200, 0.0);
     cache.insert(
         "queued-0.com",
         RecordType::A,

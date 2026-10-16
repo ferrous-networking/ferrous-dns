@@ -12,11 +12,11 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::cache::{coarse_clock, CacheKey};
 use ferrous_dns_infrastructure::dns::{
-    CachedData, DnsCache, ScheduledRefresh, TimerInbox, TimerKind,
+    CachedData, ColdThresholds, DnsCache, DnsCacheConfig, ScheduledRefresh, TimerInbox, TimerKind,
 };
 use refresh::{
-    cname, drain, no_ranking, refresh_cache, start_worker, wait_until, wire_timers,
-    wire_timers_renewing,
+    cname, drain, no_ranking, refresh_cache, refresh_cache_config, start_worker, wait_until,
+    wire_timers,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -24,6 +24,14 @@ use std::time::Duration;
 
 fn cache(access_window_secs: u64) -> Arc<DnsCache> {
     refresh_cache(100, 0.0, access_window_secs)
+}
+
+/// A cache with optimistic refresh off: an entry's only timer is its expiry.
+fn cache_without_renewal() -> DnsCache {
+    DnsCache::new(DnsCacheConfig {
+        renew_ahead: false,
+        ..refresh_cache_config(100, 0.0, u64::MAX)
+    })
 }
 
 fn compactions(cache: &DnsCache) -> u64 {
@@ -58,8 +66,8 @@ fn fire(cache: &DnsCache, timer: &ScheduledRefresh, now_secs: u64) {
 #[test]
 fn test_entry_is_removed_when_its_timer_fires_and_not_before() {
     coarse_clock::tick();
-    let cache = cache(u64::MAX);
-    let (timers, _stale) = wire_timers_renewing(&cache, false);
+    let cache = cache_without_renewal();
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("dying.example", RecordType::A, cname(), 300, None);
     let expiry = only_timer(&timers, "dying.example");
 
@@ -77,8 +85,8 @@ fn test_entry_is_removed_when_its_timer_fires_and_not_before() {
 #[test]
 fn test_entry_renewed_since_outlives_the_timer_of_its_old_life() {
     coarse_clock::tick();
-    let cache = cache(u64::MAX);
-    let (timers, _stale) = wire_timers_renewing(&cache, false);
+    let cache = cache_without_renewal();
+    let (timers, _stale) = wire_timers(&cache);
     cache.insert("renewed.example", RecordType::A, cname(), 300, None);
     let first = only_timer(&timers, "renewed.example");
 
@@ -174,7 +182,7 @@ impl DnsResolver for UnusedResolver {
 async fn test_worker_evicts_a_full_cache_tick_after_tick() {
     // 10 entries at most, 2 evicted per pass.
     let cache = refresh_cache(10, 0.75, u64::MAX);
-    let _worker = start_worker(&cache, Arc::new(UnusedResolver), no_ranking(), true);
+    let _worker = start_worker(&cache, Arc::new(UnusedResolver), no_ranking());
     for i in 0..14 {
         cache.insert(
             &format!("full-{i}.example"),
@@ -190,5 +198,51 @@ async fn test_worker_evicts_a_full_cache_tick_after_tick() {
         wait_until(Duration::from_secs(6), || evicted.len() < 10).await,
         "three passes on three ticks bring 14 entries under 10; left {}",
         cache.len()
+    );
+}
+
+/// Never answers, so each renewal holds its permit for good.
+struct HangingResolver;
+
+#[async_trait]
+impl DnsResolver for HangingResolver {
+    async fn resolve(&self, _query: &DnsQuery) -> Result<DnsResolution, DomainError> {
+        std::future::pending().await
+    }
+}
+
+/// A claimed renewal holds no timer while it waits for a permit. When hot
+/// renewals keep every permit, a cold claim that dies in the queue is removed
+/// by the worker all the same, and counted as shed.
+#[tokio::test]
+async fn test_claim_that_dies_waiting_for_a_permit_is_removed() {
+    // Every renewal is due a second after it is stored.
+    let cache = refresh_cache(100, 0.0, u64::MAX);
+    let cold_below_one_hit = ColdThresholds {
+        min_hit_rate: 0.0,
+        min_frequency: 1,
+    };
+    let _worker = start_worker(&cache, Arc::new(HangingResolver), cold_below_one_hit);
+    // Sixteen hot renewals take every permit and never give one back.
+    for i in 0..16 {
+        let name = format!("hot-{i}.example");
+        cache.insert(&name, RecordType::A, cname(), 300, None);
+        assert!(cache.get(&name, &RecordType::A).is_some());
+    }
+    // Cold, so it queues behind them; TTL 1, so it dies 2 s after insertion.
+    cache.insert("cold.example", RecordType::A, cname(), 1, None);
+
+    let waited = Arc::clone(&cache);
+    assert!(
+        wait_until(Duration::from_secs(5), || waited.len() == 16).await,
+        "the dead claim must leave the cache; {} entries",
+        cache.len()
+    );
+    assert_eq!(
+        cache
+            .metrics()
+            .optimistic_refresh_shed
+            .load(Ordering::Relaxed),
+        1
     );
 }

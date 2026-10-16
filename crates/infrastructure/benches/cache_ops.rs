@@ -12,14 +12,12 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::cache::CacheKey;
 use ferrous_dns_infrastructure::dns::{
     BorrowedKey, CachedAddresses, CachedData, ColdThresholds, DnsCache, DnsCacheAccess,
-    DnsCacheConfig, EvictionStrategy, RefreshSchedule, RefreshSenders, ScheduledRefresh,
-    TimerInbox, TimerKind,
+    DnsCacheConfig, EvictionStrategy, RefreshSchedule, ScheduledRefresh, TimerKind,
 };
 use std::hint::black_box;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Barrier};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 
 const HOT_NAME: &str = "www.example.com";
 const L2_NAME: &str = "alias.example.com";
@@ -34,7 +32,19 @@ const MAINTENANCE_TTL_SECS: u64 = 3600;
 const DEAD_ENTRIES: usize = 10_000;
 
 fn cache(max_entries: usize) -> Arc<DnsCache> {
+    Arc::new(DnsCache::new(config(max_entries)))
+}
+
+/// [`cache`] with optimistic refresh off: an entry's only timer is its expiry.
+fn cache_without_renewal(max_entries: usize) -> Arc<DnsCache> {
     Arc::new(DnsCache::new(DnsCacheConfig {
+        renew_ahead: false,
+        ..config(max_entries)
+    }))
+}
+
+fn config(max_entries: usize) -> DnsCacheConfig {
+    DnsCacheConfig {
         max_entries,
         eviction_strategy: EvictionStrategy::HitRate,
         refresh_threshold: 0.75,
@@ -47,7 +57,9 @@ fn cache(max_entries: usize) -> Arc<DnsCache> {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
-    }))
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
+    }
 }
 
 fn address() -> CachedData {
@@ -60,14 +72,8 @@ fn address() -> CachedData {
 /// worker does on its tick, so an insert pays for arming its timer as in
 /// production. It collects every millisecond rather than every second, so the
 /// inbox stays as small as it would in production at a benchmark's insert rate.
-fn wire_timer_drain(cache: &DnsCache, renew_ahead: bool) {
-    let (stale, _stale_rx) = mpsc::channel(128);
-    let timers = Arc::new(TimerInbox::new());
-    cache.set_refresh_senders(RefreshSenders {
-        stale,
-        timers: Arc::clone(&timers),
-        renew_ahead,
-    });
+fn wire_timer_drain(cache: &DnsCache) {
+    let timers = Arc::clone(cache.timer_inbox());
     std::thread::spawn(move || loop {
         timers.drain(|timer| drop(black_box(timer)));
         std::thread::sleep(Duration::from_millis(1));
@@ -143,7 +149,7 @@ fn cache_hits(c: &mut Criterion) {
     });
 
     let insert_cache = self::cache(MAINTENANCE_ENTRIES);
-    wire_timer_drain(&insert_cache, true);
+    wire_timer_drain(&insert_cache);
     let names: Vec<String> = (0..INSERT_NAMES)
         .map(|i| format!("host-{i}.example.com"))
         .collect();
@@ -156,8 +162,8 @@ fn cache_hits(c: &mut Criterion) {
         })
     });
     // Optimistic refresh off: the same insert, arming its expiry instead.
-    let refresh_off_cache = self::cache(MAINTENANCE_ENTRIES);
-    wire_timer_drain(&refresh_off_cache, false);
+    let refresh_off_cache = cache_without_renewal(MAINTENANCE_ENTRIES);
+    wire_timer_drain(&refresh_off_cache);
     group.bench_function("insert_refresh_off", |b| {
         b.iter(|| {
             let name = &names[next % names.len()];
@@ -207,20 +213,13 @@ fn refresh_maintenance(c: &mut Criterion) {
     // would cost the same `O(200k)` however few had died.
     let dead_cache = || {
         coarse_clock::tick();
-        let cache = cache(MAINTENANCE_ENTRIES);
-        let (stale, _stale_rx) = mpsc::channel(1);
-        let inbox = Arc::new(TimerInbox::new());
-        cache.set_refresh_senders(RefreshSenders {
-            stale,
-            timers: Arc::clone(&inbox),
-            renew_ahead: false,
-        });
+        let cache = cache_without_renewal(MAINTENANCE_ENTRIES);
         for (i, key) in keys.iter().enumerate() {
             let ttl = if i < DEAD_ENTRIES { 1 } else { 3600 };
             cache.insert(&key.domain, RecordType::A, address(), ttl, None);
         }
         let mut timers = Vec::new();
-        inbox.drain(|timer| timers.push(timer));
+        cache.timer_inbox().drain(|timer| timers.push(timer));
         timers.retain(|timer| timer.due_at_secs < coarse_clock::coarse_now_secs() + 3600);
         (cache, timers)
     };

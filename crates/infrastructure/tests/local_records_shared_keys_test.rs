@@ -63,6 +63,8 @@ impl Live {
             lfuk_k_value: 0.5,
             min_ttl: 0,
             max_ttl: 86_400,
+            renew_ahead: true,
+            retry_lapsed_after_secs: 300,
         }));
         let ptr_map = LocalPtrResolver::map_from_local_records(&[], None);
         let wildcard_map = LocalWildcardResolver::map_from_local_records(&[], None);

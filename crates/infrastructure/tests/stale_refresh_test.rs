@@ -1,8 +1,7 @@
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
-    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest, RefreshSenders,
-    TimerInbox,
+    CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, RefreshRequest,
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -22,6 +21,8 @@ fn create_stale_cache() -> DnsCache {
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
+        renew_ahead: true,
+        retry_lapsed_after_secs: 300,
     })
 }
 
@@ -29,15 +30,10 @@ fn make_cname_data(name: &str) -> CachedData {
     CachedData::CanonicalName(Arc::from(name))
 }
 
-/// Wires the stale queue, which is the one serve-stale hits feed, with
-/// nothing renewed ahead of expiry.
+/// Wires the stale queue, which is the one serve-stale hits feed.
 fn wire_stale_queue(cache: &DnsCache, capacity: usize) -> mpsc::Receiver<RefreshRequest> {
     let (stale_tx, stale_rx) = mpsc::channel(capacity);
-    cache.set_refresh_senders(RefreshSenders {
-        stale: stale_tx,
-        timers: Arc::new(TimerInbox::new()),
-        renew_ahead: false,
-    });
+    cache.set_stale_repairs(stale_tx);
     stale_rx
 }
 
@@ -206,12 +202,8 @@ fn test_armed_refresh_timer_still_schedules_stale_repair() {
     // com TTL 2, voltaria a perguntar, e a entrada morreria no fim do grace.
     let cache = create_stale_cache();
     let (stale_tx, mut stale_rx) = mpsc::channel(16);
-    let timers = Arc::new(TimerInbox::new());
-    cache.set_refresh_senders(RefreshSenders {
-        stale: stale_tx,
-        timers: Arc::clone(&timers),
-        renew_ahead: true,
-    });
+    cache.set_stale_repairs(stale_tx);
+    let timers = cache.timer_inbox();
 
     // TTL 3 (grace = 6 s) em vez de 1: o relógio grosseiro é global e outros
     // testes do binário chamam `tick()` em paralelo, então uma janela de 2 s
