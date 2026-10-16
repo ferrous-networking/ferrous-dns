@@ -1,6 +1,7 @@
 use super::require_group;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{Config, DomainError};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{error, info, instrument};
 
 use crate::ports::{BlockFilterEnginePort, GroupRepository};
@@ -8,16 +9,19 @@ use crate::ports::{BlockFilterEnginePort, GroupRepository};
 pub struct DeleteGroupUseCase {
     group_repo: Arc<dyn GroupRepository>,
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    config: Arc<RwLock<Config>>,
 }
 
 impl DeleteGroupUseCase {
     pub fn new(
         group_repo: Arc<dyn GroupRepository>,
         block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+        config: Arc<RwLock<Config>>,
     ) -> Self {
         Self {
             group_repo,
             block_filter_engine,
+            config,
         }
     }
 
@@ -32,6 +36,21 @@ impl DeleteGroupUseCase {
         let client_count = self.group_repo.count_clients_in_group(id).await?;
         if client_count > 0 {
             return Err(DomainError::GroupHasAssignedClients(client_count));
+        }
+
+        // A pool still naming the group could no longer be saved: every pool
+        // save rejects a group that does not exist.
+        let routing_pool = self
+            .config
+            .read()
+            .await
+            .dns
+            .pools
+            .iter()
+            .find(|pool| pool.groups.contains(&id))
+            .map(|pool| pool.name.clone());
+        if let Some(pool) = routing_pool {
+            return Err(DomainError::GroupRoutedByPool(pool));
         }
 
         self.group_repo.delete(id).await?;

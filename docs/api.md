@@ -83,7 +83,7 @@ Errors return an appropriate HTTP status code with:
 }
 ```
 
-Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) return `400 Bad Request`. Creating or renaming something to a name that is already taken returns `409 Conflict`, as does deleting a group that still has assigned clients. Length limits count characters, not bytes.
+Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) return `400 Bad Request`. Creating or renaming something to a name that is already taken returns `409 Conflict`, as does deleting a group that still has assigned clients or that an upstream pool routes domains for. Length limits count characters, not bytes.
 
 ---
 
@@ -803,7 +803,7 @@ PUT /api/groups/{id}
 DELETE /api/groups/{id}
 ```
 
-Returns `409` if the group still has assigned clients. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
+Returns `409` if the group still has assigned clients, or if an upstream pool routes domains for it (its `groups` in a [conditional pool](configuration/dns.md#conditional-forwarding)); remove the group from the pool first. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
 
 ### Get Group Clients
 

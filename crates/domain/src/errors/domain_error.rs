@@ -81,6 +81,9 @@ pub enum DomainError {
     #[error("Cannot delete group with {0} assigned clients")]
     GroupHasAssignedClients(u64),
 
+    #[error("Cannot delete group: upstream pool '{0}' routes domains for it")]
+    GroupRoutedByPool(String),
+
     #[error("Invalid group name: {0}")]
     InvalidGroupName(String),
 

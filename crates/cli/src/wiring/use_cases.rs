@@ -23,10 +23,12 @@ use ferrous_dns_application::use_cases::{
     UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateManagedDomainUseCase,
     UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase,
 };
+use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ferrous_dns_infrastructure::system::{LinuxArpReader, PtrHostnameResolver};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct UseCases {
     pub get_stats: Arc<GetQueryStatsUseCase>,
@@ -105,6 +107,7 @@ impl UseCases {
         repos: &Repositories,
         pool_manager: Arc<PoolManager>,
         local_dns_server: Option<SocketAddr>,
+        config: Arc<RwLock<Config>>,
     ) -> Self {
         let arp_reader = Arc::new(LinuxArpReader::new());
         let hostname_resolver = Arc::new(
@@ -158,6 +161,7 @@ impl UseCases {
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 repos.group.clone(),
                 repos.block_filter_engine.clone(),
+                config,
             )),
             assign_client_group: Arc::new(AssignClientGroupUseCase::new(
                 repos.client.clone(),

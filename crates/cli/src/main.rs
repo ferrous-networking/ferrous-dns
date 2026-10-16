@@ -70,6 +70,7 @@ async fn async_main() -> anyhow::Result<()> {
         &repos,
         dns_services.pool_manager.clone(),
         dns_services.local_dns_server,
+        config_arc.clone(),
     );
 
     bootstrap::spawn_jobs(

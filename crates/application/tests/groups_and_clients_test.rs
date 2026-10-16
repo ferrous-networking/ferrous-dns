@@ -2,8 +2,10 @@ use ferrous_dns_application::ports::GroupRepository;
 use ferrous_dns_application::use_cases::{
     CreateGroupUseCase, DeleteGroupUseCase, UpdateClientUseCase,
 };
-use ferrous_dns_domain::{Client, DomainError};
+use ferrous_dns_domain::config::upstream::UpstreamPool;
+use ferrous_dns_domain::{Client, Config, DomainError};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 mod helpers;
 use helpers::{MockBlockFilterEngine, MockClientRepository, MockGroupRepository};
@@ -22,6 +24,10 @@ fn client_in_default_group(id: i64, ip: &str) -> Client {
         group_id: Some(1),
         comment: None,
     }
+}
+
+fn no_pools() -> Arc<RwLock<Config>> {
+    Arc::new(RwLock::new(Config::default()))
 }
 
 #[tokio::test]
@@ -67,7 +73,7 @@ async fn test_delete_group_reloads_block_filter() {
     let groups = Arc::new(MockGroupRepository::new());
     let engine = Arc::new(MockBlockFilterEngine::new());
     let group = groups.create("Kids".to_string(), None, true).await.unwrap();
-    let use_case = DeleteGroupUseCase::new(groups, engine.clone());
+    let use_case = DeleteGroupUseCase::new(groups, engine.clone(), no_pools());
 
     use_case.execute(group.id.unwrap()).await.unwrap();
 
@@ -75,9 +81,47 @@ async fn test_delete_group_reloads_block_filter() {
 }
 
 #[tokio::test]
+async fn test_delete_group_routed_by_a_pool_is_refused() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let engine = Arc::new(MockBlockFilterEngine::new());
+    let group_id = groups
+        .create("Office".to_string(), None, true)
+        .await
+        .unwrap()
+        .id
+        .unwrap();
+    let mut config = Config::default();
+    config.dns.pools.push(UpstreamPool {
+        name: "office".to_string(),
+        servers: vec!["udp://10.0.0.10:53".to_string()],
+        domains: vec!["corp.example".to_string()],
+        groups: vec![group_id],
+        ..Default::default()
+    });
+    let use_case = DeleteGroupUseCase::new(
+        groups.clone(),
+        engine.clone(),
+        Arc::new(RwLock::new(config)),
+    );
+
+    let result = use_case.execute(group_id).await;
+
+    assert!(
+        matches!(&result, Err(DomainError::GroupRoutedByPool(pool)) if pool == "office"),
+        "got {result:?}"
+    );
+    assert!(groups.get_by_id(group_id).await.unwrap().is_some());
+    assert_eq!(engine.reload_count().await, 0);
+}
+
+#[tokio::test]
 async fn test_delete_protected_group_does_not_reload_block_filter() {
     let engine = Arc::new(MockBlockFilterEngine::new());
-    let use_case = DeleteGroupUseCase::new(Arc::new(MockGroupRepository::new()), engine.clone());
+    let use_case = DeleteGroupUseCase::new(
+        Arc::new(MockGroupRepository::new()),
+        engine.clone(),
+        no_pools(),
+    );
 
     let result = use_case.execute(1).await;
 

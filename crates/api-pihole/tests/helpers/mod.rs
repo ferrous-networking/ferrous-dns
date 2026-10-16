@@ -484,6 +484,7 @@ async fn build_pihole_state(
     let mut config = Config::default();
     config.auth.enabled = auth_enabled;
     config.auth.admin.username = "admin".to_string();
+    let config = Arc::new(RwLock::new(config));
 
     PiholeAppState {
         query: PiholeQueryState {
@@ -587,6 +588,7 @@ async fn build_pihole_state(
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 group_repo.clone(),
                 block_filter_engine.clone(),
+                config.clone(),
             )),
         },
         clients: PiholeClientState {
@@ -624,7 +626,7 @@ async fn build_pihole_state(
         },
         system: PiholeSystemState {
             cleanup_query_logs: Arc::new(CleanupOldQueryLogsUseCase::new(query_log_repo)),
-            config: Arc::new(RwLock::new(config)),
+            config,
             reload_config: None,
             process_start: std::time::Instant::now()
                 .checked_sub(PROCESS_AGE)

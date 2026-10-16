@@ -226,6 +226,18 @@ async fn test_deleting_a_group_a_pool_routes_for_is_refused() {
 }
 
 #[tokio::test]
+async fn test_group_deletes_once_no_pool_routes_for_it() {
+    let app = test_app().await;
+    let mut office = office_pool();
+    office["groups"] = json!([OFFICE_A + 1]);
+    let (status, json) = post_pools(app.router.clone(), json!([default_pool(), office])).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let (status, body) = delete_group(app.router.clone(), OFFICE_A).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+}
+
+#[tokio::test]
 async fn test_blank_domains_are_dropped() {
     let app = test_app().await;
     let mut office = office_pool();

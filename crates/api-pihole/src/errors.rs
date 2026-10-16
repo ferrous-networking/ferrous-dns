@@ -94,6 +94,7 @@ fn pihole_status_and_key(err: &DomainError) -> (StatusCode, &'static str) {
         | DomainError::CustomServiceAlreadyExists(_)
         | DomainError::SubnetConflict(_)
         | DomainError::GroupHasAssignedClients(_)
+        | DomainError::GroupRoutedByPool(_)
         | DomainError::DuplicateApiTokenName(_)
         | DomainError::DuplicateUsername(_)
         | DomainError::PasswordAlreadyConfigured

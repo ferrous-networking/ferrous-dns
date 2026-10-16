@@ -136,7 +136,7 @@ async fn update_group(
     responses(
         (status = 204, description = "Group deleted"),
         (status = 404, description = "Group not found"),
-        (status = 409, description = "Group has assigned clients"),
+        (status = 409, description = "Group has assigned clients, or an upstream pool routes domains for it"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
