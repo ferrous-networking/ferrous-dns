@@ -196,6 +196,35 @@ async fn test_rejects_a_group_that_does_not_exist() {
     .await;
 }
 
+async fn delete_group(app: Router, id: i64) -> (StatusCode, String) {
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(format!("/groups/{id}"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[tokio::test]
+async fn test_deleting_a_group_a_pool_routes_for_is_refused() {
+    let app = test_app().await;
+    let (status, json) =
+        post_pools(app.router.clone(), json!([default_pool(), office_pool()])).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let (status, body) = delete_group(app.router.clone(), OFFICE_A).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("office-a"), "{body}");
+
+    // The group survives, so the pool that routes for it still saves.
+    let (status, json) =
+        post_pools(app.router.clone(), json!([default_pool(), office_pool()])).await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+}
+
 #[tokio::test]
 async fn test_blank_domains_are_dropped() {
     let app = test_app().await;
