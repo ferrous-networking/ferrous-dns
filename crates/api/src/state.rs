@@ -199,6 +199,10 @@ pub struct AppState {
     pub tls_enabled: bool,
     /// Whether `[auth.webauthn]` is populated (passkeys usable).
     pub webauthn_configured: bool,
+    /// Whether the malware detectors run in this process: `[dns]
+    /// malware_detection_enabled` as it was at startup. A save rewrites
+    /// `config` but only applies after a restart, so the dashboard reads this.
+    pub malware_detection_enabled: bool,
     /// Set by a successful save that only takes effect after a restart. Kept
     /// in memory on purpose: a restart starts a new process with it cleared,
     /// which is exactly when the web UI's restart banner must go away.

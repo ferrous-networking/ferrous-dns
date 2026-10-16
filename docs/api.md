@@ -126,7 +126,9 @@ GET /api/dashboard?period_hours=24
 Returns a single aggregated payload for the dashboard view: summary counts, the
 query timeline, top blocked domains, top clients and the query-type breakdown.
 Use the optional `period_hours` parameter to change the look-back window
-(defaults to 24 hours).
+(defaults to 24 hours). `malware_detection_enabled` says whether the malware
+detectors run, which is the master switch as of the last restart, not a saved
+change still waiting for one.
 
 Summary counts, cache stats, DNSSEC stats and the timeline are served from
 per-minute rollups, so their windows are minute-aligned: a window includes the

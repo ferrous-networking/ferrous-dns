@@ -132,5 +132,6 @@ pub async fn get_dashboard(
         timeline,
         top_blocked_domains,
         top_clients,
+        malware_detection_enabled: state.malware_detection_enabled,
     })
 }

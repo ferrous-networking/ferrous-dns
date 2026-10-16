@@ -124,7 +124,11 @@
                 </div>
                 <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Malware Detection</p>
             </div>
-            <p style="font-size:32px;font-weight:700;color:#F59E0B" x-text="formatNumber(stats.queries_malware_detected || 0)">0</p>
+            <div style="display:flex;align-items:center;gap:10px">
+                <p style="font-size:32px;font-weight:700" :style="{color: malwareDetectionEnabled ? '#F59E0B' : 'var(--text-tertiary)'}" x-text="formatNumber(stats.queries_malware_detected || 0)">0</p>
+                <span x-show="!malwareDetectionEnabled" x-cloak title="Turned off in Settings → Malware Detection"
+                      style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tertiary);color:var(--text-secondary);font-weight:600">Disabled</span>
+            </div>
         </div>
         <div class="card-stat" id="dnssec-bogus-card">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">

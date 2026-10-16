@@ -33,4 +33,6 @@ pub struct DashboardResponse {
     pub timeline: Option<TimelineResponse>,
     pub top_blocked_domains: Vec<TopBlockedDomain>,
     pub top_clients: Vec<TopClient>,
+    /// Whether malware detection runs: the master switch as of the last restart.
+    pub malware_detection_enabled: bool,
 }

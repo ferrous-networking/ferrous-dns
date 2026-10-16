@@ -94,6 +94,7 @@ pub async fn build_app_state(
     ));
 
     let webauthn_configured = config.read().await.auth.webauthn.is_configured();
+    let malware_detection_enabled = config.read().await.dns.malware_detection_enabled;
 
     let config_persistence: Arc<dyn ConfigFilePersistence> = Arc::new(TomlConfigFilePersistence);
 
@@ -238,5 +239,6 @@ pub async fn build_app_state(
         reload_config: config_services.reload.clone(),
         tls_cert: Arc::new(TlsCertificateService),
         webauthn_configured,
+        malware_detection_enabled,
     }
 }

@@ -477,6 +477,7 @@ impl TestAppBuilder {
             reload_config,
             tls_cert: Arc::new(MockTlsCertificateService),
             webauthn_configured: false,
+            malware_detection_enabled: true,
             tls_enabled: false,
             restart_pending: Default::default(),
         };

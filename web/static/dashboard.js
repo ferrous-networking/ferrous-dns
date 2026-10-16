@@ -77,6 +77,8 @@
             queryTypes: {},
             topBlockedDomains: [],
             topClients: [],
+            // Running state of the malware master switch, as of the last restart.
+            malwareDetectionEnabled: true,
             chartsReady: false,
             pollingIntervals: {fast: null, slow: null},
             _ctrl: {},
@@ -122,6 +124,7 @@
                     if (res.ok) {
                         const data = await res.json();
                         this.stats = data.stats;
+                        this.malwareDetectionEnabled = data.malware_detection_enabled !== false;
                         this.cacheMetrics = {
                             total_hits: data.cache_stats.total_hits,
                             total_misses: data.cache_stats.total_misses,

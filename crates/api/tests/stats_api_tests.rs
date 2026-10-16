@@ -200,6 +200,36 @@ async fn test_dashboard_includes_top_blocked_and_clients() {
     assert!(!json["top_clients"].as_array().unwrap().is_empty());
 }
 
+/// The dashboard reports the master switch the process runs with, not the
+/// saved config, which only applies after a restart.
+#[tokio::test]
+async fn test_dashboard_reports_whether_malware_detection_runs() {
+    for running in [true, false] {
+        let TestApp {
+            mut state, config, ..
+        } = TestApp::builder().build().await;
+        state.malware_detection_enabled = running;
+        // A save that has not been applied yet.
+        config.write().await.dns.malware_detection_enabled = !running;
+        let app = ferrous_dns_api::create_api_router_with_openapi(state).0;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/dashboard?period=24h")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["malware_detection_enabled"], running);
+    }
+}
+
 #[tokio::test]
 async fn test_timeline_reports_the_granularity_it_used() {
     let app = TestApp::builder().build().await.router;
