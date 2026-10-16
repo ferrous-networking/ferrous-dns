@@ -2,7 +2,8 @@ use crate::{
     dto::{
         config::{
             parse_dns64_prefix, parse_sinkhole_ipv4, parse_sinkhole_ipv6, ConfigSaveResponse,
-            PoolUpdate,
+            DgaDetectionConfigUpdate, NxdomainHijackConfigUpdate, PoolUpdate,
+            ResponseIpFilterConfigUpdate, TunnelingDetectionConfigUpdate,
         },
         SettingsDto, UpdateConfigRequest,
     },
@@ -10,7 +11,9 @@ use crate::{
 };
 use axum::{extract::State, http::StatusCode, Json};
 use ferrous_dns_domain::{
-    Config, DnsConfig, DnsProtocol, DnssecMode, DomainError, UpstreamPool, UpstreamStrategy,
+    Config, DgaDetectionConfig, DnsConfig, DnsProtocol, DnssecMode, DomainError,
+    NxdomainHijackConfig, ResponseIpFilterConfig, TunnelingDetectionConfig, UpstreamPool,
+    UpstreamStrategy,
 };
 use std::collections::{BTreeSet, HashSet};
 use tokio::sync::OwnedMutexGuard;
@@ -298,6 +301,27 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
                 target.whitelist = v;
             }
         }
+        if let Some(v) = dns.malware_detection_enabled {
+            cfg.dns.malware_detection_enabled = v;
+        }
+        if let Some(v) = dns.rebinding_protection_enabled {
+            cfg.dns.rebinding_protection_enabled = v;
+        }
+        if let Some(v) = dns.rebinding_allowlist {
+            cfg.dns.rebinding_allowlist = v;
+        }
+        if let Some(update) = dns.tunneling_detection {
+            apply_tunneling_update(&mut cfg.dns.tunneling_detection, update)?;
+        }
+        if let Some(update) = dns.dga_detection {
+            apply_dga_update(&mut cfg.dns.dga_detection, update)?;
+        }
+        if let Some(update) = dns.nxdomain_hijack {
+            apply_nxdomain_hijack_update(&mut cfg.dns.nxdomain_hijack, update)?;
+        }
+        if let Some(update) = dns.response_ip_filter {
+            apply_response_ip_filter_update(&mut cfg.dns.response_ip_filter, update)?;
+        }
     }
 
     if let Some(blocking) = request.blocking {
@@ -343,6 +367,148 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
     }
 
     Ok(pools_provided)
+}
+
+fn apply_tunneling_update(
+    target: &mut TunnelingDetectionConfig,
+    update: TunnelingDetectionConfigUpdate,
+) -> Result<(), String> {
+    if let Some(v) = update.enabled {
+        target.enabled = v;
+    }
+    if let Some(v) = update.action {
+        target.action = v.parse()?;
+    }
+    if let Some(v) = update.max_fqdn_length {
+        target.max_fqdn_length = v;
+    }
+    if let Some(v) = update.max_label_length {
+        target.max_label_length = v;
+    }
+    if let Some(v) = update.block_null_queries {
+        target.block_null_queries = v;
+    }
+    if let Some(v) = update.entropy_threshold {
+        target.entropy_threshold = v;
+    }
+    if let Some(v) = update.query_rate_per_apex {
+        target.query_rate_per_apex = v;
+    }
+    if let Some(v) = update.unique_subdomain_threshold {
+        target.unique_subdomain_threshold = v;
+    }
+    if let Some(v) = update.txt_proportion_threshold {
+        target.txt_proportion_threshold = v;
+    }
+    if let Some(v) = update.nxdomain_ratio_threshold {
+        target.nxdomain_ratio_threshold = v;
+    }
+    if let Some(v) = update.confidence_threshold {
+        target.confidence_threshold = v;
+    }
+    if let Some(v) = update.stale_entry_ttl_secs {
+        target.stale_entry_ttl_secs = v;
+    }
+    if let Some(v) = update.domain_whitelist {
+        target.domain_whitelist = v;
+    }
+    if let Some(v) = update.client_whitelist {
+        target.client_whitelist = v;
+    }
+    Ok(())
+}
+
+fn apply_dga_update(
+    target: &mut DgaDetectionConfig,
+    update: DgaDetectionConfigUpdate,
+) -> Result<(), String> {
+    if let Some(v) = update.enabled {
+        target.enabled = v;
+    }
+    if let Some(v) = update.action {
+        target.action = v.parse()?;
+    }
+    if let Some(v) = update.hot_path_confidence_threshold {
+        target.hot_path_confidence_threshold = v;
+    }
+    if let Some(v) = update.sld_entropy_threshold {
+        target.sld_entropy_threshold = v;
+    }
+    if let Some(v) = update.sld_max_length {
+        target.sld_max_length = v;
+    }
+    if let Some(v) = update.consonant_ratio_threshold {
+        target.consonant_ratio_threshold = v;
+    }
+    if let Some(v) = update.digit_ratio_threshold {
+        target.digit_ratio_threshold = v;
+    }
+    if let Some(v) = update.ngram_score_threshold {
+        target.ngram_score_threshold = v;
+    }
+    if let Some(v) = update.dga_rate_per_client {
+        target.dga_rate_per_client = v;
+    }
+    if let Some(v) = update.confidence_threshold {
+        target.confidence_threshold = v;
+    }
+    if let Some(v) = update.stale_entry_ttl_secs {
+        target.stale_entry_ttl_secs = v;
+    }
+    if let Some(v) = update.domain_whitelist {
+        target.domain_whitelist = v;
+    }
+    if let Some(v) = update.client_whitelist {
+        target.client_whitelist = v;
+    }
+    Ok(())
+}
+
+fn apply_nxdomain_hijack_update(
+    target: &mut NxdomainHijackConfig,
+    update: NxdomainHijackConfigUpdate,
+) -> Result<(), String> {
+    if let Some(v) = update.enabled {
+        target.enabled = v;
+    }
+    if let Some(v) = update.action {
+        target.action = v.parse()?;
+    }
+    if let Some(v) = update.probe_interval_secs {
+        target.probe_interval_secs = v;
+    }
+    if let Some(v) = update.probe_timeout_ms {
+        target.probe_timeout_ms = v;
+    }
+    if let Some(v) = update.probes_per_round {
+        target.probes_per_round = v;
+    }
+    if let Some(v) = update.hijack_ip_ttl_secs {
+        target.hijack_ip_ttl_secs = v;
+    }
+    Ok(())
+}
+
+fn apply_response_ip_filter_update(
+    target: &mut ResponseIpFilterConfig,
+    update: ResponseIpFilterConfigUpdate,
+) -> Result<(), String> {
+    if let Some(v) = update.enabled {
+        target.enabled = v;
+    }
+    if let Some(v) = update.action {
+        target.action = v.parse()?;
+    }
+    if let Some(v) = update.ip_list_urls {
+        target.ip_list_urls = v;
+    }
+    if let Some(v) = update.refresh_interval_secs {
+        target.refresh_interval_secs = v;
+    }
+    if let Some(v) = update.ip_ttl_secs {
+        target.ip_ttl_secs = v;
+    }
+    Ok(())
 }
 
 fn apply_settings(cfg: &mut Config, request: SettingsDto) -> Result<(), String> {

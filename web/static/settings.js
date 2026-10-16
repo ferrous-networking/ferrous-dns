@@ -41,8 +41,124 @@
                         nxdomain_per_second: 50, slip_ratio: 0, dry_run: false,
                         stale_entry_ttl_secs: 300, tcp_max_connections_per_ip: 30,
                         dot_max_connections_per_ip: 15, doq_max_connections_per_ip: 15
+                    },
+                    malware_detection_enabled: true,
+                    rebinding_protection_enabled: true,
+                    rebinding_allowlist: [],
+                    tunneling_detection: {
+                        enabled: true, action: 'block', max_fqdn_length: 120, max_label_length: 50,
+                        block_null_queries: true, entropy_threshold: 3.8, query_rate_per_apex: 50,
+                        unique_subdomain_threshold: 30, txt_proportion_threshold: 0.05,
+                        nxdomain_ratio_threshold: 0.2, confidence_threshold: 0.7,
+                        stale_entry_ttl_secs: 300, domain_whitelist: [], client_whitelist: []
+                    },
+                    dga_detection: {
+                        enabled: true, action: 'block', hot_path_confidence_threshold: 0.4,
+                        sld_entropy_threshold: 3.5, sld_max_length: 24, consonant_ratio_threshold: 0.75,
+                        digit_ratio_threshold: 0.3, ngram_score_threshold: 0.6, dga_rate_per_client: 10,
+                        confidence_threshold: 0.65, stale_entry_ttl_secs: 300,
+                        domain_whitelist: [], client_whitelist: []
+                    },
+                    nxdomain_hijack: {
+                        enabled: true, action: 'block', probe_interval_secs: 300,
+                        probe_timeout_ms: 5000, probes_per_round: 3, hijack_ip_ttl_secs: 3600
+                    },
+                    response_ip_filter: {
+                        enabled: false, action: 'block', ip_list_urls: [],
+                        refresh_interval_secs: 86400, ip_ttl_secs: 604800
                     }
                 }
+            },
+            // Malware Detection tab: its numeric settings and lists, rendered as rows. The
+            // limits mirror `Config::validate` (crates/domain/src/config/malware_detection.rs
+            // and the zero checks in root.rs) and must only flag what it rejects too.
+            // `max` without `float` is a whole number from 1 to max; no `max`, at least 1.
+            malwareTitles: {
+                tunneling_detection: 'DNS Tunneling Detection',
+                dga_detection: 'DGA Detection',
+                rebinding: 'DNS Rebinding Protection',
+                nxdomain_hijack: 'NXDomain Hijack Detection',
+                response_ip_filter: 'Response IP Filtering',
+            },
+            malwareNumberRows: {
+                tunneling_detection: [
+                    {field: 'max_fqdn_length', label: 'Max FQDN Length', icon: 'ruler', unit: 'bytes', max: 253,
+                        help: 'Phase 1, on every query: flags a name longer than this. Tunnels pack data into long names; ordinary names rarely pass 100 bytes.'},
+                    {field: 'max_label_length', label: 'Max Label Length', icon: 'whole-word', unit: 'bytes', max: 63,
+                        help: 'Phase 1: flags a name with any single label longer than this. Encoded payloads make long labels.'},
+                    {field: 'entropy_threshold', label: 'Entropy Threshold', icon: 'sigma', unit: 'bits/char', float: true, max: 8, step: 0.1,
+                        help: 'Phase 2: Shannon entropy of the subdomain above which it counts as encoded data. Random-looking labels score high, words low.'},
+                    {field: 'query_rate_per_apex', label: 'Query Rate per Domain', icon: 'activity', unit: 'per min',
+                        help: 'Phase 2: queries per minute from one client subnet to one domain above which the rate counts as suspicious.'},
+                    {field: 'unique_subdomain_threshold', label: 'Unique Subdomains', icon: 'layers', unit: 'per min',
+                        help: 'Phase 2: distinct subdomains per minute from one client subnet under one domain above which they count as suspicious. Each tunneled chunk is a new name.'},
+                    {field: 'txt_proportion_threshold', label: 'TXT Proportion', icon: 'file-text', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 2: share of a client\'s queries that ask for TXT records above which it counts as suspicious. 0.05 = 5%.'},
+                    {field: 'nxdomain_ratio_threshold', label: 'NXDOMAIN Ratio', icon: 'circle-x', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 2: share of NXDOMAIN answers for one client and domain above which it counts as suspicious. 0.2 = 20%.'},
+                    {field: 'confidence_threshold', label: 'Confidence Threshold', icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 2: combined score of the signals above at which the domain is flagged. Higher means fewer false positives, and fewer detections.'},
+                    {field: 'stale_entry_ttl_secs', label: 'Stale Entry TTL', icon: 'hourglass', unit: 'seconds',
+                        help: 'Idle per-client tracking entries are dropped from memory after this long.'},
+                ],
+                dga_detection: [
+                    {field: 'hot_path_confidence_threshold', label: 'Instant Confidence Threshold', icon: 'zap', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 1: weighted score the name signals below must reach to flag a name on the spot. 0.40 usually takes two signals at once, which keeps names that look odd in one way only, like CDN hosts, out.'},
+                    {field: 'sld_entropy_threshold', label: 'Name Entropy', icon: 'sigma', unit: 'bits/char', float: true, max: 8, step: 0.1,
+                        help: 'Shannon entropy of the second-level domain (example in example.com) above which it counts as random.'},
+                    {field: 'sld_max_length', label: 'Max Name Length', icon: 'ruler', unit: 'characters', max: 63,
+                        help: 'Second-level domains longer than this count as suspicious.'},
+                    {field: 'consonant_ratio_threshold', label: 'Consonant Ratio', icon: 'case-sensitive', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Share of consonants among the letters above which a name counts as unpronounceable. 0.75 = 75%.'},
+                    {field: 'digit_ratio_threshold', label: 'Digit Ratio', icon: 'binary', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Share of digits in the name above which it counts as suspicious. 0.3 = 30%.'},
+                    {field: 'ngram_score_threshold', label: 'Letter-pair Score', icon: 'spell-check', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 2: how far the name\'s letter pairs stray from English (0 = English-like, 1 = random) before it counts as suspicious.'},
+                    {field: 'dga_rate_per_client', label: 'Suspicious Names per Client', icon: 'activity', unit: 'per min',
+                        help: 'Phase 2: suspicious names per minute from one client above which the client counts as infected. DGA malware tries many names in a row.'},
+                    {field: 'confidence_threshold', label: 'Confidence Threshold', icon: 'target', unit: '0–1', float: true, max: 1, step: 0.01,
+                        help: 'Phase 2: combined score of all signals at which the domain is flagged.'},
+                    {field: 'stale_entry_ttl_secs', label: 'Stale Entry TTL', icon: 'hourglass', unit: 'seconds',
+                        help: 'Idle per-client tracking entries are dropped from memory after this long.'},
+                ],
+                nxdomain_hijack: [
+                    {field: 'probe_interval_secs', label: 'Probe Interval', icon: 'timer', unit: 'seconds',
+                        help: 'Time between probe rounds against each upstream.'},
+                    {field: 'probe_timeout_ms', label: 'Probe Timeout', icon: 'clock', unit: 'milliseconds',
+                        help: 'How long a probe waits for an upstream\'s answer.'},
+                    {field: 'probes_per_round', label: 'Probes per Round', icon: 'hash', unit: 'probes', max: 255,
+                        help: 'Random .invalid names sent to each upstream per round.'},
+                    {field: 'hijack_ip_ttl_secs', label: 'Hijack IP TTL', icon: 'hourglass', unit: 'seconds',
+                        help: 'A hijack IP the probes stop seeing is forgotten after this long.'},
+                ],
+                response_ip_filter: [
+                    {field: 'refresh_interval_secs', label: 'Refresh Interval', icon: 'refresh-cw', unit: 'seconds',
+                        help: 'Time between feed downloads.'},
+                    {field: 'ip_ttl_secs', label: 'IP TTL', icon: 'hourglass', unit: 'seconds',
+                        help: 'An IP no feed lists any more is dropped after this long. Keep it at or above the refresh interval, or IPs expire before the next download.'},
+                ],
+            },
+            malwareListRows: {
+                tunneling_detection: [
+                    {field: 'domain_whitelist', kind: 'domain', label: 'Domain Whitelist', icon: 'list-checks', placeholder: 'cdn.example.com',
+                        help: 'Exact domain names exempt from tunneling detection (no wildcards; subdomains are not included). For a one-off false positive, allowing the domain (allowlist, or Allow in the query log) works too and needs no restart.'},
+                    {field: 'client_whitelist', kind: 'client', label: 'Client Whitelist', icon: 'network', placeholder: '10.0.0.50 or 192.168.10.0/24',
+                        help: 'IPs or CIDRs of clients exempt from tunneling detection, such as a monitoring server.'},
+                ],
+                dga_detection: [
+                    {field: 'domain_whitelist', kind: 'domain', label: 'Domain Whitelist', icon: 'list-checks', placeholder: 'xjk3-vendor-cloud.com',
+                        help: 'Exact domain names exempt from DGA detection (no wildcards; subdomains are not included). For a one-off false positive, allowing the domain (allowlist, or Allow in the query log) works too and needs no restart.'},
+                    {field: 'client_whitelist', kind: 'client', label: 'Client Whitelist', icon: 'network', placeholder: '10.0.0.50 or 192.168.10.0/24',
+                        help: 'IPs or CIDRs of clients exempt from DGA detection.'},
+                ],
+                rebinding: [
+                    {field: 'rebinding_allowlist', kind: 'domain', label: 'Rebinding Allowlist', icon: 'list-checks', placeholder: 'vpn.example.com',
+                        help: 'Exact domain names allowed to resolve to a private address, such as split-horizon names for a VPN or a router admin page. Names under the local domain, answers from the local DNS server and internal pools are always exempt.'},
+                ],
+                response_ip_filter: [
+                    {field: 'ip_list_urls', kind: 'url', label: 'Feed URLs', icon: 'rss', placeholder: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt',
+                        help: 'HTTP or HTTPS URLs of IP feeds: one IP per line, # comments allowed, up to 64 MiB each. At least one is needed while the filter is on.'},
+                ],
             },
             settings: {
                 never_forward_non_fqdn: false,
@@ -202,6 +318,22 @@
                                 rate_limit: {
                                     ...this.config.dns.rate_limit,
                                     ...(data.dns?.rate_limit || {})
+                                },
+                                tunneling_detection: {
+                                    ...this.config.dns.tunneling_detection,
+                                    ...(data.dns?.tunneling_detection || {})
+                                },
+                                dga_detection: {
+                                    ...this.config.dns.dga_detection,
+                                    ...(data.dns?.dga_detection || {})
+                                },
+                                nxdomain_hijack: {
+                                    ...this.config.dns.nxdomain_hijack,
+                                    ...(data.dns?.nxdomain_hijack || {})
+                                },
+                                response_ip_filter: {
+                                    ...this.config.dns.response_ip_filter,
+                                    ...(data.dns?.response_ip_filter || {})
                                 }
                             }
                         };
@@ -507,6 +639,93 @@
                 }
                 return '';
             },
+            // The object a Malware Detection row edits: the rebinding settings sit in `dns` itself.
+            malwareTarget(section) {
+                return section === 'rebinding' ? this.config.dns : this.config.dns[section];
+            },
+            malwareNumberError(section, row) {
+                const value = this.malwareTarget(section)[row.field];
+                if (value === '' || value === null || value === undefined) return 'Required';
+                if (typeof value !== 'number' || Number.isNaN(value)) return 'Must be a number';
+                if (row.float) {
+                    return value > 0 && value <= row.max ? '' : `Must be greater than 0 and at most ${row.max}`;
+                }
+                if (!Number.isInteger(value)) return 'Must be a whole number';
+                if (row.max !== undefined) {
+                    return value >= 1 && value <= row.max ? '' : `Must be from 1 to ${row.max}`;
+                }
+                return value >= 1 ? '' : 'Must be at least 1';
+            },
+            // Mirrors validate_exact_domain, validate_ip_or_cidr and validate_url in
+            // crates/domain/src/value_objects/validators.rs. Blank entries are dropped on save.
+            malwareEntryError(kind, entry) {
+                const value = (entry || '').trim();
+                if (!value) return '';
+                if (kind === 'domain') {
+                    if (value.length > 253) return 'Domain cannot exceed 253 characters';
+                    if (value.includes('*')) return 'Wildcards are not supported: entries match the exact name';
+                    for (const label of value.split('.')) {
+                        if (!label) return 'Domain cannot contain an empty label (no leading, trailing or double dots)';
+                        if (label.length > 63) return 'Domain label cannot exceed 63 characters';
+                        if (!/^[A-Za-z0-9_-]+$/.test(label)) {
+                            return 'Domain contains invalid characters (only letters, digits, hyphens and underscores; use punycode for internationalized names)';
+                        }
+                    }
+                    return '';
+                }
+                if (kind === 'client') {
+                    const slash = value.indexOf('/');
+                    const addr = slash === -1 ? value : value.slice(0, slash);
+                    const prefix = slash === -1 ? null : value.slice(slash + 1);
+                    const v4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(addr) && addr.split('.').every(o => Number(o) <= 255);
+                    const v6 = !v4 && addr.includes(':') && /^[0-9A-Fa-f:.]+$/.test(addr);
+                    if (!v4 && !v6) return 'Not an IP address or CIDR (e.g. 10.0.0.5 or 10.0.0.0/24)';
+                    const max = v4 ? 32 : 128;
+                    if (prefix !== null && !(/^\+?\d+$/.test(prefix) && Number(prefix) <= max)) {
+                        return `CIDR prefix must be 0-${max}`;
+                    }
+                    return '';
+                }
+                if (value.length > 2048) return 'URL cannot exceed 2048 characters';
+                if (!value.startsWith('http://') && !value.startsWith('https://')) {
+                    return 'URL must start with http:// or https://';
+                }
+                return '';
+            },
+            responseIpFilterNeedsFeed() {
+                const filter = this.config.dns.response_ip_filter;
+                return filter.enabled && !filter.ip_list_urls.some(url => (url || '').trim());
+            },
+            // First Malware Detection setting the backend would reject, for the save alert.
+            malwareSettingsError() {
+                for (const [section, rows] of Object.entries(this.malwareNumberRows)) {
+                    for (const row of rows) {
+                        const error = this.malwareNumberError(section, row);
+                        if (error) return `${this.malwareTitles[section]} › ${row.label}: ${error}`;
+                    }
+                }
+                for (const [section, lists] of Object.entries(this.malwareListRows)) {
+                    for (const list of lists) {
+                        for (const entry of this.malwareTarget(section)[list.field]) {
+                            const error = this.malwareEntryError(list.kind, entry);
+                            if (error) return `${this.malwareTitles[section]} › ${list.label}: '${entry}': ${error}`;
+                        }
+                    }
+                }
+                if (this.responseIpFilterNeedsFeed()) {
+                    return 'Response IP Filtering › Feed URLs: add at least one feed URL, or turn the filter off';
+                }
+                return '';
+            },
+            // Trims list entries and drops blank ones, which the "Add Entry" button leaves behind.
+            cleanMalwareLists() {
+                for (const [section, lists] of Object.entries(this.malwareListRows)) {
+                    const target = this.malwareTarget(section);
+                    for (const list of lists) {
+                        target[list.field] = target[list.field].map(entry => (entry || '').trim()).filter(Boolean);
+                    }
+                }
+            },
             async saveConfig() {
                 // Strip blank server inputs and drop empty pools before saving — an empty
                 // or malformed upstream would otherwise break the server on its next boot.
@@ -531,6 +750,12 @@
                 const routingError = poolsChanged ? this.firstRoutingError(cleanedPools) : '';
                 if (routingError) {
                     this.showAlert('error', 'Failed to save: ' + routingError);
+                    return;
+                }
+                this.cleanMalwareLists();
+                const malwareError = this.malwareSettingsError();
+                if (malwareError) {
+                    this.showAlert('error', 'Failed to save: ' + malwareError);
                     return;
                 }
                 const dnsPayload = {...this.config.dns};

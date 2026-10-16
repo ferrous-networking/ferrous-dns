@@ -81,8 +81,9 @@ dnssec_mode = "Permissive"              # DNSSEC enforcement: "Off" (no validati
 # dnssec_trust_anchor_file = "/etc/ferrous-dns/root.key"   # Replaces the embedded IANA root anchors (DS/DNSKEY presentation format). Read at startup; an unreadable file aborts boot
 block_private_ptr = true                # Block PTR lookups for private/RFC-1918 IP ranges
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
+malware_detection_enabled = true        # Master switch for the five malware detectors below (tunneling, DGA, rebinding, NXDomain hijack, response IP)
 rebinding_protection_enabled = true     # Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding)
-# rebinding_allowlist = []              # Domains exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
+# rebinding_allowlist = []              # Exact domain names exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
 mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — PTR lookups for client hostnames, and upstream URL hostnames (asked before the system resolver)
@@ -162,11 +163,12 @@ stale_entry_ttl_secs = 300              # Evict idle subnet buckets after 5 minu
 # Detects and blocks DNS tunneling attempts (data exfiltration, C2 via DNS).
 # Phase 1: O(1) checks on the hot path (FQDN/label length, NULL record type).
 # Phase 2: statistical analysis in background (entropy, query rate, unique subdomains).
-# Configuration is TOML-only — no UI settings page for this feature.
+# This section and the three below are also edited in Settings → Malware Detection.
+# Score and ratio thresholds take 0-1 (above 0); see docs/configuration/ferrous-dns-toml.md for every range.
 
 [dns.tunneling_detection]
 enabled = true                          # Master switch — enabled by default
-action = "block"                        # "alert" | "block" | "throttle"
+action = "block"                        # "alert" | "block" | "throttle" (not implemented yet: acts as "alert")
 max_fqdn_length = 120                   # Phase 1: block FQDNs longer than 120 bytes
 max_label_length = 50                   # Phase 1: block labels longer than 50 bytes
 block_null_queries = true               # Phase 1: block NULL (type 10) record queries

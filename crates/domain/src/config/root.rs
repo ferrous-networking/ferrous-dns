@@ -7,6 +7,7 @@ use super::dns::DnsConfig;
 use super::dns64::Dns64Config;
 use super::legacy;
 use super::logging::LoggingConfig;
+use super::malware_detection;
 use super::server::ServerConfig;
 use super::upstream::{validate_pool_routes, UpstreamPool};
 use crate::errors::domain_error::DomainError;
@@ -71,6 +72,7 @@ impl Config {
 
         self.validate_non_zero()?;
         self.validate_derived_durations()?;
+        malware_detection::validate(&self.dns)?;
 
         self.dns.local_dns_server_addr()?;
 
@@ -127,6 +129,14 @@ impl Config {
                 dns.tunneling_detection.stale_entry_ttl_secs == 0,
             ),
             (
+                "dns.tunneling_detection.query_rate_per_apex",
+                dns.tunneling_detection.query_rate_per_apex == 0,
+            ),
+            (
+                "dns.tunneling_detection.unique_subdomain_threshold",
+                dns.tunneling_detection.unique_subdomain_threshold == 0,
+            ),
+            (
                 "dns.nxdomain_hijack.probe_interval_secs",
                 dns.nxdomain_hijack.probe_interval_secs == 0,
             ),
@@ -139,6 +149,10 @@ impl Config {
                 dns.nxdomain_hijack.hijack_ip_ttl_secs == 0,
             ),
             (
+                "dns.nxdomain_hijack.probes_per_round",
+                dns.nxdomain_hijack.probes_per_round == 0,
+            ),
+            (
                 "dns.response_ip_filter.refresh_interval_secs",
                 dns.response_ip_filter.refresh_interval_secs == 0,
             ),
@@ -149,6 +163,10 @@ impl Config {
             (
                 "dns.dga_detection.stale_entry_ttl_secs",
                 dns.dga_detection.stale_entry_ttl_secs == 0,
+            ),
+            (
+                "dns.dga_detection.dga_rate_per_client",
+                dns.dga_detection.dga_rate_per_client == 0,
             ),
             (
                 "database.query_log_channel_capacity",

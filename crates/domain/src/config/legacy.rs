@@ -25,8 +25,12 @@ use super::cache_eviction::CacheEvictionStrategy;
 use super::dns::DnsConfig;
 use super::dns_cookies::{parse_server_secret, DnsCookiesConfig};
 use super::encrypted_dns::EncryptedDnsConfig;
+use super::malware_detection::{is_threshold_in_range, MAX_ENTROPY_BITS, MAX_RATIO};
 use super::root::Config;
 use super::server::parse_bind_host;
+use crate::value_objects::validators::{
+    validate_exact_domain, validate_ip_or_cidr, validate_url, MAX_DOMAIN_LEN, MAX_LABEL_LEN,
+};
 use crate::DnsProtocol;
 
 /// Rewrites, in the parsed file `doc`, each string value the typed parse
@@ -138,6 +142,20 @@ pub(super) fn normalize_values(config: &mut Config) {
     );
 
     let (hijack, default_hijack) = (&mut dns.nxdomain_hijack, &default_dns.nxdomain_hijack);
+    // Zero probes never detected a hijack: the detector ran with nothing to do.
+    if hijack.enabled && hijack.probes_per_round == 0 {
+        warn!(
+            key = "dns.nxdomain_hijack.probes_per_round",
+            "Zero probes per round never detect a hijack: turning dns.nxdomain_hijack off"
+        );
+        hijack.enabled = false;
+    }
+    default_if(
+        "dns.nxdomain_hijack.probes_per_round",
+        &mut hijack.probes_per_round,
+        default_hijack.probes_per_round,
+        is_zero,
+    );
     if !hijack.enabled {
         default_if(
             "dns.nxdomain_hijack.probe_interval_secs",
@@ -173,6 +191,8 @@ pub(super) fn normalize_values(config: &mut Config) {
         default_ip_filter.ip_ttl_secs,
         is_zero,
     );
+
+    normalize_malware_detection(dns, default_dns);
 
     default_if(
         "database.query_log_max_batch_size",
@@ -213,6 +233,201 @@ pub(super) fn normalize_values(config: &mut Config) {
 
 fn is_zero<T: Default + PartialEq>(value: &T) -> bool {
     *value == T::default()
+}
+
+/// The malware detectors' thresholds and lists, which earlier releases took
+/// unchecked (see `malware_detection` for the limits).
+fn normalize_malware_detection(dns: &mut DnsConfig, default_dns: &DnsConfig) {
+    let (tunneling, default_tunneling) = (
+        &mut dns.tunneling_detection,
+        &default_dns.tunneling_detection,
+    );
+    let (dga, default_dga) = (&mut dns.dga_detection, &default_dns.dga_detection);
+
+    for (key, value, default, max) in [
+        (
+            "dns.tunneling_detection.entropy_threshold",
+            &mut tunneling.entropy_threshold,
+            default_tunneling.entropy_threshold,
+            MAX_ENTROPY_BITS,
+        ),
+        (
+            "dns.tunneling_detection.txt_proportion_threshold",
+            &mut tunneling.txt_proportion_threshold,
+            default_tunneling.txt_proportion_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.tunneling_detection.nxdomain_ratio_threshold",
+            &mut tunneling.nxdomain_ratio_threshold,
+            default_tunneling.nxdomain_ratio_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.tunneling_detection.confidence_threshold",
+            &mut tunneling.confidence_threshold,
+            default_tunneling.confidence_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.dga_detection.hot_path_confidence_threshold",
+            &mut dga.hot_path_confidence_threshold,
+            default_dga.hot_path_confidence_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.dga_detection.sld_entropy_threshold",
+            &mut dga.sld_entropy_threshold,
+            default_dga.sld_entropy_threshold,
+            MAX_ENTROPY_BITS,
+        ),
+        (
+            "dns.dga_detection.consonant_ratio_threshold",
+            &mut dga.consonant_ratio_threshold,
+            default_dga.consonant_ratio_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.dga_detection.digit_ratio_threshold",
+            &mut dga.digit_ratio_threshold,
+            default_dga.digit_ratio_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.dga_detection.ngram_score_threshold",
+            &mut dga.ngram_score_threshold,
+            default_dga.ngram_score_threshold,
+            MAX_RATIO,
+        ),
+        (
+            "dns.dga_detection.confidence_threshold",
+            &mut dga.confidence_threshold,
+            default_dga.confidence_threshold,
+            MAX_RATIO,
+        ),
+    ] {
+        clamp_threshold(key, value, default, max);
+    }
+    for (key, value, default, max) in [
+        (
+            "dns.tunneling_detection.max_fqdn_length",
+            &mut tunneling.max_fqdn_length,
+            default_tunneling.max_fqdn_length,
+            MAX_DOMAIN_LEN,
+        ),
+        (
+            "dns.tunneling_detection.max_label_length",
+            &mut tunneling.max_label_length,
+            default_tunneling.max_label_length,
+            MAX_LABEL_LEN,
+        ),
+        (
+            "dns.dga_detection.sld_max_length",
+            &mut dga.sld_max_length,
+            default_dga.sld_max_length,
+            MAX_LABEL_LEN,
+        ),
+    ] {
+        clamp_threshold(key, value, default, max);
+    }
+    for (key, value, default) in [
+        (
+            "dns.tunneling_detection.query_rate_per_apex",
+            &mut tunneling.query_rate_per_apex,
+            default_tunneling.query_rate_per_apex,
+        ),
+        (
+            "dns.tunneling_detection.unique_subdomain_threshold",
+            &mut tunneling.unique_subdomain_threshold,
+            default_tunneling.unique_subdomain_threshold,
+        ),
+        (
+            "dns.dga_detection.dga_rate_per_client",
+            &mut dga.dga_rate_per_client,
+            default_dga.dga_rate_per_client,
+        ),
+    ] {
+        default_if(key, value, default, is_zero);
+    }
+
+    for (key, entries) in [
+        (
+            "dns.tunneling_detection.domain_whitelist",
+            &mut tunneling.domain_whitelist,
+        ),
+        (
+            "dns.dga_detection.domain_whitelist",
+            &mut dga.domain_whitelist,
+        ),
+        ("dns.rebinding_allowlist", &mut dns.rebinding_allowlist),
+    ] {
+        drop_invalid_entries(key, entries, validate_exact_domain);
+    }
+    for (key, entries) in [
+        (
+            "dns.tunneling_detection.client_whitelist",
+            &mut tunneling.client_whitelist,
+        ),
+        (
+            "dns.dga_detection.client_whitelist",
+            &mut dga.client_whitelist,
+        ),
+    ] {
+        drop_invalid_entries(key, entries, validate_ip_or_cidr);
+    }
+
+    let ip_filter = &mut dns.response_ip_filter;
+    drop_invalid_entries(
+        "dns.response_ip_filter.ip_list_urls",
+        &mut ip_filter.ip_list_urls,
+        |url| validate_url(Some(url)),
+    );
+    // Without a feed the filter had nothing to match and never ran.
+    if ip_filter.enabled && ip_filter.ip_list_urls.is_empty() {
+        warn!(
+            key = "dns.response_ip_filter.ip_list_urls",
+            "No feed URL to download: turning dns.response_ip_filter off"
+        );
+        ip_filter.enabled = false;
+    }
+}
+
+/// Lowers a detector threshold above `max` to it: the measured value never
+/// exceeds `max`, so the signal stays as silent as before (a confidence
+/// threshold, compared with `>=`, now fires only when every signal does).
+/// One at zero or below, or NaN, fired on every query: it gets the default.
+fn clamp_threshold<T: Copy + Display + PartialOrd + Default>(
+    key: &str,
+    value: &mut T,
+    default: T,
+    max: T,
+) {
+    if *value > max {
+        warn!(
+            key,
+            value = %value,
+            max = %max,
+            "Config value above its maximum: using the maximum"
+        );
+        *value = max;
+    }
+    default_if(key, value, default, |&v| !is_threshold_in_range(v, max));
+}
+
+/// Drops, with a warning, each entry `validate` rejects: none could ever
+/// match, and the detectors skipped the client entries already.
+fn drop_invalid_entries(
+    key: &str,
+    entries: &mut Vec<String>,
+    validate: impl Fn(&str) -> Result<(), String>,
+) {
+    entries.retain(|entry| match validate(entry) {
+        Ok(()) => true,
+        Err(reason) => {
+            warn!(key, entry = %entry, reason, "Invalid config entry: dropping it");
+            false
+        }
+    });
 }
 
 /// Whether chrono can add `secs` to now at all.

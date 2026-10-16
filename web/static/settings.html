@@ -117,6 +117,8 @@
                 :class="currentTab==='ratelimit'?'tab-btn active':'tab-btn'">Rate Limiting</button>
         <button @click="currentTab='cache';scheduleLucide()"
                 :class="currentTab==='cache'?'tab-btn active':'tab-btn'">Cache Settings</button>
+        <button @click="currentTab='malware';scheduleLucide()"
+                :class="currentTab==='malware'?'tab-btn active':'tab-btn'">Malware Detection</button>
         <button @click="currentTab='appearance';scheduleLucide()"
                 :class="currentTab==='appearance'?'tab-btn active':'tab-btn'">Appearance</button>
         <button @click="currentTab='api';scheduleLucide()"
@@ -1368,6 +1370,401 @@
 
         <button @click="saveConfig()" class="btn btn-success">
             <i data-lucide="save" style="width:16px;height:16px"></i> Save Cache Settings
+        </button>
+    </div>
+
+    <!-- MALWARE DETECTION TAB -->
+    <div x-show="currentTab==='malware'&&!loading" x-cloak>
+        <div class="card">
+            <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Malware Detection</h2>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Detect DNS-borne malware activity: data tunneling, algorithmically generated domains, rebinding, NXDOMAIN hijacking and known command-and-control servers. Changes apply after a restart.</p>
+
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0">
+                <div style="flex:1;margin-right:24px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="bug" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Enable Malware Detection</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">Master switch for the five detectors below. Turning it off skips them all; each keeps its own setting for when you turn it back on.</p>
+                </div>
+                <div @click="config.dns.malware_detection_enabled=!config.dns.malware_detection_enabled"
+                     :class="config.dns.malware_detection_enabled?'active':''" class="toggle-switch">
+                    <div class="toggle-slider"></div>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="config.dns.malware_detection_enabled">
+            <!-- DNS Tunneling Detection -->
+            <div class="card">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DNS Tunneling Detection</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Spots data exfiltration and command-and-control channels hidden inside DNS queries (iodine, dnscat2, Cobalt Strike). Phase 1 checks every query instantly; phase 2 scores the traffic of each client and domain in the background.</p>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="scan-search" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Enable DNS Tunneling Detection</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Run both detection phases on every query.</p>
+                    </div>
+                    <div @click="config.dns.tunneling_detection.enabled=!config.dns.tunneling_detection.enabled"
+                         :class="config.dns.tunneling_detection.enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.tunneling_detection.enabled">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="shield-ban" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Action</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0"><b>Block</b> answers with the Block Mode set in DNS Settings and logs the query. <b>Alert</b> resolves normally and only logs the detection: run it for a few days to check for false positives first.</p>
+                            <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Throttle is not implemented yet and acts as Alert.</p>
+                        </div>
+                        <select x-model="config.dns.tunneling_detection.action" style="width:220px;max-width:100%;align-self:center">
+                            <option value="block">Block</option>
+                            <option value="alert">Alert — log only</option>
+                            <option value="throttle">Throttle — acts as Alert</option>
+                        </select>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="ban" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Block NULL Queries</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0">Phase 1: flags NULL (type 10) record queries, which ordinary software never sends and tunneling tools such as iodine use to carry data.</p>
+                        </div>
+                        <div @click="config.dns.tunneling_detection.block_null_queries=!config.dns.tunneling_detection.block_null_queries"
+                             :class="config.dns.tunneling_detection.block_null_queries?'active':''" class="toggle-switch">
+                            <div class="toggle-slider"></div>
+                        </div>
+                    </div>
+
+                    <template x-for="row in malwareNumberRows.tunneling_detection" :key="row.field">
+                        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                            <div style="flex:1;margin-right:24px">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                    <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                    <h4 style="font-size:16px;font-weight:600;margin:0" x-text="row.label"></h4>
+                                </div>
+                                <p style="font-size:13px;color:var(--text-secondary);margin:0" x-text="row.help"></p>
+                            </div>
+                            <div style="flex-shrink:0;width:150px">
+                                <input type="number" x-model.number="config.dns.tunneling_detection[row.field]" :step="row.step || 1" :min="row.float ? 0 : 1" :max="row.max"
+                                       style="width:100%;text-align:right" :style="malwareNumberError('tunneling_detection', row) ? {borderColor: 'var(--color-error)'} : {}">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right" x-text="row.unit"></p>
+                                <p x-show="malwareNumberError('tunneling_detection', row)" x-text="malwareNumberError('tunneling_detection', row)" style="font-size:11px;color:var(--color-error);margin:4px 0 0;text-align:right"></p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-for="(list, li) in malwareListRows.tunneling_detection" :key="list.field">
+                        <div :style="'padding:16px 0' + (li < malwareListRows.tunneling_detection.length - 1 ? ';border-bottom:1px solid var(--border-color)' : '')">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                <template x-for="(entry, idx) in config.dns.tunneling_detection[list.field]" :key="idx">
+                                    <div>
+                                        <div style="display:flex;gap:8px;align-items:center">
+                                            <input type="text" x-model="config.dns.tunneling_detection[list.field][idx]" :placeholder="list.placeholder"
+                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
+                                                   :style="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
+                                            <button @click="config.dns.tunneling_detection[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                            </button>
+                                        </div>
+                                        <p x-show="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
+                                    </div>
+                                </template>
+                                <button @click="config.dns.tunneling_detection[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
+                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- DGA Detection -->
+            <div class="card">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DGA Detection</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Flags algorithmically generated domains that malware (Conficker, Mirai, Emotet) uses to find its command-and-control servers. Phase 1 scores each name instantly; phase 2 adds letter-pair analysis and each client's rate of such names in the background.</p>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="dices" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Enable DGA Detection</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Score every queried domain for signs of being machine-generated.</p>
+                    </div>
+                    <div @click="config.dns.dga_detection.enabled=!config.dns.dga_detection.enabled"
+                         :class="config.dns.dga_detection.enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.dga_detection.enabled">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="shield-ban" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Action</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0"><b>Block</b> answers with the Block Mode set in DNS Settings and logs the query. <b>Alert</b> resolves normally and only logs the detection.</p>
+                        </div>
+                        <select x-model="config.dns.dga_detection.action" style="width:220px;max-width:100%;align-self:center">
+                            <option value="block">Block</option>
+                            <option value="alert">Alert — log only</option>
+                        </select>
+                    </div>
+
+                    <template x-for="row in malwareNumberRows.dga_detection" :key="row.field">
+                        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                            <div style="flex:1;margin-right:24px">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                    <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                    <h4 style="font-size:16px;font-weight:600;margin:0" x-text="row.label"></h4>
+                                </div>
+                                <p style="font-size:13px;color:var(--text-secondary);margin:0" x-text="row.help"></p>
+                            </div>
+                            <div style="flex-shrink:0;width:150px">
+                                <input type="number" x-model.number="config.dns.dga_detection[row.field]" :step="row.step || 1" :min="row.float ? 0 : 1" :max="row.max"
+                                       style="width:100%;text-align:right" :style="malwareNumberError('dga_detection', row) ? {borderColor: 'var(--color-error)'} : {}">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right" x-text="row.unit"></p>
+                                <p x-show="malwareNumberError('dga_detection', row)" x-text="malwareNumberError('dga_detection', row)" style="font-size:11px;color:var(--color-error);margin:4px 0 0;text-align:right"></p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-for="(list, li) in malwareListRows.dga_detection" :key="list.field">
+                        <div :style="'padding:16px 0' + (li < malwareListRows.dga_detection.length - 1 ? ';border-bottom:1px solid var(--border-color)' : '')">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                <template x-for="(entry, idx) in config.dns.dga_detection[list.field]" :key="idx">
+                                    <div>
+                                        <div style="display:flex;gap:8px;align-items:center">
+                                            <input type="text" x-model="config.dns.dga_detection[list.field][idx]" :placeholder="list.placeholder"
+                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
+                                                   :style="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
+                                            <button @click="config.dns.dga_detection[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                            </button>
+                                        </div>
+                                        <p x-show="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
+                                    </div>
+                                </template>
+                                <button @click="config.dns.dga_detection[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
+                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- DNS Rebinding Protection -->
+            <div class="card">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DNS Rebinding Protection</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Blocks answers where a public domain resolves to a private or loopback address, so a web page cannot turn your browser against devices on your own network.</p>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="house" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Enable DNS Rebinding Protection</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Check every answer for private addresses. A blocked answer uses the Block Mode set in DNS Settings.</p>
+                    </div>
+                    <div @click="config.dns.rebinding_protection_enabled=!config.dns.rebinding_protection_enabled"
+                         :class="config.dns.rebinding_protection_enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.rebinding_protection_enabled">
+                    <template x-for="list in malwareListRows.rebinding" :key="list.field">
+                        <div style="padding:16px 0">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                <template x-for="(entry, idx) in config.dns[list.field]" :key="idx">
+                                    <div>
+                                        <div style="display:flex;gap:8px;align-items:center">
+                                            <input type="text" x-model="config.dns[list.field][idx]" :placeholder="list.placeholder"
+                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
+                                                   :style="malwareEntryError(list.kind, config.dns[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
+                                            <button @click="config.dns[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                            </button>
+                                        </div>
+                                        <p x-show="malwareEntryError(list.kind, config.dns[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
+                                    </div>
+                                </template>
+                                <button @click="config.dns[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
+                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- NXDomain Hijack Detection -->
+            <div class="card">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">NXDomain Hijack Detection</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Detects upstream resolvers, usually an ISP's, that answer non-existent names with the address of an ad or search page, and turns those answers back into NXDOMAIN.</p>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="radar" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Enable NXDomain Hijack Detection</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Probe each upstream with random <code style="padding:1px 4px;background:var(--bg-tertiary);border-radius:3px">.invalid</code> names in the background, and check every answer for the hijack addresses found.</p>
+                    </div>
+                    <div @click="config.dns.nxdomain_hijack.enabled=!config.dns.nxdomain_hijack.enabled"
+                         :class="config.dns.nxdomain_hijack.enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.nxdomain_hijack.enabled">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="shield-ban" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Action</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0"><b>Block</b> rewrites a hijacked answer to NXDOMAIN. <b>Alert</b> passes it through and only logs it.</p>
+                        </div>
+                        <select x-model="config.dns.nxdomain_hijack.action" style="width:220px;max-width:100%;align-self:center">
+                            <option value="block">Block — rewrite to NXDOMAIN</option>
+                            <option value="alert">Alert — log only</option>
+                        </select>
+                    </div>
+
+                    <template x-for="(row, i) in malwareNumberRows.nxdomain_hijack" :key="row.field">
+                        <div :style="'display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0' + (i < malwareNumberRows.nxdomain_hijack.length - 1 ? ';border-bottom:1px solid var(--border-color)' : '')">
+                            <div style="flex:1;margin-right:24px">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                    <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                    <h4 style="font-size:16px;font-weight:600;margin:0" x-text="row.label"></h4>
+                                </div>
+                                <p style="font-size:13px;color:var(--text-secondary);margin:0" x-text="row.help"></p>
+                            </div>
+                            <div style="flex-shrink:0;width:150px">
+                                <input type="number" x-model.number="config.dns.nxdomain_hijack[row.field]" :step="row.step || 1" :min="row.float ? 0 : 1" :max="row.max"
+                                       style="width:100%;text-align:right" :style="malwareNumberError('nxdomain_hijack', row) ? {borderColor: 'var(--color-error)'} : {}">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right" x-text="row.unit"></p>
+                                <p x-show="malwareNumberError('nxdomain_hijack', row)" x-text="malwareNumberError('nxdomain_hijack', row)" style="font-size:11px;color:var(--color-error);margin:4px 0 0;text-align:right"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Response IP Filtering -->
+            <div class="card">
+                <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Response IP Filtering</h2>
+                <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Blocks answers that resolve to known command-and-control server addresses, taken from threat feeds such as abuse.ch Feodo Tracker and SSL Blacklist. Off by default: it needs at least one feed.</p>
+
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                    <div style="flex:1;margin-right:24px">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                            <i data-lucide="crosshair" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                            <h4 style="font-size:16px;font-weight:600;margin:0">Enable Response IP Filtering</h4>
+                        </div>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Check the addresses in every answer against the downloaded feeds.</p>
+                    </div>
+                    <div @click="config.dns.response_ip_filter.enabled=!config.dns.response_ip_filter.enabled"
+                         :class="config.dns.response_ip_filter.enabled?'active':''" class="toggle-switch">
+                        <div class="toggle-slider"></div>
+                    </div>
+                </div>
+
+                <div x-show="config.dns.response_ip_filter.enabled">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                        <div style="flex:1;margin-right:24px">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                <i data-lucide="shield-ban" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0">Action</h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0"><b>Block</b> answers with the Block Mode set in DNS Settings and logs the query. <b>Alert</b> resolves normally and only logs the match.</p>
+                        </div>
+                        <select x-model="config.dns.response_ip_filter.action" style="width:220px;max-width:100%;align-self:center">
+                            <option value="block">Block</option>
+                            <option value="alert">Alert — log only</option>
+                        </select>
+                    </div>
+
+                    <template x-for="row in malwareNumberRows.response_ip_filter" :key="row.field">
+                        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--border-color)">
+                            <div style="flex:1;margin-right:24px">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                                    <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                    <h4 style="font-size:16px;font-weight:600;margin:0" x-text="row.label"></h4>
+                                </div>
+                                <p style="font-size:13px;color:var(--text-secondary);margin:0" x-text="row.help"></p>
+                            </div>
+                            <div style="flex-shrink:0;width:150px">
+                                <input type="number" x-model.number="config.dns.response_ip_filter[row.field]" :step="row.step || 1" :min="row.float ? 0 : 1" :max="row.max"
+                                       style="width:100%;text-align:right" :style="malwareNumberError('response_ip_filter', row) ? {borderColor: 'var(--color-error)'} : {}">
+                                <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right" x-text="row.unit"></p>
+                                <p x-show="malwareNumberError('response_ip_filter', row)" x-text="malwareNumberError('response_ip_filter', row)" style="font-size:11px;color:var(--color-error);margin:4px 0 0;text-align:right"></p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-for="list in malwareListRows.response_ip_filter" :key="list.field">
+                        <div style="padding:16px 0">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
+                            </div>
+                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                <template x-for="(entry, idx) in config.dns.response_ip_filter[list.field]" :key="idx">
+                                    <div>
+                                        <div style="display:flex;gap:8px;align-items:center">
+                                            <input type="text" x-model="config.dns.response_ip_filter[list.field][idx]" :placeholder="list.placeholder"
+                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
+                                                   :style="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
+                                            <button @click="config.dns.response_ip_filter[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
+                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                            </button>
+                                        </div>
+                                        <p x-show="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
+                                    </div>
+                                </template>
+                                <p x-show="responseIpFilterNeedsFeed()" style="font-size:12px;color:var(--color-error);margin:0">Add at least one feed URL, or turn the filter off.</p>
+                                <button @click="config.dns.response_ip_filter[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
+                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <button @click="saveConfig()" class="btn btn-success">
+            <i data-lucide="save" style="width:16px;height:16px"></i> Save Malware Detection Settings
         </button>
     </div>
 

@@ -30,8 +30,32 @@ pub struct ResponseIpFilterConfig {
 pub enum ResponseIpFilterAction {
     /// Log an alert but allow the response to proceed.
     Alert,
-    /// Block the response and return REFUSED.
+    /// Block the response, answering with the configured `[blocking] block_mode`.
     Block,
+}
+
+impl ResponseIpFilterAction {
+    /// Config and API spelling (matches the serde rename).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Alert => "alert",
+            Self::Block => "block",
+        }
+    }
+}
+
+impl std::str::FromStr for ResponseIpFilterAction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "alert" => Ok(Self::Alert),
+            "block" => Ok(Self::Block),
+            _ => Err(format!(
+                "Invalid dns.response_ip_filter.action '{s}': expected alert or block"
+            )),
+        }
+    }
 }
 
 impl Default for ResponseIpFilterConfig {

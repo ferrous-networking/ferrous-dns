@@ -162,7 +162,11 @@ impl DnsServices {
             );
         }
 
-        let tunneling_detector = if config.dns.tunneling_detection.enabled {
+        if !config.dns.malware_detection_enabled {
+            info!("Malware detection disabled (dns.malware_detection_enabled = false)");
+        }
+
+        let tunneling_detector = if config.dns.tunneling_detection_active() {
             let (detector, tx, rx) = TunnelingDetector::new(&config.dns.tunneling_detection);
             let detector = Arc::new(detector);
             let detector_clone = Arc::clone(&detector);
@@ -186,7 +190,7 @@ impl DnsServices {
             None
         };
 
-        let nxdomain_hijack_detector = if config.dns.nxdomain_hijack.enabled {
+        let nxdomain_hijack_detector = if config.dns.nxdomain_hijack_active() {
             let detector = Arc::new(NxdomainHijackDetector::new(&config.dns.nxdomain_hijack));
             let protocols = pool_manager.get_all_arc_protocols();
             let detector_clone = Arc::clone(&detector);
@@ -224,7 +228,7 @@ impl DnsServices {
         .with_dnssec_enforcement(config.dns.effective_dnssec_mode().enforces())
         .with_query_logging(config.database.log_queries);
 
-        if config.dns.rebinding_protection_enabled {
+        if config.dns.rebinding_protection_active() {
             handler = handler.with_rebinding_protection(
                 config.dns.local_domain.as_deref(),
                 &config.dns.rebinding_allowlist,
@@ -251,9 +255,7 @@ impl DnsServices {
             );
         }
 
-        let response_ip_filter_detector = if config.dns.response_ip_filter.enabled
-            && !config.dns.response_ip_filter.ip_list_urls.is_empty()
-        {
+        let response_ip_filter_detector = if config.dns.response_ip_filter_active() {
             let detector = Arc::new(ResponseIpFilterDetector::new(
                 &config.dns.response_ip_filter,
             ));
@@ -299,7 +301,7 @@ impl DnsServices {
             );
         }
 
-        let dga_detector = if config.dns.dga_detection.enabled {
+        let dga_detector = if config.dns.dga_detection_active() {
             let (detector, tx, rx) = DgaDetector::new(&config.dns.dga_detection);
             let detector = Arc::new(detector);
             let detector_clone = Arc::clone(&detector);

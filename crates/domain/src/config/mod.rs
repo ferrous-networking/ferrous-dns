@@ -12,6 +12,7 @@ pub mod health;
 mod legacy;
 pub mod local_records;
 pub mod logging;
+mod malware_detection;
 pub mod nxdomain_hijack;
 pub mod rate_limit;
 pub mod response_ip_filter;

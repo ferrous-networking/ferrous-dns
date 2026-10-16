@@ -105,6 +105,13 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
                 dot_max_connections_per_ip: config.dns.rate_limit.dot_max_connections_per_ip,
                 doq_max_connections_per_ip: config.dns.rate_limit.doq_max_connections_per_ip,
             },
+            malware_detection_enabled: config.dns.malware_detection_enabled,
+            rebinding_protection_enabled: config.dns.rebinding_protection_enabled,
+            rebinding_allowlist: config.dns.rebinding_allowlist.clone(),
+            tunneling_detection: (&config.dns.tunneling_detection).into(),
+            dga_detection: (&config.dns.dga_detection).into(),
+            nxdomain_hijack: (&config.dns.nxdomain_hijack).into(),
+            response_ip_filter: (&config.dns.response_ip_filter).into(),
         },
         blocking: BlockingConfigResponse {
             enabled: config.blocking.enabled,

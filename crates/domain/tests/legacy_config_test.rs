@@ -414,3 +414,199 @@ fn load_sections(database_lines: &str, tables: &str) -> String {
     };
     file(dns_lines, tables).replace("[database]\n", &format!("[database]\n{database_lines}\n"))
 }
+
+/// Above its maximum a threshold never fired, and the maximum keeps it so.
+#[test]
+fn a_malware_threshold_above_its_maximum_loads_as_the_maximum() {
+    let config = load(&file(
+        "",
+        "[dns.tunneling_detection]\n\
+         entropy_threshold = 9.5\n\
+         txt_proportion_threshold = 1.5\n\
+         nxdomain_ratio_threshold = 2.0\n\
+         confidence_threshold = 1.5\n\
+         max_fqdn_length = 1000\n\
+         max_label_length = 64\n\
+         [dns.dga_detection]\n\
+         hot_path_confidence_threshold = 3.0\n\
+         sld_entropy_threshold = 12.0\n\
+         consonant_ratio_threshold = 1.2\n\
+         digit_ratio_threshold = 1.2\n\
+         ngram_score_threshold = 1.2\n\
+         confidence_threshold = 1.2\n\
+         sld_max_length = 100",
+    ));
+    let (t, d) = (&config.dns.tunneling_detection, &config.dns.dga_detection);
+    assert_eq!(
+        (
+            t.entropy_threshold,
+            t.txt_proportion_threshold,
+            t.nxdomain_ratio_threshold,
+            t.confidence_threshold
+        ),
+        (8.0, 1.0, 1.0, 1.0)
+    );
+    assert_eq!((t.max_fqdn_length, t.max_label_length), (253, 63));
+    assert_eq!(
+        (
+            d.hot_path_confidence_threshold,
+            d.sld_entropy_threshold,
+            d.consonant_ratio_threshold,
+            d.digit_ratio_threshold,
+            d.ngram_score_threshold,
+            d.confidence_threshold
+        ),
+        (1.0, 8.0, 1.0, 1.0, 1.0, 1.0)
+    );
+    assert_eq!(d.sld_max_length, 63);
+}
+
+/// At zero or below (or NaN) a threshold fired on every query.
+#[test]
+fn a_malware_threshold_at_zero_below_or_nan_loads_as_the_default() {
+    let defaults = Config::default();
+    let config = load(&file(
+        "",
+        "[dns.tunneling_detection]\n\
+         entropy_threshold = 0.0\n\
+         txt_proportion_threshold = -0.5\n\
+         nxdomain_ratio_threshold = nan\n\
+         confidence_threshold = 0.0\n\
+         max_fqdn_length = 0\n\
+         max_label_length = 0\n\
+         query_rate_per_apex = 0\n\
+         unique_subdomain_threshold = 0\n\
+         [dns.dga_detection]\n\
+         hot_path_confidence_threshold = 0.0\n\
+         sld_entropy_threshold = -1.0\n\
+         consonant_ratio_threshold = nan\n\
+         digit_ratio_threshold = 0.0\n\
+         ngram_score_threshold = 0.0\n\
+         confidence_threshold = -0.1\n\
+         sld_max_length = 0\n\
+         dga_rate_per_client = 0",
+    ));
+    let (t, dt) = (
+        &config.dns.tunneling_detection,
+        &defaults.dns.tunneling_detection,
+    );
+    assert_eq!(
+        (
+            t.entropy_threshold,
+            t.txt_proportion_threshold,
+            t.nxdomain_ratio_threshold,
+            t.confidence_threshold
+        ),
+        (
+            dt.entropy_threshold,
+            dt.txt_proportion_threshold,
+            dt.nxdomain_ratio_threshold,
+            dt.confidence_threshold
+        )
+    );
+    assert_eq!(
+        (
+            t.max_fqdn_length,
+            t.max_label_length,
+            t.query_rate_per_apex,
+            t.unique_subdomain_threshold
+        ),
+        (
+            dt.max_fqdn_length,
+            dt.max_label_length,
+            dt.query_rate_per_apex,
+            dt.unique_subdomain_threshold
+        )
+    );
+    let (d, dd) = (&config.dns.dga_detection, &defaults.dns.dga_detection);
+    assert_eq!(
+        (
+            d.hot_path_confidence_threshold,
+            d.sld_entropy_threshold,
+            d.consonant_ratio_threshold,
+            d.digit_ratio_threshold,
+            d.ngram_score_threshold,
+            d.confidence_threshold
+        ),
+        (
+            dd.hot_path_confidence_threshold,
+            dd.sld_entropy_threshold,
+            dd.consonant_ratio_threshold,
+            dd.digit_ratio_threshold,
+            dd.ngram_score_threshold,
+            dd.confidence_threshold
+        )
+    );
+    assert_eq!(
+        (d.sld_max_length, d.dga_rate_per_client),
+        (dd.sld_max_length, dd.dga_rate_per_client)
+    );
+}
+
+/// Zero probes never detected a hijack, so the detector loads off.
+#[test]
+fn zero_hijack_probes_per_round_loads_with_the_detector_off() {
+    let defaults = Config::default();
+    let config = load(&file("", "[dns.nxdomain_hijack]\nprobes_per_round = 0"));
+    assert!(!config.dns.nxdomain_hijack.enabled);
+    assert_eq!(
+        config.dns.nxdomain_hijack.probes_per_round,
+        defaults.dns.nxdomain_hijack.probes_per_round
+    );
+}
+
+/// Without a feed the filter never ran.
+#[test]
+fn a_response_ip_filter_without_a_usable_feed_loads_disabled() {
+    for urls in ["[]", "[\"ftp://feeds.example/c2.txt\"]"] {
+        let config = load(&file(
+            "",
+            &format!("[dns.response_ip_filter]\nenabled = true\nip_list_urls = {urls}"),
+        ));
+        assert!(!config.dns.response_ip_filter.enabled, "{urls}");
+        assert!(
+            config.dns.response_ip_filter.ip_list_urls.is_empty(),
+            "{urls}"
+        );
+    }
+}
+
+/// None of these entries could ever match; the valid ones around them stay.
+#[test]
+fn malware_list_entries_that_never_matched_are_dropped() {
+    let config = load(&file(
+        "rebinding_allowlist = [\"router.example.com\", \"*.vpn.example.com\"]",
+        "[dns.tunneling_detection]\n\
+         domain_whitelist = [\"cdn.example.com\", \"example.com.\", \"\"]\n\
+         client_whitelist = [\"10.0.0.0/8\", \"10.0.0.0/33\", \"monitor\"]\n\
+         [dns.dga_detection]\n\
+         domain_whitelist = [\"bücher.de\", \"xn--bcher-kva.de\"]\n\
+         client_whitelist = [\"fd00::/8\", \"::1/200\"]\n\
+         [dns.response_ip_filter]\n\
+         enabled = true\n\
+         ip_list_urls = [\"https://feeds.example/c2.txt\", \"feeds.example/other.txt\"]",
+    ));
+    let dns = &config.dns;
+    assert_eq!(dns.rebinding_allowlist, ["router.example.com"]);
+    assert_eq!(
+        dns.tunneling_detection.domain_whitelist,
+        ["cdn.example.com"]
+    );
+    assert_eq!(dns.tunneling_detection.client_whitelist, ["10.0.0.0/8"]);
+    assert_eq!(dns.dga_detection.domain_whitelist, ["xn--bcher-kva.de"]);
+    assert_eq!(dns.dga_detection.client_whitelist, ["fd00::/8"]);
+    assert_eq!(
+        dns.response_ip_filter.ip_list_urls,
+        ["https://feeds.example/c2.txt"]
+    );
+    assert!(dns.response_ip_filter.enabled);
+}
+
+/// The API never normalises: what a file load rewrites, a save still rejects.
+#[test]
+fn the_values_a_load_rewrites_are_still_rejected_by_validate() {
+    let mut config = Config::default();
+    config.dns.upstream_servers = vec!["1.1.1.1:53".to_string()];
+    config.dns.tunneling_detection.confidence_threshold = 1.5;
+    assert!(config.validate().is_err());
+}

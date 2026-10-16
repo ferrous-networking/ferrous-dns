@@ -1,7 +1,10 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use ferrous_dns_domain::config::CacheEvictionStrategy;
-use ferrous_dns_domain::Config;
+use ferrous_dns_domain::{
+    Config, DgaDetectionConfig, NxdomainHijackConfig, ResponseIpFilterConfig,
+    TunnelingDetectionConfig,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -78,6 +81,16 @@ pub struct DnsConfigResponse {
     pub local_dns_server: Option<String>,
     pub mdns_enabled: bool,
     pub rate_limit: RateLimitConfigResponse,
+    /// Master switch for the malware detectors below: when `false`, none runs,
+    /// whatever its own `enabled` says.
+    pub malware_detection_enabled: bool,
+    pub rebinding_protection_enabled: bool,
+    /// Exact domain names exempt from rebinding protection.
+    pub rebinding_allowlist: Vec<String>,
+    pub tunneling_detection: TunnelingDetectionConfigResponse,
+    pub dga_detection: DgaDetectionConfigResponse,
+    pub nxdomain_hijack: NxdomainHijackConfigResponse,
+    pub response_ip_filter: ResponseIpFilterConfigResponse,
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -95,6 +108,130 @@ pub struct RateLimitConfigResponse {
     pub tcp_max_connections_per_ip: u32,
     pub dot_max_connections_per_ip: u32,
     pub doq_max_connections_per_ip: u32,
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct TunnelingDetectionConfigResponse {
+    pub enabled: bool,
+    /// "alert" | "block" | "throttle" (not implemented: acts as alert).
+    pub action: String,
+    pub max_fqdn_length: usize,
+    pub max_label_length: usize,
+    pub block_null_queries: bool,
+    pub entropy_threshold: f32,
+    pub query_rate_per_apex: u32,
+    pub unique_subdomain_threshold: u32,
+    pub txt_proportion_threshold: f32,
+    pub nxdomain_ratio_threshold: f32,
+    pub confidence_threshold: f32,
+    pub stale_entry_ttl_secs: u64,
+    pub domain_whitelist: Vec<String>,
+    pub client_whitelist: Vec<String>,
+}
+
+impl From<&TunnelingDetectionConfig> for TunnelingDetectionConfigResponse {
+    fn from(c: &TunnelingDetectionConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            action: c.action.as_str().to_string(),
+            max_fqdn_length: c.max_fqdn_length,
+            max_label_length: c.max_label_length,
+            block_null_queries: c.block_null_queries,
+            entropy_threshold: c.entropy_threshold,
+            query_rate_per_apex: c.query_rate_per_apex,
+            unique_subdomain_threshold: c.unique_subdomain_threshold,
+            txt_proportion_threshold: c.txt_proportion_threshold,
+            nxdomain_ratio_threshold: c.nxdomain_ratio_threshold,
+            confidence_threshold: c.confidence_threshold,
+            stale_entry_ttl_secs: c.stale_entry_ttl_secs,
+            domain_whitelist: c.domain_whitelist.clone(),
+            client_whitelist: c.client_whitelist.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct DgaDetectionConfigResponse {
+    pub enabled: bool,
+    /// "alert" | "block".
+    pub action: String,
+    pub hot_path_confidence_threshold: f32,
+    pub sld_entropy_threshold: f32,
+    pub sld_max_length: usize,
+    pub consonant_ratio_threshold: f32,
+    pub digit_ratio_threshold: f32,
+    pub ngram_score_threshold: f32,
+    pub dga_rate_per_client: u32,
+    pub confidence_threshold: f32,
+    pub stale_entry_ttl_secs: u64,
+    pub domain_whitelist: Vec<String>,
+    pub client_whitelist: Vec<String>,
+}
+
+impl From<&DgaDetectionConfig> for DgaDetectionConfigResponse {
+    fn from(c: &DgaDetectionConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            action: c.action.as_str().to_string(),
+            hot_path_confidence_threshold: c.hot_path_confidence_threshold,
+            sld_entropy_threshold: c.sld_entropy_threshold,
+            sld_max_length: c.sld_max_length,
+            consonant_ratio_threshold: c.consonant_ratio_threshold,
+            digit_ratio_threshold: c.digit_ratio_threshold,
+            ngram_score_threshold: c.ngram_score_threshold,
+            dga_rate_per_client: c.dga_rate_per_client,
+            confidence_threshold: c.confidence_threshold,
+            stale_entry_ttl_secs: c.stale_entry_ttl_secs,
+            domain_whitelist: c.domain_whitelist.clone(),
+            client_whitelist: c.client_whitelist.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct NxdomainHijackConfigResponse {
+    pub enabled: bool,
+    /// "alert" | "block" (block rewrites the answer to NXDOMAIN).
+    pub action: String,
+    pub probe_interval_secs: u64,
+    pub probe_timeout_ms: u64,
+    pub probes_per_round: u8,
+    pub hijack_ip_ttl_secs: u64,
+}
+
+impl From<&NxdomainHijackConfig> for NxdomainHijackConfigResponse {
+    fn from(c: &NxdomainHijackConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            action: c.action.as_str().to_string(),
+            probe_interval_secs: c.probe_interval_secs,
+            probe_timeout_ms: c.probe_timeout_ms,
+            probes_per_round: c.probes_per_round,
+            hijack_ip_ttl_secs: c.hijack_ip_ttl_secs,
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone, ToSchema)]
+pub struct ResponseIpFilterConfigResponse {
+    pub enabled: bool,
+    /// "alert" | "block".
+    pub action: String,
+    pub ip_list_urls: Vec<String>,
+    pub refresh_interval_secs: u64,
+    pub ip_ttl_secs: u64,
+}
+
+impl From<&ResponseIpFilterConfig> for ResponseIpFilterConfigResponse {
+    fn from(c: &ResponseIpFilterConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            action: c.action.as_str().to_string(),
+            ip_list_urls: c.ip_list_urls.clone(),
+            refresh_interval_secs: c.refresh_interval_secs,
+            ip_ttl_secs: c.ip_ttl_secs,
+        }
+    }
 }
 
 #[derive(Serialize, Debug, Clone, ToSchema)]
@@ -281,6 +418,13 @@ pub struct DnsConfigUpdate {
     pub local_dns_server: Option<String>,
     pub mdns_enabled: Option<bool>,
     pub rate_limit: Option<RateLimitConfigUpdate>,
+    pub malware_detection_enabled: Option<bool>,
+    pub rebinding_protection_enabled: Option<bool>,
+    pub rebinding_allowlist: Option<Vec<String>>,
+    pub tunneling_detection: Option<TunnelingDetectionConfigUpdate>,
+    pub dga_detection: Option<DgaDetectionConfigUpdate>,
+    pub nxdomain_hijack: Option<NxdomainHijackConfigUpdate>,
+    pub response_ip_filter: Option<ResponseIpFilterConfigUpdate>,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]
@@ -298,6 +442,64 @@ pub struct RateLimitConfigUpdate {
     pub tcp_max_connections_per_ip: Option<u32>,
     pub dot_max_connections_per_ip: Option<u32>,
     pub doq_max_connections_per_ip: Option<u32>,
+}
+
+#[derive(Deserialize, Debug, Clone, ToSchema)]
+pub struct TunnelingDetectionConfigUpdate {
+    pub enabled: Option<bool>,
+    /// "alert" | "block" | "throttle".
+    pub action: Option<String>,
+    pub max_fqdn_length: Option<usize>,
+    pub max_label_length: Option<usize>,
+    pub block_null_queries: Option<bool>,
+    pub entropy_threshold: Option<f32>,
+    pub query_rate_per_apex: Option<u32>,
+    pub unique_subdomain_threshold: Option<u32>,
+    pub txt_proportion_threshold: Option<f32>,
+    pub nxdomain_ratio_threshold: Option<f32>,
+    pub confidence_threshold: Option<f32>,
+    pub stale_entry_ttl_secs: Option<u64>,
+    pub domain_whitelist: Option<Vec<String>>,
+    pub client_whitelist: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Debug, Clone, ToSchema)]
+pub struct DgaDetectionConfigUpdate {
+    pub enabled: Option<bool>,
+    /// "alert" | "block".
+    pub action: Option<String>,
+    pub hot_path_confidence_threshold: Option<f32>,
+    pub sld_entropy_threshold: Option<f32>,
+    pub sld_max_length: Option<usize>,
+    pub consonant_ratio_threshold: Option<f32>,
+    pub digit_ratio_threshold: Option<f32>,
+    pub ngram_score_threshold: Option<f32>,
+    pub dga_rate_per_client: Option<u32>,
+    pub confidence_threshold: Option<f32>,
+    pub stale_entry_ttl_secs: Option<u64>,
+    pub domain_whitelist: Option<Vec<String>>,
+    pub client_whitelist: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Debug, Clone, ToSchema)]
+pub struct NxdomainHijackConfigUpdate {
+    pub enabled: Option<bool>,
+    /// "alert" | "block".
+    pub action: Option<String>,
+    pub probe_interval_secs: Option<u64>,
+    pub probe_timeout_ms: Option<u64>,
+    pub probes_per_round: Option<u8>,
+    pub hijack_ip_ttl_secs: Option<u64>,
+}
+
+#[derive(Deserialize, Debug, Clone, ToSchema)]
+pub struct ResponseIpFilterConfigUpdate {
+    pub enabled: Option<bool>,
+    /// "alert" | "block".
+    pub action: Option<String>,
+    pub ip_list_urls: Option<Vec<String>>,
+    pub refresh_interval_secs: Option<u64>,
+    pub ip_ttl_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]

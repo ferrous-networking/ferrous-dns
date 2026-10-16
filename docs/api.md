@@ -253,7 +253,28 @@ Partial update — only include the sections you want to change:
 
 `GET /api/config` returns `domains`, `groups` and `internal` on every pool, empty or `false` for a default pool. When a save changes where some name is routed, the DNS cache is cleared.
 
-The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode` or `dnssec_mode`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
+**Malware detection** (require restart). The master switch and the rebinding keys sit in `dns`; each engine is a nested object with the keys of its `ferrous-dns.toml` section ([reference](configuration/ferrous-dns-toml.md#tunneling-detection)), and any subset of them can be sent:
+
+```json
+{
+  "dns": {
+    "malware_detection_enabled": true,
+    "rebinding_protection_enabled": true,
+    "rebinding_allowlist": ["router.example.com"],
+    "tunneling_detection": { "action": "alert", "client_whitelist": ["10.0.0.50"] },
+    "dga_detection": { "confidence_threshold": 0.7 },
+    "nxdomain_hijack": { "probes_per_round": 3 },
+    "response_ip_filter": {
+      "enabled": true,
+      "ip_list_urls": ["https://feodotracker.abuse.ch/downloads/ipblocklist.txt"]
+    }
+  }
+}
+```
+
+`GET /api/config` returns all of them, every key of every engine included.
+
+The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a whitelist entry that is not an exact domain name or an IP/CIDR, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
 
 The file is rewritten atomically (a synced temp file renamed over it), so a crash mid-save leaves the old or the new file, never a truncated one. The new file keeps the old one's mode, owner and group. When the file cannot be replaced — a Docker single-file bind mount, a directory the server cannot write, or an owner or group the server cannot give the new file — it is rewritten in place instead.
 

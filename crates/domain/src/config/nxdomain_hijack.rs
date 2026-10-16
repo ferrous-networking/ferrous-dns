@@ -39,6 +39,30 @@ pub enum NxdomainHijackAction {
     Block,
 }
 
+impl NxdomainHijackAction {
+    /// Config and API spelling (matches the serde rename).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Alert => "alert",
+            Self::Block => "block",
+        }
+    }
+}
+
+impl std::str::FromStr for NxdomainHijackAction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "alert" => Ok(Self::Alert),
+            "block" => Ok(Self::Block),
+            _ => Err(format!(
+                "Invalid dns.nxdomain_hijack.action '{s}': expected alert or block"
+            )),
+        }
+    }
+}
+
 impl Default for NxdomainHijackConfig {
     fn default() -> Self {
         Self {

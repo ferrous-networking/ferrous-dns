@@ -31,8 +31,9 @@ local_dns_server = "10.0.0.1:53"
 | `local_domain` | — | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, names under `local_domain`, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
+| `malware_detection_enabled` | `true` | Master switch for the five [malware detectors](../features/malware-detection.md): when `false`, none runs, whatever its own `enabled` says. Also in **Settings → Malware Detection** |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
-| `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS) |
+| `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS); a wildcard or a trailing dot never matches and is rejected |
 | `qname_case_randomization` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off by default because some upstreams/forwarders normalize case and would fail validation. DNS Cookies are always on regardless of this flag |
 
 ---
@@ -499,7 +500,7 @@ local_dns_server = "192.168.1.1:53"  # your router's IP
 
 DNS tunneling detection is configured under `[dns.tunneling_detection]`. It is enabled by default and requires no additional setup.
 
-For full documentation including real-world attack examples, configuration reference, confidence scoring, and whitelisting, see the [Malware Detection](../features/malware-detection.md) page.
+Like DGA detection, rebinding protection, NXDomain hijack detection and response IP filtering, it can also be set in **Settings → Malware Detection**, which writes this file. For full documentation including real-world attack examples, configuration reference, confidence scoring, and whitelisting, see the [Malware Detection](../features/malware-detection.md) page. The valid range of each key is in the [configuration reference](ferrous-dns-toml.md#tunneling-detection).
 
 ```toml title="ferrous-dns.toml"
 [dns.tunneling_detection]
@@ -547,7 +548,7 @@ client_whitelist              = []
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `enabled` | `true` | Master switch for DGA detection |
-| `action` | `block` | Action when a DGA domain is detected: `block` (REFUSED) or `alert` (log only) |
+| `action` | `block` | Action when a DGA domain is detected: `block` (answer with the [`[blocking] block_mode`](blocking.md)) or `alert` (log only) |
 | `hot_path_confidence_threshold` | `0.40` | Minimum weighted mini-score for Phase 1 hot-path detection (0.0–1.0). Typically requires 2+ signals to fire, preventing false positives on legitimate domains |
 | `sld_entropy_threshold` | `3.5` | Shannon entropy of the SLD in bits/char — above this indicates a random-looking name |
 | `sld_max_length` | `24` | Maximum SLD length — longer names trigger the length signal |

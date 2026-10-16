@@ -75,7 +75,7 @@ type BreakConfig = fn(&mut Config);
 
 #[test]
 fn values_that_panic_spin_or_disable_a_component_are_rejected_naming_the_key() {
-    let cases: [(&str, BreakConfig); 36] = [
+    let cases: [(&str, BreakConfig); 40] = [
         ("dns.query_timeout", |c| c.dns.query_timeout = 0),
         ("dns.cache_max_entries", |c| c.dns.cache_max_entries = 0),
         ("dns.cache_compaction_interval", |c| {
@@ -102,6 +102,12 @@ fn values_that_panic_spin_or_disable_a_component_are_rejected_naming_the_key() {
         ("dns.tunneling_detection.stale_entry_ttl_secs", |c| {
             c.dns.tunneling_detection.stale_entry_ttl_secs = 0
         }),
+        ("dns.tunneling_detection.query_rate_per_apex", |c| {
+            c.dns.tunneling_detection.query_rate_per_apex = 0
+        }),
+        ("dns.tunneling_detection.unique_subdomain_threshold", |c| {
+            c.dns.tunneling_detection.unique_subdomain_threshold = 0
+        }),
         ("dns.nxdomain_hijack.probe_interval_secs", |c| {
             c.dns.nxdomain_hijack.probe_interval_secs = 0
         }),
@@ -111,6 +117,9 @@ fn values_that_panic_spin_or_disable_a_component_are_rejected_naming_the_key() {
         ("dns.nxdomain_hijack.hijack_ip_ttl_secs", |c| {
             c.dns.nxdomain_hijack.hijack_ip_ttl_secs = 0
         }),
+        ("dns.nxdomain_hijack.probes_per_round", |c| {
+            c.dns.nxdomain_hijack.probes_per_round = 0
+        }),
         ("dns.response_ip_filter.refresh_interval_secs", |c| {
             c.dns.response_ip_filter.refresh_interval_secs = 0
         }),
@@ -119,6 +128,9 @@ fn values_that_panic_spin_or_disable_a_component_are_rejected_naming_the_key() {
         }),
         ("dns.dga_detection.stale_entry_ttl_secs", |c| {
             c.dns.dga_detection.stale_entry_ttl_secs = 0
+        }),
+        ("dns.dga_detection.dga_rate_per_client", |c| {
+            c.dns.dga_detection.dga_rate_per_client = 0
         }),
         ("database.query_log_channel_capacity", |c| {
             c.database.query_log_channel_capacity = 0

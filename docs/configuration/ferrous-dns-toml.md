@@ -244,6 +244,7 @@ default_strategy  = "Parallel"
 dnssec_mode       = "Permissive"
 block_private_ptr = true
 block_non_fqdn    = true
+malware_detection_enabled    = true
 rebinding_protection_enabled = true
 local_domain      = "lan"
 local_dns_server  = "10.0.0.1:53"
@@ -259,8 +260,9 @@ qname_case_randomization = false
 | `dnssec_mode` | `str` | `"Permissive"` | DNSSEC enforcement: `"Off"` (no validation), `"Permissive"` (validate + tag, no SERVFAIL), `"Strict"` (SERVFAIL on Bogus or Indeterminate). The legacy `dnssec_enabled` bool is still accepted (`true` → Permissive, `false` → Off) |
 | `block_private_ptr` | `bool` | `true` | Block PTR lookups for private/RFC-1918 IP ranges, except reverse zones a [conditional pool](dns.md#conditional-forwarding) answers |
 | `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
-| `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection) |
-| `rebinding_allowlist` | `list` | `[]` | Domains exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels) |
+| `malware_detection_enabled` | `bool` | `true` | Master switch for [malware detection](../features/malware-detection.md): when `false`, none of tunneling, DGA, rebinding, NXDomain hijack or response IP detection runs, whatever its own `enabled` says |
+| `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection); also needs `malware_detection_enabled` |
+| `rebinding_allowlist` | `list` | `[]` | Exact domain names exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels). Wildcards and trailing dots never match: the API rejects them, and a file load drops them with a warning |
 | `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](dns.md#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups, client hostname resolution and names under `local_domain`: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
@@ -468,6 +470,11 @@ See [Rate Limiting](rate-limiting.md).
 
 Two-phase DNS tunneling detector. Phase 1 runs on the hot path in O(1) time, checking FQDN length, label length, and NULL query type. Phase 2 runs statistical analysis in the background (Shannon entropy, query rate, unique subdomains, record type proportions).
 
+!!! note "Also in the dashboard, and range-checked"
+    This section, `[dns.dga_detection]`, `[dns.nxdomain_hijack]`, `[dns.response_ip_filter]` and the `malware_detection_enabled` and `rebinding_*` keys of `[dns]` are also edited in **Settings → Malware Detection**. Saving there rewrites them in this file; like every key here, they take effect after a restart.
+
+    The API rejects a value outside the range given in the tables below. A file loaded at startup is more forgiving, so an older file still starts: a threshold above its maximum loads as the maximum (the signal could not fire there either), a zero, negative or `nan` one loads as the default, and an invalid list entry is dropped, each with a warning naming the key.
+
 ```toml title="ferrous-dns.toml"
 [dns.tunneling_detection]
 enabled                      = true
@@ -489,19 +496,19 @@ client_whitelist             = []
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable tunneling detection |
-| `action` | `str` | `"block"` | Action on detection: `"alert"`, `"block"`, or `"throttle"` |
-| `max_fqdn_length` | `int` | `120` | Phase 1: FQDNs longer than this are blocked immediately |
-| `max_label_length` | `int` | `50` | Phase 1: labels longer than this are blocked immediately |
+| `action` | `str` | `"block"` | Action on detection: `"alert"` (log only) or `"block"` (answer with the [`[blocking] block_mode`](#blocking)); `"throttle"` is accepted but not implemented and acts as `"alert"` |
+| `max_fqdn_length` | `int` | `120` | Phase 1: FQDNs longer than this are blocked immediately. 1–253 |
+| `max_label_length` | `int` | `50` | Phase 1: labels longer than this are blocked immediately. 1–63 |
 | `block_null_queries` | `bool` | `true` | Phase 1: block NULL (type 10) queries |
-| `entropy_threshold` | `float` | `3.8` | Phase 2: Shannon entropy in bits/char above which a domain is flagged |
-| `query_rate_per_apex` | `int` | `50` | Phase 2: queries per minute per client+apex pair above which a domain is flagged |
-| `unique_subdomain_threshold` | `int` | `30` | Phase 2: unique subdomains per minute before flagging |
-| `txt_proportion_threshold` | `float` | `0.05` | Phase 2: TXT query proportion above 5% triggers a flag |
-| `nxdomain_ratio_threshold` | `float` | `0.20` | Phase 2: NXDOMAIN ratio above 20% triggers a flag |
-| `confidence_threshold` | `float` | `0.7` | Phase 2: minimum combined confidence score (0–1) required to act |
-| `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted |
-| `domain_whitelist` | `list` | `[]` | Domains exempt from tunneling detection |
-| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from tunneling detection; invalid entries are skipped with a warning |
+| `entropy_threshold` | `float` | `3.8` | Phase 2: Shannon entropy in bits/char above which a domain is flagged. Above 0, at most 8 |
+| `query_rate_per_apex` | `int` | `50` | Phase 2: queries per minute per client+apex pair above which a domain is flagged. At least 1 |
+| `unique_subdomain_threshold` | `int` | `30` | Phase 2: unique subdomains per minute before flagging. At least 1 |
+| `txt_proportion_threshold` | `float` | `0.05` | Phase 2: TXT query proportion above 5% triggers a flag. Above 0, at most 1 |
+| `nxdomain_ratio_threshold` | `float` | `0.20` | Phase 2: NXDOMAIN ratio above 20% triggers a flag. Above 0, at most 1 |
+| `confidence_threshold` | `float` | `0.7` | Phase 2: minimum combined confidence score required to act. Above 0, at most 1 |
+| `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted. At least 1 |
+| `domain_whitelist` | `list` | `[]` | Exact domain names exempt from tunneling detection; wildcards and trailing dots never match and are rejected |
+| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from tunneling detection |
 
 See [Malware Detection](../features/malware-detection.md#dns-tunneling-detection).
 
@@ -531,18 +538,18 @@ client_whitelist              = []
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable DGA detection |
-| `action` | `str` | `"block"` | Action on detection: `"alert"` or `"block"` |
-| `hot_path_confidence_threshold` | `float` | `0.40` | Phase 1: hot-path score threshold; typically requires 2 or more signals |
-| `sld_entropy_threshold` | `float` | `3.5` | Shannon entropy of the second-level domain |
-| `sld_max_length` | `int` | `24` | Maximum SLD character length before the domain is considered suspicious |
-| `consonant_ratio_threshold` | `float` | `0.75` | Consonant fraction of the SLD above which the domain is flagged |
-| `digit_ratio_threshold` | `float` | `0.3` | Digit fraction of the SLD above which the domain is flagged |
-| `ngram_score_threshold` | `float` | `0.6` | Phase 2: n-gram language model score threshold |
-| `dga_rate_per_client` | `int` | `10` | DGA-flagged queries per minute per client before action is escalated |
-| `confidence_threshold` | `float` | `0.65` | Phase 2: minimum combined confidence score required to act |
-| `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted |
-| `domain_whitelist` | `list` | `[]` | Domains exempt from DGA detection |
-| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from DGA detection; invalid entries are skipped with a warning |
+| `action` | `str` | `"block"` | Action on detection: `"alert"` (log only) or `"block"` (answer with the [`[blocking] block_mode`](#blocking)) |
+| `hot_path_confidence_threshold` | `float` | `0.40` | Phase 1: hot-path score threshold; typically requires 2 or more signals. Above 0, at most 1 |
+| `sld_entropy_threshold` | `float` | `3.5` | Shannon entropy of the second-level domain. Above 0, at most 8 |
+| `sld_max_length` | `int` | `24` | Maximum SLD character length before the domain is considered suspicious. 1–63 |
+| `consonant_ratio_threshold` | `float` | `0.75` | Consonant fraction of the SLD above which the domain is flagged. Above 0, at most 1 |
+| `digit_ratio_threshold` | `float` | `0.3` | Digit fraction of the SLD above which the domain is flagged. Above 0, at most 1 |
+| `ngram_score_threshold` | `float` | `0.6` | Phase 2: n-gram language model score threshold. Above 0, at most 1 |
+| `dga_rate_per_client` | `int` | `10` | DGA-flagged queries per minute per client before action is escalated. At least 1 |
+| `confidence_threshold` | `float` | `0.65` | Phase 2: minimum combined confidence score required to act. Above 0, at most 1 |
+| `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted. At least 1 |
+| `domain_whitelist` | `list` | `[]` | Exact domain names exempt from DGA detection; wildcards and trailing dots never match and are rejected |
+| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from DGA detection |
 
 See [Malware Detection](../features/malware-detection.md#dga-detection).
 
@@ -566,10 +573,10 @@ hijack_ip_ttl_secs   = 3600
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable NXDOMAIN hijack detection |
 | `action` | `str` | `"block"` | `"alert"` to log only; `"block"` to convert hijacked responses back to NXDOMAIN |
-| `probe_interval_secs` | `int` | `300` | Seconds between probe rounds per upstream server |
-| `probe_timeout_ms` | `int` | `5000` | Milliseconds to wait for a probe response |
-| `probes_per_round` | `int` | `3` | Number of probe queries sent per upstream per round |
-| `hijack_ip_ttl_secs` | `int` | `3600` | Seconds before an unconfirmed hijack IP entry is evicted |
+| `probe_interval_secs` | `int` | `300` | Seconds between probe rounds per upstream server. At least 1 |
+| `probe_timeout_ms` | `int` | `5000` | Milliseconds to wait for a probe response. At least 1 |
+| `probes_per_round` | `int` | `3` | Number of probe queries sent per upstream per round. 1–255; a file with `0`, which never probed, loads with the detector off |
+| `hijack_ip_ttl_secs` | `int` | `3600` | Seconds before an unconfirmed hijack IP entry is evicted. At least 1 |
 
 See [Malware Detection](../features/malware-detection.md#nxdomain-hijack-detection).
 
@@ -590,11 +597,11 @@ ip_ttl_secs             = 604800
 
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
-| `enabled` | `bool` | `false` | Enable response IP filtering (opt-in) |
-| `action` | `str` | `"block"` | `"alert"` to log only; `"block"` to return NXDOMAIN |
-| `ip_list_urls` | `list` | `[]` | Feed URLs; one IP per line, `#` comments are supported. A feed over 64 MiB is skipped with a warning |
-| `refresh_interval_secs` | `int` | `86400` | Seconds between feed refreshes (24 hours) |
-| `ip_ttl_secs` | `int` | `604800` | Seconds before an IP entry expires if not re-confirmed by a feed refresh (7 days) |
+| `enabled` | `bool` | `false` | Enable response IP filtering (opt-in). Needs at least one URL in `ip_list_urls`: the API rejects it without one, and a file load turns it off with a warning |
+| `action` | `str` | `"block"` | `"alert"` to log only; `"block"` to answer with the [`[blocking] block_mode`](#blocking) |
+| `ip_list_urls` | `list` | `[]` | Feed URLs starting with `http://` or `https://`; one IP per line, `#` comments are supported. A feed over 64 MiB is skipped with a warning |
+| `refresh_interval_secs` | `int` | `86400` | Seconds between feed refreshes (24 hours). At least 1 |
+| `ip_ttl_secs` | `int` | `604800` | Seconds before an IP entry expires if not re-confirmed by a feed refresh (7 days). At least 1 |
 
 !!! tip "Example feeds"
     ```

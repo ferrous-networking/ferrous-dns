@@ -49,6 +49,12 @@ fn str_array(values: &[String]) -> toml_edit::Value {
     toml_edit::Value::Array(arr)
 }
 
+/// The `f64` an `f32` reads as: widening its bits would write `3.8` as
+/// `3.799999952316284`.
+fn f32_value(value: f32) -> f64 {
+    value.to_string().parse().unwrap_or(f64::from(value))
+}
+
 /// Gets a mutable reference to a top-level table, creating it if absent
 /// (handles commented-out sections that `toml_edit` doesn't see).
 fn ensure_table<'a>(
@@ -362,6 +368,21 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
         set_val(t, "block_private_ptr", config.dns.block_private_ptr);
         set_val(t, "block_non_fqdn", config.dns.block_non_fqdn);
         set_val(t, "mdns_enabled", config.dns.mdns_enabled);
+        set_val(
+            t,
+            "malware_detection_enabled",
+            config.dns.malware_detection_enabled,
+        );
+        set_val(
+            t,
+            "rebinding_protection_enabled",
+            config.dns.rebinding_protection_enabled,
+        );
+        set_val(
+            t,
+            "rebinding_allowlist",
+            str_array(&config.dns.rebinding_allowlist),
+        );
         match &config.dns.local_domain {
             Some(domain) => set_val(t, "local_domain", domain.as_str()),
             None => {
@@ -471,6 +492,112 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             config.dns.rate_limit.doq_max_connections_per_ip as i64,
         );
         set_val(rl, "whitelist", str_array(&config.dns.rate_limit.whitelist));
+    }
+
+    {
+        let td = &config.dns.tunneling_detection;
+        let dns = ensure_table(doc, "dns")?;
+        let t = ensure_subtable(dns, "tunneling_detection")?;
+        set_val(t, "enabled", td.enabled);
+        set_val(t, "action", td.action.as_str());
+        set_val(t, "max_fqdn_length", td.max_fqdn_length as i64);
+        set_val(t, "max_label_length", td.max_label_length as i64);
+        set_val(t, "block_null_queries", td.block_null_queries);
+        set_val(t, "entropy_threshold", f32_value(td.entropy_threshold));
+        set_val(t, "query_rate_per_apex", td.query_rate_per_apex as i64);
+        set_val(
+            t,
+            "unique_subdomain_threshold",
+            td.unique_subdomain_threshold as i64,
+        );
+        set_val(
+            t,
+            "txt_proportion_threshold",
+            f32_value(td.txt_proportion_threshold),
+        );
+        set_val(
+            t,
+            "nxdomain_ratio_threshold",
+            f32_value(td.nxdomain_ratio_threshold),
+        );
+        set_val(
+            t,
+            "confidence_threshold",
+            f32_value(td.confidence_threshold),
+        );
+        set_val(t, "stale_entry_ttl_secs", td.stale_entry_ttl_secs as i64);
+        set_val(t, "domain_whitelist", str_array(&td.domain_whitelist));
+        set_val(t, "client_whitelist", str_array(&td.client_whitelist));
+    }
+
+    {
+        let dga = &config.dns.dga_detection;
+        let dns = ensure_table(doc, "dns")?;
+        let t = ensure_subtable(dns, "dga_detection")?;
+        set_val(t, "enabled", dga.enabled);
+        set_val(t, "action", dga.action.as_str());
+        set_val(
+            t,
+            "hot_path_confidence_threshold",
+            f32_value(dga.hot_path_confidence_threshold),
+        );
+        set_val(
+            t,
+            "sld_entropy_threshold",
+            f32_value(dga.sld_entropy_threshold),
+        );
+        set_val(t, "sld_max_length", dga.sld_max_length as i64);
+        set_val(
+            t,
+            "consonant_ratio_threshold",
+            f32_value(dga.consonant_ratio_threshold),
+        );
+        set_val(
+            t,
+            "digit_ratio_threshold",
+            f32_value(dga.digit_ratio_threshold),
+        );
+        set_val(
+            t,
+            "ngram_score_threshold",
+            f32_value(dga.ngram_score_threshold),
+        );
+        set_val(t, "dga_rate_per_client", dga.dga_rate_per_client as i64);
+        set_val(
+            t,
+            "confidence_threshold",
+            f32_value(dga.confidence_threshold),
+        );
+        set_val(t, "stale_entry_ttl_secs", dga.stale_entry_ttl_secs as i64);
+        set_val(t, "domain_whitelist", str_array(&dga.domain_whitelist));
+        set_val(t, "client_whitelist", str_array(&dga.client_whitelist));
+    }
+
+    {
+        let hijack = &config.dns.nxdomain_hijack;
+        let dns = ensure_table(doc, "dns")?;
+        let t = ensure_subtable(dns, "nxdomain_hijack")?;
+        set_val(t, "enabled", hijack.enabled);
+        set_val(t, "action", hijack.action.as_str());
+        set_val(t, "probe_interval_secs", hijack.probe_interval_secs as i64);
+        set_val(t, "probe_timeout_ms", hijack.probe_timeout_ms as i64);
+        set_val(t, "probes_per_round", i64::from(hijack.probes_per_round));
+        set_val(t, "hijack_ip_ttl_secs", hijack.hijack_ip_ttl_secs as i64);
+    }
+
+    {
+        let filter = &config.dns.response_ip_filter;
+        let dns = ensure_table(doc, "dns")?;
+        let t = ensure_subtable(dns, "response_ip_filter")?;
+        set_val(t, "enabled", filter.enabled);
+        set_val(t, "action", filter.action.as_str());
+        set_val(t, "ip_list_urls", str_array(&filter.ip_list_urls));
+        set_val(
+            t,
+            "refresh_interval_secs",
+            filter.refresh_interval_secs as i64,
+        );
+        set_val(t, "ip_ttl_secs", filter.ip_ttl_secs as i64);
     }
 
     {

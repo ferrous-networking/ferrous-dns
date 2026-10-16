@@ -620,6 +620,158 @@ fn test_clearing_sinkhole_removes_keys_from_toml() {
     assert_eq!(reloaded.blocking.sinkhole_ipv4, None);
 }
 
+/// Every malware detection setting differs from its default, so a key the
+/// writer skips reloads as the default and fails the comparison.
+fn malware_settings_changed_from_defaults() -> Config {
+    use ferrous_dns_domain::{
+        DgaDetectionAction, NxdomainHijackAction, ResponseIpFilterAction, TunnelingAction,
+    };
+
+    let mut config = load_config(default_config_toml());
+    let dns = &mut config.dns;
+    dns.malware_detection_enabled = false;
+    dns.rebinding_protection_enabled = false;
+    dns.rebinding_allowlist = vec!["router.example.com".into()];
+
+    let t = &mut dns.tunneling_detection;
+    t.enabled = false;
+    t.action = TunnelingAction::Alert;
+    t.max_fqdn_length = 200;
+    t.max_label_length = 40;
+    t.block_null_queries = false;
+    t.entropy_threshold = 4.2;
+    t.query_rate_per_apex = 80;
+    t.unique_subdomain_threshold = 45;
+    t.txt_proportion_threshold = 0.15;
+    t.nxdomain_ratio_threshold = 0.35;
+    t.confidence_threshold = 0.85;
+    t.stale_entry_ttl_secs = 600;
+    t.domain_whitelist = vec!["cdn.example.com".into()];
+    t.client_whitelist = vec!["10.0.0.50".into(), "192.168.10.0/24".into()];
+
+    let d = &mut dns.dga_detection;
+    d.enabled = false;
+    d.action = DgaDetectionAction::Alert;
+    d.hot_path_confidence_threshold = 0.55;
+    d.sld_entropy_threshold = 3.9;
+    d.sld_max_length = 30;
+    d.consonant_ratio_threshold = 0.8;
+    d.digit_ratio_threshold = 0.45;
+    d.ngram_score_threshold = 0.7;
+    d.dga_rate_per_client = 20;
+    d.confidence_threshold = 0.75;
+    d.stale_entry_ttl_secs = 900;
+    d.domain_whitelist = vec!["xn--bcher-kva.de".into()];
+    d.client_whitelist = vec!["fd00::/8".into()];
+
+    let h = &mut dns.nxdomain_hijack;
+    h.enabled = false;
+    h.action = NxdomainHijackAction::Alert;
+    h.probe_interval_secs = 900;
+    h.probe_timeout_ms = 2500;
+    h.probes_per_round = 5;
+    h.hijack_ip_ttl_secs = 7200;
+
+    let f = &mut dns.response_ip_filter;
+    f.enabled = true;
+    f.action = ResponseIpFilterAction::Alert;
+    f.ip_list_urls = vec!["https://feodotracker.abuse.ch/downloads/ipblocklist.txt".into()];
+    f.refresh_interval_secs = 43200;
+    f.ip_ttl_secs = 259200;
+
+    config.validate().unwrap();
+    config
+}
+
+#[test]
+fn test_save_and_reload_preserves_every_malware_detection_setting() {
+    let config = malware_settings_changed_from_defaults();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("malware.toml");
+    std::fs::write(&path, default_config_toml()).unwrap();
+
+    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
+
+    let reloaded = Config::from_toml_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let (saved, back) = (&config.dns, &reloaded.dns);
+    assert!(!back.malware_detection_enabled);
+    assert_eq!(
+        back.rebinding_protection_enabled,
+        saved.rebinding_protection_enabled
+    );
+    assert_eq!(back.rebinding_allowlist, saved.rebinding_allowlist);
+    // The structs don't derive PartialEq; their serialized form compares every field.
+    for (saved, back) in [
+        (
+            serde_json::to_value(&saved.tunneling_detection).unwrap(),
+            serde_json::to_value(&back.tunneling_detection).unwrap(),
+        ),
+        (
+            serde_json::to_value(&saved.dga_detection).unwrap(),
+            serde_json::to_value(&back.dga_detection).unwrap(),
+        ),
+        (
+            serde_json::to_value(&saved.nxdomain_hijack).unwrap(),
+            serde_json::to_value(&back.nxdomain_hijack).unwrap(),
+        ),
+        (
+            serde_json::to_value(&saved.response_ip_filter).unwrap(),
+            serde_json::to_value(&back.response_ip_filter).unwrap(),
+        ),
+    ] {
+        assert_eq!(back, saved);
+    }
+}
+
+#[test]
+fn test_save_writes_f32_thresholds_as_typed() {
+    let config = malware_settings_changed_from_defaults();
+    let doc = save_and_reparse(&config, default_config_toml());
+    let written = doc.to_string();
+    for line in [
+        "entropy_threshold = 4.2",
+        "txt_proportion_threshold = 0.15",
+        "nxdomain_ratio_threshold = 0.35",
+        "confidence_threshold = 0.85",
+        "hot_path_confidence_threshold = 0.55",
+        "sld_entropy_threshold = 3.9",
+        "consonant_ratio_threshold = 0.8",
+        "digit_ratio_threshold = 0.45",
+        "ngram_score_threshold = 0.7",
+        "confidence_threshold = 0.75",
+    ] {
+        assert!(written.contains(line), "missing `{line}` in:\n{written}");
+    }
+}
+
+#[test]
+fn test_save_keeps_comments_in_malware_sections() {
+    let input = format!(
+        "{}\n[dns.tunneling_detection]\n\
+         # Phase 1 limits\n\
+         enabled = true                          # Master switch\n\
+         max_fqdn_length = 120                   # Phase 1: block FQDNs longer than 120 bytes\n\
+         \n[dns.dga_detection]\n\
+         enabled                         = true\n\
+         sld_entropy_threshold           = 3.5\n",
+        default_config_toml()
+    );
+    let mut config = load_config(&input);
+    config.dns.tunneling_detection.max_fqdn_length = 150;
+
+    let doc = save_and_reparse(&config, &input);
+    let written = doc.to_string();
+    for kept in [
+        "# Phase 1 limits",
+        "enabled = true                          # Master switch",
+        "max_fqdn_length = 150                   # Phase 1: block FQDNs longer than 120 bytes",
+        "enabled                         = true",
+        "sld_entropy_threshold           = 3.5",
+    ] {
+        assert!(written.contains(kept), "missing `{kept}` in:\n{written}");
+    }
+}
+
 #[test]
 fn test_save_config_to_nonexistent_path_returns_error() {
     let config = load_config(default_config_toml());

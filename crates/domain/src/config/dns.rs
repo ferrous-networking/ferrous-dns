@@ -89,6 +89,11 @@ pub struct DnsConfig {
     #[serde(deserialize_with = "local_records::deserialize_lenient")]
     pub local_records: Vec<LocalDnsRecord>,
 
+    /// Master switch for malware detection. When `false`, none of tunneling,
+    /// DGA, rebinding, NXDomain hijack or response IP detection runs, whatever
+    /// its own switch says; each keeps that setting for when this is back on.
+    pub malware_detection_enabled: bool,
+
     /// Whether DNS rebinding protection is enabled. When `true`, responses that
     /// resolve a public domain to a private/RFC1918 IP are blocked.
     /// Defaults to `true` — opt-out rather than opt-in for security-sensitive features.
@@ -161,6 +166,7 @@ impl Default for DnsConfig {
             local_domain: None,
             local_dns_server: None,
             local_records: vec![],
+            malware_detection_enabled: true,
             rebinding_protection_enabled: true,
             rebinding_allowlist: vec![],
             rate_limit: RateLimitConfig::default(),
@@ -208,6 +214,31 @@ impl DnsConfig {
                     "dns.local_dns_server '{value}' must be an IP address or IP:port such as 192.168.1.1:53"
                 ))
             })
+    }
+
+    /// Each malware detector runs only while both `malware_detection_enabled`
+    /// and its own `enabled` are on.
+    pub fn tunneling_detection_active(&self) -> bool {
+        self.malware_detection_enabled && self.tunneling_detection.enabled
+    }
+
+    pub fn dga_detection_active(&self) -> bool {
+        self.malware_detection_enabled && self.dga_detection.enabled
+    }
+
+    pub fn rebinding_protection_active(&self) -> bool {
+        self.malware_detection_enabled && self.rebinding_protection_enabled
+    }
+
+    pub fn nxdomain_hijack_active(&self) -> bool {
+        self.malware_detection_enabled && self.nxdomain_hijack.enabled
+    }
+
+    /// Also needs a feed to download: without one there is nothing to match.
+    pub fn response_ip_filter_active(&self) -> bool {
+        self.malware_detection_enabled
+            && self.response_ip_filter.enabled
+            && !self.response_ip_filter.ip_list_urls.is_empty()
     }
 }
 

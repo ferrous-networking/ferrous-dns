@@ -56,8 +56,32 @@ pub struct DgaDetectionConfig {
 pub enum DgaDetectionAction {
     /// Log an alert but allow the query to proceed.
     Alert,
-    /// Block the query and return REFUSED.
+    /// Block the query, answering with the configured `[blocking] block_mode`.
     Block,
+}
+
+impl DgaDetectionAction {
+    /// Config and API spelling (matches the serde rename).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Alert => "alert",
+            Self::Block => "block",
+        }
+    }
+}
+
+impl std::str::FromStr for DgaDetectionAction {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "alert" => Ok(Self::Alert),
+            "block" => Ok(Self::Block),
+            _ => Err(format!(
+                "Invalid dns.dga_detection.action '{s}': expected alert or block"
+            )),
+        }
+    }
 }
 
 impl Default for DgaDetectionConfig {
