@@ -531,42 +531,86 @@ mod tests {
         );
     }
 
-    /// Nothing but the maintenance cycle bounds the positive cache, so turning
-    /// optimistic refresh off must not turn eviction off with it.
+    /// Polls `done` every 100 ms for up to `within`.
+    async fn wait_until(within: std::time::Duration, done: impl Fn() -> bool) -> bool {
+        let deadline = tokio::time::Instant::now() + within;
+        while !done() {
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        true
+    }
+
+    /// The cache is bounded as soon as it fills, by the running services alone,
+    /// with optimistic refresh on or off: no job has to come round first.
     #[tokio::test]
-    async fn cache_is_still_evicted_with_optimistic_refresh_off() {
+    async fn a_full_cache_is_evicted_without_a_job() {
         use ferrous_dns_domain::RecordType;
         use ferrous_dns_infrastructure::dns::CachedData;
+        use std::time::Duration;
 
         const MAX_ENTRIES: usize = 10;
-        let mut config = Config::default();
-        config.dns.cache_enabled = true;
-        config.dns.cache_optimistic_refresh = false;
-        config.dns.cache_max_entries = MAX_ENTRIES;
-        config.dns.cache_batch_eviction_percentage = 0.5;
-        let (_dir, services) = build_services(config).await;
+        for optimistic in [true, false] {
+            let mut config = Config::default();
+            config.dns.cache_enabled = true;
+            config.dns.cache_optimistic_refresh = optimistic;
+            config.dns.cache_max_entries = MAX_ENTRIES;
+            config.dns.cache_batch_eviction_percentage = 0.5;
+            let (_dir, services) = build_services(config).await;
 
-        for i in 0..MAX_ENTRIES * 2 {
-            services.cache.insert(
-                &format!("host{i}.example.com"),
-                RecordType::CNAME,
-                CachedData::CanonicalName(Arc::from("target.example.com")),
-                3600,
-                None,
+            for i in 0..MAX_ENTRIES * 2 {
+                services.cache.insert(
+                    &format!("host{i}.example.com"),
+                    RecordType::CNAME,
+                    CachedData::CanonicalName(Arc::from("target.example.com")),
+                    3600,
+                    None,
+                );
+            }
+            let before = services.cache.len();
+            assert!(before > MAX_ENTRIES);
+
+            let cache = Arc::clone(&services.cache);
+            assert!(
+                wait_until(Duration::from_secs(3), || cache.len() < before).await,
+                "an over-capacity cache was not evicted (optimistic refresh {optimistic})"
             );
         }
-        let before = services.cache.len();
-        assert!(before > MAX_ENTRIES);
+    }
 
-        let maintenance = services
-            .cache_maintenance
-            .expect("cache maintenance is wired whenever the cache is enabled");
-        maintenance.run_eviction_cycle().await.unwrap();
+    /// An entry past its serve-stale window leaves the cache by itself, with
+    /// optimistic refresh on or off: no compaction pass has to come round first.
+    #[tokio::test]
+    async fn a_dead_entry_leaves_the_cache_without_a_job() {
+        use ferrous_dns_domain::RecordType;
+        use ferrous_dns_infrastructure::dns::CachedData;
+        use std::time::Duration;
 
-        assert!(
-            services.cache.len() < before,
-            "eviction cycle removed nothing from an over-capacity cache"
-        );
+        for optimistic in [true, false] {
+            let mut config = Config::default();
+            config.dns.cache_enabled = true;
+            config.dns.cache_optimistic_refresh = optimistic;
+            config.dns.cache_min_ttl = 0;
+            let (_dir, services) = build_services(config).await;
+
+            // TTL 1: expired after 1 s, past the stale window after 2 s.
+            services.cache.insert(
+                "short-lived.example.com",
+                RecordType::CNAME,
+                CachedData::CanonicalName(Arc::from("target.example.com")),
+                1,
+                None,
+            );
+            assert_eq!(services.cache.len(), 1);
+
+            let cache = Arc::clone(&services.cache);
+            assert!(
+                wait_until(Duration::from_secs(10), || cache.is_empty()).await,
+                "a dead entry stayed in the cache (optimistic refresh {optimistic})"
+            );
+        }
     }
 
     /// Serve-stale repairs don't depend on the optimistic scan: with it off, a
