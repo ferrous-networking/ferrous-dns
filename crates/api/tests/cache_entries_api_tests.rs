@@ -182,6 +182,31 @@ async fn test_get_cache_entries_ignores_unknown_sort_and_order() {
 }
 
 #[tokio::test]
+async fn test_get_cache_entries_reports_and_sorts_by_refreshes() {
+    let TestApp {
+        router: app, cache, ..
+    } = test_app().await;
+    seed(&cache, &["fresh.test", "renewed.test"]);
+    for _ in 0..2 {
+        assert!(cache.refresh_record(
+            "renewed.test",
+            &RecordType::A,
+            Some(300),
+            make_ip_data("1.2.3.4"),
+            None,
+        ));
+    }
+
+    let json = get_json(app, "/cache/entries?sort=refreshes&order=desc").await;
+
+    let data = json["data"].as_array().unwrap();
+    assert_eq!(data[0]["domain"], "renewed.test");
+    assert_eq!(data[0]["refreshes"], 2);
+    assert_eq!(data[1]["domain"], "fresh.test");
+    assert_eq!(data[1]["refreshes"], 0);
+}
+
+#[tokio::test]
 async fn test_get_cache_entries_clamps_limit_to_maximum() {
     let TestApp {
         router: app, cache, ..
