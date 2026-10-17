@@ -50,6 +50,8 @@ pub struct CacheEntrySnapshot {
     /// Hits served from the shared cache. Lookups absorbed by the per-thread
     /// L1 cache are not counted here.
     pub hits: u64,
+    /// Times the entry was renewed from upstream since it was stored.
+    pub refreshes: u64,
     pub last_access_secs: u64,
     pub is_permanent: bool,
     /// Past its TTL but still served within the stale grace period.
@@ -60,6 +62,7 @@ pub struct CacheEntrySnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheEntrySort {
     Hits,
+    Refreshes,
     #[default]
     CachedAt,
     ExpiresAt,
@@ -73,6 +76,7 @@ impl FromStr for CacheEntrySort {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "hits" => Ok(Self::Hits),
+            "refreshes" => Ok(Self::Refreshes),
             "cached_at" => Ok(Self::CachedAt),
             "expires_at" => Ok(Self::ExpiresAt),
             "domain" => Ok(Self::Domain),

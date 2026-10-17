@@ -94,6 +94,7 @@ fn snapshot_from(key: &CacheKey, record: &CachedRecord, now_secs: u64) -> CacheE
         cached_at_secs: record.inserted_at_secs,
         expires_at_secs: record.expires_at_secs,
         hits: record.counters.hit_count.load(AtomicOrdering::Relaxed),
+        refreshes: record.counters.refresh_count.load(AtomicOrdering::Relaxed),
         last_access_secs: record.counters.last_access.load(AtomicOrdering::Relaxed),
         is_permanent,
         is_stale: record.is_stale_usable_at_secs(now_secs),
@@ -104,6 +105,7 @@ fn sort_entries(entries: &mut [CacheEntrySnapshot], sort: CacheEntrySort, order:
     entries.sort_by(|a, b| {
         let primary = match sort {
             CacheEntrySort::Hits => a.hits.cmp(&b.hits),
+            CacheEntrySort::Refreshes => a.refreshes.cmp(&b.refreshes),
             CacheEntrySort::CachedAt => a.cached_at_secs.cmp(&b.cached_at_secs),
             CacheEntrySort::ExpiresAt => a.expires_at_secs.cmp(&b.expires_at_secs),
             CacheEntrySort::Domain => a.domain.cmp(&b.domain),

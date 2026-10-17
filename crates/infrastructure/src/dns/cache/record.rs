@@ -37,6 +37,9 @@ pub struct HotCounters {
     /// value at the last renewal is what makes "hits per minute since the last
     /// renewal" measurable.
     pub hits_at_last_refresh: AtomicU64,
+    /// Successful renewals since the entry was stored. A new answer replaces
+    /// the record and starts it over, like `hit_count`.
+    pub refresh_count: AtomicU64,
     /// The second the entry's pending refresh timer falls due, or one of the
     /// `TIMER_*` states when none is pending. It is the only timer of the
     /// entry that counts: one that fires for any other second is stale and
@@ -50,6 +53,7 @@ impl HotCounters {
             hit_count: AtomicU64::new(0),
             last_access: AtomicU64::new(now_secs),
             hits_at_last_refresh: AtomicU64::new(0),
+            refresh_count: AtomicU64::new(0),
             refresh_timer: AtomicU64::new(TIMER_LAPSED),
         }
     }
@@ -66,6 +70,10 @@ impl std::fmt::Debug for HotCounters {
             .field(
                 "hits_at_last_refresh",
                 &self.hits_at_last_refresh.load(AtomicOrdering::Relaxed),
+            )
+            .field(
+                "refresh_count",
+                &self.refresh_count.load(AtomicOrdering::Relaxed),
             )
             .field(
                 "refresh_timer",
@@ -103,6 +111,9 @@ impl Clone for CachedRecord {
                     self.counters
                         .hits_at_last_refresh
                         .load(AtomicOrdering::Relaxed),
+                ),
+                refresh_count: AtomicU64::new(
+                    self.counters.refresh_count.load(AtomicOrdering::Relaxed),
                 ),
                 refresh_timer: AtomicU64::new(
                     self.counters.refresh_timer.load(AtomicOrdering::Relaxed),
@@ -344,13 +355,17 @@ impl CachedRecord {
         (hits.saturating_sub(base) as f64) * 60.0 / (window_secs as f64)
     }
 
-    /// Rebases the rate window on the current hit count. Called on renewal.
+    /// Rebases the rate window on the current hit count and counts the
+    /// renewal. Called on renewal.
     #[inline(always)]
     pub fn note_refreshed(&self) {
         let hits = self.counters.hit_count.load(AtomicOrdering::Relaxed);
         self.counters
             .hits_at_last_refresh
             .store(hits, AtomicOrdering::Relaxed);
+        self.counters
+            .refresh_count
+            .fetch_add(1, AtomicOrdering::Relaxed);
     }
 
     #[inline(always)]

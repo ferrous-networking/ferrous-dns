@@ -22,6 +22,7 @@
         .col-time { width: 120px }
         .col-ttl { width: 110px }
         .col-hit { width: 70px }
+        .col-refresh { width: 110px }
         .col-answer {
             width: 150px;
             font-family: monospace;
@@ -81,6 +82,10 @@
            keeps at least 220px. Each threshold is the visible fixed widths + 220. */
         .table-card {
             container-type: inline-size
+        }
+
+        @container (max-width: 939px) {
+            .col-refresh { display: none }
         }
 
         @container (max-width: 829px) {

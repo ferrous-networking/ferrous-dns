@@ -116,12 +116,12 @@ is otherwise only written to the log.
 
 ### Cache Control
 
-- Lists the entries currently held in the DNS cache: insertion time, remaining TTL, domain (with DNSSEC validation status), record type, answer, and hit count
+- Lists the entries currently held in the DNS cache: insertion time, remaining TTL, domain (with DNSSEC validation status), record type, answer, hit count, and refresh count (how many times the entry was renewed from upstream)
 - Search by domain substring
 - Sort by clicking any column header (repeat click reverses the direction)
 - Paginated listing with a configurable page size
 - **Remove** — drop an individual entry from the cache
-- On narrower windows the hit count, answer, then type columns are hidden in turn, so the domain name stays readable
+- On narrower windows the refresh count, hit count, answer, then type columns are hidden in turn, so the domain name stays readable
 
 ![Cache Control — cached entries with insertion time, domain, type, answer, remaining TTL, hit count and a per-entry Remove action](../assets/dashboard/dashboard-cache-control.png)
 

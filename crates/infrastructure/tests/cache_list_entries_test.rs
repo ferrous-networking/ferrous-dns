@@ -165,6 +165,75 @@ fn test_list_entries_sorts_by_hits_both_directions() {
     );
 }
 
+fn renew(cache: &DnsCache, domain: &str, times: usize) {
+    for _ in 0..times {
+        assert!(cache.refresh_record(
+            domain,
+            &RecordType::A,
+            Some(300),
+            make_ip_data("1.1.1.1"),
+            None,
+        ));
+    }
+}
+
+#[test]
+fn test_list_entries_counts_refreshes_until_the_entry_is_replaced() {
+    let cache = create_listing_cache();
+    coarse_clock::tick();
+
+    cache.insert(
+        "renewed.test",
+        RecordType::A,
+        make_ip_data("1.1.1.1"),
+        300,
+        None,
+    );
+    renew(&cache, "renewed.test", 3);
+
+    let page = cache.list_entries(&query_all(CacheEntrySort::Domain, CacheEntryOrder::Asc));
+    assert_eq!(page.entries[0].refreshes, 3);
+
+    // A new answer replaces the record, and its counters go with it.
+    cache.insert(
+        "renewed.test",
+        RecordType::A,
+        make_ip_data("2.2.2.2"),
+        300,
+        None,
+    );
+
+    let page = cache.list_entries(&query_all(CacheEntrySort::Domain, CacheEntryOrder::Asc));
+    assert_eq!(page.entries[0].refreshes, 0);
+}
+
+#[test]
+fn test_list_entries_sorts_by_refreshes_both_directions() {
+    let cache = create_listing_cache();
+    coarse_clock::tick();
+
+    for (domain, refreshes) in [
+        ("never.renewed", 0),
+        ("once.renewed", 1),
+        ("often.renewed", 3),
+    ] {
+        cache.insert(domain, RecordType::A, make_ip_data("1.1.1.1"), 300, None);
+        renew(&cache, domain, refreshes);
+    }
+
+    let desc = cache.list_entries(&query_all(CacheEntrySort::Refreshes, CacheEntryOrder::Desc));
+    assert_eq!(
+        domains(&desc.entries),
+        vec!["often.renewed", "once.renewed", "never.renewed"]
+    );
+
+    let asc = cache.list_entries(&query_all(CacheEntrySort::Refreshes, CacheEntryOrder::Asc));
+    assert_eq!(
+        domains(&asc.entries),
+        vec!["never.renewed", "once.renewed", "often.renewed"]
+    );
+}
+
 #[test]
 fn test_list_entries_sorts_by_domain_both_directions() {
     let cache = create_listing_cache();

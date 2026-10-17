@@ -229,6 +229,7 @@ fn to_entry_response(entry: &CacheEntrySnapshot) -> CacheEntryResponse {
             Some(entry.expires_at_secs)
         },
         hits: entry.hits,
+        refreshes: entry.refreshes,
         last_access: entry.last_access_secs,
         permanent: entry.is_permanent,
         stale: entry.is_stale,

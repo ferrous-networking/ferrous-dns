@@ -63,7 +63,7 @@ pub struct CacheEntriesQuery {
     /// Record type name, e.g. `A`, `AAAA`, `CNAME`.
     #[serde(rename = "type")]
     pub record_type: Option<String>,
-    /// One of `hits`, `cached_at`, `expires_at`, `domain`, `type`.
+    /// One of `hits`, `refreshes`, `cached_at`, `expires_at`, `domain`, `type`.
     /// Defaults to `cached_at`.
     pub sort: Option<String>,
     /// `asc` or `desc`. Defaults to `desc`.
@@ -108,6 +108,8 @@ pub struct CacheEntryResponse {
     /// Hits served from the shared cache. Lookups absorbed by the per-thread
     /// L1 cache are not counted here.
     pub hits: u64,
+    /// Times the entry was renewed from upstream since it was stored.
+    pub refreshes: u64,
     pub last_access: u64,
     pub permanent: bool,
     /// Past its TTL but still served within the stale grace period.

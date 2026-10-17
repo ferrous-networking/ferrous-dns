@@ -135,6 +135,9 @@
                 <th class="col-hit th-sort" @click="sortBy('hits')"
                     title="Hits served from the shared cache. Lookups absorbed by the per-thread L1 cache are not counted.">
                     HIT<span class="sort-arrow" x-text="sortArrow('hits')"></span></th>
+                <th class="col-refresh th-sort" @click="sortBy('refreshes')"
+                    title="Times the entry was renewed from upstream since it was stored.">
+                    REFRESHES<span class="sort-arrow" x-text="sortArrow('refreshes')"></span></th>
                 <th class="col-action" style="width:90px">ACTION</th>
             </tr>
             </thead>
@@ -200,6 +203,7 @@
                         </template>
                     </td>
                     <td class="col-hit" style="font-size:13px" x-text="entry.hits"></td>
+                    <td class="col-refresh" style="font-size:13px" x-text="entry.refreshes"></td>
                     <td class="col-action">
                         <template x-if="!entry.permanent">
                             <button type="button" class="btn-action btn-action-remove"
@@ -216,7 +220,7 @@
             </template>
             <template x-if="entries.length === 0">
                 <tr>
-                    <td colspan="7" style="text-align:center;color:var(--text-secondary);padding:32px 0"
+                    <td colspan="8" style="text-align:center;color:var(--text-secondary);padding:32px 0"
                         x-text="searchDomain ? 'No cached entries match this domain.' : 'No entries in the cache yet.'"></td>
                 </tr>
             </template>
