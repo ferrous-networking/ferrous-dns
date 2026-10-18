@@ -355,7 +355,9 @@ impl BlockFilterEnginePort for BlockFilterEngine {
                 ParsedEntry::Exact(domain) => {
                     exact.insert(domain);
                 }
-                ParsedEntry::Wildcard(pattern) => suffixes.insert_wildcard(&pattern, 1),
+                ParsedEntry::Wildcard(pattern) => {
+                    suffixes.insert_wildcard(&pattern, 1);
+                }
                 ParsedEntry::DomainAndSubdomains(domain) => {
                     suffixes.insert_wildcard(&domain, 1);
                     exact.insert(domain);

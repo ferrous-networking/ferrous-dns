@@ -400,6 +400,8 @@ struct ManagedDomainEntry {
 struct BlockIndexData {
     total_exact: usize,
     total_wildcard: usize,
+    /// Distinct names across `exact` and the suffix trie.
+    total_names: usize,
     bloom: AtomicBloom,
     exact: DashMap<CompactString, SourceBitSet, FxBuildHasher>,
     wildcard: SuffixTrie,
@@ -431,9 +433,9 @@ fn build_exact_and_wildcard(
 
     for domain in manual_domains {
         // A manually added `*.example.com` is a suffix rule, not a literal
-        // name — inserting it into `exact` would make it match nothing.
+        // name — inserting it into `exact` would make it match nothing. It
+        // goes into the suffix trie below, once every exact entry is in.
         if domain.starts_with("*.") {
-            wildcard.insert_wildcard(domain, MANUAL_SOURCE_BIT);
             continue;
         }
         bloom.set(domain);
@@ -456,20 +458,28 @@ fn build_exact_and_wildcard(
         }
     });
 
+    // Every exact entry is in by now, so a suffix whose name is also an exact
+    // entry, like the two halves of an adblock `||domain^`, is one name.
+    let mut suffix_only_names = 0;
+    let mut insert_suffix = |pattern: &str, source_bit: SourceBitSet| {
+        let name = pattern.strip_prefix("*.").unwrap_or(pattern);
+        if wildcard.insert_wildcard(pattern, source_bit) && !exact.contains_key(name) {
+            suffix_only_names += 1;
+        }
+    };
+    for domain in manual_domains.iter().filter(|d| d.starts_with("*.")) {
+        insert_suffix(domain, MANUAL_SOURCE_BIT);
+    }
     for (bit, entries) in source_entries {
         let source_bit: SourceBitSet = 1u64 << *bit;
         for entry in entries {
             match entry {
                 ParsedEntry::Exact(_) => {}
-                ParsedEntry::Wildcard(pattern) => {
-                    wildcard.insert_wildcard(pattern, source_bit);
-                }
+                ParsedEntry::Wildcard(pattern) => insert_suffix(pattern, source_bit),
                 // The exact half was inserted above; this covers the subdomains.
                 // `insert_wildcard` keys on the bare suffix, and `lookup` only
                 // reports proper suffixes, so this cannot double-count the apex.
-                ParsedEntry::DomainAndSubdomains(domain) => {
-                    wildcard.insert_wildcard(domain, source_bit);
-                }
+                ParsedEntry::DomainAndSubdomains(domain) => insert_suffix(domain, source_bit),
                 ParsedEntry::Pattern(pat) => {
                     patterns_by_source
                         .entry(*bit)
@@ -503,6 +513,7 @@ fn build_exact_and_wildcard(
     BlockIndexData {
         total_exact: exact.len(),
         total_wildcard,
+        total_names: exact.len() + suffix_only_names,
         bloom,
         exact,
         wildcard,
@@ -649,6 +660,7 @@ pub(super) async fn compile_block_index(
         let BlockIndexData {
             total_exact,
             total_wildcard,
+            total_names,
             bloom,
             exact,
             wildcard,
@@ -692,8 +704,7 @@ pub(super) async fn compile_block_index(
         );
         BlockIndex {
             group_masks,
-            // Adblock `||example.com^` counts both its apex and suffix rule.
-            total_blocked_domains: total_exact + total_wildcard,
+            total_blocked_domains: total_names,
             exact,
             bloom,
             wildcard,

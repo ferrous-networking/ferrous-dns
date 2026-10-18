@@ -30,7 +30,8 @@ impl SuffixTrie {
         self.len
     }
 
-    pub fn insert_wildcard(&mut self, pattern: &str, source_mask: u64) {
+    /// Returns whether the suffix carried no rule before this insert.
+    pub fn insert_wildcard(&mut self, pattern: &str, source_mask: u64) -> bool {
         let domain = pattern.strip_prefix("*.").unwrap_or(pattern);
         let mut node = &mut self.root;
         for label in domain.split('.').rev() {
@@ -41,6 +42,7 @@ impl SuffixTrie {
         if is_new {
             self.len += 1;
         }
+        is_new
     }
 
     #[inline]
