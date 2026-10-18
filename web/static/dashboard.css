@@ -11,6 +11,13 @@
             transform: translateY(-2px)
         }
 
+        /* Centers the 32px icon on the value line (18px label line + half of
+           the 36px value line), so it sits the same with or without a caption. */
+        .cache-stat-icon {
+            flex-shrink: 0;
+            margin-top: 20px
+        }
+
         .timeline-chart-container {
             position: relative;
             height: 300px

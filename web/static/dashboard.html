@@ -155,8 +155,8 @@
     <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Performance</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
         <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="zap" style="width:32px;height:32px;color:#A855F7"></i>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <i data-lucide="zap" class="cache-stat-icon" style="width:32px;height:32px;color:#A855F7"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_hits)">0</p>
@@ -165,24 +165,24 @@
             </div>
         </div>
         <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="clock" style="width:32px;height:32px;color:#3B82F6"></i>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <i data-lucide="clock" class="cache-stat-icon" style="width:32px;height:32px;color:#3B82F6"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Time</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="refresh-cw" style="width:32px;height:32px;color:#F59E0B"></i>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <i data-lucide="refresh-cw" class="cache-stat-icon" style="width:32px;height:32px;color:#F59E0B"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_refreshes)">0</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
-            <div style="display:flex;align-items:center;gap:12px">
-                <i data-lucide="database" style="width:32px;height:32px;color:#10B981"></i>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <i data-lucide="database" class="cache-stat-icon" style="width:32px;height:32px;color:#10B981"></i>
                 <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_entries)">0</p></div>
