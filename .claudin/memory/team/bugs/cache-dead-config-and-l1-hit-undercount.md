@@ -1,11 +1,14 @@
 ---
 name: cache-dead-config-and-l1-hit-undercount
-description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size), toml comments that overstate min_hit_rate/min_frequency, and L1 hits that never reach the L2 hit counters
+description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size) still open; L1 hit undercount + toml wording fixed in #286, but four places still say L1 hits are not counted
 type: project
 paths:
   - crates/infrastructure/src/dns/cache/storage.rs
   - crates/infrastructure/src/dns/cache/refresh.rs
   - ferrous-dns.toml
+  - web/static/cache-control.html
+  - crates/application/src/ports/dns_cache_port.rs
+  - crates/api/src/dto/cache.rs
 ---
 
 Found during a cache-refresh audit on 2026-10-12 (v0.9.22, `4d57874`). All three were confirmed in the code; none was filed.
@@ -25,11 +28,16 @@ Found during a cache-refresh audit on 2026-10-12 (v0.9.22, `4d57874`). All three
 - Correction (2026-10-12): eligibility does *not* always hold. With a TTL longer than `cache_access_window_secs`, `last_access` can sit at insertion past the window when the renewal falls due, so a hot name is not renewed. A test reproduced that; so did HitRate eviction removing the most-hit L1 name first.
 
 **Status:**
-- Symptoms 2 and 3 are fixed on branch `fix/cache-per-entry-refresh-timer`, in review as of 2026-10-13:
-  - L1 batches its hits onto the record (commit `b40b707`);
-  - the toml and the docs describe the two knobs as ranking only.
-  See [[cache-per-entry-refresh-timer]].
-- Symptom 1 (dead `cache_adaptive_thresholds` / `cache_lfuk_history_size`) is still open, with no issue.
+- Symptoms 2 and 3 are fixed by PR #286 (squash `a51f6ea`, merged 2026-10-13, shipped in v0.9.23). See [[cache-per-entry-refresh-timer]].
+  - L1 batches its hits onto the L2 record, at most once per second per thread (`l1.rs` `pending_hits`, `storage.rs` `record_l1_hits`; branch commit `b40b707`).
+  - The toml and the docs describe the two knobs as ranking only.
+- **Stale wording left behind (open, unfiled, 2026-10-18).** Four places still say L1 hits are not counted:
+  - the HIT column tooltip, `web/static/cache-control.html:136`;
+  - `docs/api.md:634`;
+  - the `hits` doc comments in `application/src/ports/dns_cache_port.rs:50` and `api/src/dto/cache.rs:108`. The second one is also the OpenAPI description, because the DTO derives `ToSchema`.
+  It was spotted while building #296 (REFRESHES column) and left out of that PR.
+- Symptom 1 (dead `cache_adaptive_thresholds` / `cache_lfuk_history_size`) is still open, with no issue. Re-checked on 2026-10-18: only config, the DTOs/handlers, persistence and backup read them.
+- Related, not a defect but surprising: the listing's `cached_at` (the TIME column) is the time of the last renewal, not of the first insert. `refresh_record_of` resets `inserted_at_secs` (`storage.rs:738`), and `docs/api.md` does not say so.
 - Related unfixed cache items: [[cache-eviction-random-branch-deadlock]] (hardcoded `use_probabilistic_eviction`, no `l1_clear()` on eviction).
 
 **Why not fixed:** this was an assessment, not a change request. Removing a knob touches the backup snapshot format and the config DTOs, as with [[blocking-toml-lists-dead-config]].

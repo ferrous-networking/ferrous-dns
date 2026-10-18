@@ -15,8 +15,8 @@ Branch `fix/cache-per-entry-refresh-timer` (2026-10-12/13, opened as a PR on 202
 - **Worker.** `RefreshWorker` (`cache_maintenance.rs`) ticks the coarse clock itself and collects the inbox on its 1 s tick into a `BTreeMap` (`RefreshSchedule`). Order: stale repairs first, then a `BinaryHeap` ranked (hot, deadline) by `ColdThresholds`, all under the same 16 permits. Orphaned timers are swept incrementally, 16k per tick.
 - **Timer state.** `HotCounters::refresh_timer` (in its padding, so `CachedRecord` stays 128 B) holds the due second of the one pending timer, or `TIMER_LAPSED` / `TIMER_PARKED` / `TIMER_CLAIMED`.
   - A timer firing for any other second is stale and spends nothing.
-  - **Lapsed:** the renewal failed or was declined for good, the timer was shed, or refreshes are off. Only `compact()` arms it, so a failing upstream gets one retry per `cache_compaction_interval`, never one per hit.
-  - **Parked:** the timer fired while the entry was idle. Its next L2 hit or L1 batch flush arms it.
+  - **Lapsed:** a renewal is running, or refreshes are off (the pending timer is then the expiry). Since 2026-10-16 there is no compaction: a renewal that ends without renewing arms its own next try `cache_compaction_interval` later (`rearm_lapsed`), still never one per hit. See [[cache-event-driven-removal]].
+  - **Parked:** the timer fired while the entry was idle. Its next L2 hit or L1 batch flush arms it; meanwhile it holds the expiry timer that removes it at its deadline.
   - **Claimed:** waiting for a permit. It holds no in-flight bit, so a stale hit can still queue its repair; `start_claimed_refresh` then stands down.
   - The review on 2026-10-13 found that the earlier `FLAG_REFRESH_ARMED` could not tell "timer pending later" from "no timer". Compaction then armed duplicates.
 - **Due rule** (`refresh_due_at`): `min(threshold × ttl, max(ttl − 60, ⌈ttl/2⌉))`, at least +1 s. The ttl/2 bound only limits the 60 s lead; without it a TTL just above 60 renews every second.

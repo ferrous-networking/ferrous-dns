@@ -38,3 +38,11 @@ without touching the host's network or leaking real LAN addresses; rename them
 afterwards with `PATCH /clients/{id}` to get friendly hostnames and groups in the
 Clients page. Around 1,900 queries with roughly a fifth blocked produces a
 dashboard that reads as realistic.
+
+**Known stale shots (as of 2026-10-18, not recaptured on purpose):**
+- Every page shot from 2026-09-09 shows the old sidebar footer, a plain version
+  label. #294 replaced it with a GitHub icon plus a linked version on 2026-10-16.
+- `dashboard-cache-control.png` lacks the REFRESHES column (#296). Its alt text
+  still describes the old columns on purpose.
+
+Recapture these together in one docs PR, using the settings above.
