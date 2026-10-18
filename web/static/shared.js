@@ -212,6 +212,36 @@ function getRateColor(queryRate) {
     return 'var(--color-success)';
 }
 
+// --- Upstream pools (Settings and Dashboard) ---
+// `/upstream/health/detail` returns one row per server; the cards show them
+// under their pool.
+
+function groupUpstreamsByPool(upstreams) {
+    const pools = new Map();
+    for (const group of upstreams) {
+        const key = group.pool_name || 'default';
+        if (!pools.has(key)) {
+            pools.set(key, { pool_name: key, strategy: group.strategy || 'Parallel', servers: [] });
+        }
+        pools.get(key).servers.push(group);
+    }
+    return Array.from(pools.values());
+}
+
+function upstreamStrategyStyle(strategy) {
+    if (strategy === 'Parallel') return 'background:rgba(168,85,247,0.12);color:#A855F7';
+    if (strategy === 'Failover') return 'background:rgba(59,130,246,0.12);color:#3B82F6';
+    if (strategy === 'Balanced') return 'background:rgba(16,185,129,0.12);color:#10B981';
+    return 'background:var(--bg-tertiary);color:var(--text-secondary)';
+}
+
+function upstreamStatusColor(status) {
+    if (status === 'Healthy')   return 'var(--color-success)';
+    if (status === 'Unhealthy') return 'var(--color-error)';
+    if (status === 'Partial')   return 'var(--color-warning)';
+    return 'var(--text-tertiary)';
+}
+
 // --- WebAuthn (passkey) helpers ---
 // webauthn-rs speaks base64url; the browser WebAuthn API wants ArrayBuffers.
 // These convert between the two for the create/get ceremonies.
