@@ -257,6 +257,107 @@
             <p x-show="!topClients || topClients.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No data</p>
         </div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
+        <div class="card" style="padding:24px">
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Upstream</h3>
+            <p x-show="upstreamHealth.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No upstream servers configured</p>
+            <div x-show="upstreamHealth.length > 0">
+                <template x-for="(pool, poolIdx) in groupUpstreamsByPool(upstreamHealth)" :key="pool.pool_name">
+                    <div :style="poolIdx > 0 ? 'margin-top:16px' : ''">
+                        <div style="display:flex;align-items:center;gap:8px;padding:8px 0 6px;border-bottom:2px solid var(--border-color);margin-bottom:2px">
+                            <i data-lucide="layers" style="width:14px;height:14px;color:var(--text-tertiary);flex-shrink:0"></i>
+                            <span style="font-size:12px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.06em" x-text="pool.pool_name"></span>
+                            <span :style="'font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;' + upstreamStrategyStyle(pool.strategy)"
+                                  x-text="pool.strategy"></span>
+                        </div>
+                        <template x-for="group in pool.servers" :key="group.address">
+                            <div style="border-bottom:1px solid var(--border-color)">
+                                <div @click="toggleUpstream(group.address); scheduleLucide(50)"
+                                     style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;cursor:pointer;user-select:none">
+                                    <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+                                        <div :style="'flex-shrink:0;width:8px;height:8px;border-radius:50%;background:' + upstreamStatusColor(group.status)"></div>
+                                        <span style="font-size:14px;font-weight:500;color:var(--text-primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                              x-text="group.address"></span>
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
+                                        <span :style="'background:' + upstreamStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
+                                              x-text="group.status"></span>
+                                        <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
+                                           style="width:16px;height:16px;color:var(--text-tertiary)"></i>
+                                    </div>
+                                </div>
+                                <div x-show="isUpstreamExpanded(group.address)" style="padding-bottom:10px">
+                                    <template x-for="(ep, idx) in group.resolved" :key="ep.address">
+                                        <div style="padding:6px 0 6px 20px">
+                                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                                                    <span style="font-size:13px;color:var(--text-tertiary);font-family:monospace;flex-shrink:0"
+                                                          x-text="idx === group.resolved.length - 1 ? '└─' : '├─'"></span>
+                                                    <span :style="'flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:8px;' + (ep.family === 'ipv4' ? 'background:rgba(59,130,246,0.12);color:var(--color-primary)' : ep.family === 'ipv6' ? 'background:rgba(139,92,246,0.12);color:#8B5CF6' : 'background:var(--bg-tertiary);color:var(--text-secondary)')"
+                                                          x-text="ep.family.toUpperCase()"></span>
+                                                    <span style="font-size:13px;color:var(--text-secondary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                                          x-text="ep.address"></span>
+                                                </div>
+                                                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:12px">
+                                                    <template x-if="ep.latency_ms != null">
+                                                        <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
+                                                    </template>
+                                                    <span :style="'background:' + upstreamStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
+                                                          x-text="ep.status"></span>
+                                                </div>
+                                            </div>
+                                            <p x-show="ep.last_error && ep.status !== 'Healthy'" x-text="ep.last_error"
+                                               style="margin:4px 0 0 24px;font-size:11px;line-height:1.5;color:var(--color-error);overflow-wrap:anywhere"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+        <div class="card" style="padding:24px">
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Refreshes</h3>
+            <table style="width:100%;border-collapse:collapse">
+                <thead>
+                    <tr style="border-bottom:2px solid var(--border-color)">
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Type</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Refreshes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(e, i) in cacheOverview.top_refreshed" :key="e.domain + ' ' + e.type">
+                        <tr style="border-bottom:1px solid var(--border-color)">
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="e.domain"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="e.type"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="e.refreshes.toLocaleString()"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p x-show="cacheOverview.top_refreshed.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No refreshes yet</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expired</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expired)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">New</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.inserted)">0</div>
+                </div>
+                <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expiring</div>
+                    <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expiring_soon)">0</div>
+                </div>
+            </div>
+            <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px"
+               x-text="'Expired and new count since the server started. Expiring: TTL ends within ' + cacheOverview.expiring_window_secs + ' s.'"></p>
+        </div>
+    </div>
 </main>
 <script src="/static/dashboard.js"></script>
 </body>

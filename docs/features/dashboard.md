@@ -32,6 +32,8 @@ The landing page shows a real-time overview of your DNS server:
 - **Top blocked domains** — most frequently blocked domains
 - **Top clients** — most active clients by query count
 - **Block filter stats** — blocklist size, total entries
+- **Upstream** — each pool with its strategy and the health of every server; click a server to see its resolved addresses, their latency and the last error
+- **Cache Refreshes** — the five cache entries renewed most, plus how many entries expired and how many were stored since the server started, and how many expire within the next 60 seconds
 
 ![Main dashboard — counter cards, cache performance, the queries-over-time chart, and the query type and source breakdowns](../assets/dashboard/dashboard-overview.png)
 

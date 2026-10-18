@@ -77,6 +77,9 @@
             queryTypes: {},
             topBlockedDomains: [],
             topClients: [],
+            upstreamHealth: [],
+            expandedUpstreams: [],
+            cacheOverview: {top_refreshed: [], expiring_soon: 0, expiring_window_secs: 60, inserted: 0, expired: 0},
             // Running state of the malware master switch, as of the last restart.
             malwareDetectionEnabled: true,
             chartsReady: false,
@@ -113,7 +116,7 @@
                 scheduleLucide()
             },
             async loadAllData() {
-                await Promise.all([this.loadDashboard(true), this.loadBlockFilterStats()])
+                await Promise.all([this.loadDashboard(true), this.loadBlockFilterStats(), this.loadUpstreamHealth(), this.loadCacheOverview()])
             },
             async loadDashboard(includeTimeline) {
                 this._ctrl.dashboard?.abort();
@@ -341,6 +344,30 @@
                     console.error(e)
                 }
             },
+            async loadUpstreamHealth() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/upstream/health/detail`);
+                    if (res.ok) this.upstreamHealth = await res.json()
+                } catch (e) {
+                    console.error('Load upstream health error:', e)
+                }
+            },
+            async loadCacheOverview() {
+                try {
+                    const res = await apiFetch(`${API_BASE}/cache/overview`);
+                    if (res.ok) this.cacheOverview = await res.json()
+                } catch (e) {
+                    console.error('Load cache overview error:', e)
+                }
+            },
+            toggleUpstream(addr) {
+                const idx = this.expandedUpstreams.indexOf(addr);
+                if (idx >= 0) this.expandedUpstreams.splice(idx, 1);
+                else this.expandedUpstreams.push(addr);
+            },
+            isUpstreamExpanded(addr) {
+                return this.expandedUpstreams.includes(addr);
+            },
             initCharts() {
                 try {
                     if (appCharts.timeline) {
@@ -440,6 +467,8 @@
                 this.stopPolling();
                 this.pollingIntervals.fast = setInterval(() => {
                     this.loadDashboard(false);
+                    this.loadUpstreamHealth();
+                    this.loadCacheOverview();
                 }, 10000);
                 this.pollingIntervals.slow = setInterval(() => {
                     this.loadDashboard(true);
