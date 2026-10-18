@@ -45,6 +45,15 @@ const WILDCARD_ONLY_LIST: &str = "# wildcard-only fixture\n\
 const DUPLICATE_SUFFIX_LIST: &str = "# duplicate-suffix fixture\n\
 *.duplicated-example.test\n";
 
+/// Adblock rules only. Each one compiles to an exact entry plus a suffix rule.
+const ADBLOCK_ONLY_LIST: &str = "# adblock-only fixture\n\
+||counted-once-a-example.test^\n\
+||counted-once-b-example.test^\n";
+
+/// One name the manual blocklist also holds, as a literal and as a suffix rule.
+const SHARED_NAME_LIST: &str = "# shared-name fixture\n\
+||shared-example.test^\n";
+
 /// Serves a blocklist over HTTP for as long as it is alive. Blocklist sources
 /// are fetched by URL, so this is the only way to exercise wildcard and
 /// substring rules through the real compile path.
@@ -314,5 +323,46 @@ async fn a_suffix_reached_from_two_sources_is_counted_once() {
         &engine,
         "ads.duplicated-example.test",
         "a suffix claimed by two sources must still block",
+    );
+}
+
+#[tokio::test]
+async fn an_adblock_rule_counts_as_one_domain() {
+    let server = serve_list(ADBLOCK_ONLY_LIST).await;
+    let (engine, _dir) = build_engine(Some(&server.url), &[]).await;
+
+    // `||domain^` lands in both `exact` and the suffix trie, and the count used
+    // to add the two, so the dashboard and the Pi-hole gravity count showed
+    // every adblock-format list at twice its size.
+    assert_eq!(
+        engine.compiled_domain_count(),
+        2,
+        "two adblock rules are two domains, not four"
+    );
+    assert_blocked(
+        &engine,
+        "counted-once-a-example.test",
+        "the adblock rule must still block its apex",
+    );
+    assert_blocked(
+        &engine,
+        "ads.counted-once-a-example.test",
+        "the adblock rule must still block its subdomains",
+    );
+}
+
+#[tokio::test]
+async fn a_name_from_two_sources_and_rule_shapes_counts_once() {
+    let server = serve_list(SHARED_NAME_LIST).await;
+    let (engine, _dir) = build_engine(
+        Some(&server.url),
+        &["shared-example.test", "*.shared-example.test"],
+    )
+    .await;
+
+    assert_eq!(
+        engine.compiled_domain_count(),
+        1,
+        "one name is one domain, whatever lists and rule shapes carry it"
     );
 }
