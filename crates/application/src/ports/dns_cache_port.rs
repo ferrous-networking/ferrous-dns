@@ -14,6 +14,9 @@ pub struct CacheMetricsSnapshot {
     pub stale_hits: u64,
     pub lazy_deletions: u64,
     pub compactions: u64,
+    /// Positive entries removed past their TTL, since start. Unlike
+    /// `compactions`, negative answers are not counted, as in `insertions`.
+    pub expirations: u64,
     pub batch_evictions: u64,
     pub hit_rate: f64,
     /// Upstream failures classified as transient (timeout, refused, reset, no
@@ -141,6 +144,26 @@ pub struct CacheEntryPage {
     pub records_total: usize,
 }
 
+/// A cache entry among the most renewed ones.
+#[derive(Debug, Clone)]
+pub struct CacheTopRefreshed {
+    pub domain: String,
+    pub record_type: RecordType,
+    /// Times the entry was renewed from upstream since it was stored.
+    pub refreshes: u64,
+}
+
+/// What one pass over the positive cache tells the dashboard about renewal
+/// and expiry.
+#[derive(Debug, Clone, Default)]
+pub struct CacheOverview {
+    /// Entries renewed at least once, most renewed first; ties ordered by
+    /// domain, then record type, as the listing orders them.
+    pub top_refreshed: Vec<CacheTopRefreshed>,
+    /// Entries still within their TTL whose TTL ends inside the window.
+    pub expiring_soon: usize,
+}
+
 /// Port for DNS cache operations exposed to the API layer.
 pub trait DnsCachePort: Send + Sync {
     fn cache_size(&self) -> usize;
@@ -160,4 +183,7 @@ pub trait DnsCachePort: Send + Sync {
     /// so callers that expose eviction to users need to know the difference.
     fn is_permanent_record(&self, domain: &str, record_type: &RecordType) -> bool;
     fn list_entries(&self, query: &CacheEntryQuery) -> CacheEntryPage;
+    /// The `top` most renewed entries and how many entries expire within
+    /// `expiring_within_secs`, in one pass that copies only the top entries.
+    fn cache_overview(&self, top: usize, expiring_within_secs: u64) -> CacheOverview;
 }

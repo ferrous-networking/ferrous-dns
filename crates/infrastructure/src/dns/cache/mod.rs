@@ -8,6 +8,7 @@ pub mod l1;
 pub mod listing;
 pub mod metrics;
 pub mod negative_cache;
+pub mod overview;
 pub mod port;
 pub mod record;
 pub mod refresh;

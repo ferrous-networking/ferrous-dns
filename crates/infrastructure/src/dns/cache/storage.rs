@@ -1004,6 +1004,7 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
             stale_hits: metrics.stale_hits.load(AtomicOrdering::Relaxed),
             lazy_deletions: metrics.lazy_deletions.load(AtomicOrdering::Relaxed),
             compactions: metrics.compactions.load(AtomicOrdering::Relaxed),
+            expirations: metrics.expirations.load(AtomicOrdering::Relaxed),
             batch_evictions: metrics.batch_evictions.load(AtomicOrdering::Relaxed),
             hit_rate: metrics.hit_rate(),
             transient_upstream_errors: metrics
@@ -1057,6 +1058,14 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
         query: &ferrous_dns_application::ports::CacheEntryQuery,
     ) -> ferrous_dns_application::ports::CacheEntryPage {
         DnsCache::list_entries(self, query)
+    }
+
+    fn cache_overview(
+        &self,
+        top: usize,
+        expiring_within_secs: u64,
+    ) -> ferrous_dns_application::ports::CacheOverview {
+        DnsCache::overview(self, top, expiring_within_secs)
     }
 }
 

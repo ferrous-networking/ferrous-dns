@@ -11,8 +11,8 @@ use ferrous_dns_api_pihole::state::{
 };
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
 use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, CacheEntryPage, CacheEntryQuery, CacheMetricsSnapshot, DnsCachePort,
-    FilterDecision,
+    BlockFilterEnginePort, CacheEntryPage, CacheEntryQuery, CacheMetricsSnapshot, CacheOverview,
+    DnsCachePort, FilterDecision,
 };
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
@@ -123,6 +123,10 @@ impl DnsCachePort for StubDnsCache {
             total: 0,
             records_total: 0,
         }
+    }
+
+    fn cache_overview(&self, _top: usize, _expiring_within_secs: u64) -> CacheOverview {
+        CacheOverview::default()
     }
 }
 

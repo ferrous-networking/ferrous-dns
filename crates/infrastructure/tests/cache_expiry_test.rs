@@ -38,6 +38,10 @@ fn compactions(cache: &DnsCache) -> u64 {
     cache.metrics().compactions.load(Ordering::Relaxed)
 }
 
+fn expirations(cache: &DnsCache) -> u64 {
+    cache.metrics().expirations.load(Ordering::Relaxed)
+}
+
 /// The one timer armed since the last drain, which must be for `domain`.
 fn only_timer(inbox: &TimerInbox, domain: &str) -> ScheduledRefresh {
     let mut timers = drain(inbox);
@@ -78,6 +82,11 @@ fn test_entry_is_removed_when_its_timer_fires_and_not_before() {
     fire(&cache, &expiry, expiry.due_at_secs);
     assert!(cache.is_empty(), "a dead entry goes");
     assert_eq!(compactions(&cache), 1);
+    assert_eq!(
+        expirations(&cache),
+        1,
+        "a positive entry past its TTL expired"
+    );
 }
 
 /// A renewal moves the second the entry dies, so the timer of its old life
@@ -164,6 +173,11 @@ fn test_negative_entry_is_removed_when_its_timer_fires() {
     assert!(cache.expire_negative(&key, expiry.due_at_secs));
     assert!(cache.get("missing.example", &RecordType::A).is_none());
     assert_eq!(compactions(&cache), 1);
+    assert_eq!(
+        expirations(&cache),
+        0,
+        "negative answers are not counted, as in insertions"
+    );
 }
 
 /// Never called: every entry below falls due long after the test ends.

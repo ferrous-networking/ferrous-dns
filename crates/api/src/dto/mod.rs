@@ -47,8 +47,9 @@ pub use blocklist_source::{
     BlocklistSourceResponse, CreateBlocklistSourceRequest, UpdateBlocklistSourceRequest,
 };
 pub use cache::{
-    CacheEntriesQuery, CacheEntryResponse, CacheMetricsResponse, CacheStatsQuery,
-    CacheStatsResponse, DeleteCacheEntryQuery, PaginatedCacheEntries,
+    CacheEntriesQuery, CacheEntryResponse, CacheMetricsResponse, CacheOverviewResponse,
+    CacheStatsQuery, CacheStatsResponse, CacheTopRefreshedResponse, DeleteCacheEntryQuery,
+    PaginatedCacheEntries,
 };
 pub use client::{ClientResponse, ClientStatsResponse, ClientsQuery, UpdateClientRequest};
 pub use client_subnet::{

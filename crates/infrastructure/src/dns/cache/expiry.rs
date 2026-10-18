@@ -17,6 +17,9 @@ impl DnsCache {
             self.metrics
                 .compactions
                 .fetch_add(1, AtomicOrdering::Relaxed);
+            self.metrics
+                .expirations
+                .fetch_add(1, AtomicOrdering::Relaxed);
         }
         removed
     }

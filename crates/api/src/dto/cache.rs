@@ -42,6 +42,9 @@ pub struct CacheMetricsResponse {
     pub stale_hits: u64,
     pub lazy_deletions: u64,
     pub compactions: u64,
+    /// Positive entries removed past their TTL since start; `compactions`
+    /// also counts negative answers.
+    pub expirations: u64,
     pub batch_evictions: u64,
     pub hit_rate: f64,
     pub transient_upstream_errors: u64,
@@ -125,4 +128,28 @@ pub struct PaginatedCacheEntries {
     pub records_total: usize,
     pub limit: u32,
     pub offset: u32,
+}
+
+#[derive(Serialize, Debug, ToSchema)]
+pub struct CacheTopRefreshedResponse {
+    pub domain: String,
+    #[serde(rename = "type")]
+    #[schema(value_type = String)]
+    pub record_type: &'static str,
+    /// Times the entry was renewed from upstream since it was stored.
+    pub refreshes: u64,
+}
+
+#[derive(Serialize, Debug, ToSchema)]
+pub struct CacheOverviewResponse {
+    /// The entries renewed most since they were stored, most renewed first.
+    /// Entries never renewed are left out.
+    pub top_refreshed: Vec<CacheTopRefreshedResponse>,
+    /// Entries whose TTL ends within the next `expiring_window_secs`.
+    pub expiring_soon: usize,
+    pub expiring_window_secs: u64,
+    /// Entries stored since the server started.
+    pub inserted: u64,
+    /// Entries removed past their TTL since the server started.
+    pub expired: u64,
 }

@@ -207,6 +207,42 @@ async fn test_get_cache_entries_reports_and_sorts_by_refreshes() {
 }
 
 #[tokio::test]
+async fn test_get_cache_overview_reports_top_refreshed_and_counts() {
+    let TestApp {
+        router: app, cache, ..
+    } = test_app().await;
+    seed(&cache, &["fresh.test", "renewed.test"]);
+    cache.insert(
+        "soon.test",
+        RecordType::A,
+        make_ip_data("1.2.3.4"),
+        30,
+        None,
+    );
+    for _ in 0..3 {
+        assert!(cache.refresh_record(
+            "renewed.test",
+            &RecordType::A,
+            Some(300),
+            make_ip_data("1.2.3.4"),
+            None,
+        ));
+    }
+
+    let json = get_json(app, "/cache/overview").await;
+
+    let top = json["top_refreshed"].as_array().unwrap();
+    assert_eq!(top.len(), 1, "entries never renewed are left out");
+    assert_eq!(top[0]["domain"], "renewed.test");
+    assert_eq!(top[0]["type"], "A");
+    assert_eq!(top[0]["refreshes"], 3);
+    assert_eq!(json["expiring_soon"], 1);
+    assert_eq!(json["expiring_window_secs"], 60);
+    assert_eq!(json["inserted"], 3);
+    assert_eq!(json["expired"], 0);
+}
+
+#[tokio::test]
 async fn test_get_cache_entries_clamps_limit_to_maximum() {
     let TestApp {
         router: app, cache, ..

@@ -610,7 +610,29 @@ Returns cache hit/miss counts, hit rate, and total entries.
 GET /api/cache/metrics
 ```
 
-Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, hit rate.
+Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, expirations, hit rate. `expirations` counts the positive entries their timer removed past their TTL; `compactions` also counts expired negative answers.
+
+### Cache Overview
+
+```http
+GET /api/cache/overview
+```
+
+What the dashboard's **Cache Refreshes** card shows, from one pass over the cache:
+
+```json
+{
+  "top_refreshed": [{ "domain": "github.com", "type": "A", "refreshes": 12 }],
+  "expiring_soon": 37,
+  "expiring_window_secs": 60,
+  "inserted": 5120,
+  "expired": 1830
+}
+```
+
+- `top_refreshed` — the five entries renewed most since they were stored, most renewed first; entries never renewed are left out. The counts match `refreshes` in the listing below.
+- `expiring_soon` — entries whose TTL ends within the next `expiring_window_secs` (60 s, the lead with which renewal starts, so an entry still inside it is not being renewed).
+- `inserted` and `expired` — entries stored and entries removed past their TTL since the server started. The cache lives in memory, so both start from zero on every restart.
 
 ### List Cache Entries
 

@@ -1,7 +1,8 @@
 use crate::{
     dto::{
-        CacheEntriesQuery, CacheEntryResponse, CacheMetricsResponse, CacheStatsQuery,
-        CacheStatsResponse, DeleteCacheEntryQuery, PaginatedCacheEntries,
+        CacheEntriesQuery, CacheEntryResponse, CacheMetricsResponse, CacheOverviewResponse,
+        CacheStatsQuery, CacheStatsResponse, CacheTopRefreshedResponse, DeleteCacheEntryQuery,
+        PaginatedCacheEntries,
     },
     errors::ApiError,
     state::AppState,
@@ -18,6 +19,13 @@ use tracing::{debug, instrument};
 
 /// Upper bound on how many cache entries a single listing request may return.
 const MAX_CACHE_ENTRIES_LIMIT: u32 = 500;
+
+/// How many of the most renewed entries the overview lists.
+const TOP_REFRESHED_LIMIT: usize = 5;
+
+/// An entry counts as expiring once its TTL is this close to the end: the
+/// lead with which renewal starts, so one still inside it is not renewing.
+const EXPIRING_WINDOW_SECS: u64 = 60;
 
 #[utoipa::path(
     get,
@@ -90,6 +98,7 @@ pub async fn get_cache_metrics(State(state): State<AppState>) -> Json<CacheMetri
         stale_hits: snapshot.stale_hits,
         lazy_deletions: snapshot.lazy_deletions,
         compactions: snapshot.compactions,
+        expirations: snapshot.expirations,
         batch_evictions: snapshot.batch_evictions,
         hit_rate: snapshot.hit_rate,
         transient_upstream_errors: snapshot.transient_upstream_errors,
@@ -150,6 +159,40 @@ pub async fn get_cache_entries(
         records_total: page.records_total,
         limit,
         offset: params.offset,
+    })
+}
+
+#[utoipa::path(
+    get,
+    path = "/cache/overview",
+    tag = "cache",
+    responses(
+        (status = 200, description = "Most renewed entries and expiry counts", body = CacheOverviewResponse),
+    ),
+    security(("session_cookie" = []), ("api_key" = [])),
+)]
+#[instrument(skip(state), name = "api_get_cache_overview")]
+pub async fn get_cache_overview(State(state): State<AppState>) -> Json<CacheOverviewResponse> {
+    let overview = state
+        .dns
+        .cache
+        .cache_overview(TOP_REFRESHED_LIMIT, EXPIRING_WINDOW_SECS);
+    let metrics = state.dns.cache.cache_metrics_snapshot();
+
+    Json(CacheOverviewResponse {
+        top_refreshed: overview
+            .top_refreshed
+            .into_iter()
+            .map(|entry| CacheTopRefreshedResponse {
+                domain: entry.domain,
+                record_type: entry.record_type.as_str(),
+                refreshes: entry.refreshes,
+            })
+            .collect(),
+        expiring_soon: overview.expiring_soon,
+        expiring_window_secs: EXPIRING_WINDOW_SECS,
+        inserted: metrics.insertions,
+        expired: metrics.expirations,
     })
 }
 

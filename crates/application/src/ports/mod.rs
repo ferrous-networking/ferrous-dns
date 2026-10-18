@@ -71,7 +71,7 @@ pub use dga_eviction_target::DgaEvictionTarget;
 pub use dga_flag_store::DgaFlagStore;
 pub use dns_cache_port::{
     CacheEntryOrder, CacheEntryPage, CacheEntryQuery, CacheEntrySnapshot, CacheEntrySort,
-    CacheMetricsSnapshot, DnsCachePort,
+    CacheMetricsSnapshot, CacheOverview, CacheTopRefreshed, DnsCachePort,
 };
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use dnssec_stats_port::{DnssecStatsPort, DnssecValidatorStats};

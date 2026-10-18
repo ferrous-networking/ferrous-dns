@@ -14,6 +14,9 @@ pub struct CacheMetrics {
     pub lazy_deletions: AtomicU64,
     /// Entries removed by their own timer once dead, positive or negative.
     pub compactions: AtomicU64,
+    /// The positive part of `compactions`: entries their timer removed past
+    /// their TTL. Counts the same map `insertions` does.
+    pub expirations: AtomicU64,
     pub batch_evictions: AtomicU64,
 
     /// Upstream failures deliberately not cached as NXDOMAIN (timeouts,
