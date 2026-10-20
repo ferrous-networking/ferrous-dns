@@ -68,10 +68,11 @@ pub(super) fn create_udp_socket(bind: SocketAddr) -> anyhow::Result<AsyncFd<std:
 
     socket.set_nonblocking(true)?;
     let std_socket: std::net::UdpSocket = socket.into();
-    Ok(AsyncFd::with_interest(
-        std_socket,
-        Interest::READABLE | Interest::WRITABLE,
-    )?)
+    // SAFETY: the AsyncFd takes ownership of `std_socket`, which owns its fd,
+    // so the fd stays open and unchanged for as long as the AsyncFd lives.
+    Ok(unsafe {
+        AsyncFd::register_with_interest(std_socket, Interest::READABLE | Interest::WRITABLE)
+    }?)
 }
 
 pub(super) async fn run_udp_worker(
