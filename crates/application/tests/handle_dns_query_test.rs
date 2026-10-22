@@ -187,6 +187,35 @@ async fn test_execute_generic_error_logs_servfail_status() {
     assert_eq!(logs[0].response_status, Some("SERVFAIL"));
 }
 
+/// `block_non_fqdn` and `block_private_ptr` refuse a name with `FilteredQuery`,
+/// and the server answers it with the blocked response (0.0.0.0 + EDE 15), so
+/// the log must record a block, not a SERVFAIL the client never saw.
+#[tokio::test]
+async fn test_execute_filtered_query_logs_blocked_with_source() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+
+    resolver
+        .set_response_error(
+            "omada",
+            DomainError::FilteredQuery("Non-FQDN query blocked: omada".into()),
+        )
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("omada", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(matches!(result, Err(DomainError::FilteredQuery(_))));
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].response_status, Some("BLOCKED"));
+    assert!(logs[0].blocked);
+    assert!(logs[0].block_source.is_some());
+}
+
 #[tokio::test]
 async fn test_execute_local_nxdomain_logs_local_dns_and_returns_nxdomain() {
     let resolver = Arc::new(MockDnsResolver::new());
