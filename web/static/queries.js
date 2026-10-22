@@ -174,6 +174,8 @@
                 if (query.block_source === 'blocklist') return 'Blocklist';
                 if (query.block_source === 'managed_domain') return 'Managed Domain';
                 if (query.block_source === 'regex_filter') return 'Regex Filter';
+                if (query.block_source === 'non_fqdn') return 'Non-FQDN';
+                if (query.block_source === 'private_ptr') return 'Private PTR';
                 if (query.block_source === 'rate_limit') return '<span class="badge-rate-limited">Rate Limited</span>';
                 if (query.response_status === 'LOCAL_DNS') return 'Local DNS';
                 if (query.upstream_pool && query.upstream_server) {

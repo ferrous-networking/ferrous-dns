@@ -29,7 +29,7 @@ const CACHE_ALLOW: u8 = 0;
 
 /// High bit of the cached byte: the verdict came from a rule the operator wrote
 /// themselves, which outranks the blocking toggle and schedule overrides.
-/// `BlockSource` has 11 variants, so the low bits have room to spare.
+/// `BlockSource` has 13 variants, so the low bits have room to spare.
 const CACHE_MANUAL: u8 = 0x80;
 
 fn encode_verdict(verdict: Verdict) -> u8 {
@@ -209,20 +209,6 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    const ALL_SOURCES: [BlockSource; 11] = [
-        BlockSource::Blocklist,
-        BlockSource::ManagedDomain,
-        BlockSource::RegexFilter,
-        BlockSource::CnameCloaking,
-        BlockSource::Schedule,
-        BlockSource::DnsRebinding,
-        BlockSource::RateLimit,
-        BlockSource::DnsTunneling,
-        BlockSource::NxdomainHijack,
-        BlockSource::ResponseIpFilter,
-        BlockSource::DgaDetection,
-    ];
-
     fn verdict(cache: &BlockDecisionCache, key: u64) -> Option<Verdict> {
         cache.get_by_key(key).map(|(verdict, _)| verdict)
     }
@@ -245,7 +231,7 @@ mod tests {
             "an explicit allow must survive a roundtrip"
         );
 
-        for (i, source) in ALL_SOURCES.iter().enumerate() {
+        for (i, source) in BlockSource::ALL.iter().enumerate() {
             let key = 100 + i as u64;
             cache.set_by_key(key, Verdict::Block(*source));
             assert_eq!(

@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::BlockSource;
+
 #[derive(Error, Debug, Clone)]
 pub enum DomainError {
     #[error("Invalid domain name: {0}")]
@@ -63,8 +65,9 @@ pub enum DomainError {
     #[error("DNS cookie validation failed")]
     DnsCookieInvalid,
 
+    /// A resolver-level filter refused the name; the source says which one.
     #[error("Query filtered: {0}")]
-    FilteredQuery(String),
+    FilteredQuery(BlockSource),
 
     #[error("Resource not found: {0}")]
     NotFound(String),

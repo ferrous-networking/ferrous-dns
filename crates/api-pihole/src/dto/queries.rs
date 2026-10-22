@@ -161,7 +161,9 @@ pub(crate) fn blocked_status(source: Option<BlockSource>) -> &'static str {
             | BlockSource::DnsTunneling
             | BlockSource::NxdomainHijack
             | BlockSource::ResponseIpFilter
-            | BlockSource::DgaDetection,
+            | BlockSource::DgaDetection
+            | BlockSource::NonFqdn
+            | BlockSource::PrivatePtr,
         )
         | None => "GRAVITY",
     }

@@ -1,4 +1,4 @@
-use ferrous_dns_domain::{DnsQuery, RecordType};
+use ferrous_dns_domain::{BlockSource, DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::filters::{NonFqdn, QueryFilters};
 use std::borrow::Cow;
 
@@ -75,4 +75,17 @@ fn apply_qualifies_single_label_query_with_local_domain() {
     let filters = QueryFilters::new(false, qualify("home"));
     let query = filters.apply(DnsQuery::new("nas", RecordType::A)).unwrap();
     assert_eq!(query.domain.as_ref(), "nas.home");
+}
+
+#[test]
+fn apply_refuses_single_label_query_as_non_fqdn_when_blocked() {
+    let filters = QueryFilters::new(false, NonFqdn::Block);
+    let result = filters.apply(DnsQuery::new("omada", RecordType::A));
+    assert!(
+        matches!(
+            result,
+            Err(DomainError::FilteredQuery(BlockSource::NonFqdn))
+        ),
+        "got {result:?}"
+    );
 }

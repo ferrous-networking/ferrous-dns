@@ -156,12 +156,13 @@ Find the real reason before changing anything. Open **Queries**, locate the doma
 | `managed_domain` / `regex_filter` | A rule in **DNS Filter** |
 | `schedule` | A time-based `BlockAll` window for the client's group |
 | `dns_tunneling`, `dga_detection`, `dns_rebinding`, `nxdomain_hijack`, `response_ip_filter` | One of the five [malware detection](features/malware-detection.md) engines — a heuristic, so this is where false positives live |
+| `non_fqdn` / `private_ptr` | **Never forward non-FQDN queries** or **Never forward reverse lookups for private IP ranges** in **Settings** (`block_non_fqdn` / `block_private_ptr`) |
 
 ### Solution
 
 Click **Allow** next to the domain in the query log, or add it under **DNS Filter > Managed Domains** with the `allow` action.
 
-That single step covers every row in the table above. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
+That single step covers every row in the table above except `non_fqdn` / `private_ptr`, which only turning the setting off lifts. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
 
 ```bash
 curl -X POST http://localhost:8080/api/managed-domains \

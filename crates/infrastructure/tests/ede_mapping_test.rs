@@ -1,4 +1,4 @@
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{BlockSource, DomainError};
 use ferrous_dns_infrastructure::dns::ede::{self, codes};
 
 #[test]
@@ -113,6 +113,6 @@ fn should_return_none_when_unrelated_error() {
 
 #[test]
 fn should_return_blocked_when_filtered_query() {
-    let ede = ede::from_domain_error(&DomainError::FilteredQuery("private PTR".into())).unwrap();
+    let ede = ede::from_domain_error(&DomainError::FilteredQuery(BlockSource::PrivatePtr)).unwrap();
     assert_eq!(ede.info_code, codes::BLOCKED);
 }

@@ -29,6 +29,10 @@ pub enum BlockSource {
     ResponseIpFilter = 9,
     /// Domain Generation Algorithm detection.
     DgaDetection = 10,
+    /// `block_non_fqdn` refused a single-label name.
+    NonFqdn = 11,
+    /// `block_private_ptr` refused a reverse lookup for a private range.
+    PrivatePtr = 12,
 }
 
 impl BlockSource {
@@ -45,6 +49,8 @@ impl BlockSource {
             BlockSource::NxdomainHijack => "nxdomain_hijack",
             BlockSource::ResponseIpFilter => "response_ip_filter",
             BlockSource::DgaDetection => "dga_detection",
+            BlockSource::NonFqdn => "non_fqdn",
+            BlockSource::PrivatePtr => "private_ptr",
         }
     }
 
@@ -62,12 +68,14 @@ impl BlockSource {
             | BlockSource::RegexFilter
             | BlockSource::CnameCloaking
             | BlockSource::Schedule
-            | BlockSource::RateLimit => false,
+            | BlockSource::RateLimit
+            | BlockSource::NonFqdn
+            | BlockSource::PrivatePtr => false,
         }
     }
 
     /// Every variant, indexed by its `u8` code.
-    pub const ALL: [BlockSource; 11] = [
+    pub const ALL: [BlockSource; 13] = [
         BlockSource::Blocklist,
         BlockSource::ManagedDomain,
         BlockSource::RegexFilter,
@@ -79,6 +87,8 @@ impl BlockSource {
         BlockSource::NxdomainHijack,
         BlockSource::ResponseIpFilter,
         BlockSource::DgaDetection,
+        BlockSource::NonFqdn,
+        BlockSource::PrivatePtr,
     ];
 
     pub fn from_u8(v: u8) -> Option<Self> {

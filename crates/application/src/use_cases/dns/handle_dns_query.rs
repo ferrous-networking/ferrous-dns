@@ -926,6 +926,17 @@ impl HandleDnsQueryUseCase {
                 });
                 Err(DomainError::NxDomain)
             }
+            Err(DomainError::FilteredQuery(block_source)) => {
+                // The server answers it with the block response, so the log
+                // records a block rather than a SERVFAIL the client never saw.
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some("BLOCKED"),
+                    block_source: Some(block_source),
+                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                });
+                Err(DomainError::FilteredQuery(block_source))
+            }
             Err(e) => {
                 let response_status = match &e {
                     DomainError::NxDomain => {

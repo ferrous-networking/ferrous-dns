@@ -197,7 +197,7 @@ Prevent information leakage via reverse DNS lookups on private IP ranges:
 block_private_ptr = true
 ```
 
-When enabled, PTR queries for RFC-1918 addresses that are not in the local records are blocked. This prevents external DNS leakage of your internal network topology.
+When enabled, PTR queries for RFC-1918 addresses that are not in the local records are blocked. This prevents external DNS leakage of your internal network topology. A refused query gets the configured block response and shows in the query log as blocked, with block source `private_ptr`.
 
 ---
 
@@ -210,7 +210,7 @@ Block DNS queries for names that are not fully qualified domain names (FQDNs):
 block_non_fqdn = true
 ```
 
-Non-FQDN queries (e.g. `myserver` without a domain suffix) can expose internal network information when forwarded to external resolvers. Blocking them keeps internal names local.
+Non-FQDN queries (e.g. `myserver` without a domain suffix) can expose internal network information when forwarded to external resolvers. Blocking them keeps internal names local. A refused query gets the configured block response and shows in the query log as blocked, with block source `non_fqdn`.
 
 ---
 
@@ -408,7 +408,7 @@ No configuration is required. EDE is always active.
 | `DNSKEY_MISSING` | 9 | `InsecureDelegation` — insecure DNSSEC delegation |
 | `BLOCKED` | 15 | `Blocked` — domain matched the blocklist |
 | `BLOCKED` | 15 | `DgaDomainDetected` — DGA domain identified by statistical analysis |
-| `BLOCKED` | 15 | `FilteredQuery` — query filtered by group policy or schedule |
+| `BLOCKED` | 15 | `FilteredQuery` — query refused by `block_non_fqdn` or `block_private_ptr` |
 | `PROHIBITED` | 18 | `DnsTunnelingDetected` — DNS tunneling activity detected |
 | `PROHIBITED` | 18 | `DnsRateLimited` — client subnet exceeded the rate limit budget |
 | `NO_REACHABLE_AUTHORITY` | 22 | `QueryTimeout` — upstream query timed out before responding |

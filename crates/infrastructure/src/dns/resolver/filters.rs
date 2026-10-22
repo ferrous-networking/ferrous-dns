@@ -1,5 +1,5 @@
 use crate::dns::load_balancer::UpstreamRouter;
-use ferrous_dns_domain::{DnsQuery, DomainError, FqdnFilter, PrivateIpFilter};
+use ferrous_dns_domain::{BlockSource, DnsQuery, DomainError, FqdnFilter, PrivateIpFilter};
 use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::debug;
@@ -50,10 +50,7 @@ impl QueryFilters {
                 query.domain = Arc::from(qualified);
                 Ok(query)
             }
-            Err(reason) => Err(DomainError::FilteredQuery(format!(
-                "{reason}: {}",
-                query.domain
-            ))),
+            Err(source) => Err(DomainError::FilteredQuery(source)),
         }
     }
 
@@ -68,18 +65,16 @@ impl QueryFilters {
         &self,
         domain: &'a str,
         group_id: Option<i64>,
-    ) -> Result<Cow<'a, str>, &'static str> {
+    ) -> Result<Cow<'a, str>, BlockSource> {
         if self.block_private_ptr
             && PrivateIpFilter::is_private_ptr_query(domain)
             && !self.is_routed(domain, group_id)
         {
-            return Err("Private PTR query blocked");
+            return Err(BlockSource::PrivatePtr);
         }
 
         match &self.non_fqdn {
-            NonFqdn::Block if FqdnFilter::is_local_hostname(domain) => {
-                Err("Non-FQDN query blocked")
-            }
+            NonFqdn::Block if FqdnFilter::is_local_hostname(domain) => Err(BlockSource::NonFqdn),
             NonFqdn::Qualify(local_domain) if !domain.contains('.') => {
                 Ok(Cow::Owned(format!("{domain}.{local_domain}")))
             }

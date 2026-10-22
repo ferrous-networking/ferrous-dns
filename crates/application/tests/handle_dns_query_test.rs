@@ -197,10 +197,7 @@ async fn test_execute_filtered_query_logs_blocked_with_source() {
     let log = Arc::new(MockQueryLogRepository::new());
 
     resolver
-        .set_response_error(
-            "omada",
-            DomainError::FilteredQuery("Non-FQDN query blocked: omada".into()),
-        )
+        .set_response_error("omada", DomainError::FilteredQuery(BlockSource::NonFqdn))
         .await;
 
     let use_case = make_use_case(resolver, filter, log.clone());
@@ -213,7 +210,7 @@ async fn test_execute_filtered_query_logs_blocked_with_source() {
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].response_status, Some("BLOCKED"));
     assert!(logs[0].blocked);
-    assert!(logs[0].block_source.is_some());
+    assert_eq!(logs[0].block_source, Some(BlockSource::NonFqdn));
 }
 
 #[tokio::test]

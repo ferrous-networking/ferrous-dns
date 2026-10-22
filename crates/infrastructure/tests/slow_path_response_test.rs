@@ -11,7 +11,8 @@ use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockResponseMode, ClientProtocol, DnsCookiesConfig, DnsQuery, DnssecStatus, DomainError,
+    BlockResponseMode, BlockSource, ClientProtocol, DnsCookiesConfig, DnsQuery, DnssecStatus,
+    DomainError,
 };
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query, ResponseCode};
@@ -205,7 +206,12 @@ async fn outcomes_map_to_rcode_extended_error_and_block_answer() {
         (E::InvalidDomainName("x".into()), ServFail, None, false),
         (E::Blocked, NoError, Some(15), true),
         (E::DgaDomainDetected, NoError, Some(15), true),
-        (E::FilteredQuery("p".into()), NoError, Some(15), true),
+        (
+            E::FilteredQuery(BlockSource::NonFqdn),
+            NoError,
+            Some(15),
+            true,
+        ),
         (E::DnsTunnelingDetected, NoError, Some(18), true),
     ];
     let q = query(RecordType::A, Some(false), false, false);
@@ -284,7 +290,7 @@ async fn built_answers_carry_opt_and_cookie_exactly_when_the_query_did() {
         Err(E::DnssecBogus),
         Err(E::Blocked),
         Err(E::DgaDomainDetected),
-        Err(E::FilteredQuery("p".into())),
+        Err(E::FilteredQuery(BlockSource::NonFqdn)),
         Err(E::DnsTunnelingDetected),
     ]
     .into_iter()

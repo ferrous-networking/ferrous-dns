@@ -1,4 +1,4 @@
-use ferrous_dns_domain::{DnsQuery, RecordType};
+use ferrous_dns_domain::{BlockSource, DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::filters::{NonFqdn, QueryFilters};
 
 fn ptr_query(domain: &str) -> DnsQuery {
@@ -12,7 +12,13 @@ fn test_private_ptr_blocked_when_filter_enabled() {
     let query = ptr_query("1.10.0.10.in-addr.arpa");
     let result = filters.apply(query);
 
-    assert!(result.is_err(), "Expected FilteredQuery error");
+    assert!(
+        matches!(
+            result,
+            Err(DomainError::FilteredQuery(BlockSource::PrivatePtr))
+        ),
+        "Expected a PrivatePtr FilteredQuery, got {result:?}"
+    );
 }
 
 #[test]

@@ -48,6 +48,8 @@
     };
 
     function formatSourceKey(key) {
+        if (key === 'non_fqdn') return 'Non-FQDN';
+        if (key === 'private_ptr') return 'Private PTR';
         if (key.includes(':')) {
             const parts = key.split(':');
             const pool = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
