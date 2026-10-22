@@ -20,6 +20,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Pi-hole compat matches FTL exactly](pihole-compat-ftl-mirrors.md) — strict FTL mirror structs in tests/helpers/ftl.rs; C code wins over the YAML; bodies via PiholeJson
 - [Don't share target/ across checkouts](shared-target-dir-across-checkouts.md) — building a worktree into the main `target/` leaves stale workspace rlibs; own CARGO_TARGET_DIR on disk (~18 GB, not tmpfs /tmp)
 - [Pi-hole compat live validation](pihole-compat-live-validation.md) — diff against a live Pi-hole v6 + run the real integrations in Docker; Homarr :3000 clash, Glance cache traps
+- [rg skips CoreResolver](rg-skips-core-rs.md) — `.gitignore` has `core.*`, so Grep/rg never search `resolver/core.rs`; use `no_ignore`
 - [Malware settings have a JS mirror](malware-settings-js-mirror.md) — settings.js re-checks Config::validate's malware limits; change both, and pair stricter limits with a legacy.rs rewrite
 
 ## Decisions
@@ -52,4 +53,5 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — snapshot lacks pools/routes, rate_limit, malware; groups re-import with new ids; unfiled
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in PR #297 (unmerged); the trap remains
 - [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in PR #297 (37804564), unmerged
+- [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals answer 0.0.0.0 + EDE 15 but log SERVFAIL, shown as "Upstream"; fixed in PR #300 (unmerged)
 - [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — evict_by_strategy never scores tail shards; batch/pass can be outpaced; kept by "same rules" 10-16
