@@ -158,6 +158,12 @@
                     : client.ip_address;
             },
 
+            coalescedTip(query) {
+                return query.coalesced === 'leader'
+                    ? 'Coalesced: identical queries that arrived\nwhile this one was in flight shared its answer'
+                    : 'Coalesced: shared the answer of an identical\nquery already in flight, with no upstream\nrequest of its own';
+            },
+
             escapeHtml(str) {
                 const d = document.createElement('div');
                 d.textContent = str;

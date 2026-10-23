@@ -223,8 +223,13 @@
                             <span style="color:var(--text-secondary)">—</span>
                         </template>
                     </td>
-                    <td class="col-client" style="font-size:13px"
-                        x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></td>
+                    <td class="col-client" style="font-size:13px">
+                        <!-- Lucide `git-merge`, inline for the same reason as the icons above. -->
+                        <template x-if="query.coalesced">
+                            <span class="answer-tip coalesced-icon" :data-tooltip="coalescedTip(query)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>
+                        </template>
+                        <span x-text="query.client_hostname ? query.client_hostname + ' (' + query.client + ')' : query.client"></span>
+                    </td>
                     <td style="max-width:0;overflow:hidden">
                         <span class="badge" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                               :style="query.cache_hit

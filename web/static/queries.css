@@ -76,6 +76,15 @@
             opacity: 1
         }
 
+        /* Marks a query that took part in coalescing; its tooltip is an
+           answer-tip. */
+        .coalesced-icon {
+            display: inline-flex;
+            vertical-align: -2px;
+            margin-right: 4px;
+            color: #6366F1
+        }
+
         /* DOMAIN is the only flexible column: it gets whatever the fixed ones
            leave. Hide columns by the card's width rather than the viewport's —
            on desktop the viewport also counts the 260px sidebar — so DOMAIN

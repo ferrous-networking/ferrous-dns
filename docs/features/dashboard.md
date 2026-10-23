@@ -43,6 +43,7 @@ Live query log with:
 
 - Domain name, query type (A, AAAA, CNAME, MX, etc.)
 - Client IP and hostname
+- A merge icon beside the client of a [coalesced](../architecture/overview.md#in-flight-coalescing) query: on the one that went upstream, and on each identical query that arrived meanwhile and got its answer. The tooltip says which
 - Transport the client used to reach the resolver (UDP, TCP, DoT, DoH, DoQ)
 - Response status (allowed, blocked, cached, rate-limited)
 - Response time
