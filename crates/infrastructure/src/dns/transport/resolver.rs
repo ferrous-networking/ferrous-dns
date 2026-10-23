@@ -7,6 +7,15 @@ use tracing::debug;
 /// How long `local_dns_server` gets to answer before the system resolver is asked.
 const LOCAL_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// What an upstream hostname resolved to: its addresses, and the shortest TTL
+/// of the records that gave them. The system resolver does not report TTLs,
+/// so its answers have none.
+#[derive(Debug, Clone)]
+pub struct ResolvedHost {
+    pub addrs: Vec<SocketAddr>,
+    pub ttl: Option<u32>,
+}
+
 /// Looks up the hostnames in upstream URLs: through `local_dns_server` (the LAN
 /// router) first when one is set, then the system resolver. The router comes
 /// first because a machine that resolves through Ferrous DNS itself cannot look
@@ -36,10 +45,10 @@ impl UpstreamHostResolver {
         hostname: &str,
         port: u16,
         timeout: Duration,
-    ) -> Result<Vec<SocketAddr>, DomainError> {
+    ) -> Result<ResolvedHost, DomainError> {
         if let Some(server) = self.local_dns_server {
             match self.resolve_through(server, hostname, port).await {
-                Ok(addrs) => return Ok(addrs),
+                Ok(resolved) => return Ok(resolved),
                 Err(e) => debug!(
                     hostname,
                     %server,
@@ -48,7 +57,8 @@ impl UpstreamHostResolver {
                 ),
             }
         }
-        resolve_all(hostname, port, timeout).await
+        let addrs = resolve_all(hostname, port, timeout).await?;
+        Ok(ResolvedHost { addrs, ttl: None })
     }
 
     async fn resolve_through(
@@ -56,7 +66,7 @@ impl UpstreamHostResolver {
         server: SocketAddr,
         hostname: &str,
         port: u16,
-    ) -> Result<Vec<SocketAddr>, DomainError> {
+    ) -> Result<ResolvedHost, DomainError> {
         let timeout_ms = LOCAL_LOOKUP_TIMEOUT.as_millis() as u64;
         let lookup = |record_type| {
             self.forwarder
@@ -64,17 +74,21 @@ impl UpstreamHostResolver {
         };
         let (a, aaaa) = tokio::join!(lookup(&RecordType::A), lookup(&RecordType::AAAA));
         // One family failing while the other answered is most likely a lost
-        // datagram. Ask once more: a half answer is kept for good, since an
-        // upstream with any address is never looked up again.
+        // datagram. Ask once more: a half answer would be kept until the
+        // hostname is looked up again, at the end of its TTL.
         let responses = match (a, aaaa) {
             (Err(e), Err(_)) => return Err(e),
             (Err(_), aaaa) => [lookup(&RecordType::A).await, aaaa],
             (a, Err(_)) => [a, lookup(&RecordType::AAAA).await],
             (a, aaaa) => [a, aaaa],
         };
-        let addrs: Vec<SocketAddr> = responses
+        let answered: Vec<_> = responses.into_iter().flatten().collect();
+        let ttl = answered
+            .iter()
+            .filter_map(|response| response.min_ttl)
+            .min();
+        let addrs: Vec<SocketAddr> = answered
             .into_iter()
-            .flatten()
             .flat_map(|response| response.addresses)
             .map(|ip| SocketAddr::new(ip, port))
             .collect();
@@ -83,7 +97,7 @@ impl UpstreamHostResolver {
                 "No addresses found for {hostname}:{port} at {server}"
             )));
         }
-        Ok(addrs)
+        Ok(ResolvedHost { addrs, ttl })
     }
 }
 

@@ -1,5 +1,6 @@
 use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::forwarding::HardeningOpts;
+use ferrous_dns_infrastructure::dns::load_balancer::{run_hostname_refresh, HostnameRefreshTimes};
 use ferrous_dns_infrastructure::dns::transport::resolver::UpstreamHostResolver;
 use ferrous_dns_infrastructure::dns::{HealthChecker, PoolManager};
 use std::net::SocketAddr;
@@ -9,6 +10,11 @@ use tracing::info;
 
 /// Longest wait between two retries of an upstream hostname that keeps failing.
 const MAX_HOSTNAME_RETRY_DELAY: Duration = Duration::from_secs(300);
+/// The bounds an upstream hostname's answer TTL is held to.
+const MIN_HOSTNAME_TTL: Duration = Duration::from_secs(60);
+const MAX_HOSTNAME_TTL: Duration = Duration::from_secs(3600);
+/// How long a system resolver answer, which has no TTL, is kept.
+const HOSTNAME_TTL_UNKNOWN: Duration = Duration::from_secs(300);
 
 pub(super) fn setup_health_checker(config: &Config) -> Arc<HealthChecker> {
     let checker = Arc::new(HealthChecker::new(
@@ -51,27 +57,20 @@ pub(super) async fn setup_pool_manager(
     ))
 }
 
-/// Retries hostname lookups that failed — at startup, or on a pool save —
-/// starting at the health-check interval and doubling up to five minutes while
-/// they keep failing. Holds a weak ref, like the probe loop.
-pub(super) fn start_hostname_retry_task(pool_manager: &Arc<PoolManager>, config: &Config) {
-    let pm_weak = Arc::downgrade(pool_manager);
-    let base = Duration::from_secs(config.dns.health_check.interval);
-    let max = MAX_HOSTNAME_RETRY_DELAY.max(base);
-    tokio::spawn(async move {
-        let mut delay = base;
-        loop {
-            tokio::time::sleep(delay).await;
-            let Some(pm) = pm_weak.upgrade() else {
-                return;
-            };
-            delay = if pm.retry_unresolved().await {
-                (delay * 2).min(max)
-            } else {
-                base
-            };
-        }
-    });
+/// Looks each upstream hostname up again when its answer's TTL runs out. A
+/// lookup that fails — at startup, on a pool save or later — is retried from
+/// the health-check interval, doubling up to five minutes while it keeps
+/// failing. Holds a weak ref, like the probe loop.
+pub(super) fn start_hostname_refresh_task(pool_manager: &Arc<PoolManager>, config: &Config) {
+    let retry = Duration::from_secs(config.dns.health_check.interval);
+    let times = HostnameRefreshTimes {
+        min_ttl: MIN_HOSTNAME_TTL,
+        max_ttl: MAX_HOSTNAME_TTL,
+        without_ttl: HOSTNAME_TTL_UNKNOWN,
+        retry,
+        max_retry: MAX_HOSTNAME_RETRY_DELAY.max(retry),
+    };
+    tokio::spawn(run_hostname_refresh(Arc::downgrade(pool_manager), times));
 }
 
 pub(super) fn start_health_checker_task(

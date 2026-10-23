@@ -73,6 +73,12 @@ pub fn get_or_create_transport(protocol: &DnsProtocol) -> Result<Arc<Transport>,
     Ok(Arc::clone(entry.value()))
 }
 
+/// Drops the cached transport of a server address no pool uses any more, and
+/// with it the connections it pooled.
+pub fn forget_transport(protocol: &DnsProtocol) {
+    TRANSPORT_CACHE.remove(protocol);
+}
+
 fn create_transport(protocol: &DnsProtocol) -> Result<Transport, DomainError> {
     match protocol {
         DnsProtocol::Udp { addr } => Ok(Transport::Udp(udp::UdpTransport::new(addr.clone()))),

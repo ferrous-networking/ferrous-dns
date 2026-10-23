@@ -4,18 +4,35 @@ use super::query::{all_servers_failed, is_servfail};
 use super::routes::{PoolRoutes, Route, UpstreamRouter};
 use super::strategy::{QueryContext, ServerDisplays, Strategy, UpstreamResult};
 use crate::dns::forwarding::{HardeningOpts, MessageBuilder, ResponseParser, ResponseValidator};
+use crate::dns::transport;
 use crate::dns::transport::resolver::UpstreamHostResolver;
 use arc_swap::ArcSwap;
 use ferrous_dns_domain::{DnsProtocol, DomainError, RecordType, UpstreamPool, UpstreamStrategy};
 use smallvec::SmallVec;
+use std::collections::{BTreeSet, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tracing::{debug, info, warn};
 
 /// Resolved addresses kept per family when a hostname upstream is expanded.
 const MAX_ADDRS_PER_FAMILY: usize = 4;
+
+/// The addresses a configured server is reached at, in any order.
+fn addresses_of(group: &ServerGroup) -> BTreeSet<SocketAddr> {
+    group
+        .protocols
+        .iter()
+        .flat_map(|protocol| match &**protocol {
+            DnsProtocol::Https { resolved_addrs, .. } | DnsProtocol::H3 { resolved_addrs, .. } => {
+                resolved_addrs.clone()
+            }
+            other => other.socket_addr().into_iter().collect(),
+        })
+        .collect()
+}
 
 pub struct PoolManager {
     /// Live set of pools, swappable at runtime so upstream changes apply without a restart.
@@ -30,14 +47,31 @@ pub struct PoolManager {
     hardening: HardeningOpts,
     /// Set while no server is marked healthy, so each transition is logged once.
     failing_open: AtomicBool,
-    /// Looks up hostname upstreams when the pools are built, reloaded or retried.
+    /// Looks up hostname upstreams when the pools are built, reloaded or refreshed.
     host_resolver: UpstreamHostResolver,
+    /// Signalled by every reload, so the hostname refresh task arms the
+    /// servers it brought.
+    reloaded: Arc<Notify>,
 }
 
 /// Maps one original configured server string to its resolved protocol entries.
+#[derive(Clone)]
 pub struct ServerGroup {
     pub original: Arc<str>,
     pub protocols: Vec<Arc<DnsProtocol>>,
+    pub resolution: Resolution,
+}
+
+/// What the last lookup of a configured server's hostname found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resolution {
+    /// The server is given by address: there is nothing to look up.
+    Literal,
+    /// Resolved, with the answer's TTL when the resolver reported one.
+    Resolved { ttl: Option<u32> },
+    /// The lookup failed. The server keeps what an earlier lookup found, if
+    /// anything.
+    Failed,
 }
 
 struct PoolWithStrategy {
@@ -133,7 +167,7 @@ impl PoolManager {
         health_checker: Option<Arc<HealthChecker>>,
         host_resolver: UpstreamHostResolver,
     ) -> Result<Self, DomainError> {
-        let pool_set = Self::build_pools(pools, &host_resolver, false).await?;
+        let pool_set = Self::build_pools(pools, &host_resolver, false, None).await?;
 
         Ok(Self {
             has_group_routes: Arc::new(AtomicBool::new(pool_set.routes.has_group_routes())),
@@ -142,6 +176,7 @@ impl PoolManager {
             hardening: HardeningOpts::default(),
             failing_open: AtomicBool::new(false),
             host_resolver,
+            reloaded: Arc::new(Notify::new()),
         })
     }
 
@@ -171,8 +206,9 @@ impl PoolManager {
     /// [`PoolManager::apply`] to stage a fallible rebuild before committing it, so
     /// several managers can be swapped together only once all rebuilds succeed.
     pub async fn prepare(&self, pools: Vec<UpstreamPool>) -> Result<PreparedPools, DomainError> {
+        let live = self.pools.load_full();
         Ok(PreparedPools(
-            Self::build_pools(pools, &self.host_resolver, false).await?,
+            Self::build_pools(pools, &self.host_resolver, false, Some(&live)).await?,
         ))
     }
 
@@ -187,10 +223,16 @@ impl PoolManager {
         if !has_group_routes {
             self.has_group_routes.store(false, Ordering::Release);
         }
+        self.reloaded.notify_one();
         info!(
             "Upstream pools reloaded ({} pools)",
             self.pools.load().pools.len()
         );
+    }
+
+    /// Signalled by every reload: see [`PoolManager::hostname_servers`].
+    pub fn reloaded(&self) -> Arc<Notify> {
+        Arc::clone(&self.reloaded)
     }
 
     /// Whether applying `prepared` would route some name differently than
@@ -204,29 +246,78 @@ impl PoolManager {
         Self::any_unresolved(&self.pools.load().pools)
     }
 
-    /// Looks every hostname up again while some server has none, by rebuilding
-    /// the live pool set from its own configs. The rebuild replaces the set only
-    /// if no reload swapped it meanwhile, since a reload does its own lookups.
-    /// Returns whether a server is still unresolved.
-    pub async fn retry_unresolved(&self) -> bool {
+    /// The live servers given by hostname, each once, with what their last
+    /// lookup found. A reload changes them; [`PoolManager::reloaded`] says when.
+    pub fn hostname_servers(&self) -> Vec<(Arc<str>, Resolution)> {
+        let set = self.pools.load();
+        let mut seen = HashSet::new();
+        set.pools
+            .iter()
+            .flat_map(|p| &p.server_groups)
+            .filter(|g| g.resolution != Resolution::Literal)
+            .filter(|g| seen.insert(Arc::clone(&g.original)))
+            .map(|g| (Arc::clone(&g.original), g.resolution))
+            .collect()
+    }
+
+    /// Looks the hostname of the configured server `original` up again. New
+    /// addresses replace the old ones in every pool that lists it; a failed
+    /// lookup keeps them. The swap is skipped if a reload replaced the set
+    /// meanwhile, since a reload does its own lookups. Returns what the lookup
+    /// found, or `None` when no live pool lists `original` any more.
+    pub async fn refresh_hostname(&self, original: &str) -> Option<Resolution> {
         let current = self.pools.load_full();
-        if !Self::any_unresolved(&current.pools) {
-            return false;
+        let old = current
+            .pools
+            .iter()
+            .flat_map(|p| &p.server_groups)
+            .find(|g| &*g.original == original)?;
+        let protocol = original.parse::<DnsProtocol>().ok()?;
+        let new = Self::expand_hostnames(
+            vec![(Arc::clone(&old.original), protocol)],
+            &self.host_resolver,
+            true,
+            Some(&current),
+        )
+        .await
+        .pop()?;
+        if addresses_of(old) == addresses_of(&new) {
+            return Some(new.resolution);
         }
-        let configs = current.pools.iter().map(|p| p.config.clone()).collect();
-        let rebuilt = match Self::build_pools(configs, &self.host_resolver, true).await {
-            Ok(rebuilt) => rebuilt,
-            Err(e) => {
-                debug!(error = %e, "Retrying upstream hostname lookups failed");
-                return true;
-            }
+        let patched = current
+            .pools
+            .iter()
+            .map(|p| {
+                let groups = p
+                    .server_groups
+                    .iter()
+                    .map(|g| {
+                        if g.original == new.original {
+                            new.clone()
+                        } else {
+                            g.clone()
+                        }
+                    })
+                    .collect();
+                (p.config.clone(), groups)
+            })
+            .collect();
+        // The configs are the live set's, which already assembled once.
+        let Ok(patched) = Self::assemble(patched) else {
+            return Some(new.resolution);
         };
-        let still_unresolved = Self::any_unresolved(&rebuilt.pools);
-        let previous = self.pools.compare_and_swap(&current, Arc::new(rebuilt));
-        if !Arc::ptr_eq(&*previous, &current) {
-            return self.has_unresolved();
+        let previous = self.pools.compare_and_swap(&current, Arc::new(patched));
+        if Arc::ptr_eq(&*previous, &current) {
+            info!(
+                server = original,
+                addresses = ?addresses_of(&new),
+                "Upstream hostname now resolves to new addresses"
+            );
+            for gone in old.protocols.iter().filter(|p| !new.protocols.contains(p)) {
+                transport::forget_transport(gone);
+            }
         }
-        still_unresolved
+        Some(new.resolution)
     }
 
     fn any_unresolved(pools: &[PoolWithStrategy]) -> bool {
@@ -236,11 +327,13 @@ impl PoolManager {
             .any(|p| p.needs_resolution())
     }
 
-    /// `retry` marks a background retry: its failures log at debug, not warn.
+    /// `background` marks a lookup the refresh task made: it logs at debug.
+    /// A server whose lookup fails keeps what it had in `previous`.
     async fn build_pools(
         pools: Vec<UpstreamPool>,
         host_resolver: &UpstreamHostResolver,
-        retry: bool,
+        background: bool,
+        previous: Option<&PoolSet>,
     ) -> Result<PoolSet, DomainError> {
         if pools.is_empty() {
             return Err(DomainError::ConfigError(
@@ -253,17 +346,25 @@ impl PoolManager {
             ));
         }
 
-        let mut pools_with_strategy = Vec::new();
+        let mut expanded = Vec::with_capacity(pools.len());
         for pool in pools {
-            let strategy = Strategy::new(pool.strategy);
-
             let parsed = pool
                 .servers
                 .iter()
                 .map(|s| Ok((Arc::from(s.as_str()), s.parse::<DnsProtocol>()?)))
                 .collect::<Result<Vec<_>, DomainError>>()?;
-            let server_groups = Self::expand_hostnames(parsed, host_resolver, retry).await;
+            let server_groups =
+                Self::expand_hostnames(parsed, host_resolver, background, previous).await;
+            expanded.push((pool, server_groups));
+        }
+        Self::assemble(expanded)
+    }
 
+    /// Builds a pool set from each pool's config and its expanded servers.
+    fn assemble(pools: Vec<(UpstreamPool, Vec<ServerGroup>)>) -> Result<PoolSet, DomainError> {
+        let mut pools_with_strategy = Vec::with_capacity(pools.len());
+        for (pool, server_groups) in pools {
+            let strategy = Strategy::new(pool.strategy);
             let name_arc: Arc<str> = Arc::from(pool.name.as_str());
             let server_protocols: Vec<Arc<DnsProtocol>> = server_groups
                 .iter()
@@ -305,7 +406,8 @@ impl PoolManager {
     async fn expand_hostnames(
         entries: Vec<(Arc<str>, DnsProtocol)>,
         host_resolver: &UpstreamHostResolver,
-        retry: bool,
+        background: bool,
+        previous: Option<&PoolSet>,
     ) -> Vec<ServerGroup> {
         let mut groups = Vec::new();
         for (original, protocol) in entries {
@@ -321,6 +423,7 @@ impl PoolManager {
                                 groups.push(ServerGroup {
                                     original,
                                     protocols: vec![Arc::new(protocol)],
+                                    resolution: Resolution::Literal,
                                 });
                                 continue;
                             }
@@ -329,42 +432,51 @@ impl PoolManager {
                             .resolve_all(&hostname, port, Duration::from_secs(5))
                             .await
                         {
-                            Ok(addrs) => {
-                                let limited = Self::limit_resolved_addrs(addrs);
-                                info!(
-                                    "{} resolved to {} upstream servers (limited to {} per family){}",
-                                    hostname,
-                                    limited.len(),
-                                    MAX_ADDRS_PER_FAMILY,
-                                    if retry { " on retry" } else { "" }
-                                );
+                            Ok(resolved) => {
+                                let limited = Self::limit_resolved_addrs(resolved.addrs);
+                                if background {
+                                    debug!(%hostname, addresses = ?limited, "Upstream hostname looked up again");
+                                } else {
+                                    info!(
+                                        "{} resolved to {} upstream servers (limited to {} per family)",
+                                        hostname,
+                                        limited.len(),
+                                        MAX_ADDRS_PER_FAMILY,
+                                    );
+                                }
                                 let protocols: Vec<Arc<DnsProtocol>> = limited
                                     .iter()
                                     .map(|addr| {
                                         let resolved = protocol.with_resolved_addr(*addr);
-                                        info!("  → {}", addr);
+                                        if !background {
+                                            info!("  → {}", addr);
+                                        }
                                         Arc::new(resolved)
                                     })
                                     .collect();
                                 groups.push(ServerGroup {
                                     original,
                                     protocols,
+                                    resolution: Resolution::Resolved { ttl: resolved.ttl },
                                 });
                             }
                             Err(e) => {
-                                if retry {
-                                    debug!(hostname = %hostname, error = %e, "Upstream hostname still does not resolve");
+                                let kept = Self::kept_group(previous, &original);
+                                if background {
+                                    debug!(hostname = %hostname, error = %e, kept_addresses = kept.is_some(), "Upstream hostname lookup failed");
                                 } else {
                                     warn!(
                                         hostname = %hostname,
                                         error = %e,
-                                        "Failed to resolve upstream hostname, keeping unresolved and retrying in the background"
+                                        kept_addresses = kept.is_some(),
+                                        "Failed to resolve upstream hostname, retrying in the background"
                                     );
                                 }
-                                groups.push(ServerGroup {
+                                groups.push(kept.unwrap_or(ServerGroup {
                                     original,
                                     protocols: vec![Arc::new(protocol)],
-                                });
+                                    resolution: Resolution::Failed,
+                                }));
                             }
                         }
                     }
@@ -374,38 +486,45 @@ impl PoolManager {
                             .resolve_all(hostname, *port, Duration::from_secs(5))
                             .await
                         {
-                            Ok(addrs) => {
-                                let limited = Self::limit_resolved_addrs(addrs);
-                                info!(
-                                    "{} pre-resolved to {} addresses{}",
-                                    hostname,
-                                    limited.len(),
-                                    if retry { " on retry" } else { "" }
-                                );
-                                for addr in &limited {
-                                    info!("  → {}", addr);
+                            Ok(resolved) => {
+                                let limited = Self::limit_resolved_addrs(resolved.addrs);
+                                if background {
+                                    debug!(%hostname, addresses = ?limited, "Upstream hostname looked up again");
+                                } else {
+                                    info!(
+                                        "{} pre-resolved to {} addresses",
+                                        hostname,
+                                        limited.len()
+                                    );
+                                    for addr in &limited {
+                                        info!("  → {}", addr);
+                                    }
                                 }
                                 groups.push(ServerGroup {
                                     original,
                                     protocols: vec![Arc::new(
                                         protocol.with_resolved_addrs(limited),
                                     )],
+                                    resolution: Resolution::Resolved { ttl: resolved.ttl },
                                 });
                             }
                             Err(e) => {
-                                if retry {
-                                    debug!(hostname = %hostname, error = %e, "Upstream hostname still does not pre-resolve");
+                                let kept = Self::kept_group(previous, &original);
+                                if background {
+                                    debug!(hostname = %hostname, error = %e, kept_addresses = kept.is_some(), "Upstream hostname lookup failed");
                                 } else {
                                     warn!(
                                         hostname = %hostname,
                                         error = %e,
+                                        kept_addresses = kept.is_some(),
                                         "Failed to pre-resolve, transport will resolve at runtime"
                                     );
                                 }
-                                groups.push(ServerGroup {
+                                groups.push(kept.unwrap_or(ServerGroup {
                                     original,
                                     protocols: vec![Arc::new(protocol)],
-                                });
+                                    resolution: Resolution::Failed,
+                                }));
                             }
                         }
                     }
@@ -414,10 +533,25 @@ impl PoolManager {
                 groups.push(ServerGroup {
                     original,
                     protocols: vec![Arc::new(protocol)],
+                    resolution: Resolution::Literal,
                 });
             }
         }
         groups
+    }
+
+    /// What an earlier lookup of `original` gave it in `previous`, kept when
+    /// looking it up again fails: those addresses most likely still work.
+    fn kept_group(previous: Option<&PoolSet>, original: &Arc<str>) -> Option<ServerGroup> {
+        previous?
+            .pools
+            .iter()
+            .flat_map(|p| &p.server_groups)
+            .find(|g| g.original == *original && g.protocols.iter().any(|p| !p.needs_resolution()))
+            .map(|g| ServerGroup {
+                resolution: Resolution::Failed,
+                ..g.clone()
+            })
     }
 
     fn limit_resolved_addrs(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {

@@ -75,7 +75,7 @@ impl DnsServices {
         let pool_manager =
             pool::setup_pool_manager(config, &health_checker, local_dns_server).await?;
         pool::start_health_checker_task(Arc::clone(&health_checker), &pool_manager, config);
-        pool::start_hostname_retry_task(&pool_manager, config);
+        pool::start_hostname_refresh_task(&pool_manager, config);
 
         let timeout_ms = config.dns.query_timeout * 1000;
 
@@ -88,7 +88,7 @@ impl DnsServices {
             let manager =
                 pool::setup_pool_manager(config, &dnssec_health_checker, local_dns_server).await?;
             pool::start_health_checker_task(dnssec_health_checker, &manager, config);
-            pool::start_hostname_retry_task(&manager, config);
+            pool::start_hostname_refresh_task(&manager, config);
             Some(manager)
         } else {
             None
@@ -390,7 +390,7 @@ impl DnsServices {
         // Returned too, so hot upstream reloads also reach this resolver.
         let maintenance_pool_manager =
             pool::setup_pool_manager(config, health_checker, local_dns_server).await?;
-        pool::start_hostname_retry_task(&maintenance_pool_manager, config);
+        pool::start_hostname_refresh_task(&maintenance_pool_manager, config);
         let resolver_for_maintenance = upstream_layers
             .builder(Arc::clone(&maintenance_pool_manager))
             .build();

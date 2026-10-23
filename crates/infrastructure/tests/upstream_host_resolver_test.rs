@@ -1,7 +1,7 @@
 //! Looking an upstream hostname up through `local_dns_server` asks for A and
 //! AAAA together. A lost datagram must not leave the upstream with one family
-//! only: once it has any address it is never looked up again, so an IPv6-only
-//! answer makes it unreachable from an IPv4-only host for good.
+//! only: an IPv6-only answer would make it unreachable from an IPv4-only host
+//! until the hostname is looked up again, at the end of its TTL.
 
 use ferrous_dns_infrastructure::dns::forwarding::HardeningOpts;
 use ferrous_dns_infrastructure::dns::transport::resolver::UpstreamHostResolver;
@@ -56,14 +56,16 @@ async fn a_lost_answer_for_one_family_is_asked_again() {
     let router = spawn_router_dropping_first_a().await;
     let resolver = UpstreamHostResolver::new(Some(router), HardeningOpts::default());
 
-    let mut addrs = resolver
+    let resolved = resolver
         .resolve_all("upstream.test", 853, Duration::from_secs(5))
         .await
         .unwrap();
+    let mut addrs = resolved.addrs;
     addrs.sort();
 
     assert_eq!(
         addrs,
         vec![SocketAddr::from((V4, 853)), SocketAddr::from((V6, 853))]
     );
+    assert_eq!(resolved.ttl, Some(300), "the router's records' TTL");
 }

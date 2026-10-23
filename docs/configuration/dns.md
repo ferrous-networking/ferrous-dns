@@ -474,7 +474,7 @@ Startup: look up "dns.adguard-dns.com"
     doq://dns.adguard-dns.com:853 connects to those addresses
 ```
 
-A lookup that fails is retried in the background. See [How hostnames are resolved](../features/upstream-management.md#hostname-resolution).
+Each hostname is looked up again when its answer's TTL runs out, and a lookup that fails is retried in the background. See [How hostnames are resolved](../features/upstream-management.md#hostname-resolution).
 
 ---
 

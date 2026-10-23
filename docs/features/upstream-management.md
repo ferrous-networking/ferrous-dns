@@ -43,7 +43,7 @@ AdGuard Home and the AdGuard DNS dashboard write DNS-over-QUIC as `quic://host`,
 
 ```toml
 servers = [
-    "doq://dns.adguard-dns.com:853",   # looked up at startup, when pools are saved, and retried if that failed
+    "doq://dns.adguard-dns.com:853",   # looked up at startup, when pools are saved, and again when its TTL runs out
     "https://dns.google/dns-query",
 ]
 ```
@@ -55,8 +55,10 @@ Ferrous DNS looks upstream hostnames up when it starts and whenever the pools ar
 
 The router comes first so that upstream hostnames keep resolving on a machine that uses Ferrous DNS as its own resolver. There, the system lookup can never succeed: nothing answers it while Ferrous DNS starts, and afterwards Ferrous DNS has no resolved upstream to ask. One consequence: when the router answers, an `/etc/hosts` entry for an upstream hostname is not consulted.
 
+Each hostname is looked up again when its answer's TTL runs out, held between 60 seconds and one hour. An answer from the system resolver, which reports no TTL, is kept for five minutes. When the addresses changed, the new ones replace the old in every pool that lists the server, and the log shows `Upstream hostname now resolves to new addresses`; otherwise nothing changes, and the server keeps its health state. A provider that moves to new IPs is therefore followed without a restart.
+
 !!! note "If the lookup fails"
-    The server is kept without an address, and the log shows `Failed to resolve upstream hostname, keeping unresolved and retrying in the background`. Ferrous DNS looks it up again at the health-check interval, doubling the wait up to five minutes while it keeps failing, with no restart needed. Until then, `udp://`, `tcp://`, `tls://` and `doq://` servers fail every query with `has no IP address yet`, which Settings > System Status shows for that server; `https://` and `h3://` also try the system resolver when a query needs them. See [Troubleshooting](../troubleshooting.md#hostname-upstream-never-comes-up).
+    The log shows `Failed to resolve upstream hostname, retrying in the background`. Ferrous DNS looks it up again at the health-check interval, doubling the wait up to five minutes while it keeps failing, with no restart needed. A server that resolved before keeps the addresses it had meanwhile. One that never resolved has none: `udp://`, `tcp://`, `tls://` and `doq://` servers fail every query with `has no IP address yet`, which Settings > System Status shows for that server, and `https://` and `h3://` also try the system resolver when a query needs them. See [Troubleshooting](../troubleshooting.md#hostname-upstream-never-comes-up).
 
 ---
 

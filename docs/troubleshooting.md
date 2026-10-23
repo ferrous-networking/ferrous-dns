@@ -110,7 +110,7 @@ Check the dashboard at **Settings > System Status > Upstream Health**. If all up
 
 ### Symptom
 
-An upstream written with a hostname, such as `doq://dns.adguard-dns.com:853`, stays unhealthy and never answers, while the same server written as an IP address works. The startup log has `Failed to resolve upstream hostname, keeping unresolved … hostname=dns.adguard-dns.com`, and each query sent to it fails with `QUIC upstream dns.adguard-dns.com:853 has no IP address yet` (`QUIC transport requires resolved address` in 0.9.18 and earlier), which **Settings > System Status** also shows for that server.
+An upstream written with a hostname, such as `doq://dns.adguard-dns.com:853`, stays unhealthy and never answers, while the same server written as an IP address works. The startup log has `Failed to resolve upstream hostname, retrying in the background … hostname=dns.adguard-dns.com` (`… keeping unresolved and retrying in the background` before 0.9.25), and each query sent to it fails with `QUIC upstream dns.adguard-dns.com:853 has no IP address yet` (`QUIC transport requires resolved address` in 0.9.18 and earlier), which **Settings > System Status** also shows for that server.
 
 ### Cause
 
@@ -121,7 +121,7 @@ Ferrous DNS could not look the hostname up. It asks `local_dns_server` first whe
 - Set **Local DNS server** to your router in **Settings > DNS Settings** (`local_dns_server` in `[dns]`) and restart. Upstream hostnames are then asked to the router first
 - Or point the host's own resolver at your router or a public resolver instead of Ferrous DNS
 - Check the lookup works on the host: `getent hosts dns.adguard-dns.com`
-- A lookup that failed is retried automatically, from the health-check interval up to every five minutes. The log shows `resolved to … upstream servers … on retry` when it succeeds. Saving the pools in **Settings > DNS Advanced > Upstream DNS Pools** retries at once
+- A lookup that failed is retried automatically, from the health-check interval up to every five minutes. The log shows `Upstream hostname now resolves to new addresses` when it succeeds. Saving the pools in **Settings > DNS Advanced > Upstream DNS Pools** retries at once
 
 ---
 
