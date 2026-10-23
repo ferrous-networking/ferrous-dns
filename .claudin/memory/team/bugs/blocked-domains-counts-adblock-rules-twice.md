@@ -1,6 +1,6 @@
 ---
 name: blocked-domains-counts-adblock-rules-twice
-description: Dashboard "Blocked Domains" (total_blocked_domains) was exact.len() + wildcard.len(), so every adblock `||domain^` line counted twice; fixed on fix/web-ui-standardization (37804564), unmerged
+description: Dashboard "Blocked Domains" (total_blocked_domains) was exact.len() + wildcard.len(), so every adblock `||domain^` line counted twice; fixed in PR #297 (e2136494), shipped in v0.9.24
 type: project
 paths: crates/infrastructure/src/dns/block_filter/compiler.rs
 ---
@@ -20,7 +20,8 @@ developerdan ads-and-tracking-extended, HaGeZi fake/popupads/pro/tif adblock) on
 domains across the lists **2,794,950**. A Python replica of `parse_list_line` + `build_exact_and_wildcard`
 reproduced both numbers exactly.
 
-**Fix (2026-10-18, PR #297, unmerged):** red test `ea8e4186`, fix `37804564`. The
+**Fix (PR #297, squash-merged as `e2136494`, shipped in v0.9.24 on 2026-10-23):** the branch commits
+were red test `ea8e4186` and fix `37804564`, neither of which is on main. The
 total is now `exact.len()` plus each suffix rule whose name has no exact entry; `insert_wildcard`
 returns whether the suffix is new, and suffix rules (manual `*.x` included) are inserted after the exact
 map is complete. Same lists: card **2,794,950**, log unchanged (`exact=2794950 wildcards=2325191`).

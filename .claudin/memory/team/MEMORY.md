@@ -26,7 +26,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 ## Decisions
 
 - [Adaptive refresh pacer](decisions/cache-adaptive-refresh-pacer.md) — why PR #211 paced by backlog and removed `cache_max_refresh_per_sec`; superseded by per-entry timers
-- [Wildcard local records](decisions/wildcard-local-records.md) — why the wildcard layer sits above the cache, and two unfiled bugs in exact local records
+- [Wildcard local records](decisions/wildcard-local-records.md) — why the wildcard layer sits above the cache; two permanent-entry bugs found and fixed in the same PR
 - [Exact local records answer NODATA](decisions/local-record-exact-nodata.md) — PR #227: an exact A/AAAA owns the whole name, so split-horizon overrides lose every other type
 - [Restart banner is a sticky server flag](decisions/restart-banner-server-flag.md) — PR #236: in-memory `restart_pending`, cleared only by a restart; config diff rejected
 - [DNS cookie echo + strict mode](decisions/dns-cookie-strict-mode.md) — #279: cookie on every reply; strict is UDP-only, fast path off, BADCOOKIE + EDE 18
@@ -40,11 +40,11 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 
 - [local_dns_server forwarder was unhardened](bugs/local-dns-forwarder-unhardened.md) — no 0x20, cookie or TXID check on local answers; fixed by #240 (2026-09-23)
 - [dashmap Iter holds the shard guard](bugs/cache-eviction-random-branch-deadlock.md) — collect keys into a let-statement before removing (issue #228, fixed 2026-09-19)
-- [Settings upstream health 404](bugs/settings-upstream-health-404.md) — `/health/upstreams` 404 only fed the pool editor's ❓ badge; both removed in PR #297 (unmerged)
+- [Settings upstream health 404](bugs/settings-upstream-health-404.md) — `/health/upstreams` 404 only fed the pool editor's ❓ badge; both removed in #297 (e2136494, v0.9.24)
 - [Vendored OpenSSL blind spot](bugs/vendored-openssl-blind-spot.md) — webauthn-rs statically links OpenSSL 3.6.3 into the binary; Trivy and cargo audit both miss it
 - [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` rewrites restart-only settings but never sets `restart_pending` (left out of #234)
 - [Query Log DOMAIN column collapses](bugs/query-log-domain-column-collapse.md) — issue #235: fixed with container queries; widen every threshold when adding a column
-- [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled
+- [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled, still open 10-23
 - [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282 (10-12); query log still says NOERROR for upstream NXDOMAIN; RRL coupling
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
 - [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; IP refresh still open
@@ -52,7 +52,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — in-flight followers logged as cache hits with their upstream wait; real hits are ~1.5 µs; unfiled
 - [CNAME target cached under dotted name](bugs/cname-target-cached-under-dotted-name.md) — chain target stored as `name.` (trailing dot), never matched by a lookup; the shortcut never hits; unfiled
 - [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — snapshot lacks pools/routes, rate_limit, malware; groups re-import with new ids; unfiled
-- [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in PR #297 (unmerged); the trap remains
-- [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in PR #297 (37804564), unmerged
-- [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals answer 0.0.0.0 + EDE 15 but log SERVFAIL, shown as "Upstream"; fixed in PR #300 (unmerged)
+- [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
+- [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in #297 (e2136494, v0.9.24)
+- [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); label follow-ups open
 - [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — evict_by_strategy never scores tail shards; batch/pass can be outpaced; kept by "same rules" 10-16

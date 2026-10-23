@@ -15,6 +15,6 @@ paths: web/static/settings.html
 
 **Repro:** add a domain to a pool and look at the row. Screenshots from 2026-10-16 show it on both `main` and the #293 branch.
 
-**Status:** resolved in PR #297 (`b4aa3560`, opened 2026-10-18, unmerged). The row was redesigned as Groups stacked above an Internal zone toggle, with `x-show` on a wrapper that has no inline `display`, so the grid is gone. The cause still applies to any future `x-show` + inline `display` element.
+**Status:** resolved in PR #297, squash-merged as `e2136494` and shipped in v0.9.24 (2026-10-23). The row was redesigned as Groups stacked above an Internal zone toggle, with `x-show` on a wrapper that has no inline `display`, so the grid is gone. The cause still applies to any future `x-show` + inline `display` element.
 
 **History:** it was out of scope for #293, the group-delete fix, which listed it under "Known follow-ups".

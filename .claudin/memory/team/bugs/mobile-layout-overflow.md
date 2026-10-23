@@ -10,7 +10,7 @@ the Clients and Settings pages already do. Everything from 1024px up is clean, a
 Dashboard, DNSSEC, Local DNS, Cache Control and Login are fine on phones too.
 
 **Where:**
-- Clients — the stat grid is `repeat(4,1fr)` with no breakpoint (`clients.html:118`), and
+- Clients — the stat grid is `repeat(4,1fr)` with no breakpoint (`clients.html:121`), and
   the table (`clients.css:100`) has no `overflow-x:auto` wrapper; Actions is cut at 768px.
 - Settings — `.tab-bar` (`settings.css:64`) overflows ("Backup" cut at 768px); the
   2-column System Status / Performance grid (`settings.html:134`) cuts the right card.
@@ -24,4 +24,6 @@ Dashboard, DNSSEC, Local DNS, Cache Control and Login are fine on phones too.
 
 **Status:** found 2026-09-23 during the issue #235 layout audit; no issue filed and not
 fixed — it is unrelated to #235 and was proposed as a separate mobile-responsiveness PR.
+Re-checked on 2026-10-23 (v0.9.24): the Clients grid and every `.tab-bar` rule are unchanged, so it
+is still open.
 Related: [[query-log-domain-column-collapse]].

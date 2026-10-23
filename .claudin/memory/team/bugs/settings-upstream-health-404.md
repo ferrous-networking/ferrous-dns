@@ -1,6 +1,6 @@
 ---
 name: settings-upstream-health-404
-description: The Settings page called /health/upstreams (no such route; the API serves /upstream/health) only to feed the pool editor's ❓ badge; removed with the badge on fix/web-ui-standardization
+description: The Settings page called /health/upstreams (no such route; the API serves /upstream/health) only to feed the pool editor's ❓ badge; removed with the badge in PR #297 (e2136494), shipped in v0.9.24
 type: project
 paths: web/static/settings.js
 ---
@@ -15,10 +15,10 @@ a 404 in the browser console.
 `getServerHealth(srv)` read the 404'd map, so the badge always showed ❓. The *DNS Upstream Pools*
 card and its per-server expansion come from `/upstream/health/detail` and never used this call.
 
-**Status:** on 2026-10-18 Viudes asked to drop the badge as useless. PR #297 (`b4aa3560`, unmerged)
-therefore removed the badge, `healthStatus`, `loadHealthStatus` and `getServerHealth` instead of
-fixing the URL, and the 404 is gone from the console. Health stays visible in the *DNS Upstream
-Pools* card, and now also in the dashboard's Upstream card.
+**Status:** fixed. On 2026-10-18 Viudes asked to drop the badge as useless, so PR #297 removed the
+badge, `healthStatus`, `loadHealthStatus` and `getServerHealth` instead of fixing the URL. It was
+squash-merged as `e2136494` and shipped in v0.9.24 (2026-10-23); the branch commit `b4aa3560` is not
+on main. Health stays visible in the *DNS Upstream Pools* card and the dashboard's Upstream card.
 
 Observed first on 2026-09-06 against a debug build of v0.9.15 while capturing docs
 screenshots. See [[runtime-verification-recipe]] for how to bring up an instance to reproduce.
