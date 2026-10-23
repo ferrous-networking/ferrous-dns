@@ -49,7 +49,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
 - [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; IP refresh still open
 - [Cache dead config + L1 hit undercount](bugs/cache-dead-config-and-l1-hit-undercount.md) — two knobs still unused; L1 undercount fixed in #286, but the tooltip/api.md/doc comments still deny it
-- [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — in-flight followers logged as cache hits with their upstream wait; real hits are ~1.5 µs; unfiled
+- [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — followers now upstream answers with a `coalesced` leader/follower marker + Query Log icon, on fix/coalesced-followers-as-upstream (10-23)
 - [CNAME target cached under dotted name](bugs/cname-target-cached-under-dotted-name.md) — chain target stored as `name.` (trailing dot), never matched by a lookup; the shortcut never hits; unfiled
 - [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — pools/routes, rate_limit, malware + group-id translation fixed on fix/backup-pools-and-detectors (10-23); other DNS fields still unmirrored
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
