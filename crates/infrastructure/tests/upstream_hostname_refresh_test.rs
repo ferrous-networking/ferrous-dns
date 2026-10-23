@@ -16,7 +16,7 @@ use ferrous_dns_infrastructure::dns::PoolManager;
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::A;
 use hickory_proto::rr::{RData, Record, RecordType as WireType};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -40,19 +40,24 @@ const TIMES: HostnameRefreshTimes = HostnameRefreshTimes {
 };
 
 /// A LAN router whose A answers can be changed mid-test: a name maps to its
-/// address and TTL, and a name it does not know gets NXDOMAIN. AAAA queries
-/// get an empty answer.
+/// addresses, handed out one per query in turn, and their TTL; a name it
+/// does not know gets NXDOMAIN. AAAA queries get an empty answer.
 #[derive(Clone, Default)]
 struct Router {
-    answers: Arc<Mutex<HashMap<String, (Ipv4Addr, u32)>>>,
+    answers: Arc<Mutex<HashMap<String, (VecDeque<Ipv4Addr>, u32)>>>,
 }
 
 impl Router {
     fn set(&self, name: &str, ip: Ipv4Addr, ttl: u32) {
+        self.rotate(name, &[ip], ttl);
+    }
+
+    /// Answers each A query for `name` with the next of `ips`.
+    fn rotate(&self, name: &str, ips: &[Ipv4Addr], ttl: u32) {
         self.answers
             .lock()
             .unwrap()
-            .insert(format!("{name}."), (ip, ttl));
+            .insert(format!("{name}."), (ips.iter().copied().collect(), ttl));
     }
 
     fn forget(&self, name: &str) {
@@ -77,7 +82,13 @@ impl Router {
                 resp.metadata.recursion_available = true;
                 resp.add_query(q.clone());
                 let name = q.name().to_ascii().to_ascii_lowercase();
-                let answer = answers.lock().unwrap().get(&name).copied();
+                let answer = answers.lock().unwrap().get_mut(&name).map(|(ips, ttl)| {
+                    let ip = ips[0];
+                    if q.query_type() == WireType::A {
+                        ips.rotate_left(1);
+                    }
+                    (ip, *ttl)
+                });
                 match answer {
                     None => resp.metadata.response_code = ResponseCode::NXDomain,
                     Some((ip, ttl)) => {
@@ -99,8 +110,12 @@ impl Router {
 }
 
 fn pool(servers: &[&str]) -> UpstreamPool {
+    named_pool("only", servers)
+}
+
+fn named_pool(name: &str, servers: &[&str]) -> UpstreamPool {
     UpstreamPool {
-        name: "only".into(),
+        name: name.into(),
         servers: servers.iter().map(|s| s.to_string()).collect(),
         ..Default::default()
     }
@@ -254,4 +269,80 @@ async fn a_reload_arms_the_servers_it_brings() {
     })
     .await;
     assert!(moved, "still at {:?}", addresses(&pm));
+}
+
+/// A reload looks every server up again: its answer's TTL replaces the one
+/// the server was scheduled by, here an hour.
+#[tokio::test]
+async fn a_reload_reschedules_a_server_by_the_ttl_it_just_got() {
+    let router = Router::default();
+    router.set(GOOD, OLD_IP, 3600);
+    let pm = Arc::new(manager(&router, &[&udp(GOOD)]).await);
+    tokio::spawn(run_hostname_refresh(Arc::downgrade(&pm), TIMES));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    router.set(GOOD, OLD_IP, 1);
+    pm.reload(vec![pool(&[&udp(GOOD)])]).await.unwrap();
+    router.set(GOOD, NEW_IP, 1);
+
+    let moved = refresh::wait_until(Duration::from_secs(5), || {
+        addresses(&pm) == vec![SocketAddr::from((NEW_IP, 53))]
+    })
+    .await;
+    assert!(moved, "still at {:?}", addresses(&pm));
+}
+
+/// Two pools that list the same server look it up separately, so they may
+/// hold different addresses; a refresh must bring every copy in line.
+#[tokio::test]
+async fn a_refresh_corrects_every_pool_that_lists_the_server() {
+    let router = Router::default();
+    router.rotate(GOOD, &[OLD_IP, NEW_IP], 60);
+    let host_resolver =
+        UpstreamHostResolver::new(Some(router.spawn().await), HardeningOpts::default());
+    let pools = vec![
+        named_pool("first", &[&udp(GOOD)]),
+        named_pool("second", &[&udp(GOOD)]),
+    ];
+    let pm = PoolManager::with_host_resolver(pools, None, host_resolver)
+        .await
+        .unwrap();
+    assert_eq!(
+        addresses(&pm),
+        vec![
+            SocketAddr::from((OLD_IP, 53)),
+            SocketAddr::from((NEW_IP, 53))
+        ],
+        "each pool got its own answer"
+    );
+
+    // The router's next answer is the first pool's.
+    pm.refresh_hostname(&udp(GOOD)).await;
+
+    assert_eq!(
+        addresses(&pm),
+        vec![
+            SocketAddr::from((OLD_IP, 53)),
+            SocketAddr::from((OLD_IP, 53))
+        ]
+    );
+}
+
+/// The task holds only a weak reference, so it must notice the manager is
+/// gone even with no server to look up.
+#[tokio::test]
+async fn the_refresh_task_ends_with_its_pool_manager() {
+    let router = Router::default();
+    let pm = Arc::new(manager(&router, &["udp://192.0.2.53:53"]).await);
+    let times = HostnameRefreshTimes {
+        max_ttl: Duration::from_millis(100),
+        ..TIMES
+    };
+    let task = tokio::spawn(run_hostname_refresh(Arc::downgrade(&pm), times));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    drop(pm);
+
+    let ended = refresh::wait_until(Duration::from_secs(2), || task.is_finished()).await;
+    assert!(ended, "the task outlived its pool manager");
 }
