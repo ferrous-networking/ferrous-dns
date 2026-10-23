@@ -42,7 +42,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [dashmap Iter holds the shard guard](bugs/cache-eviction-random-branch-deadlock.md) — collect keys into a let-statement before removing (issue #228, fixed 2026-09-19)
 - [Settings upstream health 404](bugs/settings-upstream-health-404.md) — `/health/upstreams` 404 only fed the pool editor's ❓ badge; both removed in #297 (e2136494, v0.9.24)
 - [Vendored OpenSSL blind spot](bugs/vendored-openssl-blind-spot.md) — webauthn-rs statically links OpenSSL 3.6.3 into the binary; Trivy and cargo audit both miss it
-- [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` rewrites restart-only settings but never sets `restart_pending` (left out of #234)
+- [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` never set `restart_pending`; fixed on fix/backup-pools-and-detectors (10-23), incl. the DNSSEC-mode normalization
 - [Query Log DOMAIN column collapses](bugs/query-log-domain-column-collapse.md) — issue #235: fixed with container queries; widen every threshold when adding a column
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled, still open 10-23
 - [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282 (10-12); query log fixed on fix/query-log-upstream-rcode (10-23); RRL/tunneling still blind
@@ -51,7 +51,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Cache dead config + L1 hit undercount](bugs/cache-dead-config-and-l1-hit-undercount.md) — two knobs still unused; L1 undercount fixed in #286, but the tooltip/api.md/doc comments still deny it
 - [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — in-flight followers logged as cache hits with their upstream wait; real hits are ~1.5 µs; unfiled
 - [CNAME target cached under dotted name](bugs/cname-target-cached-under-dotted-name.md) — chain target stored as `name.` (trailing dot), never matched by a lookup; the shortcut never hits; unfiled
-- [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — snapshot lacks pools/routes, rate_limit, malware; groups re-import with new ids; unfiled
+- [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — pools/routes, rate_limit, malware + group-id translation fixed on fix/backup-pools-and-detectors (10-23); other DNS fields still unmirrored
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
 - [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in #297 (e2136494, v0.9.24)
 - [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); label follow-ups open

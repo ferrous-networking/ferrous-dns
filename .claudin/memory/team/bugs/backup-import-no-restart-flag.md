@@ -1,6 +1,6 @@
 ---
 name: backup-import-no-restart-flag
-description: POST /api/config/import rewrites restart-requiring settings but never sets AppState.restart_pending, so the UI shows no restart banner after an import
+description: POST /api/config/import never set AppState.restart_pending, so no restart banner after an import; fixed on branch fix/backup-pools-and-detectors (2026-10-23)
 type: project
 paths: crates/api/src/handlers/backup.rs, crates/application/src/use_cases/backup/import.rs
 ---
@@ -17,7 +17,10 @@ DNS64, auth and other settings that only take effect after a restart, yet the
 `/config/import` handler (`crates/api/src/handlers/backup.rs`) never marks a restart.
 The gap predates #234: the old localStorage banner was never raised by an import either.
 
-**Status:** deliberately left out of PR #236 (the #234 fix, merged 2026-09-23) to keep its
-scope; still open and unfiled as of 2026-09-23. The fix is to call
-`state.mark_restart_pending()` in the handler when the import reports that the config
-section was applied. Design background: [[restart-banner-server-flag]].
+**Status:** fixed on branch `fix/backup-pools-and-detectors` (2026-10-23). `ImportSummary.restart_required`
+is true when the restored config differs from the running one, compared as serde JSON like
+`config_differs`, pools included, because an import hot-applies nothing. The handler marks the
+restart, the response carries `restart_required`, and `settings.js` reads it even when `success`
+is false (a partial import). For an unchanged re-import not to flag a restart, the import keeps the
+running `dnssec_mode`/`dnssec_enabled` when the backup's mode equals the effective one: a backup
+always names the mode, a config file often doesn't. Design background: [[restart-banner-server-flag]].
