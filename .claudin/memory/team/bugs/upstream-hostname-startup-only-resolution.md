@@ -1,6 +1,6 @@
 ---
 name: upstream-hostname-startup-only-resolution
-description: Upstream hostnames used to be looked up once, via the system resolver only, so a host resolving through ferrous-dns itself never got its upstreams (#250); PR #255 asks local_dns_server first and retries in the background
+description: Upstream hostnames used to be looked up once, via the system resolver only (#250); PR #255 asks local_dns_server first and retries; resolved hostnames are re-looked-up at their TTL on branch fix/upstream-hostname-refresh
 type: project
 paths: crates/infrastructure/src/dns/load_balancer/pool.rs, crates/infrastructure/src/dns/transport/resolver.rs, crates/cli/src/wiring/dns/pool.rs
 ---
@@ -28,9 +28,20 @@ The UI shows Local DNS server as its own always-visible field, which used to be 
 a local domain was set. Accepted tradeoff: when the router answers, an `/etc/hosts` pin for an
 upstream hostname is not consulted.
 
-**Still open:** hostnames that did resolve are never refreshed, so an upstream that changes IPs
-keeps the old ones until a restart or save. Without `local_dns_server`, the circular setup still
-fails; it is only explained, by design.
+**IP refresh (branch `fix/upstream-hostname-refresh`, 2026-10-23):** resolved hostnames used to
+keep their IPs until a restart or save. A retry run for another server also dropped a resolved
+hostname's IPs when its own lookup failed. Now:
+- `run_hostname_refresh` (`load_balancer/hostname_refresh.rs`) keeps one pending lookup per
+  hostname server, due at its answer's TTL. The TTL comes from `ResolvedHost.ttl`, the router's
+  min TTL (`lookup_host` gives none, so 5 min), clamped to [60 s, 1 h]. Failures back off from the
+  health interval to 300 s.
+- It replaced `start_hostname_retry_task` and `retry_unresolved`.
+- `PoolManager::refresh_hostname` patches only that server's groups via `assemble`, swaps only
+  when the address *set* changed (`compare_and_swap`), and forgets the replaced transports.
+- A failed lookup keeps the previous group (`kept_group`), on reloads too.
+- `apply` notifies `reloaded`, so a reload's new servers are armed at once.
+
+Without `local_dns_server`, the circular setup still fails; it is only explained, by design.
 
 **Repro without root (2026-09-25):** `unshare -rm`, then bind-mount a `resolv.conf` with
 `nameserver 127.0.0.1` (nothing listening there) over `/etc/resolv.conf`. Also bind-mount an

@@ -47,7 +47,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled, still open 10-23
 - [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282 (10-12); query log fixed on fix/query-log-upstream-rcode (10-23); RRL/tunneling still blind
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
-- [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; IP refresh still open
+- [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; TTL-driven IP refresh on fix/upstream-hostname-refresh (10-23)
 - [Cache dead config + L1 hit undercount](bugs/cache-dead-config-and-l1-hit-undercount.md) — two knobs still unused; L1 undercount fixed in #286, but the tooltip/api.md/doc comments still deny it
 - [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — in-flight followers logged as cache hits with their upstream wait; real hits are ~1.5 µs; unfiled
 - [CNAME target cached under dotted name](bugs/cname-target-cached-under-dotted-name.md) — chain target stored as `name.` (trailing dot), never matched by a lookup; the shortcut never hits; unfiled
