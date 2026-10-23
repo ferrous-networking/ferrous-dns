@@ -14,13 +14,13 @@ use std::sync::Arc;
 
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlocklistSourceCreator, ConfigFilePersistence, GroupCreator,
-    LocalRecordCreator,
+    GroupRepository, LocalRecordCreator,
 };
-use ferrous_dns_application::use_cases::backup::snapshot::BackupSnapshot;
+use ferrous_dns_application::use_cases::backup::snapshot::{BackupSnapshot, GroupSnapshot};
 use ferrous_dns_application::use_cases::{
     ConfigDestination, CreateBlocklistSourceUseCase, ImportConfigUseCase,
 };
-use ferrous_dns_domain::{Config, DomainError, Group, LocalDnsRecord};
+use ferrous_dns_domain::{Client, Config, DomainError, Group, LocalDnsRecord};
 use serde_json::json;
 use tokio::sync::RwLock;
 
@@ -352,4 +352,88 @@ async fn test_import_waits_for_the_config_writer() {
 
     assert!(run.await.unwrap().unwrap().config_updated);
     assert_eq!(config.read().await.dns.cache_max_entries, 1000);
+}
+
+/// Fails every read, as a database that cannot answer.
+struct UnreadableGroups;
+
+#[async_trait::async_trait]
+impl GroupRepository for UnreadableGroups {
+    async fn create(
+        &self,
+        _name: String,
+        _comment: Option<String>,
+        _enabled: bool,
+    ) -> Result<Group, DomainError> {
+        unimplemented!()
+    }
+    async fn get_by_id(&self, _id: i64) -> Result<Option<Group>, DomainError> {
+        unimplemented!()
+    }
+    async fn get_by_name(&self, _name: &str) -> Result<Option<Group>, DomainError> {
+        unimplemented!()
+    }
+    async fn get_all(&self) -> Result<Vec<Group>, DomainError> {
+        Err(DomainError::DatabaseError("database is locked".to_string()))
+    }
+    async fn get_all_with_client_counts(&self) -> Result<Vec<(Group, u64)>, DomainError> {
+        unimplemented!()
+    }
+    async fn update(
+        &self,
+        _id: i64,
+        _name: Option<String>,
+        _enabled: Option<bool>,
+        _comment: Option<String>,
+    ) -> Result<Group, DomainError> {
+        unimplemented!()
+    }
+    async fn delete(&self, _id: i64) -> Result<(), DomainError> {
+        unimplemented!()
+    }
+    async fn get_clients_in_group(&self, _group_id: i64) -> Result<Vec<Client>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_clients_in_group(&self, _group_id: i64) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
+}
+
+/// Without this server's group ids, no backed-up id can be translated: the
+/// import must fail rather than skip every grouped source as "not in the
+/// backup".
+#[tokio::test]
+async fn test_import_fails_when_the_groups_here_cannot_be_read() {
+    let engine: Arc<dyn BlockFilterEnginePort> = Arc::new(MockBlockFilterEngine::new());
+    let import = ImportConfigUseCase::new(
+        ConfigDestination {
+            config: Arc::new(RwLock::new(Config::default())),
+            writer: Arc::default(),
+            persistence: Arc::new(NullConfigFilePersistence),
+            path: Some("/tmp/ferrous-dns-backup-import-test.toml".to_string()),
+        },
+        Arc::new(StubGroupCreator),
+        Arc::new(UnreadableGroups),
+        Arc::new(CreateBlocklistSourceUseCase::new(
+            Arc::new(MockBlocklistSourceRepository::new()),
+            Arc::new(MockGroupRepository::new()),
+            engine.clone(),
+        )),
+        Arc::new(StubLocalRecordCreator),
+        engine,
+    );
+    let mut snapshot = snapshot_with_sources(&["hagezi-pro"]);
+    snapshot.data.groups.push(GroupSnapshot {
+        id: Some(1),
+        name: "Protected".to_string(),
+        comment: None,
+        is_default: true,
+    });
+
+    let result = import.execute(snapshot).await;
+
+    assert!(
+        matches!(result, Err(DomainError::DatabaseError(_))),
+        "got {result:?}"
+    );
 }

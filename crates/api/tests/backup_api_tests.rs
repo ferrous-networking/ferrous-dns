@@ -1170,6 +1170,41 @@ async fn test_import_maps_pool_and_blocklist_source_groups_by_name() {
     assert_eq!(kids["group_ids"], json!([1, 3]));
 }
 
+/// A group the backup lists but this server cannot create leaves a route to
+/// it untranslatable; the error must say so rather than blame the backup.
+#[tokio::test]
+async fn test_import_names_a_route_to_a_group_that_could_not_be_created() {
+    let TestApp { router, config, .. } = test_app().await;
+    let pools_before = config.read().await.dns.pools.clone();
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([
+        { "id": 7, "name": "kids", "comment": "x".repeat(501) }
+    ]);
+    backup["config"]["dns"]["pools"] = json!([
+        {
+            "name": "main", "strategy": "Parallel", "priority": 1,
+            "servers": ["udp://9.9.9.9:53"]
+        },
+        {
+            "name": "kids-filter", "strategy": "Failover", "priority": 2,
+            "servers": ["udp://1.1.1.3:53"], "domains": ["example.org"], "groups": [7]
+        }
+    ]);
+
+    let json = import(router, &serde_json::to_vec(&backup).unwrap()).await;
+
+    assert_eq!(json["summary"]["config_updated"], false, "{json}");
+    let errors = json["errors"].as_array().unwrap();
+    assert!(
+        errors.iter().any(|e| e
+            .as_str()
+            .unwrap_or_default()
+            .contains("pool 'kids-filter' is routed for client group 7, which is not in the backup or could not be created here")),
+        "got {errors:?}"
+    );
+    assert_eq!(config.read().await.dns.pools, pools_before);
+}
+
 /// Guard: a backup from before these settings were exported keeps the
 /// target's own.
 #[tokio::test]
