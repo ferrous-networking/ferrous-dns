@@ -1,5 +1,6 @@
 //! Port doubles for driving `HandleDnsQueryUseCase` through the DNS server
 //! handler. Only the resolution path is exercised; unused trait methods panic.
+#![allow(dead_code)]
 
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
@@ -8,6 +9,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_domain::{DnssecStats, DomainError, QueryLog, QueryLogFilter, QueryStats};
 use std::net::IpAddr;
+use std::sync::Mutex;
 
 /// Allows every domain; assigns the default group.
 pub struct AllowAllFilter;
@@ -56,6 +58,97 @@ impl QueryLogRepository for NoopQueryLog {
         Ok(())
     }
     fn log_query_sync(&self, _query: &QueryLog) -> Result<(), DomainError> {
+        Ok(())
+    }
+    async fn get_recent(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<QueryLog>, DomainError> {
+        unimplemented!()
+    }
+    async fn get_recent_paged(
+        &self,
+        _limit: u32,
+        _page: ferrous_dns_application::ports::PageAt,
+        _period_hours: f32,
+        _filter: &QueryLogFilter,
+    ) -> Result<PagedQueryResult, DomainError> {
+        unimplemented!()
+    }
+    async fn get_stats(&self, _period_hours: f32) -> Result<QueryStats, DomainError> {
+        unimplemented!()
+    }
+    async fn get_dnssec_stats(&self, _period_hours: f32) -> Result<DnssecStats, DomainError> {
+        unimplemented!()
+    }
+    async fn get_timeline(
+        &self,
+        _period_hours: f32,
+        _granularity: TimeGranularity,
+    ) -> Result<Vec<TimelineBucket>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_queries_since(&self, _seconds_ago: i64) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
+    async fn get_cache_stats(&self, _period_hours: f32) -> Result<CacheStats, DomainError> {
+        unimplemented!()
+    }
+    async fn get_top_blocked_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        unimplemented!()
+    }
+    async fn get_top_allowed_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        unimplemented!()
+    }
+    async fn get_distinct_recent_domains(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, u64)>, DomainError> {
+        unimplemented!()
+    }
+    async fn count_distinct_domains(&self, _period_hours: f32) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
+    async fn get_top_clients(
+        &self,
+        _limit: u32,
+        _period_hours: f32,
+    ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
+        unimplemented!()
+    }
+    async fn delete_older_than(&self, _days: u32) -> Result<u64, DomainError> {
+        unimplemented!()
+    }
+}
+
+/// Keeps every logged query, for a test that reads back what was logged.
+#[derive(Default)]
+pub struct RecordingQueryLog(Mutex<Vec<QueryLog>>);
+
+impl RecordingQueryLog {
+    pub fn logged(&self) -> Vec<QueryLog> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl QueryLogRepository for RecordingQueryLog {
+    async fn log_query(&self, query: &QueryLog) -> Result<(), DomainError> {
+        self.0.lock().unwrap().push(query.clone());
+        Ok(())
+    }
+    fn log_query_sync(&self, query: &QueryLog) -> Result<(), DomainError> {
+        self.0.lock().unwrap().push(query.clone());
         Ok(())
     }
     async fn get_recent(
