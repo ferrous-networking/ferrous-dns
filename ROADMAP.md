@@ -97,7 +97,7 @@
 - [x] DNSSEC validation enforcement (RFC 4035 / RFC 6840) — `dnssec_mode = "Strict"` answers SERVFAIL on Bogus and Indeterminate (`Permissive`, the default, validates and tags without refusing), AD bit set/clear from validation, honor client CD bit
 - [x] DNS-over-QUIC (DoQ) server listener (RFC 9250) — serve encrypted DNS to clients over QUIC (upstream DoQ already supported)
 - [x] DNS64 / NAT64 AAAA synthesis (RFC 6147) — `[dns64]` `enabled` / `prefix` (well-known `64:ff9b::/96`, /96 only) synthesizes AAAA from A records for IPv6-only clients; reverse PTR synthesis; `dns64_synthesized` query-log tag + Prometheus metric. NAT64 packet translation remains the network gateway's job
-- [ ] EDNS Client Subnet (RFC 7871) — strip client ECS by default for privacy; optional configurable subnet injection upstream for CDN-correct results
+- [x] EDNS Client Subnet privacy (RFC 7871) — upstream queries are built from the question alone, so a client's ECS option never reaches an upstream and an upstream's ECS never reaches the client; subnet injection moved to v1.1.0
 - [x] Custom sinkhole IP for blocked responses (configurable A/AAAA target beyond `0.0.0.0` / `::`) — `[blocking]` `sinkhole_ipv4` / `sinkhole_ipv6`, applied to `null_ip` blocked answers
 - [x] TOTP / 2FA — two-phase login (TOTP enrollment + `/auth/2fa/verify`) plus WebAuthn passkeys as a second factor or passwordless login, gated on `[auth.webauthn]`; API keys are exempt
 - [x] Conditional forwarding — route a list of domain suffixes (a corporate zone, a national ccTLD) to a chosen upstream pool, for every client or per client group; unsigned internal zones can opt out of DNSSEC validation and rebinding protection while public zones keep both, and per-group answers are cached apart so split-horizon results never reach another group — `[[dns.pools]]` `domains` / `groups` / `internal`
@@ -132,7 +132,7 @@
 
 - [x] Supply-chain scanning & vulnerability disclosure (cargo audit + Trivy image scan + Dependabot + secret scanning + SECURITY.md private reporting)
 - [ ] Security audit (threat model + manual review / pentest of the DNS parsing, auth and API attack surface) — the threat model is published in Security Hardening; the external review is pending
-- [ ] Comprehensive test coverage (>80%)
+- [x] Comprehensive test coverage (>80%) — 84% line coverage, measured by tarpaulin on every CI run
 - [ ] Production deployment guide
 - [ ] API v1 stable
 - [x] Full documentation
@@ -150,6 +150,7 @@
 - [ ] ACME DNS-01 challenge endpoint
 - [ ] Split-horizon DNS (Views) — conditional forwarding already keeps each group's answers for routed zones apart
 - [ ] Per-group upstream DNS — conditional forwarding routes chosen domains per group; a per-group default upstream is not possible yet
+- [ ] EDNS Client Subnet injection (RFC 7871) — optionally send a configured subnet upstream for CDN-correct answers, with cached answers kept apart by subnet scope
 - [ ] Webhook / push notifications
 - [ ] Audit log for configuration changes
 - [ ] WebSocket dashboard for slow query monitoring

@@ -510,7 +510,6 @@ The following are planned for future releases:
 |:--------|:------------|
 | **Read-Only Mode** | Disable config changes via a flag |
 | **API request throttling** | A general request rate limit for the REST API — see [Security Hardening](security-hardening.md#what-is-not-hardened-yet) |
-| **EDNS Client Subnet handling** | Strip client ECS from upstream queries by default, with optional injection (RFC 7871) |
 | **Enforcing DS-denial checks** | Turn the current downgrade *detection* into an opt-in strict mode |
 | **RFC 5011 trust anchor rollover** | Track root key rolls without a new release |
 

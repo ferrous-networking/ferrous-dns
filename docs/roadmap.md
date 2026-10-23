@@ -32,7 +32,7 @@ The milestone list below is included verbatim from [`ROADMAP.md`](https://github
 | RFC 6761 | Special-use names (`.invalid` probes for NXDOMAIN hijack detection) | Done |
 | [PROXY Protocol v2](https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt) | Real client IP behind load balancers (HAProxy spec) | Done |
 | draft-vixie-dns-0x20 | QNAME case randomization | Done (opt-in) |
-| RFC 7871 | EDNS Client Subnet — strip by default, optional injection | Planned |
+| RFC 7871 | EDNS Client Subnet — a client's ECS is never sent upstream; optional subnet injection planned | Partial |
 | RFC 5011 | Automated trust anchor rollover | Planned |
 | RFC 7828 | edns-tcp-keepalive | Planned |
 

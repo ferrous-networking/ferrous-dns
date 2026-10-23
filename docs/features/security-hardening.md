@@ -21,6 +21,7 @@ For the dashboard/API side (authentication, tokens, HTTPS, 2FA) see [Security Fe
 | ISP NXDOMAIN hijacking | Periodic `.invalid` probes + answer rewrite | On |
 | DNS rebinding | Public name → RFC 1918 answer filtering | On |
 | Passive observation of your queries | DoT / DoH / DoQ upstreams | Off (plain UDP by default) |
+| Disclosure of client subnets to upstreams | Upstream queries carry no option a client sent, EDNS Client Subnet included | Always |
 
 ---
 
@@ -114,6 +115,8 @@ Upstream UDP sockets are pooled, retaining up to 4 idle sockets per upstream ser
 
 Upstream queries advertise a 1232-byte EDNS UDP payload — small enough to avoid IP fragmentation on nearly every path, which is itself a spoofing vector. Oversized answers come back with `TC=1` and are retried over TCP, and client-advertised buffer sizes are honoured with correct truncation on the way back (RFC 6891 §6.2.5 / RFC 7766). Every answer carries an OPT record only when the query did (RFC 6891 §7) and copies the query's DO bit into it (RFC 3225 §3). That includes the upstream answers relayed for record types other than A/AAAA, cached or not: their upstream OPT is replaced by ours, with the upstream's extended RCODE kept and a client cookie echoed beside our server cookie (RFC 7873 §5.3). The upstream's own options, including its echo of the cookie Ferrous sent it, never reach the client, and neither does a TSIG or SIG(0): it signs the upstream's exchange with Ferrous, not the client's, and must stay the last record, where our OPT goes (RFC 8945 §5.1, §5.3; RFC 2931 §3). A client that did not set DO gets none of the RRSIG, NSEC and NSEC3 records the DO=1 upstream query returned, unless it asked for that type (RFC 4035 §3.2.1). Records behind a removed one keep their names: compression pointers into moved bytes are re-aimed, and pointers into removed bytes are replaced by the labels they pointed to.
 
+In the other direction, upstream queries are built from the question alone and carry none of the options a client sent, so an EDNS Client Subnet (RFC 7871) never discloses a client's network to an upstream. Sending a chosen subnet upstream for CDN-accurate answers is not supported yet.
+
 ---
 
 ## DNSSEC
@@ -164,7 +167,6 @@ Published so you can plan around it rather than discover it.
 | No API rate limiting | The REST API has no request throttling middleware of any kind. Put the dashboard behind a reverse proxy or a trusted network. | Not implemented |
 | Login lockout behind a reverse proxy | The lockout counts failures per TCP peer and ignores `X-Forwarded-For`, so behind a proxy all logins share the proxy's count. See [Login lockout](security.md#login-lockout). | By design |
 | `Indeterminate` under `permissive` | When DS/DNSKEY lookups cannot be fetched, `permissive` still serves the answer without AD. Use `strict` to refuse it. | By design |
-| EDNS Client Subnet | Client ECS is not stripped from upstream queries yet. | Planned (RFC 7871) |
 | RFC 5011 trust-anchor rollover | Root key updates need a new release or a manual anchor file. | Planned |
 | `/metrics` is unauthenticated | When `metrics_enabled = true` the endpoint is served without auth. See [Metrics & Monitoring](metrics.md). | By design — bind it carefully |
 
