@@ -45,6 +45,15 @@ jobs:
             echo "::error::${TAG} is already tagged"
             exit 1
           fi
+          # The notes describe the main the branch was generated from. If the
+          # PR was merged before release-pr.yml caught up with a newer merge,
+          # the tag would ship changes its notes never list, and the next
+          # release's notes would skip them too.
+          git fetch -q origin "refs/pull/${PR_NUMBER}/head"
+          if ! git merge-base --is-ancestor HEAD^ FETCH_HEAD; then
+            echo "::error::main moved after ${BRANCH} was generated, so its notes miss those changes. Nothing was tagged: add the missing entries to the ${TAG} section of CHANGELOG.md in a pull request, then tag its merge commit by hand (git tag -a ${TAG} -m 'Release ${TAG}' <sha> && git push origin ${TAG})."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release ${TAG} (#${PR_NUMBER})"

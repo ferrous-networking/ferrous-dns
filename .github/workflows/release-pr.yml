@@ -6,11 +6,14 @@ name: Release PR
 # maintainer merges it; release-tag.yml then tags the merge commit, and the tag
 # starts release.yml (binaries → Docker image → docs).
 #
+# A maintainer starts it by hand with the bump type. After that, every merge to
+# main regenerates the open release PR for the same version, so its notes
+# always list everything the tag will contain. Each run rebuilds the release
+# branch from main, and a release PR for another version is closed as
+# superseded.
+#
 # Runs with RELEASE_TOKEN rather than GITHUB_TOKEN: a pull request opened with
 # GITHUB_TOKEN starts no CI, and the release PR is tested like any other.
-# Re-running it rebuilds the release branch from the current main, so the
-# notes pick up everything merged since; a release PR for another version is
-# closed as superseded.
 
 on:
   workflow_dispatch:
@@ -24,6 +27,8 @@ on:
           - patch
           - minor
           - major
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -37,8 +42,39 @@ env:
   GIT_CLIFF_VERSION: '2.14.2'
 
 jobs:
+  target:
+    name: Pick the version
+    runs-on: ubuntu-latest
+    outputs:
+      bump: ${{ steps.pick.outputs.bump }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Pick the version
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUMP_TYPE: ${{ inputs.bump_type }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "bump=${BUMP_TYPE}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A push only refreshes a release PR that is still open. Once main
+          # carries its version, that PR is the one being merged.
+          BRANCH=$(gh pr list --state open --label release --json headRefName --jq '.[0].headRefName // ""')
+          CURRENT=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ -z "$BRANCH" || "${BRANCH#release/v}" == "$CURRENT" ]]; then
+            echo "No open release pull request to refresh"
+            exit 0
+          fi
+          echo "bump=${BRANCH#release/v}" >> "$GITHUB_OUTPUT"
+
   release-pr:
     name: Open the release pull request
+    needs: target
+    if: needs.target.outputs.bump != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
@@ -63,8 +99,10 @@ jobs:
 
       - name: Bump the version
         id: version
+        env:
+          BUMP: ${{ needs.target.outputs.bump }}
         run: |
-          bash scripts/bump-version.sh "${{ inputs.bump_type }}"
+          bash scripts/bump-version.sh "$BUMP"
           cargo update --workspace
           TAG="v$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')"
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
@@ -80,18 +118,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          git-cliff --unreleased --tag "$TAG" --strip all > "$RUNNER_TEMP/notes.md"
-          if ! grep -q '^### ' "$RUNNER_TEMP/notes.md"; then
+          git-cliff --unreleased --tag "$TAG" --prepend CHANGELOG.md
+          if ! bash scripts/changelog-section.sh "$TAG" > "$RUNNER_TEMP/notes.md"; then
             echo "::error::Nothing to release: no changes since the last tag"
             exit 1
           fi
-          git-cliff --unreleased --tag "$TAG" --prepend CHANGELOG.md
           {
             echo "Release ${TAG}. Merging this pull request tags the merge commit, which builds the binaries and publishes the Docker image and the docs."
             echo
+            echo "This pull request is regenerated after every merge to \`main\`, so it always lists what the tag will contain. A regeneration replaces anything edited on this branch: reword entries right before merging."
+            echo
             echo "Before merging:"
             echo
-            echo "- [ ] The notes below read well. They are the new section of \`CHANGELOG.md\` and are published verbatim as the release notes, so reword them on this branch if needed."
+            echo "- [ ] The notes below read well. They are the new section of \`CHANGELOG.md\` and are published verbatim as the release notes."
             echo "- [ ] On a minor or major bump, \`ROADMAP.md\` has the milestone and \`docs/changelog.md\` the series (Docs Consistency fails until they do)."
             echo
             echo "---"
@@ -130,7 +169,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           {
-            echo "Release pull request for **${TAG}** is open: review it, then merge to tag and ship."
+            echo "Release pull request for **${TAG}** is up to date: review it, then merge to tag and ship."
             echo
             cat "$RUNNER_TEMP/notes.md"
           } >> "$GITHUB_STEP_SUMMARY"

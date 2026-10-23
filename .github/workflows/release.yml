@@ -43,15 +43,7 @@ jobs:
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
         run: |
-          awk -v v="${VERSION#v}" '
-            index($0, "## [" v "]") == 1 { found = 1; print; next }
-            found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md > RELEASE_NOTES.md
-          if ! grep -q '^### ' RELEASE_NOTES.md; then
-            echo "::error::CHANGELOG.md has no section for ${VERSION}"
-            exit 1
-          fi
+          bash scripts/changelog-section.sh "$VERSION" > RELEASE_NOTES.md
           cat RELEASE_NOTES.md
 
       - name: Create Release
