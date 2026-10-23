@@ -1292,10 +1292,11 @@
                     const res = await apiFetch(`${API_BASE}/config/import`, { method: 'POST', body: fd });
                     if (res.status === 401) { window.location.href = '/login.html'; return; }
                     const data = await res.json().catch(() => ({}));
+                    // Also after a partial import: the settings may have been restored.
+                    if (data.restart_required) this.restartRequired = true;
                     if (res.ok && data.success !== false) {
                         this.backupImportResult = data.summary;
                         this.backupImportErrors = data.errors || [];
-                        if (data.restart_required) this.restartRequired = true;
                         this.showAlert('success', 'Import completed successfully');
                         scheduleLucide(50);
                     } else {
