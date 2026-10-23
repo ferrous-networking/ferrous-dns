@@ -201,3 +201,23 @@ async fn upstream_answer_and_nodata_stay_noerror() {
         ]
     );
 }
+
+/// Guard: an NXDOMAIN that still carries addresses is answered with them,
+/// as NOERROR, so it logs NOERROR — for the leader and its follower alike.
+#[tokio::test]
+async fn upstream_nxdomain_with_addresses_logs_the_noerror_the_client_gets() {
+    let ip = Ipv4Addr::new(192, 0, 2, 1);
+    let f = fixture(Answer::NxDomainWithAddress(ip)).await;
+    f.upstream.set_delay(Duration::from_millis(300));
+
+    let request = DnsRequest::new(NAME, RecordType::A, CLIENT);
+    let (leader, follower) =
+        tokio::join!(f.use_case.execute(&request), f.use_case.execute(&request));
+
+    for resolution in [leader, follower] {
+        assert_eq!(resolution.unwrap().addresses.as_ref(), &[IpAddr::V4(ip)]);
+    }
+    assert_eq!(f.upstream.queries(), 1, "the second query must coalesce");
+    let statuses: Vec<_> = client_rows(&f.log).into_iter().map(|(_, s)| s).collect();
+    assert_eq!(statuses, vec![Some("NOERROR"), Some("NOERROR")]);
+}

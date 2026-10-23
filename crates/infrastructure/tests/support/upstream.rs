@@ -25,6 +25,9 @@ pub enum Answer {
     /// internal server that does not recurse answers.
     Zone(&'static str, Ipv4Addr),
     NxDomain,
+    /// NXDOMAIN that still carries an A record for A queries, as a broken
+    /// server might send.
+    NxDomainWithAddress(Ipv4Addr),
     /// No reply at all, as a server that is down.
     Silent,
 }
@@ -119,7 +122,9 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
     resp.metadata.recursion_available = true;
     match answer {
         Answer::Silent => return None,
-        Answer::NxDomain => resp.metadata.response_code = ResponseCode::NXDomain,
+        Answer::NxDomain | Answer::NxDomainWithAddress(_) => {
+            resp.metadata.response_code = ResponseCode::NXDomain
+        }
         Answer::Address(_) | Answer::Cname(..) => {
             resp.metadata.response_code = ResponseCode::NoError
         }
@@ -141,7 +146,7 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
             continue;
         }
         match answer {
-            Answer::Address(ip) => {
+            Answer::Address(ip) | Answer::NxDomainWithAddress(ip) => {
                 resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
             }
             Answer::Zone(_, ip) if resp.metadata.response_code == ResponseCode::NoError => {
