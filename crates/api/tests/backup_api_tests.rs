@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
     Router,
 };
-use ferrous_dns_domain::{LocalDnsRecord, LocalRecordType};
+use ferrous_dns_domain::{Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy};
 use helpers::TestApp;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -1012,4 +1012,201 @@ async fn test_import_does_not_restore_a_config_section_that_fails_validation() {
         "the error should name the key, got: {errors:?}"
     );
     assert_eq!(config.read().await.dns.cache_compaction_interval, before);
+}
+
+async fn import(app: Router, payload: &[u8]) -> Value {
+    let response = app.oneshot(import_request(payload)).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    serde_json::from_slice(&body).unwrap()
+}
+
+fn json_of<T: serde::Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap()
+}
+
+/// What the round trip below sets: pools with a conditional route, rate
+/// limiting, and every malware setting away from its default.
+fn customize_pools_rate_limit_and_malware(cfg: &mut Config, office_group: i64) {
+    cfg.dns.pools = vec![
+        UpstreamPool {
+            name: "main".into(),
+            strategy: UpstreamStrategy::Parallel,
+            servers: vec!["udp://9.9.9.9:53".into()],
+            ..Default::default()
+        },
+        UpstreamPool {
+            name: "office".into(),
+            strategy: UpstreamStrategy::Failover,
+            priority: 2,
+            servers: vec!["udp://10.0.0.53:53".into()],
+            domains: vec!["corp.example".into()],
+            groups: vec![office_group],
+            internal: true,
+            ..Default::default()
+        },
+    ];
+    cfg.dns.rate_limit.enabled = true;
+    cfg.dns.rate_limit.queries_per_second = 77;
+    cfg.dns.rate_limit.whitelist = vec!["192.0.2.0/24".into()];
+    cfg.dns.malware_detection_enabled = !cfg.dns.malware_detection_enabled;
+    cfg.dns.rebinding_protection_enabled = !cfg.dns.rebinding_protection_enabled;
+    cfg.dns.rebinding_allowlist = vec!["nas.example".into()];
+    cfg.dns.tunneling_detection.max_fqdn_length = 199;
+    cfg.dns.dga_detection.sld_max_length = 33;
+    cfg.dns.nxdomain_hijack.probe_interval_secs = 1234;
+    cfg.dns.response_ip_filter.ip_list_urls = vec!["https://example.com/c2.txt".into()];
+}
+
+/// Every setting the round trip covers, as JSON, for one comparison.
+fn pools_rate_limit_and_malware(cfg: &Config) -> Value {
+    json!({
+        "pools": json_of(&cfg.dns.pools),
+        "rate_limit": json_of(&cfg.dns.rate_limit),
+        "malware_detection_enabled": cfg.dns.malware_detection_enabled,
+        "rebinding_protection_enabled": cfg.dns.rebinding_protection_enabled,
+        "rebinding_allowlist": json_of(&cfg.dns.rebinding_allowlist),
+        "tunneling_detection": json_of(&cfg.dns.tunneling_detection),
+        "dga_detection": json_of(&cfg.dns.dga_detection),
+        "nxdomain_hijack": json_of(&cfg.dns.nxdomain_hijack),
+        "response_ip_filter": json_of(&cfg.dns.response_ip_filter),
+    })
+}
+
+#[tokio::test]
+async fn test_pools_rate_limit_and_malware_settings_survive_export_import_round_trip() {
+    let TestApp { router, config, .. } = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["office"])
+        .build()
+        .await;
+    customize_pools_rate_limit_and_malware(&mut *config.write().await, 2);
+    let expected = pools_rate_limit_and_malware(&*config.read().await);
+
+    let (status, exported) = do_export(router.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    {
+        let defaults = Config::default();
+        let mut cfg = config.write().await;
+        cfg.dns.pools = vec![UpstreamPool {
+            name: "other".into(),
+            servers: vec!["udp://1.1.1.1:53".into()],
+            ..Default::default()
+        }];
+        cfg.dns.rate_limit = defaults.dns.rate_limit;
+        cfg.dns.malware_detection_enabled = defaults.dns.malware_detection_enabled;
+        cfg.dns.rebinding_protection_enabled = defaults.dns.rebinding_protection_enabled;
+        cfg.dns.rebinding_allowlist = defaults.dns.rebinding_allowlist;
+        cfg.dns.tunneling_detection = defaults.dns.tunneling_detection;
+        cfg.dns.dga_detection = defaults.dns.dga_detection;
+        cfg.dns.nxdomain_hijack = defaults.dns.nxdomain_hijack;
+        cfg.dns.response_ip_filter = defaults.dns.response_ip_filter;
+    }
+
+    let json = import(router, &serde_json::to_vec(&exported).unwrap()).await;
+
+    assert_eq!(json["summary"]["config_updated"], true, "{json}");
+    assert_eq!(
+        pools_rate_limit_and_malware(&*config.read().await),
+        expected
+    );
+}
+
+/// A backup from another server names groups by that server's ids, so a
+/// pool's route and a blocklist source follow each group by its name.
+#[tokio::test]
+async fn test_import_maps_pool_and_blocklist_source_groups_by_name() {
+    // "office" is group 2 here; "kids" does not exist yet and becomes group 3.
+    let TestApp { router, config, .. } = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["office"])
+        .build()
+        .await;
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([
+        { "id": 1, "name": "Protected", "comment": null },
+        { "id": 7, "name": "kids", "comment": null },
+        { "id": 9, "name": "office", "comment": null }
+    ]);
+    backup["config"]["dns"]["pools"] = json!([{
+        "name": "office", "strategy": "Failover", "priority": 1,
+        "servers": ["udp://10.0.0.53:53"], "weight": null,
+        "domains": ["corp.example"], "groups": [9, 7], "internal": true
+    }]);
+    backup["data"]["blocklist_sources"] = json!([{
+        "name": "kids-list", "url": "https://example.com/kids.txt",
+        "group_ids": [1, 7], "comment": null, "enabled": true
+    }]);
+
+    let json = import(router.clone(), &serde_json::to_vec(&backup).unwrap()).await;
+
+    assert_eq!(json["errors"], json!([]), "{json}");
+    let pools = config.read().await.dns.pools.clone();
+    assert_eq!(pools.len(), 1, "{pools:?}");
+    assert_eq!(pools[0].groups, vec![2, 3]);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/blocklist-sources")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let sources: Value = serde_json::from_slice(&body).unwrap();
+    let kids = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "kids-list")
+        .unwrap_or_else(|| panic!("kids-list was not imported: {sources}"));
+    assert_eq!(kids["group_ids"], json!([1, 3]));
+}
+
+/// Guard: a backup from before these settings were exported keeps the
+/// target's own.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_pools_rate_limit_and_malware_settings() {
+    let TestApp { router, config, .. } = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["office"])
+        .build()
+        .await;
+    customize_pools_rate_limit_and_malware(&mut *config.write().await, 2);
+    let before = pools_rate_limit_and_malware(&*config.read().await);
+
+    let json = import(router, &serde_json::to_vec(&minimal_backup_json()).unwrap()).await;
+
+    assert_eq!(json["summary"]["config_updated"], true, "{json}");
+    assert_eq!(pools_rate_limit_and_malware(&*config.read().await), before);
+}
+
+#[tokio::test]
+async fn test_import_that_changes_the_config_asks_for_a_restart() {
+    let TestApp { router, state, .. } = test_app().await;
+    let mut backup = minimal_backup_json();
+    backup["config"]["server"]["dns_port"] = json!(5353);
+    backup["config"]["dns"]["upstream_servers"] = json!(["udp://1.1.1.1:53"]);
+
+    let json = import(router, &serde_json::to_vec(&backup).unwrap()).await;
+
+    assert_eq!(json["summary"]["config_updated"], true, "{json}");
+    assert_eq!(json["restart_required"], true);
+    assert!(
+        state.is_restart_pending(),
+        "the restart banner must be raised"
+    );
+}
+
+/// Guard: restoring the backup just taken changes nothing to restart for.
+#[tokio::test]
+async fn test_import_of_an_unchanged_config_asks_for_no_restart() {
+    let TestApp { router, state, .. } = test_app().await;
+    let (_, exported) = do_export(router.clone()).await;
+
+    let json = import(router, &serde_json::to_vec(&exported).unwrap()).await;
+
+    assert_eq!(json["summary"]["config_updated"], true, "{json}");
+    assert_ne!(json["restart_required"], true);
+    assert!(!state.is_restart_pending());
 }
