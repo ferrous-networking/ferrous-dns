@@ -1,6 +1,6 @@
 ---
 name: upstream-rcode-ignored-on-pool-path
-description: Upstream rcodes on the pool path — SERVFAIL caching and negative TTL fixed by #282 (2026-10-12); the query log still records upstream NXDOMAIN as NOERROR
+description: Upstream rcodes on the pool path — SERVFAIL caching/negative TTL fixed by #282 (10-12); query log fixed on branch fix/query-log-upstream-rcode (10-23); RRL + tunneling still never see upstream NXDOMAINs
 type: project
 paths:
   - crates/application/src/use_cases/dns/handle_dns_query.rs
@@ -26,8 +26,9 @@ paths:
 - **2026-10-12, PR #282** (`057b7e6`) fixed the other halves:
   - `query_server` returns `DomainError::UpstreamServerFailure` for every rcode except NOERROR and NXDOMAIN, so strategies and pools fail over, and nothing caches it.
   - A wire answer with no answer records is cached for the SOA negative TTL, held to 300–3600 s, on insert and on refresh. It used to be `cache_ttl`.
-- **Query-log half:** still open and unfiled. #282 left RRL and the tunneling signal as they were.
+- **2026-10-23, query-log half:** fixed on branch `fix/query-log-upstream-rcode` (red tests `53ab8a57`, `b98f5dcd`; fix `9c78697a`). `DnsResolution::upstream_nxdomain` is set in `CoreResolver::resolve` from the parsed rcode, only when the reply has no addresses (the server answers addresses as NOERROR, `server.rs` `handle_raw_udp_fallback`). The cache reads it from the wire header (`wire_response::is_nxdomain`), and `InflightResult` copies it to followers. `rcode_name()` feeds the fresh, cache-hit, fast-path and refresh logs. Regression tests: `crates/infrastructure/tests/query_log_upstream_rcode_test.rs`. Old rows keep NOERROR.
+- **Still open:** an upstream NXDOMAIN stays an `Ok` resolution, so `charge_nxdomain` never charges it and `emit_tunneling_event` still passes `false`. Wiring either one is a behavior change: run the RRL test above first.
 
-**Why not fixed:** it needs the RRL decision above, and #282 kept its scope to caching and failover.
+**Why RRL/tunneling stayed out:** the query-log fix changes reporting only; charging the budget or the tunneling ratio changes what gets refused, which needs its own load test.
 
 Origin: the PR #241 author spotted the NXDOMAIN case, and the review extended it to SERVFAIL and NODATA.
