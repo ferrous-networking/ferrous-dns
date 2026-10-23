@@ -368,4 +368,3 @@ All notable changes to Ferrous DNS, newest first. Each entry links the pull requ
 - bump toml_edit from 0.24.1+spec-1.1.0 to 0.25.4+spec-1.1.0 by @dependabot[bot] in [#172](https://github.com/ferrous-networking/ferrous-dns/pull/172)
 - bump toml from 0.9.11+spec-1.1.0 to 1.0.6+spec-1.1.0 by @dependabot[bot] in [#171](https://github.com/ferrous-networking/ferrous-dns/pull/171)
 - bump the github-actions group with 2 updates by @dependabot[bot] in [#170](https://github.com/ferrous-networking/ferrous-dns/pull/170)
-

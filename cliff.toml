@@ -56,12 +56,14 @@ body = """
 {% if contributor.pr_number %} in [#{{ contributor.pr_number }}]({{ self::remote_url() }}/pull/{{ contributor.pr_number }}){% endif %}\
 {% endfor %}
 {% endif %}\
-{% raw %}\n{% endraw %}\
 {%- macro remote_url() -%}
 https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
 {%- endmacro -%}
 """
 
+# Whitespace is laid out by hand: a section ends on its last line with no blank
+# line after it, because `--prepend` already puts the newline git-cliff writes
+# after the header between the new section and the previous one.
 trim = false
 
 [git]
