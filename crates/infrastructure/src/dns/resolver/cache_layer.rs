@@ -359,9 +359,7 @@ impl CachedResolver {
         if let Some(mut cached) =
             self.check_cache_str(query.domain.as_ref(), query.record_type, guard.key.view)
         {
-            if self.publish_inflight(&guard.key, &cached) > 0 {
-                cached.coalesced = Some(CoalescedRole::Leader);
-            }
+            self.publish_inflight(&guard.key, &mut cached);
             guard.defuse();
             return Self::cached_outcome(cached);
         }
@@ -371,9 +369,7 @@ impl CachedResolver {
         match &mut result {
             Ok(resolution) => {
                 self.store_in_cache(query, &guard.key, routed, resolution);
-                if self.publish_inflight(&guard.key, resolution) > 0 {
-                    resolution.coalesced = Some(CoalescedRole::Leader);
-                }
+                self.publish_inflight(&guard.key, resolution);
                 guard.defuse();
             }
             // Only an authoritative "no such name" is safe to cache: a
@@ -403,15 +399,15 @@ impl CachedResolver {
 
     /// Removes the in-flight entry for `key` and publishes `resolution` to its
     /// followers. A resolution without response data is published as `None`,
-    /// which followers turn into their own cache check or resolution. Returns
-    /// how many followers got `resolution`.
-    fn publish_inflight(&self, key: &CacheKey, resolution: &DnsResolution) -> usize {
+    /// which followers turn into their own cache check or resolution. A
+    /// resolution some follower got is marked as the leader's.
+    fn publish_inflight(&self, key: &CacheKey, resolution: &mut DnsResolution) {
         let Some((_, tx)) = self.inflight.remove(key) else {
-            return 0;
+            return;
         };
         if !resolution.has_response_data() {
             let _ = tx.send(None);
-            return 0;
+            return;
         }
         let inflight = Arc::new(InflightResult {
             addresses: Arc::clone(&resolution.addresses),
@@ -426,7 +422,12 @@ impl CachedResolver {
             upstream_wire_data: resolution.upstream_wire_data.clone(),
         });
         // The leader dropped its own receiver, so every one left is a follower.
-        tx.send(Some(inflight)).map_or(0, |()| tx.receiver_count())
+        if tx
+            .send(Some(inflight))
+            .is_ok_and(|()| tx.receiver_count() > 0)
+        {
+            resolution.coalesced = Some(CoalescedRole::Leader);
+        }
     }
 }
 
@@ -458,6 +459,8 @@ impl DnsResolver for CachedResolver {
         if !is_leader {
             return self.resolve_as_follower(query, rx).await;
         }
+        // Only followers keep a receiver, so the receivers left at publish
+        // count them.
         drop(rx);
         self.resolve_as_leader(query, key, route.is_some()).await
     }

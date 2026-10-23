@@ -108,7 +108,7 @@ async fn test_coalescing_deduplicates_concurrent_queries() {
 }
 
 #[tokio::test]
-async fn test_coalescing_cache_hit_flag_for_waiters() {
+async fn test_coalescing_waiters_get_the_upstream_answer() {
     let mock = Arc::new(DelayedMockResolver::new(50, "1.2.3.4"));
     let resolver = Arc::new(CachedResolver::new(
         Arc::clone(&mock) as Arc<dyn DnsResolver>,
