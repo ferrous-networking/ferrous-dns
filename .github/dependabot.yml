@@ -5,6 +5,9 @@
 # Regular version bumps run weekly (Mondays) to keep PR noise low; security
 # updates are opened by Dependabot as soon as an advisory is published,
 # regardless of the schedule below.
+#
+# Every PR gets the `dependencies` label; the subject label (ci, docker,
+# documentation) comes from the changed paths in pr-triage.yml.
 version: 2
 
 updates:
@@ -24,7 +27,6 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
-      - "rust"
     groups:
       # utoipa-axum and utoipa-scalar pin a utoipa major, so a major bump of
       # any one of them only builds together with the other two (#258-#260).
@@ -54,7 +56,6 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
-      - "github-actions"
     groups:
       github-actions:
         applies-to: version-updates
@@ -78,7 +79,6 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
-      - "docker"
 
   # ---- MkDocs documentation toolchain (pip) ------------------------------
   - package-ecosystem: "pip"
@@ -94,7 +94,6 @@ updates:
       include: "scope"
     labels:
       - "dependencies"
-      - "documentation"
     groups:
       pip-minor-patch:
         applies-to: version-updates

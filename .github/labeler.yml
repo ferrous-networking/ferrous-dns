@@ -1,0 +1,149 @@
+# Subject labels for pull requests, from the paths they change (actions/labeler,
+# run by pr-triage.yml). The kind of change — bug, enhancement, documentation,
+# performance, refactor — comes from the PR title in the same workflow.
+#
+# The names match the PR-title scopes in CONTRIBUTING.md where one exists.
+# Globs are minimatch, relative to the repository root; a file may match
+# several labels.
+
+dns:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/dns/{resolver,transport,forwarding,load_balancer}/**
+          - crates/infrastructure/src/dns/{mod,server,fast_path,wire_response,proxy_protocol,ede}.rs
+          - crates/application/src/use_cases/{dns,local_records}/**
+          - crates/application/src/ports/dns_*
+          - crates/domain/src/dns_record/**
+          - crates/domain/src/config/{dns,dns64,dns_cookies,upstream,encrypted_dns,server}.rs
+          - crates/cli/src/{server,wiring}/dns/**
+          - crates/*/tests/{dns_,dns64_,upstream_,pool_,fast_path_,udp_,proxy_protocol_,resolver_,response_,spoof_,local_,conditional_forwarding_,ede_,message_builder_}*
+
+dnssec:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/dns/dnssec/**
+          - crates/application/src/ports/dnssec_*
+          - crates/domain/src/config/dnssec.rs
+          - crates/*/tests/dnssec_*
+
+cache:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/dns/cache/**
+          - crates/infrastructure/src/dns/cache_maintenance.rs
+          - crates/application/src/use_cases/cache/**
+          - crates/application/src/ports/*cache*
+          - crates/domain/src/config/cache_eviction.rs
+          - crates/jobs/src/cache_maintenance.rs
+          - crates/cli/src/wiring/dns/cache.rs
+          - crates/*/tests/{cache_,negative_,stale_,refresh_,bloom_}*
+
+block-filter:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/dns/{block_filter,safe_search,response_ip_filter}/**
+          - crates/application/src/use_cases/{block_filter,blocklist,blocklist_sources,whitelist,whitelist_sources,regex_filters,blocked_services,custom_services,managed_domains,safe_search}/**
+          - crates/domain/src/entities/{block_source,blocklist,blocklist_source,whitelist,whitelist_source,regex_filter,managed_domain,blocked_service,custom_service,safe_search,service_catalog}.rs
+          - crates/infrastructure/src/repositories/{blocklist,blocklist_source,whitelist,whitelist_source,regex_filter,managed_domain,blocked_service,custom_service}_repository.rs
+          - crates/infrastructure/src/repositories/{list_source_sql,sqlite_safe_search_config_repository}.rs
+          - crates/infrastructure/src/service_catalog/**
+          - crates/domain/src/config/{blocking,response_ip_filter}.rs
+          - crates/jobs/src/blocklist_sync.rs
+          - crates/*/tests/{block_,blocklist_,allowlist_,whitelist_,regex_filter,managed_domain,safe_search_,response_ip_filter_}*
+
+malware:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/dns/{dga_detection,tunneling,nxdomain_hijack}/**
+          - crates/domain/src/config/{malware_detection,dga_detection,tunneling,nxdomain_hijack}.rs
+          - crates/jobs/src/{dga,tunneling,nxdomain_hijack}_eviction.rs
+          - crates/*/tests/{dga_,tunneling_,nxdomain_hijack_,domain_heuristics_,config_malware_}*
+
+query-log:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/repositories/query_log_repository/**
+          - crates/application/src/use_cases/queries/**
+          - crates/application/src/ports/query_log*
+          - crates/domain/src/entities/query_log.rs
+          - crates/jobs/src/query_log_retention.rs
+          - crates/*/tests/{query_log_,query_stats_,query_rate_}*
+
+clients:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/application/src/use_cases/{clients,client_subnets,groups}/**
+          - crates/application/src/ports/{client,group}*
+          - crates/domain/src/entities/{client,client_subnet,group}.rs
+          - crates/infrastructure/src/repositories/{client,group}_*.rs
+          - crates/jobs/src/client_sync.rs
+          - crates/*/tests/{client,group,delete_client_,arp_}*
+
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/infrastructure/src/auth/**
+          - crates/application/src/use_cases/{auth,users,api_tokens}/**
+          - crates/domain/src/entities/{user,user_mfa,auth_session,api_token}.rs
+          - crates/infrastructure/src/repositories/{session,user,api_token}_repository.rs
+          - crates/domain/src/config/auth.rs
+          - crates/*/tests/{auth_,totp_,passkey_,password_,session_,mfa_,api_token,validate_session_,create_user_,user_}*
+
+database:
+  - changed-files:
+      - any-glob-to-any-file:
+          - migrations/**
+          - crates/infrastructure/src/database/**
+          - crates/domain/src/config/database.rs
+          - crates/jobs/src/wal_checkpoint.rs
+          - crates/*/tests/{database_,wal_checkpoint_,*_migration_}*
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/domain/src/config/**
+          - crates/application/src/use_cases/{config,backup}/**
+          - crates/infrastructure/src/repositories/config_*.rs
+          - ferrous-dns.toml
+
+api:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/api/**
+
+pihole-compat:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/api-pihole/**
+
+web:
+  - changed-files:
+      - any-glob-to-any-file:
+          - web/**
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - mkdocs.yml
+          - requirements.txt
+          - '*.md'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - scripts/**
+          - Makefile
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - Dockerfile*
+          - docker-compose*.yml
+          - .dockerignore
+
+fuzz:
+  - changed-files:
+      - any-glob-to-any-file:
+          - fuzz/**

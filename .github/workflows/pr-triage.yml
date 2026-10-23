@@ -5,38 +5,68 @@ name: PR Triage
 # read-only token, so they used to fail with 403 on every external PR.
 #
 # pull_request_target runs with a write token in the base repo's context:
-# never check out or execute code from the PR here. Both actions only call the
-# GitHub API, and they are pinned to commit SHAs for the same reason.
+# never check out or execute code from the PR here. Every action below only
+# calls the GitHub API, and they are pinned to commit SHAs for the same reason.
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    # `edited` re-labels a PR whose title changed its type.
+    types: [opened, synchronize, reopened, edited]
     branches: [main, develop]
 
 permissions: {}
 
 jobs:
-  size-label:
-    name: Size Label
+  labels:
+    name: Labels
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
-      - name: Add size label
-        uses: codelytv/pr-size-labeler@19c335e7695ba922de938806dd129f0a9b992644 # v1.12.0
+      # The kind of change, from the Conventional Commits type in the title
+      # (pr-validation.yml enforces the format). Runs before the subject step
+      # so that dropping a stale `documentation` type label cannot undo the
+      # one the docs paths add.
+      - name: Type label from the title
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          xs_label: 'size/xs'
-          xs_max_size: 10
-          s_label: 'size/s'
-          s_max_size: 100
-          m_label: 'size/m'
-          m_max_size: 500
-          l_label: 'size/l'
-          l_max_size: 1000
-          xl_label: 'size/xl'
-          fail_if_xl: false
+          script: |
+            const TYPE_LABELS = {
+              feat: 'enhancement',
+              fix: 'bug',
+              docs: 'documentation',
+              perf: 'performance',
+              refactor: 'refactor',
+            };
+            const typeOf = (title) => (/^(\w+)(?:\([^)]*\))?!?:/.exec(title) || [])[1];
+            const pr = context.payload.pull_request;
+            const has = (name) => pr.labels.some((l) => l.name === name);
+            const label = TYPE_LABELS[typeOf(pr.title)];
+            const previous = context.payload.changes?.title?.from;
+            const stale = previous && TYPE_LABELS[typeOf(previous)];
+
+            if (stale && stale !== label && has(stale)) {
+              await github.rest.issues.removeLabel({
+                ...context.repo,
+                issue_number: pr.number,
+                name: stale,
+              });
+            }
+            if (label && !has(label)) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: pr.number,
+                labels: [label],
+              });
+            }
+
+      # The subject (dns, cache, web, …), from the changed paths. The config is
+      # read from the base branch, like the rest of this workflow.
+      - name: Subject labels from the changed paths
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          configuration-path: .github/labeler.yml
 
   suggest-reviewers:
     name: Suggest Reviewers
