@@ -32,6 +32,17 @@ series in `docs/changelog.md`. CI runs it on every pull request.
 ./scripts/check-docs-version.sh
 ```
 
+### `changelog-section.sh`
+
+Prints one release's section of `CHANGELOG.md`, and fails when it is missing or
+lists no changes. The Release PR workflow shows it in the release pull request
+and the Release workflow publishes it as the GitHub release notes, so the two
+always match.
+
+```bash
+./scripts/changelog-section.sh v0.9.24
+```
+
 ---
 
 ## 🚀 Releasing
@@ -42,8 +53,9 @@ A release is a pull request; nothing is pushed to `main` directly.
    `patch`, `minor` or `major` (or run `make release-patch` /
    `release-minor` / `release-major`, which call `gh workflow run`).
 2. It opens `chore(release): vX.Y.Z` with the version bump, the docs banners and
-   the new `CHANGELOG.md` section. Review it like any other PR, and reword the
-   notes on that branch if needed. `make changelog` previews the notes locally.
+   the new `CHANGELOG.md` section, and regenerates it after every merge to
+   `main` until it is merged. Review it like any other PR; reword the notes on
+   that branch right before merging. `make changelog` previews them locally.
 3. Merge it. **Release Tag** tags the merge commit, and the tag starts
    **Release**: binaries, GitHub release (notes taken from `CHANGELOG.md`),
    Docker image, and the docs site.

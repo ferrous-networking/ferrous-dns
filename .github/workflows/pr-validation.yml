@@ -62,10 +62,10 @@ jobs:
             ## ⚠️ Breaking Changes Detected
 
             This PR contains breaking changes. Please ensure:
-            - [ ] CHANGELOG.md is updated
             - [ ] Migration guide is provided (if needed)
             - [ ] Documentation is updated
-            - [ ] Version bump will be MAJOR
+            - [ ] The PR body describes the break; the release notes are generated from the title, so don't edit CHANGELOG.md
+            - [ ] The release that ships it is a major bump (minor while on 0.x)
 
   check-todos:
     name: Check for TODO/FIXME

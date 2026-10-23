@@ -42,4 +42,4 @@ See [Security Hardening](features/security-hardening.md) for what each of the se
 
 ## Release history
 
-Per-version highlights live in the [Changelog](changelog.md); full release notes are published on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases).
+Per-version highlights and the full notes of every release since v0.9.4 live in the [Changelog](changelog.md); each release's notes are also published on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases).

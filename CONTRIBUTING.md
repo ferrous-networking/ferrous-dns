@@ -117,8 +117,10 @@ docs: rewrite the contributor guide
 - Scope is the subsystem: `dns`, `dnssec`, `cache`, `auth`, `api`, `query-log`,
   `block-filter`, `docker`, `config`. Omit it only for repo-wide changes.
 - `build(deps): …` is reserved for Dependabot; `ci: …` is for workflow changes.
-- Marking a change breaking demands a CHANGELOG entry, a migration guide, and a
-  MAJOR bump — don't do it by accident.
+- Marking a change breaking (a `BREAKING CHANGE` footer) demands a migration
+  guide and a major bump — minor while on 0.x — so don't do it by accident.
+  `CHANGELOG.md` is generated from the titles at release time; don't edit it in
+  your PR, describe the break and the migration in the PR body instead.
 - The title is also your changelog entry. PRs are squash-merged, and the
   release notes list each one as `**scope:** description by @you in #N`.
 - Labels are applied for you: the kind of change from the title (`feat` →
@@ -262,8 +264,10 @@ is about to ship:
    It opens `chore(release): vX.Y.Z` with the version bump and the new section
    of [`CHANGELOG.md`](CHANGELOG.md), which git-cliff builds from the titles of
    the PRs merged since the last release.
-2. The notes get reviewed like any other change, and reworded on that branch if
-   needed.
+2. Every merge to `main` while it is open regenerates it for the same version,
+   so it always lists what the tag will contain. The notes get reviewed like
+   any other change; reword entries on that branch right before merging, since
+   a regeneration replaces them.
 3. Merging it tags the release. The tag builds the binaries and publishes the
    GitHub release (with that `CHANGELOG.md` section as its notes), the Docker
    image, and the documentation site.

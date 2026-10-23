@@ -32,6 +32,12 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
 a title like `fix: cache bug` fails the build even with a clean branch. Write it
 as a lowercase full sentence, for example
 `fix(cache): stop corrupting non-ASCII bytes in oversized cache keys`.
+The title is also your entry in the [Changelog](changelog.md): pull requests are
+squash-merged, and the release notes credit each one to its author.
+
+Bugs and feature requests go through the issue forms, which ask for the version,
+how you run Ferrous DNS and a reproduction; questions fit better in
+[Discussions](https://github.com/ferrous-networking/ferrous-dns/discussions).
 
 ---
 
