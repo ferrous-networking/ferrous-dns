@@ -193,6 +193,12 @@ Each entry carries a `protocol` field with the same values in lowercase, or
 `null` for internally generated queries and for rows logged before the
 transport was recorded.
 
+`coalesced` marks a query's part in [in-flight coalescing](architecture/overview.md#in-flight-coalescing):
+`leader` when identical queries that arrived while it was in flight shared its
+answer, `follower` when it got such a query's answer with no upstream request of
+its own, and `null` otherwise. A follower carries its leader's `cache_hit`,
+`upstream_server` and `upstream_pool`, and its own response time.
+
 ---
 
 ## Configuration

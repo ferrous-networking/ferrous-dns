@@ -1183,6 +1183,7 @@ impl DnsResolutionBuilder {
             local_dns: false,
             local_nxdomain: false,
             upstream_nxdomain: false,
+            coalesced: None,
             dnssec_status: self.dnssec_status,
             cname_chain: self.cname_chain,
             upstream_server: self.upstream_server,

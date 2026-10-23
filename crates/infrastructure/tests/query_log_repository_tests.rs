@@ -3,7 +3,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
-    ClientProtocol, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
+    ClientProtocol, CoalescedRole, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
 };
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::SqlitePool;
@@ -211,6 +211,7 @@ fn client_query(domain: &str, protocol: Option<ClientProtocol>) -> QueryLog {
         protocol,
         group_id: None,
         block_source: None,
+        coalesced: None,
     }
 }
 
@@ -1552,6 +1553,46 @@ async fn test_logged_protocol_is_persisted() {
         .await
         .unwrap();
     assert_eq!(stored.as_deref(), Some("doq"));
+}
+
+#[tokio::test]
+async fn test_coalesced_role_round_trips() {
+    let pool = migrated_pool().await;
+    let repository = repo(&pool);
+    for (domain, coalesced) in [
+        ("leader.example.com", Some(CoalescedRole::Leader)),
+        ("follower.example.com", Some(CoalescedRole::Follower)),
+        ("alone.example.com", None),
+    ] {
+        repository
+            .log_query(&QueryLog {
+                coalesced,
+                ..client_query(domain, Some(ClientProtocol::Udp))
+            })
+            .await
+            .unwrap();
+    }
+    let mut rows = Vec::new();
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        rows = repository
+            .get_recent_paged(10, PageAt::Offset(0), 24.0, &no_filter())
+            .await
+            .unwrap()
+            .queries;
+        if rows.len() == 3 {
+            break;
+        }
+    }
+    let role = |domain: &str| {
+        rows.iter()
+            .find(|q| &*q.domain == domain)
+            .unwrap_or_else(|| panic!("{domain} not read back"))
+            .coalesced
+    };
+    assert_eq!(role("leader.example.com"), Some(CoalescedRole::Leader));
+    assert_eq!(role("follower.example.com"), Some(CoalescedRole::Follower));
+    assert_eq!(role("alone.example.com"), None);
 }
 
 #[tokio::test]

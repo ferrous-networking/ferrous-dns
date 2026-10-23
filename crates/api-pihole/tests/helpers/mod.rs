@@ -334,6 +334,7 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             protocol TEXT,
             group_id INTEGER,
             block_source TEXT,
+            coalesced TEXT,
             created_at DATETIME NOT NULL DEFAULT (datetime('now'))
         )",
     )

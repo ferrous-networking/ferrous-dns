@@ -50,6 +50,7 @@ async fn test_get_query_rate_with_data() {
             protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
+            coalesced: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -92,6 +93,7 @@ async fn test_get_query_rate_formatted_with_k() {
             protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
+            coalesced: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }
@@ -134,6 +136,7 @@ async fn test_get_query_rate_different_units() {
             protocol: Some(ClientProtocol::Udp),
             group_id: None,
             block_source: None,
+            coalesced: None,
         };
         let _ = repository_mock.log_query(&query).await;
     }

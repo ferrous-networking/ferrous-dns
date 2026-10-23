@@ -96,6 +96,7 @@ pub async fn get_queries(
             protocol: q.protocol.map(|p| p.as_str()),
             block_source: q.block_source.map(|s| s.to_str()),
             response_status: q.response_status,
+            coalesced: q.coalesced.map(|role| role.as_str()),
         })
         .collect();
 

@@ -41,6 +41,7 @@ fn make_log_with_upstream(
         protocol: Some(ClientProtocol::Udp),
         group_id: None,
         block_source,
+        coalesced: None,
     }
 }
 

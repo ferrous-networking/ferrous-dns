@@ -241,6 +241,7 @@ fn local_answer(addresses: Vec<IpAddr>, ttl: Option<u32>) -> DnsResolution {
         local_dns: true,
         local_nxdomain: false,
         upstream_nxdomain: false,
+        coalesced: None,
         dnssec_status: None,
         cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
         upstream_server: None,

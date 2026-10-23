@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
-use ferrous_dns_domain::{DnsQuery, DomainError, RecordType};
+use ferrous_dns_domain::{CoalescedRole, DnsQuery, DomainError, RecordType};
 use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::{DnsCache, DnsCacheAccess, DnsCacheConfig, EvictionStrategy};
 use futures::future::join_all;
@@ -128,23 +128,26 @@ async fn test_coalescing_cache_hit_flag_for_waiters() {
 
     assert_eq!(mock.call_count(), 1);
 
-    let cache_hits = results
+    let resolutions: Vec<_> = results
         .iter()
-        .filter(|r| r.as_ref().unwrap().as_ref().unwrap().cache_hit)
-        .count();
-    let upstream_hits = results
-        .iter()
-        .filter(|r| !r.as_ref().unwrap().as_ref().unwrap().cache_hit)
-        .count();
-
-    assert_eq!(
-        upstream_hits, 1,
-        "apenas o líder vai ao upstream — followers são deduplicados via coalescing"
+        .map(|r| r.as_ref().unwrap().as_ref().unwrap())
+        .collect();
+    assert!(
+        resolutions.iter().all(|r| !r.cache_hit),
+        "followers got the leader's upstream answer, not a cache hit"
     );
+    let role_count = |role| {
+        resolutions
+            .iter()
+            .filter(|r| r.coalesced == Some(role))
+            .count()
+    };
     assert_eq!(
-        cache_hits, 5,
-        "followers retornam cache_hit: true — não dispararam upstream independentemente"
+        role_count(CoalescedRole::Leader),
+        1,
+        "one query went upstream"
     );
+    assert_eq!(role_count(CoalescedRole::Follower), 5);
 }
 
 #[tokio::test]

@@ -49,7 +49,7 @@ macro_rules! select_query_log {
         concat!(
             "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                     q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
-                    q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source,
+                    q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source, q.coalesced,
                     datetime(q.created_at) AS created_at, c.hostname
              FROM query_log q
              LEFT JOIN clients c ON q.client_ip = c.ip_address",

@@ -28,8 +28,8 @@ pub use entities::filter_explanation::{
 pub use entities::group::Group;
 pub use entities::managed_domain::{DomainAction, ManagedDomain};
 pub use entities::query_log::{
-    ClientProtocol, DnssecStats, DnssecStatus, DnssecStatusFilter, QueryCategory, QueryLog,
-    QueryLogFilter, QuerySource, QueryStats, ReplyFilter, ReplyKind,
+    ClientProtocol, CoalescedRole, DnssecStats, DnssecStatus, DnssecStatusFilter, QueryCategory,
+    QueryLog, QueryLogFilter, QuerySource, QueryStats, ReplyFilter, ReplyKind,
 };
 pub use entities::regex_filter::RegexFilter;
 pub use entities::safe_search::{SafeSearchConfig, SafeSearchEngine, YouTubeMode};

@@ -12,7 +12,9 @@ mod upstream;
 
 use ferrous_dns_application::ports::QueryLogRepository;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
-use ferrous_dns_domain::{DnsRequest, QueryLog, RecordType, UpstreamPool, UpstreamStrategy};
+use ferrous_dns_domain::{
+    CoalescedRole, DnsRequest, QueryLog, RecordType, UpstreamPool, UpstreamStrategy,
+};
 use ferrous_dns_infrastructure::dns::resolver::ResolverBuilder;
 use ferrous_dns_infrastructure::dns::PoolManager;
 use ports::{AllowAllFilter, RecordingQueryLog};
@@ -92,4 +94,27 @@ async fn a_coalesced_follower_is_logged_as_the_upstream_answer_it_got() {
     assert_eq!(follower.upstream_server, leader.upstream_server);
     assert_eq!(follower.upstream_pool, leader.upstream_pool);
     assert!(follower.upstream_server.is_some());
+    assert_eq!(leader.coalesced, Some(CoalescedRole::Leader));
+    assert_eq!(follower.coalesced, Some(CoalescedRole::Follower));
+}
+
+/// Guard: a query nothing joined took no part in coalescing, and neither
+/// does the cache hit that follows it.
+#[tokio::test]
+async fn a_query_nothing_joined_is_not_marked() {
+    let f = fixture().await;
+
+    f.use_case
+        .execute(&DnsRequest::new(NAME, RecordType::A, LAPTOP))
+        .await
+        .unwrap();
+    f.use_case
+        .execute(&DnsRequest::new(NAME, RecordType::A, PHONE))
+        .await
+        .unwrap();
+
+    assert_eq!(row_of(&f.log, LAPTOP).coalesced, None);
+    let hit = row_of(&f.log, PHONE);
+    assert!(hit.cache_hit);
+    assert_eq!(hit.coalesced, None);
 }

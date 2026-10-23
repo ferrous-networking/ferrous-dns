@@ -81,4 +81,9 @@ pub struct QueryResponse {
     pub block_source: Option<&'static str>,
     #[schema(value_type = Option<String>)]
     pub response_status: Option<&'static str>,
+    /// The query's part in coalescing: `leader` when identical queries that
+    /// arrived while it was in flight shared its answer, `follower` when it
+    /// got such a query's answer, `null` otherwise.
+    #[schema(value_type = Option<String>)]
+    pub coalesced: Option<&'static str>,
 }

@@ -56,6 +56,7 @@ fn logged_query() -> QueryLog {
         protocol: None,
         group_id: None,
         block_source: None,
+        coalesced: None,
     }
 }
 

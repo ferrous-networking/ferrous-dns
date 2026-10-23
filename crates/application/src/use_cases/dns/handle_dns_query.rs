@@ -369,6 +369,7 @@ impl HandleDnsQueryUseCase {
             protocol: request.protocol,
             group_id: Some(group_id),
             block_source: None,
+            coalesced: None,
         }
     }
 
@@ -487,6 +488,7 @@ impl HandleDnsQueryUseCase {
             protocol: Some(protocol),
             group_id: Some(group_id),
             block_source: None,
+            coalesced: None,
         }
     }
 
@@ -771,6 +773,7 @@ impl HandleDnsQueryUseCase {
                 cache_hit: resolution.cache_hit,
                 upstream_server: resolution.upstream_server.clone(),
                 upstream_pool: resolution.upstream_pool.clone(),
+                coalesced: resolution.coalesced,
                 response_status: Some("SAFE_SEARCH"),
                 ..Self::base_query_log(request, elapsed_us(), group_id)
             });
@@ -910,6 +913,7 @@ impl HandleDnsQueryUseCase {
                     answers: Some(Arc::clone(&resolution.addresses)),
                     upstream_server: resolution.upstream_server.clone(),
                     upstream_pool: resolution.upstream_pool.clone(),
+                    coalesced: resolution.coalesced,
                     response_status,
                     ..Self::base_query_log(request, elapsed_us(), group_id)
                 });

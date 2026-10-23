@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, RecordType};
+use ferrous_dns_domain::{CoalescedRole, DnsQuery, DnssecStatus, DomainError, RecordType};
 use std::net::IpAddr;
 use std::sync::{Arc, LazyLock};
 
@@ -18,6 +18,8 @@ pub struct DnsResolution {
     /// `upstream_wire_data`, with no addresses to answer with instead. Unlike
     /// `local_nxdomain`, this resolution has response data.
     pub upstream_nxdomain: bool,
+    /// The resolution's part in coalescing identical in-flight queries.
+    pub coalesced: Option<CoalescedRole>,
     pub dnssec_status: Option<DnssecStatus>,
     pub cname_chain: Arc<[Arc<str>]>,
     pub upstream_server: Option<Arc<str>>,
@@ -40,6 +42,7 @@ impl DnsResolution {
             local_dns: false,
             local_nxdomain: false,
             upstream_nxdomain: false,
+            coalesced: None,
             dnssec_status: None,
             cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,

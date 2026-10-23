@@ -70,6 +70,7 @@ mod tests {
             local_dns: false,
             local_nxdomain: false,
             upstream_nxdomain: false,
+            coalesced: None,
             dnssec_status: None,
             cname_chain: Arc::from([]),
             upstream_server: None,

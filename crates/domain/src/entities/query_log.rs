@@ -218,6 +218,46 @@ impl FromStr for ClientProtocol {
     }
 }
 
+/// A query's part in coalescing: identical queries in flight at the same time
+/// share one upstream request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoalescedRole {
+    /// Identical queries that arrived while it was in flight shared its answer.
+    Leader,
+    /// It joined an identical query already in flight and got that query's
+    /// answer, with no request of its own.
+    Follower,
+}
+
+impl CoalescedRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CoalescedRole::Leader => "leader",
+            CoalescedRole::Follower => "follower",
+        }
+    }
+}
+
+impl std::fmt::Display for CoalescedRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for CoalescedRole {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "leader" => Ok(CoalescedRole::Leader),
+            "follower" => Ok(CoalescedRole::Follower),
+            other => Err(DomainError::InvalidInput(format!(
+                "invalid coalesced role: '{other}'"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueryLog {
     pub id: Option<i64>,
@@ -249,6 +289,8 @@ pub struct QueryLog {
 
     pub group_id: Option<i64>,
     pub block_source: Option<BlockSource>,
+    /// The query's part in coalescing, `None` when it took none.
+    pub coalesced: Option<CoalescedRole>,
 }
 
 impl QueryLog {
