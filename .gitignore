@@ -215,6 +215,8 @@ docker-compose.override.yml
 /docs/_build/
 /docs/.doctrees/
 /target/doc/
+# MkDocs output: Pages deploys the artifact docs.yml builds, never this copy
+/site/
 
 # Mdbook
 book/
@@ -385,4 +387,3 @@ CLAUDE.local.md
 .agents/
 .crushignore
 AGENT-*.md
-

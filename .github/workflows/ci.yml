@@ -20,15 +20,6 @@ jobs:
   quick-check:
     name: Quick Check (Format + Clippy)
     runs-on: ubuntu-latest
-    # Release commits are made by the bot in release-trigger.yml and only move
-    # version strings in Cargo.toml/Cargo.lock — the tree was already tested at
-    # the parent commit. Gating the root job is enough: `test`, `coverage`,
-    # `build`, `fuzz-short` and `security-audit` all hang off it and skip with
-    # it. The commit author is what identifies the bot, not `github.actor`:
-    # release-trigger pushes with a PAT, so GitHub records the token owner as
-    # the actor and a manual push looks identical. On pull_request events
-    # `head_commit` is null, so the condition is true and CI runs as usual.
-    if: github.event.head_commit.author.name != 'github-actions[bot]'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -385,20 +376,16 @@ jobs:
   docs-consistency:
     name: Docs Consistency (roadmap + changelog)
     runs-on: ubuntu-latest
-    # Skipped for the same reason as `quick-check`; this job has no `needs`,
-    # so it needs the condition spelled out.
-    if: github.event.head_commit.author.name != 'github-actions[bot]'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # `--fix` in a throwaway checkout: the version banners are rewritten and
-      # the result is discarded, so banner drift never fails a build — docs.yml
-      # owns them and commits the real fix on every push to main. What still
-      # gates here are the checks a human has to satisfy: the roadmap include,
-      # the milestone for the current series, and the changelog entry.
+      # The release PR bumps the banners together with Cargo.toml, so they only
+      # drift if a version is changed by hand. On a minor bump this is also
+      # what holds the release PR until someone writes the roadmap milestone
+      # and the changelog entry for the new series.
       - name: Check the docs a human has to maintain
-        run: bash scripts/check-docs-version.sh --fix
+        run: bash scripts/check-docs-version.sh
 
   ci-success:
     name: CI Success
@@ -410,9 +397,8 @@ jobs:
       - fuzz-short
       - docs-consistency
     runs-on: ubuntu-latest
-    # `always()` would otherwise report "CI failed" on a release commit, where
-    # every dependency is skipped rather than successful.
-    if: always() && github.event.head_commit.author.name != 'github-actions[bot]'
+    # `always()` so a failed dependency fails this job instead of skipping it.
+    if: always()
     steps:
       - name: Check all jobs
         run: |

@@ -1,0 +1,52 @@
+name: Release Tag
+
+# Step two of a release: when a release pull request from release-pr.yml is
+# merged, tag the merge commit. The tag push starts release.yml, so it is made
+# with RELEASE_TOKEN — a tag pushed with GITHUB_TOKEN starts no workflow.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Tag the release
+    # Only a merged release branch pushed to this repository; a fork cannot
+    # name its branch into a release.
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the merge commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Tag and push
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          TAG="${BRANCH#release/}"
+          VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          if [[ "v${VERSION}" != "$TAG" ]]; then
+            echo "::error::Cargo.toml says v${VERSION}, but the release branch is ${BRANCH}"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} is already tagged"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release ${TAG} (#${PR_NUMBER})"
+          git push origin "refs/tags/${TAG}"
+          echo "Tagged ${TAG}; release.yml takes it from here." >> "$GITHUB_STEP_SUMMARY"

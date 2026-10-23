@@ -3,7 +3,9 @@
 # ============================================================================
 # Ferrous DNS - Version Bump Script
 # ============================================================================
-# Updates version in all Cargo.toml files in the workspace
+# Sets the workspace version in the root Cargo.toml (every crate inherits it
+# through `version.workspace = true`) and the docs banners that state it.
+# release-pr.yml runs it when it opens a release pull request.
 # Usage: ./bump-version.sh [major|minor|patch|VERSION]
 # ============================================================================
 
@@ -115,25 +117,8 @@ update_all_versions() {
     local new_version=$2
     
     log_info "Updating version from $old_version to $new_version"
-    
-    # Update workspace Cargo.toml
+
     update_cargo_toml "Cargo.toml" "$old_version" "$new_version"
-    
-    # Update all crate Cargo.toml files
-    local crates=(
-        "crates/domain/Cargo.toml"
-        "crates/application/Cargo.toml"
-        "crates/infrastructure/Cargo.toml"
-        "crates/api/Cargo.toml"
-        "crates/cli/Cargo.toml"
-    )
-    
-    for crate_toml in "${crates[@]}"; do
-        if [[ -f "$crate_toml" ]]; then
-            update_cargo_toml "$crate_toml" "$old_version" "$new_version"
-        fi
-    done
-    
     update_docs_version "$old_version" "$new_version"
 
     log_success "All versions updated to $new_version"
@@ -211,10 +196,6 @@ main() {
     
     echo ""
     log_success "Version bump completed!"
-    log_info "Don't forget to:"
-    echo "  1. Run: cargo check"
-    echo "  2. Commit changes: git commit -am 'chore: bump version to $new_version'"
-    echo "  3. Create tag: git tag v$new_version"
 }
 
 # ============================================================================

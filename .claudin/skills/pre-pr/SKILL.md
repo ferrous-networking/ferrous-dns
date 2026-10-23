@@ -12,7 +12,7 @@ Mirror of `.github/workflows/ci.yml` for local runs. Run the checks in the order
 3. **Tests**: `cargo test --all-features --workspace`
 4. **Doc tests**: `cargo test --doc --all-features --workspace`
 5. **Security audit**: `cargo audit` (skip with a note if `cargo-audit` is not installed — do not install it silently)
-6. **Docs version consistency**: `bash scripts/check-docs-version.sh --fix` — version banners in `docs/` must match the workspace version in the root `Cargo.toml`. If `--fix` changed files, stage/commit them with the PR.
+6. **Docs version consistency**: `bash scripts/check-docs-version.sh` — version banners in `docs/` must match the workspace version in the root `Cargo.toml`. Only the release PR moves the version (`scripts/bump-version.sh` rewrites the banners with it), so drift anywhere else means a version was edited by hand.
 
 ## Skipped on purpose
 

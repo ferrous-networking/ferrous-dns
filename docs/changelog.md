@@ -1,10 +1,6 @@
 # Changelog
 
-Ferrous DNS uses [Conventional Commits](https://www.conventionalcommits.org/) and [git-cliff](https://git-cliff.org/) for automated changelog generation.
-
-The full changelog is published with each release on GitHub:
-
-**[View Changelog on GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases)**
+Ferrous DNS uses [Conventional Commits](https://www.conventionalcommits.org/) and [git-cliff](https://git-cliff.org/) to write its changelog. Every release pull request adds a section to [`CHANGELOG.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/CHANGELOG.md) in the repository root; the per-release notes below are included from that file, and each one is also published on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases) together with the binaries.
 
 ---
 
@@ -22,4 +18,8 @@ The full changelog is published with each release on GitHub:
 | v0.2.0 | Blocklists, allowlists, client groups, wildcard/regex blocking | Released |
 | v0.1.0 | Foundation — DNS resolver, cache L1/L2, REST API, Web UI | Released |
 
-Per-release detail is on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases); see the [Roadmap](roadmap.md) for upcoming features.
+See the [Roadmap](roadmap.md) for upcoming features. Releases up to v0.9.3 are listed only on [GitHub Releases](https://github.com/ferrous-networking/ferrous-dns/releases).
+
+---
+
+--8<-- "CHANGELOG.md:releases"

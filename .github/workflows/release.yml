@@ -25,8 +25,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Get version
         id: get_version
@@ -39,18 +37,21 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION}"
 
-      - name: Install git-cliff
+      # The release PR wrote this section and a maintainer reviewed it, so it is
+      # published as merged rather than regenerated.
+      - name: Extract the release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
         run: |
-          wget https://github.com/orhun/git-cliff/releases/download/v1.4.0/git-cliff-1.4.0-x86_64-unknown-linux-gnu.tar.gz
-          tar -xzf git-cliff-1.4.0-x86_64-unknown-linux-gnu.tar.gz
-          sudo mv git-cliff-1.4.0/git-cliff /usr/local/bin/
-          git-cliff --version
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          git-cliff --tag ${{ steps.get_version.outputs.version }} --latest --strip all > RELEASE_NOTES.md
-          echo "Generated changelog:"
+          awk -v v="${VERSION#v}" '
+            index($0, "## [" v "]") == 1 { found = 1; print; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if ! grep -q '^### ' RELEASE_NOTES.md; then
+            echo "::error::CHANGELOG.md has no section for ${VERSION}"
+            exit 1
+          fi
           cat RELEASE_NOTES.md
 
       - name: Create Release
@@ -133,8 +134,10 @@ jobs:
             ${{ matrix.asset_name }}.tar.gz
             ${{ matrix.asset_name }}.tar.gz.sha256
 
+  # docker.yml and docs.yml both listen for `release-created`. It is sent with
+  # the PAT because events raised with GITHUB_TOKEN start no workflow.
   trigger-docker:
-    name: Trigger Docker Build
+    name: Trigger Docker and docs
     needs: [create-release, build-binaries]
     runs-on: ubuntu-latest
 
@@ -150,4 +153,4 @@ jobs:
         run: |
           echo "✅ Release ${{ needs.create-release.outputs.version }} created successfully"
           echo "✅ Binaries built: ferrous-dns-linux-amd64, ferrous-dns-linux-arm64"
-          echo "✅ Docker build triggered"
+          echo "✅ Docker build and docs deploy triggered"

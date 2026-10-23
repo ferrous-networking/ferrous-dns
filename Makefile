@@ -249,26 +249,23 @@ docker-compose-logs: ## View docker-compose logs
 # ============================================================================
 # Release
 # ============================================================================
+# A release is a pull request: release-pr.yml bumps the version, prepends the
+# notes to CHANGELOG.md and opens it; merging it tags and ships the release.
 
-release-patch: ## Create patch release (0.0.X)
-	@echo "$(BLUE)Creating patch release...$(NC)"
-	./scripts/release.sh patch
+release-patch: ## Open the release PR for a patch release (0.0.X)
+	gh workflow run release-pr.yml -f bump_type=patch
 
-release-minor: ## Create minor release (0.X.0)
-	@echo "$(BLUE)Creating minor release...$(NC)"
-	./scripts/release.sh minor
+release-minor: ## Open the release PR for a minor release (0.X.0)
+	gh workflow run release-pr.yml -f bump_type=minor
 
-release-major: ## Create major release (X.0.0)
-	@echo "$(BLUE)Creating major release...$(NC)"
-	./scripts/release.sh major
+release-major: ## Open the release PR for a major release (X.0.0)
+	gh workflow run release-pr.yml -f bump_type=major
 
 version: ## Show current version
 	@echo "$(GREEN)Current version: $(VERSION)$(NC)"
 
-changelog: ## Generate CHANGELOG
-	@echo "$(BLUE)Generating CHANGELOG...$(NC)"
-	git-cliff --tag v$(VERSION) --output CHANGELOG.md
-	@echo "$(GREEN)✓ CHANGELOG generated$(NC)"
+changelog: ## Preview the notes of the next release
+	@GITHUB_TOKEN=$${GITHUB_TOKEN:-$$(gh auth token)} git-cliff --unreleased --strip all
 
 # ============================================================================
 # CI/CD
@@ -313,5 +310,4 @@ install-tools: ## Install development tools
 	$(CARGO) install cargo-bloat
 	$(CARGO) install cargo-audit
 	$(CARGO) install git-cliff
-	$(CARGO) install cargo-release
 	@echo "$(GREEN)✓ Tools installed$(NC)"

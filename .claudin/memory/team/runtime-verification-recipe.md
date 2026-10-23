@@ -59,7 +59,7 @@ To reach an authenticated session: `POST /api/auth/setup {"password": "..."}` re
 
 **Saving pools from the Settings UI on this minimal config** (the pool editor is on the **DNS Advanced** tab) returns "Restart the server for the changes to take effect" on the first save. The form sends every `dns` field, and they differ from the stub file. Once the file has been written, later pool-only saves report "applied immediately" (seen 2026-10-16). To confirm the pool went live, check `GET /api/upstream/health/detail` or the `/api/config` pools.
 
-**Docs check:** `mkdocs build --strict -d <scratch dir>` — a plain `mkdocs build` rewrites the tracked `site/`.
+**Docs check:** `mkdocs build --strict` (`site/` is gitignored; pull requests that touch the docs run the same build in `docs.yml`).
 
 **Faking this machine's resolver without root:** run the binary under `unshare -rm` with a `resolv.conf` and an `nsswitch.conf` (`hosts: files dns`) bind-mounted over `/etc`. Mounting only `resolv.conf` does nothing here, because nss-resolve goes straight to systemd-resolved. The full recipe is in [[upstream-hostname-startup-only-resolution]]. Watch out for `pkill -f <pattern>`: the pattern also matches the shell running it, which kills your own command.
 

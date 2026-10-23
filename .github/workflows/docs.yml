@@ -1,19 +1,40 @@
 name: Deploy Docs
 
+# The site describes the latest release, not main. It is published when
+# release.yml announces a release — the same `release-created` dispatch that
+# starts docker.yml — and built from that release's tag. A dispatch run sits on
+# the default branch, which is the only ref the `github-pages` environment
+# deploys from, so building a tag needs no extra environment policy.
+#
+# A manual run republishes a tag (the latest release unless one is given), and
+# pull requests that touch the docs get the strict build as a check, with no
+# deploy.
+
 on:
-  push:
-    branches:
-      - main
+  repository_dispatch:
+    types: [release-created]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Release tag to publish (e.g. v0.9.25). Defaults to the latest release.'
+        required: false
+        type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements.txt'
+      - 'ROADMAP.md'
+      - 'CHANGELOG.md'
+      - '.github/workflows/docs.yml'
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -23,11 +44,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # git-revision-date-localized reads each page's history.
           fetch-depth: 0
-          # Same PAT the release trigger pushes with: main is protected, and
-          # the sync step below has to push back to it. Falls back to the
-          # default token so a fork without the secret still builds.
-          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Check out the release tag
+        if: github.event_name != 'pull_request'
+        env:
+          REF: ${{ github.event.client_payload.version || inputs.ref }}
+        run: |
+          if [[ -z "$REF" ]]; then
+            REF=$(git describe --tags --abbrev=0 --match 'v*.*.*')
+          fi
+          echo "Publishing the docs of ${REF}"
+          git checkout --detach "refs/tags/${REF}"
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -38,35 +67,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # The banners are machine-owned: this rewrites them to whatever
-      # Cargo.toml says, so a version bump never has to remember to touch
-      # docs/. The remaining consistency checks still fail the build, because
-      # they need a human to write something.
-      - name: Sync docs with the workspace version
-        run: bash scripts/check-docs-version.sh --fix
-
       - name: Build site
         run: mkdocs build --strict
 
-      # site/ is tracked, so it has to be regenerated whenever docs/ changes.
-      # Doing it here is what keeps it from drifting between hand-run builds.
-      # `[skip ci]` stops this commit from starting another round of
-      # workflows: the site it would build is the one already uploaded below.
-      - name: Commit the synced docs and regenerated site
-        if: github.event_name == 'push'
-        run: |
-          if [[ -z "$(git status --porcelain docs site)" ]]; then
-            echo "docs/ and site/ are already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs site
-          git commit -m "docs: sync version banners and regenerate the site [skip ci]"
-          git pull --rebase origin main
-          git push origin HEAD:main
-
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/
@@ -74,7 +79,11 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -1,0 +1,136 @@
+name: Release PR
+
+# Step one of a release. Bumps the version (and the docs banners with it),
+# prepends the release's section to CHANGELOG.md and opens the
+# `chore(release): vX.Y.Z` pull request. Nothing reaches main until a
+# maintainer merges it; release-tag.yml then tags the merge commit, and the tag
+# starts release.yml (binaries → Docker image → docs).
+#
+# Runs with RELEASE_TOKEN rather than GITHUB_TOKEN: a pull request opened with
+# GITHUB_TOKEN starts no CI, and the release PR is tested like any other.
+# Re-running it rebuilds the release branch from the current main, so the
+# notes pick up everything merged since; a release PR for another version is
+# closed as superseded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+env:
+  GIT_CLIFF_VERSION: '2.14.2'
+
+jobs:
+  release-pr:
+    name: Open the release pull request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          # git-cliff walks the history back to the previous tag.
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Install git-cliff
+        run: |
+          curl -sSfL "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP"
+          sudo mv "$RUNNER_TEMP/git-cliff-${GIT_CLIFF_VERSION}/git-cliff" /usr/local/bin/
+          git-cliff --version
+
+      - name: Bump the version
+        id: version
+        run: |
+          bash scripts/bump-version.sh "${{ inputs.bump_type }}"
+          cargo update --workspace
+          TAG="v$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} is already tagged"
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      # The remote integration credits each PR's author; it only reads, so the
+      # workflow token is enough.
+      - name: Write the release notes
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git-cliff --unreleased --tag "$TAG" --strip all > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '^### ' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::Nothing to release: no changes since the last tag"
+            exit 1
+          fi
+          git-cliff --unreleased --tag "$TAG" --prepend CHANGELOG.md
+          {
+            echo "Release ${TAG}. Merging this pull request tags the merge commit, which builds the binaries and publishes the Docker image and the docs."
+            echo
+            echo "Before merging:"
+            echo
+            echo "- [ ] The notes below read well. They are the new section of \`CHANGELOG.md\` and are published verbatim as the release notes, so reword them on this branch if needed."
+            echo "- [ ] On a minor or major bump, \`ROADMAP.md\` has the milestone and \`docs/changelog.md\` the series (Docs Consistency fails until they do)."
+            echo
+            echo "---"
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } > "$RUNNER_TEMP/body.md"
+
+      - name: Open or refresh the pull request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          BRANCH="release/${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add Cargo.toml Cargo.lock CHANGELOG.md docs/
+          git commit -m "chore(release): ${TAG}"
+          # The branch belongs to this workflow, so a re-run replaces it.
+          git push --force origin "$BRANCH"
+
+          if [[ "$(gh pr view "$BRANCH" --json state --jq .state 2>/dev/null)" == "OPEN" ]]; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$BRANCH" --label release \
+              --title "chore(release): ${TAG}" --body-file "$RUNNER_TEMP/body.md"
+          fi
+
+          for pr in $(gh pr list --state open --label release --json number,headRefName \
+                        --jq ".[] | select(.headRefName != \"${BRANCH}\") | .number"); do
+            gh pr close "$pr" --delete-branch --comment "Superseded by the ${TAG} release pull request."
+          done
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          {
+            echo "Release pull request for **${TAG}** is open: review it, then merge to tag and ship."
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"

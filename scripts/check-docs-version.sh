@@ -6,25 +6,19 @@
 # Fails when the published documentation disagrees with the workspace about
 # the current version, or when the roadmap page stops mirroring ROADMAP.md.
 #
-# Usage: ./scripts/check-docs-version.sh [--fix]   (from anywhere)
+# Usage: ./scripts/check-docs-version.sh   (from anywhere)
 #
-#   (no flag)  report only; exits non-zero on any drift.
-#   --fix      rewrite the "Current release" banners to the workspace version
-#              before checking. The docs workflow runs this on every push to
-#              main and commits the result, so the banners are machine-owned;
-#              the remaining checks still only report, because they need a
-#              human to write something.
+# Report only; exits non-zero on any drift. The "Current release" banners are
+# rewritten by scripts/bump-version.sh inside the release pull request, so on
+# any other branch they already match Cargo.toml.
 # ============================================================================
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-FIX=0
-if [[ "${1:-}" == "--fix" ]]; then
-    FIX=1
-elif [[ $# -gt 0 ]]; then
-    echo "unknown argument: $1 (expected --fix or nothing)" >&2
+if [[ $# -gt 0 ]]; then
+    echo "unknown argument: $1 (this script takes none)" >&2
     exit 2
 fi
 
@@ -53,14 +47,6 @@ echo "Workspace version: $VERSION"
 # ---------------------------------------------------------------------------
 # 1. Every "Current release" banner must name the workspace version.
 # ---------------------------------------------------------------------------
-if [[ $FIX -eq 1 ]]; then
-    stale_files=$(grep -rln 'Current release: \*\*v' docs/ || true)
-    while IFS= read -r doc; do
-        [[ -n "$doc" ]] || continue
-        sed -i "s/Current release: \*\*v[0-9]\+\.[0-9]\+\.[0-9]\+\*\*/Current release: **v${VERSION}**/g" "$doc"
-    done <<< "$stale_files"
-fi
-
 banners=$(grep -rn 'Current release: \*\*v' docs/ || true)
 if [[ -z "$banners" ]]; then
     fail "no 'Current release: **vX.Y.Z**' banner found under docs/ — the docs no longer state which version they describe"

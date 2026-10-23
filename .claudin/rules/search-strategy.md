@@ -58,10 +58,6 @@ and that text will survive every later refresh.
 ├── fuzz/ (5)                       ← libFuzzer workspace (nightly)
 │   └── fuzz_targets/ (5)           ← the 5 fuzz targets
 ├── migrations/ (65)                ← sqlx migrations, append-only
-├── site/ (38)                      ← generated MkDocs output; bot-committed
-│   └── assets/ (36)                ← generated site assets
-│       └── javascripts/ (36)       ← TODO
-│           └── lunr/ (34)          ← TODO
 ├── tests/ (10)                     ← integration/performance harness crate
 │   ├── common/ (3)                 ← shared fixtures + test server
 │   └── performance/ (5)            ← competitor benchmarks (#[ignore]d)

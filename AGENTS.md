@@ -20,7 +20,7 @@ ferrous-dns is a security-focused, DNSSEC-validating DNS resolver and content fi
 - Direct commits to `main`/`master` are blocked by a PreToolUse hook in `.claudin/settings.json` (user-local; opt-in per machine) — create a branch and open a PR instead
 - Architecture, code, and web UI standards: `.claudin/rules/architecture.md`, `code-standards.md`, `web.md`, `web-architecture.md`
 - Fuzz crash policy: minimize, regression test, then fix (`fuzz/AGENTS.md`); `./scripts/check-fuzz-regressions.sh` runs the harnesses — must stay green
-- Docs are MkDocs: sources in `docs/`, nav in `mkdocs.yml`, and `site/` is a generated artifact — never edit it by hand
+- Docs are MkDocs: sources in `docs/`, nav in `mkdocs.yml`; `site/` is local build output and is gitignored. The site is published only when a release ships (`docs.yml`)
 - Dashboard screenshots live in `docs/assets/<area>/`, captured at a 1920x1080 viewport in the light theme; keep new ones consistent and give every image descriptive alt text
 - Verify license/AGPL compatibility before adding a dependency; run `cargo audit` before committing
 - Remove dead code immediately; update `docs/` and `ferrous-dns.toml` when adding a feature
