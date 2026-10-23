@@ -10,7 +10,7 @@ use crate::ports::{BlocklistSourceRepository, GroupRepository};
 use super::snapshot::{
     BackupSnapshot, BlocklistSourceSnapshot, GroupSnapshot, LocalRecordSnapshot,
     SnapshotAuthConfig, SnapshotBlockingConfig, SnapshotConfig, SnapshotData, SnapshotDns64Config,
-    SnapshotDnsConfig, SnapshotLoggingConfig, SnapshotServerConfig,
+    SnapshotDnsConfig, SnapshotLoggingConfig, SnapshotMalwareConfig, SnapshotServerConfig,
 };
 
 const SNAPSHOT_FORMAT_VERSION: &str = "1";
@@ -45,8 +45,10 @@ impl ExportConfigUseCase {
         let group_snapshots: Vec<GroupSnapshot> = groups
             .into_iter()
             .map(|g| GroupSnapshot {
+                id: g.id,
                 name: g.name.to_string(),
                 comment: g.comment.map(|c| c.to_string()),
+                is_default: g.is_default,
             })
             .collect();
 
@@ -133,6 +135,17 @@ impl ExportConfigUseCase {
                 mdns_enabled: config.dns.mdns_enabled,
                 local_domain: config.dns.local_domain.clone(),
                 local_dns_server: config.dns.local_dns_server.clone(),
+                pools: Some(config.dns.pools.clone()),
+                rate_limit: Some(config.dns.rate_limit.clone()),
+                malware: Some(SnapshotMalwareConfig {
+                    enabled: config.dns.malware_detection_enabled,
+                    rebinding_protection_enabled: config.dns.rebinding_protection_enabled,
+                    rebinding_allowlist: config.dns.rebinding_allowlist.clone(),
+                    tunneling_detection: config.dns.tunneling_detection.clone(),
+                    dga_detection: config.dns.dga_detection.clone(),
+                    nxdomain_hijack: config.dns.nxdomain_hijack.clone(),
+                    response_ip_filter: config.dns.response_ip_filter.clone(),
+                }),
             },
             blocking: SnapshotBlockingConfig {
                 enabled: config.blocking.enabled,

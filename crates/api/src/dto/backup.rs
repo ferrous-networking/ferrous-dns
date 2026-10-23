@@ -5,6 +5,8 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ImportSummaryResponse {
     pub success: bool,
+    /// The restored config only applies after a restart.
+    pub restart_required: bool,
     pub summary: ImportSummaryDto,
     pub errors: Vec<String>,
 }

@@ -1,4 +1,8 @@
-use ferrous_dns_domain::config::CacheEvictionStrategy;
+use ferrous_dns_domain::config::{
+    CacheEvictionStrategy, DgaDetectionConfig, NxdomainHijackConfig, RateLimitConfig,
+    ResponseIpFilterConfig, TunnelingDetectionConfig,
+};
+use ferrous_dns_domain::UpstreamPool;
 use serde::{Deserialize, Serialize};
 
 /// Full configuration snapshot exported by the backup use case.
@@ -71,6 +75,27 @@ pub struct SnapshotDnsConfig {
     pub mdns_enabled: bool,
     pub local_domain: Option<String>,
     pub local_dns_server: Option<String>,
+    // The three below are absent from older backups; `None` keeps the
+    // target's own values. Pool `groups` hold the exporting server's group
+    // ids, which the import translates.
+    #[serde(default)]
+    pub pools: Option<Vec<UpstreamPool>>,
+    #[serde(default)]
+    pub rate_limit: Option<RateLimitConfig>,
+    #[serde(default)]
+    pub malware: Option<SnapshotMalwareConfig>,
+}
+
+/// The Malware Detection settings: the master switch and the five detectors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotMalwareConfig {
+    pub enabled: bool,
+    pub rebinding_protection_enabled: bool,
+    pub rebinding_allowlist: Vec<String>,
+    pub tunneling_detection: TunnelingDetectionConfig,
+    pub dga_detection: DgaDetectionConfig,
+    pub nxdomain_hijack: NxdomainHijackConfig,
+    pub response_ip_filter: ResponseIpFilterConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,8 +157,14 @@ pub struct SnapshotData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupSnapshot {
+    /// The group's id on the exporting server, which pools and blocklist
+    /// sources refer to. Absent from older backups.
+    #[serde(default)]
+    pub id: Option<i64>,
     pub name: String,
     pub comment: Option<String>,
+    #[serde(default)]
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,6 +189,9 @@ pub struct LocalRecordSnapshot {
 #[derive(Debug, Clone)]
 pub struct ImportSummary {
     pub config_updated: bool,
+    /// The restored config differs from the one running, which only a
+    /// restart applies.
+    pub restart_required: bool,
     pub groups_imported: usize,
     pub groups_skipped: usize,
     pub blocklist_sources_imported: usize,

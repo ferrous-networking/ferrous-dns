@@ -125,6 +125,7 @@ pub async fn build_app_state(
                     path: config_path.as_deref().map(String::from),
                 },
                 group_creator,
+                repos.group.clone(),
                 blocklist_source_creator,
                 local_record_creator,
                 repos.block_filter_engine.clone(),

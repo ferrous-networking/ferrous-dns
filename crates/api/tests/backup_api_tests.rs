@@ -1127,11 +1127,18 @@ async fn test_import_maps_pool_and_blocklist_source_groups_by_name() {
         { "id": 7, "name": "kids", "comment": null },
         { "id": 9, "name": "office", "comment": null }
     ]);
-    backup["config"]["dns"]["pools"] = json!([{
-        "name": "office", "strategy": "Failover", "priority": 1,
-        "servers": ["udp://10.0.0.53:53"], "weight": null,
-        "domains": ["corp.example"], "groups": [9, 7], "internal": true
-    }]);
+    backup["config"]["dns"]["pools"] = json!([
+        {
+            "name": "main", "strategy": "Parallel", "priority": 1,
+            "servers": ["udp://9.9.9.9:53"], "weight": null,
+            "domains": [], "groups": [], "internal": false
+        },
+        {
+            "name": "office", "strategy": "Failover", "priority": 2,
+            "servers": ["udp://10.0.0.53:53"], "weight": null,
+            "domains": ["corp.example"], "groups": [9, 7], "internal": true
+        }
+    ]);
     backup["data"]["blocklist_sources"] = json!([{
         "name": "kids-list", "url": "https://example.com/kids.txt",
         "group_ids": [1, 7], "comment": null, "enabled": true
@@ -1141,8 +1148,8 @@ async fn test_import_maps_pool_and_blocklist_source_groups_by_name() {
 
     assert_eq!(json["errors"], json!([]), "{json}");
     let pools = config.read().await.dns.pools.clone();
-    assert_eq!(pools.len(), 1, "{pools:?}");
-    assert_eq!(pools[0].groups, vec![2, 3]);
+    assert_eq!(pools.len(), 2, "{pools:?}");
+    assert_eq!(pools[1].groups, vec![2, 3]);
     let response = router
         .oneshot(
             Request::builder()

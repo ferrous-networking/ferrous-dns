@@ -116,7 +116,7 @@ pub fn build_test_backup_use_cases(
     BackupUseCases {
         export: Arc::new(ExportConfigUseCase::new(
             config.clone(),
-            group_repo,
+            group_repo.clone(),
             blocklist_source_repo,
         )),
         import: Arc::new(ImportConfigUseCase::new(
@@ -127,6 +127,7 @@ pub fn build_test_backup_use_cases(
                 path: None,
             },
             group_creator,
+            group_repo,
             blocklist_source_creator,
             local_record_creator,
             engine,

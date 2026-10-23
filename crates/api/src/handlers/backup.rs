@@ -76,6 +76,9 @@ async fn import_config(
     let snapshot = parse_backup_snapshot(&file_bytes)?;
 
     let summary = state.backup.import.execute(snapshot).await?;
+    if summary.restart_required {
+        state.mark_restart_pending();
+    }
 
     Ok(Json(into_response(summary)))
 }
@@ -118,6 +121,7 @@ fn into_response(summary: ImportSummary) -> ImportSummaryResponse {
     let success = summary.errors.is_empty();
     ImportSummaryResponse {
         success,
+        restart_required: summary.restart_required,
         summary: ImportSummaryDto {
             config_updated: summary.config_updated,
             groups_imported: summary.groups_imported,

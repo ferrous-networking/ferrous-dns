@@ -519,6 +519,7 @@ fn sqlite_backup_use_cases(
                 path: Some("ferrous-dns.toml".to_string()),
             },
             Arc::new(CreateGroupUseCase::new(group_repo.clone())),
+            group_repo.clone(),
             Arc::new(CreateBlocklistSourceUseCase::new(
                 blocklist_source_repo.clone(),
                 group_repo.clone(),

@@ -365,8 +365,16 @@ existing files.
 
 ## Configuration Backup
 
-Export and import the full Ferrous DNS configuration (blocklists, allowlists,
-groups, clients, custom domains, settings) as a JSON snapshot.
+Export and import the Ferrous DNS configuration as a JSON snapshot. A backup
+holds:
+
+- the server, DNS, blocking, DNS64, logging and auth settings, including the
+  upstream pools and their conditional-forwarding routes, rate limiting and the
+  Malware Detection settings;
+- the client groups, the blocklist sources and the local DNS records.
+
+It holds no secrets (password hash, API tokens, TLS key contents) and nothing
+else: clients, managed domains and regex filters, for example, are not in it.
 
 ### Export Config
 
@@ -385,7 +393,36 @@ Content-Type: multipart/form-data
 ```
 
 Restores configuration from a previously exported backup file uploaded as a
-multipart field. Returns an import summary describing what was applied.
+multipart field (`file`). Returns an import summary describing what was applied.
+
+- Groups are created by name; one that already exists is kept. A pool's routes
+  and a blocklist source follow each group by name, so a backup from another
+  server lands on the right groups even though their ids differ.
+- Blocklist sources and local records that already exist are skipped.
+- The settings are validated as a whole: if they fail, none are restored and
+  `errors` says why.
+- A backup taken before pools, rate limiting and the Malware Detection settings
+  were exported leaves this server's own values for them.
+- Restored settings take effect after a restart. When they differ from the
+  running ones, `restart_required` is `true` and the dashboard shows the restart
+  banner.
+
+```json
+{
+  "success": true,
+  "restart_required": true,
+  "summary": {
+    "config_updated": true,
+    "groups_imported": 1,
+    "groups_skipped": 1,
+    "blocklist_sources_imported": 2,
+    "blocklist_sources_skipped": 0,
+    "local_records_imported": 3,
+    "local_records_skipped": 0
+  },
+  "errors": []
+}
+```
 
 **Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`
 

@@ -146,11 +146,9 @@ fn build_import(
     engine: Arc<dyn BlockFilterEnginePort>,
 ) -> (ImportConfigUseCase, Arc<MockBlocklistSourceRepository>) {
     let source_repo = Arc::new(MockBlocklistSourceRepository::new());
-    let group_repo = Arc::new(MockGroupRepository::new());
-
     let creator: Arc<dyn BlocklistSourceCreator> = Arc::new(CreateBlocklistSourceUseCase::new(
         source_repo.clone(),
-        group_repo,
+        Arc::new(MockGroupRepository::new()),
         engine.clone(),
     ));
 
@@ -162,6 +160,7 @@ fn build_import(
             path: Some("/tmp/ferrous-dns-backup-import-test.toml".to_string()),
         },
         Arc::new(StubGroupCreator),
+        Arc::new(MockGroupRepository::new()),
         creator,
         Arc::new(StubLocalRecordCreator),
         engine,
@@ -275,6 +274,7 @@ fn import_with(
             path: Some("/tmp/ferrous-dns-backup-import-test.toml".to_string()),
         },
         Arc::new(StubGroupCreator),
+        Arc::new(MockGroupRepository::new()),
         Arc::new(CreateBlocklistSourceUseCase::new(
             Arc::new(MockBlocklistSourceRepository::new()),
             Arc::new(MockGroupRepository::new()),
