@@ -39,12 +39,15 @@ const TIMES: HostnameRefreshTimes = HostnameRefreshTimes {
     max_retry: Duration::from_secs(1),
 };
 
+/// A name's addresses, handed out in turn, and their TTL.
+type Answers = HashMap<String, (VecDeque<Ipv4Addr>, u32)>;
+
 /// A LAN router whose A answers can be changed mid-test: a name maps to its
 /// addresses, handed out one per query in turn, and their TTL; a name it
 /// does not know gets NXDOMAIN. AAAA queries get an empty answer.
 #[derive(Clone, Default)]
 struct Router {
-    answers: Arc<Mutex<HashMap<String, (VecDeque<Ipv4Addr>, u32)>>>,
+    answers: Arc<Mutex<Answers>>,
 }
 
 impl Router {
@@ -139,6 +142,12 @@ fn udp(name: &str) -> String {
     format!("udp://{name}:53")
 }
 
+/// Whether the live set has `server` as a server whose lookup failed.
+fn failed(pm: &PoolManager, server: &str) -> bool {
+    pm.hostname_servers()
+        .contains(&(Arc::from(server), Resolution::Failed))
+}
+
 #[tokio::test]
 async fn a_new_address_is_picked_up_when_the_hostname_is_looked_up_again() {
     let router = Router::default();
@@ -158,7 +167,7 @@ async fn a_failed_lookup_keeps_the_addresses_a_server_has() {
     let router = Router::default();
     router.set(GOOD, OLD_IP, 60);
     let pm = manager(&router, &[&udp(GOOD), &udp(BAD)]).await;
-    assert!(pm.has_unresolved(), "{BAD} must start unresolved");
+    assert!(failed(&pm, &udp(BAD)), "{BAD} must start unresolved");
     assert_eq!(addresses(&pm), vec![SocketAddr::from((OLD_IP, 53))]);
 
     router.forget(GOOD);
@@ -240,14 +249,17 @@ async fn the_refresh_task_follows_a_move_when_the_ttl_runs_out() {
 async fn the_refresh_task_retries_a_failed_lookup_until_it_resolves() {
     let router = Router::default();
     let pm = Arc::new(manager(&router, &[&udp(BAD)]).await);
-    assert!(pm.has_unresolved());
+    assert!(failed(&pm, &udp(BAD)));
+    assert_eq!(addresses(&pm), vec![]);
     tokio::spawn(run_hostname_refresh(Arc::downgrade(&pm), TIMES));
 
     router.set(BAD, NEW_IP, 3600);
 
-    let resolved = refresh::wait_until(Duration::from_secs(5), || !pm.has_unresolved()).await;
+    let resolved = refresh::wait_until(Duration::from_secs(5), || {
+        addresses(&pm) == vec![SocketAddr::from((NEW_IP, 53))]
+    })
+    .await;
     assert!(resolved, "{BAD} never resolved");
-    assert_eq!(addresses(&pm), vec![SocketAddr::from((NEW_IP, 53))]);
 }
 
 /// The task is asleep until the first server's lookup, an hour away; a

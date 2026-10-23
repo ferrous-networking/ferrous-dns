@@ -161,7 +161,7 @@ impl PoolManager {
         Self::with_host_resolver(pools, health_checker, UpstreamHostResolver::system()).await
     }
 
-    /// `host_resolver` is used for every lookup: at build, on reload and on retry.
+    /// `host_resolver` is used for every lookup: at build, on reload and on refresh.
     pub async fn with_host_resolver(
         pools: Vec<UpstreamPool>,
         health_checker: Option<Arc<HealthChecker>>,
@@ -241,13 +241,9 @@ impl PoolManager {
         self.pools.load().routes.differs_from(&prepared.0.routes)
     }
 
-    /// Whether some server has no address yet because its hostname lookup failed.
-    pub fn has_unresolved(&self) -> bool {
-        Self::any_unresolved(&self.pools.load().pools)
-    }
-
-    /// The live servers given by hostname, each once, with what their last
-    /// lookup found. A reload changes them; [`PoolManager::reloaded`] says when.
+    /// The live servers given by hostname, each once, with what the lookup
+    /// that built the live set found for them. A reload changes them;
+    /// [`PoolManager::reloaded`] says when.
     pub fn hostname_servers(&self) -> Vec<(Arc<str>, Resolution)> {
         let set = self.pools.load();
         let mut seen = HashSet::new();
@@ -261,27 +257,34 @@ impl PoolManager {
     }
 
     /// Looks the hostname of the configured server `original` up again. New
-    /// addresses replace the old ones in every pool that lists it; a failed
+    /// addresses replace the old ones in every pool that lists it; each pool
+    /// looked it up on its own, so any copy that differs counts. A failed
     /// lookup keeps them. The swap is skipped if a reload replaced the set
     /// meanwhile, since a reload does its own lookups. Returns what the lookup
     /// found, or `None` when no live pool lists `original` any more.
     pub async fn refresh_hostname(&self, original: &str) -> Option<Resolution> {
         let current = self.pools.load_full();
-        let old = current
+        let copies: Vec<&ServerGroup> = current
             .pools
             .iter()
             .flat_map(|p| &p.server_groups)
-            .find(|g| &*g.original == original)?;
+            .filter(|g| &*g.original == original)
+            .collect();
+        let first = copies.first()?;
         let protocol = original.parse::<DnsProtocol>().ok()?;
         let new = Self::expand_hostnames(
-            vec![(Arc::clone(&old.original), protocol)],
+            vec![(Arc::clone(&first.original), protocol)],
             &self.host_resolver,
             true,
             Some(&current),
         )
         .await
         .pop()?;
-        if addresses_of(old) == addresses_of(&new) {
+        let new_addresses = addresses_of(&new);
+        if copies
+            .iter()
+            .all(|copy| addresses_of(copy) == new_addresses)
+        {
             return Some(new.resolution);
         }
         let patched = current
@@ -302,29 +305,28 @@ impl PoolManager {
                 (p.config.clone(), groups)
             })
             .collect();
-        // The configs are the live set's, which already assembled once.
-        let Ok(patched) = Self::assemble(patched) else {
-            return Some(new.resolution);
+        let patched = match Self::assemble(patched) {
+            Ok(patched) => patched,
+            Err(e) => {
+                // Unexpected: the configs are the live set's, which assembled once.
+                warn!(server = original, error = %e, "Could not apply an upstream hostname's new addresses");
+                return Some(new.resolution);
+            }
         };
         let previous = self.pools.compare_and_swap(&current, Arc::new(patched));
         if Arc::ptr_eq(&*previous, &current) {
             info!(
                 server = original,
-                addresses = ?addresses_of(&new),
+                addresses = ?new_addresses,
                 "Upstream hostname now resolves to new addresses"
             );
-            for gone in old.protocols.iter().filter(|p| !new.protocols.contains(p)) {
+            let replaced: HashSet<&Arc<DnsProtocol>> =
+                copies.iter().flat_map(|copy| &copy.protocols).collect();
+            for gone in replaced.into_iter().filter(|p| !new.protocols.contains(p)) {
                 transport::forget_transport(gone);
             }
         }
         Some(new.resolution)
-    }
-
-    fn any_unresolved(pools: &[PoolWithStrategy]) -> bool {
-        pools
-            .iter()
-            .flat_map(|p| &p.server_protocols)
-            .any(|p| p.needs_resolution())
     }
 
     /// `background` marks a lookup the refresh task made: it logs at debug.

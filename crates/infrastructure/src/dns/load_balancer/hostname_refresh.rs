@@ -13,7 +13,8 @@ use tokio::time::Instant;
 pub struct HostnameRefreshTimes {
     /// The bounds an answer's TTL is held to: a very short one would look the
     /// name up every few seconds, a very long one would follow a move only
-    /// after hours.
+    /// after hours. The task never sleeps longer than `max_ttl`, so it notices
+    /// a dropped pool manager.
     pub min_ttl: Duration,
     pub max_ttl: Duration,
     /// How long an answer from the system resolver, which reports no TTL, is
@@ -67,15 +68,20 @@ pub async fn run_hostname_refresh(pool_manager: Weak<PoolManager>, times: Hostna
         arm(&mut pending, pm.hostname_servers(), &times);
         drop(pm);
 
-        let next = pending.values().map(|lookup| lookup.at).min();
+        let longest = Instant::now() + times.max_ttl;
+        let wake = pending
+            .values()
+            .map(|lookup| lookup.at)
+            .min()
+            .map_or(longest, |at| at.min(longest));
         tokio::select! {
-            () = async {
-                match next {
-                    Some(at) => tokio::time::sleep_until(at).await,
-                    None => std::future::pending().await,
-                }
-            } => {}
-            () = reloaded.notified() => continue,
+            () = tokio::time::sleep_until(wake) => {}
+            () = reloaded.notified() => {
+                // A reload looked every server up again: schedule them all
+                // by what it found, failures included.
+                pending.clear();
+                continue;
+            }
         }
 
         let Some(pm) = pool_manager.upgrade() else {
