@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in Ferrous DNS doesn't work the way the docs say it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A reproduction — the query you sent and what came back — is what gets a bug fixed fastest.
+
+        **Security issues do not go here.** Report them privately through [Private Vulnerability Reporting](https://github.com/ferrous-networking/ferrous-dns/security/advisories/new); see [SECURITY.md](https://github.com/ferrous-networking/ferrous-dns/blob/main/.github/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the dashboard sidebar, or by `ferrous-dns --version`.
+      placeholder: v0.9.24
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker image
+        - Release binary
+        - Built from source
+        - Other (say below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The steps, query or request that triggers it — for DNS issues, the `dig` command and its output.
+      placeholder: |
+        dig @127.0.0.1 -p 53 example.com AAAA
+        ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: The sections of `ferrous-dns.toml` involved. Remove passwords, tokens and anything else private.
+      render: toml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Server log lines around the problem. `--log-level debug` (or `level = "debug"` under `[logging]`) gives more detail.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this one isn't there yet.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

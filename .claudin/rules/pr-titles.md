@@ -12,6 +12,8 @@ House style (from merged PRs):
 - Scope = the subsystem in lowercase: `dns`, `dnssec`, `cache`, `auth`, `api`, `query-log`, `block-filter`, `docker`, `config`. Omit only when the change is repo-wide.
 - `build(deps): ...` is reserved for Dependabot; `ci: ...` for workflow changes; hand-written chores use plain `chore: ...`.
 - Breaking changes: the workflow greps the head commit message for `BREAKING CHANGE` and demands CHANGELOG + migration guide + MAJOR bump. Don't mark a PR breaking accidentally.
-- `size/*` labels are auto-assigned by `codelytv/pr-size-labeler` — never set them manually.
+- The title is the changelog entry: PRs are squash-merged and git-cliff renders each one as `**scope:** description by @author in #N` in `CHANGELOG.md` and the release notes.
+- Labels are auto-assigned by `pr-triage.yml`: the type label from the title (`feat` → `enhancement`, `fix` → `bug`, `docs` → `documentation`, `perf` → `performance`, `refactor` → `refactor`) and subject labels from the changed paths (`.github/labeler.yml`). Don't set them by hand.
+- Release PRs are `chore(release): vX.Y.Z`, opened by `release-pr.yml` — don't hand-write that title.
 
 Body: follow `.github/PULL_REQUEST_TEMPLATE/pull_request_template.md`.

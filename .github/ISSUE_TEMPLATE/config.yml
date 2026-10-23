@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help with a setup
+    url: https://github.com/ferrous-networking/ferrous-dns/discussions
+    about: Ask in Discussions — installs, configuration and "is this expected?" questions.
+  - name: Security vulnerability
+    url: https://github.com/ferrous-networking/ferrous-dns/security/advisories/new
+    about: Report it privately. Please don't open a public issue.
+  - name: Documentation
+    url: https://ferrous-networking.github.io/ferrous-dns/
+    about: Installation, configuration reference and troubleshooting.
