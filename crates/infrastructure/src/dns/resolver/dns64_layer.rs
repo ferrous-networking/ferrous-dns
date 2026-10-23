@@ -90,6 +90,7 @@ impl Dns64Resolver {
             cache_hit: false,
             local_dns: false,
             local_nxdomain: false,
+            upstream_nxdomain: false,
             // Synthetic AAAA is unsigned — the AD bit must never be set.
             dnssec_status: None,
             cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),

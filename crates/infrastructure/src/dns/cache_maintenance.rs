@@ -188,7 +188,7 @@ impl DnsCacheMaintenance {
                 answers: Some(Arc::clone(&resolution.addresses)),
                 upstream_server: resolution.upstream_server.clone(),
                 upstream_pool: resolution.upstream_pool.clone(),
-                response_status: Some("NOERROR"),
+                response_status: Some(resolution.rcode_name()),
                 timestamp: None,
                 query_source: QuerySource::Internal,
                 protocol: None,

@@ -4,6 +4,7 @@ use super::super::cache::{
     CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
 };
 use super::super::load_balancer::{Route, UpstreamRouter};
+use super::super::wire_response;
 use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
@@ -20,6 +21,7 @@ static EMPTY_ADDRESSES: LazyLock<Arc<Vec<IpAddr>>> = LazyLock::new(|| Arc::new(v
 struct InflightResult {
     addresses: Arc<Vec<IpAddr>>,
     local_dns: bool,
+    upstream_nxdomain: bool,
     cname_chain: Arc<[Arc<str>]>,
     dnssec_status: Option<DnssecStatus>,
     min_ttl: Option<u32>,
@@ -33,6 +35,7 @@ impl InflightResult {
             cache_hit: true,
             local_dns: self.local_dns,
             local_nxdomain: false,
+            upstream_nxdomain: self.upstream_nxdomain,
             dnssec_status: self.dnssec_status,
             cname_chain: Arc::clone(&self.cname_chain),
             upstream_server: None,
@@ -177,6 +180,9 @@ impl CachedResolver {
             local_dns: (local_answer && !local_nxdomain)
                 || local_status != LocalRecordStatus::NotLocal,
             local_nxdomain,
+            upstream_nxdomain: upstream_wire_data
+                .as_deref()
+                .is_some_and(wire_response::is_nxdomain),
             dnssec_status: dnssec_status.and_then(CachedDnssecStatus::to_domain),
             cname_chain,
             upstream_server: None,
@@ -397,6 +403,7 @@ impl CachedResolver {
         let inflight = Arc::new(InflightResult {
             addresses: Arc::clone(&resolution.addresses),
             local_dns: resolution.local_dns,
+            upstream_nxdomain: resolution.upstream_nxdomain,
             cname_chain: Arc::clone(&resolution.cname_chain),
             dnssec_status: resolution.dnssec_status,
             min_ttl: resolution.min_ttl,

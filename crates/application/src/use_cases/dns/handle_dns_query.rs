@@ -506,29 +506,25 @@ impl HandleDnsQueryUseCase {
         let tsc_start = tsc_timer::now();
         let (group_id, _) = self.cache_gate(domain, client_ip)?;
 
-        let DnsResolution {
-            upstream_wire_data,
-            min_ttl,
-            dnssec_status,
-            ..
-        } = self
+        let resolution = self
             .resolver
             .try_cache_str(domain, record_type, Some(group_id))?;
-        let wire = upstream_wire_data.as_deref()?;
+        let wire = resolution.upstream_wire_data.as_deref()?;
         // The cache reports what every entry has left; the reply's TTLs need it.
-        let remaining = min_ttl?;
+        let remaining = resolution.min_ttl?;
         // Built before `respond`, which rarely declines, and logged only once
         // it answers: the slow path logs a declined hit. The logged time is
         // the cache probe's.
-        let log = self.log_queries.then(|| {
-            Self::cache_hit_log(
+        let log = self.log_queries.then(|| QueryLog {
+            response_status: Some(resolution.rcode_name()),
+            ..Self::cache_hit_log(
                 domain,
                 record_type,
                 client_ip,
                 protocol,
                 group_id,
                 tsc_timer::elapsed_us_since(tsc_start),
-                dnssec_status,
+                resolution.dnssec_status,
             )
         });
         let reply = respond(wire, remaining)?;
@@ -791,6 +787,7 @@ impl HandleDnsQueryUseCase {
                         cache_hit: true,
                         dnssec_status: cached.dnssec_status,
                         answers: Some(Arc::clone(&cached.addresses)),
+                        response_status: Some(cached.rcode_name()),
                         ..Self::base_query_log(request, elapsed_us(), group_id)
                     });
                     return Ok(cached);
@@ -899,7 +896,7 @@ impl HandleDnsQueryUseCase {
                 let response_status = if resolution.local_dns {
                     Some("LOCAL_DNS")
                 } else {
-                    Some("NOERROR")
+                    Some(resolution.rcode_name())
                 };
                 if !explicitly_allowed {
                     self.emit_tunneling_event(request, false);

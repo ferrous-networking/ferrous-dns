@@ -67,6 +67,7 @@ impl DnsResolver for CnameChainResolver {
             cache_hit: false,
             local_dns: false,
             local_nxdomain: false,
+            upstream_nxdomain: false,
             dnssec_status: self.dnssec_status,
             cname_chain,
             upstream_server: None,

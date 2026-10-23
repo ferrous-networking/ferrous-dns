@@ -1182,6 +1182,7 @@ impl DnsResolutionBuilder {
             cache_hit: self.cache_hit,
             local_dns: false,
             local_nxdomain: false,
+            upstream_nxdomain: false,
             dnssec_status: self.dnssec_status,
             cname_chain: self.cname_chain,
             upstream_server: self.upstream_server,

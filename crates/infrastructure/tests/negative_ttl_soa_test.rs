@@ -52,6 +52,7 @@ impl DnsResolver for MockNegativeResolver {
             cache_hit: false,
             local_dns: false,
             local_nxdomain: false,
+            upstream_nxdomain: false,
             dnssec_status: None,
             cname_chain: Arc::from(vec![]),
             upstream_server: None,

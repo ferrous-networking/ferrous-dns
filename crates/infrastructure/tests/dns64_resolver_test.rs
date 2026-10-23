@@ -34,6 +34,7 @@ fn empty_resolution(rcode: ResponseCode) -> DnsResolution {
         cache_hit: false,
         local_dns: false,
         local_nxdomain: false,
+        upstream_nxdomain: false,
         dnssec_status: None,
         cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
         upstream_server: None,

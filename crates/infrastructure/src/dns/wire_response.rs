@@ -27,6 +27,13 @@ pub fn set_relay_header(buf: &mut [u8], id: u16, recursion_desired: bool, authen
     *flags_lo = (*flags_lo & !0x20) | (u8::from(authentic_data) << 5);
 }
 
+/// Whether a relayed response is an NXDOMAIN: header RCODE 3, the low four
+/// bits of byte 3 (RFC 1035 §4.1.1). Only NOERROR and NXDOMAIN answers are
+/// relayed or cached, so the OPT's extended RCODE bits are always zero.
+pub fn is_nxdomain(wire: &[u8]) -> bool {
+    wire.get(3).is_some_and(|flags_lo| flags_lo & 0x0F == 3)
+}
+
 /// Over UDP a cached wire answer larger than the client's advertised EDNS
 /// buffer (or 512 without EDNS) must be deferred to the slow path, which
 /// truncates it with TC=1 (RFC 6891 §6.2.5 / RFC 7766). Returns `true` when the

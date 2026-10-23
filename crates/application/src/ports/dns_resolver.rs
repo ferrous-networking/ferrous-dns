@@ -14,6 +14,10 @@ pub struct DnsResolution {
     /// A cached NXDOMAIN from the local DNS server. Separate from `local_dns`,
     /// which on an empty answer marks an authoritative local NODATA.
     pub local_nxdomain: bool,
+    /// The upstream answered NXDOMAIN. Its message, in `upstream_wire_data`,
+    /// is relayed as the answer, so unlike `local_nxdomain` this resolution
+    /// has response data.
+    pub upstream_nxdomain: bool,
     pub dnssec_status: Option<DnssecStatus>,
     pub cname_chain: Arc<[Arc<str>]>,
     pub upstream_server: Option<Arc<str>>,
@@ -35,6 +39,7 @@ impl DnsResolution {
             cache_hit,
             local_dns: false,
             local_nxdomain: false,
+            upstream_nxdomain: false,
             dnssec_status: None,
             cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
             upstream_server: None,
@@ -52,6 +57,16 @@ impl DnsResolution {
             || !self.addresses.is_empty()
             || self.upstream_wire_data.is_some()
             || !self.cname_chain.is_empty()
+    }
+
+    /// The response code the answer is relayed with, as the query log
+    /// spells it.
+    pub fn rcode_name(&self) -> &'static str {
+        if self.upstream_nxdomain {
+            "NXDOMAIN"
+        } else {
+            "NOERROR"
+        }
     }
 }
 
