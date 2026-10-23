@@ -28,8 +28,9 @@ pub fn set_relay_header(buf: &mut [u8], id: u16, recursion_desired: bool, authen
 }
 
 /// Whether a relayed response is an NXDOMAIN: header RCODE 3, the low four
-/// bits of byte 3 (RFC 1035 §4.1.1). Only NOERROR and NXDOMAIN answers are
-/// relayed or cached, so the OPT's extended RCODE bits are always zero.
+/// bits of byte 3 (RFC 1035 §4.1.1). The OPT's extended RCODE bits are not
+/// read: the only extended code whose low bits are 3 is BADMODE (19), which
+/// answers a TKEY exchange, never a query.
 pub fn is_nxdomain(wire: &[u8]) -> bool {
     wire.get(3).is_some_and(|flags_lo| flags_lo & 0x0F == 3)
 }

@@ -158,7 +158,9 @@ impl DnsResolver for CoreResolver {
             .await?;
 
         let internal = result.internal;
-        let upstream_nxdomain = result.response.is_nxdomain();
+        // A reply with addresses is answered with them, as NOERROR.
+        let upstream_nxdomain =
+            result.response.is_nxdomain() && result.response.addresses.is_empty();
         let addresses = Arc::new(result.response.addresses);
         let upstream_server = Some(result.server_display);
         let cname_chain = result.response.cname_chain;

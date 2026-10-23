@@ -37,7 +37,8 @@ impl Dns64Resolver {
             return Ok(res);
         }
 
-        // NODATA vs NXDOMAIN: `DnsResolution` carries no rcode, so inspect the
+        // NODATA vs NXDOMAIN: `upstream_nxdomain` cannot tell NOERROR from the
+        // other rcodes a local DNS server's answer may carry, so inspect the
         // upstream wire (mirrors `DnssecResolver`). Only NOERROR qualifies.
         let is_nodata = res
             .upstream_wire_data

@@ -14,9 +14,9 @@ pub struct DnsResolution {
     /// A cached NXDOMAIN from the local DNS server. Separate from `local_dns`,
     /// which on an empty answer marks an authoritative local NODATA.
     pub local_nxdomain: bool,
-    /// The upstream answered NXDOMAIN. Its message, in `upstream_wire_data`,
-    /// is relayed as the answer, so unlike `local_nxdomain` this resolution
-    /// has response data.
+    /// The client is answered with the upstream's NXDOMAIN: its message, in
+    /// `upstream_wire_data`, with no addresses to answer with instead. Unlike
+    /// `local_nxdomain`, this resolution has response data.
     pub upstream_nxdomain: bool,
     pub dnssec_status: Option<DnssecStatus>,
     pub cname_chain: Arc<[Arc<str>]>,
