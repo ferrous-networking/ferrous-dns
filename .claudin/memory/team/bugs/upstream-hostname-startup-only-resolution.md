@@ -36,10 +36,14 @@ hostname's IPs when its own lookup failed. Now:
   min TTL (`lookup_host` gives none, so 5 min), clamped to [60 s, 1 h]. Failures back off from the
   health interval to 300 s.
 - It replaced `start_hostname_retry_task` and `retry_unresolved`.
-- `PoolManager::refresh_hostname` patches only that server's groups via `assemble`, swaps only
-  when the address *set* changed (`compare_and_swap`), and forgets the replaced transports.
+- `PoolManager::refresh_hostname` patches only that server's groups via `assemble`. It swaps only
+  when some pool's copy has a different address *set* (pools look a server up separately), using
+  `compare_and_swap`, and then forgets the replaced transports.
 - A failed lookup keeps the previous group (`kept_group`), on reloads too.
-- `apply` notifies `reloaded`, so a reload's new servers are armed at once.
+- `apply` notifies `reloaded`. The task then re-arms every server from the reload's own lookups,
+  backoff included, and it sleeps at most `max_ttl`, so it ends once its manager is dropped.
+- Each of the three managers (main, DNSSEC, cache maintenance) runs its own task. Upstream
+  hostname lookups therefore triple, as the builds always did.
 
 Without `local_dns_server`, the circular setup still fails; it is only explained, by design.
 
