@@ -34,6 +34,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Pi-hole compat scope](decisions/pihole-compat-scope.md) — serves integrations, not the Pi-hole UI or sync tools; /config, /teleporter, /logs, flush/network stay unserved, and why
 - [Conditional pool routing](decisions/conditional-pool-routing.md) — #291: routes are pool fields; no fallback (SERVFAIL); per-group cache view; SQLite table and id-pruning rejected
 - [Cache removal by events](decisions/cache-event-driven-removal.md) — eviction/compaction jobs → worker tick + per-entry expiry timers; same rules; ≥1 timer per entry; lossless inbox
+- [Release PR flow](decisions/release-pr-flow.md) — releases via a regenerated chore(release) PR; PAT for anything that starts a workflow; docs ride release-created
 
 ## Bugs
 
