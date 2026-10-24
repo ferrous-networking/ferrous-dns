@@ -783,18 +783,20 @@
 
             <div x-show="testResult && testResult.allow_reasons.length > 0" style="margin-bottom:20px">
                 <h3 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Allow rules (override blocking)</h3>
-                <table class="table">
-                    <thead><tr><th>Rule</th><th>Kind</th><th>Match</th></tr></thead>
-                    <tbody>
-                    <template x-for="(m, i) in (testResult ? testResult.allow_reasons : [])" :key="'allow-' + i">
-                        <tr>
-                            <td x-text="m.name"></td>
-                            <td><span class="badge badge-success" x-text="m.kind"></span></td>
-                            <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
-                        </tr>
-                    </template>
-                    </tbody>
-                </table>
+                <div class="table-scroll">
+                    <table class="table">
+                        <thead><tr><th>Rule</th><th>Kind</th><th>Match</th></tr></thead>
+                        <tbody>
+                        <template x-for="(m, i) in (testResult ? testResult.allow_reasons : [])" :key="'allow-' + i">
+                            <tr>
+                                <td x-text="m.name"></td>
+                                <td><span class="badge badge-success" x-text="m.kind"></span></td>
+                                <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                            </tr>
+                        </template>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div>
@@ -803,18 +805,20 @@
                     <span x-show="testResult && testResult.block_matches.length === 0"
                           style="font-weight:400;color:var(--text-secondary)">— none matched</span>
                 </h3>
-                <table class="table" x-show="testResult && testResult.block_matches.length > 0">
-                    <thead><tr><th>Source</th><th>Kind</th><th>Match</th></tr></thead>
-                    <tbody>
-                    <template x-for="(m, i) in (testResult ? testResult.block_matches : [])" :key="'block-' + i">
-                        <tr>
-                            <td style="font-weight:500;color:var(--text-primary)" x-text="m.name"></td>
-                            <td><span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444" x-text="m.kind"></span></td>
-                            <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
-                        </tr>
-                    </template>
-                    </tbody>
-                </table>
+                <div class="table-scroll">
+                    <table class="table" x-show="testResult && testResult.block_matches.length > 0">
+                        <thead><tr><th>Source</th><th>Kind</th><th>Match</th></tr></thead>
+                        <tbody>
+                        <template x-for="(m, i) in (testResult ? testResult.block_matches : [])" :key="'block-' + i">
+                            <tr>
+                                <td style="font-weight:500;color:var(--text-primary)" x-text="m.name"></td>
+                                <td><span class="badge" style="background:rgba(239,68,68,0.1);color:#ef4444" x-text="m.kind"></span></td>
+                                <td><span style="color:var(--text-secondary)" x-text="m.match_type"></span></td>
+                            </tr>
+                        </template>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div><!-- end test tab -->
@@ -896,27 +900,29 @@
                 <span x-show="btResult && btResult.action === 'deny' && btResult.overridden_domains > 0">Blocked but allow-listed:
                     <strong style="color:var(--text-primary)" x-text="btResult ? btResult.overridden_domains : 0"></strong></span>
             </div>
-            <table class="table">
-                <thead>
-                <tr>
-                    <th x-text="btResult && btResult.action === 'allow' ? 'Freed domain' : 'Newly blocked domain'"></th>
-                    <th>Queries (last window)</th>
-                    <th x-show="btResult && btResult.action === 'allow'">Currently blocked by</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="(d, i) in (btResult ? btResult.sample : [])" :key="'s-' + i">
+            <div class="table-scroll">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <td style="font-weight:500;color:var(--text-primary)" x-text="d.domain"></td>
-                        <td x-text="d.queries"></td>
-                        <td x-show="btResult && btResult.action === 'allow'" x-text="d.blocked_by || '—'"></td>
+                        <th x-text="btResult && btResult.action === 'allow' ? 'Freed domain' : 'Newly blocked domain'"></th>
+                        <th>Queries (last window)</th>
+                        <th x-show="btResult && btResult.action === 'allow'">Currently blocked by</th>
                     </tr>
-                </template>
-                <tr x-show="btResult && btResult.sample.length === 0">
-                    <td colspan="3" style="text-align:center;padding:32px;color:var(--text-secondary)">No domains would change.</td>
-                </tr>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    <template x-for="(d, i) in (btResult ? btResult.sample : [])" :key="'s-' + i">
+                        <tr>
+                            <td style="font-weight:500;color:var(--text-primary)" x-text="d.domain"></td>
+                            <td x-text="d.queries"></td>
+                            <td x-show="btResult && btResult.action === 'allow'" x-text="d.blocked_by || '—'"></td>
+                        </tr>
+                    </template>
+                    <tr x-show="btResult && btResult.sample.length === 0">
+                        <td colspan="3" style="text-align:center;padding:32px;color:var(--text-secondary)">No domains would change.</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
             <p x-show="btResult && btResult.changed_domains > btResult.sample.length"
                style="margin-top:8px;font-size:12px;color:var(--text-secondary)">
                 Showing top <span x-text="btResult ? btResult.sample.length : 0"></span> by query volume.

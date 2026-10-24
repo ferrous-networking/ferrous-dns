@@ -324,10 +324,15 @@ textarea:disabled {
     .tab-bar::-webkit-scrollbar {
         display: none
     }
+
+    /* Drawn inside the tab, or the scrolling bar cuts its top edge off. */
+    .tab-bar .tab-btn:focus-visible {
+        outline-offset: -3px
+    }
 }
 
 @media (max-width: 768px) {
-    .tab-btn {
+    .tab-bar .tab-btn {
         white-space: nowrap;
         flex-shrink: 0
     }

@@ -207,7 +207,7 @@ document.addEventListener('click', function(e) {
 // frame for the tab's panel to render: a taller page adds a scrollbar that narrows the bar.
 document.addEventListener('click', function(e) {
     var tab = e.target.closest('.tab-bar .tab-btn');
-    if (tab) requestAnimationFrame(function() {
+    if (tab && window.innerWidth <= 1024) requestAnimationFrame(function() {
         tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
     });
 });

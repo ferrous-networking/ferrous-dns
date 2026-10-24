@@ -86,16 +86,35 @@
 
         .tab-btn:hover { color: var(--text-primary) }
 
-        /* Three metrics a row; two on the narrowest phones, where three labels no longer fit. */
+        /* Three metrics a row; on phones two, and one on the narrowest, so a nine-digit
+           count still fits its tile. */
         .metric-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 12px
         }
 
-        @media (max-width: 374px) {
+        @media (max-width: 520px) {
             .metric-grid { grid-template-columns: repeat(2, 1fr) }
         }
+
+        @media (max-width: 340px) {
+            .metric-grid { grid-template-columns: 1fr }
+        }
+
+        /* A setting: its description on the left and its control on the right; on a
+           narrow phone the control drops under the description. */
+        .setting-row {
+            display: flex;
+            flex-wrap: wrap;
+            row-gap: 12px;
+            align-items: flex-start;
+            justify-content: space-between;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color)
+        }
+
+        .setting-row.no-divider { border-bottom: none }
 
         .strategy-card {
             padding: 16px;
