@@ -203,6 +203,15 @@ document.addEventListener('click', function(e) {
     if (link && window.innerWidth <= 1024) closeSidebar();
 });
 
+// A tab tapped while partly off a scrolling tab bar slides fully into view. It waits a
+// frame for the tab's panel to render: a taller page adds a scrollbar that narrows the bar.
+document.addEventListener('click', function(e) {
+    var tab = e.target.closest('.tab-bar .tab-btn');
+    if (tab) requestAnimationFrame(function() {
+        tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    });
+});
+
 // --- Rate color using CSS custom properties ---
 
 function getRateColor(queryRate) {

@@ -158,52 +158,54 @@
         </div>
 
         <div class="card">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>FQDN</th>
-                    <th>IP Address</th>
-                    <th>Type</th>
-                    <th>TTL</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="record in records" :key="record.id">
+            <div class="table-scroll">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.fqdn"></span>
-                            <span x-show="record.fqdn.startsWith('*.')" class="badge badge-amber" style="margin-left:8px">WILDCARD</span>
-                        </td>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.ip"></span>
-                        </td>
-                        <td>
-                            <span class="badge" :class="record.record_type === 'A' ? 'badge-blue' : 'badge-purple'" x-text="record.record_type"></span>
-                        </td>
-                        <td>
-                            <span style="color:var(--text-secondary);font-size:14px" x-text="record.ttl + 's'"></span>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:4px">
-                                <button @click="editRecord(record)" class="btn-icon" title="Edit" style="color:var(--text-secondary)">
-                                    <i data-lucide="pencil" style="width:16px;height:16px"></i>
-                                </button>
-                                <button @click="deleteRecord(record.id)" class="btn-icon" title="Delete" style="color:var(--color-error)">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </div>
+                        <th>FQDN</th>
+                        <th>IP Address</th>
+                        <th>Type</th>
+                        <th>TTL</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="record in records" :key="record.id">
+                        <tr>
+                            <td>
+                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.fqdn"></span>
+                                <span x-show="record.fqdn.startsWith('*.')" class="badge badge-amber" style="margin-left:8px">WILDCARD</span>
+                            </td>
+                            <td>
+                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="record.ip"></span>
+                            </td>
+                            <td>
+                                <span class="badge" :class="record.record_type === 'A' ? 'badge-blue' : 'badge-purple'" x-text="record.record_type"></span>
+                            </td>
+                            <td>
+                                <span style="color:var(--text-secondary);font-size:14px" x-text="record.ttl + 's'"></span>
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:4px">
+                                    <button @click="editRecord(record)" class="btn-icon" title="Edit" style="color:var(--text-secondary)">
+                                        <i data-lucide="pencil" style="width:16px;height:16px"></i>
+                                    </button>
+                                    <button @click="deleteRecord(record.id)" class="btn-icon" title="Delete" style="color:var(--color-error)">
+                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="records.length === 0">
+                        <td colspan="5" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                            <i data-lucide="server" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                            <p style="margin:0">No DNS records yet. Add one above to get started.</p>
                         </td>
                     </tr>
-                </template>
-                <tr x-show="records.length === 0">
-                    <td colspan="5" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="server" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No DNS records yet. Add one above to get started.</p>
-                    </td>
-                </tr>
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </main>

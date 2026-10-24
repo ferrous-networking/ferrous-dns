@@ -86,6 +86,17 @@
 
         .tab-btn:hover { color: var(--text-primary) }
 
+        /* Three metrics a row; two on the narrowest phones, where three labels no longer fit. */
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px
+        }
+
+        @media (max-width: 374px) {
+            .metric-grid { grid-template-columns: repeat(2, 1fr) }
+        }
+
         .strategy-card {
             padding: 16px;
             border-radius: 8px;

@@ -309,3 +309,34 @@ textarea:disabled {
         display: none
     }
 }
+
+/* A tab bar whose tabs outgrow the screen scrolls sideways instead of widening the
+   page. Tablets keep wrapping long labels onto two lines, so most tabs stay in sight;
+   phones put each label on one line and scroll. Desktop widths fit every bar, and a
+   scrolling box there would clip the active tab's underline where it overlaps the
+   bar's border. */
+@media (max-width: 1024px) {
+    .tab-bar {
+        overflow-x: auto;
+        scrollbar-width: none
+    }
+
+    .tab-bar::-webkit-scrollbar {
+        display: none
+    }
+}
+
+@media (max-width: 768px) {
+    .tab-btn {
+        white-space: nowrap;
+        flex-shrink: 0
+    }
+}
+
+/* A table wider than the screen scrolls inside its card. Desktop widths fit
+   every table, and a clipping box there would cut off a row's dropdown. */
+@media (max-width: 1024px) {
+    .table-scroll {
+        overflow-x: auto
+    }
+}

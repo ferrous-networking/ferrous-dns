@@ -174,106 +174,108 @@
         <div x-show="syncError" x-text="syncError"
              style="margin:16px 16px 0;padding:12px;background:rgba(239,68,68,0.1);color:var(--color-error);border-radius:8px;font-size:14px"></div>
 
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Name</th>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Comment</th>
-                <th>Group</th>
-                <th>Last Sync</th>
-                <th>Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            <template x-for="source in sources" :key="source.id">
+        <div class="table-scroll">
+            <table class="table">
+                <thead>
                 <tr>
-                    <td>
-                        <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
-                    </td>
-                    <td>
-                        <template x-if="source.url">
-                            <a :href="source.url" target="_blank" rel="noopener noreferrer"
-                               style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
-                               :title="source.url" x-text="source.url"></a>
-                        </template>
-                        <template x-if="!source.url">
-                            <span style="color:var(--text-tertiary)">-</span>
-                        </template>
-                    </td>
-                    <td>
-                        <button class="badge"
-                                :class="source.enabled ? 'badge-success' : 'badge-inactive'"
-                                @click="toggleStatus(source)"
-                                :title="source.enabled ? 'Click to disable' : 'Click to enable'"
-                                x-text="source.enabled ? 'Enabled' : 'Disabled'">
-                        </button>
-                    </td>
-                    <td>
-                        <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
-                    </td>
-                    <td>
-                        <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
-                            <template x-for="gid in source.group_ids" :key="gid">
-                                <span class="group-pill">
-                                    <span x-text="groupName(gid)"></span>
-                                    <button class="pill-remove" type="button"
-                                            @click.stop="toggleGroup(source, gid, false)"
-                                            :title="'Remove from ' + groupName(gid)">×</button>
-                                </span>
+                    <th>Name</th>
+                    <th>URL</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                    <th>Group</th>
+                    <th>Last Sync</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="source in sources" :key="source.id">
+                    <tr>
+                        <td>
+                            <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
+                        </td>
+                        <td>
+                            <template x-if="source.url">
+                                <a :href="source.url" target="_blank" rel="noopener noreferrer"
+                                   style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
+                                   :title="source.url" x-text="source.url"></a>
                             </template>
-                            <button type="button" class="btn-add-group"
-                                    @click.stop="source._showGroupMenu = !source._showGroupMenu"
-                                    title="Add to group">+</button>
-                            <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
-                                <template x-for="group in groups" :key="group.id">
-                                    <label class="group-check-item">
-                                        <input type="checkbox"
-                                               :checked="source.group_ids.includes(group.id)"
-                                               @change="toggleGroup(source, group.id, $event.target.checked)">
-                                        <span x-text="group.name"></span>
-                                    </label>
+                            <template x-if="!source.url">
+                                <span style="color:var(--text-tertiary)">-</span>
+                            </template>
+                        </td>
+                        <td>
+                            <button class="badge"
+                                    :class="source.enabled ? 'badge-success' : 'badge-inactive'"
+                                    @click="toggleStatus(source)"
+                                    :title="source.enabled ? 'Click to disable' : 'Click to enable'"
+                                    x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                            </button>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
+                        </td>
+                        <td>
+                            <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
+                                <template x-for="gid in source.group_ids" :key="gid">
+                                    <span class="group-pill">
+                                        <span x-text="groupName(gid)"></span>
+                                        <button class="pill-remove" type="button"
+                                                @click.stop="toggleGroup(source, gid, false)"
+                                                :title="'Remove from ' + groupName(gid)">×</button>
+                                    </span>
                                 </template>
+                                <button type="button" class="btn-add-group"
+                                        @click.stop="source._showGroupMenu = !source._showGroupMenu"
+                                        title="Add to group">+</button>
+                                <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
+                                    <template x-for="group in groups" :key="group.id">
+                                        <label class="group-check-item">
+                                            <input type="checkbox"
+                                                   :checked="source.group_ids.includes(group.id)"
+                                                   @change="toggleGroup(source, group.id, $event.target.checked)">
+                                            <span x-text="group.name"></span>
+                                        </label>
+                                    </template>
+                                </div>
                             </div>
-                        </div>
-                    </td>
-                    <td>
-                        <span style="color:var(--text-secondary);font-size:14px"
-                              x-text="formatSyncDate(source.last_synced_at)"></span>
-                    </td>
-                    <td>
-                        <div style="display:flex;gap:4px">
-                            <button @click="syncSource(source)" class="btn-icon"
-                                    :disabled="syncingId !== null"
-                                    :style="syncingId !== null ? 'opacity:0.5;cursor:not-allowed' : ''"
-                                    title="Re-download now. Rebuilds the block index, so every enabled list is refreshed.">
-                                <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
-                            </button>
-                            <button @click="editSource(source)" class="btn-icon" title="Edit">
-                                <i data-lucide="edit-2" style="width:16px;height:16px"></i>
-                            </button>
-                            <button @click="deleteSource(source)" class="btn-icon" title="Delete"
-                                    style="color:var(--color-error)">
-                                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                            </button>
-                        </div>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px"
+                                  x-text="formatSyncDate(source.last_synced_at)"></span>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button @click="syncSource(source)" class="btn-icon"
+                                        :disabled="syncingId !== null"
+                                        :style="syncingId !== null ? 'opacity:0.5;cursor:not-allowed' : ''"
+                                        title="Re-download now. Rebuilds the block index, so every enabled list is refreshed.">
+                                    <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="editSource(source)" class="btn-icon" title="Edit">
+                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="deleteSource(source)" class="btn-icon" title="Delete"
+                                        style="color:var(--color-error)">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="sources.length === 0 && !loading">
+                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                        <i data-lucide="shield-off" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                        <p style="margin:0">No blocklist sources found. Add one to get started.</p>
                     </td>
                 </tr>
-            </template>
-            <tr x-show="sources.length === 0 && !loading">
-                <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                    <i data-lucide="shield-off" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                    <p style="margin:0">No blocklist sources found. Add one to get started.</p>
-                </td>
-            </tr>
-            <tr x-show="loading">
-                <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
-                    Loading...
-                </td>
-            </tr>
-            </tbody>
-        </table>
+                <tr x-show="loading">
+                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                        Loading...
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
     </div><!-- end blocklist tab -->
 
@@ -341,100 +343,102 @@
         </div>
 
         <div class="card">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>URL</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                    <th>Group</th>
-                    <th>Last Sync</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="source in wSources" :key="source.id">
+            <div class="table-scroll">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <td>
-                            <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
-                        </td>
-                        <td>
-                            <template x-if="source.url">
-                                <a :href="source.url" target="_blank" rel="noopener noreferrer"
-                                   style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
-                                   :title="source.url" x-text="source.url"></a>
-                            </template>
-                            <template x-if="!source.url">
-                                <span style="color:var(--text-tertiary)">-</span>
-                            </template>
-                        </td>
-                        <td>
-                            <button class="badge"
-                                    :class="source.enabled ? 'badge-success' : 'badge-inactive'"
-                                    @click="wToggleStatus(source)"
-                                    :title="source.enabled ? 'Click to disable' : 'Click to enable'"
-                                    x-text="source.enabled ? 'Enabled' : 'Disabled'">
-                            </button>
-                        </td>
-                        <td>
-                            <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
-                        </td>
-                        <td>
-                            <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
-                                <template x-for="gid in source.group_ids" :key="gid">
-                                    <span class="group-pill">
-                                        <span x-text="groupName(gid)"></span>
-                                        <button class="pill-remove" type="button"
-                                                @click.stop="wToggleGroup(source, gid, false)"
-                                                :title="'Remove from ' + groupName(gid)">×</button>
-                                    </span>
+                        <th>Name</th>
+                        <th>URL</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                        <th>Group</th>
+                        <th>Last Sync</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="source in wSources" :key="source.id">
+                        <tr>
+                            <td>
+                                <span style="font-weight:500;color:var(--text-primary)" x-text="source.name"></span>
+                            </td>
+                            <td>
+                                <template x-if="source.url">
+                                    <a :href="source.url" target="_blank" rel="noopener noreferrer"
+                                       style="color:var(--color-primary);font-size:13px;text-decoration:none;max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom"
+                                       :title="source.url" x-text="source.url"></a>
                                 </template>
-                                <button type="button" class="btn-add-group"
-                                        @click.stop="source._showGroupMenu = !source._showGroupMenu"
-                                        title="Add to group">+</button>
-                                <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
-                                    <template x-for="group in groups" :key="group.id">
-                                        <label class="group-check-item">
-                                            <input type="checkbox"
-                                                   :checked="source.group_ids.includes(group.id)"
-                                                   @change="wToggleGroup(source, group.id, $event.target.checked)">
-                                            <span x-text="group.name"></span>
-                                        </label>
+                                <template x-if="!source.url">
+                                    <span style="color:var(--text-tertiary)">-</span>
+                                </template>
+                            </td>
+                            <td>
+                                <button class="badge"
+                                        :class="source.enabled ? 'badge-success' : 'badge-inactive'"
+                                        @click="wToggleStatus(source)"
+                                        :title="source.enabled ? 'Click to disable' : 'Click to enable'"
+                                        x-text="source.enabled ? 'Enabled' : 'Disabled'">
+                                </button>
+                            </td>
+                            <td>
+                                <span style="color:var(--text-secondary);font-size:14px" x-text="source.comment || '-'"></span>
+                            </td>
+                            <td>
+                                <div class="group-pills-wrap" @click.away="source._showGroupMenu = false">
+                                    <template x-for="gid in source.group_ids" :key="gid">
+                                        <span class="group-pill">
+                                            <span x-text="groupName(gid)"></span>
+                                            <button class="pill-remove" type="button"
+                                                    @click.stop="wToggleGroup(source, gid, false)"
+                                                    :title="'Remove from ' + groupName(gid)">×</button>
+                                        </span>
                                     </template>
+                                    <button type="button" class="btn-add-group"
+                                            @click.stop="source._showGroupMenu = !source._showGroupMenu"
+                                            title="Add to group">+</button>
+                                    <div x-show="source._showGroupMenu" class="group-dropdown" @click.stop>
+                                        <template x-for="group in groups" :key="group.id">
+                                            <label class="group-check-item">
+                                                <input type="checkbox"
+                                                       :checked="source.group_ids.includes(group.id)"
+                                                       @change="wToggleGroup(source, group.id, $event.target.checked)">
+                                                <span x-text="group.name"></span>
+                                            </label>
+                                        </template>
+                                    </div>
                                 </div>
-                            </div>
-                        </td>
-                        <td>
-                            <span style="color:var(--text-secondary);font-size:14px"
-                                  x-text="formatSyncDate(source.last_synced_at)"></span>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:4px">
-                                <button @click="wEditSource(source)" class="btn-icon" title="Edit">
-                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
-                                </button>
-                                <button @click="wDeleteSource(source)" class="btn-icon" title="Delete"
-                                        style="color:var(--color-error)">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </div>
+                            </td>
+                            <td>
+                                <span style="color:var(--text-secondary);font-size:14px"
+                                      x-text="formatSyncDate(source.last_synced_at)"></span>
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:4px">
+                                    <button @click="wEditSource(source)" class="btn-icon" title="Edit">
+                                        <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                    <button @click="wDeleteSource(source)" class="btn-icon" title="Delete"
+                                            style="color:var(--color-error)">
+                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="wSources.length === 0 && !wLoading">
+                        <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                            <i data-lucide="shield-check" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;color:var(--color-success)"></i>
+                            <p style="margin:0">No allowlist sources found. Add one to always allow specific domains.</p>
                         </td>
                     </tr>
-                </template>
-                <tr x-show="wSources.length === 0 && !wLoading">
-                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="shield-check" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto;color:var(--color-success)"></i>
-                        <p style="margin:0">No allowlist sources found. Add one to always allow specific domains.</p>
-                    </td>
-                </tr>
-                <tr x-show="wLoading">
-                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
-                        Loading...
-                    </td>
-                </tr>
-                </tbody>
-            </table>
+                    <tr x-show="wLoading">
+                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                            Loading...
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div><!-- end allowlist tab -->
 
@@ -501,88 +505,90 @@
         </div>
 
         <div class="card">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Domain</th>
-                    <th>Action</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                    <th>Service</th>
-                    <th>Group</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="domain in mSources" :key="domain.id">
+            <div class="table-scroll">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <td>
-                            <span style="font-weight:500;color:var(--text-primary)" x-text="domain.name"></span>
-                        </td>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="domain.domain"></span>
-                        </td>
-                        <td>
-                            <span class="badge"
-                                  :style="domain.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
-                                  x-text="domain.action === 'deny' ? 'Deny' : 'Allow'">
-                            </span>
-                        </td>
-                        <td>
-                            <button class="badge"
-                                    :class="domain.enabled ? 'badge-success' : 'badge-inactive'"
-                                    @click="mToggleStatus(domain)"
-                                    :title="domain.enabled ? 'Click to disable' : 'Click to enable'"
-                                    x-text="domain.enabled ? 'Enabled' : 'Disabled'">
-                            </button>
-                        </td>
-                        <td>
-                            <span style="color:var(--text-secondary);font-size:14px" x-text="domain.comment || '-'"></span>
-                        </td>
-                        <td>
-                            <span x-show="domain.service_id"
-                                  style="font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.1);color:#6366F1"
-                                  x-text="domain.service_id"></span>
-                            <span x-show="!domain.service_id" style="color:var(--text-secondary)">-</span>
-                        </td>
-                        <td>
-                            <select class="group-select"
-                                    :value="domain.group_id"
-                                    @change="mChangeGroup(domain, parseInt($event.target.value))">
-                                <template x-for="group in groups" :key="group.id">
-                                    <option :value="group.id"
-                                            :selected="group.id === domain.group_id"
-                                            x-text="group.name"></option>
-                                </template>
-                            </select>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:4px">
-                                <button @click="mEditDomain(domain)" class="btn-icon" title="Edit">
-                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                        <th>Name</th>
+                        <th>Domain</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                        <th>Service</th>
+                        <th>Group</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="domain in mSources" :key="domain.id">
+                        <tr>
+                            <td>
+                                <span style="font-weight:500;color:var(--text-primary)" x-text="domain.name"></span>
+                            </td>
+                            <td>
+                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="domain.domain"></span>
+                            </td>
+                            <td>
+                                <span class="badge"
+                                      :style="domain.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
+                                      x-text="domain.action === 'deny' ? 'Deny' : 'Allow'">
+                                </span>
+                            </td>
+                            <td>
+                                <button class="badge"
+                                        :class="domain.enabled ? 'badge-success' : 'badge-inactive'"
+                                        @click="mToggleStatus(domain)"
+                                        :title="domain.enabled ? 'Click to disable' : 'Click to enable'"
+                                        x-text="domain.enabled ? 'Enabled' : 'Disabled'">
                                 </button>
-                                <button @click="mDeleteDomain(domain)" class="btn-icon" title="Delete"
-                                        style="color:var(--color-error)">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </div>
+                            </td>
+                            <td>
+                                <span style="color:var(--text-secondary);font-size:14px" x-text="domain.comment || '-'"></span>
+                            </td>
+                            <td>
+                                <span x-show="domain.service_id"
+                                      style="font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(99,102,241,0.1);color:#6366F1"
+                                      x-text="domain.service_id"></span>
+                                <span x-show="!domain.service_id" style="color:var(--text-secondary)">-</span>
+                            </td>
+                            <td>
+                                <select class="group-select"
+                                        :value="domain.group_id"
+                                        @change="mChangeGroup(domain, parseInt($event.target.value))">
+                                    <template x-for="group in groups" :key="group.id">
+                                        <option :value="group.id"
+                                                :selected="group.id === domain.group_id"
+                                                x-text="group.name"></option>
+                                    </template>
+                                </select>
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:4px">
+                                    <button @click="mEditDomain(domain)" class="btn-icon" title="Edit">
+                                        <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                    <button @click="mDeleteDomain(domain)" class="btn-icon" title="Delete"
+                                            style="color:var(--color-error)">
+                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="mSources.length === 0 && !mLoading">
+                        <td colspan="8" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                            <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                            <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
                         </td>
                     </tr>
-                </template>
-                <tr x-show="mSources.length === 0 && !mLoading">
-                    <td colspan="8" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="shield" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No managed domains found. Add one to block or allow a specific domain immediately.</p>
-                    </td>
-                </tr>
-                <tr x-show="mLoading">
-                    <td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary)">
-                        Loading...
-                    </td>
-                </tr>
-                </tbody>
-            </table>
+                    <tr x-show="mLoading">
+                        <td colspan="8" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                            Loading...
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div><!-- end managed domains tab -->
 
@@ -650,81 +656,83 @@
         </div>
 
         <div class="card">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Regex</th>
-                    <th>Action</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                    <th>Group</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <template x-for="filter in rgFilters" :key="filter.id">
+            <div class="table-scroll">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <td>
-                            <span style="font-weight:500;color:var(--text-primary)" x-text="filter.name"></span>
-                        </td>
-                        <td>
-                            <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="filter.pattern"></span>
-                        </td>
-                        <td>
-                            <span class="badge"
-                                  :style="filter.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
-                                  x-text="filter.action === 'deny' ? 'Deny' : 'Allow'">
-                            </span>
-                        </td>
-                        <td>
-                            <button class="badge"
-                                    :class="filter.enabled ? 'badge-success' : 'badge-inactive'"
-                                    @click="rgToggleStatus(filter)"
-                                    :title="filter.enabled ? 'Click to disable' : 'Click to enable'"
-                                    x-text="filter.enabled ? 'Enabled' : 'Disabled'">
-                            </button>
-                        </td>
-                        <td>
-                            <span style="color:var(--text-secondary);font-size:14px" x-text="filter.comment || '-'"></span>
-                        </td>
-                        <td>
-                            <select class="group-select"
-                                    :value="filter.group_id"
-                                    @change="rgChangeGroup(filter, parseInt($event.target.value))">
-                                <template x-for="group in groups" :key="group.id">
-                                    <option :value="group.id"
-                                            :selected="group.id === filter.group_id"
-                                            x-text="group.name"></option>
-                                </template>
-                            </select>
-                        </td>
-                        <td>
-                            <div style="display:flex;gap:4px">
-                                <button @click="rgEditFilter(filter)" class="btn-icon" title="Edit">
-                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                        <th>Name</th>
+                        <th>Regex</th>
+                        <th>Action</th>
+                        <th>Status</th>
+                        <th>Comment</th>
+                        <th>Group</th>
+                        <th>Actions</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="filter in rgFilters" :key="filter.id">
+                        <tr>
+                            <td>
+                                <span style="font-weight:500;color:var(--text-primary)" x-text="filter.name"></span>
+                            </td>
+                            <td>
+                                <span style="font-family:monospace;font-size:13px;color:var(--text-primary)" x-text="filter.pattern"></span>
+                            </td>
+                            <td>
+                                <span class="badge"
+                                      :style="filter.action === 'deny' ? 'background:rgba(239,68,68,0.1);color:#ef4444' : 'background:rgba(16,185,129,0.1);color:var(--color-success)'"
+                                      x-text="filter.action === 'deny' ? 'Deny' : 'Allow'">
+                                </span>
+                            </td>
+                            <td>
+                                <button class="badge"
+                                        :class="filter.enabled ? 'badge-success' : 'badge-inactive'"
+                                        @click="rgToggleStatus(filter)"
+                                        :title="filter.enabled ? 'Click to disable' : 'Click to enable'"
+                                        x-text="filter.enabled ? 'Enabled' : 'Disabled'">
                                 </button>
-                                <button @click="rgDeleteFilter(filter)" class="btn-icon" title="Delete"
-                                        style="color:var(--color-error)">
-                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                                </button>
-                            </div>
+                            </td>
+                            <td>
+                                <span style="color:var(--text-secondary);font-size:14px" x-text="filter.comment || '-'"></span>
+                            </td>
+                            <td>
+                                <select class="group-select"
+                                        :value="filter.group_id"
+                                        @change="rgChangeGroup(filter, parseInt($event.target.value))">
+                                    <template x-for="group in groups" :key="group.id">
+                                        <option :value="group.id"
+                                                :selected="group.id === filter.group_id"
+                                                x-text="group.name"></option>
+                                    </template>
+                                </select>
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:4px">
+                                    <button @click="rgEditFilter(filter)" class="btn-icon" title="Edit">
+                                        <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                    <button @click="rgDeleteFilter(filter)" class="btn-icon" title="Delete"
+                                            style="color:var(--color-error)">
+                                        <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="rgFilters.length === 0 && !rgLoading">
+                        <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                            <i data-lucide="regex" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
+                            <p style="margin:0">No regex filters found. Add one to block or allow domains matching a pattern.</p>
                         </td>
                     </tr>
-                </template>
-                <tr x-show="rgFilters.length === 0 && !rgLoading">
-                    <td colspan="7" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                        <i data-lucide="regex" style="width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto"></i>
-                        <p style="margin:0">No regex filters found. Add one to block or allow domains matching a pattern.</p>
-                    </td>
-                </tr>
-                <tr x-show="rgLoading">
-                    <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
-                        Loading...
-                    </td>
-                </tr>
-                </tbody>
-            </table>
+                    <tr x-show="rgLoading">
+                        <td colspan="7" style="text-align:center;padding:32px;color:var(--text-secondary)">
+                            Loading...
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div><!-- end regex filters tab -->
 
