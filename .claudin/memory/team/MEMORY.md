@@ -44,7 +44,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Vendored OpenSSL blind spot](bugs/vendored-openssl-blind-spot.md) — webauthn-rs statically links OpenSSL 3.6.3 into the binary; Trivy and cargo audit both miss it
 - [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` never set `restart_pending`; fixed on fix/backup-pools-and-detectors (10-23), incl. the DNSSEC-mode normalization
 - [Query Log DOMAIN column collapses](bugs/query-log-domain-column-collapse.md) — issue #235: fixed with container queries; widen every threshold when adding a column
-- [Mobile layout overflow](bugs/mobile-layout-overflow.md) — Clients, Settings, DNS Filter, Groups, Block Services scroll sideways at 390px; unfiled, still open 10-23
+- [Mobile layout overflow](bugs/mobile-layout-overflow.md) — admin pages scrolled sideways at 320–960px; fixed on fix/mobile-layout-narrow-screens (6e26cc83, 10-24); how to audit a layout change
 - [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282 (10-12); query log fixed on fix/query-log-upstream-rcode (10-23); RRL/tunneling still blind
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
 - [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; TTL-driven IP refresh on fix/upstream-hostname-refresh (10-23)

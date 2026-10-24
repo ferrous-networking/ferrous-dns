@@ -118,7 +118,7 @@
         <p style="font-size:14px;color:var(--text-secondary)">Manage DNS clients by IP, subnet or MAC address</p>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:32px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;margin-bottom:32px">
         <div class="card" style="padding:20px">
             <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Total Clients</p>
             <p style="font-size:32px;font-weight:700" x-text="stats.total_clients || 0"></p>
@@ -199,89 +199,91 @@
             No clients discovered yet
         </div>
 
-        <table x-show="clients.length > 0" class="table">
-            <thead>
-            <tr>
-                <th>IP Address</th>
-                <th>Hostname</th>
-                <th>MAC Address</th>
-                <th>Group</th>
-                <th>First Seen</th>
-                <th>Last Seen</th>
-                <th>Queries</th>
-                <th style="text-align:center;width:90px">Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            <template x-for="c in clients" :key="c.id">
-                <tr :class="{'editing': editingId === c.id}">
-                    <td class="monospace" x-text="c.ip_address"></td>
-
-                    <!-- Hostname: display or edit -->
-                    <td>
-                        <template x-if="editingId !== c.id">
-                            <span x-text="c.hostname || '-'"></span>
-                        </template>
-                        <template x-if="editingId === c.id">
-                            <input class="input-inline" x-model="editForm.hostname" placeholder="hostname">
-                        </template>
-                    </td>
-
-                    <td class="monospace" x-text="c.mac_address || '-'"></td>
-
-                    <!-- Group: display or edit -->
-                    <td>
-                        <template x-if="editingId !== c.id">
-                            <span>
-                                <template x-if="getGroupName(c.group_id) !== null">
-                                    <span x-text="getGroupName(c.group_id)"></span>
-                                </template>
-                                <template x-if="getGroupName(c.group_id) === null">
-                                    <span style="opacity:0.45;font-style:italic">auto</span>
-                                </template>
-                            </span>
-                        </template>
-                        <template x-if="editingId === c.id">
-                            <select class="select-inline" x-model="editForm.group_id">
-                                <template x-for="g in groups" :key="g.id">
-                                    <option :value="g.id" x-text="g.name"></option>
-                                </template>
-                            </select>
-                        </template>
-                    </td>
-
-                    <td x-text="formatDateTime(c.first_seen)"></td>
-                    <td x-text="formatDateTime(c.last_seen)"></td>
-                    <td x-text="c.query_count || 0"></td>
-
-                    <td style="text-align:center;width:90px;white-space:nowrap">
-                        <!-- Normal mode: edit + delete -->
-                        <template x-if="editingId !== c.id">
-                            <span>
-                                <button @click="startEdit(c)" class="btn-icon edit" title="Edit">
-                                    <i data-lucide="pencil" style="width:15px;height:15px"></i>
-                                </button>
-                                <button @click="deleteClient(c.id)" class="btn-icon delete" title="Delete">
-                                    <i data-lucide="trash-2" style="width:15px;height:15px"></i>
-                                </button>
-                            </span>
-                        </template>
-                        <!-- Edit mode: save + cancel -->
-                        <template x-if="editingId === c.id">
-                            <span>
-                                <button @click="saveEdit(c.id)" class="btn-icon save" title="Save">
-                                    <i data-lucide="check" style="width:15px;height:15px"></i>
-                                </button>
-                                <button @click="cancelEdit()" class="btn-icon cancel" title="Cancel">
-                                    <i data-lucide="x" style="width:15px;height:15px"></i>
-                                </button>
-                            </span>
-                        </template>
-                    </td>
+        <div class="table-scroll">
+            <table x-show="clients.length > 0" class="table">
+                <thead>
+                <tr>
+                    <th>IP Address</th>
+                    <th>Hostname</th>
+                    <th>MAC Address</th>
+                    <th>Group</th>
+                    <th>First Seen</th>
+                    <th>Last Seen</th>
+                    <th>Queries</th>
+                    <th style="text-align:center;width:90px">Actions</th>
                 </tr>
-            </template>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                <template x-for="c in clients" :key="c.id">
+                    <tr :class="{'editing': editingId === c.id}">
+                        <td class="monospace" x-text="c.ip_address"></td>
+
+                        <!-- Hostname: display or edit -->
+                        <td>
+                            <template x-if="editingId !== c.id">
+                                <span x-text="c.hostname || '-'"></span>
+                            </template>
+                            <template x-if="editingId === c.id">
+                                <input class="input-inline" x-model="editForm.hostname" placeholder="hostname">
+                            </template>
+                        </td>
+
+                        <td class="monospace" x-text="c.mac_address || '-'"></td>
+
+                        <!-- Group: display or edit -->
+                        <td>
+                            <template x-if="editingId !== c.id">
+                                <span>
+                                    <template x-if="getGroupName(c.group_id) !== null">
+                                        <span x-text="getGroupName(c.group_id)"></span>
+                                    </template>
+                                    <template x-if="getGroupName(c.group_id) === null">
+                                        <span style="opacity:0.45;font-style:italic">auto</span>
+                                    </template>
+                                </span>
+                            </template>
+                            <template x-if="editingId === c.id">
+                                <select class="select-inline" x-model="editForm.group_id">
+                                    <template x-for="g in groups" :key="g.id">
+                                        <option :value="g.id" x-text="g.name"></option>
+                                    </template>
+                                </select>
+                            </template>
+                        </td>
+
+                        <td x-text="formatDateTime(c.first_seen)"></td>
+                        <td x-text="formatDateTime(c.last_seen)"></td>
+                        <td x-text="c.query_count || 0"></td>
+
+                        <td style="text-align:center;width:90px;white-space:nowrap">
+                            <!-- Normal mode: edit + delete -->
+                            <template x-if="editingId !== c.id">
+                                <span>
+                                    <button @click="startEdit(c)" class="btn-icon edit" title="Edit">
+                                        <i data-lucide="pencil" style="width:15px;height:15px"></i>
+                                    </button>
+                                    <button @click="deleteClient(c.id)" class="btn-icon delete" title="Delete">
+                                        <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                                    </button>
+                                </span>
+                            </template>
+                            <!-- Edit mode: save + cancel -->
+                            <template x-if="editingId === c.id">
+                                <span>
+                                    <button @click="saveEdit(c.id)" class="btn-icon save" title="Save">
+                                        <i data-lucide="check" style="width:15px;height:15px"></i>
+                                    </button>
+                                    <button @click="cancelEdit()" class="btn-icon cancel" title="Cancel">
+                                        <i data-lucide="x" style="width:15px;height:15px"></i>
+                                    </button>
+                                </span>
+                            </template>
+                        </td>
+                    </tr>
+                </template>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <!-- Subnets -->
@@ -302,42 +304,44 @@
             No subnets configured yet
         </div>
 
-        <table x-show="subnets.length > 0" class="table">
-            <thead>
-            <tr>
-                <th style="width:40px;text-align:center">
-                    <input type="checkbox"
-                           x-model="selectAllSubnets"
-                           @change="toggleSelectAllSubnets()"
-                           title="Select All">
-                </th>
-                <th>Subnet CIDR</th>
-                <th>Group</th>
-                <th>Comment</th>
-                <th style="text-align:center;width:80px">Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            <template x-for="s in subnets" :key="s.id">
+        <div class="table-scroll">
+            <table x-show="subnets.length > 0" class="table">
+                <thead>
                 <tr>
-                    <td style="width:40px;text-align:center">
+                    <th style="width:40px;text-align:center">
                         <input type="checkbox"
-                               :value="s.id"
-                               x-model="selectedSubnets"
-                               @change="updateSelectAllSubnets()">
-                    </td>
-                    <td class="monospace" x-text="s.subnet_cidr"></td>
-                    <td x-text="getGroupName(s.group_id)"></td>
-                    <td x-text="s.comment || '-'"></td>
-                    <td style="text-align:center;width:80px">
-                        <button @click="deleteSubnet(s.id)" class="btn-icon delete" title="Delete">
-                            <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                        </button>
-                    </td>
+                               x-model="selectAllSubnets"
+                               @change="toggleSelectAllSubnets()"
+                               title="Select All">
+                    </th>
+                    <th>Subnet CIDR</th>
+                    <th>Group</th>
+                    <th>Comment</th>
+                    <th style="text-align:center;width:80px">Actions</th>
                 </tr>
-            </template>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                <template x-for="s in subnets" :key="s.id">
+                    <tr>
+                        <td style="width:40px;text-align:center">
+                            <input type="checkbox"
+                                   :value="s.id"
+                                   x-model="selectedSubnets"
+                                   @change="updateSelectAllSubnets()">
+                        </td>
+                        <td class="monospace" x-text="s.subnet_cidr"></td>
+                        <td x-text="getGroupName(s.group_id)"></td>
+                        <td x-text="s.comment || '-'"></td>
+                        <td style="text-align:center;width:80px">
+                            <button @click="deleteSubnet(s.id)" class="btn-icon delete" title="Delete">
+                                <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+                </tbody>
+            </table>
+        </div>
     </div>
 
 </main>

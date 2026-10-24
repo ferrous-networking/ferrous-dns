@@ -139,59 +139,61 @@
     </div>
 
     <div class="card">
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Comment</th>
-                <th>Clients</th>
-                <th>Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            <template x-for="group in groups" :key="group.id">
+        <div class="table-scroll">
+            <table class="table">
+                <thead>
                 <tr>
-                    <td>
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <span style="font-weight:500;color:var(--text-primary)" x-text="group.name"></span>
-                            <span x-show="group.is_default" class="badge badge-default">Default</span>
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge" :class="group.enabled ? 'badge-success' : 'badge-inactive'"
-                              x-text="group.enabled ? 'Enabled' : 'Disabled'"></span>
-                    </td>
-                    <td>
-                        <span style="color:var(--text-secondary);font-size:14px"
-                              x-text="group.comment || '-'"></span>
-                    </td>
-                    <td>
-                        <span style="color:var(--text-primary);font-weight:500"
-                              x-text="group.client_count || 0"></span>
-                    </td>
-                    <td>
-                        <div style="display:flex;gap:8px">
-                            <button @click="editGroup(group)" class="btn-icon" title="Edit">
-                                <i data-lucide="edit-2" style="width:16px;height:16px"></i>
-                            </button>
-                            <button @click="deleteGroup(group)" class="btn-icon" :disabled="group.is_default"
-                                    title="Delete">
-                                <i data-lucide="trash-2" style="width:16px;height:16px"
-                                   :style="group.is_default ? 'opacity:0.3' : ''"></i>
-                            </button>
-                        </div>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Comment</th>
+                    <th>Clients</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <template x-for="group in groups" :key="group.id">
+                    <tr>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-weight:500;color:var(--text-primary)" x-text="group.name"></span>
+                                <span x-show="group.is_default" class="badge badge-default">Default</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge" :class="group.enabled ? 'badge-success' : 'badge-inactive'"
+                                  x-text="group.enabled ? 'Enabled' : 'Disabled'"></span>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-secondary);font-size:14px"
+                                  x-text="group.comment || '-'"></span>
+                        </td>
+                        <td>
+                            <span style="color:var(--text-primary);font-weight:500"
+                                  x-text="group.client_count || 0"></span>
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:8px">
+                                <button @click="editGroup(group)" class="btn-icon" title="Edit">
+                                    <i data-lucide="edit-2" style="width:16px;height:16px"></i>
+                                </button>
+                                <button @click="deleteGroup(group)" class="btn-icon" :disabled="group.is_default"
+                                        title="Delete">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"
+                                       :style="group.is_default ? 'opacity:0.3' : ''"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="groups.length === 0">
+                    <td colspan="5" style="text-align:center;padding:48px;color:var(--text-secondary)">
+                        <i data-lucide="layers" style="width:48px;height:48px;margin-bottom:16px"></i>
+                        <p>No groups found</p>
                     </td>
                 </tr>
-            </template>
-            <tr x-show="groups.length === 0">
-                <td colspan="5" style="text-align:center;padding:48px;color:var(--text-secondary)">
-                    <i data-lucide="layers" style="width:48px;height:48px;margin-bottom:16px"></i>
-                    <p>No groups found</p>
-                </td>
-            </tr>
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+        </div>
     </div>
 </main>
 

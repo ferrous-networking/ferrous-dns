@@ -144,6 +144,17 @@
 
         .tab-btn:hover { color: var(--text-primary) }
 
+        /* The bar scrolls at these widths, which clips the underline where it overlaps
+           the border, so the bar draws its line inside instead and the tab covers it. */
+        @media (max-width: 1024px) {
+            .tab-bar {
+                border-bottom: none;
+                box-shadow: inset 0 -1px 0 var(--border-color)
+            }
+
+            .tab-btn { margin-bottom: 0 }
+        }
+
         .group-pills-wrap {
             display: flex;
             flex-wrap: wrap;
@@ -209,6 +220,16 @@
             padding: 6px;
             min-width: 160px;
             box-shadow: 0 4px 16px rgba(0,0,0,0.12)
+        }
+
+        /* Where the table scrolls inside its card, the scroll box would cut a floating
+           menu off on the last rows, so the menu opens in place, on its own line. */
+        @media (max-width: 1024px) {
+            .table-scroll .group-dropdown {
+                position: static;
+                flex-basis: 100%;
+                box-shadow: none
+            }
         }
 
         .group-check-item {

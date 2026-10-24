@@ -92,4 +92,9 @@
                 align-self: center;
                 width: 220px;
             }
+
+            /* Before the first query, a chart with no data keeps the canvas's default 300px. */
+            .chart-canvas-wrap canvas {
+                max-width: 100%
+            }
         }
