@@ -424,4 +424,140 @@ mod tests {
         );
         assert!(html.contains(r#"src="/static/vendor/scalar-api-reference-"#));
     }
+
+    /// An API with one route, `GET|POST /ping`, that answers with its name.
+    fn ping_api(name: &'static str) -> (Router, OpenApi) {
+        let router = Router::new().route(
+            "/ping",
+            get(move || async move { name }).post(move || async move { name }),
+        );
+        (router, OpenApi::default())
+    }
+
+    async fn send(app: &Router, method: Method, uri: &str) -> Response {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        app.clone().oneshot(request).await.unwrap()
+    }
+
+    async fn body_text(response: Response) -> String {
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    fn location(response: &Response) -> &str {
+        response.headers()[header::LOCATION].to_str().unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_api_answers_at_v1_base_without_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), None);
+
+        let response = send(&app, Method::GET, "/ferrous/api/v1/ping").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_text(response).await, "ferrous");
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_api_answers_at_v1_base_with_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), Some(ping_api("pihole")));
+
+        let ferrous = send(&app, Method::GET, "/ferrous/api/v1/ping").await;
+        let pihole = send(&app, Method::GET, "/api/ping").await;
+
+        assert_eq!(ferrous.status(), StatusCode::OK);
+        assert_eq!(body_text(ferrous).await, "ferrous");
+        assert_eq!(pihole.status(), StatusCode::OK);
+        assert_eq!(body_text(pihole).await, "pihole");
+    }
+
+    #[tokio::test]
+    async fn test_old_api_base_redirects_to_v1_without_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), None);
+
+        for (method, uri, expected) in [
+            (
+                Method::GET,
+                "/api/ping?a=1&b=2",
+                "/ferrous/api/v1/ping?a=1&b=2",
+            ),
+            (Method::POST, "/api/ping", "/ferrous/api/v1/ping"),
+            (Method::GET, "/ferrous/api/ping", "/ferrous/api/v1/ping"),
+        ] {
+            let response = send(&app, method, uri).await;
+
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT, "{uri}");
+            assert_eq!(location(&response), expected, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_old_ferrous_base_redirects_to_v1_with_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), Some(ping_api("pihole")));
+
+        let response = send(&app, Method::POST, "/ferrous/api/ping?x=1").await;
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(location(&response), "/ferrous/api/v1/ping?x=1");
+    }
+
+    #[tokio::test]
+    async fn test_pihole_api_base_is_never_redirected() {
+        let app = mount_apis(ping_api("ferrous"), Some(ping_api("pihole")));
+
+        let unknown = send(&app, Method::GET, "/api/unknown").await;
+
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_v1_paths_and_lookalike_prefixes_are_not_found() {
+        for pihole in [None, Some(ping_api("pihole"))] {
+            let app = mount_apis(ping_api("ferrous"), pihole);
+
+            for uri in [
+                "/ferrous/api/v1/unknown",
+                "/ferrous/api/v1",
+                "/apifoo",
+                "/ferrous/apifoo",
+            ] {
+                let response = send(&app, Method::GET, uri).await;
+
+                assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_config_js_points_the_ui_at_v1_in_every_mode() {
+        for pihole in [None, Some(ping_api("pihole"))] {
+            let app = mount_apis(ping_api("ferrous"), pihole);
+
+            let response = send(&app, Method::GET, "/ferrous-config.js").await;
+
+            assert!(body_text(response)
+                .await
+                .contains(r#"window.FERROUS_API_BASE = "/ferrous/api/v1";"#));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_openapi_specs_name_the_base_they_are_served_under() {
+        let app = mount_apis(ping_api("ferrous"), Some(ping_api("pihole")));
+
+        for (uri, base) in [
+            ("/ferrous/api/v1/openapi.json", "/ferrous/api/v1"),
+            ("/api/openapi.json", "/api"),
+        ] {
+            let response = send(&app, Method::GET, uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+
+            let spec: serde_json::Value = serde_json::from_str(&body_text(response).await).unwrap();
+            assert_eq!(spec["servers"][0]["url"], base, "{uri}");
+        }
+    }
 }
