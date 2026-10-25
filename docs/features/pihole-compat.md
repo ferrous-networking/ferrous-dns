@@ -23,17 +23,17 @@ When `pihole_compat = true`:
 | Path | API |
 |:-----|:----|
 | `/api/*` | Pi-hole v6 compatible API |
-| `/ferrous/api/*` | Ferrous DNS native API |
+| `/ferrous/api/v1/*` | Ferrous DNS native API |
 | `/` | Ferrous DNS dashboard (unchanged) |
-
-The Ferrous dashboard automatically detects the correct API prefix via the `/ferrous-config.js` endpoint — no manual configuration needed.
 
 When `pihole_compat = false` (default):
 
 | Path | API |
 |:-----|:----|
-| `/api/*` | Ferrous DNS native API |
+| `/ferrous/api/v1/*` | Ferrous DNS native API |
 | `/` | Ferrous DNS dashboard |
+
+The native API stays at `/ferrous/api/v1` in both modes, so switching Pi-hole compatibility on or off never moves it. Before v0.10.0 it moved between `/api` and `/ferrous/api`; those bases now redirect, see [Migrating from `/api` and `/ferrous/api`](../api.md#migrating-from-api-and-ferrousapi).
 
 ---
 
@@ -221,7 +221,7 @@ Each client carries `client` (its IP or subnet), `name` (`""` when unknown, and 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
 | `POST` | `/api/action/gravity` | Reload the blocklists and rebuild the block filter, streaming `text/plain` progress in the style of `pihole -g` (`?color=true` adds ANSI colours). As in FTL, a failure is reported in the text with `200` |
-| `POST` | `/api/action/restartdns` | Reload configuration in-memory (no process restart), like `POST /api/config/reload`: upstream pools hot-reloaded, command-line overrides kept |
+| `POST` | `/api/action/restartdns` | Reload configuration in-memory (no process restart), like `POST /ferrous/api/v1/config/reload`: upstream pools hot-reloaded, command-line overrides kept |
 | `POST` | `/api/action/flush/logs` | Delete every stored query, and the history built from them, as FTL does |
 
 `restartdns` and `flush/logs` reply `{"status": "success"}`.

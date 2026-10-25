@@ -180,6 +180,6 @@ The key is stored in `localStorage` and sent automatically with all API requests
 
 ## Pi-hole Compatibility Mode
 
-When `pihole_compat = true`, the dashboard continues to work normally. The frontend auto-detects the correct API prefix (`/ferrous/api` instead of `/api`) via the `/ferrous-config.js` endpoint.
+When `pihole_compat = true`, the dashboard continues to work normally: it talks to the Ferrous API at `/ferrous/api/v1`, which stays there in every mode.
 
 Third-party Pi-hole dashboards can connect to `/api/*` using the Pi-hole v6 session-based authentication.
