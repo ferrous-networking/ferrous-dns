@@ -214,8 +214,7 @@ async fn vendor_file_handler(Path(file): Path<String>) -> Response {
     }
 }
 
-/// The web app. The Pi-hole API, when `pihole_state` is given, takes `/api`
-/// and moves the Ferrous API to `/ferrous/api`.
+/// The web app: both APIs, the UI files, `/metrics` and co-hosted DoH.
 fn create_app(
     ferrous_state: AppState,
     pihole_state: Option<PiholeAppState>,
@@ -223,26 +222,12 @@ fn create_app(
     metrics_enabled: bool,
     doh: Option<Arc<DohContext>>,
 ) -> Router {
-    let pihole_compat = pihole_state.is_some();
     // Clone before the state is moved into the API router so the bare
     // `/metrics` route can carry its own copy.
     let metrics_state = metrics_enabled.then(|| ferrous_state.clone());
-    let (ferrous_router, ferrous_openapi) = create_api_router_with_openapi(ferrous_state);
-    let ferrous_branch = api_branch(ferrous_router, ferrous_openapi);
-
-    let router = match pihole_state {
-        Some(state) => {
-            let (pihole_router, pihole_openapi) = create_pihole_router_with_openapi(state);
-            Router::new()
-                .nest("/api", api_branch(pihole_router, pihole_openapi))
-                .nest("/ferrous/api", ferrous_branch)
-        }
-        None => Router::new().nest("/api", ferrous_branch),
-    };
-
-    let router = router.route(
-        "/ferrous-config.js",
-        get(ferrous_config_js_handler).with_state(pihole_compat),
+    let router = mount_apis(
+        create_api_router_with_openapi(ferrous_state),
+        pihole_state.map(create_pihole_router_with_openapi),
     );
     let mut app = static_files!(router, {
         "/static/shared.css" => ("shared.css", CSS),
@@ -300,6 +285,26 @@ fn create_app(
     }
 
     app
+}
+
+/// Both APIs, plus the `/ferrous-config.js` that tells the UI where the
+/// Ferrous one is. The Pi-hole API, when given, takes `/api` and moves the
+/// Ferrous API to `/ferrous/api`.
+fn mount_apis(ferrous: (Router, OpenApi), pihole: Option<(Router, OpenApi)>) -> Router {
+    let pihole_compat = pihole.is_some();
+    let ferrous_branch = api_branch(ferrous.0, ferrous.1);
+
+    let router = match pihole {
+        Some((pihole_router, pihole_openapi)) => Router::new()
+            .nest("/api", api_branch(pihole_router, pihole_openapi))
+            .nest("/ferrous/api", ferrous_branch),
+        None => Router::new().nest("/api", ferrous_branch),
+    };
+
+    router.route(
+        "/ferrous-config.js",
+        get(ferrous_config_js_handler).with_state(pihole_compat),
+    )
 }
 
 /// Returns a small JS snippet that sets `window.FERROUS_API_BASE` and
