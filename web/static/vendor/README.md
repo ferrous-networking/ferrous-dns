@@ -1,6 +1,6 @@
 # Vendored third-party assets
 
-Everything the admin UI and the API explorer (`/api/docs`) load from outside this
+Everything the admin UI and the API explorer (`/ferrous/api/v1/docs`) load from outside this
 repository lives here, compiled into the binary, so the UI works on a network
 with no internet access (#271). Nothing in this directory is edited by hand.
 

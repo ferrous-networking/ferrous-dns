@@ -13,7 +13,7 @@ The server ships a built-in interactive API explorer rendered with [Scalar](http
 | Ferrous (every mode) | `http://<server>:8080/ferrous/api/v1/openapi.json` | `http://<server>:8080/ferrous/api/v1/docs` |
 | Pi-hole v6 (`pihole_compat = true`) | `http://<server>:8080/api/openapi.json` | `http://<server>:8080/api/docs` |
 
-Each spec names the base it is served under as its server, so **Try it** and the tools below call the right URLs.
+Each spec names its own base as its server — see [Interactive Documentation](api.md#interactive-documentation-openapi-scalar).
 
 !!! note "Scalar, not Swagger UI"
     The bundled UI is Scalar, which renders the same OpenAPI 3.x spec Swagger UI consumes. If you prefer Swagger UI specifically, point it at the `openapi.json` endpoint above — the spec is identical.

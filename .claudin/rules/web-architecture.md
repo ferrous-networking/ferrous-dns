@@ -17,16 +17,16 @@ Vanilla HTML/CSS/JS + Alpine.js, **no build step, no framework, no npm**. Don't 
 
 ## How it's served
 
-- Assets are **compiled into the binary** in `crates/cli/src/server/web.rs`: our own files via the `static_files!` table (`web.rs:236-274`, one `url => (file, content type)` row each, `include_str!`). There is NO `ServeDir`/static dir at runtime: adding a page means adding its rows there.
-- Vendored files go through one route, `/static/vendor/{*file}`, backed by the `VENDOR_FILES` table (`web.rs:187`, `include_bytes!`) and served with `Cache-Control: immutable`. That is why an upgrade must be a **new versioned file name**, never an in-place replacement. A unit test fails if the table and the directory disagree.
-- The Ferrous API is mounted at `FERROUS_API_BASE` = `/ferrous/api/v1` in every mode (`mount_apis`, `web.rs:295`); the Pi-hole API takes `/api` when `pihole_compat` is on. The old bases (`/api` with compat off, `/ferrous/api`) 307-redirect to the new one until 2.0.
-- `/ferrous/api/v1/docs` (Scalar; the Pi-hole API has its own at `/api/docs`) renders `web/static/api-docs.html` through `utoipa-scalar`'s `custom_html` (`web.rs:129`); it loads the vendored Scalar build with `withDefaultFonts: false` (keeps it off `fonts.scalar.com`) and `agent`/`mcp` disabled (their buttons call `api.scalar.com`; "Generate MCP" uploads the spec there). Each spec names its base in `servers`, so "Try it" calls the mounted routes.
-- `/ferrous-config.js` is generated at runtime (`web.rs:361`) and injects `window.FERROUS_API_BASE` / `FERROUS_VERSION` — that's how the UI learns the API base; `shared.js:2` falls back to `/ferrous/api/v1`.
-- Gzip via `CompressionLayer` (`web.rs:276`). No CSP or other security headers are set. Everything is same-origin now, but Alpine's standard build evaluates expressions with `new Function`, so a CSP needs `'unsafe-eval'` or a switch to Alpine's CSP build.
+- Assets are **compiled into the binary** in `crates/cli/src/server/web.rs`: our own files via the `static_files!` table (`web.rs:247-285`, one `url => (file, content type)` row each, `include_str!`). There is NO `ServeDir`/static dir at runtime: adding a page means adding its rows there.
+- Vendored files go through one route, `/static/vendor/{*file}`, backed by the `VENDOR_FILES` table (`web.rs:198`, `include_bytes!`) and served with `Cache-Control: immutable`. That is why an upgrade must be a **new versioned file name**, never an in-place replacement. A unit test fails if the table and the directory disagree.
+- The Ferrous API is mounted at `FERROUS_API_BASE` = `/ferrous/api/v1` in every mode (constants at `web.rs:24`, `mount_apis` at `web.rs:308`); the Pi-hole API takes `/api` when `pihole_compat` is on. The old bases (`/api` with compat off, `/ferrous/api`) 307-redirect to the new one until 2.0.
+- `/ferrous/api/v1/docs` (Scalar; the Pi-hole API has its own at `/api/docs`) renders `web/static/api-docs.html` through `utoipa-scalar`'s `custom_html` (`web.rs:157`); it loads the vendored Scalar build with `withDefaultFonts: false` (keeps it off `fonts.scalar.com`) and `agent`/`mcp` disabled (their buttons call `api.scalar.com`; "Generate MCP" uploads the spec there). Each spec names its base in `servers`, so "Try it" calls the mounted routes.
+- `/ferrous-config.js` is generated at runtime (`web.rs:359`) and injects `window.FERROUS_API_BASE` / `FERROUS_VERSION` — that's how the UI learns the API base; `shared.js:3` falls back to `/ferrous/api/v1`, and a `web.rs` test keeps that literal equal to `FERROUS_API_BASE`.
+- Gzip via `CompressionLayer` (`web.rs:287`). No CSP or other security headers are set. Everything is same-origin now, but Alpine's standard build evaluates expressions with `new Function`, so a CSP needs `'unsafe-eval'` or a switch to Alpine's CSP build.
 
 ## Auth flow
 
 - Cookie session: server sets `ferrous_session` with `HttpOnly; SameSite=Strict` (`crates/api/src/handlers/auth.rs:23,54`); middleware `crates/api/src/middleware/require_auth.rs` accepts cookie or `X-Api-Key`.
-- Login page POSTs `/auth/login` (`login.js`), supports MFA (`/auth/2fa/verify`) and passkeys (WebAuthn base64url helpers in `shared.js:230-293`).
+- Login page POSTs `/auth/login` (`login.js`), supports MFA (`/auth/2fa/verify`) and passkeys (WebAuthn base64url helpers in `shared.js:255-321`).
 - Every page guards with `await checkAuth()` in `init()` — it probes `/auth/sessions` and redirects to `/login.html` on 401 (`shared.js:89-103`). New pages MUST call it.
 - Optional API key in localStorage (`ferrous_api_key`); `apiFetch()` (`shared.js:79-85`) injects the `X-Api-Key` header.

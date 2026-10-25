@@ -18,19 +18,10 @@ pihole_compat = true
 
 ## How It Works
 
-When `pihole_compat = true`:
-
-| Path | API |
-|:-----|:----|
-| `/api/*` | Pi-hole v6 compatible API |
-| `/ferrous/api/v1/*` | Ferrous DNS native API |
-| `/` | Ferrous DNS dashboard (unchanged) |
-
-When `pihole_compat = false` (default):
-
-| Path | API |
-|:-----|:----|
-| `/ferrous/api/v1/*` | Ferrous DNS native API |
+| Path | Serves |
+|:-----|:-------|
+| `/api/*` | Pi-hole v6 compatible API, only with `pihole_compat = true` |
+| `/ferrous/api/v1/*` | Ferrous DNS native API, in every mode |
 | `/` | Ferrous DNS dashboard |
 
 The native API stays at `/ferrous/api/v1` in both modes, so switching Pi-hole compatibility on or off never moves it. Before v0.10.0 it moved between `/api` and `/ferrous/api`; those bases now redirect, see [Migrating from `/api` and `/ferrous/api`](../api.md#migrating-from-api-and-ferrousapi).

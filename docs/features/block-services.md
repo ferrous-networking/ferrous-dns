@@ -162,7 +162,7 @@ If the built-in catalog doesn't cover a service you want to block, create a cust
 === "REST API"
 
     ```bash
-    curl -X POST http://localhost:8080/ferrous/api/v1/services/custom \
+    curl -X POST http://localhost:8080/ferrous/api/v1/custom-services \
       -H "Content-Type: application/json" \
       -d '{
         "name": "Internal Analytics",
@@ -514,7 +514,7 @@ curl -X DELETE http://localhost:8080/ferrous/api/v1/groups/2/schedule
 | `GET` | `/ferrous/api/v1/services` | List all blocked services |
 | `POST` | `/ferrous/api/v1/services` | Block a service for a group |
 | `DELETE` | `/ferrous/api/v1/services/{service_id}/groups/{group_id}` | Unblock a service |
-| `POST` | `/ferrous/api/v1/services/custom` | Create a custom service |
+| `POST` | `/ferrous/api/v1/custom-services` | Create a custom service |
 
 ### Schedule Profiles
 
