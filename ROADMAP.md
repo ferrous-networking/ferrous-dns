@@ -92,7 +92,7 @@
 #### Protocol & privacy
 
 - [x] Upstream anti-spoofing — off-path forgery validation on every plain-UDP (Do53) upstream response, for every record type: transaction-ID + question name/type checks always on; DNS Cookies (RFC 7873) always sent and validated gracefully; opt-in 0x20 QNAME case randomization (draft-vixie-dns-0x20) via `qname_case_randomization`, stripped from the response before it is cached so it never reaches clients. Encrypted transports (DoT/DoH/DoQ) skip cookie/0x20 *validation* (TLS already authenticates the upstream), tolerating upstreams that normalize QNAME case. Upstream source ports rotate so a discovered port goes stale
-- [x] DNSSEC downgrade protection — `Insecure` requires the parent's authenticated NSEC/NSEC3 proof of an unsigned delegation (RFC 4035 §5.2); the walk tells zone cuts from plain names, so stripping RRSIGs or the DS denial from a signed zone yields Bogus. Unproven DS denials are counted at `GET /api/dnssec/stats` (`ds_denials_unproven`) to expose upstreams that strip DNSSEC records
+- [x] DNSSEC downgrade protection — `Insecure` requires the parent's authenticated NSEC/NSEC3 proof of an unsigned delegation (RFC 4035 §5.2); the walk tells zone cuts from plain names, so stripping RRSIGs or the DS denial from a signed zone yields Bogus. Unproven DS denials are counted at `GET /ferrous/api/v1/dnssec/stats` (`ds_denials_unproven`) to expose upstreams that strip DNSSEC records
 - [x] EDNS UDP payload size negotiation + correct TC truncation (RFC 6891 §6.2.5 / RFC 7766) — honor client-advertised buffer, set TC=1 on oversized responses
 - [x] DNSSEC validation enforcement (RFC 4035 / RFC 6840) — `dnssec_mode = "Strict"` answers SERVFAIL on Bogus and Indeterminate (`Permissive`, the default, validates and tags without refusing), AD bit set/clear from validation, honor client CD bit
 - [x] DNS-over-QUIC (DoQ) server listener (RFC 9250) — serve encrypted DNS to clients over QUIC (upstream DoQ already supported)
@@ -127,6 +127,15 @@
 #### Pi-hole compatibility
 
 - [x] Pi-hole v6 API conformance — responses mirror FTL, plus every remaining v6 route Ferrous can answer, for dashboard integrations such as Homarr
+
+### 🎯 v0.10.0 - API v1
+
+- [x] Fixed API base — the Ferrous API answers at `/ferrous/api/v1` whether or not Pi-hole compatibility is on; the old `/api` and `/ferrous/api` bases redirect (307) until 2.0, and both OpenAPI specs name the base they are served under, so Scalar's **Try it** and generated clients reach the routes
+- [x] API versioning policy — from 1.0.0, v1 only changes additively; a breaking change ships as `/ferrous/api/v2`
+- [ ] `GET /ferrous/api/v1/health` answers JSON, with the authentication the docs describe
+- [ ] A config save that fails answers an error status instead of `200` with `success: false`
+- [ ] One pagination style across the list endpoints
+- [ ] The API reference describes mutation responses as they are and covers every route (DNSSEC stats, filter backtest, WebAuthn, 2FA)
 
 ### 🌟 v1.0.0 - Production Ready
 

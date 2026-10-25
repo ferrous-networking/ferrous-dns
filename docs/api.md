@@ -6,12 +6,34 @@ Ferrous DNS exposes a REST API for managing all aspects of the server. The API i
 
 ## Base URL
 
-| Mode | Base URL |
-|:-----|:---------|
-| Normal | `http://<server>:8080/api` |
-| Pi-hole compat | `http://<server>:8080/ferrous/api` |
+```
+http://<server>:8080/ferrous/api/v1
+```
 
-When `pihole_compat = true`, the Ferrous API moves to `/ferrous/api/*` and the Pi-hole v6 API occupies `/api/*`.
+The Ferrous API answers at `/ferrous/api/v1` whether or not `pihole_compat` is on. With `pihole_compat = true`, the [Pi-hole v6 API](#pi-hole-v6-compatibility-api) takes `/api`.
+
+---
+
+## Versioning
+
+The `v1` in the base URL is the API's major version.
+
+- **Until 1.0.0**, v1 can still change while its contract is settled.
+- **From 1.0.0**, v1 only changes in ways existing clients keep working with: new endpoints, new optional request fields or query parameters, and new response fields. Clients should ignore response fields they do not know.
+- **A breaking change** ships as a new major version at `/ferrous/api/v2`. v1 keeps answering for at least one minor release after v2 ships.
+
+The Pi-hole v6 API at `/api` is not versioned by Ferrous DNS: it follows Pi-hole FTL's v6 API. See [Pi-hole Compatibility](features/pihole-compat.md).
+
+### Migrating from `/api` and `/ferrous/api`
+
+Before v0.10.0 the Ferrous API answered at `/api`, or at `/ferrous/api` with `pihole_compat = true`. Both bases are deprecated and will be removed in 2.0. Until then they answer `307 Temporary Redirect` to the same route and query under `/ferrous/api/v1`:
+
+| Old request | Redirected to |
+|:------------|:--------------|
+| `GET /api/queries?limit=50` (Pi-hole compat off) | `/ferrous/api/v1/queries?limit=50` |
+| `POST /ferrous/api/blocklist-sources` (either mode) | `/ferrous/api/v1/blocklist-sources` |
+
+A 307 keeps the method and the body, so clients that follow redirects keep working, such as browsers, Python `requests` and JavaScript `fetch`. `curl` follows them only with `-L`. Update scripts and integrations to the new base anyway. With `pihole_compat = true`, `/api` belongs to the Pi-hole API and is never redirected.
 
 ---
 
@@ -19,13 +41,12 @@ When `pihole_compat = true`, the Ferrous API moves to `/ferrous/api/*` and the P
 
 Both APIs publish an OpenAPI 3.x specification and ship a built-in [Scalar](https://scalar.com) UI for interactive exploration. Scalar is embedded in the binary, so the explorer works without internet access. The endpoints are public — no authentication is required to read the spec or open the UI.
 
-| Mode | OpenAPI spec | Interactive docs |
-|:-----|:-------------|:-----------------|
-| Normal | `GET /api/openapi.json` | `GET /api/docs` |
-| Pi-hole compat (native API) | `GET /ferrous/api/openapi.json` | `GET /ferrous/api/docs` |
-| Pi-hole compat (Pi-hole API) | `GET /api/openapi.json` | `GET /api/docs` |
+| API | OpenAPI spec | Interactive docs |
+|:----|:-------------|:-----------------|
+| Ferrous (every mode) | `GET /ferrous/api/v1/openapi.json` | `GET /ferrous/api/v1/docs` |
+| Pi-hole v6 (`pihole_compat = true`) | `GET /api/openapi.json` | `GET /api/docs` |
 
-The spec describes every handler, request/response schema, parameter and security scheme (`session_cookie` + `X-Api-Key` for the native API, `X-FTL-SID` for the Pi-hole layer). It can be fed into any OpenAPI-aware tool (Postman, openapi-generator, schemathesis, …) to produce clients or contract tests — see [Integrations](integrations.md) for examples.
+The spec describes every handler, request/response schema, parameter and security scheme (`session_cookie` + `X-Api-Key` for the native API, `X-FTL-SID` for the Pi-hole layer). Each spec names the base it is served under as its server, so Scalar's **Try it** and generated clients call the right URLs. It can be fed into any OpenAPI-aware tool (Postman, openapi-generator, schemathesis, …) to produce clients or contract tests — see [Integrations](integrations.md) for examples.
 
 ---
 
@@ -38,7 +59,7 @@ When authentication is enabled (`[auth]` section in config), all API endpoints r
 Authenticate via the login endpoint to receive a session cookie:
 
 ```http
-POST /api/auth/login
+POST /ferrous/api/v1/auth/login
 Content-Type: application/json
 
 {
@@ -92,7 +113,7 @@ Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) 
 ### Health Check
 
 ```http
-GET /api/health
+GET /ferrous/api/v1/health
 ```
 
 Returns server health status.
@@ -100,7 +121,7 @@ Returns server health status.
 ### System Info
 
 ```http
-GET /api/system/info
+GET /ferrous/api/v1/system/info
 ```
 
 Returns system information: kernel version, load averages, memory usage.
@@ -108,7 +129,7 @@ Returns system information: kernel version, load averages, memory usage.
 ### Hostname
 
 ```http
-GET /api/hostname
+GET /ferrous/api/v1/hostname
 ```
 
 Returns the server hostname.
@@ -120,7 +141,7 @@ Returns the server hostname.
 ### Dashboard
 
 ```http
-GET /api/dashboard?period_hours=24
+GET /ferrous/api/v1/dashboard?period_hours=24
 ```
 
 Returns a single aggregated payload for the dashboard view: summary counts, the
@@ -138,7 +159,7 @@ the raw log and use the exact cutoff.
 ### Summary Stats
 
 ```http
-GET /api/stats
+GET /ferrous/api/v1/stats
 ```
 
 Returns aggregated query statistics: total queries, blocked queries, block rate.
@@ -146,7 +167,7 @@ Returns aggregated query statistics: total queries, blocked queries, block rate.
 ### Query Rate
 
 ```http
-GET /api/stats/rate?unit=second
+GET /ferrous/api/v1/stats/rate?unit=second
 ```
 
 Returns the current query rate. Supports `unit=second` or `unit=minute`.
@@ -154,7 +175,7 @@ Returns the current query rate. Supports `unit=second` or `unit=minute`.
 ### Query Timeline
 
 ```http
-GET /api/queries/timeline
+GET /ferrous/api/v1/queries/timeline
 ```
 
 Returns query volume over time for dashboard graphs.
@@ -162,13 +183,13 @@ Returns query volume over time for dashboard graphs.
 ### Top Blocked Domains
 
 ```http
-GET /api/stats/top_blocked
+GET /ferrous/api/v1/stats/top_blocked
 ```
 
 ### Top Clients
 
 ```http
-GET /api/stats/top_clients
+GET /ferrous/api/v1/stats/top_clients
 ```
 
 ---
@@ -178,7 +199,7 @@ GET /api/stats/top_clients
 ### List Queries
 
 ```http
-GET /api/queries?limit=100&offset=0
+GET /ferrous/api/v1/queries?limit=100&offset=0
 ```
 
 Returns recent DNS queries with filtering support.
@@ -206,17 +227,17 @@ its own, and `null` otherwise. A follower carries its leader's `cache_hit`,
 ### Get Config
 
 ```http
-GET /api/config
+GET /ferrous/api/v1/config
 ```
 
 Returns the full current configuration including server, DNS, blocking, logging, and database settings.
 
-`restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /api/config` (anything but upstream pools), `POST /api/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
+`restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /ferrous/api/v1/config` (anything but upstream pools), `POST /ferrous/api/v1/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
 
 ### Update Config
 
 ```http
-POST /api/config
+POST /ferrous/api/v1/config
 ```
 
 Partial update — only include the sections you want to change:
@@ -259,7 +280,7 @@ Partial update — only include the sections you want to change:
 }
 ```
 
-`GET /api/config` returns `domains`, `groups` and `internal` on every pool, empty or `false` for a default pool. When a save changes where some name is routed, the DNS cache is cleared.
+`GET /ferrous/api/v1/config` returns `domains`, `groups` and `internal` on every pool, empty or `false` for a default pool. When a save changes where some name is routed, the DNS cache is cleared.
 
 **Malware detection** (require restart). The master switch and the rebinding keys sit in `dns`; each engine is a nested object with the keys of its `ferrous-dns.toml` section ([reference](configuration/ferrous-dns-toml.md#tunneling-detection)), and any subset of them can be sent:
 
@@ -280,7 +301,7 @@ Partial update — only include the sections you want to change:
 }
 ```
 
-`GET /api/config` returns all of them, every key of every engine included.
+`GET /ferrous/api/v1/config` returns all of them, every key of every engine included.
 
 The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a whitelist entry that is not an exact domain name or an IP/CIDR, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
 
@@ -289,17 +310,17 @@ The file is rewritten atomically (a synced temp file renamed over it), so a cras
 ### Reload Config
 
 ```http
-POST /api/config/reload
+POST /ferrous/api/v1/config/reload
 ```
 
 Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart. A file that fails to parse or validate is reported with `success: false` and the running configuration is kept.
 
-The file is loaded the way startup loads it: command-line overrides the server was started with (`--dns-port`, `--web-port`, `--bind`, `--database`, `--log-level`) still win over the file. Changed upstream pools are rebuilt and swapped in live, as with `POST /api/config`; if that fails, nothing changes. A reload waits for any config save or backup import in progress, so it never interleaves with one. The Pi-hole `POST /api/action/restartdns` runs the same reload.
+The file is loaded the way startup loads it: command-line overrides the server was started with (`--dns-port`, `--web-port`, `--bind`, `--database`, `--log-level`) still win over the file. Changed upstream pools are rebuilt and swapped in live, as with `POST /ferrous/api/v1/config`; if that fails, nothing changes. A reload waits for any config save or backup import in progress, so it never interleaves with one. The Pi-hole `POST /api/action/restartdns` runs the same reload.
 
 ### Get Settings
 
 ```http
-GET /api/settings
+GET /ferrous/api/v1/settings
 ```
 
 Returns DNS-specific settings (non-FQDN blocking, PTR blocking, local domain).
@@ -307,10 +328,10 @@ Returns DNS-specific settings (non-FQDN blocking, PTR blocking, local domain).
 ### Update Settings
 
 ```http
-POST /api/settings
+POST /ferrous/api/v1/settings
 ```
 
-**Full replace** — unlike `POST /api/config` (a partial update), this endpoint overwrites the entire DNS settings form. Any field you omit reverts to its default: an omitted `sinkhole_ipv4` clears a previously-set sinkhole, an omitted `block_mode` resets it to `null_ip`. Send the complete object:
+**Full replace** — unlike `POST /ferrous/api/v1/config` (a partial update), this endpoint overwrites the entire DNS settings form. Any field you omit reverts to its default: an omitted `sinkhole_ipv4` clears a previously-set sinkhole, an omitted `block_mode` resets it to `null_ip`. Send the complete object:
 
 ```json
 {
@@ -338,7 +359,7 @@ Manage the certificate used for the HTTPS web interface.
 ### TLS Status
 
 ```http
-GET /api/tls/status
+GET /ferrous/api/v1/tls/status
 ```
 
 Returns the current certificate status: whether TLS is enabled, whether the cert
@@ -348,7 +369,7 @@ whether it is currently valid.
 ### Upload Certificates
 
 ```http
-POST /api/tls/upload
+POST /ferrous/api/v1/tls/upload
 Content-Type: multipart/form-data
 ```
 
@@ -359,7 +380,7 @@ Uploads a PEM `cert` and `key` pair via multipart form fields.
 ### Generate Self-Signed
 
 ```http
-POST /api/tls/generate?force=true
+POST /ferrous/api/v1/tls/generate?force=true
 ```
 
 Generates a self-signed certificate/key pair. Pass `?force=true` to overwrite
@@ -385,7 +406,7 @@ else: clients, managed domains and regex filters, for example, are not in it.
 ### Export Config
 
 ```http
-GET /api/config/export
+GET /ferrous/api/v1/config/export
 ```
 
 Returns a backup JSON document as a download (`Content-Disposition: attachment`,
@@ -394,7 +415,7 @@ filename `ferrous-backup-YYYY-MM-DD.json`).
 ### Import Config
 
 ```http
-POST /api/config/import
+POST /ferrous/api/v1/config/import
 Content-Type: multipart/form-data
 ```
 
@@ -439,7 +460,7 @@ multipart field (`file`). Returns an import summary describing what was applied.
 ### Auth Status
 
 ```http
-GET /api/auth/status
+GET /ferrous/api/v1/auth/status
 ```
 
 Returns whether authentication is enabled and whether a password has been configured. **Public** — no auth required.
@@ -454,7 +475,7 @@ Returns whether authentication is enabled and whether a password has been config
 ### First-Run Setup
 
 ```http
-POST /api/auth/setup
+POST /ferrous/api/v1/auth/setup
 ```
 
 Sets the admin password on first run (when no password is configured). **Public** — no auth required.
@@ -471,7 +492,7 @@ Sets the admin password on first run (when no password is configured). **Public*
 ### Login
 
 ```http
-POST /api/auth/login
+POST /ferrous/api/v1/auth/login
 ```
 
 Authenticates with username and password. Returns a session cookie (`ferrous_session`).
@@ -493,7 +514,7 @@ Authenticates with username and password. Returns a session cookie (`ferrous_ses
 ### Logout
 
 ```http
-POST /api/auth/logout
+POST /ferrous/api/v1/auth/logout
 ```
 
 Invalidates the current session. **Public** — no auth required (clears session if present).
@@ -501,7 +522,7 @@ Invalidates the current session. **Public** — no auth required (clears session
 ### Change Password
 
 ```http
-POST /api/auth/password
+POST /ferrous/api/v1/auth/password
 ```
 
 Changes the password of the signed-in user and returns `204`. **Protected** — the session cookie names the user, so an API token alone is refused with `401`. A wrong `current_password` returns `401` and changes nothing.
@@ -518,7 +539,7 @@ Every other session of that user is revoked, so a device signed in with the old 
 ### List Sessions
 
 ```http
-GET /api/auth/sessions
+GET /ferrous/api/v1/auth/sessions
 ```
 
 Returns all active sessions. **Protected**.
@@ -526,7 +547,7 @@ Returns all active sessions. **Protected**.
 ### Revoke Session
 
 ```http
-DELETE /api/auth/sessions/{id}
+DELETE /ferrous/api/v1/auth/sessions/{id}
 ```
 
 Revokes a specific session by ID. **Protected**. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
@@ -540,7 +561,7 @@ Named API tokens for programmatic access. Tokens are stored as SHA-256 hashes �
 ### List Tokens
 
 ```http
-GET /api/api-tokens
+GET /ferrous/api/v1/api-tokens
 ```
 
 Returns all tokens. Only the token prefix is shown in the listing.
@@ -548,7 +569,7 @@ Returns all tokens. Only the token prefix is shown in the listing.
 ### Create Token
 
 ```http
-POST /api/api-tokens
+POST /ferrous/api/v1/api-tokens
 ```
 
 ```json
@@ -570,7 +591,7 @@ Response includes the full token value — save it immediately:
 ### Update Token
 
 ```http
-PUT /api/api-tokens/{id}
+PUT /ferrous/api/v1/api-tokens/{id}
 ```
 
 Update the token name or import a custom key:
@@ -588,7 +609,7 @@ Update the token name or import a custom key:
 ### Delete Token
 
 ```http
-DELETE /api/api-tokens/{id}
+DELETE /ferrous/api/v1/api-tokens/{id}
 ```
 
 ---
@@ -601,7 +622,7 @@ DELETE /api/api-tokens/{id}
 ### List Users
 
 ```http
-GET /api/users
+GET /ferrous/api/v1/users
 ```
 
 Returns all users. **Protected**.
@@ -609,7 +630,7 @@ Returns all users. **Protected**.
 ### Create User
 
 ```http
-POST /api/users
+POST /ferrous/api/v1/users
 ```
 
 ```json
@@ -632,7 +653,7 @@ A username that is already taken returns `409`. The `[auth.admin]` username is a
 ### Delete User
 
 ```http
-DELETE /api/users/{id}
+DELETE /ferrous/api/v1/users/{id}
 ```
 
 ---
@@ -642,7 +663,7 @@ DELETE /api/users/{id}
 ### Cache Stats
 
 ```http
-GET /api/cache/stats
+GET /ferrous/api/v1/cache/stats
 ```
 
 Returns cache hit/miss counts, hit rate, and total entries.
@@ -650,7 +671,7 @@ Returns cache hit/miss counts, hit rate, and total entries.
 ### Cache Metrics
 
 ```http
-GET /api/cache/metrics
+GET /ferrous/api/v1/cache/metrics
 ```
 
 Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, expirations, hit rate. `expirations` counts the positive entries their timer removed past their TTL; `compactions` also counts expired negative answers.
@@ -658,7 +679,7 @@ Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic 
 ### Cache Overview
 
 ```http
-GET /api/cache/overview
+GET /ferrous/api/v1/cache/overview
 ```
 
 What the dashboard's **Cache Refreshes** card shows, from one pass over the cache:
@@ -680,7 +701,7 @@ What the dashboard's **Cache Refreshes** card shows, from one pass over the cach
 ### List Cache Entries
 
 ```http
-GET /api/cache/entries?limit=25&offset=0&sort=cached_at&order=desc
+GET /ferrous/api/v1/cache/entries?limit=25&offset=0&sort=cached_at&order=desc
 ```
 
 Returns the entries currently held in the positive cache, with filtering, ordering, and pagination.
@@ -703,7 +724,7 @@ The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "
 ### Delete Cache Entry
 
 ```http
-DELETE /api/cache/entries?domain=example.com&type=A
+DELETE /ferrous/api/v1/cache/entries?domain=example.com&type=A
 ```
 
 Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
@@ -715,7 +736,7 @@ Removes a single cache entry. Add `group_id` to remove a client group's split-ho
 ### Health Summary
 
 ```http
-GET /api/upstream/health
+GET /ferrous/api/v1/upstream/health
 ```
 
 Returns health status per upstream server (Healthy / Unhealthy).
@@ -723,7 +744,7 @@ Returns health status per upstream server (Healthy / Unhealthy).
 ### Health Detail
 
 ```http
-GET /api/upstream/health/detail
+GET /ferrous/api/v1/upstream/health/detail
 ```
 
 Returns detailed health information per upstream: pool name, strategy, latency metrics, failure counts.
@@ -735,7 +756,7 @@ Returns detailed health information per upstream: pool name, strategy, latency m
 ### List Clients
 
 ```http
-GET /api/clients?limit=1000
+GET /ferrous/api/v1/clients?limit=1000
 ```
 
 Returns all detected clients with IP, MAC, hostname, group, query count, and last seen.
@@ -743,7 +764,7 @@ Returns all detected clients with IP, MAC, hostname, group, query count, and las
 ### Client Stats
 
 ```http
-GET /api/clients/stats
+GET /ferrous/api/v1/clients/stats
 ```
 
 Returns per-client query statistics.
@@ -751,7 +772,7 @@ Returns per-client query statistics.
 ### Create Manual Client
 
 ```http
-POST /api/clients
+POST /ferrous/api/v1/clients
 ```
 
 ```json
@@ -764,7 +785,7 @@ POST /api/clients
 ### Update Client
 
 ```http
-PATCH /api/clients/{id}
+PATCH /ferrous/api/v1/clients/{id}
 ```
 
 ```json
@@ -776,13 +797,13 @@ PATCH /api/clients/{id}
 ### Delete Client
 
 ```http
-DELETE /api/clients/{id}
+DELETE /ferrous/api/v1/clients/{id}
 ```
 
 ### Assign Client to Group
 
 ```http
-PUT /api/clients/{id}/group
+PUT /ferrous/api/v1/clients/{id}/group
 ```
 
 ```json
@@ -800,13 +821,13 @@ Subnets auto-assign clients matching a CIDR range to a group.
 ### List Subnets
 
 ```http
-GET /api/client-subnets
+GET /ferrous/api/v1/client-subnets
 ```
 
 ### Create Subnet
 
 ```http
-POST /api/client-subnets
+POST /ferrous/api/v1/client-subnets
 ```
 
 ```json
@@ -823,7 +844,7 @@ Subnets stored before canonicalisation are rewritten the same way at startup. If
 ### Delete Subnet
 
 ```http
-DELETE /api/client-subnets/{id}
+DELETE /ferrous/api/v1/client-subnets/{id}
 ```
 
 ---
@@ -833,13 +854,13 @@ DELETE /api/client-subnets/{id}
 ### List Groups
 
 ```http
-GET /api/groups
+GET /ferrous/api/v1/groups
 ```
 
 ### Create Group
 
 ```http
-POST /api/groups
+POST /ferrous/api/v1/groups
 ```
 
 ```json
@@ -855,19 +876,19 @@ POST /api/groups
 ### Get Group
 
 ```http
-GET /api/groups/{id}
+GET /ferrous/api/v1/groups/{id}
 ```
 
 ### Update Group
 
 ```http
-PUT /api/groups/{id}
+PUT /ferrous/api/v1/groups/{id}
 ```
 
 ### Delete Group
 
 ```http
-DELETE /api/groups/{id}
+DELETE /ferrous/api/v1/groups/{id}
 ```
 
 Returns `409` if the group still has assigned clients, or if an upstream pool routes domains for it (its `groups` in a [conditional pool](configuration/dns.md#conditional-forwarding)); remove the group from the pool first. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
@@ -875,7 +896,7 @@ Returns `409` if the group still has assigned clients, or if an upstream pool ro
 ### Get Group Clients
 
 ```http
-GET /api/groups/{id}/clients
+GET /ferrous/api/v1/groups/{id}/clients
 ```
 
 ---
@@ -885,13 +906,13 @@ GET /api/groups/{id}/clients
 ### List Sources
 
 ```http
-GET /api/blocklist-sources
+GET /ferrous/api/v1/blocklist-sources
 ```
 
 ### Create Source
 
 ```http
-POST /api/blocklist-sources
+POST /ferrous/api/v1/blocklist-sources
 ```
 
 ```json
@@ -908,25 +929,25 @@ so it takes effect on the next query.
 ### Get Source
 
 ```http
-GET /api/blocklist-sources/{id}
+GET /ferrous/api/v1/blocklist-sources/{id}
 ```
 
 ### Update Source
 
 ```http
-PUT /api/blocklist-sources/{id}
+PUT /ferrous/api/v1/blocklist-sources/{id}
 ```
 
 ### Delete Source
 
 ```http
-DELETE /api/blocklist-sources/{id}
+DELETE /ferrous/api/v1/blocklist-sources/{id}
 ```
 
 ### Sync Sources
 
 ```http
-POST /api/blocklist-sources/{id}/sync
+POST /ferrous/api/v1/blocklist-sources/{id}/sync
 ```
 
 Refreshes the given source. The compiled index is a single snapshot keyed by a
@@ -955,13 +976,13 @@ change; the log line `Failed to fetch blocklist source` gives the reason.
 ### List Sources
 
 ```http
-GET /api/whitelist-sources
+GET /ferrous/api/v1/whitelist-sources
 ```
 
 ### Create Source
 
 ```http
-POST /api/whitelist-sources
+POST /ferrous/api/v1/whitelist-sources
 ```
 
 ```json
@@ -975,9 +996,9 @@ POST /api/whitelist-sources
 ### Get / Update / Delete
 
 ```http
-GET    /api/whitelist-sources/{id}
-PUT    /api/whitelist-sources/{id}
-DELETE /api/whitelist-sources/{id}
+GET    /ferrous/api/v1/whitelist-sources/{id}
+PUT    /ferrous/api/v1/whitelist-sources/{id}
+DELETE /ferrous/api/v1/whitelist-sources/{id}
 ```
 
 Creating, updating or deleting a whitelist source rebuilds the block filter, as blocklist source changes do, so the change applies without waiting for the daily sync. The rebuild re-downloads every enabled list.
@@ -991,13 +1012,13 @@ Individual domains added to the blocklist or allowlist via the dashboard.
 ### List Domains
 
 ```http
-GET /api/managed-domains?limit=100&offset=0
+GET /ferrous/api/v1/managed-domains?limit=100&offset=0
 ```
 
 ### Create Domain
 
 ```http
-POST /api/managed-domains
+POST /ferrous/api/v1/managed-domains
 ```
 
 ```json
@@ -1011,9 +1032,9 @@ POST /api/managed-domains
 ### Get / Update / Delete
 
 ```http
-GET    /api/managed-domains/{id}
-PUT    /api/managed-domains/{id}
-DELETE /api/managed-domains/{id}
+GET    /ferrous/api/v1/managed-domains/{id}
+PUT    /ferrous/api/v1/managed-domains/{id}
+DELETE /ferrous/api/v1/managed-domains/{id}
 ```
 
 `PUT` is a partial update: an absent field keeps its value. Send `"comment": null` to clear the comment.
@@ -1025,13 +1046,13 @@ DELETE /api/managed-domains/{id}
 ### List Filters
 
 ```http
-GET /api/regex-filters
+GET /ferrous/api/v1/regex-filters
 ```
 
 ### Create Filter
 
 ```http
-POST /api/regex-filters
+POST /ferrous/api/v1/regex-filters
 ```
 
 ```json
@@ -1045,9 +1066,9 @@ POST /api/regex-filters
 ### Get / Update / Delete
 
 ```http
-GET    /api/regex-filters/{id}
-PUT    /api/regex-filters/{id}
-DELETE /api/regex-filters/{id}
+GET    /ferrous/api/v1/regex-filters/{id}
+PUT    /ferrous/api/v1/regex-filters/{id}
+DELETE /ferrous/api/v1/regex-filters/{id}
 ```
 
 `PUT` is a partial update: an absent field keeps its value. Send `"comment": null` to clear the comment.
@@ -1057,7 +1078,7 @@ DELETE /api/regex-filters/{id}
 ## Block Filter Stats
 
 ```http
-GET /api/block-filter/stats
+GET /ferrous/api/v1/block-filter/stats
 ```
 
 Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
@@ -1069,7 +1090,7 @@ Returns blocking engine statistics: total domains in blocklist, total in allowli
 ### Get Active Blocklist
 
 ```http
-GET /api/blocklist
+GET /ferrous/api/v1/blocklist
 ```
 
 Returns the full compiled blocklist currently in memory.
@@ -1077,7 +1098,7 @@ Returns the full compiled blocklist currently in memory.
 ### Get Active Allowlist
 
 ```http
-GET /api/whitelist
+GET /ferrous/api/v1/whitelist
 ```
 
 Returns the full compiled allowlist currently in memory.
@@ -1089,13 +1110,13 @@ Returns the full compiled allowlist currently in memory.
 ### Service Catalog
 
 ```http
-GET /api/services/catalog
+GET /ferrous/api/v1/services/catalog
 ```
 
 Returns all available service categories (built-in + custom).
 
 ```http
-GET /api/services/catalog/{id}
+GET /ferrous/api/v1/services/catalog/{id}
 ```
 
 Returns a specific service definition with its domain list.
@@ -1103,7 +1124,7 @@ Returns a specific service definition with its domain list.
 ### Blocked Services
 
 ```http
-GET /api/services?group_id=1
+GET /ferrous/api/v1/services?group_id=1
 ```
 
 Returns services currently blocked for a group.
@@ -1111,7 +1132,7 @@ Returns services currently blocked for a group.
 ### Block Service
 
 ```http
-POST /api/services
+POST /ferrous/api/v1/services
 ```
 
 ```json
@@ -1124,7 +1145,7 @@ POST /api/services
 ### Unblock Service
 
 ```http
-DELETE /api/services/{service_id}/groups/{group_id}
+DELETE /ferrous/api/v1/services/{service_id}/groups/{group_id}
 ```
 
 ---
@@ -1136,8 +1157,8 @@ Define your own blockable service categories.
 ### List / Create
 
 ```http
-GET  /api/custom-services
-POST /api/custom-services
+GET  /ferrous/api/v1/custom-services
+POST /ferrous/api/v1/custom-services
 ```
 
 ```json
@@ -1151,9 +1172,9 @@ POST /api/custom-services
 ### Get / Update / Delete
 
 ```http
-GET    /api/custom-services/{id}
-PATCH  /api/custom-services/{id}
-DELETE /api/custom-services/{id}
+GET    /ferrous/api/v1/custom-services/{id}
+PATCH  /ferrous/api/v1/custom-services/{id}
+DELETE /ferrous/api/v1/custom-services/{id}
 ```
 
 ---
@@ -1163,14 +1184,14 @@ DELETE /api/custom-services/{id}
 ### Get Configs
 
 ```http
-GET /api/safe-search/configs
-GET /api/safe-search/configs/{group_id}
+GET /ferrous/api/v1/safe-search/configs
+GET /ferrous/api/v1/safe-search/configs/{group_id}
 ```
 
 ### Toggle Safe Search
 
 ```http
-POST /api/safe-search/configs/{group_id}
+POST /ferrous/api/v1/safe-search/configs/{group_id}
 ```
 
 ```json
@@ -1183,7 +1204,7 @@ POST /api/safe-search/configs/{group_id}
 ### Delete Configs
 
 ```http
-DELETE /api/safe-search/configs/{group_id}
+DELETE /ferrous/api/v1/safe-search/configs/{group_id}
 ```
 
 ---
@@ -1195,13 +1216,13 @@ Static A/AAAA records served directly from cache.
 ### List Records
 
 ```http
-GET /api/local-records
+GET /ferrous/api/v1/local-records
 ```
 
 ### Create Record
 
 ```http
-POST /api/local-records
+POST /ferrous/api/v1/local-records
 ```
 
 ```json
@@ -1217,8 +1238,8 @@ POST /api/local-records
 ### Update / Delete
 
 ```http
-PUT    /api/local-records/{id}
-DELETE /api/local-records/{id}
+PUT    /ferrous/api/v1/local-records/{id}
+DELETE /ferrous/api/v1/local-records/{id}
 ```
 
 ---
@@ -1230,8 +1251,8 @@ Time-based blocking profiles for parental controls.
 ### List / Create Profiles
 
 ```http
-GET  /api/schedule-profiles
-POST /api/schedule-profiles
+GET  /ferrous/api/v1/schedule-profiles
+POST /ferrous/api/v1/schedule-profiles
 ```
 
 ```json
@@ -1244,16 +1265,16 @@ POST /api/schedule-profiles
 ### Get / Update / Delete Profile
 
 ```http
-GET    /api/schedule-profiles/{id}
-PUT    /api/schedule-profiles/{id}
-DELETE /api/schedule-profiles/{id}
+GET    /ferrous/api/v1/schedule-profiles/{id}
+PUT    /ferrous/api/v1/schedule-profiles/{id}
+DELETE /ferrous/api/v1/schedule-profiles/{id}
 ```
 
 ### Manage Time Slots
 
 ```http
-POST   /api/schedule-profiles/{id}/slots
-DELETE /api/schedule-profiles/{id}/slots/{slot_id}
+POST   /ferrous/api/v1/schedule-profiles/{id}/slots
+DELETE /ferrous/api/v1/schedule-profiles/{id}/slots/{slot_id}
 ```
 
 ```json
@@ -1267,9 +1288,9 @@ DELETE /api/schedule-profiles/{id}/slots/{slot_id}
 ### Assign Schedule to Group
 
 ```http
-GET    /api/groups/{id}/schedule
-PUT    /api/groups/{id}/schedule
-DELETE /api/groups/{id}/schedule
+GET    /ferrous/api/v1/groups/{id}/schedule
+PUT    /ferrous/api/v1/groups/{id}/schedule
+DELETE /ferrous/api/v1/groups/{id}/schedule
 ```
 
 ```json
@@ -1283,7 +1304,7 @@ DELETE /api/groups/{id}/schedule
 ## Pi-hole v6 Compatibility API
 
 When `pihole_compat = true`, the Pi-hole v6 endpoints below are available at
-`/api/*` (and the native API moves to `/ferrous/api/*`). The compatibility layer
+`/api/*`, while the native API stays at `/ferrous/api/v1/*`. The compatibility layer
 is **not read-only** — it implements full CRUD for domains, lists, groups and
 clients, a blocking toggle, and the Pi-hole action endpoints. Every route answers
 with the response shapes and types of Pi-hole's FTL, and request bodies are read

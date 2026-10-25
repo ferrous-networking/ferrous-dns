@@ -21,7 +21,7 @@ Users authenticate with username and password via the login page. On success, a 
 Password and recovery-code hashing runs off Tokio workers, with at most two admitted cryptographic jobs process-wide. Recovery-code batches occupy one job; disconnecting a client does not release its capacity until the computation finishes.
 
 ```http
-POST /api/auth/login
+POST /ferrous/api/v1/auth/login
 Content-Type: application/json
 
 {
@@ -45,15 +45,15 @@ The client is the address of the TCP connection, never `X-Forwarded-For`: a head
 
 All API endpoints are protected by the auth guard middleware, except:
 
-- `GET /api/auth/status` — check if auth is enabled
-- `POST /api/auth/setup` — first-run password setup
-- `POST /api/auth/login` — login
-- `POST /api/auth/logout` — logout
-- `GET /api/health` — health check
+- `GET /ferrous/api/v1/auth/status` — check if auth is enabled
+- `POST /ferrous/api/v1/auth/setup` — first-run password setup
+- `POST /ferrous/api/v1/auth/login` — login
+- `POST /ferrous/api/v1/auth/logout` — logout
+- `GET /ferrous/api/v1/health` — health check
 
 ### Users and Roles
 
-Besides the `[auth.admin]` account from the config file, users can be created under **Settings > Users** or via `POST /api/users`. The admin username is reserved: no database user can take it, even before the admin's password is set.
+Besides the `[auth.admin]` account from the config file, users can be created under **Settings > Users** or via `POST /ferrous/api/v1/users`. The admin username is reserved: no database user can take it, even before the admin's password is set.
 
 Each user has a role, `admin` or `viewer`. **Roles are informational only**: they are stored and displayed, but no endpoint checks them, so a `viewer` has the same access as an `admin`. Only create accounts for people you would trust with full control.
 
@@ -62,8 +62,8 @@ Each user has a role, `admin` or `viewer`. **Roles are informational only**: the
 View and revoke active sessions from **Settings > Security** or via the API:
 
 ```http
-GET /api/auth/sessions
-DELETE /api/auth/sessions/{id}
+GET /ferrous/api/v1/auth/sessions
+DELETE /ferrous/api/v1/auth/sessions/{id}
 ```
 
 Like every other protected endpoint, these are not restricted by role or owner: any signed-in user or API token can list every session and revoke any of them, the admin's included.
@@ -73,7 +73,7 @@ Like every other protected endpoint, these are not restricted by role or owner: 
 Change the signed-in user's password from **Settings > Security** or via:
 
 ```http
-POST /api/auth/password
+POST /ferrous/api/v1/auth/password
 Content-Type: application/json
 
 {
@@ -107,10 +107,10 @@ API tokens and session cookies are both valid authentication methods. The auth g
 ### Token Management
 
 ```http
-GET    /api/api-tokens          # List all tokens (only prefix shown)
-POST   /api/api-tokens          # Create a new token
-PUT    /api/api-tokens/{id}     # Update token name or key
-DELETE /api/api-tokens/{id}     # Delete a token
+GET    /ferrous/api/v1/api-tokens          # List all tokens (only prefix shown)
+POST   /ferrous/api/v1/api-tokens          # Create a new token
+PUT    /ferrous/api/v1/api-tokens/{id}     # Update token name or key
+DELETE /ferrous/api/v1/api-tokens/{id}     # Delete a token
 ```
 
 !!! note "Token storage"
@@ -118,7 +118,7 @@ DELETE /api/api-tokens/{id}     # Delete a token
 
 ### Import Custom Keys
 
-You can import existing API keys (e.g., from a Pi-hole migration) via `PUT /api/api-tokens/{id}` with a custom key value.
+You can import existing API keys (e.g., from a Pi-hole migration) via `PUT /ferrous/api/v1/api-tokens/{id}` with a custom key value.
 
 ---
 
@@ -276,9 +276,9 @@ Navigate to **Settings > Security > HTTPS / TLS** to:
 ### TLS API Endpoints
 
 ```http
-GET  /api/tls/status              # Certificate status (exists, valid, subject, expiration)
-POST /api/tls/upload              # Upload cert + key (multipart/form-data)
-POST /api/tls/generate?force=true # Generate self-signed certificate
+GET  /ferrous/api/v1/tls/status              # Certificate status (exists, valid, subject, expiration)
+POST /ferrous/api/v1/tls/upload              # Upload cert + key (multipart/form-data)
+POST /ferrous/api/v1/tls/generate?force=true # Generate self-signed certificate
 ```
 
 !!! warning "Restart required"
@@ -520,7 +520,7 @@ The following are planned for future releases:
 | Mechanism | Status |
 |:----------|:-------|
 | DNSSEC validation | :white_check_mark: Active — `permissive` by default, `strict` to SERVFAIL on Bogus/Indeterminate |
-| DNSSEC downgrade (DS denial) | :white_check_mark: Enforced — an empty DS answer needs the parent's signed NSEC/NSEC3 proof; unproven answers are Bogus and counted at `/api/dnssec/stats` |
+| DNSSEC downgrade (DS denial) | :white_check_mark: Enforced — an empty DS answer needs the parent's signed NSEC/NSEC3 proof; unproven answers are Bogus and counted at `/ferrous/api/v1/dnssec/stats` |
 | Upstream response validation (txid + question + source) | :white_check_mark: Active on every transport |
 | Upstream source-port rotation | :white_check_mark: Active |
 | 0x20 QNAME case randomization | :grey_question: Opt-in — `qname_case_randomization`, off by default |

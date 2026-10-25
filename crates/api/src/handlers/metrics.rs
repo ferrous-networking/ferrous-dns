@@ -370,7 +370,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
 
 /// Router exposing a bare, unauthenticated `GET /metrics`.
 ///
-/// Mounted at the top level of the web server (outside the `/api` nest and its
+/// Mounted at the top level of the web server (outside the API nest and its
 /// auth layer), matching the Prometheus convention of scraping `/metrics`.
 pub fn metrics_routes(state: AppState) -> Router {
     Router::new()

@@ -1,7 +1,7 @@
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderValue, Method, StatusCode},
-    response::{IntoResponse, Response},
+    extract::{OriginalUri, Path},
+    http::{header, HeaderValue, Method, StatusCode, Uri},
+    response::{IntoResponse, Redirect, Response},
     routing::get,
     Json, Router,
 };
@@ -13,11 +13,23 @@ use tokio::net::TcpListener;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tracing::info;
+use utoipa::openapi::server::Server;
 use utoipa::openapi::OpenApi;
 use utoipa_scalar::{Scalar, Servable};
 
 use super::doh::{dns_query_handler, DohContext};
 use super::web_tls;
+
+/// Where the Ferrous API answers, whether or not `pihole_compat` is on.
+const FERROUS_API_BASE: &str = "/ferrous/api/v1";
+/// Where the Pi-hole v6 API answers when `pihole_compat` is on.
+const PIHOLE_API_BASE: &str = "/api";
+/// The Ferrous API's base before v0.10.0 without Pi-hole compat. It redirects
+/// to `FERROUS_API_BASE` until 2.0, while the Pi-hole API does not own it.
+const LEGACY_API_BASE: &str = "/api";
+/// The Ferrous API's base before v0.10.0 with Pi-hole compat. It redirects to
+/// `FERROUS_API_BASE` until 2.0, in every mode.
+const LEGACY_PIHOLE_MODE_API_BASE: &str = "/ferrous/api";
 
 pub async fn start_doh_server(bind_addr: SocketAddr, doh: Arc<DohContext>) -> anyhow::Result<()> {
     info!(
@@ -68,15 +80,15 @@ pub async fn start_web_server(
         info!(
             bind_address = %bind_addr,
             dashboard_url = format!("{}://{}", scheme, bind_addr),
-            ferrous_api_url = format!("{}://{}/ferrous/api", scheme, bind_addr),
-            pihole_api_url = format!("{}://{}/api", scheme, bind_addr),
+            ferrous_api_url = format!("{}://{}{}", scheme, bind_addr, FERROUS_API_BASE),
+            pihole_api_url = format!("{}://{}{}", scheme, bind_addr, PIHOLE_API_BASE),
             "Starting web server (Pi-hole compat mode)"
         );
     } else {
         info!(
             bind_address = %bind_addr,
             dashboard_url = format!("{}://{}", scheme, bind_addr),
-            api_url = format!("{}://{}/api", scheme, bind_addr),
+            api_url = format!("{}://{}{}", scheme, bind_addr, FERROUS_API_BASE),
             "Starting web server"
         );
     }
@@ -128,7 +140,10 @@ fn build_strict_cors(allowed_origins: &[String]) -> CorsLayer {
 const API_DOCS_HTML: &str = include_str!("../../../../web/static/api-docs.html");
 
 /// An API's routes plus its `/openapi.json` spec and Scalar UI at `/docs`.
-fn api_branch(router: Router, spec: OpenApi) -> Router {
+/// The spec names `base` as its server, so Scalar's "Try it" and generated
+/// clients call the routes where they are mounted.
+fn api_branch((router, mut spec): (Router, OpenApi), base: &str) -> Router {
+    spec.servers = Some(vec![Server::new(base)]);
     let json = spec.clone();
     Router::new()
         .route(
@@ -214,8 +229,7 @@ async fn vendor_file_handler(Path(file): Path<String>) -> Response {
     }
 }
 
-/// The web app. The Pi-hole API, when `pihole_state` is given, takes `/api`
-/// and moves the Ferrous API to `/ferrous/api`.
+/// The web app: both APIs, the UI files, `/metrics` and co-hosted DoH.
 fn create_app(
     ferrous_state: AppState,
     pihole_state: Option<PiholeAppState>,
@@ -223,26 +237,12 @@ fn create_app(
     metrics_enabled: bool,
     doh: Option<Arc<DohContext>>,
 ) -> Router {
-    let pihole_compat = pihole_state.is_some();
     // Clone before the state is moved into the API router so the bare
     // `/metrics` route can carry its own copy.
     let metrics_state = metrics_enabled.then(|| ferrous_state.clone());
-    let (ferrous_router, ferrous_openapi) = create_api_router_with_openapi(ferrous_state);
-    let ferrous_branch = api_branch(ferrous_router, ferrous_openapi);
-
-    let router = match pihole_state {
-        Some(state) => {
-            let (pihole_router, pihole_openapi) = create_pihole_router_with_openapi(state);
-            Router::new()
-                .nest("/api", api_branch(pihole_router, pihole_openapi))
-                .nest("/ferrous/api", ferrous_branch)
-        }
-        None => Router::new().nest("/api", ferrous_branch),
-    };
-
-    let router = router.route(
-        "/ferrous-config.js",
-        get(ferrous_config_js_handler).with_state(pihole_compat),
+    let router = mount_apis(
+        create_api_router_with_openapi(ferrous_state),
+        pihole_state.map(create_pihole_router_with_openapi),
     );
     let mut app = static_files!(router, {
         "/static/shared.css" => ("shared.css", CSS),
@@ -287,7 +287,7 @@ fn create_app(
     .layer(CompressionLayer::new().gzip(true))
     .layer(build_cors_layer(cors_allowed_origins));
 
-    // Bare unauthenticated `/metrics`, mounted outside the `/api` nest (and thus
+    // Bare unauthenticated `/metrics`, mounted outside the API nest (and thus
     // outside the auth layer) per the Prometheus scrape convention.
     if let Some(state) = metrics_state {
         app = app.merge(metrics_routes(state));
@@ -302,23 +302,65 @@ fn create_app(
     app
 }
 
+/// Both APIs, plus the `/ferrous-config.js` that tells the UI where the
+/// Ferrous one is. Requests on the Ferrous API's old bases fall through to
+/// a redirect.
+fn mount_apis(ferrous: (Router, OpenApi), pihole: Option<(Router, OpenApi)>) -> Router {
+    let pihole_compat = pihole.is_some();
+    let mut router = Router::new().nest(FERROUS_API_BASE, api_branch(ferrous, FERROUS_API_BASE));
+    if let Some(pihole) = pihole {
+        router = router.nest(PIHOLE_API_BASE, api_branch(pihole, PIHOLE_API_BASE));
+    }
+
+    router
+        .route("/ferrous-config.js", get(ferrous_config_js_handler))
+        .fallback(move |OriginalUri(uri): OriginalUri| async move {
+            redirect_legacy_api_base(&uri, pihole_compat)
+        })
+}
+
+/// Sends a request on an old Ferrous API base to the same route under
+/// `FERROUS_API_BASE`. A 307 keeps the method and body, and no browser caches
+/// it: `/api` turns into the Pi-hole API once `pihole_compat` is on.
+/// Anything else is a 404.
+fn redirect_legacy_api_base(uri: &Uri, pihole_compat: bool) -> Response {
+    match legacy_api_route(uri.path(), pihole_compat) {
+        Some(route) => {
+            let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
+            Redirect::temporary(&format!("{FERROUS_API_BASE}{route}{query}")).into_response()
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// The route `path` asks for on an old Ferrous API base, if it is on one.
+/// `/api` only counts while the Pi-hole API does not own it.
+fn legacy_api_route(path: &str, pihole_compat: bool) -> Option<&str> {
+    // v1 sits under the old `/ferrous/api` base: an unknown v1 route stays a
+    // 404 instead of redirecting to `/v1/v1/...`.
+    if route_under(path, FERROUS_API_BASE).is_some() {
+        return None;
+    }
+    route_under(path, LEGACY_PIHOLE_MODE_API_BASE)
+        .or_else(|| route_under(path, LEGACY_API_BASE).filter(|_| !pihole_compat))
+}
+
+/// The rest of `path` after `base`, when `path` is `base` or a route under it.
+fn route_under<'a>(path: &'a str, base: &str) -> Option<&'a str> {
+    path.strip_prefix(base)
+        .filter(|route| route.is_empty() || route.starts_with('/'))
+}
+
 /// Returns a small JS snippet that sets `window.FERROUS_API_BASE` and
 /// `window.FERROUS_VERSION` at runtime.
 ///
 /// The HTMLs are compiled into the binary via `include_str!` and cannot be
-/// patched at runtime, so the frontend discovers the correct API prefix here.
-///
-/// - `pihole_compat = false` → `window.FERROUS_API_BASE = "/api";`
-/// - `pihole_compat = true`  → `window.FERROUS_API_BASE = "/ferrous/api";`
-async fn ferrous_config_js_handler(State(pihole_compat): State<bool>) -> impl IntoResponse {
-    let api_base = if pihole_compat {
-        "/ferrous/api"
-    } else {
-        "/api"
-    };
+/// patched at runtime, so the frontend learns the API base here.
+async fn ferrous_config_js_handler() -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
-    let body =
-        format!(r#"window.FERROUS_API_BASE = "{api_base}";window.FERROUS_VERSION = "{version}";"#);
+    let body = format!(
+        r#"window.FERROUS_API_BASE = "{FERROUS_API_BASE}";window.FERROUS_VERSION = "{version}";"#
+    );
     (
         [(
             header::CONTENT_TYPE,
@@ -405,18 +447,172 @@ mod tests {
 
     #[tokio::test]
     async fn test_api_docs_load_scalar_from_the_binary() {
-        let response = api_branch(Router::new(), OpenApi::default())
+        let response = api_branch((Router::new(), OpenApi::default()), FERROUS_API_BASE)
             .oneshot(Request::get("/docs").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let html = String::from_utf8(body.to_vec()).unwrap();
+        let html = body_text(response).await;
         assert!(
             !html.contains(r#"src="http"#) && !html.contains(r#"href="http"#),
             "the API docs page fetches from a third-party host:\n{html}"
         );
         assert!(html.contains(r#"src="/static/vendor/scalar-api-reference-"#));
+    }
+
+    /// An API with one route, `GET|POST /ping`, that answers with its name.
+    fn ping_api(name: &'static str) -> (Router, OpenApi) {
+        let router = Router::new().route(
+            "/ping",
+            get(move || async move { name }).post(move || async move { name }),
+        );
+        (router, OpenApi::default())
+    }
+
+    /// The Pi-hole API's stand-in: `ping_api("pihole")` plus its own 404
+    /// fallback, as the real router has.
+    fn pihole_api() -> (Router, OpenApi) {
+        let (router, spec) = ping_api("pihole");
+        let router = router.fallback(|| async { (StatusCode::NOT_FOUND, "pihole not_found") });
+        (router, spec)
+    }
+
+    async fn send(app: &Router, method: Method, uri: &str) -> Response {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        app.clone().oneshot(request).await.unwrap()
+    }
+
+    async fn body_text(response: Response) -> String {
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    fn location(response: &Response) -> &str {
+        response.headers()[header::LOCATION].to_str().unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_api_answers_at_v1_base_without_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), None);
+
+        let response = send(&app, Method::GET, "/ferrous/api/v1/ping").await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_text(response).await, "ferrous");
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_api_answers_at_v1_base_with_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), Some(pihole_api()));
+
+        let ferrous = send(&app, Method::GET, "/ferrous/api/v1/ping").await;
+        let pihole = send(&app, Method::GET, "/api/ping").await;
+
+        assert_eq!(ferrous.status(), StatusCode::OK);
+        assert_eq!(body_text(ferrous).await, "ferrous");
+        assert_eq!(pihole.status(), StatusCode::OK);
+        assert_eq!(body_text(pihole).await, "pihole");
+    }
+
+    #[tokio::test]
+    async fn test_old_api_base_redirects_to_v1_without_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), None);
+
+        for (method, uri, expected) in [
+            (
+                Method::GET,
+                "/api/ping?a=1&b=2",
+                "/ferrous/api/v1/ping?a=1&b=2",
+            ),
+            (Method::POST, "/api/ping", "/ferrous/api/v1/ping"),
+            (Method::GET, "/ferrous/api/ping", "/ferrous/api/v1/ping"),
+        ] {
+            let response = send(&app, method, uri).await;
+
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT, "{uri}");
+            assert_eq!(location(&response), expected, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_old_ferrous_base_redirects_to_v1_with_pihole_compat() {
+        let app = mount_apis(ping_api("ferrous"), Some(pihole_api()));
+
+        let response = send(&app, Method::POST, "/ferrous/api/ping?x=1").await;
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(location(&response), "/ferrous/api/v1/ping?x=1");
+    }
+
+    #[tokio::test]
+    async fn test_pihole_api_base_is_never_redirected() {
+        let app = mount_apis(ping_api("ferrous"), Some(pihole_api()));
+
+        let unknown = send(&app, Method::GET, "/api/unknown").await;
+        // `/api/` misses the Pi-hole router's catch-all and reaches ours.
+        let bare = send(&app, Method::GET, "/api/").await;
+
+        assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_text(unknown).await, "pihole not_found");
+        assert_eq!(bare.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_v1_paths_and_lookalike_prefixes_are_not_found() {
+        for pihole in [None, Some(pihole_api())] {
+            let app = mount_apis(ping_api("ferrous"), pihole);
+
+            for uri in [
+                "/ferrous/api/v1/unknown",
+                "/ferrous/api/v1",
+                "/apifoo",
+                "/ferrous/apifoo",
+            ] {
+                let response = send(&app, Method::GET, uri).await;
+
+                assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ferrous_config_js_points_the_ui_at_v1_in_every_mode() {
+        for pihole in [None, Some(pihole_api())] {
+            let app = mount_apis(ping_api("ferrous"), pihole);
+
+            let response = send(&app, Method::GET, "/ferrous-config.js").await;
+
+            assert!(body_text(response)
+                .await
+                .contains(r#"window.FERROUS_API_BASE = "/ferrous/api/v1";"#));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_openapi_specs_name_the_base_they_are_served_under() {
+        let app = mount_apis(ping_api("ferrous"), Some(pihole_api()));
+
+        for (uri, base) in [
+            ("/ferrous/api/v1/openapi.json", "/ferrous/api/v1"),
+            ("/api/openapi.json", "/api"),
+        ] {
+            let response = send(&app, Method::GET, uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+
+            let spec: serde_json::Value = serde_json::from_str(&body_text(response).await).unwrap();
+            assert_eq!(spec["servers"][0]["url"], base, "{uri}");
+        }
+    }
+
+    #[test]
+    fn test_shared_js_falls_back_to_the_ferrous_api_base() {
+        let shared_js = include_str!("../../../../web/static/shared.js");
+
+        assert!(shared_js.contains(&format!("window.FERROUS_API_BASE || '{FERROUS_API_BASE}'")));
     }
 }

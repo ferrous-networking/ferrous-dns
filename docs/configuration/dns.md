@@ -294,7 +294,7 @@ Ferrous DNS validates DNSSEC signatures (chain of trust from the root KSK, RSA/E
 - **AD bit** (Authenticated Data, RFC 6840): set only when a response validates as `Secure` and the client did not set the CD bit.
 - **CD bit** (Checking Disabled, RFC 4035): when a client sets CD, enforcement is skipped for that query so the client can perform its own validation — Strict mode will not `SERVFAIL` it.
 - **Fail-closed**: `Insecure` is served only when a signed proof shows the name sits below an unsigned delegation. An answer stripped of its signatures or its denial proof is `Bogus`, and a chain that could not be fetched (timeouts, unreachable upstream) is `Indeterminate`; Strict rejects both. Neither is cached, so the next query revalidates.
-- **Upstreams must pass DNSSEC records through.** A forwarder that drops RRSIG/NSEC/NSEC3 (some home routers do) makes signed names `Bogus`. `ds_denials_unproven` at `GET /api/dnssec/stats` counts that case; watch it under `Permissive` before switching to `Strict`.
+- **Upstreams must pass DNSSEC records through.** A forwarder that drops RRSIG/NSEC/NSEC3 (some home routers do) makes signed names `Bogus`. `ds_denials_unproven` at `GET /ferrous/api/v1/dnssec/stats` counts that case; watch it under `Permissive` before switching to `Strict`.
 - **Conditional pools.** Answers from a [conditional pool](#conditional-forwarding) marked `internal = true` are not validated. DS and DNSKEY lookups follow conditional pools for every client, so a national zone routed to its own resolvers is validated through them.
 
 ```toml title="ferrous-dns.toml"

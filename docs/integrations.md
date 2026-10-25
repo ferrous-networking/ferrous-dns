@@ -8,11 +8,12 @@ Ferrous DNS is built around a fully documented REST API, so any tool that speaks
 
 The server ships a built-in interactive API explorer rendered with [Scalar](https://scalar.com) — the same "try it in the browser" experience you get from Swagger UI. It is served on the web port (`web_port`, default `8080`) and requires **no authentication** to open.
 
-| Mode | OpenAPI spec | Interactive docs |
-|:-----|:-------------|:-----------------|
-| Normal | `http://<server>:8080/api/openapi.json` | `http://<server>:8080/api/docs` |
-| Pi-hole compat (native API) | `http://<server>:8080/ferrous/api/openapi.json` | `http://<server>:8080/ferrous/api/docs` |
-| Pi-hole compat (Pi-hole API) | `http://<server>:8080/api/openapi.json` | `http://<server>:8080/api/docs` |
+| API | OpenAPI spec | Interactive docs |
+|:----|:-------------|:-----------------|
+| Ferrous (every mode) | `http://<server>:8080/ferrous/api/v1/openapi.json` | `http://<server>:8080/ferrous/api/v1/docs` |
+| Pi-hole v6 (`pihole_compat = true`) | `http://<server>:8080/api/openapi.json` | `http://<server>:8080/api/docs` |
+
+Each spec names its own base as its server — see [Interactive Documentation](api.md#interactive-documentation-openapi-scalar).
 
 !!! note "Scalar, not Swagger UI"
     The bundled UI is Scalar, which renders the same OpenAPI 3.x spec Swagger UI consumes. If you prefer Swagger UI specifically, point it at the `openapi.json` endpoint above — the spec is identical.
@@ -26,27 +27,27 @@ The spec describes every handler, request/response schema, parameter, and securi
 === "Swagger UI"
     ```bash
     docker run -p 8081:8080 \
-      -e SWAGGER_JSON_URL=http://<server>:8080/api/openapi.json \
+      -e SWAGGER_JSON_URL=http://<server>:8080/ferrous/api/v1/openapi.json \
       swaggerapi/swagger-ui
     ```
 
 === "Postman / Insomnia"
     Import the collection from the spec URL:
     ```text
-    http://<server>:8080/api/openapi.json
+    http://<server>:8080/ferrous/api/v1/openapi.json
     ```
 
 === "Generate a client"
     ```bash
     openapi-generator-cli generate \
-      -i http://<server>:8080/api/openapi.json \
+      -i http://<server>:8080/ferrous/api/v1/openapi.json \
       -g python \
       -o ./ferrous-client
     ```
 
 === "Contract tests"
     ```bash
-    schemathesis run http://<server>:8080/api/openapi.json \
+    schemathesis run http://<server>:8080/ferrous/api/v1/openapi.json \
       --header "X-Api-Key: your-token"
     ```
 
@@ -57,7 +58,7 @@ The spec describes every handler, request/response schema, parameter, and securi
 
 ## Pi-hole v6 API
 
-When `pihole_compat = true`, Ferrous DNS also exposes a Pi-hole v6 compatible API at `/api/*`, so existing Pi-hole clients, mobile apps, and dashboards work unchanged. The native Ferrous API moves to `/ferrous/api/*` in this mode.
+When `pihole_compat = true`, Ferrous DNS also exposes a Pi-hole v6 compatible API at `/api/*`, so existing Pi-hole clients, mobile apps, and dashboards work unchanged. The native Ferrous API stays at `/ferrous/api/v1/*`.
 
 See [Pi-hole Compatibility](features/pihole-compat.md) for the supported endpoints and behaviour.
 

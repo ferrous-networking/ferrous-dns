@@ -165,7 +165,7 @@ Click **Allow** next to the domain in the query log, or add it under **DNS Filte
 That single step covers every row in the table above except `non_fqdn` / `private_ptr`, which only turning the setting off lifts. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
 
 ```bash
-curl -X POST http://localhost:8080/api/managed-domains \
+curl -X POST http://localhost:8080/ferrous/api/v1/managed-domains \
   -H 'Content-Type: application/json' \
   -d '{"name":"needed by build agent","domain":"cdn.example.com","action":"allow","group_id":1}'
 ```

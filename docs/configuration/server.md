@@ -125,7 +125,7 @@ API tokens provide programmatic access via the `X-Api-Key` header. Tokens are ma
 
 ### Auth Guard
 
-All API endpoints are protected except public auth routes (`/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/logout`) and the health check (`/api/health`).
+All API endpoints are protected except public auth routes (`/ferrous/api/v1/auth/status`, `/ferrous/api/v1/auth/setup`, `/ferrous/api/v1/auth/login`, `/ferrous/api/v1/auth/logout`) and the health check (`/ferrous/api/v1/health`).
 
 !!! info "Background cleanup"
     A background task runs periodically to prune expired sessions from the database.
@@ -182,8 +182,7 @@ pihole_compat = true
 When `pihole_compat = true`:
 
 - Pi-hole API is served at `/api/*`
-- Ferrous DNS native API moves to `/ferrous/api/*`
-- The frontend auto-detects the correct prefix via `/ferrous-config.js`
+- Ferrous DNS native API stays at `/ferrous/api/v1/*`, as in every mode
 
 ---
 

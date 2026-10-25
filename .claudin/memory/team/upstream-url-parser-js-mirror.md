@@ -25,5 +25,5 @@ Two rules for anyone changing how upstream server URLs are parsed. They come fro
 the 2026-09-25 run over 43 inputs caught `999.1.1.1:53`.
 
 **How to apply:** after any parser change, rerun the parity check (Playwright
-`app().upstreamUrlError(x)` against `POST /api/config`), per [[runtime-verification-recipe]].
+`app().upstreamUrlError(x)` against `POST /ferrous/api/v1/config`), per [[runtime-verification-recipe]].
 Related: [[upstream-hostname-startup-only-resolution]].

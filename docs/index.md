@@ -77,9 +77,9 @@ With a 1,000,000-rule blocklist enabled throughput holds at **834,485 q/s** — 
 === "Observability"
 
     - **Prometheus / OpenMetrics endpoint** at `/metrics` (opt-in via `metrics_enabled`) — cache, upstream health, blocklist size and query volume
-    - **OpenAPI description** at `/openapi.json` with a built-in API explorer
+    - **OpenAPI description** at `/ferrous/api/v1/openapi.json` with a built-in API explorer
     - **SQLite query log** with per-client, per-domain and DNSSEC-status filtering
-    - **DNSSEC statistics** at `/api/dnssec/stats`, including a counter of DS denials upstreams left unproven
+    - **DNSSEC statistics** at `/ferrous/api/v1/dnssec/stats`, including a counter of DS denials upstreams left unproven
     - Details: [Metrics & Monitoring](features/metrics.md)
 
 ---

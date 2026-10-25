@@ -19,7 +19,7 @@ The endpoint is then served at:
 GET http://<host>:<web_port>/metrics
 ```
 
-It sits at the top level of the web server — on the same port as the dashboard (`web_port`, default `8080`), *not* under `/api` or `/ferrous/api`. When `metrics_enabled = false` the route is not registered at all and returns 404.
+It sits at the top level of the web server — on the same port as the dashboard (`web_port`, default `8080`), *not* under the API base `/ferrous/api/v1`. When `metrics_enabled = false` the route is not registered at all and returns 404.
 
 Responses use the OpenMetrics content type `application/openmetrics-text; version=1.0.0; charset=utf-8`, which both Prometheus and the OpenTelemetry Collector scrape natively.
 
@@ -147,5 +147,5 @@ Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, `fe
 | Endpoint | Auth | Purpose |
 |:---------|:-----|:--------|
 | `/metrics` | None | Prometheus / OpenMetrics scrape |
-| `/api/dnssec/stats` | Yes | DNSSEC validation counters, including `ds_denials_unproven` |
-| `/openapi.json` | None | OpenAPI description of the REST API |
+| `/ferrous/api/v1/dnssec/stats` | Yes | DNSSEC validation counters, including `ds_denials_unproven` |
+| `/ferrous/api/v1/openapi.json` | None | OpenAPI description of the REST API |

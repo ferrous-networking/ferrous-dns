@@ -65,10 +65,10 @@ The built-in catalog contains hundreds of services organized into categories. Ea
 
     ```bash
     # List all services
-    curl http://localhost:8080/api/services/catalog
+    curl http://localhost:8080/ferrous/api/v1/services/catalog
 
     # Get a specific service
-    curl http://localhost:8080/api/services/catalog/google-ads
+    curl http://localhost:8080/ferrous/api/v1/services/catalog/google-ads
     ```
 
     Response:
@@ -104,7 +104,7 @@ The built-in catalog contains hundreds of services organized into categories. Ea
 
     ```bash
     # Block Facebook for the "Kids" group (group_id = 2)
-    curl -X POST http://localhost:8080/api/services \
+    curl -X POST http://localhost:8080/ferrous/api/v1/services \
       -H "Content-Type: application/json" \
       -d '{"service_id": "facebook", "group_id": 2}'
     ```
@@ -129,17 +129,17 @@ The built-in catalog contains hundreds of services organized into categories. Ea
 
     ```bash
     # Unblock Facebook for group 2
-    curl -X DELETE http://localhost:8080/api/services/facebook/groups/2
+    curl -X DELETE http://localhost:8080/ferrous/api/v1/services/facebook/groups/2
     ```
 
 ### Listing Blocked Services
 
 ```bash
 # All blocked services for a group
-curl http://localhost:8080/api/services?group_id=2
+curl http://localhost:8080/ferrous/api/v1/services?group_id=2
 
 # All blocked services globally
-curl http://localhost:8080/api/services
+curl http://localhost:8080/ferrous/api/v1/services
 ```
 
 ---
@@ -162,7 +162,7 @@ If the built-in catalog doesn't cover a service you want to block, create a cust
 === "REST API"
 
     ```bash
-    curl -X POST http://localhost:8080/api/services/custom \
+    curl -X POST http://localhost:8080/ferrous/api/v1/custom-services \
       -H "Content-Type: application/json" \
       -d '{
         "name": "Internal Analytics",
@@ -257,7 +257,7 @@ Block all internet for children's devices on school nights:
 
     ```bash
     # 1. Create the profile
-    curl -X POST http://localhost:8080/api/schedule-profiles \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles \
       -H "Content-Type: application/json" \
       -d '{
         "name": "Kids Bedtime",
@@ -267,7 +267,7 @@ Block all internet for children's devices on school nights:
     # Response: { "id": 1, ... }
 
     # 2. Add slot: Mon–Thu 21:00–23:59 (days bitmask: 1+2+4+8 = 15)
-    curl -X POST http://localhost:8080/api/schedule-profiles/1/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/1/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 15,
@@ -277,7 +277,7 @@ Block all internet for children's devices on school nights:
       }'
 
     # 3. Add slot: Fri–Sat 23:00–23:59 (days bitmask: 16+32 = 48)
-    curl -X POST http://localhost:8080/api/schedule-profiles/1/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/1/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 48,
@@ -287,7 +287,7 @@ Block all internet for children's devices on school nights:
       }'
 
     # 4. Assign profile to Kids group (group_id = 2)
-    curl -X PUT http://localhost:8080/api/groups/2/schedule \
+    curl -X PUT http://localhost:8080/ferrous/api/v1/groups/2/schedule \
       -H "Content-Type: application/json" \
       -d '{"profile_id": 1}'
     ```
@@ -310,7 +310,7 @@ Block distracting services during work hours, allow everything outside:
 
     ```bash
     # Create profile
-    curl -X POST http://localhost:8080/api/schedule-profiles \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles \
       -H "Content-Type: application/json" \
       -d '{
         "name": "Work Focus",
@@ -319,7 +319,7 @@ Block distracting services during work hours, allow everything outside:
       }'
 
     # Add slot: Mon–Fri 09:00–18:00 (days: 1+2+4+8+16 = 31)
-    curl -X POST http://localhost:8080/api/schedule-profiles/2/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/2/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 31,
@@ -329,7 +329,7 @@ Block distracting services during work hours, allow everything outside:
       }'
 
     # Assign to Work group (group_id = 3)
-    curl -X PUT http://localhost:8080/api/groups/3/schedule \
+    curl -X PUT http://localhost:8080/ferrous/api/v1/groups/3/schedule \
       -H "Content-Type: application/json" \
       -d '{"profile_id": 2}'
     ```
@@ -352,7 +352,7 @@ Children's devices are normally blocked, but allow internet on Saturday afternoo
 === "REST API"
 
     ```bash
-    curl -X POST http://localhost:8080/api/schedule-profiles \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles \
       -H "Content-Type: application/json" \
       -d '{
         "name": "Kids Weekend",
@@ -361,7 +361,7 @@ Children's devices are normally blocked, but allow internet on Saturday afternoo
       }'
 
     # Block all week (days: 127 = all days)
-    curl -X POST http://localhost:8080/api/schedule-profiles/3/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/3/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 127,
@@ -370,7 +370,7 @@ Children's devices are normally blocked, but allow internet on Saturday afternoo
         "action": "block_all"
       }'
 
-    curl -X POST http://localhost:8080/api/schedule-profiles/3/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/3/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 127,
@@ -380,7 +380,7 @@ Children's devices are normally blocked, but allow internet on Saturday afternoo
       }'
 
     # Allow Saturday 14:00–18:00 (days: 32 = Saturday)
-    curl -X POST http://localhost:8080/api/schedule-profiles/3/slots \
+    curl -X POST http://localhost:8080/ferrous/api/v1/schedule-profiles/3/slots \
       -H "Content-Type: application/json" \
       -d '{
         "days": 32,
@@ -423,13 +423,13 @@ Time slots use a bitmask to represent days of the week. Combine values with addi
 ### List All Profiles
 
 ```bash
-curl http://localhost:8080/api/schedule-profiles
+curl http://localhost:8080/ferrous/api/v1/schedule-profiles
 ```
 
 ### Get Profile with Slots
 
 ```bash
-curl http://localhost:8080/api/schedule-profiles/1
+curl http://localhost:8080/ferrous/api/v1/schedule-profiles/1
 ```
 
 Response:
@@ -467,7 +467,7 @@ Response:
 ### Update a Profile
 
 ```bash
-curl -X PUT http://localhost:8080/api/schedule-profiles/1 \
+curl -X PUT http://localhost:8080/ferrous/api/v1/schedule-profiles/1 \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Kids School Night",
@@ -479,7 +479,7 @@ curl -X PUT http://localhost:8080/api/schedule-profiles/1 \
 ### Delete a Slot
 
 ```bash
-curl -X DELETE http://localhost:8080/api/schedule-profiles/1/slots/2
+curl -X DELETE http://localhost:8080/ferrous/api/v1/schedule-profiles/1/slots/2
 ```
 
 ### Delete a Profile
@@ -487,17 +487,17 @@ curl -X DELETE http://localhost:8080/api/schedule-profiles/1/slots/2
 Deleting a profile removes all its slots and group assignments:
 
 ```bash
-curl -X DELETE http://localhost:8080/api/schedule-profiles/1
+curl -X DELETE http://localhost:8080/ferrous/api/v1/schedule-profiles/1
 ```
 
 ### Check Group Assignment
 
 ```bash
 # What schedule is assigned to group 2?
-curl http://localhost:8080/api/groups/2/schedule
+curl http://localhost:8080/ferrous/api/v1/groups/2/schedule
 
 # Remove schedule from group
-curl -X DELETE http://localhost:8080/api/groups/2/schedule
+curl -X DELETE http://localhost:8080/ferrous/api/v1/groups/2/schedule
 ```
 
 ---
@@ -508,25 +508,25 @@ curl -X DELETE http://localhost:8080/api/groups/2/schedule
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/services/catalog` | List all services (built-in + custom) |
-| `GET` | `/api/services/catalog/{id}` | Get a single service definition |
-| `GET` | `/api/services?group_id={id}` | List blocked services for a group |
-| `GET` | `/api/services` | List all blocked services |
-| `POST` | `/api/services` | Block a service for a group |
-| `DELETE` | `/api/services/{service_id}/groups/{group_id}` | Unblock a service |
-| `POST` | `/api/services/custom` | Create a custom service |
+| `GET` | `/ferrous/api/v1/services/catalog` | List all services (built-in + custom) |
+| `GET` | `/ferrous/api/v1/services/catalog/{id}` | Get a single service definition |
+| `GET` | `/ferrous/api/v1/services?group_id={id}` | List blocked services for a group |
+| `GET` | `/ferrous/api/v1/services` | List all blocked services |
+| `POST` | `/ferrous/api/v1/services` | Block a service for a group |
+| `DELETE` | `/ferrous/api/v1/services/{service_id}/groups/{group_id}` | Unblock a service |
+| `POST` | `/ferrous/api/v1/custom-services` | Create a custom service |
 
 ### Schedule Profiles
 
 | Method | Endpoint | Description |
 |:-------|:---------|:------------|
-| `GET` | `/api/schedule-profiles` | List all profiles |
-| `POST` | `/api/schedule-profiles` | Create a profile |
-| `GET` | `/api/schedule-profiles/{id}` | Get profile with time slots |
-| `PUT` | `/api/schedule-profiles/{id}` | Update a profile |
-| `DELETE` | `/api/schedule-profiles/{id}` | Delete profile (cascades) |
-| `POST` | `/api/schedule-profiles/{id}/slots` | Add a time slot |
-| `DELETE` | `/api/schedule-profiles/{id}/slots/{slot_id}` | Delete a time slot |
-| `GET` | `/api/groups/{id}/schedule` | Get assigned profile for group |
-| `PUT` | `/api/groups/{id}/schedule` | Assign profile to group |
-| `DELETE` | `/api/groups/{id}/schedule` | Remove schedule from group |
+| `GET` | `/ferrous/api/v1/schedule-profiles` | List all profiles |
+| `POST` | `/ferrous/api/v1/schedule-profiles` | Create a profile |
+| `GET` | `/ferrous/api/v1/schedule-profiles/{id}` | Get profile with time slots |
+| `PUT` | `/ferrous/api/v1/schedule-profiles/{id}` | Update a profile |
+| `DELETE` | `/ferrous/api/v1/schedule-profiles/{id}` | Delete profile (cascades) |
+| `POST` | `/ferrous/api/v1/schedule-profiles/{id}/slots` | Add a time slot |
+| `DELETE` | `/ferrous/api/v1/schedule-profiles/{id}/slots/{slot_id}` | Delete a time slot |
+| `GET` | `/ferrous/api/v1/groups/{id}/schedule` | Get assigned profile for group |
+| `PUT` | `/ferrous/api/v1/groups/{id}/schedule` | Assign profile to group |
+| `DELETE` | `/ferrous/api/v1/groups/{id}/schedule` | Remove schedule from group |

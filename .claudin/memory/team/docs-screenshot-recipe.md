@@ -31,7 +31,7 @@ quirks that cost time when scripting the seed:
   group, or leave the querying clients ungrouped.
 - Blocked answers are cached for `block_ttl`, so a domain that resolved while the
   index was incomplete keeps resolving; there is no cache-flush route (`DELETE
-  /api/cache` is 404), so restart the process after fixing the index.
+  /ferrous/api/v1/cache` is 404), so restart the process after fixing the index.
 
 For query traffic, `dig -b 127.0.0.2 … -b 127.0.0.5` gives distinct client rows
 without touching the host's network or leaking real LAN addresses; rename them

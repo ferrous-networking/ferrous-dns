@@ -1,6 +1,6 @@
-// API base URL — injected at runtime via /ferrous-config.js
-// In normal mode: /api  |  In Pi-hole compat mode: /ferrous/api
-const API_BASE = window.FERROUS_API_BASE || '/api';
+// API base URL — injected at runtime via /ferrous-config.js; the same in every mode.
+// The fallback must match FERROUS_API_BASE in crates/cli/src/server/web.rs (a test checks it).
+const API_BASE = window.FERROUS_API_BASE || '/ferrous/api/v1';
 
 // --- Lucide icon refresh ---
 

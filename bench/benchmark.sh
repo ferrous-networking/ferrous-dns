@@ -74,7 +74,7 @@ OUTPUT_FILE="$SCRIPT_DIR/benchmark-results.md"
 QUERIES_FILE="$DATA_DIR/queries-realistic.txt"
 BLOCKLIST_URL="http://127.0.0.1:8081/blocklist.txt"
 BLOCKLIST_ADVANCED_URL="http://127.0.0.1:8081/blocklist-advanced.txt"
-FERROUS_API="http://127.0.0.1:9090/api"
+FERROUS_API="http://127.0.0.1:9090/ferrous/api/v1"
 
 # ── CPU isolation state (populated by setup_cpu_isolation) ───────────────────
 # dnsperf and the server-under-test must not share cores, otherwise they fight

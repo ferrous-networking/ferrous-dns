@@ -8,11 +8,11 @@ FTL mirror structs only catch what their YAML says. For issue #288, comparing ag
 
 - **Live diff.**
   - Run `pihole/pihole:latest` with `FTLCONF_webserver_api_password` set and its web port on loopback.
-  - Seed it and Ferrous the same way through their own `/api`: lists, a deny domain, clients, and `dig` traffic.
+  - Seed it and Ferrous the same way through their own APIs (Pi-hole's `/api`, Ferrous's `/ferrous/api/v1`): lists, a deny domain, clients, and `dig` traffic.
   - Then compare each served route by status code, recursive key set and JSON types. Ignore values and `took`.
   - Live FTL wins over the YAML when they disagree.
 - **Integrations.**
-  - Run each client in Docker with `network_mode: host` against a Ferrous on the host. They all log in with one API token. With `pihole_compat = true` the native API moves to `/ferrous/api`, so create the token with `POST /ferrous/api/auth/login`, then `POST /ferrous/api/api-tokens {"name", "token"}`. The clients are:
+  - Run each client in Docker with `network_mode: host` against a Ferrous on the host. They all log in with one API token. Create it on the native API with `POST /ferrous/api/v1/auth/login`, then `POST /ferrous/api/v1/api-tokens {"name", "token"}` (builds before v0.10.0: `/ferrous/api/...` with `pihole_compat = true`). The clients are:
     - Homarr v2.5.2, which runs an onboarding wizard.
     - Homepage, with `HOMEPAGE_ALLOWED_HOSTS`.
     - Glance's `dns-stats` with `service: pihole-v6`.

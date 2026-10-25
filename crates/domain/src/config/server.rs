@@ -27,9 +27,8 @@ pub struct ServerConfig {
     #[serde(default)]
     pub proxy_protocol_enabled: bool,
 
-    /// When `true`, mounts the Pi-hole v6 compatible API at `/api/*` and
-    /// moves the Ferrous dashboard API to `/ferrous/api/*`.
-    /// The frontend discovers the correct prefix via `/ferrous-config.js`.
+    /// When `true`, mounts the Pi-hole v6 compatible API at `/api/*`. The
+    /// Ferrous API stays at `/ferrous/api/v1/*` either way.
     /// Defaults to `false` — no change in behaviour for existing deployments.
     #[serde(default)]
     pub pihole_compat: bool,
