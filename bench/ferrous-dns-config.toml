@@ -14,8 +14,7 @@ bind_address = "0.0.0.0"                # Address to bind on; 0.0.0.0 listens on
 
 # Enables the Pi-hole v6 compatible API at /api/* so third-party dashboards,
 # plugins, and automations that expect the Pi-hole API continue to work.
-# When true, the Ferrous dashboard API moves to /ferrous/api/* and the
-# frontend discovers the correct prefix automatically via /ferrous-config.js.
+# The Ferrous API stays at /ferrous/api/v1/* either way.
 # pihole_compat = false
 
 # Enable PROXY Protocol v2 on TCP DNS and DoT listeners.
