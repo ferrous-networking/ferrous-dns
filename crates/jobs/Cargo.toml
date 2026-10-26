@@ -16,5 +16,5 @@ chrono.workspace = true
 [dev-dependencies]
 async-trait.workspace = true
 chrono-tz = "0.10"
-parking_lot = "0.12"
+parking_lot = "0.13"
 tokio = { workspace = true, features = ["test-util"] }
