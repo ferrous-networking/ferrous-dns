@@ -717,7 +717,7 @@ Returns the entries currently held in the positive cache, with filtering, orderi
 
 The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "offset": 0 }`, where `total` counts the entries matching the filters and `records_total` counts every entry in the cache. Each item carries `domain`, `type`, `group_id`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `refreshes`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries. `group_id` is `null` for the entries every client shares; a split-horizon answer from a [conditional pool](configuration/dns.md#conditional-forwarding) routed for one client group carries that group's id, and the same name can be listed once per group.
 
-`hits` counts only lookups served from the shared cache — queries absorbed by the per-thread L1 cache are not included, so hot A/AAAA records report fewer hits than they actually served.
+`hits` counts lookups served from the cache, the per-thread L1 copies of hot A/AAAA records included. L1 hands its hits over in batches, at most once per second per thread, so the count can trail by the last second of them.
 
 `refreshes` counts the times the cache renewed the entry from upstream, ahead of expiry or as a serve-stale repair. Like `hits`, it starts over when a new answer replaces the entry.
 
