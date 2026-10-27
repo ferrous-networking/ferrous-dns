@@ -18,7 +18,7 @@ client_tracking_interval = 60
 |:-------|:--------|:------------|
 | `path` | `./ferrous-dns.db` | Path to the SQLite database file |
 | `log_queries` | `true` | Store every DNS query for analytics and the query log dashboard |
-| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs every 4 hours, the first time 4 hours after startup so it does not compete with the boot; a server restarted more often than that never cleans up. Each run deletes 1000 rows at a time and then pauses at least as long as each batch took, so other writers are not blocked; `0` deletes every entry at each run |
+| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs every 4 hours, the first time 10 minutes after startup so it does not compete with the boot. Each run deletes 1000 rows at a time and then pauses at least as long as each batch took, so other writers are not blocked; `0` deletes every entry at each run |
 | `client_tracking_interval` | `60` | Minimum seconds between consecutive last-seen DB writes per client IP |
 
 ---
