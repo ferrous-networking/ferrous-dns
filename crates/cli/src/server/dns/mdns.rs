@@ -70,7 +70,7 @@ async fn run_mdns_listener(socket: UdpSocket, recorder: Arc<RecordMdnsHostnamesU
                 }
                 debug!(%src, ?names, "mDNS host names announced");
                 if let Err(e) = recorder.execute(&names).await {
-                    warn!(error = %e, %src, "Could not record mDNS host names");
+                    warn!(error = %e, %src, "Failed to record mDNS host names");
                 }
             }
             Err(e) => {
