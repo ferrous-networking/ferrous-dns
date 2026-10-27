@@ -237,23 +237,24 @@ async fn test_query_log_retention_job_reruns_on_interval() {
 }
 
 const FOUR_HOURS: Duration = Duration::from_secs(4 * 3600);
+const TEN_MINUTES: Duration = Duration::from_secs(10 * 60);
 
 #[tokio::test(start_paused = true)]
-async fn test_query_log_retention_job_skips_startup_and_first_runs_four_hours_later() {
+async fn test_query_log_retention_job_skips_startup_and_first_runs_ten_minutes_later() {
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_old_log("10.0.0.1", 10).await;
 
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
     QueryLogRetentionJob::new(use_case, 7).spawn();
 
-    sleep(FOUR_HOURS - Duration::from_secs(1)).await;
+    sleep(TEN_MINUTES - Duration::from_secs(1)).await;
     assert_eq!(repo.count().await, 1, "no cleanup may compete with startup");
 
     sleep(Duration::from_secs(2)).await;
     assert_eq!(
         repo.count().await,
         0,
-        "the first cleanup runs 4 hours after startup"
+        "the first cleanup runs 10 minutes after startup, so a server restarted every few hours still cleans up"
     );
 }
 
@@ -263,10 +264,13 @@ async fn test_query_log_retention_job_reruns_every_four_hours() {
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
     QueryLogRetentionJob::new(use_case, 7).spawn();
 
-    sleep(FOUR_HOURS + Duration::from_secs(1)).await;
+    sleep(TEN_MINUTES + Duration::from_secs(1)).await;
     repo.add_old_log("10.0.0.1", 10).await;
 
-    sleep(FOUR_HOURS).await;
+    sleep(FOUR_HOURS - Duration::from_secs(2)).await;
+    assert_eq!(repo.count().await, 1, "no second cleanup before 4 hours");
+
+    sleep(Duration::from_secs(2)).await;
     assert_eq!(
         repo.count().await,
         0,
