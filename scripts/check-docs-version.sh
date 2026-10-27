@@ -4,7 +4,8 @@
 # Ferrous DNS - Documentation Consistency Check
 # ============================================================================
 # Fails when the published documentation disagrees with the workspace about
-# the current version, or when the roadmap page stops mirroring ROADMAP.md.
+# the current version: a stale "Current release" banner, or no changelog entry
+# for the current minor series.
 #
 # Usage: ./scripts/check-docs-version.sh   (from anywhere)
 #
@@ -61,30 +62,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. The roadmap page must include ROADMAP.md instead of restating it.
-# ---------------------------------------------------------------------------
-if grep -q '^--8<-- "ROADMAP.md"$' docs/roadmap.md; then
-    ok "docs/roadmap.md includes ROADMAP.md"
-else
-    fail "docs/roadmap.md no longer includes ROADMAP.md (expected a line: --8<-- \"ROADMAP.md\") — a hand-maintained copy will drift"
-fi
-
-if [[ ! -f ROADMAP.md ]]; then
-    fail "ROADMAP.md is missing at the repository root; the docs build will fail"
-fi
-
-# ---------------------------------------------------------------------------
-# 3. ROADMAP.md must carry a milestone for the current minor series.
-# ---------------------------------------------------------------------------
-series="v${VERSION%.*}.0"
-if grep -q "^### .*${series}" ROADMAP.md; then
-    ok "ROADMAP.md has a milestone for ${series}"
-else
-    fail "ROADMAP.md has no '### ... ${series}' milestone, but the workspace is on ${VERSION}"
-fi
-
-# ---------------------------------------------------------------------------
-# 4. The changelog must mention the current minor series.
+# 2. The changelog must mention the current minor series.
 # ---------------------------------------------------------------------------
 if grep -q "v${VERSION%.*}" docs/changelog.md; then
     ok "docs/changelog.md mentions the v${VERSION%.*} series"

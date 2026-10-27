@@ -374,7 +374,7 @@ jobs:
         continue-on-error: true
 
   docs-consistency:
-    name: Docs Consistency (roadmap + changelog)
+    name: Docs Consistency (version + changelog)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -382,8 +382,8 @@ jobs:
 
       # The release PR bumps the banners together with Cargo.toml, so they only
       # drift if a version is changed by hand. On a minor bump this is also
-      # what holds the release PR until someone writes the roadmap milestone
-      # and the changelog entry for the new series.
+      # what holds the release PR until someone writes the changelog entry for
+      # the new series.
       - name: Check the docs a human has to maintain
         run: bash scripts/check-docs-version.sh
 

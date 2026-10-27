@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea. Check the [roadmap](https://ferrous-networking.github.io/ferrous-dns/roadmap/) first — it may already be planned. Open questions and early ideas fit better in [Discussions](https://github.com/ferrous-networking/ferrous-dns/discussions).
+        Thanks for the idea. Check the [open issues](https://github.com/ferrous-networking/ferrous-dns/issues) and the [milestones](https://github.com/ferrous-networking/ferrous-dns/milestones) first — it may already be planned. Open questions and early ideas fit better in [Discussions](https://github.com/ferrous-networking/ferrous-dns/discussions).
 
   - type: textarea
     id: problem

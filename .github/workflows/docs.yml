@@ -25,7 +25,6 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'requirements.txt'
-      - 'ROADMAP.md'
       - 'CHANGELOG.md'
       - '.github/workflows/docs.yml'
 

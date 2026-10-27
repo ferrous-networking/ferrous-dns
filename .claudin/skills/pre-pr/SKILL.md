@@ -13,7 +13,7 @@ Mirror of `.github/workflows/ci.yml` for local runs. Run the checks in the order
 4. **Doc tests**: `cargo test --doc --all-features --workspace`
 5. **Security audit**: `cargo audit` (skip with a note if `cargo-audit` is not installed — do not install it silently)
 6. **Docs version consistency**: `bash scripts/check-docs-version.sh` — version banners in `docs/` must match the workspace version in the root `Cargo.toml`. Only the release PR moves the version (`scripts/bump-version.sh` rewrites the banners with it), so drift anywhere else means a version was edited by hand.
-7. **Docs build** (only when `docs/`, `mkdocs.yml`, `requirements.txt`, `ROADMAP.md` or `CHANGELOG.md` changed): `mkdocs build --strict` with the pinned toolchain (`pip install -r requirements.txt` in a venv). `docs.yml` runs the same build on those pull requests.
+7. **Docs build** (only when `docs/`, `mkdocs.yml`, `requirements.txt` or `CHANGELOG.md` changed): `mkdocs build --strict` with the pinned toolchain (`pip install -r requirements.txt` in a venv). `docs.yml` runs the same build on those pull requests.
 
 ## Skipped on purpose
 

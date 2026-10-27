@@ -1,6 +1,6 @@
 ---
 name: cache-eviction-prefix-sample-fixed-batch
-description: evict_by_strategy samples only the iteration prefix (tail shards never evicted) and removes a fixed batch per pass, so inserts faster than batch/s keep the cache over max_entries; kept on purpose 2026-10-16
+description: evict_by_strategy samples only the iteration prefix (tail shards never evicted) and removes a fixed batch per pass, so inserts faster than batch/s keep the cache over max_entries; kept on purpose 2026-10-16, filed as #324
 type: project
 paths:
   - crates/infrastructure/src/dns/cache/storage.rs
@@ -14,6 +14,6 @@ paths:
 
 **Repro:** set `cache_max_entries = 1000` and send 200 unique names/s ([[runtime-verification-recipe]]). On 2026-10-16 the event-driven branch held at about 2,800 entries, at 100 evictions per tick. With the old 60 s job it was about 100 per minute, and main reached 17,800. At the defaults a pass is 20k, so outpacing it needs over 20k new names/s.
 
-**Status:** open and unfiled as of 2026-10-16. The event-driven removal work ([[cache-event-driven-removal]]) runs `evict_entries` every second instead of every minute but left the rule untouched.
+**Status:** open; filed as issue #324 on 2026-10-26, in the v1.0.0 milestone. The event-driven removal work ([[cache-event-driven-removal]]) runs `evict_entries` every second instead of every minute but left the rule untouched.
 
 **Why not fixed:** Viudes's rule for that work was "same rules, only the trigger changes". The fixes change eviction behaviour, so they belong in their own PR: evict only the overshoot, sample from a rotating cursor, and drop the dead branch.

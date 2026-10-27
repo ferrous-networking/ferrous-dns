@@ -1,6 +1,6 @@
 ---
 name: filtered-query-logged-as-servfail-upstream
-description: block_non_fqdn / block_private_ptr refusals reached the client as a blocked answer (0.0.0.0 + EDE 15) but were logged SERVFAIL, shown as "Upstream"; fixed in PR #300 (38d257ac, v0.9.24); three follow-ups open
+description: block_non_fqdn / block_private_ptr refusals reached the client as a blocked answer (0.0.0.0 + EDE 15) but were logged SERVFAIL, shown as "Upstream"; fixed in PR #300 (38d257ac, v0.9.24); three follow-ups open, the labels one filed as #326
 type: project
 paths:
   - crates/application/src/use_cases/dns/handle_dns_query.rs
@@ -26,6 +26,6 @@ paths:
 Old rows keep `SERVFAIL`.
 
 The PR lists three follow-ups, all predating it and still open on 2026-10-23:
-- `formatSource` (`queries.js:167-191`) has no label for `cname_cloaking`, `schedule`, `nxdomain_hijack` or `response_ip_filter`, so those rows also show "Upstream".
+- `formatSource` (`queries.js:167-191`) has no label for `cname_cloaking`, `schedule`, `nxdomain_hijack` or `response_ip_filter`, so those rows also show "Upstream". Filed as issue #326 (2026-10-26).
 - Filtered queries pass `admit_upstream()` before the filter runs.
 - The ANSWER column renders "—" for every rcode.

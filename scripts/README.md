@@ -24,9 +24,8 @@ request.
 ### `check-docs-version.sh`
 
 Fails when the docs drift from the workspace: a "Current release" banner that
-names another version, `docs/roadmap.md` no longer including `ROADMAP.md`, no
-`ROADMAP.md` milestone for the current minor series, or no mention of that
-series in `docs/changelog.md`. CI runs it on every pull request.
+names another version, or no mention of the current minor series in
+`docs/changelog.md`. CI runs it on every pull request.
 
 ```bash
 ./scripts/check-docs-version.sh
