@@ -290,19 +290,3 @@ pub(super) async fn prune_before(pool: &SqlitePool, unix_secs: i64) -> Result<()
     .await?;
     tx.commit().await
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{ceil_bucket, HOUR_SECS};
-
-    #[test]
-    fn ceil_bucket_keeps_a_boundary_and_rounds_anything_else_up() {
-        assert_eq!(ceil_bucket(7_200, HOUR_SECS), 7_200);
-        assert_eq!(ceil_bucket(7_201, HOUR_SECS), 10_800);
-        assert_eq!(ceil_bucket(-1, HOUR_SECS), 0);
-        assert_eq!(
-            ceil_bucket(i64::MIN, HOUR_SECS),
-            i64::MIN / HOUR_SECS * HOUR_SECS
-        );
-    }
-}

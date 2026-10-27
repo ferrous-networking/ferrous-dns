@@ -1,7 +1,7 @@
 use ferrous_dns_application::ports::{FreeSpaceReclaimer, QueryLogRepository};
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::database::{
-    create_query_log_pool, create_read_pool, create_write_pool,
+    create_query_log_pool, create_read_pool, create_write_pool, unreclaimable_free_bytes,
 };
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
@@ -190,6 +190,48 @@ async fn test_a_new_database_gives_freed_pages_back_incrementally() {
         2,
         "a new database must be created with auto_vacuum = INCREMENTAL"
     );
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn test_an_old_database_reports_the_free_space_it_cannot_give_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("old.db").display());
+    // As releases before incremental auto-vacuum created it.
+    let options = SqliteConnectOptions::from_str(&url)
+        .unwrap()
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePool::connect_with(options).await.unwrap();
+    sqlx::raw_sql(
+        "CREATE TABLE t (v BLOB);
+         WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
+         INSERT INTO t SELECT zeroblob(4000) FROM n;
+         DELETE FROM t;",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let expected =
+        (pragma(&pool, "freelist_count").await * pragma(&pool, "page_size").await) as u64;
+
+    assert!(expected > 0);
+    assert_eq!(
+        unreclaimable_free_bytes(&pool).await.unwrap(),
+        Some(expected)
+    );
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn test_a_new_database_has_no_free_space_it_cannot_give_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let pool = create_write_pool(&url, &DatabaseConfig::default())
+        .await
+        .expect("first start");
+
+    assert_eq!(unreclaimable_free_bytes(&pool).await.unwrap(), None);
     pool.close().await;
 }
 

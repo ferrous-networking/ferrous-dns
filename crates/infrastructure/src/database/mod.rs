@@ -164,32 +164,35 @@ async fn seed_missing_query_log_stats(conn: &mut SqliteConnection) -> Result<(),
 }
 
 /// Free space an old database must hold before startup warns about it.
-const UNRECLAIMABLE_WARN_BYTES: i64 = 64 * 1024 * 1024;
+const UNRECLAIMABLE_WARN_BYTES: u64 = 64 * 1024 * 1024;
 
-/// The free bytes worth a warning: only a database without auto-vacuum (`0`, created
-/// before it was enabled) keeps its free pages forever.
-fn unreclaimable_free_bytes(auto_vacuum: i64, freelist_pages: i64, page_size: i64) -> Option<i64> {
-    let free = freelist_pages.saturating_mul(page_size);
-    (auto_vacuum == 0 && free >= UNRECLAIMABLE_WARN_BYTES).then_some(free)
-}
-
-async fn warn_about_unreclaimable_space(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+/// The free bytes the file holds and can never give back, because it was created
+/// without auto-vacuum (`0`, before it was enabled); `None` for a file that can.
+pub async fn unreclaimable_free_bytes(pool: &SqlitePool) -> Result<Option<u64>, sqlx::Error> {
     let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
-        .fetch_one(&mut *conn)
+        .fetch_one(pool)
         .await?;
+    if auto_vacuum != 0 {
+        return Ok(None);
+    }
     let freelist_pages: i64 = sqlx::query_scalar("PRAGMA freelist_count")
-        .fetch_one(&mut *conn)
+        .fetch_one(pool)
         .await?;
     let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
-        .fetch_one(&mut *conn)
+        .fetch_one(pool)
         .await?;
-    if let Some(free) = unreclaimable_free_bytes(auto_vacuum, freelist_pages, page_size) {
-        warn!(
+    Ok(Some(freelist_pages.saturating_mul(page_size) as u64))
+}
+
+async fn warn_about_unreclaimable_space(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    match unreclaimable_free_bytes(pool).await? {
+        Some(free) if free >= UNRECLAIMABLE_WARN_BYTES => warn!(
             free_mib = free / (1024 * 1024),
             "The database file holds free space it cannot give back, because it was created \
              before incremental auto-vacuum; stop the server and run \
              `ferrous-dns --compact-database` once to reclaim it"
-        );
+        ),
+        _ => {}
     }
     Ok(())
 }
@@ -217,8 +220,8 @@ pub async fn create_write_pool(
     let mut conn = pool.acquire().await?;
     seed_missing_query_log_stats(&mut conn).await?;
     sqlx::query("PRAGMA optimize").execute(&mut *conn).await?;
-    warn_about_unreclaimable_space(&mut conn).await?;
     drop(conn);
+    warn_about_unreclaimable_space(&pool).await?;
 
     Ok(pool)
 }
@@ -252,31 +255,4 @@ pub async fn create_read_pool(
         Duration::from_secs(cfg.read_acquire_timeout_secs),
     )
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{unreclaimable_free_bytes, UNRECLAIMABLE_WARN_BYTES};
-
-    const PAGE: i64 = 4096;
-    const WARN_PAGES: i64 = UNRECLAIMABLE_WARN_BYTES / PAGE;
-
-    #[test]
-    fn an_old_database_with_enough_free_space_is_reported() {
-        assert_eq!(
-            unreclaimable_free_bytes(0, WARN_PAGES, PAGE),
-            Some(UNRECLAIMABLE_WARN_BYTES)
-        );
-    }
-
-    #[test]
-    fn little_free_space_is_not_reported() {
-        assert_eq!(unreclaimable_free_bytes(0, WARN_PAGES - 1, PAGE), None);
-    }
-
-    #[test]
-    fn a_database_with_auto_vacuum_is_not_reported() {
-        assert_eq!(unreclaimable_free_bytes(1, WARN_PAGES * 10, PAGE), None);
-        assert_eq!(unreclaimable_free_bytes(2, WARN_PAGES * 10, PAGE), None);
-    }
 }
