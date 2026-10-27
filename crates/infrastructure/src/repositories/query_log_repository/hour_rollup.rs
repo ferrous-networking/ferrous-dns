@@ -49,6 +49,12 @@ fn hour_ts(unix_secs: i64) -> String {
     unix_cutoff(unix_secs).unwrap_or_default()
 }
 
+/// Start of the first hour the clock has not closed yet: every hour before it ended at
+/// least `CLOSE_LAG_SECS` ago.
+fn first_open_hour() -> i64 {
+    hour_bucket(Utc::now().timestamp() - CLOSE_LAG_SECS)
+}
+
 /// A window ending now, split for the hourly rollups: raw rows in `[cutoff, lead_end)`
 /// and from `tail_start` on, buckets in `[from, until)`.
 pub(super) struct HourSplit {
@@ -66,9 +72,13 @@ pub(super) async fn split_hours(
     let coverage = Coverage::read(pool).await?;
     let cutoff_secs = start.timestamp();
     let from = ceil_bucket(cutoff_secs, HOUR_SECS).max(coverage.since);
+    // Hours held beyond the clock were closed by a clock that ran ahead; it has since
+    // stepped back and logs rows into them again, so they are read raw until the job
+    // gives them back.
+    let held_until = coverage.until.min(first_open_hour());
     // Without a held hour inside the window, the whole window is a raw tail.
-    let (from, until) = if from < coverage.until {
-        (from, coverage.until)
+    let (from, until) = if from < held_until {
+        (from, held_until)
     } else {
         (cutoff_secs, cutoff_secs)
     };
@@ -97,7 +107,12 @@ pub(super) async fn roll_up_hours(
     let mut stored = 0;
     for _ in 0..max_hours {
         let coverage = Coverage::read(read_pool).await?;
-        let Some(hour) = next_hour(read_pool, coverage).await? else {
+        let open = first_open_hour();
+        if coverage.until > open {
+            give_back_open_hours(write_pool, coverage, open).await?;
+            continue;
+        }
+        let Some(hour) = next_hour(read_pool, coverage, open).await? else {
             break;
         };
         let domains = aggregate(read_pool, "domain", hour).await?;
@@ -109,9 +124,12 @@ pub(super) async fn roll_up_hours(
     Ok(stored)
 }
 
-async fn next_hour(pool: &SqlitePool, coverage: Coverage) -> Result<Option<i64>, sqlx::Error> {
-    let closed_before = hour_bucket(Utc::now().timestamp() - CLOSE_LAG_SECS);
-    if coverage.until < closed_before {
+async fn next_hour(
+    pool: &SqlitePool,
+    coverage: Coverage,
+    first_open: i64,
+) -> Result<Option<i64>, sqlx::Error> {
+    if coverage.until < first_open {
         return Ok(Some(coverage.until));
     }
     let oldest: Option<i64> = sqlx::query_scalar(
@@ -124,6 +142,28 @@ async fn next_hour(pool: &SqlitePool, coverage: Coverage) -> Result<Option<i64>,
     Ok(oldest
         .filter(|&oldest| previous >= hour_bucket(oldest).max(coverage.floor))
         .map(|_| previous))
+}
+
+/// Drops the hours held from `first_open` on, which a clock running ahead closed too
+/// early, unless the coverage changed since it was read.
+async fn give_back_open_hours(
+    pool: &SqlitePool,
+    read_as: Coverage,
+    first_open: i64,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    if Coverage::read(&mut *tx).await? != read_as {
+        return Ok(());
+    }
+    for sql in [
+        "DELETE FROM query_log_hour_domain WHERE bucket >= ?",
+        "DELETE FROM query_log_hour_client WHERE bucket >= ?",
+        "UPDATE query_log_rollup_state SET value = ? WHERE name = 'hour_until'",
+        "UPDATE query_log_rollup_state SET value = MIN(value, ?) WHERE name = 'hour_since'",
+    ] {
+        sqlx::query(sql).bind(first_open).execute(&mut *tx).await?;
+    }
+    tx.commit().await
 }
 
 type HourCounts = Vec<(String, i64, i64)>;
