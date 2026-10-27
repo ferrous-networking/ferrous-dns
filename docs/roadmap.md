@@ -2,11 +2,15 @@
 
 Current release: **v0.9.24**
 
-The milestone list below is included verbatim from [`ROADMAP.md`](https://github.com/ferrous-networking/ferrous-dns/blob/main/ROADMAP.md) in the repository root, which is the single source of truth for what is shipped. Edit that file — this page cannot drift from it, and the docs build fails if the include is removed or the version above stops matching `Cargo.toml`.
+What comes next is tracked on GitHub: one issue per item, grouped into milestones. Each milestone page lists its open and closed issues and shows how far along it is. What already shipped is in the [Changelog](changelog.md).
 
----
+| Milestone | Goal |
+|:----------|:-----|
+| [v0.10.0 — API v1](https://github.com/ferrous-networking/ferrous-dns/milestone/1) | Freeze the Ferrous API at `/ferrous/api/v1`: a public health endpoint, error statuses that mean what they say, one pagination style, and a reference that covers every route |
+| [v1.0.0 — Production Ready](https://github.com/ferrous-networking/ferrous-dns/milestone/2) | A production deployment guide, a security review, no config keys that do nothing, and the known correctness bugs fixed |
+| [v1.1.0 — Next Features](https://github.com/ferrous-networking/ferrous-dns/milestone/3) | Features planned after 1.0 |
 
---8<-- "ROADMAP.md"
+Missing something? Search the [open issues](https://github.com/ferrous-networking/ferrous-dns/issues) first, then open a [feature request](https://github.com/ferrous-networking/ferrous-dns/issues/new?template=feature_request.yml). A comment on an existing issue saying how you would use the feature helps decide what comes first.
 
 ---
 
@@ -32,9 +36,8 @@ The milestone list below is included verbatim from [`ROADMAP.md`](https://github
 | RFC 6761 | Special-use names (`.invalid` probes for NXDOMAIN hijack detection) | Done |
 | [PROXY Protocol v2](https://www.haproxy.org/download/2.9/doc/proxy-protocol.txt) | Real client IP behind load balancers (HAProxy spec) | Done |
 | draft-vixie-dns-0x20 | QNAME case randomization | Done (opt-in) |
-| RFC 7871 | EDNS Client Subnet — a client's ECS is never sent upstream; optional subnet injection planned | Partial |
-| RFC 5011 | Automated trust anchor rollover | Planned |
-| RFC 7828 | edns-tcp-keepalive | Planned |
+| RFC 7871 | EDNS Client Subnet — a client's ECS is never sent upstream; optional subnet injection planned ([#333](https://github.com/ferrous-networking/ferrous-dns/issues/333)) | Partial |
+| RFC 5011 | Automated trust anchor rollover ([#338](https://github.com/ferrous-networking/ferrous-dns/issues/338)) | Planned |
 
 See [Security Hardening](features/security-hardening.md) for what each of the security-related entries actually does and where it stops.
 
