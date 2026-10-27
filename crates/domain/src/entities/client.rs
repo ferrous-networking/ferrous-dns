@@ -16,6 +16,26 @@ pub struct Client {
     pub comment: Option<Arc<str>>,
 }
 
+/// Where a client's hostname came from. A name set by hand is never
+/// replaced by an automatic source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostnameSource {
+    /// The hostname sync's PTR lookup.
+    Ptr,
+    /// Typed in through the dashboard or the API.
+    Manual,
+}
+
+impl HostnameSource {
+    /// The value stored in `clients.hostname_source`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HostnameSource::Ptr => "ptr",
+            HostnameSource::Manual => "manual",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClientStats {
     pub total_clients: u64,

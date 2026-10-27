@@ -19,7 +19,7 @@ pub use entities::block_source::BlockSource;
 pub use entities::blocked_service::BlockedService;
 pub use entities::blocklist::BlockedDomain;
 pub use entities::blocklist_source::{BlocklistSource, ListSyncStatus};
-pub use entities::client::{Client, ClientStats};
+pub use entities::client::{Client, ClientStats, HostnameSource};
 pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
 pub use entities::custom_service::CustomService;
 pub use entities::filter_explanation::{

@@ -1,11 +1,14 @@
 use super::client_row_mapper::{
     row_to_client, ClientRow, CLIENT_SELECT_ACTIVE, CLIENT_SELECT_ALL, CLIENT_SELECT_BY_ID,
     CLIENT_SELECT_BY_IP, CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE, CLIENT_SELECT_NEEDS_MAC_UPDATE,
+    UPDATE_HOSTNAME, UPDATE_HOSTNAME_UNLESS_MANUAL,
 };
 use crate::repositories::{db_err, hours_ago_cutoff, is_fk_violation, sql_now};
 use async_trait::async_trait;
 use ferrous_dns_application::ports::ClientRepository;
-use ferrous_dns_domain::{config::DatabaseConfig, Client, ClientStats, DomainError};
+use ferrous_dns_domain::{
+    config::DatabaseConfig, Client, ClientStats, DomainError, HostnameSource,
+};
 use sqlx::SqlitePool;
 use std::net::IpAddr;
 use tokio::sync::{mpsc, oneshot};
@@ -168,23 +171,23 @@ impl ClientRepository for SqliteClientRepository {
         &self,
         ip_address: IpAddr,
         hostname: String,
+        source: HostnameSource,
     ) -> Result<(), DomainError> {
         let now = sql_now();
+        let query = match source {
+            HostnameSource::Manual => UPDATE_HOSTNAME,
+            HostnameSource::Ptr => UPDATE_HOSTNAME_UNLESS_MANUAL,
+        };
 
-        sqlx::query(
-            "UPDATE clients SET
-                 hostname = ?,
-                 last_hostname_update = ?,
-                 updated_at = ?
-             WHERE ip_address = ?",
-        )
-        .bind(&hostname)
-        .bind(&now)
-        .bind(&now)
-        .bind(ip_address.to_string())
-        .execute(&self.pool)
-        .await
-        .map_err(db_err("Failed to update hostname"))?;
+        sqlx::query(query)
+            .bind(&hostname)
+            .bind(source.as_str())
+            .bind(&now)
+            .bind(&now)
+            .bind(ip_address.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(db_err("Failed to update hostname"))?;
 
         Ok(())
     }

@@ -9,7 +9,8 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_domain::{
     BlockSource, BlocklistSource, Client, ClientStats, DnsQuery, DnssecStats, DomainAction,
-    DomainError, Group, ManagedDomain, QueryLog, QueryStats, RecordType, WhitelistSource,
+    DomainError, Group, HostnameSource, ManagedDomain, QueryLog, QueryStats, RecordType,
+    WhitelistSource,
 };
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -547,6 +548,7 @@ impl ClientRepository for MockClientRepository {
         &self,
         ip_address: IpAddr,
         hostname: String,
+        _source: HostnameSource,
     ) -> Result<(), DomainError> {
         let mut clients = self.clients.write().await;
 

@@ -55,9 +55,30 @@ pub(crate) const CLIENT_SELECT_NEEDS_MAC_UPDATE: &str = client_select!(
 pub(crate) const CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE: &str = client_select!(
     " WHERE (last_hostname_update IS NULL
                          OR last_hostname_update < datetime('now', '-1 hour'))
+     AND (hostname_source IS NULL OR hostname_source <> 'manual')
      AND last_seen > datetime('now', '-7 days')
      ORDER BY last_seen DESC LIMIT ?"
 );
+
+macro_rules! update_hostname {
+    ($guard:literal) => {
+        concat!(
+            "UPDATE clients SET
+                 hostname = ?,
+                 hostname_source = ?,
+                 last_hostname_update = ?,
+                 updated_at = ?
+             WHERE ip_address = ?",
+            $guard
+        )
+    };
+}
+
+pub(crate) const UPDATE_HOSTNAME: &str = update_hostname!("");
+
+/// An automatic source never replaces a name set by hand.
+pub(crate) const UPDATE_HOSTNAME_UNLESS_MANUAL: &str =
+    update_hostname!(" AND (hostname_source IS NULL OR hostname_source <> 'manual')");
 
 pub(crate) fn row_to_client(row: ClientRow) -> Option<Client> {
     let (
