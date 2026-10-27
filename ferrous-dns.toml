@@ -83,7 +83,7 @@ block_non_fqdn = true                   # Block queries for names that are not f
 malware_detection_enabled = true        # Master switch for the five malware detectors below (tunneling, DGA, rebinding, NXDomain hijack, response IP)
 rebinding_protection_enabled = true     # Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding)
 # rebinding_allowlist = []              # Exact domain names exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
-mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast); device-name labeling is a future release; off by default
+mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast): names clients after the host name their device announces; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — PTR lookups for client hostnames, and upstream URL hostnames (asked before the system resolver)
 

@@ -14,7 +14,7 @@ default_strategy = "Parallel"
 dnssec_mode = "Permissive"
 block_private_ptr = true
 block_non_fqdn = false
-mdns_enabled = false              # passive mDNS/Bonjour listener on UDP 5353
+mdns_enabled = false              # name clients after their mDNS/Bonjour announcements (UDP 5353)
 # local_domain = "lan"            # optional — no default
 local_dns_server = "10.0.0.1:53"
 ```
@@ -30,7 +30,7 @@ local_dns_server = "10.0.0.1:53"
 | `block_non_fqdn` | `false` | Block queries for non-fully-qualified domain names |
 | `local_domain` | — | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | — | Router/DHCP server used for PTR lookups, client hostname resolution, names under `local_domain`, and to look up the hostnames in upstream URLs: `IP:port`, or a bare IP for port 53. A hostname in the file is ignored with a warning, leaving local forwarding off; the API rejects it |
-| `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery. In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
+| `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast), which names clients after the host name their device announces — see [Client Detection](../features/client-management.md#client-detection). In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `malware_detection_enabled` | `true` | Master switch for the five [malware detectors](../features/malware-detection.md): when `false`, none runs, whatever its own `enabled` says. Also in **Settings → Malware Detection** |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
 | `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS); a wildcard or a trailing dot never matches and is rejected |
