@@ -11,39 +11,16 @@ use sqlx::SqlitePool;
 
 #[path = "support/db.rs"]
 mod db;
+#[path = "support/rollups.rs"]
+mod rollups;
+
+use rollups::{repo, rollup_state as state, set_rollup_state as set_state};
 
 const HOUR: i64 = 3_600;
-
-fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
-    SqliteQueryLogRepository::new(
-        pool.clone(),
-        pool.clone(),
-        pool.clone(),
-        &DatabaseConfig::default(),
-        Default::default(),
-    )
-}
 
 fn this_hour() -> i64 {
     let now = Utc::now().timestamp();
     now - now.rem_euclid(HOUR)
-}
-
-async fn set_state(pool: &SqlitePool, name: &str, value: i64) {
-    sqlx::query("UPDATE query_log_rollup_state SET value = ? WHERE name = ?")
-        .bind(value)
-        .bind(name)
-        .execute(pool)
-        .await
-        .unwrap();
-}
-
-async fn state(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar("SELECT value FROM query_log_rollup_state WHERE name = ?")
-        .bind(name)
-        .fetch_one(pool)
-        .await
-        .unwrap()
 }
 
 async fn insert_client_row(pool: &SqlitePool, domain: &str, created_at: &str) {

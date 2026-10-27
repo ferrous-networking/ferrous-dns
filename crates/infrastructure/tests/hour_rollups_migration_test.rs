@@ -32,8 +32,7 @@ async fn pool_before_the_migration() -> SqlitePool {
 }
 
 async fn state(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar("SELECT value FROM query_log_rollup_state WHERE name = ?")
-        .bind(name)
+    sqlx::query_scalar(&format!("SELECT {name} FROM query_log_rollup_state"))
         .fetch_one(pool)
         .await
         .unwrap()
@@ -51,7 +50,7 @@ fn hour_of(before: i64, after: i64) -> impl Fn(i64) -> bool {
 }
 
 #[tokio::test]
-async fn an_existing_log_holds_no_hour_yet_and_its_oldest_minute_is_read_raw() {
+async fn test_an_existing_log_holds_no_hour_yet_and_its_oldest_minute_is_read_raw() {
     let pool = pool_before_the_migration().await;
     sqlx::raw_sql(
         "INSERT INTO query_log (domain, record_type, client_ip, query_source, created_at)
@@ -80,7 +79,7 @@ async fn an_existing_log_holds_no_hour_yet_and_its_oldest_minute_is_read_raw() {
 }
 
 #[tokio::test]
-async fn a_fresh_database_reads_every_minute_from_the_rollups() {
+async fn test_a_fresh_database_reads_every_minute_from_the_rollups() {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")

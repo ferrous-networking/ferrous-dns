@@ -10,6 +10,7 @@ use ferrous_dns_domain::entities::query_log::{
     ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
 };
 use ferrous_dns_domain::{BlockResponseMode, DomainError, QueryLog, QueryStats};
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, instrument};
@@ -76,39 +77,53 @@ fn contains_pattern(needle: &str) -> String {
 }
 
 /// Client rows logged since `start`: raw rows up to the first complete minute,
-/// then the minute rollups.
+/// then the minute rollups, read in one transaction so a retention run cannot move
+/// the switch between the two.
 async fn count_client_rows_since(
     pool: &SqlitePool,
     start: DateTime<Utc>,
 ) -> Result<i64, sqlx::Error> {
-    let cutoff = sql_ts(start);
-    let switch_bucket = rollup::first_complete_minute(pool, start.timestamp()).await?;
-    // The bucket lies between `start` and a stored minute, inside chrono's range.
-    let switch_at = unix_cutoff(switch_bucket).unwrap_or_else(|| cutoff.clone());
-    sqlx::query_scalar(
+    let mut tx = pool.begin().await?;
+    let switch_bucket = rollup::first_complete_minute(&mut *tx, start.timestamp()).await?;
+    let count = sqlx::query_scalar(
         "SELECT (SELECT COUNT(*) FROM query_log
                  WHERE query_source = 'client' AND created_at >= ? AND created_at < ?)
               + (SELECT COALESCE(SUM(total), 0) FROM query_log_minute
                  WHERE query_source = 'client' AND bucket >= ?)",
     )
-    .bind(&cutoff)
-    .bind(&switch_at)
+    .bind(sql_ts(start))
+    .bind(rollup::bucket_ts(switch_bucket)?)
     .bind(switch_bucket)
-    .fetch_one(pool)
-    .await
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(count)
 }
 
-/// Binds a window's three parts in the order of the hour-rollup reads: the raw lead,
-/// the buckets, then the raw tail.
-macro_rules! bind_hour_split {
-    ($query:expr, $split:expr) => {
-        $query
-            .bind(&$split.cutoff)
-            .bind(&$split.lead_end)
-            .bind($split.from)
-            .bind($split.until)
-            .bind(&$split.tail_start)
-    };
+/// Runs `sql` over the last `period_hours` split for the hourly rollups, binding the
+/// raw lead, the buckets and the raw tail in that order, then `limit` if given. The
+/// split and the read share one transaction, so a retention run cannot move the
+/// coverage between them.
+async fn fetch_over_hour_split(
+    pool: &SqlitePool,
+    sql: &str,
+    period_hours: f32,
+    limit: Option<u32>,
+) -> Result<Vec<SqliteRow>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let split = hour_rollup::split_hours(&mut *tx, hours_ago(period_hours)).await?;
+    let mut query = sqlx::query(sql)
+        .bind(&split.cutoff)
+        .bind(&split.lead_end)
+        .bind(split.from)
+        .bind(split.until)
+        .bind(&split.tail_start);
+    if let Some(limit) = limit {
+        query = query.bind(i64::from(limit));
+    }
+    let rows = query.fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(rows)
 }
 
 #[instrument(skip(pool))]
@@ -735,12 +750,7 @@ pub(super) async fn get_top_domains(
             "Failed to fetch distinct recent domains",
         ),
     };
-    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
-        .await
-        .map_err(db_err(context))?;
-    let rows = bind_hour_split!(sqlx::query(sql), split)
-        .bind(limit as i64)
-        .fetch_all(pool)
+    let rows = fetch_over_hour_split(pool, sql, period_hours, Some(limit))
         .await
         .map_err(db_err(context))?;
 
@@ -755,12 +765,9 @@ pub(super) async fn count_distinct_domains(
     pool: &SqlitePool,
     period_hours: f32,
 ) -> Result<u64, DomainError> {
-    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
-        .await
-        .map_err(db_err("Failed to count distinct domains"))?;
-    let row = bind_hour_split!(
-        sqlx::query(
-            "SELECT COUNT(*) AS count FROM (
+    let rows = fetch_over_hour_split(
+        pool,
+        "SELECT COUNT(*) AS count FROM (
              SELECT domain FROM query_log
              WHERE query_source = 'client' AND created_at >= ? AND created_at < ?
              UNION
@@ -768,14 +775,13 @@ pub(super) async fn count_distinct_domains(
              UNION
              SELECT domain FROM query_log WHERE query_source = 'client' AND created_at >= ?
          )",
-        ),
-        split
+        period_hours,
+        None,
     )
-    .fetch_one(pool)
     .await
     .map_err(db_err("Failed to count distinct domains"))?;
 
-    Ok(row.get::<i64, _>("count") as u64)
+    Ok(rows.first().map_or(0, |r| r.get::<i64, _>("count")) as u64)
 }
 
 /// The top clients by count, with the hostname looked up once per listed client.
@@ -798,17 +804,12 @@ pub(super) async fn get_top_clients(
     period_hours: f32,
     blocked_only: bool,
 ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
-    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
-        .await
-        .map_err(db_err("Failed to fetch top clients"))?;
     let sql = if blocked_only {
         top_clients_sql!(" AND blocked = 1")
     } else {
         top_clients_sql!("")
     };
-    let rows = bind_hour_split!(sqlx::query(sql), split)
-        .bind(limit as i64)
-        .fetch_all(pool)
+    let rows = fetch_over_hour_split(pool, sql, period_hours, Some(limit))
         .await
         .map_err(db_err("Failed to fetch top clients"))?;
 

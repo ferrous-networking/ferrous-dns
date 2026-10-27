@@ -3,10 +3,11 @@
 //! ones are in `hour_rollup`.
 
 use super::writer::QueryLogEntry;
+use crate::repositories::unix_cutoff;
 use ferrous_dns_domain::{BlockSource, DnssecStatus, QuerySource, RecordType};
 use sqlx::query::Query;
 use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection};
-use sqlx::SqlitePool;
+use sqlx::{Executor, SqlitePool};
 use std::sync::Arc;
 
 type SqliteQuery<'q> = Query<'q, Sqlite, SqliteArguments<'q>>;
@@ -29,17 +30,27 @@ pub(super) fn ceil_bucket(unix_secs: i64, size: i64) -> i64 {
     unix_secs.saturating_add(size - 1).div_euclid(size) * size
 }
 
+/// Column format of a bucket boundary. Boundaries come from stored rows, the clock or
+/// a window start, all inside chrono's range; one outside it is an error rather than a
+/// silently empty range.
+pub(super) fn bucket_ts(unix_secs: i64) -> Result<String, sqlx::Error> {
+    unix_cutoff(unix_secs)
+        .ok_or_else(|| sqlx::Error::Protocol(format!("bucket {unix_secs} is outside the calendar")))
+}
+
 /// Where a read of the window starting at `cutoff_secs` switches to the minute
 /// rollups: the first bucket inside the window that they hold completely. Raw rows
 /// cover the window before it, so raw part plus buckets equals the raw window.
-pub(super) async fn first_complete_minute(
-    pool: &SqlitePool,
+pub(super) async fn first_complete_minute<'e, E>(
+    executor: E,
     cutoff_secs: i64,
-) -> Result<i64, sqlx::Error> {
-    let since: i64 =
-        sqlx::query_scalar("SELECT value FROM query_log_rollup_state WHERE name = 'minute_since'")
-            .fetch_one(pool)
-            .await?;
+) -> Result<i64, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let since: i64 = sqlx::query_scalar("SELECT minute_since FROM query_log_rollup_state")
+        .fetch_one(executor)
+        .await?;
     Ok(ceil_bucket(cutoff_secs, MINUTE_SECS).max(since))
 }
 
@@ -264,17 +275,16 @@ pub(super) async fn prune_before(pool: &SqlitePool, unix_secs: i64) -> Result<()
     ] {
         sqlx::query(sql).bind(unix_secs).execute(&mut *tx).await?;
     }
+    // Raising the three hour bounds to the same value keeps since >= floor and
+    // until >= since.
     sqlx::query(
-        "UPDATE query_log_rollup_state SET value = MAX(value, ?) WHERE name = 'minute_since'",
+        "UPDATE query_log_rollup_state SET
+             minute_since = MAX(minute_since, ?1),
+             hour_since = MAX(hour_since, ?2),
+             hour_until = MAX(hour_until, ?2),
+             hour_floor = MAX(hour_floor, ?2)",
     )
     .bind(ceil_bucket(unix_secs, MINUTE_SECS))
-    .execute(&mut *tx)
-    .await?;
-    // Raising all three to the same value keeps since >= floor and until >= since.
-    sqlx::query(
-        "UPDATE query_log_rollup_state SET value = MAX(value, ?)
-         WHERE name IN ('hour_since', 'hour_until', 'hour_floor')",
-    )
     .bind(ceil_bucket(unix_secs, HOUR_SECS))
     .execute(&mut *tx)
     .await?;

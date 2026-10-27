@@ -9,27 +9,19 @@ use ferrous_dns_application::ports::{
     BlockedClientStatsRepository, PageAt, QueryLogRepository, QueryLogRollupRepository,
     QueryLogStorageRepository,
 };
-use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::QueryLogFilter;
-use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::SqlitePool;
 
 #[path = "support/db.rs"]
 mod db;
+#[path = "support/rollups.rs"]
+mod rollups;
+
+use rollups::{rebuild_rollups, repo, rollup_state as state, set_rollup_state as set_state};
 
 const DOMAINS: usize = 25;
 const CLIENTS: u8 = 6;
 const HOUR: i64 = 3_600;
-
-fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
-    SqliteQueryLogRepository::new(
-        pool.clone(),
-        pool.clone(),
-        pool.clone(),
-        &DatabaseConfig::default(),
-        Default::default(),
-    )
-}
 
 fn this_hour() -> i64 {
     let now = Utc::now().timestamp();
@@ -68,37 +60,6 @@ async fn seed(pool: &SqlitePool, rows: usize, hours: i64, rng: &mut fastrand::Rn
     }
 }
 
-/// Rollups exactly as the writer and the hourly job keep them, every bucket held.
-async fn rebuild_rollups(pool: &SqlitePool) {
-    sqlx::raw_sql(concat!(
-        "DELETE FROM query_log_minute; DELETE FROM query_log_minute_record_type;",
-        "DELETE FROM query_log_minute_block_source; DELETE FROM query_log_minute_upstream;",
-        "DELETE FROM query_log_hour_domain; DELETE FROM query_log_hour_client;",
-        include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
-        include_str!("support/hour_rollups.sql"),
-    ))
-    .execute(pool)
-    .await
-    .unwrap();
-}
-
-async fn set_state(pool: &SqlitePool, name: &str, value: i64) {
-    sqlx::query("UPDATE query_log_rollup_state SET value = ? WHERE name = ?")
-        .bind(value)
-        .bind(name)
-        .execute(pool)
-        .await
-        .unwrap();
-}
-
-async fn state(pool: &SqlitePool, name: &str) -> i64 {
-    sqlx::query_scalar("SELECT value FROM query_log_rollup_state WHERE name = ?")
-        .bind(name)
-        .fetch_one(pool)
-        .await
-        .unwrap()
-}
-
 /// Sets the coverage and poisons every bucket outside it: a read that used one of
 /// them would be off by a thousand.
 async fn set_coverage(pool: &SqlitePool, hour_since: i64, hour_until: i64, minute_since: i64) {
@@ -130,8 +91,11 @@ async fn steady_clock() {
     }
 }
 
+/// The repository's cutoff, saturating to the calendar's start like it does.
 fn cutoff(hours: f32) -> String {
-    (Utc::now() - Duration::milliseconds((hours * 3_600_000.0) as i64))
+    Duration::try_milliseconds((hours * 3_600_000.0) as i64)
+        .and_then(|window| Utc::now().checked_sub_signed(window))
+        .unwrap_or(chrono::DateTime::<Utc>::MIN_UTC)
         .format("%Y-%m-%d %H:%M:%S")
         .to_string()
 }
@@ -274,10 +238,11 @@ async fn assert_reads_match_raw(pool: &SqlitePool, hours: f32, label: &str) {
     );
 }
 
-const WINDOWS: [f32; 6] = [0.25, 1.0, 5.5, 24.0, 47.9, 720.0];
+/// The last one reaches past the calendar's start, where the cutoff saturates.
+const WINDOWS: [f32; 7] = [0.25, 1.0, 5.5, 24.0, 47.9, 720.0, 1e12];
 
 #[tokio::test]
-async fn rollup_reads_equal_raw_reads_wherever_the_coverage_falls() {
+async fn test_rollup_reads_equal_raw_reads_wherever_the_coverage_falls() {
     let pool = db::migrated_pool().await;
     let mut rng = fastrand::Rng::with_seed(0x5eed_2027);
     seed(&pool, 3_000, 72, &mut rng).await;
@@ -305,7 +270,7 @@ async fn rollup_reads_equal_raw_reads_wherever_the_coverage_falls() {
 }
 
 #[tokio::test]
-async fn the_hourly_job_fills_closed_hours_and_the_history_and_reads_stay_exact() {
+async fn test_the_hourly_job_fills_closed_hours_and_the_history_and_reads_stay_exact() {
     let pool = db::migrated_pool().await;
     let mut rng = fastrand::Rng::with_seed(0x5eed_2029);
     seed(&pool, 3_000, 72, &mut rng).await;
@@ -356,7 +321,7 @@ async fn the_hourly_job_fills_closed_hours_and_the_history_and_reads_stay_exact(
 }
 
 #[tokio::test]
-async fn rollup_reads_stay_exact_after_retention_cuts_into_a_bucket() {
+async fn test_rollup_reads_stay_exact_after_retention_cuts_into_a_bucket() {
     let pool = db::migrated_pool().await;
     let mut rng = fastrand::Rng::with_seed(0x5eed_2028);
     // Ten days of rows; retention keeps three, so the oldest kept hour and minute are

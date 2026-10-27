@@ -1,11 +1,9 @@
 use ferrous_dns_application::ports::{
     PageAt, QueryLogRepository, QueryLogStorageRepository, TimeGranularity,
 };
-use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
     ClientProtocol, CoalescedRole, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
 };
-use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::SqlitePool;
 use std::collections::BTreeSet;
 use std::net::IpAddr;
@@ -14,49 +12,11 @@ use std::time::Duration;
 
 #[path = "support/db.rs"]
 mod db;
+#[path = "support/rollups.rs"]
+mod rollups;
 
 use db::migrated_pool;
-
-const ROLLUP_BACKFILL: &str =
-    include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql");
-const HOUR_ROLLUPS: &str = include_str!("support/hour_rollups.sql");
-
-fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
-    repo_with(pool, &DatabaseConfig::default())
-}
-
-fn repo_with(pool: &SqlitePool, cfg: &DatabaseConfig) -> SqliteQueryLogRepository {
-    SqliteQueryLogRepository::new(
-        pool.clone(),
-        pool.clone(),
-        pool.clone(),
-        cfg,
-        Default::default(),
-    )
-}
-
-/// Rebuilds the rollups from the raw rows with the production backfill, which
-/// `query_log_rollup_test` proves equal to what the writer maintains, and the hourly
-/// reference, every past hour held.
-async fn rebuild_rollups(pool: &SqlitePool) {
-    sqlx::raw_sql(
-        "DELETE FROM query_log_minute;
-         DELETE FROM query_log_minute_record_type;
-         DELETE FROM query_log_minute_block_source;
-         DELETE FROM query_log_minute_upstream;
-         DELETE FROM query_log_hour_domain;
-         DELETE FROM query_log_hour_client;
-         UPDATE query_log_rollup_state SET value = 0
-         WHERE name IN ('minute_since', 'hour_since', 'hour_floor');
-         UPDATE query_log_rollup_state SET value = CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600
-         WHERE name = 'hour_until';",
-    )
-    .execute(pool)
-    .await
-    .unwrap();
-    sqlx::raw_sql(ROLLUP_BACKFILL).execute(pool).await.unwrap();
-    sqlx::raw_sql(HOUR_ROLLUPS).execute(pool).await.unwrap();
-}
+use rollups::{rebuild_rollups, repo};
 
 /// One raw `query_log` row; `created_at: None` stamps it with the current time.
 #[derive(Clone, Copy)]

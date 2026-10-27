@@ -3,10 +3,10 @@
 //! they hold and the raw rows around them (`split_hours`). Schema in the
 //! `*_query_log_hour_rollups` migration, SQL reference in `tests/support/hour_rollups.sql`.
 
-use super::rollup::{ceil_bucket, hour_bucket, HOUR_SECS};
-use crate::repositories::{sql_ts, unix_cutoff};
+use super::rollup::{bucket_ts, ceil_bucket, hour_bucket, HOUR_SECS};
+use crate::repositories::sql_ts;
 use chrono::{DateTime, Utc};
-use sqlx::{Executor, Sqlite, SqlitePool};
+use sqlx::{Executor, Sqlite, SqliteConnection, SqlitePool};
 
 /// How long after an hour ends before the job aggregates it. A flush stamps its rows
 /// when it runs, so the last rows of an hour land just after the hour has closed.
@@ -14,11 +14,6 @@ const CLOSE_LAG_SECS: i64 = 60;
 
 /// Rows per insert: four binds each, within SQLite's 999-variable floor.
 const ROWS_PER_INSERT: usize = 999 / 4;
-
-const READ_COVERAGE: &str = "SELECT
-    (SELECT value FROM query_log_rollup_state WHERE name = 'hour_since'),
-    (SELECT value FROM query_log_rollup_state WHERE name = 'hour_until'),
-    (SELECT value FROM query_log_rollup_state WHERE name = 'hour_floor')";
 
 /// Hours in `[since, until)` are held completely. `floor` is retention's cutoff
 /// rounded up: no hour before it is filled, its raw rows may be going away.
@@ -34,19 +29,36 @@ impl Coverage {
     where
         E: Executor<'e, Database = Sqlite>,
     {
-        let (since, until, floor) = sqlx::query_as(READ_COVERAGE).fetch_one(executor).await?;
+        let (since, until, floor) =
+            sqlx::query_as("SELECT hour_since, hour_until, hour_floor FROM query_log_rollup_state")
+                .fetch_one(executor)
+                .await?;
         Ok(Self {
             since,
             until,
             floor,
         })
     }
-}
 
-/// Column format of an hour boundary. Hours come from stored rows or the clock, so
-/// they are always inside chrono's range.
-fn hour_ts(unix_secs: i64) -> String {
-    unix_cutoff(unix_secs).unwrap_or_default()
+    /// Replaces the coverage with `next`, inside `tx`, if it still is `self`. The
+    /// update is the transaction's first statement, so it takes the write lock and
+    /// waits out a busy writer; a transaction that reads first cannot wait when it
+    /// upgrades.
+    async fn replace(self, tx: &mut SqliteConnection, next: Coverage) -> Result<bool, sqlx::Error> {
+        let replaced = sqlx::query(
+            "UPDATE query_log_rollup_state SET hour_since = ?, hour_until = ?
+             WHERE hour_since = ? AND hour_until = ? AND hour_floor = ?",
+        )
+        .bind(next.since)
+        .bind(next.until)
+        .bind(self.since)
+        .bind(self.until)
+        .bind(self.floor)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+        Ok(replaced == 1)
+    }
 }
 
 /// Start of the first hour the clock has not closed yet: every hour before it ended at
@@ -65,11 +77,16 @@ pub(super) struct HourSplit {
     pub tail_start: String,
 }
 
-pub(super) async fn split_hours(
-    pool: &SqlitePool,
+/// Run the read that binds the split on the same transaction, so a retention run in
+/// between cannot move the coverage under it.
+pub(super) async fn split_hours<'e, E>(
+    executor: E,
     start: DateTime<Utc>,
-) -> Result<HourSplit, sqlx::Error> {
-    let coverage = Coverage::read(pool).await?;
+) -> Result<HourSplit, sqlx::Error>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let coverage = Coverage::read(executor).await?;
     let cutoff_secs = start.timestamp();
     let from = ceil_bucket(cutoff_secs, HOUR_SECS).max(coverage.since);
     // Hours held beyond the clock were closed by a clock that ran ahead; it has since
@@ -82,11 +99,10 @@ pub(super) async fn split_hours(
     } else {
         (cutoff_secs, cutoff_secs)
     };
-    let cutoff = sql_ts(start);
     Ok(HourSplit {
-        lead_end: unix_cutoff(from).unwrap_or_else(|| cutoff.clone()),
-        tail_start: unix_cutoff(until).unwrap_or_else(|| cutoff.clone()),
-        cutoff,
+        cutoff: sql_ts(start),
+        lead_end: bucket_ts(from)?,
+        tail_start: bucket_ts(until)?,
         from,
         until,
     })
@@ -139,6 +155,8 @@ async fn next_hour(
     .fetch_one(pool)
     .await?;
     let previous = coverage.since - HOUR_SECS;
+    // While retention deletes in batches the oldest row is still below its cutoff:
+    // `floor` is what keeps the job off an hour that is being deleted.
     Ok(oldest
         .filter(|&oldest| previous >= hour_bucket(oldest).max(coverage.floor))
         .map(|_| previous))
@@ -151,17 +169,20 @@ async fn give_back_open_hours(
     read_as: Coverage,
     first_open: i64,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
-    if Coverage::read(&mut *tx).await? != read_as {
+    let next = Coverage {
+        since: read_as.since.min(first_open),
+        until: first_open,
+        ..read_as
+    };
+    let mut tx = pool.begin().await?;
+    if !read_as.replace(&mut tx, next).await? {
         return Ok(());
     }
-    for sql in [
-        "DELETE FROM query_log_hour_domain WHERE bucket >= ?",
-        "DELETE FROM query_log_hour_client WHERE bucket >= ?",
-        "UPDATE query_log_rollup_state SET value = ? WHERE name = 'hour_until'",
-        "UPDATE query_log_rollup_state SET value = MIN(value, ?) WHERE name = 'hour_since'",
-    ] {
-        sqlx::query(sql).bind(first_open).execute(&mut *tx).await?;
+    for table in ["query_log_hour_domain", "query_log_hour_client"] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE bucket >= ?"))
+            .bind(first_open)
+            .execute(&mut *tx)
+            .await?;
     }
     tx.commit().await
 }
@@ -178,8 +199,8 @@ async fn aggregate(
          WHERE query_source = 'client' AND created_at >= ? AND created_at < ?
          GROUP BY 1, 2"
     ))
-    .bind(hour_ts(hour))
-    .bind(hour_ts(hour + HOUR_SECS))
+    .bind(bucket_ts(hour)?)
+    .bind(bucket_ts(hour + HOUR_SECS)?)
     .fetch_all(pool)
     .await
 }
@@ -193,10 +214,19 @@ async fn store(
     domains: &HourCounts,
     clients: &HourCounts,
 ) -> Result<bool, sqlx::Error> {
-    // IMMEDIATE takes the write lock up front, so a busy writer is waited out. A
-    // deferred transaction that reads first cannot wait when it upgrades: it fails.
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
-    if Coverage::read(&mut *tx).await? != picked_from {
+    let next = if hour == picked_from.until {
+        Coverage {
+            until: hour + HOUR_SECS,
+            ..picked_from
+        }
+    } else {
+        Coverage {
+            since: hour,
+            ..picked_from
+        }
+    };
+    let mut tx = pool.begin().await?;
+    if !picked_from.replace(&mut tx, next).await? {
         return Ok(false);
     }
     for (table, key_column, counts) in [
@@ -219,16 +249,6 @@ async fn store(
             q.execute(&mut *tx).await?;
         }
     }
-    let (name, value) = if hour == picked_from.until {
-        ("hour_until", hour + HOUR_SECS)
-    } else {
-        ("hour_since", hour)
-    };
-    sqlx::query("UPDATE query_log_rollup_state SET value = ? WHERE name = ?")
-        .bind(value)
-        .bind(name)
-        .execute(&mut *tx)
-        .await?;
     tx.commit().await?;
     Ok(true)
 }
