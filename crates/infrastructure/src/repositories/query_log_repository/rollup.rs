@@ -1,5 +1,6 @@
 //! Per-minute aggregates kept beside the raw `query_log` rows. Schema and the SQL
-//! reference definitions live in the `*_query_log_rollups` migrations.
+//! reference definitions live in the `*_query_log_rollups` migrations; the hourly
+//! ones are in `hour_rollup`.
 
 use super::writer::QueryLogEntry;
 use ferrous_dns_domain::{BlockSource, DnssecStatus, QuerySource, RecordType};
@@ -11,10 +12,35 @@ use std::sync::Arc;
 type SqliteQuery<'q> = Query<'q, Sqlite, SqliteArguments<'q>>;
 
 pub(super) const MINUTE_SECS: i64 = 60;
+pub(super) const HOUR_SECS: i64 = 3_600;
 
 /// Start of the minute containing `unix_secs`.
 pub(super) fn minute_bucket(unix_secs: i64) -> i64 {
     unix_secs - unix_secs.rem_euclid(MINUTE_SECS)
+}
+
+/// Start of the hour containing `unix_secs`.
+pub(super) fn hour_bucket(unix_secs: i64) -> i64 {
+    unix_secs - unix_secs.rem_euclid(HOUR_SECS)
+}
+
+/// First bucket of `size` seconds that starts at or after `unix_secs`.
+pub(super) fn ceil_bucket(unix_secs: i64, size: i64) -> i64 {
+    unix_secs.saturating_add(size - 1).div_euclid(size) * size
+}
+
+/// Where a read of the window starting at `cutoff_secs` switches to the minute
+/// rollups: the first bucket inside the window that they hold completely. Raw rows
+/// cover the window before it, so raw part plus buckets equals the raw window.
+pub(super) async fn first_complete_minute(
+    pool: &SqlitePool,
+    cutoff_secs: i64,
+) -> Result<i64, sqlx::Error> {
+    let since: i64 =
+        sqlx::query_scalar("SELECT value FROM query_log_rollup_state WHERE name = 'minute_since'")
+            .fetch_one(pool)
+            .await?;
+    Ok(ceil_bucket(cutoff_secs, MINUTE_SECS).max(since))
 }
 
 // One list drives the struct, the column list, the upsert's SET clause and the
@@ -222,7 +248,10 @@ impl MinuteRollup {
 }
 
 /// Drops every bucket that starts before `unix_secs`, in one transaction so the
-/// four tables never disagree about the retained range.
+/// tables never disagree about the retained range. A bucket straddling the cutoff
+/// goes whole while its newer raw rows stay, so the coverage in
+/// `query_log_rollup_state` moves past it, and the hourly job never refills an
+/// hour before it.
 pub(super) async fn prune_before(pool: &SqlitePool, unix_secs: i64) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     for sql in [
@@ -230,8 +259,40 @@ pub(super) async fn prune_before(pool: &SqlitePool, unix_secs: i64) -> Result<()
         "DELETE FROM query_log_minute_record_type WHERE bucket < ?",
         "DELETE FROM query_log_minute_block_source WHERE bucket < ?",
         "DELETE FROM query_log_minute_upstream WHERE bucket < ?",
+        "DELETE FROM query_log_hour_domain WHERE bucket < ?",
+        "DELETE FROM query_log_hour_client WHERE bucket < ?",
     ] {
         sqlx::query(sql).bind(unix_secs).execute(&mut *tx).await?;
     }
+    sqlx::query(
+        "UPDATE query_log_rollup_state SET value = MAX(value, ?) WHERE name = 'minute_since'",
+    )
+    .bind(ceil_bucket(unix_secs, MINUTE_SECS))
+    .execute(&mut *tx)
+    .await?;
+    // Raising all three to the same value keeps since >= floor and until >= since.
+    sqlx::query(
+        "UPDATE query_log_rollup_state SET value = MAX(value, ?)
+         WHERE name IN ('hour_since', 'hour_until', 'hour_floor')",
+    )
+    .bind(ceil_bucket(unix_secs, HOUR_SECS))
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ceil_bucket, HOUR_SECS};
+
+    #[test]
+    fn ceil_bucket_keeps_a_boundary_and_rounds_anything_else_up() {
+        assert_eq!(ceil_bucket(7_200, HOUR_SECS), 7_200);
+        assert_eq!(ceil_bucket(7_201, HOUR_SECS), 10_800);
+        assert_eq!(ceil_bucket(-1, HOUR_SECS), 0);
+        assert_eq!(
+            ceil_bucket(i64::MIN, HOUR_SECS),
+            i64::MIN / HOUR_SECS * HOUR_SECS
+        );
+    }
 }

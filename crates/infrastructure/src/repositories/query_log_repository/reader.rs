@@ -1,7 +1,10 @@
 use super::helpers::{row_to_query_log, window_start_bucket};
+use super::hour_rollup;
 use super::rollup;
-use crate::repositories::{db_err, hours_ago_cutoff, seconds_ago_cutoff, sql_ts, unix_cutoff};
-use chrono::{TimeDelta, Utc};
+use crate::repositories::{
+    db_err, hours_ago, hours_ago_cutoff, seconds_ago_cutoff, sql_ts, unix_cutoff,
+};
+use chrono::{DateTime, TimeDelta, Utc};
 use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, QueryLogStorage};
 use ferrous_dns_domain::entities::query_log::{
     ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
@@ -72,6 +75,42 @@ fn contains_pattern(needle: &str) -> String {
     pattern
 }
 
+/// Client rows logged since `start`: raw rows up to the first complete minute,
+/// then the minute rollups.
+async fn count_client_rows_since(
+    pool: &SqlitePool,
+    start: DateTime<Utc>,
+) -> Result<i64, sqlx::Error> {
+    let cutoff = sql_ts(start);
+    let switch_bucket = rollup::first_complete_minute(pool, start.timestamp()).await?;
+    // The bucket lies between `start` and a stored minute, inside chrono's range.
+    let switch_at = unix_cutoff(switch_bucket).unwrap_or_else(|| cutoff.clone());
+    sqlx::query_scalar(
+        "SELECT (SELECT COUNT(*) FROM query_log
+                 WHERE query_source = 'client' AND created_at >= ? AND created_at < ?)
+              + (SELECT COALESCE(SUM(total), 0) FROM query_log_minute
+                 WHERE query_source = 'client' AND bucket >= ?)",
+    )
+    .bind(&cutoff)
+    .bind(&switch_at)
+    .bind(switch_bucket)
+    .fetch_one(pool)
+    .await
+}
+
+/// Binds a window's three parts in the order of the hour-rollup reads: the raw lead,
+/// the buckets, then the raw tail.
+macro_rules! bind_hour_split {
+    ($query:expr, $split:expr) => {
+        $query
+            .bind(&$split.cutoff)
+            .bind(&$split.lead_end)
+            .bind($split.from)
+            .bind($split.until)
+            .bind(&$split.tail_start)
+    };
+}
+
 #[instrument(skip(pool))]
 pub(super) async fn get_recent(
     pool: &SqlitePool,
@@ -117,7 +156,8 @@ pub(super) async fn get_recent_paged(
     );
 
     let fetch_limit = limit as i64 + 1;
-    let cutoff = hours_ago_cutoff(period_hours);
+    let window_start = hours_ago(period_hours);
+    let cutoff = sql_ts(window_start);
     let domain_pattern = filter
         .domain
         .as_deref()
@@ -217,6 +257,8 @@ pub(super) async fn get_recent_paged(
     } else {
         ""
     };
+    // With nothing to filter on, the filtered count is the total.
+    let is_unfiltered = filters.is_empty() && newest_id.is_none();
 
     // Binds the `?` of `filters`, in the order its fragments are concatenated.
     macro_rules! bind_filters {
@@ -318,6 +360,9 @@ pub(super) async fn get_recent_paged(
             }
         },
         async {
+            if is_unfiltered {
+                return Ok(None);
+            }
             let count_sql = format!(
                 "SELECT COUNT(*) as cnt FROM query_log q
                  LEFT JOIN clients c ON q.client_ip = c.ip_address
@@ -327,23 +372,19 @@ pub(super) async fn get_recent_paged(
             if let Some(newest_id) = newest_id {
                 q = q.bind(newest_id);
             }
-            bind_filters!(q).fetch_one(pool).await
+            bind_filters!(q)
+                .fetch_one(pool)
+                .await
+                .map(|row| Some(row.get::<i64, _>("cnt")))
         },
-        sqlx::query(
-            "SELECT COUNT(*) as cnt FROM query_log q
-             WHERE q.query_source = 'client' AND q.created_at >= ?",
-        )
-        .bind(&cutoff)
-        .fetch_one(pool)
+        count_client_rows_since(pool, window_start)
     );
 
     let mut rows = rows_result.map_err(db_err("Failed to fetch paginated queries"))?;
+    let records_total = total_count_result.map_err(db_err("Failed to count total queries"))? as u64;
     let records_filtered = filtered_count_result
         .map_err(db_err("Failed to count filtered queries"))?
-        .get::<i64, _>("cnt") as u64;
-    let records_total = total_count_result
-        .map_err(db_err("Failed to count total queries"))?
-        .get::<i64, _>("cnt") as u64;
+        .map_or(records_total, |n| n as u64);
 
     let has_more = rows.len() as u32 > limit;
     if has_more {
@@ -617,22 +658,62 @@ pub(super) enum DomainVerdict {
     Any,
 }
 
-macro_rules! top_domains_sql {
-    ($verdict:literal) => {
+/// Counts per `$key` over a window split by `split_hours`: the raw lead, the hourly
+/// rollup `$table`, and the raw tail, each narrowed by `$verdict`.
+macro_rules! hour_split_counts_sql {
+    ($key:literal, $table:literal, $verdict:literal) => {
         concat!(
-            "SELECT domain, COUNT(*) as count
-             FROM query_log
-             WHERE created_at >= ?
-               AND query_source = 'client'",
+            "SELECT ",
+            $key,
+            ", SUM(n) AS count FROM (
+                 SELECT ",
+            $key,
+            ", COUNT(*) AS n FROM query_log
+                 WHERE query_source = 'client' AND created_at >= ? AND created_at < ?",
             $verdict,
             "
-             GROUP BY domain
+                 GROUP BY ",
+            $key,
+            "
+                 UNION ALL
+                 SELECT ",
+            $key,
+            ", SUM(count) AS n FROM ",
+            $table,
+            "
+                 WHERE bucket >= ? AND bucket < ?",
+            $verdict,
+            "
+                 GROUP BY ",
+            $key,
+            "
+                 UNION ALL
+                 SELECT ",
+            $key,
+            ", COUNT(*) AS n FROM query_log
+                 WHERE query_source = 'client' AND created_at >= ?",
+            $verdict,
+            "
+                 GROUP BY ",
+            $key,
+            "
+             )
+             GROUP BY ",
+            $key,
+            "
              ORDER BY count DESC
              LIMIT ?"
         )
     };
 }
 
+macro_rules! top_domains_sql {
+    ($verdict:literal) => {
+        hour_split_counts_sql!("domain", "query_log_hour_domain", $verdict)
+    };
+}
+
+/// Hourly rollups where they hold the window, raw rows around them.
 #[instrument(skip(pool))]
 pub(super) async fn get_top_domains(
     pool: &SqlitePool,
@@ -654,8 +735,10 @@ pub(super) async fn get_top_domains(
             "Failed to fetch distinct recent domains",
         ),
     };
-    let rows = sqlx::query(sql)
-        .bind(hours_ago_cutoff(period_hours))
+    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
+        .await
+        .map_err(db_err(context))?;
+    let rows = bind_hour_split!(sqlx::query(sql), split)
         .bind(limit as i64)
         .fetch_all(pool)
         .await
@@ -672,17 +755,40 @@ pub(super) async fn count_distinct_domains(
     pool: &SqlitePool,
     period_hours: f32,
 ) -> Result<u64, DomainError> {
-    let row = sqlx::query(
-        "SELECT COUNT(DISTINCT domain) AS count
-         FROM query_log
-         WHERE created_at >= ? AND query_source = 'client'",
+    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
+        .await
+        .map_err(db_err("Failed to count distinct domains"))?;
+    let row = bind_hour_split!(
+        sqlx::query(
+            "SELECT COUNT(*) AS count FROM (
+             SELECT domain FROM query_log
+             WHERE query_source = 'client' AND created_at >= ? AND created_at < ?
+             UNION
+             SELECT domain FROM query_log_hour_domain WHERE bucket >= ? AND bucket < ?
+             UNION
+             SELECT domain FROM query_log WHERE query_source = 'client' AND created_at >= ?
+         )",
+        ),
+        split
     )
-    .bind(hours_ago_cutoff(period_hours))
     .fetch_one(pool)
     .await
     .map_err(db_err("Failed to count distinct domains"))?;
 
     Ok(row.get::<i64, _>("count") as u64)
+}
+
+/// The top clients by count, with the hostname looked up once per listed client.
+macro_rules! top_clients_sql {
+    ($verdict:literal) => {
+        concat!(
+            "SELECT t.client_ip, c.hostname, t.count FROM (",
+            hour_split_counts_sql!("client_ip", "query_log_hour_client", $verdict),
+            ") t
+             LEFT JOIN clients c ON t.client_ip = c.ip_address
+             ORDER BY t.count DESC"
+        )
+    };
 }
 
 #[instrument(skip(pool))]
@@ -692,24 +798,19 @@ pub(super) async fn get_top_clients(
     period_hours: f32,
     blocked_only: bool,
 ) -> Result<Vec<(String, Option<String>, u64)>, DomainError> {
-    let cutoff = hours_ago_cutoff(period_hours);
-    let rows = sqlx::query(
-        "SELECT q.client_ip, c.hostname, COUNT(*) as count
-         FROM query_log q
-         LEFT JOIN clients c ON q.client_ip = c.ip_address
-         WHERE q.created_at >= ?
-           AND q.query_source = 'client'
-           AND (? = 0 OR q.blocked = 1)
-         GROUP BY q.client_ip
-         ORDER BY count DESC
-         LIMIT ?",
-    )
-    .bind(cutoff)
-    .bind(blocked_only)
-    .bind(limit as i64)
-    .fetch_all(pool)
-    .await
-    .map_err(db_err("Failed to fetch top clients"))?;
+    let split = hour_rollup::split_hours(pool, hours_ago(period_hours))
+        .await
+        .map_err(db_err("Failed to fetch top clients"))?;
+    let sql = if blocked_only {
+        top_clients_sql!(" AND blocked = 1")
+    } else {
+        top_clients_sql!("")
+    };
+    let rows = bind_hour_split!(sqlx::query(sql), split)
+        .bind(limit as i64)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("Failed to fetch top clients"))?;
 
     Ok(rows
         .into_iter()
@@ -763,34 +864,41 @@ pub(super) async fn get_client_activity(
         .collect())
 }
 
-/// One pass over the client rows of the window index: the whole log, the
-/// period's share of it, and the oldest timestamp of each.
+/// The whole client log and the period's share of it, counted from the minute
+/// rollups; the oldest timestamp of each and the newest id are index seeks.
 #[instrument(skip(pool))]
 pub(super) async fn get_storage(
     pool: &SqlitePool,
     period_hours: f32,
 ) -> Result<QueryLogStorage, DomainError> {
-    let cutoff = hours_ago_cutoff(period_hours);
-    let row = sqlx::query(
-        "SELECT COUNT(*) AS stored,
-                COALESCE(CAST(strftime('%s', MIN(created_at)) AS REAL), 0.0) AS stored_earliest,
-                COALESCE(SUM(created_at >= ?), 0) AS recent,
-                COALESCE(CAST(strftime('%s', MIN(CASE WHEN created_at >= ? THEN created_at END)) AS REAL), 0.0) AS recent_earliest,
-                COALESCE(MAX(id), 0) AS newest_id,
-                sqlite_version() AS sqlite_version
-         FROM query_log
-         WHERE query_source = 'client'",
+    const CONTEXT: &str = "Failed to read query log storage";
+    let window_start = hours_ago(period_hours);
+    let (stored, recent) = tokio::try_join!(
+        count_client_rows_since(pool, DateTime::<Utc>::MIN_UTC),
+        count_client_rows_since(pool, window_start),
     )
-    .bind(&cutoff)
-    .bind(&cutoff)
+    .map_err(db_err(CONTEXT))?;
+    // `+query_source` keeps the window index out of the newest-id lookup: walking ids
+    // down from the top finds a client row at once, the index would sort them all.
+    let row = sqlx::query(
+        "SELECT COALESCE((SELECT CAST(strftime('%s', MIN(created_at)) AS REAL)
+                          FROM query_log WHERE query_source = 'client'), 0.0) AS stored_earliest,
+                COALESCE((SELECT CAST(strftime('%s', MIN(created_at)) AS REAL)
+                          FROM query_log
+                          WHERE query_source = 'client' AND created_at >= ?), 0.0) AS recent_earliest,
+                COALESCE((SELECT id FROM query_log WHERE +query_source = 'client'
+                          ORDER BY id DESC LIMIT 1), 0) AS newest_id,
+                sqlite_version() AS sqlite_version",
+    )
+    .bind(sql_ts(window_start))
     .fetch_one(pool)
     .await
-    .map_err(db_err("Failed to read query log storage"))?;
+    .map_err(db_err(CONTEXT))?;
 
     Ok(QueryLogStorage {
-        recent_queries: row.get::<i64, _>("recent") as u64,
+        recent_queries: recent as u64,
         recent_earliest: row.get("recent_earliest"),
-        stored_queries: row.get::<i64, _>("stored") as u64,
+        stored_queries: stored as u64,
         stored_earliest: row.get("stored_earliest"),
         newest_id: row.get("newest_id"),
         sqlite_version: row.get("sqlite_version"),
@@ -804,6 +912,13 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
     };
     let cutoff = sql_ts(cutoff_at);
     let mut total_deleted: u64 = 0;
+
+    // Rollups first: from here on, reads take everything before the cutoff from the
+    // raw rows, so they stay exact while the batches below delete them. A bucket
+    // straddling the cutoff goes whole, so `days = 0` clears everything.
+    rollup::prune_before(pool, cutoff_at.timestamp())
+        .await
+        .map_err(db_err("Failed to prune query log rollups"))?;
 
     loop {
         let batch_started = Instant::now();
@@ -821,11 +936,6 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
         total_deleted += deleted;
         tokio::time::sleep(retention_pause(batch_started.elapsed())).await;
     }
-
-    // A bucket straddling the cutoff goes whole, so `days = 0` clears everything.
-    rollup::prune_before(pool, cutoff_at.timestamp())
-        .await
-        .map_err(db_err("Failed to prune query log rollups"))?;
 
     let reclaimed_pages = reclaim_free_pages(pool).await.map_err(db_err(
         "Failed to give free pages back to the database file",

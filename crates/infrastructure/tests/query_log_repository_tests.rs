@@ -19,6 +19,7 @@ use db::migrated_pool;
 
 const ROLLUP_BACKFILL: &str =
     include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql");
+const HOUR_ROLLUPS: &str = include_str!("support/hour_rollups.sql");
 
 fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
     repo_with(pool, &DatabaseConfig::default())
@@ -35,18 +36,26 @@ fn repo_with(pool: &SqlitePool, cfg: &DatabaseConfig) -> SqliteQueryLogRepositor
 }
 
 /// Rebuilds the rollups from the raw rows with the production backfill, which
-/// `query_log_rollup_test` proves equal to what the writer maintains.
+/// `query_log_rollup_test` proves equal to what the writer maintains, and the hourly
+/// reference, every past hour held.
 async fn rebuild_rollups(pool: &SqlitePool) {
     sqlx::raw_sql(
         "DELETE FROM query_log_minute;
          DELETE FROM query_log_minute_record_type;
          DELETE FROM query_log_minute_block_source;
-         DELETE FROM query_log_minute_upstream;",
+         DELETE FROM query_log_minute_upstream;
+         DELETE FROM query_log_hour_domain;
+         DELETE FROM query_log_hour_client;
+         UPDATE query_log_rollup_state SET value = 0
+         WHERE name IN ('minute_since', 'hour_since', 'hour_floor');
+         UPDATE query_log_rollup_state SET value = CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600
+         WHERE name = 'hour_until';",
     )
     .execute(pool)
     .await
     .unwrap();
     sqlx::raw_sql(ROLLUP_BACKFILL).execute(pool).await.unwrap();
+    sqlx::raw_sql(HOUR_ROLLUPS).execute(pool).await.unwrap();
 }
 
 /// One raw `query_log` row; `created_at: None` stamps it with the current time.
@@ -89,7 +98,14 @@ impl Default for Row<'_> {
     }
 }
 
+/// Inserts a raw row and rebuilds the rollups, as the writer keeps them in step.
 async fn insert(pool: &SqlitePool, row: Row<'_>) {
+    insert_raw(pool, row).await;
+    rebuild_rollups(pool).await;
+}
+
+/// Inserts a raw row only, for rows the writer could never have produced.
+async fn insert_raw(pool: &SqlitePool, row: Row<'_>) {
     sqlx::query(
         "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit,
                                 block_source, response_status, upstream_server, upstream_pool,
@@ -139,7 +155,6 @@ async fn insert_log(
         },
     )
     .await;
-    rebuild_rollups(pool).await;
 }
 
 async fn insert_client(pool: &SqlitePool, ip: &str, hostname: &str) {
@@ -1598,7 +1613,7 @@ async fn test_coalesced_role_round_trips() {
 #[tokio::test]
 async fn test_unparseable_created_at_reads_back_without_timestamp() {
     let pool = migrated_pool().await;
-    insert(
+    insert_raw(
         &pool,
         Row {
             domain: "corrupt.example.com",
