@@ -73,3 +73,10 @@ path = "fuzz_targets/blocklist_text.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "mdns_announcement"
+path = "fuzz_targets/mdns_announcement.rs"
+test = false
+doc = false
+bench = false

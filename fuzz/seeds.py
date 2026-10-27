@@ -217,5 +217,46 @@ write("blocklist_text", "regex_rules", b"/^ads[0-9]+\\.example\\.com$/\n//\n/(/\
 write("blocklist_text", "whitespace_and_comments", b"\n   \n#\n!\n\t\n   0.0.0.0    a.b   \n")
 write("blocklist_text", "empty", b"")
 
+# -------------------------------------------------------------- mdns_announcement
+# The fuzz target treats 192.168.1.20 as the datagram's source.
+MDNS_SOURCE = bytes([192, 168, 1, 20])
+MDNS_FLUSH_IN = 0x8001
+HOST = [b"iPhone-de-Ana", b"local"]
+
+
+def mdns(flags: int, questions: bytes, qd: int, records: bytes, an: int, ar: int = 0) -> bytes:
+    return struct.pack(">HHHHHH", 0, flags, qd, an, 0, ar) + questions + records
+
+
+def mdns_record(owner: bytes, rtype: int, rdata: bytes, ttl: int = 120,
+                rclass: int = MDNS_FLUSH_IN) -> bytes:
+    return owner + struct.pack(">HHIH", rtype, rclass, ttl, len(rdata)) + rdata
+
+
+# The first record's owner starts right after the 12-byte header.
+FIRST_OWNER = b"\xc0\x0c"
+V6_LINK = bytes.fromhex("fe800000000000001c2d3e4f5a6b7c8d")
+
+write("mdns_announcement", "self_announcement_a_aaaa",
+      mdns(0x8400, b"", 0,
+           mdns_record(name_wire(HOST), 1, MDNS_SOURCE)
+           + mdns_record(FIRST_OWNER, 28, V6_LINK), an=1, ar=1))
+write("mdns_announcement", "other_address",
+      mdns(0x8400, b"", 0, mdns_record(name_wire([b"HP-LaserJet", b"local"]), 1,
+                                       bytes([192, 168, 1, 30])), an=1))
+write("mdns_announcement", "goodbye",
+      mdns(0x8400, b"", 0, mdns_record(name_wire(HOST), 1, MDNS_SOURCE, ttl=0), an=1))
+write("mdns_announcement", "query_with_known_answer",
+      mdns(0x0000, name_wire(HOST) + struct.pack(">HH", 1, 0x8001), 1,
+           mdns_record(FIRST_OWNER, 1, MDNS_SOURCE), an=1))
+SERVICE = name_wire([b"_airplay", b"_tcp", b"local"])
+INSTANCE = name_wire([b"Living Room", b"_airplay", b"_tcp", b"local"])
+write("mdns_announcement", "service_with_host",
+      mdns(0x8400, b"", 0,
+           mdns_record(SERVICE, 12, INSTANCE, ttl=4500, rclass=1)
+           + mdns_record(INSTANCE, 33, struct.pack(">HHH", 0, 0, 7000) + name_wire(HOST))
+           + mdns_record(INSTANCE, 16, b"\x09model=TV1")
+           + mdns_record(name_wire(HOST), 1, MDNS_SOURCE), an=4))
+
 total = sum(1 for _ in CORPUS.rglob("*.bin"))
 print(f"wrote {total} seed files under {CORPUS}")

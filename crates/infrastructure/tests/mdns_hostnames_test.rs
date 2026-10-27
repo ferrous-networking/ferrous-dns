@@ -191,6 +191,28 @@ fn other_records_are_ignored() {
     assert_eq!(names(&packet), vec![named(SOURCE, "iPhone")]);
 }
 
+/// The fuzz target's seeds, run on stable: only the datagrams that announce
+/// their sender name it.
+#[test]
+fn the_fuzz_seeds_name_only_their_sender() {
+    let corpus = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fuzz/corpus/mdns_announcement"
+    );
+    let mut naming: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(corpus).unwrap() {
+        let path = entry.unwrap().path();
+        let found = names(&std::fs::read(&path).unwrap());
+        if !found.is_empty() {
+            assert!(found.iter().all(|(_, name)| &**name == "iPhone-de-Ana"));
+            naming.push(path.file_stem().unwrap().to_string_lossy().into_owned());
+        }
+    }
+    naming.sort();
+
+    assert_eq!(naming, ["self_announcement_a_aaaa", "service_with_host"]);
+}
+
 #[test]
 fn malformed_datagrams_name_nobody() {
     let whole = response(&[a("iPhone.local", SOURCE)]);
