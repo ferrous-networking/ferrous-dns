@@ -162,6 +162,15 @@ fn the_name_keeps_its_case_and_drops_local_in_any_case() {
     assert_eq!(names(&packet), vec![named(SOURCE, "Anas-MacBook-Pro")]);
 }
 
+/// mDNS names are raw UTF-8 (RFC 6762 §16), and spaces are legal in them.
+#[test]
+fn a_utf8_name_or_one_with_spaces_is_kept_as_announced() {
+    for name in ["João-iPhone", "Living Room TV"] {
+        let packet = response(&[a(&format!("{name}.local"), SOURCE)]);
+        assert_eq!(names(&packet), vec![named(SOURCE, name)], "{name}");
+    }
+}
+
 #[test]
 fn a_name_with_control_characters_is_not_shown() {
     let packet = response(&[a("bell\u{7}.local", SOURCE)]);
