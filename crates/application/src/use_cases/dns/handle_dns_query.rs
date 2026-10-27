@@ -917,11 +917,14 @@ impl HandleDnsQueryUseCase {
                 } else {
                     Some(resolution.rcode_name())
                 };
+                // An internal pool's NXDOMAIN is the LAN's own: it feeds neither
+                // the tunneling ratio nor the NXDOMAIN budget.
+                let upstream_nxdomain = Self::spends_nxdomain_budget(&resolution);
                 if !explicitly_allowed {
-                    self.emit_tunneling_event(request, resolution.upstream_nxdomain);
+                    self.emit_tunneling_event(request, upstream_nxdomain);
                     self.emit_dga_event(request);
                 }
-                if Self::spends_nxdomain_budget(&resolution) {
+                if upstream_nxdomain {
                     self.charge_nxdomain(request, elapsed_us, group_id)?;
                 }
                 self.log(&QueryLog {
