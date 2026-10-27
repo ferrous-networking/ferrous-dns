@@ -134,6 +134,35 @@ The WAL is also bounded across restarts:
 
 ---
 
+## Disk Space
+
+Deleting rows does not shrink an SQLite file by itself: the freed pages stay inside it until they are handed back.
+
+- **A database created by this release** uses incremental auto-vacuum. After each query-log cleanup, the server gives the freed pages back to the file in 8 MiB steps, pausing between steps as the cleanup does. Lowering `queries_log_stored` therefore shrinks the file at the next cleanup.
+- **A database created by an earlier release** keeps its free pages until it is rewritten once. At startup, the server logs a warning when such a file holds 64 MiB or more of free space: `The database file holds free space it cannot give back`.
+
+To rewrite it, stop the server and run the binary once with `--compact-database`. It exits when done:
+
+=== "Docker"
+
+    ```bash
+    docker compose stop ferrous-dns
+    docker compose run --rm ferrous-dns --compact-database
+    docker compose start ferrous-dns
+    ```
+
+=== "Binary"
+
+    ```bash
+    ferrous-dns --config ferrous-dns.toml --compact-database
+    ```
+
+The command copies the live data into `<database>.compact` with incremental auto-vacuum, syncs the copy, and then replaces the original with it. It needs free disk space about the size of the data the file holds, not the size of the file. The original is not touched until the copy is complete, and a copy left by an interrupted run is discarded on the next one. If the server still has the database open, the command refuses with `the database is in use; stop the server before compacting it`.
+
+The dashboard's top domains and top clients, the Query Log total, and the Pi-hole API's top lists and database counts read hourly and per-minute aggregates kept beside the query log, so their cost does not grow with the size of the log. A background job adds each hour to the hourly aggregates about five minutes after the hour ends. After an upgrade, it also fills in the hours logged before, newest first, about a day of history every five minutes. An hour it has not reached yet is read from the log itself, so the results are the same either way.
+
+---
+
 ## Database File Location
 
 === "Docker"
