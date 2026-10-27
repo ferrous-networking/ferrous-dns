@@ -3,7 +3,7 @@
 use super::base_options;
 use ferrous_dns_domain::DomainError;
 use sqlx::sqlite::SqliteLockingMode;
-use sqlx::{Connection, SqliteConnection};
+use sqlx::{ConnectOptions, Connection, SqliteConnection};
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -75,7 +75,9 @@ pub async fn compact_database(database_url: &str) -> Result<CompactionReport, Do
         .map_err(db_err)?
         .create_if_missing(false)
         .locking_mode(SqliteLockingMode::Exclusive)
-        .busy_timeout(BUSY_TIMEOUT);
+        .busy_timeout(BUSY_TIMEOUT)
+        // Waiting out the lock and the copy itself are slow by design, not worth a warning.
+        .disable_statement_logging();
     let path = options.get_filename().to_path_buf();
     let wal = sibling(&path, "-wal");
     let copy = sibling(&path, ".compact");
