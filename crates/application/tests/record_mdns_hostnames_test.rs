@@ -84,6 +84,22 @@ async fn a_changed_name_is_written_at_once() {
     assert_eq!(hostname(&repo).await.as_deref(), Some("iPhone-2"));
 }
 
+/// Two responders on one host (Windows' own and Bonjour, say) can announce
+/// different names for it. Each is written once an hour, not on every
+/// packet, and a name that differs only in case is the same name.
+#[tokio::test(start_paused = true)]
+async fn two_names_for_one_address_are_each_written_once_an_hour() {
+    let (recorder, repo) = recorder_with_phone().await;
+
+    assert_eq!(recorder.execute(&announced("Gaming-PC")).await.unwrap(), 1);
+    assert_eq!(recorder.execute(&announced("DESKTOP-7Q")).await.unwrap(), 1);
+    tokio::time::advance(Duration::from_secs(10)).await;
+    assert_eq!(recorder.execute(&announced("Gaming-PC")).await.unwrap(), 0);
+    assert_eq!(recorder.execute(&announced("desktop-7q")).await.unwrap(), 0);
+
+    assert_eq!(hostname(&repo).await.as_deref(), Some("DESKTOP-7Q"));
+}
+
 /// A device that starts using this server after announcing is named by a
 /// later announcement.
 #[tokio::test(start_paused = true)]

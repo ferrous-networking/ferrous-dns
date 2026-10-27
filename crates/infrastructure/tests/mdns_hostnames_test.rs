@@ -180,6 +180,28 @@ fn the_same_address_and_name_are_reported_once() {
     assert_eq!(names(&packet), vec![named(SOURCE, "iPhone")]);
 }
 
+/// A device that announces two host names for its address (after an mDNS
+/// name conflict, say) is named once, after the first, with only that
+/// name's addresses.
+#[test]
+fn a_device_is_named_after_the_first_name_it_announces() {
+    let v6_first: Ipv6Addr = "2001:db8::20".parse().unwrap();
+    let v6_second: Ipv6Addr = "2001:db8::21".parse().unwrap();
+    let packet = datagram(
+        true,
+        &[a("iPhone.local", SOURCE), a("iPhone-2.local", SOURCE)],
+        &[
+            aaaa("iPhone-2.local", v6_second),
+            aaaa("iPhone.local", v6_first),
+        ],
+    );
+
+    assert_eq!(
+        names(&packet),
+        vec![named(SOURCE, "iPhone"), named(v6_first, "iPhone")]
+    );
+}
+
 #[test]
 fn other_records_are_ignored() {
     let ptr_rdata = encode_name("iPhone._companion-link._tcp.local");
