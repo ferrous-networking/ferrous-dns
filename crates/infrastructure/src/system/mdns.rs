@@ -12,14 +12,13 @@ const MAX_NAME_LEN: usize = 253;
 const CACHE_FLUSH_BIT: u16 = 0x8000;
 const LOCAL_SUFFIX: &str = ".local";
 
-/// The names the sender of one mDNS datagram announced for itself, as
-/// `(address, name)` pairs with `.local` dropped from the name.
+/// The name the sender of one mDNS datagram announced for itself, paired
+/// with each of its addresses, with `.local` dropped from the name.
 ///
 /// Only a response counts, and in it only A and AAAA records under `local.`
 /// with a TTL above 0: a TTL of 0 is a goodbye. A device can only name
-/// itself, so a name counts only when one of its records holds `source`;
-/// its other addresses in the same datagram then count too. Anything
-/// malformed yields nothing.
+/// itself, so the name is the first one with a record holding `source`,
+/// and only that name's addresses count. Anything malformed yields nothing.
 pub fn hostnames_from_mdns(packet: &[u8], source: IpAddr) -> Vec<(IpAddr, Arc<str>)> {
     let Ok(message) = Message::from_vec(packet) else {
         return Vec::new();
@@ -34,19 +33,16 @@ pub fn hostnames_from_mdns(packet: &[u8], source: IpAddr) -> Vec<(IpAddr, Arc<st
         .chain(&message.additionals)
         .filter_map(host_address)
         .collect();
-    let owns_source = |name: &str| {
-        announced
-            .iter()
-            .any(|(ip, owner)| *ip == source && owner.eq_ignore_ascii_case(name))
+    let Some((_, own)) = announced.iter().find(|(ip, _)| *ip == source) else {
+        return Vec::new();
     };
+    let own: Arc<str> = Arc::from(own.as_str());
 
     let mut names: Vec<(IpAddr, Arc<str>)> = Vec::new();
     for (ip, name) in &announced {
-        let duplicate = names
-            .iter()
-            .any(|(seen_ip, seen)| seen_ip == ip && seen.eq_ignore_ascii_case(name));
-        if !duplicate && owns_source(name) {
-            names.push((*ip, Arc::from(name.as_str())));
+        let is_new_address = !names.iter().any(|(seen, _)| seen == ip);
+        if is_new_address && name.eq_ignore_ascii_case(&own) {
+            names.push((*ip, Arc::clone(&own)));
         }
     }
     names

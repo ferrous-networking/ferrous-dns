@@ -9,9 +9,9 @@ use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::debug;
 
-/// How long an unchanged name goes without being written again. Well under
-/// the day after which the PTR sync may take an mDNS name back, so a device
-/// that keeps announcing keeps its name.
+/// How long a name goes without being written again for the same address.
+/// Well under the day after which the PTR sync may take an mDNS name back,
+/// so a device that keeps announcing keeps its name.
 const REWRITE_AFTER: Duration = Duration::from_secs(3600);
 /// How long an address that is not a client goes without being looked up again.
 const RECHECK_UNKNOWN_AFTER: Duration = Duration::from_secs(300);
@@ -21,17 +21,17 @@ const REMEMBERED_ADDRESSES: NonZeroUsize = match NonZeroUsize::new(4096) {
 };
 
 struct Seen {
-    name: Arc<str>,
     at: Instant,
-    known: bool,
+    is_known: bool,
 }
 
 /// Names clients after the host names their devices announce over mDNS.
-/// Busy networks repeat announcements every few minutes, so a name is written
-/// when it changes and otherwise at most once an hour per address.
+/// Busy networks repeat announcements every few minutes, so each name is
+/// written at most once an hour per address, ignoring case. A host whose two
+/// responders announce different names does not rewrite it on every packet.
 pub struct RecordMdnsHostnamesUseCase {
     client_repo: Arc<dyn ClientRepository>,
-    seen: Mutex<LruCache<IpAddr, Seen>>,
+    seen: Mutex<LruCache<(IpAddr, String), Seen>>,
 }
 
 impl RecordMdnsHostnamesUseCase {
@@ -49,31 +49,31 @@ impl RecordMdnsHostnamesUseCase {
         let mut seen = self.seen.lock().await;
         let mut written = 0;
         for (ip, name) in names {
-            let fresh = seen.get(ip).is_some_and(|last| {
-                let wait = if last.known {
+            let key = (*ip, name.to_ascii_lowercase());
+            let is_fresh = seen.get(&key).is_some_and(|last| {
+                let wait = if last.is_known {
                     REWRITE_AFTER
                 } else {
                     RECHECK_UNKNOWN_AFTER
                 };
-                (!last.known || last.name == *name) && last.at.elapsed() < wait
+                last.at.elapsed() < wait
             });
-            if fresh {
+            if is_fresh {
                 continue;
             }
 
-            let known = self.client_repo.get_by_ip(*ip).await?.is_some();
-            if known {
+            let is_known = self.client_repo.get_by_ip(*ip).await?.is_some();
+            if is_known {
                 self.client_repo
                     .update_hostname(*ip, name.to_string(), HostnameSource::Mdns)
                     .await?;
                 written += 1;
             }
             seen.put(
-                *ip,
+                key,
                 Seen {
-                    name: Arc::clone(name),
                     at: Instant::now(),
-                    known,
+                    is_known,
                 },
             );
         }
