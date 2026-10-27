@@ -26,7 +26,7 @@ A fallback would leak internal names to public resolvers and resolve the ccTLD s
 - **A SQLite table** with a port, use cases, a CRUD API and a new tab. Three pool fields reuse the pools' live reload.
 - **A `forwarding_only` flag.** A pool with `domains` already leaves the default path.
 - **Falling back to the default pools** when the routed pool fails, for the leak reasons above.
-- **A pool with `groups` but no `domains`**, i.e. per-group upstreams (ROADMAP v1.1). Validation rejects it for now, but the door is left open.
+- **A pool with `groups` but no `domains`**, i.e. per-group upstreams (#330, v1.1.0 milestone). Validation rejects it for now, but the door is left open.
 - **Removing the id from pools when a group is deleted** (2026-10-16, #293). An empty `groups` means every client, so this would silently widen a split-horizon route to the whole network. The delete is refused instead.
 
 **Evidence:**

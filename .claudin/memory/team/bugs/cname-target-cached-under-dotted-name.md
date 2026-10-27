@@ -1,6 +1,6 @@
 ---
 name: cname-target-cached-under-dotted-name
-description: The CNAME chain's final target is cached as "target.example." (trailing dot), a key no client lookup ever matches — the shortcut has never served a hit; unfiled
+description: The CNAME chain's final target is cached as "target.example." (trailing dot), a key no client lookup ever matches — the shortcut has never served a hit; filed as #325 (v1.0.0 milestone)
 type: project
 paths:
   - crates/infrastructure/src/dns/forwarding/response_parser.rs
@@ -17,4 +17,4 @@ paths:
 
 **Fix sketch:** trim the trailing dot where the chain is built, or where the target key is built in `store_in_cache`. Fixing it starts serving real hits for CDN targets, which is a behavior change: the target answer is the chain's, with the chain's TTL and DNSSEC status.
 
-**Status:** open, unfiled. The #272 tests check both forms of the target on purpose (`TARGET_FORMS` in `cache_group_view_test.rs`), so they keep passing after a fix.
+**Status:** open; filed as issue #325 on 2026-10-26, in the v1.0.0 milestone. The #272 tests check both forms of the target on purpose (`TARGET_FORMS` in `cache_group_view_test.rs`), so they keep passing after a fix.
