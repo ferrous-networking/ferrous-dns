@@ -111,7 +111,7 @@ audit: ## Security audit
 #   make fuzz-short CARGO_NIGHTLY="$$HOME/.cargo/bin/cargo +nightly"
 
 CARGO_NIGHTLY ?= $(CARGO) +nightly
-FUZZ_TARGETS := query_fast_path response_lowercase_0x20 upstream_relay dnssec_records proxy_protocol_v2 blocklist_text
+FUZZ_TARGETS := query_fast_path response_lowercase_0x20 upstream_relay dnssec_records proxy_protocol_v2 blocklist_text mdns_announcement
 FUZZ_TIME ?= 60
 FUZZ_FLAGS := -dict=fuzz/dict/dns.dict -timeout=25 -rss_limit_mb=4096
 
