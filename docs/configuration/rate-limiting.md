@@ -122,12 +122,9 @@ The NXDOMAIN budget works like BIND's response rate limiting (`nxdomains-per-sec
 
 The budget is charged when the NXDOMAIN answer is produced, and it decides that answer only. An NXDOMAIN answer over the budget gets the configured action: REFUSED or TC=1 per `slip_ratio`, or only a log line under `dry_run`. The subnet's other queries are never refused because of it, so one device sweeping non-existent names does not take the rest of its `/24` offline.
 
-NXDOMAINs from `local_dns_server` are never charged, fresh or from the negative cache: they are the LAN's own traffic, such as a router answering reverse lookups for hosts it does not know. Whitelisted clients are never charged either.
+Upstream NXDOMAINs are charged however they are answered: fresh, from the cache, or for a query that joined another's in-flight lookup. NXDOMAINs from `local_dns_server` and from [internal pools](../features/upstream-management.md#upstream-pools) are never charged, fresh or cached: they are the LAN's own traffic, such as a router answering reverse lookups for hosts it does not know. Whitelisted clients are never charged either.
 
 The NXDOMAIN burst capacity is `nxdomain_per_second * 2` and it refills at `nxdomain_per_second`. Answers that resolve do not spend it, and NXDOMAIN answers do not spend the general query budget. `nxdomain_per_second = 0` disables the NXDOMAIN budget.
-
-!!! note "Upstream NXDOMAINs"
-    Upstream pools currently report an NXDOMAIN answer as a successful resolution ([#244](https://github.com/ferrous-networking/ferrous-dns/issues/244)), so upstream NXDOMAINs are not charged yet. The budget covers them once that issue is fixed.
 
 ---
 

@@ -345,7 +345,7 @@ When `slip_ratio` is set (e.g. `2`), every Nth rate-limited UDP response is sent
 
 ### NXDOMAIN Budget
 
-The `nxdomain_per_second` setting provides a separate, stricter budget charged for each NXDOMAIN answer a subnet receives, like BIND's `nxdomains-per-second`. This catches malware and IoT devices that probe many random subdomains. Only an NXDOMAIN answer over the budget is limited (REFUSED or TC=1, or only logged under `dry_run`); the subnet's other queries are never refused because of it. NXDOMAINs from `local_dns_server` are never charged. Upstream NXDOMAINs are not charged until [#244](https://github.com/ferrous-networking/ferrous-dns/issues/244) is fixed. See [Rate Limiting](../configuration/rate-limiting.md#nxdomain-budget).
+The `nxdomain_per_second` setting provides a separate, stricter budget charged for each NXDOMAIN answer a subnet receives, like BIND's `nxdomains-per-second`. This catches malware and IoT devices that probe many random subdomains. Only an NXDOMAIN answer over the budget is limited (REFUSED or TC=1, or only logged under `dry_run`); the subnet's other queries are never refused because of it. NXDOMAINs from `local_dns_server` and internal pools are never charged. See [Rate Limiting](../configuration/rate-limiting.md#nxdomain-budget).
 
 ### Dry-Run Mode
 
