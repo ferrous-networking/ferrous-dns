@@ -35,6 +35,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Conditional pool routing](decisions/conditional-pool-routing.md) — #291: routes are pool fields; no fallback (SERVFAIL); per-group cache view; SQLite table and id-pruning rejected
 - [Cache removal by events](decisions/cache-event-driven-removal.md) — eviction/compaction jobs → worker tick + per-entry expiry timers; same rules; ≥1 timer per entry; lossless inbox
 - [Release PR flow](decisions/release-pr-flow.md) — releases via a regenerated chore(release) PR; PAT for anything that starts a workflow; docs ride release-created
+- [Query-log rollups and disk space](decisions/query-log-rollups-and-disk-space.md) — #311: hourly rollups filled by a job (writer upserts halved throughput), incremental auto-vacuum, `--compact-database`; reads stay exact
 
 ## Bugs
 
