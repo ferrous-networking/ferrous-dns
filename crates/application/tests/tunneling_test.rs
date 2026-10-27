@@ -239,15 +239,15 @@ async fn tunneling_event_is_emitted_after_resolution() {
     assert!(!event.was_nxdomain);
 }
 
-/// An upstream's NXDOMAIN reaches the use case as a resolution carrying the
-/// upstream's message; the detector's NXDOMAIN ratio must still count it.
-#[tokio::test]
-async fn tunneling_event_marks_an_upstream_nxdomain_answer() {
+/// Whether the tunneling event for a fresh NXDOMAIN resolution is marked as
+/// one; `local_dns` is how an internal pool's answer comes back.
+async fn nxdomain_event_is_marked(local_dns: bool) -> bool {
     let resolver = MockDnsResolver::new();
     resolver
         .set_response(
             "x7f3a.evil.com",
             DnsResolution {
+                local_dns,
                 upstream_nxdomain: true,
                 upstream_wire_data: Some(bytes::Bytes::from_static(b"upstream NXDOMAIN")),
                 ..DnsResolution::new(vec![], false)
@@ -268,6 +268,21 @@ async fn tunneling_event_marks_an_upstream_nxdomain_answer() {
     let request = DnsRequest::new("x7f3a.evil.com", RecordType::A, CLIENT_IP);
     assert!(use_case.execute(&request).await.is_ok());
 
-    let event = rx.try_recv().expect("expected tunneling event");
-    assert!(event.was_nxdomain);
+    rx.try_recv()
+        .expect("expected tunneling event")
+        .was_nxdomain
+}
+
+/// An upstream's NXDOMAIN reaches the use case as a resolution carrying the
+/// upstream's message; the detector's NXDOMAIN ratio must still count it.
+#[tokio::test]
+async fn tunneling_event_marks_an_upstream_nxdomain_answer() {
+    assert!(nxdomain_event_is_marked(false).await);
+}
+
+/// An internal pool's NXDOMAINs are the LAN's own, as for the NXDOMAIN
+/// budget: a PTR sweep over an internal reverse zone must not feed the ratio.
+#[tokio::test]
+async fn tunneling_event_leaves_an_internal_pool_nxdomain_unmarked() {
+    assert!(!nxdomain_event_is_marked(true).await);
 }
