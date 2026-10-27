@@ -26,3 +26,4 @@ subtle = "2"
 
 [dev-dependencies]
 chrono = "0.4"
+tokio = { workspace = true, features = ["test-util"] }

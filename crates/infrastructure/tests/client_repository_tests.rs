@@ -154,6 +154,86 @@ async fn test_manual_name_replaces_a_ptr_one_and_another_manual_one() {
     assert_eq!(client.hostname, Some(Arc::from("Living room TV")));
 }
 
+/// Writes `(name, source)` in order and returns the name the client ends with.
+async fn name_after(writes: &[(&str, HostnameSource)]) -> Option<Arc<str>> {
+    let (repo, _pool) = repo().await;
+    let addr = ip("192.168.1.100");
+    repo.get_or_create(addr).await.unwrap();
+    for (name, source) in writes {
+        repo.update_hostname(addr, name.to_string(), *source)
+            .await
+            .unwrap();
+    }
+    repo.get_or_create(addr).await.unwrap().hostname
+}
+
+#[tokio::test]
+async fn test_hostname_precedence_is_manual_then_mdns_then_ptr() {
+    use HostnameSource::{Manual, Mdns, Ptr};
+
+    let cases: [(&[(&str, HostnameSource)], &str); 6] = [
+        (&[("ptr.lan", Ptr), ("iPhone", Mdns)], "iPhone"),
+        (&[("iPhone", Mdns), ("ptr.lan", Ptr)], "iPhone"),
+        (&[("iPhone", Mdns), ("iPhone-2", Mdns)], "iPhone-2"),
+        (&[("TV", Manual), ("iPhone", Mdns)], "TV"),
+        (&[("iPhone", Mdns), ("TV", Manual)], "TV"),
+        (&[("TV", Manual), ("ptr.lan", Ptr)], "TV"),
+    ];
+    for (writes, expected) in cases {
+        assert_eq!(
+            name_after(writes).await.as_deref(),
+            Some(expected),
+            "{writes:?}"
+        );
+    }
+}
+
+/// A device that stopped announcing its name gives it back to PTR after a
+/// day, so an address DHCP moved to another device does not keep a stale name.
+#[tokio::test]
+async fn test_ptr_takes_back_an_mdns_name_after_a_day() {
+    let (repo, pool) = repo().await;
+    let fresh = ip("192.168.1.1");
+    let stale = ip("192.168.1.2");
+    seen(&repo, 2).await;
+    for addr in [fresh, stale] {
+        repo.update_hostname(addr, "iPhone".into(), HostnameSource::Mdns)
+            .await
+            .unwrap();
+    }
+    sqlx::query("UPDATE clients SET last_hostname_update = datetime('now', '-2 hours') WHERE ip_address = '192.168.1.1'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE clients SET last_hostname_update = datetime('now', '-2 days') WHERE ip_address = '192.168.1.2'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let needs: Vec<IpAddr> = repo
+        .get_needs_hostname_update(10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|c| c.ip_address)
+        .collect();
+    assert_eq!(needs, vec![stale], "only the stale mDNS name is looked up");
+
+    for addr in [fresh, stale] {
+        repo.update_hostname(addr, "ptr.lan".into(), HostnameSource::Ptr)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        repo.get_or_create(fresh).await.unwrap().hostname.as_deref(),
+        Some("iPhone")
+    );
+    assert_eq!(
+        repo.get_or_create(stale).await.unwrap().hostname.as_deref(),
+        Some("ptr.lan")
+    );
+}
+
 #[tokio::test]
 async fn test_get_all_with_pagination() {
     let (repo, _pool) = repo().await;

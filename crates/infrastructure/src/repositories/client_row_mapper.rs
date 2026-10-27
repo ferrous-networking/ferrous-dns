@@ -16,7 +16,7 @@ pub(crate) type ClientRow = (
 );
 
 macro_rules! client_select {
-    ($tail:literal) => {
+    ($($tail:tt)*) => {
         concat!(
             "SELECT id, ip_address, mac_address, hostname,
             datetime(first_seen) as first_seen,
@@ -27,7 +27,7 @@ macro_rules! client_select {
             group_id,
             comment
      FROM clients",
-            $tail
+            $($tail)*
         )
     };
 }
@@ -52,16 +52,28 @@ pub(crate) const CLIENT_SELECT_NEEDS_MAC_UPDATE: &str = client_select!(
      ORDER BY last_seen DESC LIMIT ?"
 );
 
+/// Clients whose name the PTR sync may replace: never one named by hand, and
+/// one named over mDNS only once the device has gone a day without
+/// announcing it again.
+macro_rules! ptr_may_rename {
+    () => {
+        "(hostname_source IS NULL OR hostname_source = 'ptr'
+          OR (hostname_source = 'mdns' AND last_hostname_update < datetime('now', '-1 day')))"
+    };
+}
+
 pub(crate) const CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE: &str = client_select!(
     " WHERE (last_hostname_update IS NULL
                          OR last_hostname_update < datetime('now', '-1 hour'))
-     AND (hostname_source IS NULL OR hostname_source <> 'manual')
+     AND ",
+    ptr_may_rename!(),
+    "
      AND last_seen > datetime('now', '-7 days')
      ORDER BY last_seen DESC LIMIT ?"
 );
 
 macro_rules! update_hostname {
-    ($guard:literal) => {
+    ($($guard:tt)*) => {
         concat!(
             "UPDATE clients SET
                  hostname = ?,
@@ -69,16 +81,18 @@ macro_rules! update_hostname {
                  last_hostname_update = ?,
                  updated_at = ?
              WHERE ip_address = ?",
-            $guard
+            $($guard)*
         )
     };
 }
 
-pub(crate) const UPDATE_HOSTNAME: &str = update_hostname!("");
+pub(crate) const UPDATE_HOSTNAME: &str = update_hostname!();
 
 /// An automatic source never replaces a name set by hand.
 pub(crate) const UPDATE_HOSTNAME_UNLESS_MANUAL: &str =
     update_hostname!(" AND (hostname_source IS NULL OR hostname_source <> 'manual')");
+
+pub(crate) const UPDATE_HOSTNAME_FROM_PTR: &str = update_hostname!(" AND ", ptr_may_rename!());
 
 pub(crate) fn row_to_client(row: ClientRow) -> Option<Client> {
     let (

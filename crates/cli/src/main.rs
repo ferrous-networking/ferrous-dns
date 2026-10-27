@@ -122,6 +122,7 @@ async fn async_main() -> anyhow::Result<()> {
     });
 
     let udp_fallback_shed = shed.udp_fallback.clone();
+    let record_mdns_hostnames = use_cases.record_mdns_hostnames.clone();
     let app_state = wiring::build_app_state(
         use_cases,
         auth.use_cases,
@@ -166,7 +167,7 @@ async fn async_main() -> anyhow::Result<()> {
     });
 
     if config.dns.mdns_enabled {
-        tokio::spawn(server::start_mdns_listener());
+        tokio::spawn(server::start_mdns_listener(record_mdns_hostnames));
     }
 
     if config.server.encrypted_dns.dot_enabled {

@@ -17,11 +17,14 @@ pub struct Client {
 }
 
 /// Where a client's hostname came from. A name set by hand is never
-/// replaced by an automatic source.
+/// replaced by an automatic source, and the name a device announces over
+/// mDNS outranks its PTR record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostnameSource {
     /// The hostname sync's PTR lookup.
     Ptr,
+    /// The name the device announces for itself over mDNS.
+    Mdns,
     /// Typed in through the dashboard or the API.
     Manual,
 }
@@ -31,6 +34,7 @@ impl HostnameSource {
     pub fn as_str(self) -> &'static str {
         match self {
             HostnameSource::Ptr => "ptr",
+            HostnameSource::Mdns => "mdns",
             HostnameSource::Manual => "manual",
         }
     }

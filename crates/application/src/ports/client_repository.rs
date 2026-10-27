@@ -16,7 +16,8 @@ pub trait ClientRepository: Send + Sync {
     ) -> Result<u64, DomainError>;
 
     /// Sets the client's name, as given by `source`. A name set by hand is
-    /// only ever replaced by hand: an automatic write over it changes nothing.
+    /// only ever replaced by hand, and an mDNS name by PTR only once it has
+    /// gone a day without being announced again: such a write changes nothing.
     async fn update_hostname(
         &self,
         ip_address: IpAddr,
