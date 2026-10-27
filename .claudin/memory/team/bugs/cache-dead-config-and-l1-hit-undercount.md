@@ -1,6 +1,6 @@
 ---
 name: cache-dead-config-and-l1-hit-undercount
-description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size) still open; L1 hit undercount + toml wording fixed in #286; the stale "L1 hits are not counted" wording reworded on docs/stale-ksk-and-l1-wording (10-26)
+description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size) still open as #320; L1 hit undercount + toml wording fixed in #286; the stale "L1 hits are not counted" wording reworded on docs/stale-ksk-and-l1-wording (10-26)
 type: project
 paths:
   - crates/infrastructure/src/dns/cache/storage.rs
@@ -36,7 +36,7 @@ Found during a cache-refresh audit on 2026-10-12 (v0.9.22, `4d57874`). All three
   - `docs/api.md:634`;
   - the `hits` doc comments in `application/src/ports/dns_cache_port.rs:50` and `api/src/dto/cache.rs:108`. The second one is also the OpenAPI description, because the DTO derives `ToSchema`.
   It was spotted while building #296 (REFRESHES column) and left out of that PR.
-- Symptom 1 (dead `cache_adaptive_thresholds` / `cache_lfuk_history_size`) is still open, with no issue. Re-checked on 2026-10-18: only config, the DTOs/handlers, persistence and backup read them.
+- Symptom 1 (dead `cache_adaptive_thresholds` / `cache_lfuk_history_size`) is still open. Re-checked on 2026-10-18: only config, the DTOs/handlers, persistence and backup read them. Filed on 2026-10-26 as issue #320, together with the dead `secret_rotation_secs`.
 - Related, not a defect but surprising: the listing's `cached_at` (the TIME column) is the time of the last renewal, not of the first insert. `refresh_record_of` resets `inserted_at_secs` (`storage.rs:738`), and `docs/api.md` does not say so.
 - Related unfixed cache items: [[cache-eviction-random-branch-deadlock]] (hardcoded `use_probabilistic_eviction`, no `l1_clear()` on eviction).
 
