@@ -149,7 +149,7 @@ burst_size = 500                        # 2× QPS — absorbs page loads (50+ qu
 ipv4_prefix_len = 24                    # /24 groups the entire home LAN as one subnet
 ipv6_prefix_len = 48                    # /48 is the standard home delegation (more generous than /56)
 whitelist = []
-nxdomain_per_second = 50                # Only NXDOMAIN answers over this are limited; local_dns_server answers are never charged
+nxdomain_per_second = 50                # Only NXDOMAIN answers over this are limited; local_dns_server and internal pool answers are never charged
 slip_ratio = 2                          # 50% of rate-limited responses send TC=1 (forces TCP retry)
 dry_run = false                         # Enforce limits in production (set true to test first)
 tcp_max_connections_per_ip = 30         # Browsers + DoH clients pool TCP; 100 devices behind NAT need room

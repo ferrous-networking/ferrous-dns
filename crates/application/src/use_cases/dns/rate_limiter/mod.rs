@@ -112,7 +112,7 @@ impl DnsRateLimiter {
     /// answer: only an NXDOMAIN over budget gets the configured action, and
     /// the subnet's other queries are never limited by it.
     pub fn charge_nxdomain(&self, client_ip: IpAddr) -> RateLimitDecision {
-        if !self.enabled || self.nx_qps == 0 {
+        if !self.limits_nxdomain() {
             return RateLimitDecision::Allow;
         }
         if self.whitelist.contains(client_ip) {
@@ -132,6 +132,12 @@ impl DnsRateLimiter {
         } else {
             self.over_budget()
         }
+    }
+
+    /// Whether NXDOMAIN answers are charged at all.
+    #[inline]
+    pub fn limits_nxdomain(&self) -> bool {
+        self.enabled && self.nx_qps > 0
     }
 
     /// The configured action for a response over one of the budgets.

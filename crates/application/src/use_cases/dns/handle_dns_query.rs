@@ -511,6 +511,10 @@ impl HandleDnsQueryUseCase {
         let resolution = self
             .resolver
             .try_cache_str(domain, record_type, Some(group_id))?;
+        // Only `execute` can charge the NXDOMAIN budget.
+        if Self::spends_nxdomain_budget(&resolution) && self.rate_limiter.limits_nxdomain() {
+            return None;
+        }
         let wire = resolution.upstream_wire_data.as_deref()?;
         // The cache reports what every entry has left; the reply's TTLs need it.
         let remaining = resolution.min_ttl?;
@@ -635,7 +639,8 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Charges an NXDOMAIN answer to the client's NXDOMAIN budget; `Err` when
-    /// this answer is over it. Callers skip answers from the local DNS server.
+    /// this answer is over it. Callers skip answers from the local DNS server
+    /// and internal pools.
     fn charge_nxdomain(
         &self,
         request: &DnsRequest,
@@ -649,6 +654,14 @@ impl HandleDnsQueryUseCase {
             elapsed_us,
             group_id,
         )
+    }
+
+    /// An upstream's NXDOMAIN, relayed as the upstream's own message. An
+    /// internal pool's answers carry `local_dns` and, like the local DNS
+    /// server's, never spend the budget.
+    #[inline]
+    fn spends_nxdomain_budget(resolution: &DnsResolution) -> bool {
+        resolution.upstream_nxdomain && !resolution.local_dns
     }
 
     pub async fn execute(&self, request: &DnsRequest) -> Result<DnsResolution, DomainError> {
@@ -786,6 +799,9 @@ impl HandleDnsQueryUseCase {
                 {
                     // Fall through to full resolve path for logging and action.
                 } else {
+                    if Self::spends_nxdomain_budget(&cached) {
+                        self.charge_nxdomain(request, elapsed_us, group_id)?;
+                    }
                     self.log(&QueryLog {
                         cache_hit: true,
                         dnssec_status: cached.dnssec_status,
@@ -901,9 +917,15 @@ impl HandleDnsQueryUseCase {
                 } else {
                     Some(resolution.rcode_name())
                 };
+                // An internal pool's NXDOMAIN is the LAN's own: it feeds neither
+                // the tunneling ratio nor the NXDOMAIN budget.
+                let upstream_nxdomain = Self::spends_nxdomain_budget(&resolution);
                 if !explicitly_allowed {
-                    self.emit_tunneling_event(request, false);
+                    self.emit_tunneling_event(request, upstream_nxdomain);
                     self.emit_dga_event(request);
+                }
+                if upstream_nxdomain {
+                    self.charge_nxdomain(request, elapsed_us, group_id)?;
                 }
                 self.log(&QueryLog {
                     cache_hit: resolution.cache_hit,
