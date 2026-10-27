@@ -1,7 +1,7 @@
 //! Client names from mDNS announcements (RFC 6762).
 
 use hickory_proto::op::{Message, MessageType};
-use hickory_proto::rr::{DNSClass, RData, Record};
+use hickory_proto::rr::{DNSClass, Name, RData, Record};
 use std::net::IpAddr;
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ const MAX_NAME_LEN: usize = 253;
 /// mDNS sets the top bit of a record's class to ask caches to flush it
 /// (RFC 6762 §10.2); without hickory's `mdns` feature it stays in the class.
 const CACHE_FLUSH_BIT: u16 = 0x8000;
-const LOCAL_SUFFIX: &str = ".local";
+const LOCAL_LABEL: &[u8] = b"local";
 
 /// The name the sender of one mDNS datagram announced for itself, paired
 /// with each of its addresses, with `.local` dropped from the name.
@@ -59,19 +59,25 @@ fn host_address(record: &Record) -> Option<(IpAddr, String)> {
         RData::AAAA(aaaa) => IpAddr::V6(aaaa.0),
         _ => return None,
     };
-    Some((ip, local_host_name(&record.name.to_utf8())?))
+    Some((ip, local_host_name(&record.name)?))
 }
 
-/// `name.local.` as `name`, when it is fit to show as a client name.
-fn local_host_name(owner: &str) -> Option<String> {
-    let owner = owner.strip_suffix('.').unwrap_or(owner);
-    let split = owner.len().checked_sub(LOCAL_SUFFIX.len())?;
-    if !owner.get(split..)?.eq_ignore_ascii_case(LOCAL_SUFFIX) {
+/// `name.local.` as `name`, when it is fit to show as a client name. Read
+/// from the raw labels: mDNS names are UTF-8 (RFC 6762 §16), which
+/// `Name::to_utf8` would escape.
+fn local_host_name(owner: &Name) -> Option<String> {
+    let labels: Vec<&[u8]> = owner.iter().collect();
+    let (last, host) = labels.split_last()?;
+    if host.is_empty() || !last.eq_ignore_ascii_case(LOCAL_LABEL) {
         return None;
     }
-    let name = owner.get(..split)?;
-    let fit = !name.is_empty()
+    let name = host
+        .iter()
+        .map(|label| std::str::from_utf8(label).ok())
+        .collect::<Option<Vec<&str>>>()?
+        .join(".");
+    let is_fit = !name.is_empty()
         && name.len() <= MAX_NAME_LEN
         && !name.chars().any(|c| c.is_control() || c == '\\');
-    fit.then(|| name.to_string())
+    is_fit.then_some(name)
 }
