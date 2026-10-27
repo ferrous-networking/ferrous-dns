@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ferrous_dns_domain::{Client, ClientStats, DomainError};
+use ferrous_dns_domain::{Client, ClientStats, DomainError, HostnameSource};
 use std::net::IpAddr;
 
 #[async_trait]
@@ -15,10 +15,13 @@ pub trait ClientRepository: Send + Sync {
         updates: Vec<(IpAddr, String)>,
     ) -> Result<u64, DomainError>;
 
+    /// Sets the client's name, as given by `source`. A name set by hand is
+    /// only ever replaced by hand: an automatic write over it changes nothing.
     async fn update_hostname(
         &self,
         ip_address: IpAddr,
         hostname: String,
+        source: HostnameSource,
     ) -> Result<(), DomainError>;
 
     async fn get_all(&self, limit: u32, offset: u32) -> Result<Vec<Client>, DomainError>;
@@ -33,6 +36,7 @@ pub trait ClientRepository: Send + Sync {
 
     async fn get_needs_mac_update(&self, limit: u32) -> Result<Vec<Client>, DomainError>;
 
+    /// Clients the hostname sync should look up again; never ones named by hand.
     async fn get_needs_hostname_update(&self, limit: u32) -> Result<Vec<Client>, DomainError>;
 
     async fn get_by_id(&self, id: i64) -> Result<Option<Client>, DomainError>;

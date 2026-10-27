@@ -10,7 +10,7 @@ Ferrous DNS identifies clients by:
 
 - **IP address** — always available
 - **MAC address** — available when clients are on the same Layer 2 network (same subnet, no router between client and Ferrous DNS)
-- **Hostname** — resolved via PTR lookup against the local DNS server configured in `local_dns_server`
+- **Hostname** — resolved via PTR lookup against the local DNS server configured in `local_dns_server`, and looked up again every hour. A name you set yourself on the **Clients** page or through the API is kept: the lookup never replaces it.
 
 ### Configuration
 

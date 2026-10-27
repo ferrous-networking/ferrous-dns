@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::ClientRepository;
-use ferrous_dns_domain::{Client, ClientStats, DomainError};
+use ferrous_dns_domain::{Client, ClientStats, DomainError, HostnameSource};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -106,6 +106,7 @@ impl ClientRepository for MockClientRepository {
         &self,
         ip_address: IpAddr,
         hostname: String,
+        _source: HostnameSource,
     ) -> Result<(), DomainError> {
         let mut clients = self.clients.write().await;
         let c = clients

@@ -1,5 +1,5 @@
 use crate::ports::{ClientRepository, HostnameResolver};
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, HostnameSource};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -37,7 +37,7 @@ impl SyncHostnamesUseCase {
                 Ok(Some(hostname)) => {
                     match self
                         .client_repo
-                        .update_hostname(client.ip_address, hostname)
+                        .update_hostname(client.ip_address, hostname, HostnameSource::Ptr)
                         .await
                     {
                         Ok(_) => resolved += 1,

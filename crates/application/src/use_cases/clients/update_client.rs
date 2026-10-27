@@ -1,5 +1,5 @@
 use crate::use_cases::groups::require_group;
-use ferrous_dns_domain::{Client, DomainError};
+use ferrous_dns_domain::{Client, DomainError, HostnameSource};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
 
@@ -39,7 +39,7 @@ impl UpdateClientUseCase {
 
         if let Some(ref h) = hostname {
             self.client_repo
-                .update_hostname(client.ip_address, h.clone())
+                .update_hostname(client.ip_address, h.clone(), HostnameSource::Manual)
                 .await?;
         }
 

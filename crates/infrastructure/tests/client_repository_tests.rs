@@ -3,7 +3,7 @@ mod db;
 
 use ferrous_dns_application::ports::ClientRepository;
 use ferrous_dns_domain::config::DatabaseConfig;
-use ferrous_dns_domain::DomainError;
+use ferrous_dns_domain::{DomainError, HostnameSource};
 use ferrous_dns_infrastructure::repositories::client_repository::SqliteClientRepository;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -108,13 +108,50 @@ async fn test_update_hostname() {
     repo.update_last_seen(addr).await.unwrap();
     repo.flush_writes().await;
 
-    repo.update_hostname(addr, "my-device.local".to_string())
+    repo.update_hostname(addr, "my-device.local".to_string(), HostnameSource::Ptr)
         .await
         .unwrap();
 
     let client = repo.get_or_create(addr).await.unwrap();
     assert_eq!(client.hostname, Some(Arc::from("my-device.local")));
     assert!(client.last_hostname_update.is_some());
+}
+
+#[tokio::test]
+async fn test_ptr_name_never_replaces_a_manual_one() {
+    let (repo, _pool) = repo().await;
+    let addr = ip("192.168.1.100");
+    repo.get_or_create(addr).await.unwrap();
+
+    repo.update_hostname(addr, "Living room TV".into(), HostnameSource::Manual)
+        .await
+        .unwrap();
+    repo.update_hostname(addr, "android-3f2a.lan".into(), HostnameSource::Ptr)
+        .await
+        .unwrap();
+
+    let client = repo.get_or_create(addr).await.unwrap();
+    assert_eq!(client.hostname, Some(Arc::from("Living room TV")));
+}
+
+#[tokio::test]
+async fn test_manual_name_replaces_a_ptr_one_and_another_manual_one() {
+    let (repo, _pool) = repo().await;
+    let addr = ip("192.168.1.100");
+    repo.get_or_create(addr).await.unwrap();
+
+    repo.update_hostname(addr, "android-3f2a.lan".into(), HostnameSource::Ptr)
+        .await
+        .unwrap();
+    repo.update_hostname(addr, "TV".into(), HostnameSource::Manual)
+        .await
+        .unwrap();
+    repo.update_hostname(addr, "Living room TV".into(), HostnameSource::Manual)
+        .await
+        .unwrap();
+
+    let client = repo.get_or_create(addr).await.unwrap();
+    assert_eq!(client.hostname, Some(Arc::from("Living room TV")));
 }
 
 #[tokio::test]
@@ -176,9 +213,13 @@ async fn test_get_stats() {
         .unwrap();
     }
     for i in 1..=2u8 {
-        repo.update_hostname(ip(&format!("192.168.1.{i}")), format!("device-{i}.local"))
-            .await
-            .unwrap();
+        repo.update_hostname(
+            ip(&format!("192.168.1.{i}")),
+            format!("device-{i}.local"),
+            HostnameSource::Ptr,
+        )
+        .await
+        .unwrap();
     }
 
     let stats = repo.get_stats().await.unwrap();
@@ -234,13 +275,24 @@ async fn test_get_needs_mac_update() {
 #[tokio::test]
 async fn test_get_needs_hostname_update() {
     let (repo, pool) = repo().await;
-    seen(&repo, 3).await;
+    seen(&repo, 4).await;
 
-    repo.update_hostname(ip("192.168.1.1"), "device1.local".to_string())
-        .await
-        .unwrap();
+    repo.update_hostname(
+        ip("192.168.1.1"),
+        "device1.local".to_string(),
+        HostnameSource::Ptr,
+    )
+    .await
+    .unwrap();
+    repo.update_hostname(
+        ip("192.168.1.4"),
+        "Printer".to_string(),
+        HostnameSource::Manual,
+    )
+    .await
+    .unwrap();
     sqlx::query(
-        "UPDATE clients SET last_hostname_update = datetime('now', '-2 hours') WHERE ip_address = '192.168.1.2'",
+        "UPDATE clients SET last_hostname_update = datetime('now', '-2 hours') WHERE ip_address IN ('192.168.1.2', '192.168.1.4')",
     )
     .execute(&pool)
     .await
@@ -255,6 +307,7 @@ async fn test_get_needs_hostname_update() {
         .collect();
     needs.sort();
 
+    // .4 was named by hand, so the sync never looks it up again.
     assert_eq!(needs, vec![ip("192.168.1.2"), ip("192.168.1.3")]);
 }
 

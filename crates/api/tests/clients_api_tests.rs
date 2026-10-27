@@ -3,6 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use ferrous_dns_application::ports::ClientRepository;
+use ferrous_dns_domain::HostnameSource;
 use helpers::TestApp;
 use http_body_util::BodyExt;
 use serde_json::Value;
@@ -51,7 +52,7 @@ async fn test_get_clients_with_data() {
     repo.update_mac_address(ip1, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
-    repo.update_hostname(ip1, "device1.local".to_string())
+    repo.update_hostname(ip1, "device1.local".to_string(), HostnameSource::Ptr)
         .await
         .unwrap();
 
@@ -150,7 +151,7 @@ async fn test_get_client_stats() {
         }
 
         if i <= 2 {
-            repo.update_hostname(ip, format!("device{}.local", i))
+            repo.update_hostname(ip, format!("device{}.local", i), HostnameSource::Ptr)
                 .await
                 .unwrap();
         }
@@ -192,7 +193,7 @@ async fn test_get_clients_json_structure() {
     repo.update_mac_address(ip, "aa:bb:cc:dd:ee:ff".to_string())
         .await
         .unwrap();
-    repo.update_hostname(ip, "test-device.local".to_string())
+    repo.update_hostname(ip, "test-device.local".to_string(), HostnameSource::Ptr)
         .await
         .unwrap();
 
