@@ -231,3 +231,37 @@ async fn test_query_log_retention_gives_the_deleted_pages_back_to_the_file() {
     );
     pool.close().await;
 }
+
+/// Pi-hole's flush deletes the whole log through the same call and answers an HTTP
+/// request: giving a large file's pages back, paced, must not hold that answer.
+#[tokio::test]
+async fn test_deleting_old_rows_leaves_giving_the_pages_back_to_the_retention_job() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let cfg = DatabaseConfig::default();
+    let pool = create_write_pool(&url, &cfg).await.expect("first start");
+    sqlx::query(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+         INSERT INTO query_log (domain, record_type, client_ip, query_source, created_at)
+         SELECT printf('%0200d.example', i), 'A', '10.0.0.1', 'client', datetime('now')
+         FROM n",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &cfg,
+        Default::default(),
+    );
+
+    repo.delete_older_than(0).await.unwrap();
+
+    assert!(
+        pragma(&pool, "freelist_count").await > 0,
+        "the delete gave the pages back itself, holding up a flush"
+    );
+    pool.close().await;
+}
