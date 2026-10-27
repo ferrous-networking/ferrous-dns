@@ -937,13 +937,9 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
         tokio::time::sleep(retention_pause(batch_started.elapsed())).await;
     }
 
-    let reclaimed_pages = reclaim_free_pages(pool).await.map_err(db_err(
-        "Failed to give free pages back to the database file",
-    ))?;
-
     info!(
         deleted = total_deleted,
-        reclaimed_pages, days, "Old query logs deleted (batched)"
+        days, "Old query logs deleted (batched)"
     );
     Ok(total_deleted)
 }
@@ -958,7 +954,10 @@ const RECLAIM_PAGES_PER_STEP: i64 = 2048;
 /// deletes. A passive checkpoint follows each step, so the WAL holds one step's pages
 /// rather than everything moved since the checkpoint job's last pass. A database
 /// created before auto-vacuum was enabled cannot give pages back; it returns 0.
-async fn reclaim_free_pages(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+///
+/// Separate from `delete_older_than`: Pi-hole's flush deletes through that call while
+/// a client waits, and on a large file the paced steps take minutes.
+pub(super) async fn reclaim_free_pages(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
     let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
         .fetch_one(pool)
         .await?;

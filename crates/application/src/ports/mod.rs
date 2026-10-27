@@ -18,6 +18,7 @@ mod dga_flag_store;
 mod dns_cache_port;
 mod dns_resolver;
 mod dnssec_stats_port;
+mod free_space_reclaimer;
 mod group_creator;
 mod group_repository;
 mod hostname_resolver;
@@ -76,6 +77,7 @@ pub use dns_cache_port::{
 };
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use dnssec_stats_port::{DnssecStatsPort, DnssecValidatorStats};
+pub use free_space_reclaimer::FreeSpaceReclaimer;
 pub use group_creator::GroupCreator;
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;

@@ -1,4 +1,4 @@
-use ferrous_dns_application::ports::QueryLogRepository;
+use ferrous_dns_application::ports::{FreeSpaceReclaimer, QueryLogRepository};
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::database::{
     create_query_log_pool, create_read_pool, create_write_pool,
@@ -194,7 +194,7 @@ async fn test_a_new_database_gives_freed_pages_back_incrementally() {
 }
 
 #[tokio::test]
-async fn test_query_log_retention_gives_the_deleted_pages_back_to_the_file() {
+async fn test_reclaiming_after_retention_gives_the_deleted_pages_back_to_the_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let url = format!("sqlite:{}", dir.path().join("test.db").display());
     let cfg = DatabaseConfig::default();
@@ -221,10 +221,12 @@ async fn test_query_log_retention_gives_the_deleted_pages_back_to_the_file() {
     );
     let deleted = repo.delete_older_than(7).await.unwrap();
     assert_eq!(deleted, 20_000);
+    let reclaimed = repo.reclaim_free_space().await.unwrap();
 
     let free = pragma(&pool, "freelist_count").await;
     let pages = pragma(&pool, "page_count").await;
     assert_eq!(free, 0, "retention left {free} free pages in the file");
+    assert!(reclaimed > 0);
     assert!(
         pages * 4 < pages_with_rows,
         "the file kept {pages} of its {pages_with_rows} pages after retention emptied the log"
@@ -243,7 +245,8 @@ async fn test_deleting_old_rows_leaves_giving_the_pages_back_to_the_retention_jo
     sqlx::query(
         "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
          INSERT INTO query_log (domain, record_type, client_ip, query_source, created_at)
-         SELECT printf('%0200d.example', i), 'A', '10.0.0.1', 'client', datetime('now')
+         SELECT printf('%0200d.example', i), 'A', '10.0.0.1', 'client',
+                datetime('now', '-1 minute')
          FROM n",
     )
     .execute(&pool)

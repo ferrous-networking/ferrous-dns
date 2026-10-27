@@ -1,4 +1,4 @@
-use ferrous_dns_application::use_cases::CleanupOldQueryLogsUseCase;
+use ferrous_dns_application::use_cases::{CleanupOldQueryLogsUseCase, ReclaimFreeSpaceUseCase};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info};
@@ -12,14 +12,21 @@ const FIRST_RUN_DELAY_SECS: u64 = 10 * 60;
 
 pub struct QueryLogRetentionJob {
     cleanup: Arc<CleanupOldQueryLogsUseCase>,
+    reclaim: Arc<ReclaimFreeSpaceUseCase>,
     retention_days: u32,
     interval_secs: u64,
 }
 
 impl QueryLogRetentionJob {
-    pub fn new(cleanup: Arc<CleanupOldQueryLogsUseCase>, retention_days: u32) -> Self {
+    /// After each cleanup, `reclaim` gives the freed pages back to the database file.
+    pub fn new(
+        cleanup: Arc<CleanupOldQueryLogsUseCase>,
+        reclaim: Arc<ReclaimFreeSpaceUseCase>,
+        retention_days: u32,
+    ) -> Self {
         Self {
             cleanup,
+            reclaim,
             retention_days,
             interval_secs: RETENTION_INTERVAL_SECS,
         }
@@ -47,6 +54,10 @@ impl QueryLogRetentionJob {
                 match self.cleanup.execute(self.retention_days).await {
                     Ok(deleted) => info!(deleted, "Query log retention cleanup completed"),
                     Err(e) => error!(error = %e, "Query log retention cleanup failed"),
+                }
+                match self.reclaim.execute().await {
+                    Ok(pages) => info!(pages, "Free pages given back to the database file"),
+                    Err(e) => error!(error = %e, "Giving free pages back failed"),
                 }
             }
         });

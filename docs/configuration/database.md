@@ -138,7 +138,7 @@ The WAL is also bounded across restarts:
 
 Deleting rows does not shrink an SQLite file by itself: the freed pages stay inside it until they are handed back.
 
-- **A database created by this release** uses incremental auto-vacuum. After each query-log cleanup, the server gives the freed pages back to the file in 8 MiB steps, pausing between steps as the cleanup does. Lowering `queries_log_stored` therefore shrinks the file at the next cleanup.
+- **A database created by this release** uses incremental auto-vacuum. After each scheduled query-log cleanup, the server gives the freed pages back to the file in 8 MiB steps, pausing between steps as the cleanup does. Lowering `queries_log_stored` therefore shrinks the file at the next cleanup. A Pi-hole API flush (`POST /api/action/flush/logs`) answers as soon as the rows are gone and leaves the pages to that next cleanup.
 - **A database created by an earlier release** keeps its free pages until it is rewritten once. At startup, the server logs a warning when such a file holds 64 MiB or more of free space: `The database file holds free space it cannot give back`.
 
 To rewrite it, stop the server and run the binary once with `--compact-database`. It exits when done:

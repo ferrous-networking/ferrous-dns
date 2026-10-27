@@ -21,6 +21,7 @@ pub fn spawn_jobs(
     RetentionJob::new(use_cases.cleanup_clients.clone(), 30).spawn();
     QueryLogRetentionJob::new(
         use_cases.cleanup_query_logs.clone(),
+        use_cases.reclaim_free_space.clone(),
         config.database.queries_log_stored,
     )
     .spawn();
