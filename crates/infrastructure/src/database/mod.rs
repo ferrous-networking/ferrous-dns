@@ -239,6 +239,21 @@ pub async fn create_query_log_pool(
     .await
 }
 
+pub async fn create_read_pool(
+    database_url: &str,
+    cfg: &DatabaseConfig,
+) -> Result<SqlitePool, sqlx::Error> {
+    build_pool(
+        database_url,
+        cfg,
+        cfg.read_pool_max_connections,
+        2,
+        Duration::from_secs(cfg.read_busy_timeout_secs),
+        Duration::from_secs(cfg.read_acquire_timeout_secs),
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{unreclaimable_free_bytes, UNRECLAIMABLE_WARN_BYTES};
@@ -264,19 +279,4 @@ mod tests {
         assert_eq!(unreclaimable_free_bytes(1, WARN_PAGES * 10, PAGE), None);
         assert_eq!(unreclaimable_free_bytes(2, WARN_PAGES * 10, PAGE), None);
     }
-}
-
-pub async fn create_read_pool(
-    database_url: &str,
-    cfg: &DatabaseConfig,
-) -> Result<SqlitePool, sqlx::Error> {
-    build_pool(
-        database_url,
-        cfg,
-        cfg.read_pool_max_connections,
-        2,
-        Duration::from_secs(cfg.read_busy_timeout_secs),
-        Duration::from_secs(cfg.read_acquire_timeout_secs),
-    )
-    .await
 }
