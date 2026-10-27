@@ -50,8 +50,8 @@ pub struct CacheEntrySnapshot {
     pub remaining_ttl: Option<u32>,
     pub cached_at_secs: u64,
     pub expires_at_secs: u64,
-    /// Hits served from the shared cache. Lookups absorbed by the per-thread
-    /// L1 cache are not counted here.
+    /// Hits served from the cache, per-thread L1 hits included; L1 hands
+    /// them over in batches, so the count can trail by the last second.
     pub hits: u64,
     /// Times the entry was renewed from upstream since it was stored.
     pub refreshes: u64,

@@ -1,6 +1,6 @@
 ---
 name: cache-dead-config-and-l1-hit-undercount
-description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size) still open; L1 hit undercount + toml wording fixed in #286, but four places still say L1 hits are not counted
+description: Cache knobs that do nothing (cache_adaptive_thresholds, cache_lfuk_history_size) still open; L1 hit undercount + toml wording fixed in #286; the stale "L1 hits are not counted" wording reworded on docs/stale-ksk-and-l1-wording (10-26)
 type: project
 paths:
   - crates/infrastructure/src/dns/cache/storage.rs
@@ -31,7 +31,7 @@ Found during a cache-refresh audit on 2026-10-12 (v0.9.22, `4d57874`). All three
 - Symptoms 2 and 3 are fixed by PR #286 (squash `a51f6ea`, merged 2026-10-13, shipped in v0.9.23). See [[cache-per-entry-refresh-timer]].
   - L1 batches its hits onto the L2 record, at most once per second per thread (`l1.rs` `pending_hits`, `storage.rs` `record_l1_hits`; branch commit `b40b707`).
   - The toml and the docs describe the two knobs as ranking only.
-- **Stale wording left behind (open, unfiled, 2026-10-18).** Four places still say L1 hits are not counted:
+- **Stale wording left behind (2026-10-18), reworded on `docs/stale-ksk-and-l1-wording` (2026-10-26)** to say L1 hits are counted in batches. The four places were:
   - the HIT column tooltip, `web/static/cache-control.html:136`;
   - `docs/api.md:634`;
   - the `hits` doc comments in `application/src/ports/dns_cache_port.rs:50` and `api/src/dto/cache.rs:108`. The second one is also the OpenAPI description, because the DTO derives `ToSchema`.

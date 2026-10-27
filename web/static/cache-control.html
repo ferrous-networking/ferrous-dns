@@ -133,7 +133,7 @@
                 <th class="col-ttl th-sort" @click="sortBy('expires_at')" title="Sort by remaining TTL">TTL<span
                         class="sort-arrow" x-text="sortArrow('expires_at')"></span></th>
                 <th class="col-hit th-sort" @click="sortBy('hits')"
-                    title="Hits served from the shared cache. Lookups absorbed by the per-thread L1 cache are not counted.">
+                    title="Hits served from the cache. Hits from the per-thread L1 copies are added in batches, so the count can trail by the last second of them.">
                     HIT<span class="sort-arrow" x-text="sortArrow('hits')"></span></th>
                 <th class="col-refresh th-sort" @click="sortBy('refreshes')"
                     title="Times the entry was renewed from upstream since it was stored.">

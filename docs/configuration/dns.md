@@ -310,7 +310,7 @@ dnssec_mode = "Strict"   # SERVFAIL on Bogus or Indeterminate; "Permissive" vali
 
 ### Trust anchors {#trust-anchors}
 
-Validation starts from the root key-signing key. Ferrous DNS embeds the IANA root trust anchors (`root-anchors.xml`) in the binary — **both** that are currently valid: KSK-2017 (key tag 20326), which signs the root today, and KSK-2024 (key tag 38696), scheduled to take over signing on **2026-10-11**. Shipping both means the rollover needs no action from you.
+Validation starts from the root key-signing key. Ferrous DNS embeds the IANA root trust anchors (`root-anchors.xml`) in the binary — **both** that are currently valid: KSK-2024 (key tag 38696), which has signed the root since the rollover on **2026-10-11**, and KSK-2017 (key tag 20326), which signed it before and is still published. Shipping both meant the rollover needed no action from you.
 
 To pin your own set instead, point `dnssec_trust_anchor_file` at a file in DNS presentation format:
 

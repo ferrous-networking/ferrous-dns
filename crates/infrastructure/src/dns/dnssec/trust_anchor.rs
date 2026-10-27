@@ -111,10 +111,10 @@ impl TrustAnchorStore {
     /// The IANA root trust anchors, in DS form exactly as published in
     /// `root-anchors.xml`.
     ///
-    /// Both currently-valid anchors ship. KSK-2017 signs the root today;
-    /// KSK-2024 is already published and is scheduled to take over signing on
-    /// 2026-10-11, after which only it can authenticate the root DNSKEY RRset.
-    /// Carrying both means the switchover needs no operator action. The retired
+    /// Both currently-valid anchors ship. KSK-2024 has signed the root
+    /// DNSKEY RRset since the 2026-10-11 rollover; KSK-2017, which signed it
+    /// before, is still published and valid. Carrying both meant the
+    /// switchover needed no operator action. The retired
     /// KSK-2010 (key tag 19036) is deliberately omitted — its `validUntil`
     /// passed in 2019.
     pub fn default_root_anchors() -> Vec<TrustAnchor> {

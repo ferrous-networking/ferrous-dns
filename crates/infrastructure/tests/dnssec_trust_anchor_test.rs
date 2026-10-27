@@ -2,8 +2,8 @@
 //!
 //! The key blobs and digests below are the IANA root anchors verbatim from
 //! <https://data.iana.org/root-anchors/root-anchors.xml>: KSK-2017 (20326),
-//! which signs the root today, and KSK-2024 (38696), which takes over on
-//! 2026-10-11.
+//! which signed the root until the 2026-10-11 rollover, and KSK-2024
+//! (38696), which has signed it since.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ferrous_dns_domain::{UpstreamPool, UpstreamStrategy};
@@ -296,9 +296,9 @@ async fn live_embedded_anchors_bootstrap_the_root() {
         .expect("root DNSKEY RRset bootstrapped")
         .clone();
 
-    // KSK-2024 is published now and takes over signing on 2026-10-11, so its
-    // digest must match a live key or what we ship is wrong. KSK-2017 is
-    // deliberately not asserted — it leaves the RRset once the rollover ends.
+    // KSK-2024 has signed the root since 2026-10-11, so its digest must match
+    // a live key or what we ship is wrong. KSK-2017 is deliberately not
+    // asserted — it leaves the RRset once IANA retires it.
     let ksk_2024_anchor = TrustAnchorStore::default_root_anchors()
         .into_iter()
         .find(|anchor| anchor.key_tag() == 38696)
