@@ -238,3 +238,36 @@ async fn tunneling_event_is_emitted_after_resolution() {
     assert_eq!(event.record_type, RecordType::A);
     assert!(!event.was_nxdomain);
 }
+
+/// An upstream's NXDOMAIN reaches the use case as a resolution carrying the
+/// upstream's message; the detector's NXDOMAIN ratio must still count it.
+#[tokio::test]
+async fn tunneling_event_marks_an_upstream_nxdomain_answer() {
+    let resolver = MockDnsResolver::new();
+    resolver
+        .set_response(
+            "x7f3a.evil.com",
+            DnsResolution {
+                upstream_nxdomain: true,
+                upstream_wire_data: Some(bytes::Bytes::from_static(b"upstream NXDOMAIN")),
+                ..DnsResolution::new(vec![], false)
+            },
+        )
+        .await;
+    let config = tunneling_config(TunnelingAction::Block);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+    let use_case = HandleDnsQueryUseCase::new(
+        Arc::new(resolver),
+        Arc::new(MockBlockFilterEngine::new()),
+        Arc::new(MockQueryLogRepository::new()),
+    )
+    .with_tunneling_detection(&config)
+    .with_tunneling_event_sender(tx);
+
+    let request = DnsRequest::new("x7f3a.evil.com", RecordType::A, CLIENT_IP);
+    assert!(use_case.execute(&request).await.is_ok());
+
+    let event = rx.try_recv().expect("expected tunneling event");
+    assert!(event.was_nxdomain);
+}
