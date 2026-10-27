@@ -124,7 +124,7 @@ The budget is charged when the NXDOMAIN answer is produced, and it decides that 
 
 Upstream NXDOMAINs are charged however they are answered: fresh, from the cache, or for a query that joined another's in-flight lookup. NXDOMAINs from `local_dns_server` and from [internal pools](../features/upstream-management.md#upstream-pools) are never charged, fresh or cached: they are the LAN's own traffic, such as a router answering reverse lookups for hosts it does not know. Whitelisted clients are never charged either.
 
-The NXDOMAIN burst capacity is `nxdomain_per_second * 2` and it refills at `nxdomain_per_second`. Answers that resolve do not spend it, and NXDOMAIN answers do not spend the general query budget. `nxdomain_per_second = 0` disables the NXDOMAIN budget.
+The NXDOMAIN burst capacity is `nxdomain_per_second * 2` and it refills at `nxdomain_per_second`. Answers that resolve do not spend it. It is separate from the general query budget, which every query spends once, NXDOMAINs included; only answers the UDP listener serves straight from the cache skip the general budget. While the NXDOMAIN budget is on, a cached upstream NXDOMAIN is not served that way, so that it can be charged. `nxdomain_per_second = 0` disables the NXDOMAIN budget.
 
 ---
 

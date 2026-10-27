@@ -96,7 +96,7 @@ servers  = [
 | `weight` | Optional relative weight for the pool (`int`, default unset). Accepted, persisted, and exposed via the API, but **not yet consumed** by the load balancer — the `Balanced` strategy is plain round-robin. Reserved for future weighted distribution |
 | `domains` | Domains the pool answers, with every name under them: a conditional pool, skipped for every other name. See [Conditional Forwarding](../configuration/dns.md#conditional-forwarding) |
 | `groups` | Client group ids a conditional pool's `domains` are routed for; empty for every client |
-| `internal` | A conditional pool for an unsigned internal zone: no DNSSEC validation, no rebinding protection |
+| `internal` | A conditional pool for an unsigned internal zone: no DNSSEC validation, no rebinding protection, and its NXDOMAINs never spend the [NXDOMAIN budget](../configuration/rate-limiting.md#nxdomain-budget) or count toward tunneling detection |
 
 ### Pool Routing
 
