@@ -1,7 +1,7 @@
 use ferrous_dns_domain::config::DatabaseConfig;
 use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
-    SqliteSynchronous,
+    SqliteAutoVacuum, SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool,
+    SqlitePoolOptions, SqliteSynchronous,
 };
 use sqlx::Connection;
 use std::path::Path;
@@ -9,10 +9,14 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
+/// Creates new databases with incremental auto-vacuum, so retention can give the pages it
+/// frees back to the file. The pragma only takes effect on an empty database (sqlx issues
+/// it before `journal_mode`); on an older file it is a no-op until `--compact-database`.
 fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error> {
     SqliteConnectOptions::from_str(database_url).map(|o| {
         o.create_if_missing(true)
             .foreign_keys(true)
+            .auto_vacuum(SqliteAutoVacuum::Incremental)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
     })

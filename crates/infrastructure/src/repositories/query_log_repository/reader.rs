@@ -827,11 +827,62 @@ pub(super) async fn delete_older_than(pool: &SqlitePool, days: u32) -> Result<u6
         .await
         .map_err(db_err("Failed to prune query log rollups"))?;
 
+    let reclaimed_pages = reclaim_free_pages(pool).await.map_err(db_err(
+        "Failed to give free pages back to the database file",
+    ))?;
+
     info!(
         deleted = total_deleted,
-        days, "Old query logs deleted (batched)"
+        reclaimed_pages, days, "Old query logs deleted (batched)"
     );
     Ok(total_deleted)
+}
+
+/// `PRAGMA auto_vacuum` value of a database that can give pages back step by step.
+const AUTO_VACUUM_INCREMENTAL: i64 = 2;
+
+/// Pages given back per step: 8 MiB at SQLite's default 4 KiB page.
+const RECLAIM_PAGES_PER_STEP: i64 = 2048;
+
+/// Gives the free pages back to the file, whichever delete freed them, paced like the
+/// deletes. A passive checkpoint follows each step, so the WAL holds one step's pages
+/// rather than everything moved since the checkpoint job's last pass. A database
+/// created before auto-vacuum was enabled cannot give pages back; it returns 0.
+async fn reclaim_free_pages(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
+        .fetch_one(pool)
+        .await?;
+    if auto_vacuum != AUTO_VACUUM_INCREMENTAL {
+        return Ok(0);
+    }
+
+    let mut free: i64 = sqlx::query_scalar("PRAGMA freelist_count")
+        .fetch_one(pool)
+        .await?;
+    let mut reclaimed = 0;
+    while free > 0 {
+        let step_started = Instant::now();
+        // Each result row of incremental_vacuum is one page moved; `execute` steps
+        // through all of them.
+        sqlx::query(&format!(
+            "PRAGMA incremental_vacuum({RECLAIM_PAGES_PER_STEP})"
+        ))
+        .execute(pool)
+        .await?;
+        sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+            .execute(pool)
+            .await?;
+        let left: i64 = sqlx::query_scalar("PRAGMA freelist_count")
+            .fetch_one(pool)
+            .await?;
+        if left >= free {
+            break;
+        }
+        reclaimed += free - left;
+        free = left;
+        tokio::time::sleep(retention_pause(step_started.elapsed())).await;
+    }
+    Ok(reclaimed)
 }
 
 /// How long retention waits after a batch before taking the write lock again: at least
