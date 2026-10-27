@@ -153,7 +153,9 @@ async fn store(
     domains: &HourCounts,
     clients: &HourCounts,
 ) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    // IMMEDIATE takes the write lock up front, so a busy writer is waited out. A
+    // deferred transaction that reads first cannot wait when it upgrades: it fails.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     if Coverage::read(&mut *tx).await? != picked_from {
         return Ok(false);
     }
