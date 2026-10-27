@@ -124,6 +124,28 @@ async fn a_rename_survives_the_sync() {
     assert_eq!(hostname(&app).await.as_deref(), Some(MANUAL_NAME));
 }
 
+/// The Clients page sends the current name back with every edit, so changing
+/// only the group must not turn the name the sync set into a manual one.
+#[tokio::test]
+async fn a_group_change_leaves_the_name_following_the_ptr_record() {
+    let app = TestApp::new().await;
+    let id = device_is_active(&app).await;
+    sync_an_hour_later(&app, "android-3f2a.lan").await;
+
+    let status = send(
+        &app,
+        "PATCH",
+        &format!("/clients/{id}"),
+        json!({ "hostname": "android-3f2a.lan", "group_id": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    sync_an_hour_later(&app, "living-room-tv.lan").await;
+
+    assert_eq!(hostname(&app).await.as_deref(), Some("living-room-tv.lan"));
+}
+
 /// Guard: a name the sync set is replaced when the PTR record changes.
 #[tokio::test]
 async fn a_name_from_the_sync_follows_the_ptr_record() {
