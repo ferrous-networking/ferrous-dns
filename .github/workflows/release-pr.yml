@@ -131,7 +131,7 @@ jobs:
             echo "Before merging:"
             echo
             echo "- [ ] The notes below read well. They are the new section of \`CHANGELOG.md\` and are published verbatim as the release notes."
-            echo "- [ ] On a minor or major bump, \`ROADMAP.md\` has the milestone and \`docs/changelog.md\` the series (Docs Consistency fails until they do)."
+            echo "- [ ] On a minor or major bump, \`docs/changelog.md\` has the series (Docs Consistency fails until it does)."
             echo
             echo "---"
             echo
