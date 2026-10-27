@@ -13,31 +13,22 @@ const MAX_HOURS_PER_RUN: u32 = 24;
 
 pub struct QueryLogRollupJob {
     roll_up: Arc<RollUpQueryLogUseCase>,
-    interval_secs: u64,
 }
 
 impl QueryLogRollupJob {
     pub fn new(roll_up: Arc<RollUpQueryLogUseCase>) -> Self {
-        Self {
-            roll_up,
-            interval_secs: ROLLUP_INTERVAL_SECS,
-        }
-    }
-
-    pub fn with_interval(mut self, interval_secs: u64) -> Self {
-        self.interval_secs = interval_secs.max(1);
-        self
+        Self { roll_up }
     }
 
     pub fn spawn(self) {
         info!(
-            interval_secs = self.interval_secs,
+            interval_secs = ROLLUP_INTERVAL_SECS,
             max_hours_per_run = MAX_HOURS_PER_RUN,
             "Starting query log rollup job"
         );
 
         tokio::spawn(async move {
-            let period = Duration::from_secs(self.interval_secs);
+            let period = Duration::from_secs(ROLLUP_INTERVAL_SECS);
             let mut interval =
                 tokio::time::interval_at(tokio::time::Instant::now() + period, period);
             loop {
