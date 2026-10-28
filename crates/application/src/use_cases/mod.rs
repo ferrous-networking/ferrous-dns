@@ -80,6 +80,7 @@ pub use queries::{
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
     GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
     GetTopClientsUseCase, GetUniqueDomainsUseCase, PagedQueryInput, QueryRate, RateUnit,
+    ReclaimFreeSpaceUseCase, RollUpQueryLogUseCase,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,

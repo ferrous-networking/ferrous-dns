@@ -1,4 +1,5 @@
 mod helpers;
+mod hour_rollup;
 mod reader;
 mod rollup;
 mod timeline;
@@ -8,9 +9,9 @@ use crate::dns::cache::coarse_clock::coarse_now_secs;
 use async_trait::async_trait;
 use ferrous_dns_application::drop_counter::DropCounter;
 use ferrous_dns_application::ports::{
-    BlockedClientStatsRepository, ClientActivity, ClientActivityRepository, PageAt,
-    PagedQueryResult, QueryLogRepository, QueryLogStorage, QueryLogStorageRepository,
-    TimeGranularity, TimelineBucket,
+    BlockedClientStatsRepository, ClientActivity, ClientActivityRepository, FreeSpaceReclaimer,
+    PageAt, PagedQueryResult, QueryLogRepository, QueryLogRollupRepository, QueryLogStorage,
+    QueryLogStorageRepository, TimeGranularity, TimelineBucket,
 };
 use ferrous_dns_domain::entities::query_log::{DnssecStats, QueryLogFilter};
 use ferrous_dns_domain::{config::DatabaseConfig, DomainError, QueryLog, QueryStats};
@@ -221,5 +222,28 @@ impl ClientActivityRepository for SqliteQueryLogRepository {
 impl QueryLogStorageRepository for SqliteQueryLogRepository {
     async fn get_storage(&self, period_hours: f32) -> Result<QueryLogStorage, DomainError> {
         reader::get_storage(&self.read_pool, period_hours).await
+    }
+}
+
+#[async_trait]
+impl QueryLogRollupRepository for SqliteQueryLogRepository {
+    async fn roll_up_hours(&self, max_hours: u32) -> Result<u32, DomainError> {
+        hour_rollup::roll_up_hours(&self.read_pool, &self.write_pool, max_hours)
+            .await
+            .map_err(crate::repositories::db_err(
+                "Failed to roll up query log hours",
+            ))
+    }
+}
+
+#[async_trait]
+impl FreeSpaceReclaimer for SqliteQueryLogRepository {
+    async fn reclaim_free_space(&self) -> Result<u64, DomainError> {
+        reader::reclaim_free_pages(&self.write_pool)
+            .await
+            .map(|pages| pages as u64)
+            .map_err(crate::repositories::db_err(
+                "Failed to give free pages back to the database file",
+            ))
     }
 }

@@ -9,13 +9,14 @@ use tower::ServiceExt;
 
 mod helpers;
 
-/// Stats read the minute rollups; rebuild them from the raw fixture rows with
-/// the production backfill.
+/// Stats, top lists and counts read the rollups; rebuild them from the raw fixture
+/// rows with the production backfill and the hourly reference, every past hour held.
 async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
     sqlx::raw_sql(concat!(
-        "DELETE FROM query_log_minute; DELETE FROM query_log_minute_record_type;",
-        "DELETE FROM query_log_minute_block_source; DELETE FROM query_log_minute_upstream;",
+        include_str!("../../infrastructure/tests/support/clear_rollups.sql"),
         include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+        include_str!("../../infrastructure/tests/support/hour_rollups.sql"),
+        include_str!("../../infrastructure/tests/support/hold_rollups.sql"),
     ))
     .execute(pool)
     .await

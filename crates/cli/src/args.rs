@@ -23,4 +23,8 @@ pub struct Cli {
 
     #[arg(long)]
     pub log_level: Option<String>,
+
+    /// Rewrite the database file without its free space, then exit. Stop the server first.
+    #[arg(long)]
+    pub compact_database: bool,
 }

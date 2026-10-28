@@ -1,11 +1,9 @@
 use ferrous_dns_application::ports::{
     PageAt, QueryLogRepository, QueryLogStorageRepository, TimeGranularity,
 };
-use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
     ClientProtocol, CoalescedRole, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
 };
-use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::SqlitePool;
 use std::collections::BTreeSet;
 use std::net::IpAddr;
@@ -14,40 +12,11 @@ use std::time::Duration;
 
 #[path = "support/db.rs"]
 mod db;
+#[path = "support/rollups.rs"]
+mod rollups;
 
 use db::migrated_pool;
-
-const ROLLUP_BACKFILL: &str =
-    include_str!("../../../migrations/20260923000002_backfill_query_log_rollups.sql");
-
-fn repo(pool: &SqlitePool) -> SqliteQueryLogRepository {
-    repo_with(pool, &DatabaseConfig::default())
-}
-
-fn repo_with(pool: &SqlitePool, cfg: &DatabaseConfig) -> SqliteQueryLogRepository {
-    SqliteQueryLogRepository::new(
-        pool.clone(),
-        pool.clone(),
-        pool.clone(),
-        cfg,
-        Default::default(),
-    )
-}
-
-/// Rebuilds the rollups from the raw rows with the production backfill, which
-/// `query_log_rollup_test` proves equal to what the writer maintains.
-async fn rebuild_rollups(pool: &SqlitePool) {
-    sqlx::raw_sql(
-        "DELETE FROM query_log_minute;
-         DELETE FROM query_log_minute_record_type;
-         DELETE FROM query_log_minute_block_source;
-         DELETE FROM query_log_minute_upstream;",
-    )
-    .execute(pool)
-    .await
-    .unwrap();
-    sqlx::raw_sql(ROLLUP_BACKFILL).execute(pool).await.unwrap();
-}
+use rollups::{rebuild_rollups, repo};
 
 /// One raw `query_log` row; `created_at: None` stamps it with the current time.
 #[derive(Clone, Copy)]
@@ -89,7 +58,14 @@ impl Default for Row<'_> {
     }
 }
 
+/// Inserts a raw row and rebuilds the rollups, as the writer keeps them in step.
 async fn insert(pool: &SqlitePool, row: Row<'_>) {
+    insert_raw(pool, row).await;
+    rebuild_rollups(pool).await;
+}
+
+/// Inserts a raw row only, for rows the writer could never have produced.
+async fn insert_raw(pool: &SqlitePool, row: Row<'_>) {
     sqlx::query(
         "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit,
                                 block_source, response_status, upstream_server, upstream_pool,
@@ -139,7 +115,6 @@ async fn insert_log(
         },
     )
     .await;
-    rebuild_rollups(pool).await;
 }
 
 async fn insert_client(pool: &SqlitePool, ip: &str, hostname: &str) {
@@ -1598,7 +1573,7 @@ async fn test_coalesced_role_round_trips() {
 #[tokio::test]
 async fn test_unparseable_created_at_reads_back_without_timestamp() {
     let pool = migrated_pool().await;
-    insert(
+    insert_raw(
         &pool,
         Row {
             domain: "corrupt.example.com",

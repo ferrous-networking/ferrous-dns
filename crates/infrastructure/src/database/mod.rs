@@ -1,7 +1,7 @@
 use ferrous_dns_domain::config::DatabaseConfig;
 use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool, SqlitePoolOptions,
-    SqliteSynchronous,
+    SqliteAutoVacuum, SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool,
+    SqlitePoolOptions, SqliteSynchronous,
 };
 use sqlx::Connection;
 use std::path::Path;
@@ -9,10 +9,18 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
+mod compact;
+
+pub use compact::{compact_database, CompactionReport};
+
+/// Creates new databases with incremental auto-vacuum, so retention can give the pages it
+/// frees back to the file. The pragma only takes effect on an empty database (sqlx issues
+/// it before `journal_mode`); on an older file it is a no-op until `--compact-database`.
 fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error> {
     SqliteConnectOptions::from_str(database_url).map(|o| {
         o.create_if_missing(true)
             .foreign_keys(true)
+            .auto_vacuum(SqliteAutoVacuum::Incremental)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
     })
@@ -155,6 +163,40 @@ async fn seed_missing_query_log_stats(conn: &mut SqliteConnection) -> Result<(),
     Ok(())
 }
 
+/// Free space an old database must hold before startup warns about it.
+const UNRECLAIMABLE_WARN_BYTES: u64 = 64 * 1024 * 1024;
+
+/// The free bytes the file holds and can never give back, because it was created
+/// without auto-vacuum (`0`, before it was enabled); `None` for a file that can.
+pub async fn unreclaimable_free_bytes(pool: &SqlitePool) -> Result<Option<u64>, sqlx::Error> {
+    let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
+        .fetch_one(pool)
+        .await?;
+    if auto_vacuum != 0 {
+        return Ok(None);
+    }
+    let freelist_pages: i64 = sqlx::query_scalar("PRAGMA freelist_count")
+        .fetch_one(pool)
+        .await?;
+    let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
+        .fetch_one(pool)
+        .await?;
+    Ok(Some(freelist_pages.saturating_mul(page_size) as u64))
+}
+
+async fn warn_about_unreclaimable_space(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    match unreclaimable_free_bytes(pool).await? {
+        Some(free) if free >= UNRECLAIMABLE_WARN_BYTES => warn!(
+            free_mib = free / (1024 * 1024),
+            "The database file holds free space it cannot give back, because it was created \
+             before incremental auto-vacuum; stop the server and run \
+             `ferrous-dns --compact-database` once to reclaim it"
+        ),
+        _ => {}
+    }
+    Ok(())
+}
+
 pub async fn create_write_pool(
     database_url: &str,
     cfg: &DatabaseConfig,
@@ -179,6 +221,7 @@ pub async fn create_write_pool(
     seed_missing_query_log_stats(&mut conn).await?;
     sqlx::query("PRAGMA optimize").execute(&mut *conn).await?;
     drop(conn);
+    warn_about_unreclaimable_space(&pool).await?;
 
     Ok(pool)
 }

@@ -149,6 +149,8 @@ async fn flush_logs_clears_query_log_entries() {
     .expect("failed to backdate the oldest entry");
     assert_eq!(count_rows(&pool, "query_log").await, 3);
     assert!(count_rows(&pool, "query_log_minute").await > 0);
+    assert!(count_rows(&pool, "query_log_hour_domain").await > 0);
+    assert!(count_rows(&pool, "query_log_hour_client").await > 0);
 
     let app = helpers::create_pihole_test_app(pool.clone()).await;
     let (status, _, _) = post(app, "/action/flush/logs").await;
@@ -160,6 +162,13 @@ async fn flush_logs_clears_query_log_entries() {
         0,
         "the minute rollups behind /stats and /history are flushed too"
     );
+    for table in ["query_log_hour_domain", "query_log_hour_client"] {
+        assert_eq!(
+            count_rows(&pool, table).await,
+            0,
+            "{table}: the hour rollups behind the top lists are flushed too"
+        );
+    }
 
     let app = helpers::create_pihole_test_app(pool).await;
     let response = app

@@ -349,6 +349,13 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
     .await
     .expect("Failed to create query log rollups");
 
+    sqlx::raw_sql(include_str!(
+        "../../../../migrations/20261027000001_create_query_log_hour_rollups.sql"
+    ))
+    .execute(&pool)
+    .await
+    .expect("Failed to create query log hour rollups");
+
     sqlx::query(
         "CREATE TABLE managed_domains (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -756,12 +763,14 @@ pub async fn insert_local_dns_query(pool: &sqlx::SqlitePool, domain: &str) {
     rebuild_rollups(pool).await;
 }
 
-/// Stats read the minute rollups; rebuild them with the production backfill.
-async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
+/// Stats, top lists and counts read the rollups; rebuild them with the production
+/// backfill and the hourly reference, every past hour held.
+pub async fn rebuild_rollups(pool: &sqlx::SqlitePool) {
     sqlx::raw_sql(concat!(
-        "DELETE FROM query_log_minute; DELETE FROM query_log_minute_record_type;",
-        "DELETE FROM query_log_minute_block_source; DELETE FROM query_log_minute_upstream;",
+        include_str!("../../../infrastructure/tests/support/clear_rollups.sql"),
         include_str!("../../../../migrations/20260923000002_backfill_query_log_rollups.sql"),
+        include_str!("../../../infrastructure/tests/support/hour_rollups.sql"),
+        include_str!("../../../infrastructure/tests/support/hold_rollups.sql"),
     ))
     .execute(pool)
     .await

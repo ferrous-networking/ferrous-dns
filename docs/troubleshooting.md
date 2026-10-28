@@ -303,6 +303,26 @@ sqlite_mmap_size_mb = 32
 
 ---
 
+## The Database File Keeps Growing
+
+### Symptom
+
+The database file stays as large as it ever was after `queries_log_stored` is lowered, or keeps growing. The startup log may show:
+
+```text
+WARN  ferrous_dns_infrastructure::database: The database file holds free space it cannot give back, ...
+```
+
+### Cause
+
+A database created before incremental auto-vacuum keeps the pages that the query-log cleanup frees. Before v0.10.0, the cleanup also ran for the first time 4 hours after startup, so a server restarted more often than that never deleted anything.
+
+### Solution
+
+Stop the server and run it once with `--compact-database`; see [Disk Space](configuration/database.md#disk-space). From then on, every cleanup gives the freed space back.
+
+---
+
 ## Database Locked / SQLITE_BUSY
 
 ### Symptom

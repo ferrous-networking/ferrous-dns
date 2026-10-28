@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
-    CacheStats, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
+    CacheStats, FreeSpaceReclaimer, PagedQueryResult, QueryLogRepository, TimeGranularity,
+    TimelineBucket,
 };
-use ferrous_dns_application::use_cases::CleanupOldQueryLogsUseCase;
+use ferrous_dns_application::use_cases::{CleanupOldQueryLogsUseCase, ReclaimFreeSpaceUseCase};
 use ferrous_dns_domain::{
     DnssecStats, DomainError, QueryLog, QueryLogFilter, QueryStats, RecordType,
 };
 use ferrous_dns_jobs::QueryLogRetentionJob;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 
@@ -212,7 +213,7 @@ async fn test_query_log_retention_job_removes_only_logs_past_configured_days() {
     repo.add_old_log("10.0.0.3", 10).await;
 
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
-    QueryLogRetentionJob::new(use_case, 7).spawn();
+    QueryLogRetentionJob::new(use_case, reclaim(&reclaimer(&repo)), 7).spawn();
     sleep(FOUR_HOURS + Duration::from_secs(1)).await;
 
     assert_eq!(repo.count().await, 2);
@@ -223,7 +224,7 @@ async fn test_query_log_retention_job_reruns_on_interval() {
     let repo = Arc::new(MockQueryLogRepository::new());
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
 
-    QueryLogRetentionJob::new(use_case, 7)
+    QueryLogRetentionJob::new(use_case, reclaim(&reclaimer(&repo)), 7)
         .with_interval(1)
         .spawn();
     sleep(Duration::from_millis(200)).await;
@@ -237,23 +238,50 @@ async fn test_query_log_retention_job_reruns_on_interval() {
 }
 
 const FOUR_HOURS: Duration = Duration::from_secs(4 * 3600);
+const TEN_MINUTES: Duration = Duration::from_secs(10 * 60);
+
+/// Records how many logs are left each time the job gives free pages back.
+struct RecordingReclaimer {
+    repo: Arc<MockQueryLogRepository>,
+    logs_left: Mutex<Vec<usize>>,
+}
+
+#[async_trait]
+impl FreeSpaceReclaimer for RecordingReclaimer {
+    async fn reclaim_free_space(&self) -> Result<u64, DomainError> {
+        let left = self.repo.count().await;
+        self.logs_left.lock().unwrap().push(left);
+        Ok(0)
+    }
+}
+
+fn reclaimer(repo: &Arc<MockQueryLogRepository>) -> Arc<RecordingReclaimer> {
+    Arc::new(RecordingReclaimer {
+        repo: repo.clone(),
+        logs_left: Mutex::new(Vec::new()),
+    })
+}
+
+fn reclaim(reclaimer: &Arc<RecordingReclaimer>) -> Arc<ReclaimFreeSpaceUseCase> {
+    Arc::new(ReclaimFreeSpaceUseCase::new(reclaimer.clone()))
+}
 
 #[tokio::test(start_paused = true)]
-async fn test_query_log_retention_job_skips_startup_and_first_runs_four_hours_later() {
+async fn test_query_log_retention_job_skips_startup_and_first_runs_ten_minutes_later() {
     let repo = Arc::new(MockQueryLogRepository::new());
     repo.add_old_log("10.0.0.1", 10).await;
 
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
-    QueryLogRetentionJob::new(use_case, 7).spawn();
+    QueryLogRetentionJob::new(use_case, reclaim(&reclaimer(&repo)), 7).spawn();
 
-    sleep(FOUR_HOURS - Duration::from_secs(1)).await;
+    sleep(TEN_MINUTES - Duration::from_secs(1)).await;
     assert_eq!(repo.count().await, 1, "no cleanup may compete with startup");
 
     sleep(Duration::from_secs(2)).await;
     assert_eq!(
         repo.count().await,
         0,
-        "the first cleanup runs 4 hours after startup"
+        "the first cleanup runs 10 minutes after startup, so a server restarted every few hours still cleans up"
     );
 }
 
@@ -261,15 +289,41 @@ async fn test_query_log_retention_job_skips_startup_and_first_runs_four_hours_la
 async fn test_query_log_retention_job_reruns_every_four_hours() {
     let repo = Arc::new(MockQueryLogRepository::new());
     let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
-    QueryLogRetentionJob::new(use_case, 7).spawn();
+    QueryLogRetentionJob::new(use_case, reclaim(&reclaimer(&repo)), 7).spawn();
 
-    sleep(FOUR_HOURS + Duration::from_secs(1)).await;
+    sleep(TEN_MINUTES + Duration::from_secs(1)).await;
     repo.add_old_log("10.0.0.1", 10).await;
 
-    sleep(FOUR_HOURS).await;
+    sleep(FOUR_HOURS - Duration::from_secs(2)).await;
+    assert_eq!(repo.count().await, 1, "no second cleanup before 4 hours");
+
+    sleep(Duration::from_secs(2)).await;
     assert_eq!(
         repo.count().await,
         0,
         "the cleanup repeats 4 hours after the previous one"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_query_log_retention_job_gives_free_pages_back_after_each_cleanup() {
+    let repo = Arc::new(MockQueryLogRepository::new());
+    repo.add_old_log("10.0.0.1", 10).await;
+    let reclaimer = reclaimer(&repo);
+    let use_case = Arc::new(CleanupOldQueryLogsUseCase::new(repo.clone()));
+    QueryLogRetentionJob::new(use_case, reclaim(&reclaimer), 7).spawn();
+
+    sleep(TEN_MINUTES + Duration::from_secs(1)).await;
+    assert_eq!(
+        *reclaimer.logs_left.lock().unwrap(),
+        vec![0],
+        "pages are given back once the old logs are gone"
+    );
+
+    sleep(FOUR_HOURS).await;
+    assert_eq!(
+        reclaimer.logs_left.lock().unwrap().len(),
+        2,
+        "every run gives pages back"
     );
 }

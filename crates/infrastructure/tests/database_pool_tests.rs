@@ -1,7 +1,9 @@
+use ferrous_dns_application::ports::{FreeSpaceReclaimer, QueryLogRepository};
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::database::{
-    create_query_log_pool, create_read_pool, create_write_pool,
+    create_query_log_pool, create_read_pool, create_write_pool, unreclaimable_free_bytes,
 };
+use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use sqlx::{Connection, SqliteConnection, SqlitePool};
 use std::path::Path;
@@ -164,5 +166,147 @@ async fn test_write_pool_estimates_missing_query_log_stats_instead_of_counting_t
     );
 
     read.close().await;
+    pool.close().await;
+}
+
+async fn pragma(pool: &SqlitePool, name: &str) -> i64 {
+    sqlx::query_scalar(&format!("PRAGMA {name}"))
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_a_new_database_gives_freed_pages_back_incrementally() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+
+    let pool = create_write_pool(&url, &DatabaseConfig::default())
+        .await
+        .expect("first start");
+
+    assert_eq!(
+        pragma(&pool, "auto_vacuum").await,
+        2,
+        "a new database must be created with auto_vacuum = INCREMENTAL"
+    );
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn test_an_old_database_reports_the_free_space_it_cannot_give_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("old.db").display());
+    // As releases before incremental auto-vacuum created it.
+    let options = SqliteConnectOptions::from_str(&url)
+        .unwrap()
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
+    let pool = SqlitePool::connect_with(options).await.unwrap();
+    sqlx::raw_sql(
+        "CREATE TABLE t (v BLOB);
+         WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100)
+         INSERT INTO t SELECT zeroblob(4000) FROM n;
+         DELETE FROM t;",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let expected =
+        (pragma(&pool, "freelist_count").await * pragma(&pool, "page_size").await) as u64;
+
+    assert!(expected > 0);
+    assert_eq!(
+        unreclaimable_free_bytes(&pool).await.unwrap(),
+        Some(expected)
+    );
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn test_a_new_database_has_no_free_space_it_cannot_give_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let pool = create_write_pool(&url, &DatabaseConfig::default())
+        .await
+        .expect("first start");
+
+    assert_eq!(unreclaimable_free_bytes(&pool).await.unwrap(), None);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn test_reclaiming_after_retention_gives_the_deleted_pages_back_to_the_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let cfg = DatabaseConfig::default();
+    let pool = create_write_pool(&url, &cfg).await.expect("first start");
+
+    sqlx::query(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20000)
+         INSERT INTO query_log (domain, record_type, client_ip, query_source, created_at)
+         SELECT printf('%0200d.example', i), 'A', '10.0.0.1', 'client',
+                datetime('now', '-30 days')
+         FROM n",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let pages_with_rows = pragma(&pool, "page_count").await;
+
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &cfg,
+        Default::default(),
+    );
+    let deleted = repo.delete_older_than(7).await.unwrap();
+    assert_eq!(deleted, 20_000);
+    let reclaimed = repo.reclaim_free_space().await.unwrap();
+
+    let free = pragma(&pool, "freelist_count").await;
+    let pages = pragma(&pool, "page_count").await;
+    assert_eq!(free, 0, "retention left {free} free pages in the file");
+    assert!(reclaimed > 0);
+    assert!(
+        pages * 4 < pages_with_rows,
+        "the file kept {pages} of its {pages_with_rows} pages after retention emptied the log"
+    );
+    pool.close().await;
+}
+
+/// Pi-hole's flush deletes the whole log through the same call and answers an HTTP
+/// request: giving a large file's pages back, paced, must not hold that answer.
+#[tokio::test]
+async fn test_deleting_old_rows_leaves_giving_the_pages_back_to_the_retention_job() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("sqlite:{}", dir.path().join("test.db").display());
+    let cfg = DatabaseConfig::default();
+    let pool = create_write_pool(&url, &cfg).await.expect("first start");
+    sqlx::query(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+         INSERT INTO query_log (domain, record_type, client_ip, query_source, created_at)
+         SELECT printf('%0200d.example', i), 'A', '10.0.0.1', 'client',
+                datetime('now', '-1 minute')
+         FROM n",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let repo = SqliteQueryLogRepository::new(
+        pool.clone(),
+        pool.clone(),
+        pool.clone(),
+        &cfg,
+        Default::default(),
+    );
+
+    repo.delete_older_than(0).await.unwrap();
+
+    assert!(
+        pragma(&pool, "freelist_count").await > 0,
+        "the delete gave the pages back itself, holding up a flush"
+    );
     pool.close().await;
 }

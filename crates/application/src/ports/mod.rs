@@ -18,6 +18,7 @@ mod dga_flag_store;
 mod dns_cache_port;
 mod dns_resolver;
 mod dnssec_stats_port;
+mod free_space_reclaimer;
 mod group_creator;
 mod group_repository;
 mod hostname_resolver;
@@ -29,6 +30,7 @@ mod nxdomain_hijack_store;
 mod password_hasher;
 mod ptr_record_registry;
 mod query_log_repository;
+mod query_log_rollup_repository;
 mod query_log_storage_repository;
 mod regex_filter_repository;
 mod response_ip_filter_eviction_target;
@@ -75,6 +77,7 @@ pub use dns_cache_port::{
 };
 pub use dns_resolver::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
 pub use dnssec_stats_port::{DnssecStatsPort, DnssecValidatorStats};
+pub use free_space_reclaimer::FreeSpaceReclaimer;
 pub use group_creator::GroupCreator;
 pub use group_repository::GroupRepository;
 pub use hostname_resolver::HostnameResolver;
@@ -88,6 +91,7 @@ pub use ptr_record_registry::PtrRecordRegistry;
 pub use query_log_repository::{
     CacheStats, PageAt, PagedQueryResult, QueryLogRepository, TimeGranularity, TimelineBucket,
 };
+pub use query_log_rollup_repository::QueryLogRollupRepository;
 pub use query_log_storage_repository::{QueryLogStorage, QueryLogStorageRepository};
 pub use regex_filter_repository::{RegexFilterRepository, RegexFilterUpdate};
 pub use response_ip_filter_eviction_target::ResponseIpFilterEvictionTarget;

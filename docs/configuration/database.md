@@ -18,7 +18,7 @@ client_tracking_interval = 60
 |:-------|:--------|:------------|
 | `path` | `./ferrous-dns.db` | Path to the SQLite database file |
 | `log_queries` | `true` | Store every DNS query for analytics and the query log dashboard |
-| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs every 4 hours, the first time 4 hours after startup so it does not compete with the boot; a server restarted more often than that never cleans up. Each run deletes 1000 rows at a time and then pauses at least as long as each batch took, so other writers are not blocked; `0` deletes every entry at each run |
+| `queries_log_stored` | `30` | Days to retain query log entries. Cleanup runs every 4 hours, the first time 10 minutes after startup so it does not compete with the boot. Each run deletes 1000 rows at a time and then pauses at least as long as each batch took, so other writers are not blocked; `0` deletes every entry at each run |
 | `client_tracking_interval` | `60` | Minimum seconds between consecutive last-seen DB writes per client IP |
 
 ---
@@ -131,6 +131,35 @@ The WAL is also bounded across restarts:
 
 - **At startup,** before opening its connection pools, the server copies back and truncates any WAL the previous run left. It uses a connection with no timeout, so a large WAL left by a killed process makes that start slower but never fails it. The log reports the WAL's size and how long the copy took.
 - **On `SIGTERM` or `SIGINT`,** for example from `docker stop`, the server closes the database. SQLite then copies the WAL back and deletes it.
+
+---
+
+## Disk Space
+
+Deleting rows does not shrink an SQLite file by itself: the freed pages stay inside it until they are handed back.
+
+- **A database created by this release** uses incremental auto-vacuum. After each scheduled query-log cleanup, the server gives the freed pages back to the file in 8 MiB steps, pausing between steps as the cleanup does. Lowering `queries_log_stored` therefore shrinks the file at the next cleanup. A Pi-hole API flush (`POST /api/action/flush/logs`) answers as soon as the rows are gone and leaves the pages to that next cleanup.
+- **A database created by an earlier release** keeps its free pages until it is rewritten once. At startup, the server logs a warning when such a file holds 64 MiB or more of free space: `The database file holds free space it cannot give back`.
+
+To rewrite it, stop the server and run the binary once with `--compact-database`. It exits when done:
+
+=== "Docker"
+
+    ```bash
+    docker compose stop ferrous-dns
+    docker compose run --rm ferrous-dns --compact-database
+    docker compose start ferrous-dns
+    ```
+
+=== "Binary"
+
+    ```bash
+    ferrous-dns --config ferrous-dns.toml --compact-database
+    ```
+
+The command copies the live data into `<database>.compact` with incremental auto-vacuum, syncs the copy, and then replaces the original with it. It needs free disk space about the size of the data the file holds, not the size of the file. The original is not touched until the copy is complete, and a copy left by an interrupted run is discarded on the next one. If the server still has the database open, the command refuses with `the database is in use; stop the server before compacting it`.
+
+The dashboard's top domains and top clients, the Query Log total, and the Pi-hole API's top lists and database counts read hourly and per-minute aggregates kept beside the query log, so their cost does not grow with the size of the log. A background job adds each hour to the hourly aggregates about five minutes after the hour ends. After an upgrade, it also fills in the hours logged before, newest first, about a day of history every five minutes. An hour it has not reached yet is read from the log itself, so the results are the same either way.
 
 ---
 

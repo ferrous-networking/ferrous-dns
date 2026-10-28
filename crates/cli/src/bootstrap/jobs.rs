@@ -1,7 +1,7 @@
 use ferrous_dns_domain::Config;
 use ferrous_dns_jobs::{
-    BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, RetentionJob, ScheduleEvaluatorJob,
-    SessionCleanupJob, WalCheckpointJob,
+    BlocklistSyncJob, ClientSyncJob, QueryLogRetentionJob, QueryLogRollupJob, RetentionJob,
+    ScheduleEvaluatorJob, SessionCleanupJob, WalCheckpointJob,
 };
 use sqlx::SqlitePool;
 use tracing::info;
@@ -21,9 +21,11 @@ pub fn spawn_jobs(
     RetentionJob::new(use_cases.cleanup_clients.clone(), 30).spawn();
     QueryLogRetentionJob::new(
         use_cases.cleanup_query_logs.clone(),
+        use_cases.reclaim_free_space.clone(),
         config.database.queries_log_stored,
     )
     .spawn();
+    QueryLogRollupJob::new(use_cases.roll_up_query_log.clone()).spawn();
     BlocklistSyncJob::new(repos.block_filter_engine.clone()).spawn();
     WalCheckpointJob::new(wal_pool, config.database.wal_checkpoint_interval_secs).spawn();
     ScheduleEvaluatorJob::new(repos.schedule_profile.clone(), repos.schedule_state.clone()).spawn();

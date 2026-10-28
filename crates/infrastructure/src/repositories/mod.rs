@@ -54,17 +54,24 @@ pub(crate) fn sql_now() -> String {
     sql_ts(Utc::now())
 }
 
-/// Cutoff `ms` before now; a window reaching past chrono's range saturates to "everything"
-/// because windows come from unvalidated API floats (`?from=1e30`).
-fn ms_ago_cutoff(ms: i64) -> String {
-    let cutoff = chrono::Duration::try_milliseconds(ms)
+/// The instant `ms` before now; a window reaching past chrono's range saturates to
+/// "everything" because windows come from unvalidated API floats (`?from=1e30`).
+fn ms_ago(ms: i64) -> DateTime<Utc> {
+    chrono::Duration::try_milliseconds(ms)
         .and_then(|d| Utc::now().checked_sub_signed(d))
-        .unwrap_or(DateTime::<Utc>::MIN_UTC);
-    sql_ts(cutoff)
+        .unwrap_or(DateTime::<Utc>::MIN_UTC)
+}
+
+fn ms_ago_cutoff(ms: i64) -> String {
+    sql_ts(ms_ago(ms))
+}
+
+pub(crate) fn hours_ago(hours: f32) -> DateTime<Utc> {
+    ms_ago((hours * 3_600_000.0) as i64)
 }
 
 pub(crate) fn hours_ago_cutoff(hours: f32) -> String {
-    ms_ago_cutoff((hours * 3_600_000.0) as i64)
+    sql_ts(hours_ago(hours))
 }
 
 pub(crate) fn seconds_ago_cutoff(seconds: i64) -> String {

@@ -1,9 +1,9 @@
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::database::{
-    create_query_log_pool, create_read_pool, create_write_pool,
+    self, create_query_log_pool, create_read_pool, create_write_pool,
 };
 use sqlx::SqlitePool;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
 /// `docker stop` sends SIGKILL 10 s after SIGTERM; closing must finish well before.
@@ -43,6 +43,24 @@ pub async fn init_database(
     });
 
     Ok((write_pool, query_log_pool, read_pool))
+}
+
+/// `--compact-database`: rewrites the file without its free space and with incremental
+/// auto-vacuum, so a database created by an older release can shrink.
+pub async fn compact_database(database_url: &str) -> anyhow::Result<()> {
+    info!(
+        "Compacting {}; this needs free disk space about the size of its data",
+        database_url
+    );
+    let started = Instant::now();
+    let report = database::compact_database(database_url).await?;
+    info!(
+        bytes_before = report.bytes_before,
+        bytes_after = report.bytes_after,
+        duration_ms = started.elapsed().as_millis() as u64,
+        "Database compacted"
+    );
+    Ok(())
 }
 
 /// Closes every pool. When the last connection closes SQLite copies the WAL back into

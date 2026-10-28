@@ -39,11 +39,15 @@ async fn async_main() -> anyhow::Result<()> {
 
     bootstrap::apply_log_level(&log_level, &config);
 
+    let database_url = format!("sqlite:{}", config.database.path);
+    if cli.compact_database {
+        return bootstrap::compact_database(&database_url).await;
+    }
+
     info!("Starting Ferrous DNS Server v{}", env!("CARGO_PKG_VERSION"));
 
     ferrous_dns_infrastructure::dns::cache::coarse_clock::start_clock_ticker();
 
-    let database_url = format!("sqlite:{}", config.database.path);
     let (write_pool, query_log_pool, read_pool) =
         bootstrap::init_database(&database_url, &config.database).await?;
     let database_pools = [

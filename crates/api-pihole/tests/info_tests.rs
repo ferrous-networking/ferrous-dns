@@ -381,6 +381,7 @@ async fn database_info_counts_recent_and_stored_queries() {
     .execute(&pool)
     .await
     .expect("failed to insert an old query");
+    helpers::rebuild_rollups(&pool).await;
 
     let json = get_json(pool, "/info/database").await;
     let info = helpers::ftl::assert_ftl_shape::<helpers::ftl::InfoDatabase>(&json);

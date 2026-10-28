@@ -260,6 +260,8 @@ These flags override the matching values from the config file:
 | `--database <PATH>`   |       | SQLite database path (config: `database.path`) |
 | `--log-level <LEVEL>` |       | Log level: `debug`, `info`, `warn`, `error` (config: `logging.level`) |
 
+`--compact-database` is a maintenance command, not an override: with the server stopped, it rewrites the database without its free space and exits. See [Disk Space](../configuration/database.md#disk-space).
+
 !!! note "Log level"
     The log level is set by `logging.level` in the config file (or the `--log-level` flag). `RUST_LOG` is **not** consulted.
 
@@ -279,6 +281,12 @@ docker logs ferrous-dns 2>&1 | grep "Invalid config value"
 
 Values that made earlier releases fail to start or crash still stop startup. `queries_log_stored = 0` keeps its meaning: every run of the cleanup deletes the whole query log. The full list is under [Loading the Config File](../configuration/ferrous-dns-toml.md#loading-the-config-file). The dashboard and the API reject all of these values.
 
+### Database disk space
+
+A database created by an earlier release keeps the space that the query-log cleanup frees, so its file never shrinks. If the first start logs `The database file holds free space it cannot give back`, stop the server and run it once with `--compact-database`, as described in [Disk Space](../configuration/database.md#disk-space). The query-log cleanup now runs for the first time 10 minutes after startup, instead of 4 hours.
+
+The top domain and client lists now read hourly aggregates. They start empty: a background job fills them in from the existing log, newest hour first, about a day of history every five minutes. Until it reaches an hour, that hour is read from the log as before, so the lists speed up as the job progresses.
+
 ### DoH behind a reverse proxy
 
 DoH requests now believe `X-Forwarded-For` and `X-Real-IP` only from the addresses in `[server] trusted_proxies`, which by default is loopback only. A reverse proxy on another host or on a Docker bridge network must be listed there. Otherwise every DoH query is attributed to the proxy's address, so per-client groups and rules stop applying to DoH clients. See [DoH client identity](../configuration/server.md#doh-client-identity).
@@ -289,7 +297,7 @@ Answers relayed from an upstream carry Ferrous DNS's own OPT record. The upstrea
 
 ### One-time query log rebuild
 
-The first start rebuilds the `query_log` table, and the server answers queries only once that is done. On large databases this takes a while: about 9 seconds for 3 million rows on an NVMe drive, and noticeably longer on a Raspberry Pi SD card. The database file also grows by about 70% until it is vacuumed. To reclaim the space, stop the server and run `sqlite3 ferrous-dns.db 'VACUUM;'`, which needs free disk space about the size of the file.
+The first start rebuilds the `query_log` table, and the server answers queries only once that is done. On large databases this takes a while: about 9 seconds for 3 million rows on an NVMe drive, and noticeably longer on a Raspberry Pi SD card. The database file also grows by about 70% until it is compacted. To reclaim the space, stop the server and run it once with `--compact-database`; see [Disk Space](../configuration/database.md#disk-space).
 
 ---
 
