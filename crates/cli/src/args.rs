@@ -27,4 +27,9 @@ pub struct Cli {
     /// Rewrite the database file without its free space, then exit. Stop the server first.
     #[arg(long)]
     pub compact_database: bool,
+
+    /// Ask the running server's GET /health on this config's web port, then exit:
+    /// 0 when it answers 200, 1 otherwise. For container health checks.
+    #[arg(long)]
+    pub healthcheck: bool,
 }

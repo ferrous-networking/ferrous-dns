@@ -39,6 +39,10 @@ async fn async_main() -> anyhow::Result<()> {
 
     bootstrap::apply_log_level(&log_level, &config);
 
+    if cli.healthcheck {
+        return bootstrap::healthcheck(&config.server).await;
+    }
+
     let database_url = format!("sqlite:{}", config.database.path);
     if cli.compact_database {
         return bootstrap::compact_database(&database_url).await;
