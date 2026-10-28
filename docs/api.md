@@ -39,6 +39,7 @@ A 307 keeps the method and the body, so clients that follow redirects keep worki
 
 v0.10.0 settles the v1 contract. Besides the new base above, these responses changed:
 
+- **`GET /health` is public and answers JSON.** It used to need a login when authentication was on and answered a plain `OK`. It now answers `{"status": "ok", "version": "…"}`, or `503` with `"status": "unavailable"` while the DNS listener is down. See [Health Check](#health-check).
 - **Config saves that fail answer an error status.** `POST /config`, `POST /settings` and `POST /config/reload` used to answer `200` with `success: false` when a valid request could not be carried out. They now answer `409` (no writable config file) or `500` (the save or reload failed), with the same body. See [Update Config](#update-config).
 
 ---
@@ -122,7 +123,18 @@ Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) 
 GET /ferrous/api/v1/health
 ```
 
-Returns server health status.
+Public: no session or API token is needed, even with authentication on, so an uptime monitor or a load balancer can call it. It answers JSON:
+
+```json
+{ "status": "ok", "version": "0.10.0" }
+```
+
+| Status | `status` | When |
+|:-------|:---------|:-----|
+| `200 OK` | `ok` | The web server is up and the DNS listener is serving. |
+| `503 Service Unavailable` | `unavailable` | The DNS listener is down: its port could not be bound (another resolver holds port 53, for example) or every worker exited. |
+
+The Docker image's health check calls it through [`ferrous-dns --healthcheck`](getting-started/installation.md#health-check).
 
 ### System Info
 

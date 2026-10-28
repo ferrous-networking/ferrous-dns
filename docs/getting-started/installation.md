@@ -61,6 +61,16 @@ Only then add the mount:
 !!! warning "Create the file before mounting it"
     Docker creates the source of a bind mount as a **root-owned directory** when the host path does not exist. Mounting a path you have not created yet therefore puts a directory at `/data/config/ferrous-dns.toml`, and the container — which runs as uid 1000 — cannot write it, so it exits and `--restart always` turns that into a restart loop. Keep the mount writable too (no `:ro`): the first-run setup wizard, `POST /config` from the dashboard, and backup restore all persist changes back to this file.
 
+#### Health check
+
+The image's `HEALTHCHECK` runs `/entrypoint.sh --healthcheck` every 10 seconds. The entrypoint turns the `FERROUS_*` variables into flags, as it does for the server, and runs `ferrous-dns --healthcheck`, which calls [`GET /ferrous/api/v1/health`](../api.md#health-check) on the web port. The container is `healthy` once the server answers `200`, and `unhealthy` after three failed probes in a row: the web server not answering, or the DNS listener down. A first start gets two minutes before failures count.
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' ferrous-dns
+```
+
+The probe runs beside the server, not through its command line. Set ports and the bind address in the config file or with the `FERROUS_*` variables: flags passed in a compose `command:` do not reach the probe, which then checks the wrong port.
+
 ---
 
 ## Docker Compose
@@ -262,6 +272,8 @@ These flags override the matching values from the config file:
 
 `--compact-database` is a maintenance command, not an override: with the server stopped, it rewrites the database without its free space and exits. See [Disk Space](../configuration/database.md#disk-space).
 
+`--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web port, calls the loopback when the server listens on every address, and follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
+
 !!! note "Log level"
     The log level is set by `logging.level` in the config file (or the `--log-level` flag). `RUST_LOG` is **not** consulted.
 
@@ -294,6 +306,10 @@ DoH requests now believe `X-Forwarded-For` and `X-Real-IP` only from the address
 ### Upstream EDNS options are no longer relayed
 
 Answers relayed from an upstream carry Ferrous DNS's own OPT record. The upstream's options, including its Extended DNS Errors (EDE) and NSID, no longer reach clients. See [EDNS buffer size and truncation](../features/security-hardening.md#edns-buffer-size-and-truncation).
+
+### Docker health check
+
+The image's health check now probes the running server through `ferrous-dns --healthcheck` instead of running `ferrous-dns --version`, so a container whose DNS listener could not start reports `unhealthy`. A compose file that copied the old `healthcheck:` block keeps running `--version`: replace its `test` with `["CMD", "/entrypoint.sh", "--healthcheck"]`, or delete the block to use the image's. See [Health check](#health-check).
 
 ### One-time query log rebuild
 
