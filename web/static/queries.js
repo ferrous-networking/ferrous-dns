@@ -142,7 +142,7 @@
                 try {
                     const res = await fetch(`${API_BASE}/clients?limit=1000`);
                     if (res.ok) {
-                        const clients = await res.json();
+                        const clients = (await res.json()).data;
                         clients.sort((a, b) =>
                             this.clientLabel(a).localeCompare(this.clientLabel(b)));
                         this.clients = clients;

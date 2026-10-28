@@ -38,7 +38,7 @@
             async loadClients() {
                 try {
                     const res = await fetch(`${API_BASE}/clients?limit=1000`);
-                    if (res.ok) this.clients = await res.json();
+                    if (res.ok) this.clients = (await res.json()).data;
                 } catch (e) {
                     console.error('Failed to load clients:', e);
                 }
