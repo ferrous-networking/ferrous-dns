@@ -45,7 +45,7 @@ pub struct ClientsQuery {
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
-    /// Only clients seen in the last this many days.
+    /// Only clients seen within the last N days.
     #[serde(default)]
     pub active_days: Option<u32>,
 }
@@ -55,6 +55,7 @@ pub struct PaginatedClients {
     pub data: Vec<ClientResponse>,
     /// Clients matching `active_days`, or every client without it.
     pub total: u64,
+    /// Page size applied: the requested `limit`, clamped to 1..=1000.
     pub limit: u32,
     pub offset: u32,
 }

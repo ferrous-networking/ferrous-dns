@@ -150,7 +150,9 @@ Two endpoints add fields to the envelope:
 - `records_total` (`/queries`, `/cache/entries`): the size of the collection the list is drawn from, before the request's filters. For `/queries` it is every logged query in `period`; for `/cache/entries`, every entry the cache holds, including expired ones not yet removed, which the listing leaves out.
 - `next_cursor` (`/queries`): pass it as `cursor` to get the next page, or `null` on the last one. A cursor keeps its place while new queries are logged, which an `offset` does not. With `cursor`, `offset` is ignored and answered as `0`.
 
-Every other list answers a plain JSON array with all of its items: groups, users, API tokens, sessions, blocklist and allowlist sources, client subnets, regex filters, custom and blocked services, Safe Search configs, local records and schedule profiles. These only grow by hand. A new endpoint follows the same rule: it is paged if its list can grow with traffic or with an import, and a plain array otherwise.
+Every other list answers a plain JSON array with all of its items: groups, users, API tokens, sessions, blocklist and allowlist sources, client subnets, regex filters, custom and blocked services, Safe Search configs, local records and schedule profiles. These grow only as fast as someone configures them. Top-N lists, such as the dashboard's top domains, take a `limit` but are not paged.
+
+A new endpoint follows the same rule. It is paged when traffic feeds its list, or a bulk import can grow it without a practical bound. It then uses the envelope above, with a default `limit` of 100 and a maximum of 1000 unless its rows are heavy, as cache entries are. Otherwise it answers a plain array.
 
 ---
 
@@ -832,7 +834,7 @@ Returns the detected clients with IP, MAC, hostname, group, query count, and las
 |:----------|:-----|:------------|
 | `limit` | integer | Clients per page (default: 100, max: 1000) |
 | `offset` | integer | Clients to skip |
-| `active_days` | integer | Only clients seen in the last this many days; `total` then counts only those |
+| `active_days` | integer | Only clients seen within the last N days; `total` then counts only those |
 
 ### Client Stats
 

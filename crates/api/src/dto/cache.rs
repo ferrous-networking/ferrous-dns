@@ -127,6 +127,7 @@ pub struct PaginatedCacheEntries {
     pub total: usize,
     /// Entries in the cache, ignoring the filters.
     pub records_total: usize,
+    /// Page size applied: the requested `limit`, clamped to 1..=500.
     pub limit: u32,
     pub offset: u32,
 }

@@ -10,7 +10,7 @@ pub struct QueryParams {
     #[serde(default)]
     pub offset: u32,
     /// `next_cursor` of the previous page; takes precedence over `offset`,
-    /// which the response then echoes as 0.
+    /// which the response then answers as 0.
     pub cursor: Option<i64>,
     #[serde(default = "crate::utils::default_period")]
     pub period: String,
@@ -42,6 +42,7 @@ pub struct PaginatedQueries {
     pub total: u64,
     /// Total records in the period (without filters).
     pub records_total: u64,
+    /// Page size applied: the requested `limit`, clamped to 1..=1000.
     pub limit: u32,
     pub offset: u32,
     /// Pass as `cursor` for the next page; `null` on the last one.
