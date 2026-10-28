@@ -272,7 +272,7 @@ These flags override the matching values from the config file:
 
 `--compact-database` is a maintenance command, not an override: with the server stopped, it rewrites the database without its free space and exits. See [Disk Space](../configuration/database.md#disk-space).
 
-`--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web port, calls the loopback when the server listens on every address, and follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
+`--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web port. When the server listens on every address it calls `127.0.0.1`, then `::1` if nothing answers there; it never goes through an `HTTP_PROXY` from the environment. It follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
 
 !!! note "Log level"
     The log level is set by `logging.level` in the config file (or the `--log-level` flag). `RUST_LOG` is **not** consulted.

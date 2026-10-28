@@ -131,8 +131,8 @@ Public: no session or API token is needed, even with authentication on, so an up
 
 | Status | `status` | When |
 |:-------|:---------|:-----|
-| `200 OK` | `ok` | The web server is up and the DNS listener is serving. |
-| `503 Service Unavailable` | `unavailable` | The DNS listener is down: its port could not be bound (another resolver holds port 53, for example) or every worker exited. |
+| `200 OK` | `ok` | The web server is up and the plain DNS listener (`dns_port`) is serving. |
+| `503 Service Unavailable` | `unavailable` | The plain DNS listener is down: its port could not be bound (another resolver holds port 53, for example) or every worker exited. |
 
 The Docker image's health check calls it through [`ferrous-dns --healthcheck`](getting-started/installation.md#health-check).
 
