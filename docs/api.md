@@ -215,6 +215,9 @@ per-minute rollups, so their windows are minute-aligned: a window includes the
 whole minute it starts in. The query log, top-N lists and the query rate read
 the raw log and use the exact cutoff.
 
+The top blocked domains and top clients are only served inside this payload
+(`top_blocked_domains`, `top_clients`); there is no separate route for them.
+
 ### Summary Stats
 
 ```http
@@ -239,17 +242,13 @@ GET /ferrous/api/v1/queries/timeline
 
 Returns query volume over time for dashboard graphs.
 
-### Top Blocked Domains
+### DNSSEC Stats
 
 ```http
-GET /ferrous/api/v1/stats/top_blocked
+GET /ferrous/api/v1/dnssec/stats?period=24h
 ```
 
-### Top Clients
-
-```http
-GET /ferrous/api/v1/stats/top_clients
-```
+Counts the client queries of the `period` by DNSSEC outcome: `secure`, `insecure`, `bogus` and `indeterminate`. `validated` is the number that got any outcome, and `total` the number of client queries. `ds_denials_unproven` counts empty DS answers that came without an authenticated denial, a sign that the upstreams strip DNSSEC proofs. Unlike the other fields, it counts since the server started, not over `period`. `period` is a number and a unit (`30m`, `24h`, `7d`, `2w`), capped at 30 days, and defaults to `24h`.
 
 ---
 
@@ -620,6 +619,90 @@ DELETE /ferrous/api/v1/auth/sessions/{id}
 ```
 
 Revokes a specific session by ID. **Protected**. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
+
+### Two-Factor Authentication (TOTP)
+
+The signed-in user's authenticator app and recovery codes. The flows and the rules behind them are in [Two-Factor Authentication](features/two-factor-auth.md).
+
+```http
+GET /ferrous/api/v1/auth/2fa/status
+```
+
+Returns `totp_enabled`, `recovery_codes_remaining`, `webauthn_configured` and the user's `passkeys` (`id`, `label`, `created_at`, `last_used_at`).
+
+```http
+POST /ferrous/api/v1/auth/2fa/setup
+```
+
+Starts TOTP enrollment and returns the material for the authenticator app: `secret`, `otpauth_uri` and a `qr_svg`. Nothing is enabled until the code is confirmed.
+
+```http
+POST /ferrous/api/v1/auth/2fa/confirm
+```
+
+Confirms enrollment with the app's current code and enables TOTP. The response carries the `recovery_codes`, shown only this once.
+
+```json
+{
+  "code": "123456"
+}
+```
+
+```http
+DELETE /ferrous/api/v1/auth/2fa
+```
+
+Turns off every second factor of the user, after checking the password:
+
+```json
+{
+  "password": "your-password"
+}
+```
+
+```http
+POST /ferrous/api/v1/auth/2fa/verify
+```
+
+The second step of a login. When `POST /auth/login` answers `"mfa_required": true`, it also returns a `challenge_token` and the `methods` the user has. Send the token with a TOTP code or a recovery code; the answer is the same as a login's, with the session cookie. **Public**.
+
+```json
+{
+  "challenge_token": "…",
+  "code": "123456"
+}
+```
+
+### Passkeys (WebAuthn)
+
+Each passkey ceremony is a `start` that returns options for the browser's WebAuthn API and a token, then a `finish` that takes the browser's response with that token. Passkeys need `[auth.webauthn]` configured; without it the `start` routes answer `400`. See [Passkeys](features/two-factor-auth.md#passkeys-webauthn).
+
+```http
+POST /ferrous/api/v1/auth/webauthn/register/start
+POST /ferrous/api/v1/auth/webauthn/register/finish
+```
+
+Registers a passkey for the signed-in user. `start` returns `challenge` (for `navigator.credentials.create`) and a `ceremony_token`; `finish` takes `ceremony_token`, the browser's `response` and an optional `label`.
+
+```http
+POST /ferrous/api/v1/auth/webauthn/authenticate/start
+POST /ferrous/api/v1/auth/webauthn/authenticate/finish
+```
+
+A passkey as the second step of a login. `start` takes the login's `challenge_token` and returns the options for `navigator.credentials.get`; `finish` takes the same `challenge_token` and the browser's `response`, and answers like a login, with the session cookie. **Public**.
+
+```http
+POST /ferrous/api/v1/auth/webauthn/discoverable/start
+POST /ferrous/api/v1/auth/webauthn/discoverable/finish
+```
+
+Passwordless login with a resident passkey: no username or password. `start` takes no body and returns `challenge` and a `challenge_token`; `finish` takes `challenge_token`, the browser's `response` and an optional `remember_me`, and answers like a login. **Public**.
+
+```http
+DELETE /ferrous/api/v1/auth/webauthn/{id}
+```
+
+Removes one of the signed-in user's passkeys.
 
 ---
 
@@ -1152,13 +1235,46 @@ DELETE /ferrous/api/v1/regex-filters/{id}
 
 ---
 
-## Block Filter Stats
+## Block Filter
+
+### Block Filter Stats
 
 ```http
 GET /ferrous/api/v1/block-filter/stats
 ```
 
 Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
+
+### Test a Domain
+
+```http
+POST /ferrous/api/v1/block-filter/test
+```
+
+Evaluates one domain against the compiled filter for a group, without sending a query, and names every rule involved: `blocked`, the `block_matches` and the `allow_reasons`, each with its `kind` (`blocklist`, `manual`, `managed_domain`, `regex` or `allowlist`), its source and its `match_type`. The group is `group_id`, else the group of the `client` IP, else the default group.
+
+```json
+{
+  "domain": "ads.example.com",
+  "client": "192.168.1.20"
+}
+```
+
+### Backtest a Rule Set
+
+```http
+POST /ferrous/api/v1/block-filter/backtest
+```
+
+Simulates a candidate blocklist (`"action": "deny"`) or allowlist (`"action": "allow"`) over the domains of recent traffic, before adding it. `list` takes lines in any [blocklist format](features/blocking-filtering.md#supported-formats), `regexes` raw patterns; `window_hours` (default 24), `group_id` (default 1) and `limit` (the most-queried distinct domains to evaluate) are optional. The report counts the domains and queries the candidate would match, change, find already blocked, or leave to an override, with a `sample` of the affected domains.
+
+```json
+{
+  "action": "deny",
+  "list": ["||tracker.example^", "0.0.0.0 ads.example.net"],
+  "window_hours": 24
+}
+```
 
 ---
 
@@ -1222,9 +1338,11 @@ POST /ferrous/api/v1/custom-services
 {
   "name": "My Custom Tracker",
   "domains": ["tracker1.example.com", "tracker2.example.com"],
-  "category": "tracking"
+  "category_name": "Tracking"
 }
 ```
+
+`category_name` is optional and defaults to `Custom`.
 
 ### Get / Update / Delete
 
