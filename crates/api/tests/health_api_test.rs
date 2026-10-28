@@ -9,6 +9,7 @@ use ferrous_dns_domain::Config;
 use helpers::TestApp;
 use http_body_util::BodyExt;
 use serde_json::Value;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
@@ -62,5 +63,21 @@ async fn test_health_answers_json_with_the_status_and_version() {
     assert_eq!(
         json,
         serde_json::json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") })
+    );
+}
+
+#[tokio::test]
+async fn test_health_answers_503_while_dns_is_not_listening() {
+    let TestApp { state, .. } = TestApp::new().await;
+    state.dns_listening.store(false, Ordering::Relaxed);
+    let app = create_api_router_with_openapi(state).0;
+
+    let (status, _, body) = get(app, "/health").await;
+
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({ "status": "unavailable", "version": env!("CARGO_PKG_VERSION") })
     );
 }

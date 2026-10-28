@@ -151,6 +151,7 @@ async fn async_main() -> anyhow::Result<()> {
     let num_dns_workers = tokio::runtime::Handle::current().metrics().num_workers();
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
+    let dns_listening = app_state.dns_listening.clone();
     tokio::spawn(async move {
         if let Err(e) = server::start_dns_server(
             dns_addr,
@@ -159,6 +160,7 @@ async fn async_main() -> anyhow::Result<()> {
             proxy_protocol_enabled,
             tcp_conn_limiter,
             udp_fallback_shed,
+            dns_listening,
         )
         .await
         {

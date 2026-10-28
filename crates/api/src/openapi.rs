@@ -226,6 +226,7 @@ impl Modify for SecurityAddon {
         dto::CreateLocalRecordRequest,
         dto::local_record::UpdateLocalRecordRequest,
         // misc
+        dto::HealthResponse,
         dto::HostnameResponse,
         dto::SystemInfoResponse,
         dto::TlsStatusResponse,
