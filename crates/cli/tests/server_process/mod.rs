@@ -1,4 +1,8 @@
 //! Helpers for tests that run the real `ferrous-dns` binary.
+//!
+//! This module is compiled into every integration-test binary that declares
+//! `mod server_process;`, so items only one binary uses would otherwise trip
+//! dead-code warnings under `-D warnings`.
 #![allow(dead_code)]
 
 use std::fs;
