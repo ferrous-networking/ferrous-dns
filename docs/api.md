@@ -97,7 +97,7 @@ Create and manage tokens via the [API Token endpoints](#api-tokens) below.
 
 ## Response Format
 
-Responses are JSON, except a `204` (no body) and the backup export (a file download). A success answers with the status of what the request did:
+Responses are JSON, except a `204` or the blocklist sync's `202` (no body) and the backup export (a file download). A success answers with the status of what the request did:
 
 | Request | Success |
 |:--------|:--------|
@@ -107,9 +107,9 @@ Responses are JSON, except a `204` (no body) and the backup export (a file downl
 | Delete | `204`, no body |
 | Action (a test, a backtest, a save) | `200` with its result; `202` when a blocklist sync starts in the background |
 
-Config save and reload, TLS upload and generate, and backup import answer with a `success` field, described with each of them. Config save and reload and backup import keep that body on failure too. No other route uses `success`.
+Config save and reload, TLS upload and generate, and backup import answer with a `success` field, described with each of them. Config save and reload keep that body on failure too; backup import keeps it only for a partial import, which is a `200`. No other route uses `success`.
 
-An error answers with a status and a JSON body:
+An error answers with a status and, except for the two noted below, a JSON body:
 
 ```json
 {
@@ -125,10 +125,12 @@ An error answers with a status and a JSON body:
 | `404 Not Found` | The resource does not exist, or a group or profile the request names does not. |
 | `409 Conflict` | The name is taken, or the server's state blocks the change: a group with assigned clients or routed by an upstream pool, a sync already running, no writable config file. |
 | `429 Too Many Requests` | Too many failed login attempts. |
-| `500 Internal Server Error` | The request failed inside the server. The body only says `internal error`; the details go to the log. Config saves keep their message. |
+| `500 Internal Server Error` | The request failed inside the server. The body only says `internal error`; the details go to the log. Config save and reload keep their message. |
 | `503 Service Unavailable` | `GET /health` while the DNS listener is down. |
 
-A body that is not JSON, or lacks a required field, is refused before the route runs: `400`, `415` (no `Content-Type: application/json`) or `422`, with a plain-text message.
+The `401` of a protected route called without credentials, and the `409` of a blocklist sync already running, have no body.
+
+A body that is not JSON, or lacks a required field, is refused before the route runs: `400`, `415` (no `Content-Type: application/json`) or `422`, with a plain-text message. The login, second-factor and passkey routes answer `400` with the JSON error body instead.
 
 Under each route, a contract line gives:
 
@@ -186,7 +188,7 @@ GET /ferrous/api/v1/health
 
 **Auth:** public · **Returns:** `200` `HealthResponse` · **Errors:** `503` DNS listener down
 
-Public: no session or API token is needed, even with authentication on, so an uptime monitor or a load balancer can call it. It answers JSON:
+It needs no session or API token, even with authentication on, so an uptime monitor or a load balancer can call it:
 
 ```json
 { "status": "ok", "version": "0.10.0" }
@@ -421,7 +423,7 @@ The file is rewritten atomically (a synced temp file renamed over it), so a cras
 POST /ferrous/api/v1/config/reload
 ```
 
-**Auth:** session or API key · **Returns:** `200` `ConfigSaveResponse` · **Errors:** `409` no config file, `500` the file fails to load or validate
+**Auth:** session or API key · **Returns:** `200` `ConfigSaveResponse` · **Errors:** `409` no config file, `500` the file fails to load or validate, or its pools fail to apply
 
 Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart. A file that fails to load, parse or validate answers **500** with `{ "success": false, "error": "…" }`, and the running configuration is kept. A server started without a config file answers **409**.
 
@@ -493,8 +495,6 @@ Content-Type: multipart/form-data
 
 Uploads a PEM `cert` and `key` pair via multipart form fields.
 
-**Error codes:** `400 Bad Request` (missing or invalid files), `401 Unauthorized`
-
 ### Generate Self-Signed
 
 ```http
@@ -505,8 +505,6 @@ POST /ferrous/api/v1/tls/generate?force=true
 
 Generates a self-signed certificate/key pair. Pass `?force=true` to overwrite
 existing files.
-
-**Error codes:** `400 Bad Request` (files already exist — use `?force=true`), `401 Unauthorized`
 
 ---
 
@@ -576,8 +574,6 @@ multipart field (`file`). Returns an import summary describing what was applied.
 ```
 
 A **partial import** still answers `200`: the import is not transactional, so what was restored stays applied. `success` is then `false`, and `errors` names each item that was not restored, such as a local record with an invalid address or a blocklist source routed for a group the backup does not have.
-
-**Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`, `500 Internal Server Error` (the client groups could not be read)
 
 ---
 
@@ -661,7 +657,7 @@ POST /ferrous/api/v1/auth/password
 
 **Auth:** session only · **Returns:** `204` · **Errors:** `400` invalid new password, `401` wrong current password
 
-Changes the password of the signed-in user. The session cookie names the user, so an API token alone is refused with `401`. A wrong `current_password` returns `401` and changes nothing.
+Changes the password of the signed-in user, whom the session cookie names. A wrong `current_password` changes nothing.
 
 Every other session of that user is revoked, so a device signed in with the old password has to log in again. The session that made the change stays signed in.
 
@@ -764,7 +760,7 @@ POST /ferrous/api/v1/auth/webauthn/register/start
 POST /ferrous/api/v1/auth/webauthn/register/finish
 ```
 
-**Auth:** session only · **Returns:** `POST` `200` `WebauthnRegisterStartResponse`; `POST` `204` · **Errors:** `POST` `400` passkeys not configured; `POST` `400` attestation rejected, `401` ceremony expired
+**Auth:** session only · **Returns:** `start` `200` `WebauthnRegisterStartResponse`; `finish` `204` · **Errors:** `start` `400` passkeys not configured; `finish` `400` attestation rejected, `401` ceremony expired
 
 Registers a passkey for the signed-in user. `start` returns `challenge` (for `navigator.credentials.create`) and a `ceremony_token`; `finish` takes `ceremony_token`, the browser's `response` and an optional `label`.
 
@@ -773,7 +769,7 @@ POST /ferrous/api/v1/auth/webauthn/authenticate/start
 POST /ferrous/api/v1/auth/webauthn/authenticate/finish
 ```
 
-**Auth:** public · **Returns:** `POST` `200` WebAuthn request options; `POST` `200` `LoginResponse` and the session cookie · **Errors:** `POST` `400` passkeys not configured or none registered, `401` expired challenge; `POST` `400` assertion rejected, `401` expired challenge
+**Auth:** public · **Returns:** `start` `200` WebAuthn request options; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured or none registered, `401` expired challenge; `finish` `400` assertion rejected, `401` expired challenge
 
 A passkey as the second step of a login. `start` takes the login's `challenge_token` and returns the options for `navigator.credentials.get`; `finish` takes the same `challenge_token` and the browser's `response`, and answers like a login, with the session cookie.
 
@@ -782,7 +778,7 @@ POST /ferrous/api/v1/auth/webauthn/discoverable/start
 POST /ferrous/api/v1/auth/webauthn/discoverable/finish
 ```
 
-**Auth:** public · **Returns:** `POST` `200` `DiscoverableStartResponse`; `POST` `200` `LoginResponse` and the session cookie · **Errors:** `POST` `400` passkeys not configured; `POST` `400` assertion rejected, `401` expired challenge or unknown passkey
+**Auth:** public · **Returns:** `start` `200` `DiscoverableStartResponse`; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured; `finish` `400` assertion rejected, `401` expired challenge or unknown passkey
 
 Passwordless login with a resident passkey: no username or password. `start` takes no body and returns `challenge` and a `challenge_token`; `finish` takes `challenge_token`, the browser's `response` and an optional `remember_me`, and answers like a login.
 
@@ -842,7 +838,7 @@ PUT /ferrous/api/v1/api-tokens/{id}
 
 **Auth:** session or API key · **Returns:** `200` `ApiTokenResponse` · **Errors:** `400` invalid name, `404` unknown token, `409` name taken
 
-Update the token name, or import a custom key with `token`:
+Send the `name`, which is required, and `token` to import a custom key:
 
 ```json
 {
@@ -993,7 +989,7 @@ DELETE /ferrous/api/v1/cache/entries?domain=example.com&type=A
 
 **Auth:** session or API key · **Returns:** `204` · **Errors:** `400` unknown record type or a permanent local record, `404` not cached
 
-Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
+Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed.
 
 ---
 
@@ -1291,9 +1287,6 @@ does not hold yet. This endpoint, the daily sync job and the Pi-hole
 download keeps its previous copy in the index, and its `last_synced_at` does not
 change; the log line `Failed to fetch blocklist source` gives the reason.
 
-**Error codes:** `404 Not Found`, `409 Conflict` (a sync is already running),
-`401 Unauthorized`
-
 ---
 
 ## Whitelist Sources
@@ -1356,7 +1349,7 @@ Returns the managed domains sorted by name, as a [page](#pagination) (`limit` de
 POST /ferrous/api/v1/managed-domains
 ```
 
-**Auth:** session or API key · **Returns:** `201` `ManagedDomainResponse` · **Errors:** `400` invalid name, domain, comment or action, `404` unknown group, `409` already in the group
+**Auth:** session or API key · **Returns:** `201` `ManagedDomainResponse` · **Errors:** `400` invalid name, domain, comment or action, `404` unknown group, `409` name taken in the group
 
 ```json
 {
@@ -1377,7 +1370,7 @@ PUT    /ferrous/api/v1/managed-domains/{id}
 DELETE /ferrous/api/v1/managed-domains/{id}
 ```
 
-**Auth:** session or API key · **Returns:** `GET` `200` `ManagedDomainResponse`; `PUT` `200` `ManagedDomainResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown domain; `PUT` `400` invalid name, domain, comment or action, `404` unknown domain or group, `409` already in the target group; `DELETE` `404` unknown domain
+**Auth:** session or API key · **Returns:** `GET` `200` `ManagedDomainResponse`; `PUT` `200` `ManagedDomainResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown domain; `PUT` `400` invalid name, domain, comment or action, `404` unknown domain or group, `409` name taken in the target group; `DELETE` `404` unknown domain
 
 `PUT` is a partial update: an absent field keeps its value. Send `"comment": null` to clear the comment.
 
@@ -1436,7 +1429,7 @@ GET /ferrous/api/v1/block-filter/stats
 
 **Auth:** session or API key · **Returns:** `200` `BlockFilterStatsResponse`
 
-Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
+Returns `total_blocked_domains`, the number of exact domains in the compiled blocklist.
 
 ### Test a Domain
 
@@ -1669,9 +1662,12 @@ POST /ferrous/api/v1/schedule-profiles
 ```json
 {
   "name": "School Hours",
-  "description": "Block social media during school"
+  "timezone": "Europe/Lisbon",
+  "comment": "Block social media during school"
 }
 ```
+
+`timezone` is an IANA name and defaults to `UTC`.
 
 ### Get / Update / Delete Profile
 
@@ -1694,11 +1690,14 @@ DELETE /ferrous/api/v1/schedule-profiles/{id}/slots/{slot_id}
 
 ```json
 {
-  "day_of_week": 1,
+  "days": 31,
   "start_time": "08:00",
-  "end_time": "15:00"
+  "end_time": "15:00",
+  "action": "block_all"
 }
 ```
+
+`days` is a bitmask from 1 to 127 with Monday as 1, Tuesday as 2, and so on up to Sunday as 64: `31` is Monday to Friday. `action` is `block_all` or `allow_all`.
 
 ### Assign Schedule to Group
 
