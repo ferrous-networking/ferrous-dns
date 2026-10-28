@@ -60,7 +60,7 @@ pub use config::*;
 pub use dashboard::{DashboardQuery, DashboardResponse, TopBlockedDomain, TopClient};
 pub use dnssec::DnssecStatsResponse;
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
-pub use health::HealthResponse;
+pub use health::{HealthResponse, HealthStatus};
 pub use hostname::HostnameResponse;
 pub use query::{PaginatedQueries, QueryParams, QueryResponse};
 pub use rate::{QueryRateResponse, RateQuery};

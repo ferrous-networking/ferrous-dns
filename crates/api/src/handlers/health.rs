@@ -1,4 +1,7 @@
-use crate::{dto::HealthResponse, state::AppState};
+use crate::{
+    dto::{HealthResponse, HealthStatus},
+    state::AppState,
+};
 use axum::{extract::State, http::StatusCode, Json};
 use tracing::debug;
 
@@ -15,9 +18,9 @@ use tracing::debug;
 pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
     debug!("Health check requested");
     let (code, status) = if state.is_dns_listening() {
-        (StatusCode::OK, "ok")
+        (StatusCode::OK, HealthStatus::Ok)
     } else {
-        (StatusCode::SERVICE_UNAVAILABLE, "unavailable")
+        (StatusCode::SERVICE_UNAVAILABLE, HealthStatus::Unavailable)
     };
     (
         code,
