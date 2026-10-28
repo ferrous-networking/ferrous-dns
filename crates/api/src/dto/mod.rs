@@ -3,7 +3,6 @@ pub mod auth;
 pub mod backup;
 pub mod block_filter;
 pub mod blocked_service;
-pub mod blocklist;
 pub mod blocklist_source;
 pub mod cache;
 pub mod client;
@@ -29,7 +28,6 @@ pub mod timeline;
 pub mod tls;
 pub mod upstream;
 pub mod user;
-pub mod whitelist;
 pub mod whitelist_source;
 
 pub use blocked_service::{BlockServiceRequest, BlockedServiceResponse, ServiceDefinitionResponse};
@@ -43,7 +41,6 @@ pub use managed_domain::{
 };
 pub use regex_filter::{CreateRegexFilterRequest, RegexFilterResponse, UpdateRegexFilterRequest};
 
-pub use blocklist::{BlocklistQuery, BlocklistResponse, PaginatedBlocklist};
 pub use blocklist_source::{
     BlocklistSourceResponse, CreateBlocklistSourceRequest, UpdateBlocklistSourceRequest,
 };
@@ -71,7 +68,6 @@ pub use stats::{QuerySourceStats, StatsQuery, StatsResponse, TopType, TypeDistri
 pub use system_info::SystemInfoResponse;
 pub use timeline::{TimelineBucket, TimelineQuery, TimelineResponse};
 pub use tls::{GenerateQuery, TlsStatusResponse, TlsUploadResponse};
-pub use whitelist::WhitelistResponse;
 pub use whitelist_source::{
     CreateWhitelistSourceRequest, UpdateWhitelistSourceRequest, WhitelistSourceResponse,
 };

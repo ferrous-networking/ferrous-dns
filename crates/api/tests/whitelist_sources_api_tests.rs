@@ -420,28 +420,6 @@ async fn test_get_all_whitelist_sources_after_create() {
 }
 
 #[tokio::test]
-async fn test_get_whitelist_endpoint() {
-    let app = test_app().await.router;
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/whitelist")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&body).unwrap();
-
-    assert!(json.is_array());
-}
-
-#[tokio::test]
 async fn test_create_whitelist_source_has_null_last_synced_at() {
     let app = test_app().await.router;
 

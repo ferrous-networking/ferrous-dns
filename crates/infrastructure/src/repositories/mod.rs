@@ -1,5 +1,4 @@
 pub mod blocked_service_repository;
-pub mod blocklist_repository;
 pub mod blocklist_source_repository;
 pub mod client_repository;
 pub(crate) mod client_row_mapper;
@@ -14,7 +13,6 @@ pub mod query_log_repository;
 pub mod regex_filter_repository;
 pub mod schedule_profile_repository;
 pub mod sqlite_safe_search_config_repository;
-pub mod whitelist_repository;
 pub mod whitelist_source_repository;
 
 pub mod api_token_repository;
@@ -36,7 +34,6 @@ pub use schedule_profile_repository::SqliteScheduleProfileRepository;
 pub use session_repository::SqliteSessionRepository;
 pub use sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository;
 pub use user_repository::SqliteUserRepository;
-pub use whitelist_repository::SqliteWhitelistRepository;
 pub use whitelist_source_repository::SqliteWhitelistSourceRepository;
 
 use chrono::{DateTime, Utc};

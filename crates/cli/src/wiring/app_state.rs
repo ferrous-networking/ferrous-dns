@@ -183,13 +183,11 @@ pub async fn build_app_state(
             delete_client_subnet: use_cases.delete_client_subnet,
         },
         blocking: BlockingUseCases {
-            get_blocklist: use_cases.get_blocklist,
             get_blocklist_sources: use_cases.get_blocklist_sources,
             create_blocklist_source: use_cases.create_blocklist_source,
             update_blocklist_source: use_cases.update_blocklist_source,
             delete_blocklist_source: use_cases.delete_blocklist_source,
             sync_blocklist_sources: use_cases.sync_blocklist_sources,
-            get_whitelist: use_cases.get_whitelist,
             get_whitelist_sources: use_cases.get_whitelist_sources,
             create_whitelist_source: use_cases.create_whitelist_source,
             update_whitelist_source: use_cases.update_whitelist_source,

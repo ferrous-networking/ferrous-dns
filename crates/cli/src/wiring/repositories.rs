@@ -13,7 +13,6 @@ use ferrous_dns_infrastructure::dns::{BlockFilterEngine, SafeSearchEnforcer};
 use ferrous_dns_infrastructure::repositories::{
     api_token_repository::SqliteApiTokenRepository,
     blocked_service_repository::SqliteBlockedServiceRepository,
-    blocklist_repository::SqliteBlocklistRepository,
     blocklist_source_repository::SqliteBlocklistSourceRepository,
     client_repository::SqliteClientRepository,
     client_subnet_repository::SqliteClientSubnetRepository,
@@ -25,7 +24,7 @@ use ferrous_dns_infrastructure::repositories::{
     schedule_profile_repository::SqliteScheduleProfileRepository,
     session_repository::SqliteSessionRepository,
     sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository,
-    user_repository::SqliteUserRepository, whitelist_repository::SqliteWhitelistRepository,
+    user_repository::SqliteUserRepository,
     whitelist_source_repository::SqliteWhitelistSourceRepository,
 };
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
@@ -36,9 +35,7 @@ use tracing::{info, warn};
 
 pub struct Repositories {
     pub query_log: Arc<SqliteQueryLogRepository>,
-    pub blocklist: Arc<SqliteBlocklistRepository>,
     pub blocklist_source: Arc<SqliteBlocklistSourceRepository>,
-    pub whitelist: Arc<SqliteWhitelistRepository>,
     pub whitelist_source: Arc<SqliteWhitelistSourceRepository>,
     pub client: Arc<SqliteClientRepository>,
     pub group: Arc<SqliteGroupRepository>,
@@ -68,9 +65,6 @@ impl Repositories {
         blocking_enabled: bool,
         query_log_dropped: Arc<DropCounter>,
     ) -> Result<Self, ferrous_dns_domain::DomainError> {
-        let blocklist = SqliteBlocklistRepository::new(write_pool.clone());
-        let whitelist = SqliteWhitelistRepository::new(write_pool.clone());
-
         let default_group_id: i64 =
             match sqlx::query("SELECT id FROM groups WHERE is_default = 1 LIMIT 1")
                 .fetch_optional(&write_pool)
@@ -123,9 +117,7 @@ impl Repositories {
                 db_config,
                 query_log_dropped,
             )),
-            blocklist: Arc::new(blocklist),
             blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(write_pool.clone())),
-            whitelist: Arc::new(whitelist),
             whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(write_pool.clone())),
             client: Arc::new(SqliteClientRepository::new(write_pool.clone(), db_config)),
             group: Arc::new(SqliteGroupRepository::new(write_pool.clone())),

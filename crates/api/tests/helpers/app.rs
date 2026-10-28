@@ -24,7 +24,6 @@ use ferrous_dns_infrastructure::dns::dnssec::DnssecStatsAdapter;
 use ferrous_dns_infrastructure::dns::{
     DnsCacheConfig, EvictionStrategy, PoolManager, UpstreamHealthAdapter, UpstreamReloadAdapter,
 };
-use ferrous_dns_infrastructure::repositories::blocklist_repository::SqliteBlocklistRepository;
 use ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository;
 use ferrous_dns_infrastructure::repositories::client_repository::SqliteClientRepository;
 use ferrous_dns_infrastructure::repositories::client_subnet_repository::SqliteClientSubnetRepository;
@@ -33,7 +32,6 @@ use ferrous_dns_infrastructure::repositories::managed_domain_repository::SqliteM
 use ferrous_dns_infrastructure::repositories::query_log_repository::SqliteQueryLogRepository;
 use ferrous_dns_infrastructure::repositories::regex_filter_repository::SqliteRegexFilterRepository;
 use ferrous_dns_infrastructure::repositories::sqlite_safe_search_config_repository::SqliteSafeSearchConfigRepository;
-use ferrous_dns_infrastructure::repositories::whitelist_repository::SqliteWhitelistRepository;
 use ferrous_dns_infrastructure::repositories::whitelist_source_repository::SqliteWhitelistSourceRepository;
 use ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -312,9 +310,6 @@ impl TestAppBuilder {
                 )),
             },
             blocking: BlockingUseCases {
-                get_blocklist: Arc::new(GetBlocklistUseCase::new(Arc::new(
-                    SqliteBlocklistRepository::new(pool.clone()),
-                ))),
                 get_blocklist_sources: Arc::new(GetBlocklistSourcesUseCase::new(
                     blocklist_source_repo.clone(),
                 )),
@@ -333,9 +328,6 @@ impl TestAppBuilder {
                     null_engine.clone(),
                 )),
                 sync_blocklist_sources: Arc::new(SyncBlocklistSourcesUseCase::new(sync_engine)),
-                get_whitelist: Arc::new(GetWhitelistUseCase::new(Arc::new(
-                    SqliteWhitelistRepository::new(pool.clone()),
-                ))),
                 get_whitelist_sources: Arc::new(GetWhitelistSourcesUseCase::new(
                     whitelist_source_repo.clone(),
                 )),

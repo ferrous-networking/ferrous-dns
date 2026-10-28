@@ -127,13 +127,10 @@ impl Modify for SecurityAddon {
         dto::CreateCustomServiceRequest,
         dto::UpdateCustomServiceRequest,
         // blocklist
-        dto::BlocklistResponse,
-        dto::PaginatedBlocklist,
         dto::BlocklistSourceResponse,
         dto::CreateBlocklistSourceRequest,
         dto::UpdateBlocklistSourceRequest,
         // whitelist
-        dto::WhitelistResponse,
         dto::WhitelistSourceResponse,
         dto::CreateWhitelistSourceRequest,
         dto::UpdateWhitelistSourceRequest,
