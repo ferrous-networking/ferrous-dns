@@ -44,9 +44,14 @@ fn health(config: &TestConfig) -> (u16, serde_json::Value) {
 
 /// Runs `--healthcheck` with the same config; a hang fails the test after 15 s.
 fn run_healthcheck(config: &TestConfig) -> ExitStatus {
+    run_healthcheck_with_env(config, &[])
+}
+
+fn run_healthcheck_with_env(config: &TestConfig, env: &[(&str, &str)]) -> ExitStatus {
     let mut child = config
         .command()
         .arg("--healthcheck")
+        .envs(env.iter().copied())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -95,6 +100,21 @@ fn test_healthcheck_exits_0_against_a_healthy_server() {
     let _server = config.start();
 
     assert_eq!(run_healthcheck(&config).code(), Some(0));
+}
+
+/// Docker copies the client's proxy settings into every container's environment.
+#[test]
+fn test_healthcheck_ignores_a_proxy_set_in_the_environment() {
+    let config = TestConfig::new();
+    let _server = config.start();
+    let dead_proxy = "http://127.0.0.1:1";
+
+    let status = run_healthcheck_with_env(
+        &config,
+        &[("HTTP_PROXY", dead_proxy), ("http_proxy", dead_proxy)],
+    );
+
+    assert_eq!(status.code(), Some(0));
 }
 
 #[test]

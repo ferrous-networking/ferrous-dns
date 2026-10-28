@@ -54,11 +54,13 @@ mod tests {
         );
     }
 
+    /// A dual-stack listener on `::` answers on 127.0.0.1 too, and ::1 is gone
+    /// wherever IPv6 is off on the loopback, as in a Docker network without IPv6.
     #[test]
-    fn test_probe_address_uses_the_v6_loopback_for_every_v6_address() {
+    fn test_probe_address_tries_the_v4_loopback_first_for_the_unspecified_v6_address() {
         assert_eq!(
             probe_address(&server_on("::")),
-            "[::1]:8080".parse().unwrap()
+            "127.0.0.1:8080".parse().unwrap()
         );
     }
 
