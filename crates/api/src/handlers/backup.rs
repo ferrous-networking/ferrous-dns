@@ -61,8 +61,9 @@ async fn export_config(State(state): State<AppState>) -> Result<Response, ApiErr
     tag = "backup",
     request_body(content_type = "multipart/form-data", content = String),
     responses(
-        (status = 200, description = "Import summary", body = ImportSummaryResponse),
+        (status = 200, description = "Import summary. A partial import is still a 200, with `success` false and `errors` naming what was not restored; the rest stays applied", body = ImportSummaryResponse),
         (status = 400, description = "Invalid backup file"),
+        (status = 500, description = "Internal error"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
