@@ -35,6 +35,12 @@ Before v0.10.0 the Ferrous API answered at `/api`, or at `/ferrous/api` with `pi
 
 A 307 keeps the method and the body, so clients that follow redirects keep working, such as browsers, Python `requests` and JavaScript `fetch`. `curl` follows them only with `-L`. Update scripts and integrations to the new base anyway. With `pihole_compat = true`, `/api` belongs to the Pi-hole API and is never redirected.
 
+### Changes in v0.10.0
+
+v0.10.0 settles the v1 contract. Besides the new base above, these responses changed:
+
+- **Config saves that fail answer an error status.** `POST /config`, `POST /settings` and `POST /config/reload` used to answer `200` with `success: false` when a valid request could not be carried out. They now answer `409` (no writable config file) or `500` (the save or reload failed), with the same body. See [Update Config](#update-config).
+
 ---
 
 ## Interactive Documentation (OpenAPI / Scalar)
@@ -303,7 +309,14 @@ Partial update — only include the sections you want to change:
 
 `GET /ferrous/api/v1/config` returns all of them, every key of every engine included.
 
-The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a whitelist entry that is not an exact domain name or an IP/CIDR, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes. A request that is valid but cannot be carried out (no writable config file, a failed pool hot-reload or file write) returns 200 with `success: false`.
+The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a whitelist entry that is not an exact domain name or an IP/CIDR, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes.
+
+A request that is valid but cannot be carried out answers with an error status and the same `{ "success": false, "error": "…" }` body:
+
+| Status | When |
+|:-------|:-----|
+| `409 Conflict` | There is no writable config file: the server was started without one, or it is read-only. Nothing was applied. |
+| `500 Internal Server Error` | The save was attempted and failed: the file could not be written, the client groups could not be read, or the upstream pools could not be applied. If the pools went live but the file could not be written, `error` says so: retry the save, since a restart would revert them. |
 
 The file is rewritten atomically (a synced temp file renamed over it), so a crash mid-save leaves the old or the new file, never a truncated one. The new file keeps the old one's mode, owner and group. When the file cannot be replaced — a Docker single-file bind mount, a directory the server cannot write, or an owner or group the server cannot give the new file — it is rewritten in place instead.
 
@@ -313,7 +326,7 @@ The file is rewritten atomically (a synced temp file renamed over it), so a cras
 POST /ferrous/api/v1/config/reload
 ```
 
-Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart. A file that fails to parse or validate is reported with `success: false` and the running configuration is kept.
+Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart. A file that fails to load, parse or validate answers **500** with `{ "success": false, "error": "…" }`, and the running configuration is kept. A server started without a config file answers **409**.
 
 The file is loaded the way startup loads it: command-line overrides the server was started with (`--dns-port`, `--web-port`, `--bind`, `--database`, `--log-level`) still win over the file. Changed upstream pools are rebuilt and swapped in live, as with `POST /ferrous/api/v1/config`; if that fails, nothing changes. A reload waits for any config save or backup import in progress, so it never interleaves with one. The Pi-hole `POST /api/action/restartdns` runs the same reload.
 
@@ -348,7 +361,7 @@ POST /ferrous/api/v1/settings
 
 `sinkhole_ipv4` / `sinkhole_ipv6` set a custom block target for `null_ip` mode (empty string = the null address `0.0.0.0` / `::`). A non-empty value that is not a valid address of the matching family is rejected with **400** and `{ "success": false, "error": "Invalid IPv4 sinkhole address: …" }`, and nothing is saved. See [Custom Sinkhole IP](configuration/blocking.md#custom-sinkhole-ip). The same 400 applies to an unknown `block_mode` (`null_ip`, `nxdomain`, `nodata` or `refused`), a `local_dns_server` that is not an IP address or `IP:port`, and a DNS64 prefix that is not a `/96`. A `local_dns_server` given as a bare IP is saved as `IP:53`.
 
-The response carries `restart_required`: `true` when the save changed a setting (these only take effect after a restart), `false` when the form was saved unchanged.
+The response carries `restart_required`: `true` when the save changed a setting (these only take effect after a restart), `false` when the form was saved unchanged. A save that cannot be carried out answers `409` or `500` as [`POST /ferrous/api/v1/config`](#update-config) does.
 
 ---
 
@@ -450,6 +463,8 @@ multipart field (`file`). Returns an import summary describing what was applied.
   "errors": []
 }
 ```
+
+A **partial import** still answers `200`: the import is not transactional, so what was restored stays applied. `success` is then `false`, and `errors` names each item that was not restored, such as a local record with an invalid address or a blocklist source routed for a group the backup does not have.
 
 **Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`
 
