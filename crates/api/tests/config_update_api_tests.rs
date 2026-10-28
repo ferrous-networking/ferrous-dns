@@ -960,19 +960,7 @@ async fn test_reload_keeps_the_running_config_when_the_file_fails_validation() {
     .unwrap();
     let before = config.read().await.database.wal_checkpoint_interval_secs;
 
-    let response = router
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/config/reload")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let status = response.status();
-    let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    let json: Value = serde_json::from_slice(&bytes).unwrap();
+    let (status, json) = post_reload(router).await;
 
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(json["success"], false);
@@ -988,22 +976,6 @@ async fn test_reload_keeps_the_running_config_when_the_file_fails_validation() {
         config.read().await.database.wal_checkpoint_interval_secs,
         before
     );
-}
-
-async fn post_reload_with_status(app: Router) -> (StatusCode, Value) {
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/config/reload")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let status = response.status();
-    let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap())
 }
 
 fn pool_update() -> Value {
@@ -1057,7 +1029,7 @@ async fn test_update_settings_without_a_config_file_answers_409() {
 async fn test_reload_without_a_config_file_answers_409() {
     let app = TestApp::builder().build().await.router;
 
-    let (status, json) = post_reload_with_status(app).await;
+    let (status, json) = post_reload(app).await;
 
     assert_not_saved(status, &json, StatusCode::CONFLICT, "No config file");
 }
@@ -1080,7 +1052,7 @@ async fn test_update_config_with_a_read_only_config_file_answers_409() {
 }
 
 #[tokio::test]
-async fn test_update_config_answers_500_when_the_file_cannot_be_written() {
+async fn test_update_config_with_its_config_file_gone_answers_500() {
     let pool = create_test_db().await;
     let (TestApp { router, config, .. }, path) = test_app(pool).await;
     std::fs::remove_file(&path).unwrap();
@@ -1101,7 +1073,7 @@ async fn test_update_config_answers_500_when_the_file_cannot_be_written() {
 }
 
 #[tokio::test]
-async fn test_update_settings_answers_500_when_the_file_cannot_be_written() {
+async fn test_update_settings_with_its_config_file_gone_answers_500() {
     let pool = create_test_db().await;
     let (TestApp { router, .. }, path) = test_app(pool).await;
     std::fs::remove_file(&path).unwrap();
@@ -1117,7 +1089,7 @@ async fn test_update_settings_answers_500_when_the_file_cannot_be_written() {
 }
 
 #[tokio::test]
-async fn test_update_config_answers_500_when_applied_pools_cannot_be_saved() {
+async fn test_update_config_with_pools_and_its_config_file_gone_answers_500() {
     let pool = create_test_db().await;
     let (TestApp { router, .. }, path) = test_app(pool).await;
     std::fs::remove_file(&path).unwrap();
@@ -1143,7 +1115,7 @@ impl UpstreamReloadPort for FailingReload {
 }
 
 #[tokio::test]
-async fn test_update_config_answers_500_when_the_pools_cannot_be_applied() {
+async fn test_update_config_with_pools_that_fail_to_apply_answers_500() {
     let pool = create_test_db().await;
     let (TestApp { mut state, .. }, _path) = test_app(pool).await;
     state.dns.reload_upstream = Arc::new(FailingReload);
@@ -1160,7 +1132,7 @@ async fn test_update_config_answers_500_when_the_pools_cannot_be_applied() {
 }
 
 #[tokio::test]
-async fn test_update_config_answers_500_when_the_client_groups_cannot_be_read() {
+async fn test_update_config_with_unreadable_client_groups_answers_500() {
     let pool = create_test_db().await;
     let (TestApp { router, pool, .. }, _path) = test_app(pool).await;
     pool.close().await;
@@ -1184,7 +1156,7 @@ async fn test_update_config_answers_500_when_the_client_groups_cannot_be_read() 
     );
 }
 
-async fn post_reload(app: Router) -> Value {
+async fn post_reload(app: Router) -> (StatusCode, Value) {
     let response = app
         .oneshot(
             Request::builder()
@@ -1195,8 +1167,9 @@ async fn post_reload(app: Router) -> Value {
         )
         .await
         .unwrap();
+    let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    serde_json::from_slice(&bytes).unwrap()
+    (status, serde_json::from_slice(&bytes).unwrap())
 }
 
 const RELOADED_FILE: &str = "[server]\ndns_port = 53\nweb_port = 8080\nbind_address = \"0.0.0.0\"\n\
@@ -1224,7 +1197,7 @@ async fn test_reload_hot_applies_pools_and_keeps_command_line_overrides() {
         .build()
         .await;
 
-    let json = post_reload(router).await;
+    let (_, json) = post_reload(router).await;
 
     assert_eq!(json["success"], true, "{json}");
     assert_eq!(config.read().await.server.dns_port, 5353);
@@ -1260,7 +1233,7 @@ async fn test_reload_waits_for_an_in_flight_config_save() {
     );
     drop(save_in_flight);
 
-    assert_eq!(reload.await.unwrap()["success"], true);
+    assert_eq!(reload.await.unwrap().1["success"], true);
     assert_eq!(
         config.read().await.dns.pools[0].servers,
         ["udp://9.9.9.9:53"]
