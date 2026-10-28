@@ -445,7 +445,7 @@ impl MockClientRepository {
         self.clients.read().await.values().cloned().collect()
     }
 
-    async fn active_since(&self, days: u32) -> Vec<Client> {
+    async fn filter_active_since(&self, days: u32) -> Vec<Client> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
         self.clients
             .read()
@@ -589,27 +589,24 @@ impl ClientRepository for MockClientRepository {
         Ok(all[start..end].to_vec())
     }
 
-    async fn get_active(
+    async fn get_page(
         &self,
-        days: u32,
+        active_days: Option<u32>,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<Client>, DomainError> {
-        let mut active = self.active_since(days).await;
-        active.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
-        Ok(active
+    ) -> Result<(Vec<Client>, u64), DomainError> {
+        let mut clients = match active_days {
+            Some(days) => self.filter_active_since(days).await,
+            None => self.get_all_clients().await,
+        };
+        clients.sort_by(|a, b| b.last_seen.cmp(&a.last_seen).then(b.id.cmp(&a.id)));
+        let total = clients.len() as u64;
+        let page = clients
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .collect())
-    }
-
-    async fn count_all(&self) -> Result<u64, DomainError> {
-        Ok(self.clients.read().await.len() as u64)
-    }
-
-    async fn count_active(&self, days: u32) -> Result<u64, DomainError> {
-        Ok(self.active_since(days).await.len() as u64)
+            .collect();
+        Ok((page, total))
     }
 
     async fn get_stats(&self) -> Result<ClientStats, DomainError> {
