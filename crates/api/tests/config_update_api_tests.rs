@@ -970,9 +970,11 @@ async fn test_reload_keeps_the_running_config_when_the_file_fails_validation() {
         )
         .await
         .unwrap();
+    let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&bytes).unwrap();
 
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(json["success"], false);
     assert!(
         json["error"]
@@ -985,6 +987,200 @@ async fn test_reload_keeps_the_running_config_when_the_file_fails_validation() {
     assert_eq!(
         config.read().await.database.wal_checkpoint_interval_secs,
         before
+    );
+}
+
+async fn post_reload_with_status(app: Router) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/config/reload")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+fn pool_update() -> Value {
+    serde_json::json!({
+        "dns": { "pools": [
+            { "name": "p1", "strategy": "parallel", "priority": 1,
+              "servers": ["udp://9.9.9.9:53"] }
+        ] }
+    })
+}
+
+fn dns64_settings() -> Value {
+    serde_json::json!({
+        "never_forward_non_fqdn": false,
+        "never_forward_reverse_lookups": false,
+        "dns64_enabled": true,
+        "nat64_prefix": "64:ff9b::/96"
+    })
+}
+
+fn assert_not_saved(status: StatusCode, json: &Value, expected: StatusCode, error: &str) {
+    assert_eq!(status, expected, "{json}");
+    assert_eq!(json["success"], false, "{json}");
+    assert!(
+        json["error"].as_str().unwrap_or_default().contains(error),
+        "error should mention {error:?}, got: {}",
+        json["error"]
+    );
+}
+
+#[tokio::test]
+async fn test_update_config_without_a_config_file_answers_409() {
+    let app = TestApp::builder().build().await.router;
+
+    let (status, json) =
+        post_config(app, serde_json::json!({ "dns": { "mdns_enabled": true } })).await;
+
+    assert_not_saved(status, &json, StatusCode::CONFLICT, "No config file");
+}
+
+#[tokio::test]
+async fn test_update_settings_without_a_config_file_answers_409() {
+    let app = TestApp::builder().build().await.router;
+
+    let (status, json) = post_settings(app, dns64_settings()).await;
+
+    assert_not_saved(status, &json, StatusCode::CONFLICT, "No config file");
+}
+
+#[tokio::test]
+async fn test_reload_without_a_config_file_answers_409() {
+    let app = TestApp::builder().build().await.router;
+
+    let (status, json) = post_reload_with_status(app).await;
+
+    assert_not_saved(status, &json, StatusCode::CONFLICT, "No config file");
+}
+
+#[tokio::test]
+async fn test_update_config_with_a_read_only_config_file_answers_409() {
+    let pool = create_test_db().await;
+    let (TestApp { router, .. }, path) = test_app(pool).await;
+    let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&path, permissions).unwrap();
+
+    let (status, json) = post_config(
+        router,
+        serde_json::json!({ "dns": { "mdns_enabled": true } }),
+    )
+    .await;
+
+    assert_not_saved(status, &json, StatusCode::CONFLICT, "read-only");
+}
+
+#[tokio::test]
+async fn test_update_config_answers_500_when_the_file_cannot_be_written() {
+    let pool = create_test_db().await;
+    let (TestApp { router, config, .. }, path) = test_app(pool).await;
+    std::fs::remove_file(&path).unwrap();
+
+    let (status, json) = post_config(
+        router,
+        serde_json::json!({ "dns": { "mdns_enabled": true } }),
+    )
+    .await;
+
+    assert_not_saved(
+        status,
+        &json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Failed to save configuration",
+    );
+    assert!(!config.read().await.dns.mdns_enabled);
+}
+
+#[tokio::test]
+async fn test_update_settings_answers_500_when_the_file_cannot_be_written() {
+    let pool = create_test_db().await;
+    let (TestApp { router, .. }, path) = test_app(pool).await;
+    std::fs::remove_file(&path).unwrap();
+
+    let (status, json) = post_settings(router, dns64_settings()).await;
+
+    assert_not_saved(
+        status,
+        &json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Failed to save settings",
+    );
+}
+
+#[tokio::test]
+async fn test_update_config_answers_500_when_applied_pools_cannot_be_saved() {
+    let pool = create_test_db().await;
+    let (TestApp { router, .. }, path) = test_app(pool).await;
+    std::fs::remove_file(&path).unwrap();
+
+    let (status, json) = post_config(router, pool_update()).await;
+
+    assert_not_saved(
+        status,
+        &json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "a restart would revert them",
+    );
+}
+
+/// Fails every hot-reload, as a pool whose hostname never resolves does.
+struct FailingReload;
+
+#[async_trait::async_trait]
+impl UpstreamReloadPort for FailingReload {
+    async fn reload_pools(&self, _pools: Vec<UpstreamPool>) -> Result<(), DomainError> {
+        Err(DomainError::ConfigError("pool rebuild failed".to_string()))
+    }
+}
+
+#[tokio::test]
+async fn test_update_config_answers_500_when_the_pools_cannot_be_applied() {
+    let pool = create_test_db().await;
+    let (TestApp { mut state, .. }, _path) = test_app(pool).await;
+    state.dns.reload_upstream = Arc::new(FailingReload);
+    let app = create_api_router_with_openapi(state).0;
+
+    let (status, json) = post_config(app, pool_update()).await;
+
+    assert_not_saved(
+        status,
+        &json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "configuration not saved",
+    );
+}
+
+#[tokio::test]
+async fn test_update_config_answers_500_when_the_client_groups_cannot_be_read() {
+    let pool = create_test_db().await;
+    let (TestApp { router, pool, .. }, _path) = test_app(pool).await;
+    pool.close().await;
+
+    let update = serde_json::json!({
+        "dns": { "pools": [
+            { "name": "p1", "strategy": "parallel", "priority": 1,
+              "servers": ["udp://9.9.9.9:53"] },
+            { "name": "corp", "strategy": "parallel", "priority": 2,
+              "servers": ["udp://10.0.0.1:53"],
+              "domains": ["corp.example"], "groups": [1] }
+        ] }
+    });
+    let (status, json) = post_config(router, update).await;
+
+    assert_not_saved(
+        status,
+        &json,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Could not read the client groups",
     );
 }
 
