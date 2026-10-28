@@ -41,6 +41,9 @@ v0.10.0 settles the v1 contract. Besides the new base above, these responses cha
 
 - **`GET /health` is public and answers JSON.** It used to need a login when authentication was on and answered a plain `OK`. It now answers `{"status": "ok", "version": "…"}`, or `503` with `"status": "unavailable"` while the DNS listener is down. See [Health Check](#health-check).
 - **Config saves that fail answer an error status.** `POST /config`, `POST /settings` and `POST /config/reload` used to answer `200` with `success: false` when a valid request could not be carried out. They now answer `409` (no writable config file) or `500` (the save or reload failed), with the same body. See [Update Config](#update-config).
+- **`GET /clients` answers the [page envelope](#pagination)** instead of a bare array, with a `total`. It also honours `offset` together with `active_days`; it used to ignore it.
+- **Every paged list answers the `limit` it used.** `limit` is clamped between 1 and the endpoint's maximum, so `/queries?limit=5000` answers `"limit": 1000`. `/clients` and `/managed-domains` now have a maximum of 1000. A `/queries` page fetched with `cursor` answers `"offset": 0`.
+- **`GET /blocklist` and `GET /whitelist` are gone.** They listed legacy tables that nothing writes, and always answered an empty list. Managed domains are at [`/managed-domains`](#managed-domains), and the list sources at [`/blocklist-sources`](#blocklist-sources) and [`/whitelist-sources`](#whitelist-sources).
 
 ---
 
@@ -112,6 +115,42 @@ Errors return an appropriate HTTP status code with:
 ```
 
 Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) return `400 Bad Request`. Creating or renaming something to a name that is already taken returns `409 Conflict`, as does deleting a group that still has assigned clients or that an upstream pool routes domains for. Length limits count characters, not bytes.
+
+---
+
+## Pagination
+
+A list that grows with traffic is paged: the query log, the clients, the cache entries and the managed domains. Each takes `limit` and `offset` and answers the same envelope:
+
+```json
+{
+  "data": [],
+  "total": 1205,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+| Field | Meaning |
+|:------|:--------|
+| `data` | The items on this page, in the endpoint's order |
+| `total` | Items matching the request's filters, across every page |
+| `limit` | The page size used: the requested `limit`, clamped between 1 and the endpoint's maximum |
+| `offset` | Items skipped before this page |
+
+| Endpoint | Default `limit` | Maximum |
+|:---------|:----------------|:--------|
+| [`GET /ferrous/api/v1/queries`](#list-queries) | 100 | 1000 |
+| [`GET /ferrous/api/v1/clients`](#list-clients) | 100 | 1000 |
+| [`GET /ferrous/api/v1/managed-domains`](#list-domains) | 100 | 1000 |
+| [`GET /ferrous/api/v1/cache/entries`](#list-cache-entries) | 25 | 500 |
+
+Two endpoints add fields to the envelope:
+
+- `records_total` (`/queries`, `/cache/entries`): the size of the collection the list is drawn from, before the request's filters. For `/queries` it is every logged query in `period`; for `/cache/entries`, every entry the cache holds, including expired ones not yet removed, which the listing leaves out.
+- `next_cursor` (`/queries`): pass it as `cursor` to get the next page, or `null` on the last one. A cursor keeps its place while new queries are logged, which an `offset` does not. With `cursor`, `offset` is ignored and answered as `0`.
+
+Every other list answers a plain JSON array with all of its items: groups, users, API tokens, sessions, blocklist and allowlist sources, client subnets, regex filters, custom and blocked services, Safe Search configs, local records and schedule profiles. These only grow by hand. A new endpoint follows the same rule: it is paged if its list can grow with traffic or with an import, and a plain array otherwise.
 
 ---
 
@@ -220,12 +259,13 @@ GET /ferrous/api/v1/stats/top_clients
 GET /ferrous/api/v1/queries?limit=100&offset=0
 ```
 
-Returns recent DNS queries with filtering support.
+Returns recent DNS queries with filtering support, newest first, as a [page](#pagination) with `records_total` and `next_cursor`.
 
 | Parameter | Type | Description |
 |:----------|:-----|:------------|
-| `limit` | integer | Max results (default: 100) |
-| `offset` | integer | Pagination offset |
+| `limit` | integer | Rows per page (default: 100, max: 1000) |
+| `offset` | integer | Rows to skip |
+| `cursor` | integer | `next_cursor` of the previous page; takes the place of `offset` |
 | `protocol` | string | Transport the client used: `udp`, `tcp`, `dot`, `doh` or `doq`. Case-insensitive; any other value returns `400` |
 
 Each entry carries a `protocol` field with the same values in lowercase, or
@@ -742,7 +782,7 @@ Returns the entries currently held in the positive cache, with filtering, orderi
 | `sort` | string | `hits`, `refreshes`, `cached_at`, `expires_at`, `domain`, or `type` (default: `cached_at`) |
 | `order` | string | `asc` or `desc` (default: `desc`) |
 
-The response is `{ "data": [...], "total": 0, "records_total": 0, "limit": 25, "offset": 0 }`, where `total` counts the entries matching the filters and `records_total` counts every entry in the cache. Each item carries `domain`, `type`, `group_id`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `refreshes`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries. `group_id` is `null` for the entries every client shares; a split-horizon answer from a [conditional pool](configuration/dns.md#conditional-forwarding) routed for one client group carries that group's id, and the same name can be listed once per group.
+The response is a [page](#pagination) with `records_total`: `total` counts the entries matching the filters, and `records_total` every entry in the cache. Each item carries `domain`, `type`, `group_id`, `answers`, `canonical_name`, `dnssec_status`, `ttl`, `remaining_ttl`, `cached_at`, `expires_at`, `hits`, `refreshes`, `last_access`, `permanent`, and `stale`. Timestamps are UNIX epoch seconds; `remaining_ttl` and `expires_at` are `null` for permanent entries. `group_id` is `null` for the entries every client shares; a split-horizon answer from a [conditional pool](configuration/dns.md#conditional-forwarding) routed for one client group carries that group's id, and the same name can be listed once per group.
 
 `hits` counts lookups served from the cache, the per-thread L1 copies of hot A/AAAA records included. L1 hands its hits over in batches, at most once per second per thread, so the count can trail by the last second of them.
 
@@ -783,10 +823,16 @@ Returns detailed health information per upstream: pool name, strategy, latency m
 ### List Clients
 
 ```http
-GET /ferrous/api/v1/clients?limit=1000
+GET /ferrous/api/v1/clients?limit=100&offset=0
 ```
 
-Returns all detected clients with IP, MAC, hostname, group, query count, and last seen.
+Returns the detected clients with IP, MAC, hostname, group, query count, and last seen, most recently seen first, as a [page](#pagination).
+
+| Parameter | Type | Description |
+|:----------|:-----|:------------|
+| `limit` | integer | Clients per page (default: 100, max: 1000) |
+| `offset` | integer | Clients to skip |
+| `active_days` | integer | Only clients seen in the last this many days; `total` then counts only those |
 
 ### Client Stats
 
@@ -1042,6 +1088,8 @@ Individual domains added to the blocklist or allowlist via the dashboard.
 GET /ferrous/api/v1/managed-domains?limit=100&offset=0
 ```
 
+Returns the managed domains sorted by name, as a [page](#pagination) (`limit` default 100, max 1000).
+
 ### Create Domain
 
 ```http
@@ -1109,26 +1157,6 @@ GET /ferrous/api/v1/block-filter/stats
 ```
 
 Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
-
----
-
-## Blocklist & Allowlist (Compiled)
-
-### Get Active Blocklist
-
-```http
-GET /ferrous/api/v1/blocklist
-```
-
-Returns the full compiled blocklist currently in memory.
-
-### Get Active Allowlist
-
-```http
-GET /ferrous/api/v1/whitelist
-```
-
-Returns the full compiled allowlist currently in memory.
 
 ---
 
