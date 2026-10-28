@@ -52,7 +52,9 @@ pub use cache::{
     CacheStatsQuery, CacheStatsResponse, CacheTopRefreshedResponse, DeleteCacheEntryQuery,
     PaginatedCacheEntries,
 };
-pub use client::{ClientResponse, ClientStatsResponse, ClientsQuery, UpdateClientRequest};
+pub use client::{
+    ClientResponse, ClientStatsResponse, ClientsQuery, PaginatedClients, UpdateClientRequest,
+};
 pub use client_subnet::{
     ClientSubnetResponse, CreateClientSubnetRequest, CreateManualClientRequest,
 };

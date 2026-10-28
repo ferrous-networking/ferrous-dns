@@ -57,6 +57,7 @@ pub struct CacheMetricsResponse {
 
 #[derive(Deserialize, Debug, IntoParams)]
 pub struct CacheEntriesQuery {
+    /// Entries per page, 1 to 500; default 25.
     #[serde(default = "default_entries_limit")]
     pub limit: u32,
     #[serde(default)]

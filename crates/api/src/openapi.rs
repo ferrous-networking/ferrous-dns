@@ -153,6 +153,7 @@ impl Modify for SecurityAddon {
         dto::PaginatedCacheEntries,
         // clients
         dto::ClientResponse,
+        dto::PaginatedClients,
         dto::ClientStatsResponse,
         dto::UpdateClientRequest,
         dto::ClientSubnetResponse,

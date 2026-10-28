@@ -9,7 +9,7 @@ use axum::{
     Json,
 };
 use ferrous_dns_application::ports::PageAt;
-use ferrous_dns_application::use_cases::PagedQueryInput;
+use ferrous_dns_application::use_cases::{PagedQueryInput, MAX_QUERY_PAGE_LIMIT};
 use ferrous_dns_domain::DnssecStatusFilter;
 use tracing::{debug, instrument};
 
@@ -52,11 +52,14 @@ pub async fn get_queries(
         .map(str::parse::<DnssecStatusFilter>)
         .transpose()?;
 
+    let limit = params.limit.clamp(1, MAX_QUERY_PAGE_LIMIT);
+    let (page, offset) = match params.cursor {
+        Some(cursor) => (PageAt::Cursor(cursor), 0),
+        None => (PageAt::Offset(params.offset), params.offset),
+    };
     let input = PagedQueryInput {
-        limit: params.limit,
-        page: params
-            .cursor
-            .map_or(PageAt::Offset(params.offset), PageAt::Cursor),
+        limit,
+        page,
         period_hours,
         domain: params.domain.as_deref(),
         category: params.category.as_deref(),
@@ -112,8 +115,8 @@ pub async fn get_queries(
         data,
         total: result.records_filtered,
         records_total: result.records_total,
-        limit: params.limit,
-        offset: params.offset,
+        limit,
+        offset,
         next_cursor: result.next_cursor,
     }))
 }

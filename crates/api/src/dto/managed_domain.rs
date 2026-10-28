@@ -4,6 +4,7 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, Debug, IntoParams)]
 pub struct ManagedDomainQuery {
+    /// Domains per page, 1 to 1000; default 100.
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
