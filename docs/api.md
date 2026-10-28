@@ -315,8 +315,8 @@ A request that is valid but cannot be carried out answers with an error status a
 
 | Status | When |
 |:-------|:-----|
-| `409 Conflict` | There is no writable config file: the server was started without one, or it is read-only. Nothing was applied. |
-| `500 Internal Server Error` | The save was attempted and failed: the file could not be written, the client groups could not be read, or the upstream pools could not be applied. If the pools went live but the file could not be written, `error` says so: retry the save, since a restart would revert them. |
+| `409 Conflict` | There is no writable config file: the server was started without one, or the file's permissions mark it read-only. Nothing was applied. |
+| `500 Internal Server Error` | The save was attempted and failed: the file could not be written (on a read-only mount, for example), the client groups could not be read, or the upstream pools could not be applied. If the pools went live but the file could not be written, `error` says so: retry the save, since a restart would revert them. |
 
 The file is rewritten atomically (a synced temp file renamed over it), so a crash mid-save leaves the old or the new file, never a truncated one. The new file keeps the old one's mode, owner and group. When the file cannot be replaced — a Docker single-file bind mount, a directory the server cannot write, or an owner or group the server cannot give the new file — it is rewritten in place instead.
 
@@ -466,7 +466,7 @@ multipart field (`file`). Returns an import summary describing what was applied.
 
 A **partial import** still answers `200`: the import is not transactional, so what was restored stays applied. `success` is then `false`, and `errors` names each item that was not restored, such as a local record with an invalid address or a blocklist source routed for a group the backup does not have.
 
-**Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`
+**Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`, `500 Internal Server Error` (the client groups could not be read)
 
 ---
 

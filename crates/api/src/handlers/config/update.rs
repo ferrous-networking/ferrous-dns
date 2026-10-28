@@ -30,7 +30,7 @@ fn rejected(error: impl Into<String>) -> SaveResponse {
 }
 
 /// The request was valid, but the server's state keeps it from being saved:
-/// no config file, or a read-only one.
+/// no config file, or one whose permissions mark it read-only.
 fn cannot_save(error: impl Into<String>) -> SaveResponse {
     (
         StatusCode::CONFLICT,
@@ -548,8 +548,8 @@ fn apply_settings(cfg: &mut Config, request: SettingsDto) -> Result<(), String> 
     responses(
         (status = 200, description = "The configuration was saved", body = ConfigSaveResponse),
         (status = 400, description = "The update carries an invalid value; nothing was applied", body = ConfigSaveResponse),
-        (status = 409, description = "No writable config file: the server runs without one, or it is read-only", body = ConfigSaveResponse),
-        (status = 500, description = "The save failed: the file could not be written, the client groups could not be read, or the pools could not be applied; `error` says when pools went live without being saved", body = ConfigSaveResponse),
+        (status = 409, description = "No writable config file: the server runs without one, or its permissions mark it read-only", body = ConfigSaveResponse),
+        (status = 500, description = "The save failed: the file could not be written (a read-only mount, for one), the client groups could not be read, or the pools could not be applied; `error` says when pools went live without being saved", body = ConfigSaveResponse),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
@@ -670,8 +670,8 @@ async fn save_config_update(
     responses(
         (status = 200, description = "The settings were saved", body = ConfigSaveResponse),
         (status = 400, description = "The settings carry an invalid value; nothing was applied", body = ConfigSaveResponse),
-        (status = 409, description = "No writable config file: the server runs without one, or it is read-only", body = ConfigSaveResponse),
-        (status = 500, description = "The config file could not be written", body = ConfigSaveResponse),
+        (status = 409, description = "No writable config file: the server runs without one, or its permissions mark it read-only", body = ConfigSaveResponse),
+        (status = 500, description = "The config file could not be written, a read-only mount for one", body = ConfigSaveResponse),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
