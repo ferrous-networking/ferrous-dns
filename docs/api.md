@@ -746,17 +746,17 @@ Response includes the full token value — save it immediately:
 PUT /ferrous/api/v1/api-tokens/{id}
 ```
 
-Update the token name or import a custom key:
+Update the token name, or import a custom key with `token`:
 
 ```json
 {
   "name": "New Name",
-  "key": "custom-imported-key"
+  "token": "custom-imported-key"
 }
 ```
 
 !!! tip "Pi-hole migration"
-    Use the `key` field to import existing API keys from Pi-hole or other tools.
+    Use the `token` field to import existing API keys from Pi-hole or other tools.
 
 ### Delete Token
 
@@ -935,10 +935,13 @@ POST /ferrous/api/v1/clients
 
 ```json
 {
-  "name": "Living Room TV",
-  "ip": "192.168.1.50"
+  "ip_address": "192.168.1.50",
+  "hostname": "Living Room TV",
+  "group_id": 2
 }
 ```
+
+`hostname`, `group_id` and `mac_address` are optional.
 
 ### Update Client
 
@@ -948,9 +951,12 @@ PATCH /ferrous/api/v1/clients/{id}
 
 ```json
 {
-  "name": "New Name"
+  "hostname": "New Name",
+  "group_id": 2
 }
 ```
+
+Both fields are optional; an absent field keeps its value.
 
 ### Delete Client
 
@@ -990,8 +996,9 @@ POST /ferrous/api/v1/client-subnets
 
 ```json
 {
-  "cidr": "192.168.1.0/24",
-  "group_id": 2
+  "subnet_cidr": "192.168.1.0/24",
+  "group_id": 2,
+  "comment": "Guest Wi-Fi"
 }
 ```
 
@@ -1183,11 +1190,14 @@ POST /ferrous/api/v1/managed-domains
 
 ```json
 {
+  "name": "Popup ads",
   "domain": "ads.example.com",
-  "list_type": "block",
+  "action": "deny",
   "comment": "Annoying popup ads"
 }
 ```
+
+`action` is `deny` (block) or `allow`. `group_id` defaults to the default group, `enabled` to `true`.
 
 ### Get / Update / Delete
 
@@ -1217,11 +1227,14 @@ POST /ferrous/api/v1/regex-filters
 
 ```json
 {
+  "name": "Numbered ad hosts",
   "pattern": "^ads\\d+\\.example\\.com$",
-  "list_type": "block",
+  "action": "deny",
   "enabled": true
 }
 ```
+
+`action` is `deny` (block) or `allow`.
 
 ### Get / Update / Delete
 
@@ -1360,8 +1373,15 @@ DELETE /ferrous/api/v1/custom-services/{id}
 
 ```http
 GET /ferrous/api/v1/safe-search/configs
+```
+
+Every group's Safe Search settings.
+
+```http
 GET /ferrous/api/v1/safe-search/configs/{group_id}
 ```
+
+One group's settings, one entry per engine.
 
 ### Toggle Safe Search
 
@@ -1371,10 +1391,12 @@ POST /ferrous/api/v1/safe-search/configs/{group_id}
 
 ```json
 {
-  "platform": "google",
+  "engine": "google",
   "enabled": true
 }
 ```
+
+`youtube_mode` (`strict` or `moderate`, default `strict`) applies to the `youtube` engine.
 
 ### Delete Configs
 
