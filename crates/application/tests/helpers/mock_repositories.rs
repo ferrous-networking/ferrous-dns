@@ -444,6 +444,21 @@ impl MockClientRepository {
     pub async fn get_all_clients(&self) -> Vec<Client> {
         self.clients.read().await.values().cloned().collect()
     }
+
+    async fn active_since(&self, days: u32) -> Vec<Client> {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(days as i64)).to_rfc3339();
+        self.clients
+            .read()
+            .await
+            .values()
+            .filter(|c| {
+                c.last_seen
+                    .as_ref()
+                    .is_some_and(|ls| ls.as_str() > cutoff.as_str())
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 impl Default for MockClientRepository {
@@ -574,25 +589,27 @@ impl ClientRepository for MockClientRepository {
         Ok(all[start..end].to_vec())
     }
 
-    async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError> {
-        let clients = self.clients.read().await;
-        let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
-        let cutoff_str = cutoff.to_rfc3339();
-
-        let mut active: Vec<Client> = clients
-            .values()
-            .filter(|c| {
-                c.last_seen
-                    .as_ref()
-                    .map(|ls| ls.as_str() > cutoff_str.as_str())
-                    .unwrap_or(false)
-            })
-            .cloned()
-            .collect();
-
+    async fn get_active(
+        &self,
+        days: u32,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Client>, DomainError> {
+        let mut active = self.active_since(days).await;
         active.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
-        active.truncate(limit as usize);
-        Ok(active)
+        Ok(active
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+
+    async fn count_all(&self) -> Result<u64, DomainError> {
+        Ok(self.clients.read().await.len() as u64)
+    }
+
+    async fn count_active(&self, days: u32) -> Result<u64, DomainError> {
+        Ok(self.active_since(days).await.len() as u64)
     }
 
     async fn get_stats(&self) -> Result<ClientStats, DomainError> {

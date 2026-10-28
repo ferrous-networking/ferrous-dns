@@ -27,7 +27,18 @@ pub trait ClientRepository: Send + Sync {
 
     async fn get_all(&self, limit: u32, offset: u32) -> Result<Vec<Client>, DomainError>;
 
-    async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError>;
+    /// Clients seen in the last `days`, newest first.
+    async fn get_active(
+        &self,
+        days: u32,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Client>, DomainError>;
+
+    async fn count_all(&self) -> Result<u64, DomainError>;
+
+    /// How many clients [`Self::get_active`] pages through for `days`.
+    async fn count_active(&self, days: u32) -> Result<u64, DomainError>;
 
     async fn get_stats(&self) -> Result<ClientStats, DomainError>;
 
