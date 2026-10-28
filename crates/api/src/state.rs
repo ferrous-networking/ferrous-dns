@@ -207,6 +207,9 @@ pub struct AppState {
     /// in memory on purpose: a restart starts a new process with it cleared,
     /// which is exactly when the web UI's restart banner must go away.
     pub restart_pending: Arc<AtomicBool>,
+    /// Whether the plain DNS listener is serving: set once every worker has
+    /// bound, cleared if they all exit. `GET /health` answers 503 without it.
+    pub dns_listening: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -220,5 +223,9 @@ impl AppState {
 
     pub fn is_restart_pending(&self) -> bool {
         self.restart_pending.load(Ordering::Relaxed)
+    }
+
+    pub fn is_dns_listening(&self) -> bool {
+        self.dns_listening.load(Ordering::Relaxed)
     }
 }

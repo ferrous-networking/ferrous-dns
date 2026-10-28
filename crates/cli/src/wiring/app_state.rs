@@ -233,6 +233,7 @@ pub async fn build_app_state(
         backup,
         tls_enabled: https_active,
         restart_pending: Default::default(),
+        dns_listening: Default::default(),
         config,
         config_writer: config_services.writer.clone(),
         config_file_persistence: config_persistence,

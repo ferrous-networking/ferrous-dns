@@ -38,6 +38,7 @@ use ferrous_dns_infrastructure::repositories::whitelist_source_repository::Sqlit
 use ferrous_dns_infrastructure::repositories::TomlConfigFilePersistence;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -483,6 +484,7 @@ impl TestAppBuilder {
             malware_detection_enabled: true,
             tls_enabled: false,
             restart_pending: Default::default(),
+            dns_listening: Arc::new(AtomicBool::new(true)),
         };
 
         TestApp {

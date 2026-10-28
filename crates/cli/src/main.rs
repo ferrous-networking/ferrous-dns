@@ -9,7 +9,7 @@ use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{error, info, level_filters::LevelFilter};
 
 mod args;
 mod bootstrap;
@@ -31,11 +31,20 @@ fn main() -> anyhow::Result<()> {
 
 async fn async_main() -> anyhow::Result<()> {
     let cli = args::Cli::parse();
-    let log_level = bootstrap::init_logging();
+    // The probe runs every 10 s beside the server: keep Docker's health log to its verdict.
+    let log_level = bootstrap::init_logging(if cli.healthcheck {
+        LevelFilter::WARN
+    } else {
+        LevelFilter::INFO
+    });
 
     let config_path = bootstrap::resolve_config_path(cli.config.as_deref());
     let overrides = bootstrap::config_overrides(&cli);
     let config = bootstrap::load_config(config_path.as_deref(), &overrides)?;
+
+    if cli.healthcheck {
+        return bootstrap::check_health(&config.server).await;
+    }
 
     bootstrap::apply_log_level(&log_level, &config);
 
@@ -151,6 +160,7 @@ async fn async_main() -> anyhow::Result<()> {
     let num_dns_workers = tokio::runtime::Handle::current().metrics().num_workers();
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
+    let dns_listening = app_state.dns_listening.clone();
     tokio::spawn(async move {
         if let Err(e) = server::start_dns_server(
             dns_addr,
@@ -159,6 +169,7 @@ async fn async_main() -> anyhow::Result<()> {
             proxy_protocol_enabled,
             tcp_conn_limiter,
             udp_fallback_shed,
+            dns_listening,
         )
         .await
         {

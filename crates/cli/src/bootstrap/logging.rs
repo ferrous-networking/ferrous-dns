@@ -4,11 +4,11 @@ use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, reload, Registry}
 
 pub type LogLevelHandle = reload::Handle<LevelFilter, Registry>;
 
-/// Installs the subscriber at INFO so warnings raised while the config file is
-/// read (legacy values rewritten at load) are not lost; [`apply_log_level`]
-/// switches to the configured level afterwards.
-pub fn init_logging() -> LogLevelHandle {
-    let (level, handle) = reload::Layer::new(LevelFilter::INFO);
+/// Installs the subscriber at `initial` (INFO for the server) so warnings raised
+/// while the config file is read (legacy values rewritten at load) are not
+/// lost; [`apply_log_level`] switches to the configured level afterwards.
+pub fn init_logging(initial: LevelFilter) -> LogLevelHandle {
+    let (level, handle) = reload::Layer::new(initial);
     tracing_subscriber::registry()
         .with(level)
         .with(

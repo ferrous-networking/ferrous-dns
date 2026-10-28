@@ -453,6 +453,29 @@ The same applies to a config that is owned by another user: the mount must be wr
 
 ---
 
+## Docker Container Reports Unhealthy
+
+### Symptom
+
+`docker ps` shows the container as `(unhealthy)`, and an autoheal tool may keep restarting it.
+
+### Cause
+
+The health check calls `GET /ferrous/api/v1/health` through `ferrous-dns --healthcheck`. It fails when the web server does not answer on the port the probe expects, or when the server answers `503` because its DNS listener is down.
+
+### Solution
+
+Read what the last probes printed:
+
+```bash
+docker inspect --format '{{json .State.Health.Log}}' ferrous-dns
+```
+
+- **`503 Service Unavailable` with `"status":"unavailable"`:** the DNS port could not be bound. Look for `DNS server error` in `docker logs ferrous-dns`, and see [Port 53 Already in Use](#port-53-already-in-use).
+- **`error sending request` or `Connection refused`:** nothing answers on the web port the probe uses. The probe takes the port and bind address from the config file and the `FERROUS_*` variables. Flags given in a compose `command:` do not reach it, so set them there instead.
+
+---
+
 ## Docker Networking Issues
 
 ### Host network mode (recommended)

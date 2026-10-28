@@ -15,10 +15,10 @@ pub fn create_api_router_with_openapi(state: AppState) -> (Router, utoipa::opena
         .routes(routes!(handlers::auth::setup_password_public))
         .routes(routes!(handlers::auth::login_public))
         .routes(routes!(handlers::auth::logout_public))
+        .routes(routes!(handlers::health::health_check))
         .merge(handlers::auth::public_mfa_routes());
 
     let core_routes = OpenApiRouter::new()
-        .routes(routes!(handlers::health::health_check))
         .routes(routes!(handlers::dashboard::get_dashboard))
         .routes(routes!(handlers::stats::get_stats))
         .routes(routes!(handlers::rate::get_query_rate))
