@@ -17,7 +17,7 @@ pub use cleanup_old_query_logs::CleanupOldQueryLogsUseCase;
 pub use get_client_activity::GetClientActivityUseCase;
 pub use get_query_log_storage::GetQueryLogStorageUseCase;
 pub use get_rate::{GetQueryRateUseCase, QueryRate, RateUnit};
-pub use get_recent::{GetRecentQueriesUseCase, PagedQueryInput};
+pub use get_recent::{GetRecentQueriesUseCase, PagedQueryInput, MAX_QUERY_PAGE_LIMIT};
 pub use get_stats::GetQueryStatsUseCase;
 pub use get_timeline::GetTimelineUseCase;
 pub use get_top_allowed_domains::GetTopAllowedDomainsUseCase;

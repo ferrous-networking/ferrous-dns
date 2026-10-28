@@ -3,7 +3,6 @@ pub mod auth;
 pub mod backup;
 pub mod block_filter;
 pub mod blocked_services;
-pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
 pub mod client_groups;
@@ -31,7 +30,6 @@ pub mod timeline;
 pub mod tls;
 pub mod upstream;
 pub mod users;
-pub mod whitelist;
 pub mod whitelist_sources;
 
 pub use metrics::{metrics_routes, render_metrics};

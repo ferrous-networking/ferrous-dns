@@ -17,7 +17,6 @@ pub use entities::api_token::ApiToken;
 pub use entities::auth_session::AuthSession;
 pub use entities::block_source::BlockSource;
 pub use entities::blocked_service::BlockedService;
-pub use entities::blocklist::BlockedDomain;
 pub use entities::blocklist_source::{BlocklistSource, ListSyncStatus};
 pub use entities::client::{Client, ClientStats, HostnameSource};
 pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
@@ -39,7 +38,6 @@ pub use entities::schedule::{
 pub use entities::service_catalog::ServiceDefinition;
 pub use entities::user::{User, UserRole, UserSource};
 pub use entities::user_mfa::{MfaChallenge, MfaMethod, RecoveryCode, UserMfa, WebauthnCredential};
-pub use entities::whitelist::WhitelistedDomain;
 pub use entities::whitelist_source::WhitelistSource;
 pub use errors::domain_error::DomainError;
 pub use value_objects::dns_protocol::{DnsProtocol, UpstreamAddr};

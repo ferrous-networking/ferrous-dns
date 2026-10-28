@@ -1,4 +1,4 @@
-use crate::dto::{ClientResponse, ClientStatsResponse, ClientsQuery};
+use crate::dto::{ClientResponse, ClientStatsResponse, ClientsQuery, PaginatedClients};
 use crate::errors::ApiError;
 use crate::state::AppState;
 use axum::{
@@ -7,13 +7,16 @@ use axum::{
 };
 use tracing::{debug, instrument};
 
+/// Upper bound on how many clients a single listing request may return.
+const MAX_CLIENTS_LIMIT: u32 = 1_000;
+
 #[utoipa::path(
     get,
     path = "/clients",
     tag = "clients",
     params(ClientsQuery),
     responses(
-        (status = 200, description = "Client list", body = [ClientResponse]),
+        (status = 200, description = "One page of clients, newest first", body = PaginatedClients),
         (status = 500, description = "Internal error"),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
@@ -22,7 +25,7 @@ use tracing::{debug, instrument};
 pub async fn get_clients(
     State(state): State<AppState>,
     Query(params): Query<ClientsQuery>,
-) -> Result<Json<Vec<ClientResponse>>, ApiError> {
+) -> Result<Json<PaginatedClients>, ApiError> {
     debug!(
         limit = params.limit,
         offset = params.offset,
@@ -30,24 +33,22 @@ pub async fn get_clients(
         "Fetching clients"
     );
 
-    let clients = if let Some(days) = params.active_days {
-        state
-            .clients
-            .get_clients
-            .get_active(days, params.limit)
-            .await?
-    } else {
-        state
-            .clients
-            .get_clients
-            .get_all(params.limit, params.offset)
-            .await?
-    };
+    let limit = params.limit.clamp(1, MAX_CLIENTS_LIMIT);
+    let (clients, total) = state
+        .clients
+        .get_clients
+        .get_paged(limit, params.offset, params.active_days)
+        .await?;
 
-    let response: Vec<ClientResponse> = clients.into_iter().map(ClientResponse::from).collect();
+    let data: Vec<ClientResponse> = clients.into_iter().map(ClientResponse::from).collect();
 
-    debug!(count = response.len(), "Clients retrieved successfully");
-    Ok(Json(response))
+    debug!(count = data.len(), total, "Clients retrieved successfully");
+    Ok(Json(PaginatedClients {
+        data,
+        total,
+        limit,
+        offset: params.offset,
+    }))
 }
 
 #[utoipa::path(

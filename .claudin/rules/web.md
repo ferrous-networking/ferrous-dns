@@ -12,7 +12,7 @@ paths: web/**
 
 ## API calls
 
-- Use `apiFetch()` from `shared.js` when the endpoint accepts the API key; plain `fetch(\`${API_BASE}/...\`)` otherwise (cookie session covers it). Canonical pattern (`clients.js:38-45`): `const res = await fetch(...); if (res.ok) this.items = await res.json();` inside try/catch.
+- Use `apiFetch()` from `shared.js` when the endpoint accepts the API key; plain `fetch(\`${API_BASE}/...\`)` otherwise (cookie session covers it). Canonical pattern (`clients.js:38-45`): `const res = await fetch(...); if (res.ok) this.items = (await res.json()).data;` inside try/catch. A paged list answers `{data, total, limit, offset}` (see `docs/api.md` § Pagination); a short list is a bare array, read with `await res.json()`.
 - Never hardcode the base URL — always `${API_BASE}`.
 
 ## Rendering & safety

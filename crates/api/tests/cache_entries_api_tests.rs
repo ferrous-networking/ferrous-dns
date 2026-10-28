@@ -10,9 +10,7 @@ use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::{
     BorrowedKey, CachedAddresses, CachedData, DnsCache, DnsCacheAccess,
 };
-use helpers::TestApp;
-use http_body_util::BodyExt;
-use serde_json::Value;
+use helpers::{get_json, TestApp};
 use std::net::IpAddr;
 use std::sync::Arc;
 use tower::ServiceExt;
@@ -37,17 +35,6 @@ fn seed(cache: &DnsCache, domains: &[&str]) {
     for domain in domains {
         cache.insert(domain, RecordType::A, make_ip_data("1.2.3.4"), 300, None);
     }
-}
-
-async fn get_json(app: Router, uri: &str) -> Value {
-    let response = app
-        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    serde_json::from_slice(&body).unwrap()
 }
 
 async fn delete_status(app: Router, uri: &str) -> StatusCode {

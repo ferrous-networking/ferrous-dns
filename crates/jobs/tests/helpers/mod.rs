@@ -129,8 +129,13 @@ impl ClientRepository for MockClientRepository {
             .collect())
     }
 
-    async fn get_active(&self, _days: u32, _limit: u32) -> Result<Vec<Client>, DomainError> {
-        Ok(Vec::new())
+    async fn get_page(
+        &self,
+        _active_days: Option<u32>,
+        _limit: u32,
+        _offset: u32,
+    ) -> Result<(Vec<Client>, u64), DomainError> {
+        Ok((Vec::new(), 0))
     }
 
     async fn get_stats(&self) -> Result<ClientStats, DomainError> {

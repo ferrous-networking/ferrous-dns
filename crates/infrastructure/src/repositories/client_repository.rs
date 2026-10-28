@@ -1,7 +1,8 @@
 use super::client_row_mapper::{
-    row_to_client, ClientRow, CLIENT_SELECT_ACTIVE, CLIENT_SELECT_ALL, CLIENT_SELECT_BY_ID,
-    CLIENT_SELECT_BY_IP, CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE, CLIENT_SELECT_NEEDS_MAC_UPDATE,
-    UPDATE_HOSTNAME, UPDATE_HOSTNAME_FROM_PTR, UPDATE_HOSTNAME_UNLESS_MANUAL,
+    row_to_client, ClientRow, CLIENT_COUNT_ACTIVE, CLIENT_COUNT_ALL, CLIENT_SELECT_ACTIVE,
+    CLIENT_SELECT_ALL, CLIENT_SELECT_BY_ID, CLIENT_SELECT_BY_IP,
+    CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE, CLIENT_SELECT_NEEDS_MAC_UPDATE, UPDATE_HOSTNAME,
+    UPDATE_HOSTNAME_FROM_PTR, UPDATE_HOSTNAME_UNLESS_MANUAL,
 };
 use crate::repositories::{db_err, hours_ago_cutoff, is_fk_violation, sql_now};
 use async_trait::async_trait;
@@ -206,15 +207,38 @@ impl ClientRepository for SqliteClientRepository {
     }
 
     #[instrument(skip(self))]
-    async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError> {
-        let rows = sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_ACTIVE)
-            .bind(format!("-{days} days"))
+    async fn get_page(
+        &self,
+        active_days: Option<u32>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<Client>, u64), DomainError> {
+        let cutoff = active_days.map(|days| format!("-{days} days"));
+        let (select, count) = match cutoff {
+            Some(ref cutoff) => (
+                sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_ACTIVE).bind(cutoff.clone()),
+                sqlx::query_as::<_, (i64,)>(CLIENT_COUNT_ACTIVE).bind(cutoff.clone()),
+            ),
+            None => (
+                sqlx::query_as::<_, ClientRow>(CLIENT_SELECT_ALL),
+                sqlx::query_as::<_, (i64,)>(CLIENT_COUNT_ALL),
+            ),
+        };
+        let rows = select
             .bind(i64::from(limit))
+            .bind(i64::from(offset))
             .fetch_all(&self.pool)
             .await
-            .map_err(db_err("Failed to fetch active clients"))?;
+            .map_err(db_err("Failed to fetch clients"))?;
+        let (total,) = count
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_err("Failed to count clients"))?;
 
-        Ok(rows.into_iter().filter_map(row_to_client).collect())
+        Ok((
+            rows.into_iter().filter_map(row_to_client).collect(),
+            total as u64,
+        ))
     }
 
     #[instrument(skip(self))]

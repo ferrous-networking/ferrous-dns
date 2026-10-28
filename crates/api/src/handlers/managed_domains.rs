@@ -17,6 +17,9 @@ use crate::{
     state::AppState,
 };
 
+/// Upper bound on how many managed domains a single listing request may return.
+const MAX_MANAGED_DOMAINS_LIMIT: u32 = 1_000;
+
 pub fn routes() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_all_managed_domains, create_managed_domain))
@@ -41,10 +44,11 @@ async fn get_all_managed_domains(
     State(state): State<AppState>,
     Query(params): Query<ManagedDomainQuery>,
 ) -> Result<Json<PaginatedManagedDomains>, ApiError> {
+    let limit = params.limit.clamp(1, MAX_MANAGED_DOMAINS_LIMIT);
     let (domains, total) = state
         .blocking
         .get_managed_domains
-        .get_all_paged(params.limit, params.offset)
+        .get_all_paged(limit, params.offset)
         .await?;
     debug!(
         count = domains.len(),
@@ -56,7 +60,7 @@ async fn get_all_managed_domains(
             .map(ManagedDomainResponse::from_domain)
             .collect(),
         total,
-        limit: params.limit,
+        limit,
         offset: params.offset,
     }))
 }

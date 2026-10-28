@@ -3,7 +3,6 @@ pub mod auth;
 pub mod backup;
 pub mod block_filter;
 pub mod blocked_services;
-pub mod blocklist;
 pub mod blocklist_sources;
 pub mod cache;
 pub mod client_subnets;
@@ -19,7 +18,6 @@ pub mod regex_filters;
 pub mod safe_search;
 pub mod schedule;
 pub mod users;
-pub mod whitelist;
 pub mod whitelist_sources;
 
 pub use api_tokens::{
@@ -44,7 +42,6 @@ pub use block_filter::{
 pub use blocked_services::{
     BlockServiceUseCase, GetBlockedServicesUseCase, GetServiceCatalogUseCase, UnblockServiceUseCase,
 };
-pub use blocklist::GetBlocklistUseCase;
 pub use blocklist_sources::{
     CreateBlocklistSourceUseCase, DeleteBlocklistSourceUseCase, GetBlocklistSourcesUseCase,
     SyncBlocklistSourcesUseCase, UpdateBlocklistSourceUseCase,
@@ -81,7 +78,7 @@ pub use queries::{
     GetQueryRateUseCase, GetQueryStatsUseCase, GetRecentQueriesUseCase, GetTimelineUseCase,
     GetTopAllowedDomainsUseCase, GetTopBlockedClientsUseCase, GetTopBlockedDomainsUseCase,
     GetTopClientsUseCase, GetUniqueDomainsUseCase, PagedQueryInput, QueryRate, RateUnit,
-    ReclaimFreeSpaceUseCase, RollUpQueryLogUseCase,
+    ReclaimFreeSpaceUseCase, RollUpQueryLogUseCase, MAX_QUERY_PAGE_LIMIT,
 };
 pub use regex_filters::{
     CreateRegexFilterUseCase, DeleteRegexFilterUseCase, GetRegexFiltersUseCase,
@@ -95,7 +92,6 @@ pub use schedule::{
     GetScheduleProfilesUseCase, ManageTimeSlotsUseCase, UpdateScheduleProfileUseCase,
 };
 pub use users::{CreateUserUseCase, DeleteUserUseCase, GetUsersUseCase};
-pub use whitelist::GetWhitelistUseCase;
 pub use whitelist_sources::{
     CreateWhitelistSourceUseCase, DeleteWhitelistSourceUseCase, GetWhitelistSourcesUseCase,
     UpdateWhitelistSourceUseCase,

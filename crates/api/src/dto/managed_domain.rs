@@ -4,6 +4,7 @@ use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, Debug, IntoParams)]
 pub struct ManagedDomainQuery {
+    /// Domains per page, 1 to 1000; default 100.
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
@@ -17,7 +18,9 @@ fn default_limit() -> u32 {
 #[derive(Serialize, Debug, ToSchema)]
 pub struct PaginatedManagedDomains {
     pub data: Vec<ManagedDomainResponse>,
+    /// Every managed domain, across all pages.
     pub total: u64,
+    /// Page size applied: the requested `limit`, clamped to 1..=1000.
     pub limit: u32,
     pub offset: u32,
 }

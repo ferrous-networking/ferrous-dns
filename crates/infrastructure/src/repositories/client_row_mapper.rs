@@ -39,11 +39,19 @@ pub(crate) const CLIENT_SELECT_BY_ID: &str = client_select!(" WHERE id = ?");
 pub(crate) const CLIENT_SELECT_BY_GROUP: &str =
     client_select!(" WHERE group_id = ? ORDER BY last_seen DESC");
 
+// `id` breaks ties, so clients seen in the same second keep one order across pages.
 pub(crate) const CLIENT_SELECT_ALL: &str =
-    client_select!(" ORDER BY last_seen DESC LIMIT ? OFFSET ?");
+    client_select!(" ORDER BY last_seen DESC, id DESC LIMIT ? OFFSET ?");
 
-pub(crate) const CLIENT_SELECT_ACTIVE: &str =
-    client_select!(" WHERE last_seen > datetime('now', ?) ORDER BY last_seen DESC LIMIT ?");
+pub(crate) const CLIENT_COUNT_ALL: &str = "SELECT COUNT(*) FROM clients";
+
+pub(crate) const CLIENT_SELECT_ACTIVE: &str = client_select!(
+    " WHERE last_seen > datetime('now', ?) ORDER BY last_seen DESC, id DESC LIMIT ? OFFSET ?"
+);
+
+/// Counts the rows [`CLIENT_SELECT_ACTIVE`] pages through.
+pub(crate) const CLIENT_COUNT_ACTIVE: &str =
+    "SELECT COUNT(*) FROM clients WHERE last_seen > datetime('now', ?)";
 
 pub(crate) const CLIENT_SELECT_NEEDS_MAC_UPDATE: &str = client_select!(
     " WHERE (last_mac_update IS NULL

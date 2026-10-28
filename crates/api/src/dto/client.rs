@@ -40,12 +40,24 @@ pub struct ClientStatsResponse {
 
 #[derive(Deserialize, Debug, IntoParams)]
 pub struct ClientsQuery {
+    /// Clients per page, 1 to 1000; default 100.
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
+    /// Only clients seen within the last N days.
     #[serde(default)]
     pub active_days: Option<u32>,
+}
+
+#[derive(Serialize, Debug, ToSchema)]
+pub struct PaginatedClients {
+    pub data: Vec<ClientResponse>,
+    /// Clients matching `active_days`, or every client without it.
+    pub total: u64,
+    /// Page size applied: the requested `limit`, clamped to 1..=1000.
+    pub limit: u32,
+    pub offset: u32,
 }
 
 fn default_limit() -> u32 {

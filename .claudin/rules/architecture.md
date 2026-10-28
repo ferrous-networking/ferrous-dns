@@ -19,6 +19,6 @@ cli → api / api-pihole / jobs → infrastructure → application → domain
 
 Patterns to follow:
 
-- **New capability** = port trait in `application/src/ports/` + use case struct `XxxUseCase` with `new(Arc<dyn Port>)` and `async fn execute(...)` + adapter in `infrastructure`. Reference: `BlocklistRepository` → `SqliteBlocklistRepository`.
+- **New capability** = port trait in `application/src/ports/` + use case struct `XxxUseCase` with `new(Arc<dyn Port>)` and `async fn execute(...)` + adapter in `infrastructure`. Reference: `BlocklistSourceRepository` → `SqliteBlocklistSourceRepository`.
 - **Errors**: everything returns `Result<_, DomainError>` (single thiserror enum in `domain/src/errors/domain_error.rs`); the API maps variants to status codes via `ApiError(pub DomainError)`. `anyhow` is allowed in `cli` only.
 - Domain decisions (record semantics, entities) belong in `domain`; orchestration (query handling, guards, cache policy) belongs in `application`; wire/format/IO details belong in `infrastructure`.

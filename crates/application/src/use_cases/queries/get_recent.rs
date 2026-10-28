@@ -5,7 +5,8 @@ use ferrous_dns_domain::entities::query_log::{
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::sync::Arc;
 
-const MAX_LIMIT: u32 = 1_000;
+/// Rows in one page of the query log, unless it is a [`PageAt::Snapshot`].
+pub const MAX_QUERY_PAGE_LIMIT: u32 = 1_000;
 
 /// Cap of a [`PageAt::Snapshot`] page: Pi-hole FTL's `API_QUERIES_MAX_ROWS`,
 /// which also bounds its "every row" request.
@@ -54,7 +55,7 @@ impl GetRecentQueriesUseCase {
         period_hours: f32,
     ) -> Result<Vec<QueryLog>, DomainError> {
         self.repository
-            .get_recent(limit.min(MAX_LIMIT), period_hours)
+            .get_recent(limit.min(MAX_QUERY_PAGE_LIMIT), period_hours)
             .await
     }
 
@@ -101,7 +102,7 @@ impl GetRecentQueriesUseCase {
 
         let max_limit = match input.page {
             PageAt::Snapshot { .. } => MAX_SNAPSHOT_LIMIT,
-            PageAt::Offset(_) | PageAt::Cursor(_) => MAX_LIMIT,
+            PageAt::Offset(_) | PageAt::Cursor(_) => MAX_QUERY_PAGE_LIMIT,
         };
         self.repository
             .get_recent_paged(

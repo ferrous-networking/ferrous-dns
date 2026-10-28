@@ -31,8 +31,8 @@ async fn test_get_clients_empty() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(json.is_array());
-    assert_eq!(json.as_array().unwrap().len(), 0);
+    assert!(json["data"].is_array());
+    assert_eq!(json["data"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -71,8 +71,8 @@ async fn test_get_clients_with_data() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(json.is_array());
-    let clients = json.as_array().unwrap();
+    assert!(json["data"].is_array());
+    let clients = json["data"].as_array().unwrap();
     assert_eq!(clients.len(), 2);
 
     let client = &clients[0];
@@ -113,7 +113,7 @@ async fn test_get_clients_with_pagination() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json.as_array().unwrap().len(), 5);
+    assert_eq!(json["data"].as_array().unwrap().len(), 5);
 
     let response = app
         .oneshot(
@@ -128,7 +128,7 @@ async fn test_get_clients_with_pagination() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json.as_array().unwrap().len(), 5);
+    assert_eq!(json["data"].as_array().unwrap().len(), 5);
 }
 
 #[tokio::test]
@@ -210,7 +210,7 @@ async fn test_get_clients_json_structure() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    let client = &json.as_array().unwrap()[0];
+    let client = &json["data"].as_array().unwrap()[0];
 
     assert!(client["id"].is_number());
     assert_eq!(client["ip_address"], "192.168.1.100");
@@ -257,7 +257,7 @@ async fn test_get_clients_with_active_days_filter() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
 
-    assert!(json.is_array());
+    assert!(json["data"].is_array());
 }
 
 #[tokio::test]
@@ -475,7 +475,7 @@ async fn test_delete_client_verifies_not_in_get_all() {
 
     let body = get_response.into_body().collect().await.unwrap().to_bytes();
     let json: Value = serde_json::from_slice(&body).unwrap();
-    let clients_after = json.as_array().unwrap();
+    let clients_after = json["data"].as_array().unwrap();
 
     assert_eq!(clients_after.len(), 2);
 

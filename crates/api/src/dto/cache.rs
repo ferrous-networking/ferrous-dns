@@ -57,6 +57,7 @@ pub struct CacheMetricsResponse {
 
 #[derive(Deserialize, Debug, IntoParams)]
 pub struct CacheEntriesQuery {
+    /// Entries per page, 1 to 500; default 25.
     #[serde(default = "default_entries_limit")]
     pub limit: u32,
     #[serde(default)]
@@ -126,6 +127,7 @@ pub struct PaginatedCacheEntries {
     pub total: usize,
     /// Entries in the cache, ignoring the filters.
     pub records_total: usize,
+    /// Page size applied: the requested `limit`, clamped to 1..=500.
     pub limit: u32,
     pub offset: u32,
 }

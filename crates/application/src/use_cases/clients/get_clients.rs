@@ -20,8 +20,15 @@ impl GetClientsUseCase {
         self.client_repo.get_by_ip(ip).await
     }
 
-    pub async fn get_active(&self, days: u32, limit: u32) -> Result<Vec<Client>, DomainError> {
-        self.client_repo.get_active(days, limit).await
+    /// One page of clients, most recently seen first, and how many there are
+    /// in all; with `active_days`, only those seen within that many days.
+    pub async fn get_paged(
+        &self,
+        limit: u32,
+        offset: u32,
+        active_days: Option<u32>,
+    ) -> Result<(Vec<Client>, u64), DomainError> {
+        self.client_repo.get_page(active_days, limit, offset).await
     }
 
     pub async fn get_stats(&self) -> Result<ClientStats, DomainError> {

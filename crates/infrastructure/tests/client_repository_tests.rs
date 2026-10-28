@@ -259,7 +259,7 @@ async fn test_get_active_clients() {
     .await
     .unwrap();
 
-    let active = repo.get_active(30, 100).await.unwrap();
+    let (active, _) = repo.get_page(Some(30), 100, 0).await.unwrap();
     assert_eq!(active.len(), 3);
 }
 
