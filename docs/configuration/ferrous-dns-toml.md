@@ -265,7 +265,7 @@ qname_case_randomization = false
 | `rebinding_allowlist` | `list` | `[]` | Exact domain names exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels). Wildcards and trailing dots never match: the API rejects them, and a file load drops them with a warning |
 | `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](dns.md#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups, client hostname resolution and names under `local_domain`: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
-| `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast) for device discovery; requires host networking in Docker |
+| `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast), which names clients after the host name their device announces; requires host networking in Docker |
 | `qname_case_randomization` | `bool` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off because some upstreams do not preserve case |
 
 See [DNS & Upstreams](dns.md).

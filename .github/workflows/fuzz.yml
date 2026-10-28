@@ -36,6 +36,7 @@ jobs:
           - dnssec_records
           - proxy_protocol_v2
           - blocklist_text
+          - mdns_announcement
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

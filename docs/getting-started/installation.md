@@ -177,7 +177,7 @@ Docker Desktop 4.34+ does support host networking (opt-in under **Settings → R
 
 ### Known limitations under WSL2
 
-- **mDNS device discovery** (`mdns_enabled`) is untested and should be left off — multicast behaviour differs from a bare-metal Linux host.
+- **mDNS client names** (`mdns_enabled`) are untested under WSL2 — multicast behaviour differs from a bare-metal Linux host, so announcements may not arrive.
 - **WSL does not start at boot.** Register a Scheduled Task that runs `wsl -d Ubuntu -u root /path/to/ferrous-dns ...` at logon/startup, or the DNS server disappears after a reboot.
 - **Mirrored mode has open port-binding bugs** upstream (wildcard binds and reserved localhost ranges). If a listener fails to bind, try a `wsl --shutdown` first.
 - For anything you actually depend on, a Raspberry Pi, a spare Linux box, or a Hyper-V VM on an *external* (bridged) virtual switch is a less surprising host than WSL2.

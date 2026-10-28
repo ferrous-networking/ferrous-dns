@@ -10,16 +10,22 @@ Ferrous DNS identifies clients by:
 
 - **IP address** — always available
 - **MAC address** — available when clients are on the same Layer 2 network (same subnet, no router between client and Ferrous DNS)
-- **Hostname** — resolved via PTR lookup against the local DNS server configured in `local_dns_server`, and looked up again every hour. A name you set yourself on the **Clients** page or through the API is kept: the lookup never replaces it. Names set before this protection existed are treated as automatic: if the lookup replaces one, set it again and it is kept from then on.
+- **Hostname** — from three sources, in this order of precedence:
+    1. **A name you set** on the **Clients** page or through the API. Nothing automatic replaces it. Names set before this protection existed are treated as automatic: if one is replaced, set it again and it is kept from then on.
+    2. **The name the device announces over mDNS/Bonjour**, such as `iPhone-de-Ana` for `iPhone-de-Ana.local`, when `mdns_enabled = true`. Phones, laptops, printers and TVs announce themselves this way, including many that the router's DNS does not name. A device can only name itself: an announcement counts only for the address it was sent from, plus that device's other addresses in the same message. Only clients that query Ferrous DNS are named.
+    3. **A PTR lookup** against `local_dns_server`, repeated every hour. It replaces an mDNS name only after the device has gone a day without announcing it, so an address DHCP hands to another device does not keep the old name.
 
 ### Configuration
 
 ```toml
 [dns]
 local_dns_server = "192.168.1.1:53"   # router/DHCP server for hostname resolution
+mdns_enabled = true                   # also name clients after their mDNS announcements
 ```
 
 Clients appear in the dashboard under **Clients** as soon as they make a DNS query.
+
+mDNS needs the server on the same network segment as the devices, because multicast does not cross routers. In Docker it needs host networking; see [Installation](../getting-started/installation.md#docker). A change applies after a restart.
 
 ---
 

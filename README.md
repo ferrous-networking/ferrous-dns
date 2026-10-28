@@ -122,7 +122,7 @@ See the [full configuration reference](https://ferrous-networking.github.io/ferr
 | `FERROUS_DATABASE`    | `/data/db/ferrous.db`                 | SQLite database path (in the Docker image) |
 | `FERROUS_LOG_LEVEL`   | `info`                                | Log level: debug, info, warn, error |
 
-> **mDNS device discovery** (`mdns_enabled`, off by default) listens on UDP **5353** for multicast announcements. It requires host networking (`network_mode: host`) — multicast does not traverse Docker bridge port mapping.
+> **mDNS client names** (`mdns_enabled`, off by default) listens on UDP **5353** for multicast announcements and names clients after the host name their device announces. It requires host networking (`network_mode: host`) — multicast does not traverse Docker bridge port mapping.
 
 ---
 

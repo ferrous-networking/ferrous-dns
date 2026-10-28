@@ -31,6 +31,7 @@ make fuzz-short
 | `dnssec_records` | `DsRecord::parse`, `DnskeyRecord::parse` | a hostile signed zone |
 | `proxy_protocol_v2` | `dns::proxy_protocol::read_proxy_v2_client_ip` | whatever speaks to the TCP/DoT listener behind a load balancer |
 | `blocklist_text` | `dns::block_filter::compiler::parse_list_text` | the remote blocklist an operator subscribes to |
+| `mdns_announcement` | `system::hostnames_from_mdns` | any device on the LAN, once `dns.mdns_enabled` is on |
 
 `query_fast_path` does more than look for panics. It runs a **differential
 oracle** against hickory: whenever both parsers accept a packet, the fast path

@@ -1,7 +1,7 @@
 use super::client_row_mapper::{
     row_to_client, ClientRow, CLIENT_SELECT_ACTIVE, CLIENT_SELECT_ALL, CLIENT_SELECT_BY_ID,
     CLIENT_SELECT_BY_IP, CLIENT_SELECT_NEEDS_HOSTNAME_UPDATE, CLIENT_SELECT_NEEDS_MAC_UPDATE,
-    UPDATE_HOSTNAME, UPDATE_HOSTNAME_UNLESS_MANUAL,
+    UPDATE_HOSTNAME, UPDATE_HOSTNAME_FROM_PTR, UPDATE_HOSTNAME_UNLESS_MANUAL,
 };
 use crate::repositories::{db_err, hours_ago_cutoff, is_fk_violation, sql_now};
 use async_trait::async_trait;
@@ -176,7 +176,8 @@ impl ClientRepository for SqliteClientRepository {
         let now = sql_now();
         let query = match source {
             HostnameSource::Manual => UPDATE_HOSTNAME,
-            HostnameSource::Ptr => UPDATE_HOSTNAME_UNLESS_MANUAL,
+            HostnameSource::Mdns => UPDATE_HOSTNAME_UNLESS_MANUAL,
+            HostnameSource::Ptr => UPDATE_HOSTNAME_FROM_PTR,
         };
 
         sqlx::query(query)
