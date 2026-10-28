@@ -1292,12 +1292,17 @@
                     const res = await apiFetch(`${API_BASE}/config/import`, { method: 'POST', body: fd });
                     if (res.status === 401) { window.location.href = '/login.html'; return; }
                     const data = await res.json().catch(() => ({}));
-                    // Also after a partial import: the settings may have been restored.
+                    // A partial import is a 200 with success: false; what it restored, settings included, stays applied.
                     if (data.restart_required) this.restartRequired = true;
-                    if (res.ok && data.success !== false) {
+                    if (res.ok) {
                         this.backupImportResult = data.summary;
                         this.backupImportErrors = data.errors || [];
-                        this.showAlert('success', 'Import completed successfully');
+                        if (data.success === false) {
+                            const count = this.backupImportErrors.length;
+                            this.showAlert('error', `Imported with ${count} error${count === 1 ? '' : 's'}; see the summary below`);
+                        } else {
+                            this.showAlert('success', 'Import completed successfully');
+                        }
                         scheduleLucide(50);
                     } else {
                         this.showAlert('error', data.error || data.message || `Import failed (HTTP ${res.status})`);

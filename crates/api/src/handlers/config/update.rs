@@ -29,9 +29,21 @@ fn rejected(error: impl Into<String>) -> SaveResponse {
     )
 }
 
-/// The request was valid but could not be carried out.
-fn not_saved(error: impl Into<String>) -> SaveResponse {
-    (StatusCode::OK, Json(ConfigSaveResponse::failure(error)))
+/// The request was valid, but the server's state keeps it from being saved:
+/// no config file, or one whose permissions mark it read-only.
+fn cannot_save(error: impl Into<String>) -> SaveResponse {
+    (
+        StatusCode::CONFLICT,
+        Json(ConfigSaveResponse::failure(error)),
+    )
+}
+
+/// The request was valid and the save was attempted, but it failed.
+fn save_failed(error: impl Into<String>) -> SaveResponse {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ConfigSaveResponse::failure(error)),
+    )
 }
 
 fn pools_applied_but_not_saved(error: impl std::fmt::Display) -> String {
@@ -59,12 +71,12 @@ fn local_dns_server(value: String) -> Result<Option<String>, String> {
 async fn get_writable_config_path(state: &AppState) -> Result<String, SaveResponse> {
     let path = state.config_path.as_deref().ok_or_else(|| {
         error!("No config file found");
-        not_saved("No config file found. Cannot update configuration.")
+        cannot_save("No config file found. Cannot update configuration.")
     })?;
     if let Ok(metadata) = tokio::fs::metadata(path).await {
         if metadata.permissions().readonly() {
             error!("Config file is read-only");
-            return Err(not_saved(
+            return Err(cannot_save(
                 "Permission denied: Config file is read-only. Please check file permissions.",
             ));
         }
@@ -154,7 +166,7 @@ async fn check_pool_groups(state: &AppState, pools: &[UpstreamPool]) -> Result<(
         .get_groups
         .get_all()
         .await
-        .map_err(|e| not_saved(format!("Could not read the client groups: {e}")))?
+        .map_err(|e| save_failed(format!("Could not read the client groups: {e}")))?
         .iter()
         .filter_map(|group| group.id)
         .collect();
@@ -534,8 +546,10 @@ fn apply_settings(cfg: &mut Config, request: SettingsDto) -> Result<(), String> 
     tag = "config",
     request_body = UpdateConfigRequest,
     responses(
-        (status = 200, description = "Save outcome; `success` is false when the update could not be saved", body = ConfigSaveResponse),
+        (status = 200, description = "The configuration was saved", body = ConfigSaveResponse),
         (status = 400, description = "The update carries an invalid value; nothing was applied", body = ConfigSaveResponse),
+        (status = 409, description = "No writable config file: the server runs without one, or its permissions mark it read-only", body = ConfigSaveResponse),
+        (status = 500, description = "The save failed: the file could not be written (a read-only mount, for one), the client groups could not be read, or the pools could not be applied; `error` says when pools went live without being saved", body = ConfigSaveResponse),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
@@ -557,7 +571,7 @@ pub async fn update_config(
         .await
         .unwrap_or_else(|e| {
             error!(error = %e, "Configuration save task failed");
-            not_saved(format!("Configuration save failed: {e}"))
+            save_failed(format!("Configuration save failed: {e}"))
         })
 }
 
@@ -588,7 +602,7 @@ async fn save_config_update(
             .await
         {
             error!(error = %e, "Failed to hot-reload upstream pools; configuration not saved");
-            return not_saved(format!(
+            return save_failed(format!(
                 "Failed to apply upstream pools live; configuration not saved: {e}"
             ));
         }
@@ -600,7 +614,7 @@ async fn save_config_update(
     let mut config = state.config.write().await;
     let new_config = match merge_config_update(&config, request) {
         Ok((merged, _)) => merged,
-        Err(e) if pools_provided => return not_saved(pools_applied_but_not_saved(e)),
+        Err(e) if pools_provided => return save_failed(pools_applied_but_not_saved(e)),
         Err(e) => return rejected(e),
     };
 
@@ -618,7 +632,7 @@ async fn save_config_update(
         .save_config_to_file(&new_config, &config_path)
     {
         error!(error = %e, "Failed to save configuration");
-        return not_saved(if pools_provided {
+        return save_failed(if pools_provided {
             pools_applied_but_not_saved(e)
         } else {
             format!("Failed to save configuration: {e}")
@@ -654,8 +668,10 @@ async fn save_config_update(
     tag = "config",
     request_body = SettingsDto,
     responses(
-        (status = 200, description = "Save outcome; `success` is false when the update could not be saved", body = ConfigSaveResponse),
+        (status = 200, description = "The settings were saved", body = ConfigSaveResponse),
         (status = 400, description = "The settings carry an invalid value; nothing was applied", body = ConfigSaveResponse),
+        (status = 409, description = "No writable config file: the server runs without one, or its permissions mark it read-only", body = ConfigSaveResponse),
+        (status = 500, description = "The config file could not be written, a read-only mount for one", body = ConfigSaveResponse),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
@@ -684,7 +700,7 @@ pub async fn update_settings(
         .save_config_to_file(&new_config, &config_path)
     {
         error!(error = %e, "Failed to save DNS settings");
-        return not_saved(format!("Failed to save settings: {e}"));
+        return save_failed(format!("Failed to save settings: {e}"));
     }
 
     *config = new_config;
@@ -706,28 +722,31 @@ pub async fn update_settings(
     path = "/config/reload",
     tag = "config",
     responses(
-        (status = 200, description = "Reload outcome", body = ConfigSaveResponse),
+        (status = 200, description = "The config file was reloaded", body = ConfigSaveResponse),
+        (status = 409, description = "The server runs without a config file", body = ConfigSaveResponse),
+        (status = 500, description = "The file failed to load or validate, or its pools could not be applied; the running configuration is kept", body = ConfigSaveResponse),
     ),
     security(("session_cookie" = []), ("api_key" = [])),
 )]
 #[instrument(skip(state), name = "api_reload_config")]
-pub async fn reload_config(State(state): State<AppState>) -> Json<ConfigSaveResponse> {
+pub async fn reload_config(State(state): State<AppState>) -> SaveResponse {
     info!("Config reload requested");
 
     let Some(reload) = state.reload_config.clone() else {
         error!("No config file found");
-        return Json(ConfigSaveResponse::failure("No config file found"));
+        return cannot_save("No config file found");
     };
 
     match reload.execute().await {
-        Ok(()) => Json(ConfigSaveResponse::success(
-            "Configuration reloaded successfully",
-        )),
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConfigSaveResponse::success(
+                "Configuration reloaded successfully",
+            )),
+        ),
         Err(e) => {
             error!(error = %e, "Failed to reload configuration");
-            Json(ConfigSaveResponse::failure(format!(
-                "Failed to reload configuration: {e}"
-            )))
+            save_failed(format!("Failed to reload configuration: {e}"))
         }
     }
 }
