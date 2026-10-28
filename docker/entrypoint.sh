@@ -81,7 +81,7 @@ if [ -n "$FERROUS_LOG_LEVEL" ] && [ "$FERROUS_LOG_LEVEL" != "info" ]; then
 fi
 
 # Log the command being executed (for debugging)
-if [ "$RUST_LOG" = "debug" ] || [ "$RUST_LOG" = "trace" ]; then
+if [ "$1" != "--healthcheck" ] && { [ "$RUST_LOG" = "debug" ] || [ "$RUST_LOG" = "trace" ]; }; then
     echo "Starting Ferrous DNS with args: $ARGS $*"
 fi
 
