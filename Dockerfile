@@ -71,8 +71,11 @@ RUN chmod +x /entrypoint.sh && \
 WORKDIR /data
 USER ferrous
 
-HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=60 \
-    CMD /usr/local/bin/ferrous-dns --version || exit 1
+# Probes GET /ferrous/api/v1/health through the entrypoint, so the FERROUS_*
+# variables pick the same port and address the server uses. It turns
+# unhealthy when the web server stops answering or the DNS listener is down.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=120s --retries=3 \
+    CMD ["/entrypoint.sh", "--healthcheck"]
 
 ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
     FERROUS_DNS_PORT="53" \
