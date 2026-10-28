@@ -1,29 +1,12 @@
 //! Every paged list answers one envelope, `{data, total, limit, offset}`, plus
 //! `records_total` and `next_cursor` where the endpoint has them, and echoes
 //! the `limit` it applied.
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-    Router,
-};
 use ferrous_dns_application::ports::ClientRepository;
-use helpers::TestApp;
-use http_body_util::BodyExt;
+use helpers::{get_json, TestApp};
 use serde_json::Value;
 use std::net::IpAddr;
-use tower::ServiceExt;
 
 mod helpers;
-
-async fn get_json(app: Router, uri: &str) -> Value {
-    let response = app
-        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK, "GET {uri}");
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    serde_json::from_slice(&body).unwrap()
-}
 
 fn assert_envelope(json: &Value, extra: &[&str]) {
     let mut expected: Vec<&str> = ["data", "total", "limit", "offset"]
@@ -50,13 +33,14 @@ async fn seed_clients(app: &TestApp) {
         app.client_repo.update_last_seen(ip).await.unwrap();
     }
     app.client_repo.flush_writes().await;
-    sqlx::query(
-        "UPDATE clients SET last_seen = datetime('now', '-' || \
-         CAST(substr(ip_address, 11) AS INTEGER) || ' minutes')",
-    )
-    .execute(&app.pool)
-    .await
-    .unwrap();
+    for i in 1..=10 {
+        sqlx::query("UPDATE clients SET last_seen = datetime('now', ?) WHERE ip_address = ?")
+            .bind(format!("-{i} minutes"))
+            .bind(format!("192.168.1.{i}"))
+            .execute(&app.pool)
+            .await
+            .unwrap();
+    }
 }
 
 fn ips(json: &Value) -> Vec<&str> {
@@ -150,7 +134,7 @@ async fn test_queries_answer_the_envelope_and_echo_the_clamped_limit() {
 }
 
 #[tokio::test]
-async fn test_queries_paged_by_cursor_echo_offset_zero() {
+async fn test_queries_paged_by_cursor_answer_offset_zero() {
     let app = TestApp::new().await.router;
 
     let json = get_json(app, "/queries?cursor=1&offset=7").await;
