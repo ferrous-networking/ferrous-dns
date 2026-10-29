@@ -125,7 +125,7 @@ API tokens provide programmatic access via the `X-Api-Key` header. Tokens are ma
 
 ### Auth Guard
 
-All API endpoints are protected except public auth routes (`/ferrous/api/v1/auth/status`, `/ferrous/api/v1/auth/setup`, `/ferrous/api/v1/auth/login`, `/ferrous/api/v1/auth/logout`) and the [health check](../api.md#health-check) (`/ferrous/api/v1/health`).
+All API endpoints are protected except public auth routes (`/ferrous/api/v1/auth/status`, `/ferrous/api/v1/auth/setup`, `/ferrous/api/v1/auth/login`, `/ferrous/api/v1/auth/logout`, and the [second-factor and passkey login steps](../api.md#two-factor-authentication-totp)) and the [health check](../api.md#health-check) (`/ferrous/api/v1/health`).
 
 !!! info "Background cleanup"
     A background task runs periodically to prune expired sessions from the database.

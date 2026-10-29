@@ -97,16 +97,19 @@ Create and manage tokens via the [API Token endpoints](#api-tokens) below.
 
 ## Response Format
 
-All responses are JSON. Successful mutations return:
+Responses are JSON, except a `204` or the blocklist sync's `202` (no body) and the backup export (a file download). A success answers with the status of what the request did:
 
-```json
-{
-  "success": true,
-  "message": "Operation completed successfully"
-}
-```
+| Request | Success |
+|:--------|:--------|
+| Read | `200` with the object, a list or a [page](#pagination) |
+| Create | `201` with the created object |
+| Update (`PUT`, `PATCH`) | `200` with the updated object |
+| Delete | `204`, no body |
+| Action (a test, a backtest, a save) | `200` with its result; `202` when a blocklist sync starts in the background |
 
-Errors return an appropriate HTTP status code with:
+Config save and reload, TLS upload and generate, and backup import answer with a `success` field, described with each of them. Config save and reload keep that body on failure too; backup import keeps it only for a partial import, which is a `200`. No other route uses `success`.
+
+An error answers with a status and, except for the two noted below, a JSON body:
 
 ```json
 {
@@ -114,7 +117,26 @@ Errors return an appropriate HTTP status code with:
 }
 ```
 
-Validation failures (a malformed name, URL, comment, CIDR, regex, action, etc.) return `400 Bad Request`. Creating or renaming something to a name that is already taken returns `409 Conflict`, as does deleting a group that still has assigned clients or that an upstream pool routes domains for. Length limits count characters, not bytes.
+| Status | When |
+|:-------|:-----|
+| `400 Bad Request` | A field is invalid: a malformed name, URL, comment, CIDR, regex, action, and so on. Length limits count characters, not bytes. |
+| `401 Unauthorized` | A protected route got no valid session or API token, or a login step got a wrong password or code. |
+| `403 Forbidden` | The `[auth.admin]` user cannot be deleted. |
+| `404 Not Found` | The resource does not exist, or a group or profile the request names does not. |
+| `409 Conflict` | The name is taken, or the server's state blocks the change: a group with assigned clients or routed by an upstream pool, a sync already running, no writable config file. |
+| `429 Too Many Requests` | Too many failed login attempts. |
+| `500 Internal Server Error` | The request failed inside the server. The body only says `internal error`; the details go to the log. Config save and reload keep their message. |
+| `503 Service Unavailable` | `GET /health` while the DNS listener is down. |
+
+The `401` of a protected route called without credentials, and the `409` of a blocklist sync already running, have no body.
+
+A body that is not JSON, or lacks a required field, is refused before the route runs: `400`, `415` (no `Content-Type: application/json`) or `422`, with a plain-text message. The login, second-factor and passkey routes answer `400` with the JSON error body instead.
+
+Under each route, a contract line gives:
+
+- **Auth**: `public`, `session or API key`, or `session only`. A `session only` route acts on the signed-in user, so an API key alone gets `401`.
+- **Returns**: the success status and the schema in the [OpenAPI spec](#interactive-documentation-openapi-scalar), where the full field list lives.
+- **Errors**: the statuses particular to the route. Any protected route can also answer `401`, and any route `500`.
 
 ---
 
@@ -164,7 +186,9 @@ A new endpoint follows the same rule. It is paged when traffic feeds its list, o
 GET /ferrous/api/v1/health
 ```
 
-Public: no session or API token is needed, even with authentication on, so an uptime monitor or a load balancer can call it. It answers JSON:
+**Auth:** public · **Returns:** `200` `HealthResponse` · **Errors:** `503` DNS listener down
+
+It needs no session or API token, even with authentication on, so an uptime monitor or a load balancer can call it:
 
 ```json
 { "status": "ok", "version": "0.10.0" }
@@ -183,6 +207,8 @@ The Docker image's health check calls it through [`ferrous-dns --healthcheck`](g
 GET /ferrous/api/v1/system/info
 ```
 
+**Auth:** session or API key · **Returns:** `200` `SystemInfoResponse`
+
 Returns system information: kernel version, load averages, memory usage.
 
 ### Hostname
@@ -190,6 +216,8 @@ Returns system information: kernel version, load averages, memory usage.
 ```http
 GET /ferrous/api/v1/hostname
 ```
+
+**Auth:** session or API key · **Returns:** `200` `HostnameResponse`
 
 Returns the server hostname.
 
@@ -203,6 +231,8 @@ Returns the server hostname.
 GET /ferrous/api/v1/dashboard?period_hours=24
 ```
 
+**Auth:** session or API key · **Returns:** `200` `DashboardResponse`
+
 Returns a single aggregated payload for the dashboard view: summary counts, the
 query timeline, top blocked domains, top clients and the query-type breakdown.
 Use the optional `period_hours` parameter to change the look-back window
@@ -215,11 +245,16 @@ per-minute rollups, so their windows are minute-aligned: a window includes the
 whole minute it starts in. The query log, top-N lists and the query rate read
 the raw log and use the exact cutoff.
 
+The top blocked domains and top clients are only served inside this payload
+(`top_blocked_domains`, `top_clients`); there is no separate route for them.
+
 ### Summary Stats
 
 ```http
 GET /ferrous/api/v1/stats
 ```
+
+**Auth:** session or API key · **Returns:** `200` `StatsResponse`
 
 Returns aggregated query statistics: total queries, blocked queries, block rate.
 
@@ -229,6 +264,8 @@ Returns aggregated query statistics: total queries, blocked queries, block rate.
 GET /ferrous/api/v1/stats/rate?unit=second
 ```
 
+**Auth:** session or API key · **Returns:** `200` `QueryRateResponse`
+
 Returns the current query rate. Supports `unit=second` or `unit=minute`.
 
 ### Query Timeline
@@ -237,19 +274,19 @@ Returns the current query rate. Supports `unit=second` or `unit=minute`.
 GET /ferrous/api/v1/queries/timeline
 ```
 
+**Auth:** session or API key · **Returns:** `200` `TimelineResponse`
+
 Returns query volume over time for dashboard graphs.
 
-### Top Blocked Domains
+### DNSSEC Stats
 
 ```http
-GET /ferrous/api/v1/stats/top_blocked
+GET /ferrous/api/v1/dnssec/stats?period=24h
 ```
 
-### Top Clients
+**Auth:** session or API key · **Returns:** `200` `DnssecStatsResponse`
 
-```http
-GET /ferrous/api/v1/stats/top_clients
-```
+Counts the client queries of the `period` by DNSSEC outcome: `secure`, `insecure`, `bogus` and `indeterminate`. `validated` is the number that got any outcome, and `total` the number of client queries. `ds_denials_unproven` counts empty DS answers that came without an authenticated denial, a sign that the upstreams strip DNSSEC proofs. Unlike the other fields, it counts since the server started, not over `period`. `period` is a number and a unit (`30m`, `24h`, `7d`, `2w`), capped at 30 days, and defaults to `24h`.
 
 ---
 
@@ -260,6 +297,8 @@ GET /ferrous/api/v1/stats/top_clients
 ```http
 GET /ferrous/api/v1/queries?limit=100&offset=0
 ```
+
+**Auth:** session or API key · **Returns:** `200` `PaginatedQueries` · **Errors:** `400` unknown `category`, `type`, `dnssec_status` or `protocol`
 
 Returns recent DNS queries with filtering support, newest first, as a [page](#pagination) with `records_total` and `next_cursor`.
 
@@ -290,6 +329,8 @@ its own, and `null` otherwise. A follower carries its leader's `cache_hit`,
 GET /ferrous/api/v1/config
 ```
 
+**Auth:** session or API key · **Returns:** `200` `ConfigResponse`
+
 Returns the full current configuration including server, DNS, blocking, logging, and database settings.
 
 `restart_required` is `true` while a saved change is waiting for a server restart to take effect — set by `POST /ferrous/api/v1/config` (anything but upstream pools), `POST /ferrous/api/v1/settings`, and the TLS certificate upload/generate endpoints. It is held in memory, so restarting the server resets it; the web UI's restart banner follows it.
@@ -299,6 +340,8 @@ Returns the full current configuration including server, DNS, blocking, logging,
 ```http
 POST /ferrous/api/v1/config
 ```
+
+**Auth:** session or API key · **Returns:** `200` `ConfigSaveResponse` · **Errors:** `400` invalid value, `409` no writable config file, `500` save or pool reload failed
 
 Partial update — only include the sections you want to change:
 
@@ -380,6 +423,8 @@ The file is rewritten atomically (a synced temp file renamed over it), so a cras
 POST /ferrous/api/v1/config/reload
 ```
 
+**Auth:** session or API key · **Returns:** `200` `ConfigSaveResponse` · **Errors:** `409` no config file, `500` the file fails to load or validate, or its pools fail to apply
+
 Reloads the configuration from the TOML file without restarting the server. DNS, blocking, and cache settings take effect immediately. Server-level settings (ports, pihole_compat) require a full restart. A file that fails to load, parse or validate answers **500** with `{ "success": false, "error": "…" }`, and the running configuration is kept. A server started without a config file answers **409**.
 
 The file is loaded the way startup loads it: command-line overrides the server was started with (`--dns-port`, `--web-port`, `--bind`, `--database`, `--log-level`) still win over the file. Changed upstream pools are rebuilt and swapped in live, as with `POST /ferrous/api/v1/config`; if that fails, nothing changes. A reload waits for any config save or backup import in progress, so it never interleaves with one. The Pi-hole `POST /api/action/restartdns` runs the same reload.
@@ -390,6 +435,8 @@ The file is loaded the way startup loads it: command-line overrides the server w
 GET /ferrous/api/v1/settings
 ```
 
+**Auth:** session or API key · **Returns:** `200` `SettingsDto`
+
 Returns DNS-specific settings (non-FQDN blocking, PTR blocking, local domain).
 
 ### Update Settings
@@ -397,6 +444,8 @@ Returns DNS-specific settings (non-FQDN blocking, PTR blocking, local domain).
 ```http
 POST /ferrous/api/v1/settings
 ```
+
+**Auth:** session or API key · **Returns:** `200` `ConfigSaveResponse` · **Errors:** `400` invalid setting, `409` no writable config file, `500` the file could not be written
 
 **Full replace** — unlike `POST /ferrous/api/v1/config` (a partial update), this endpoint overwrites the entire DNS settings form. Any field you omit reverts to its default: an omitted `sinkhole_ipv4` clears a previously-set sinkhole, an omitted `block_mode` resets it to `null_ip`. Send the complete object:
 
@@ -429,6 +478,8 @@ Manage the certificate used for the HTTPS web interface.
 GET /ferrous/api/v1/tls/status
 ```
 
+**Auth:** session or API key · **Returns:** `200` `TlsStatusResponse`
+
 Returns the current certificate status: whether TLS is enabled, whether the cert
 and key files exist, the certificate subject, expiry (`cert_not_after`) and
 whether it is currently valid.
@@ -440,9 +491,9 @@ POST /ferrous/api/v1/tls/upload
 Content-Type: multipart/form-data
 ```
 
-Uploads a PEM `cert` and `key` pair via multipart form fields.
+**Auth:** session or API key · **Returns:** `200` `TlsUploadResponse` · **Errors:** `400` missing part, invalid PEM or over 64 KB
 
-**Error codes:** `400 Bad Request` (missing or invalid files), `401 Unauthorized`
+Uploads a PEM `cert` and `key` pair via multipart form fields.
 
 ### Generate Self-Signed
 
@@ -450,10 +501,10 @@ Uploads a PEM `cert` and `key` pair via multipart form fields.
 POST /ferrous/api/v1/tls/generate?force=true
 ```
 
+**Auth:** session or API key · **Returns:** `200` `TlsUploadResponse` · **Errors:** `400` the files exist and `force` is not set
+
 Generates a self-signed certificate/key pair. Pass `?force=true` to overwrite
 existing files.
-
-**Error codes:** `400 Bad Request` (files already exist — use `?force=true`), `401 Unauthorized`
 
 ---
 
@@ -476,6 +527,8 @@ else: clients, managed domains and regex filters, for example, are not in it.
 GET /ferrous/api/v1/config/export
 ```
 
+**Auth:** session or API key · **Returns:** `200` backup file (`application/json` attachment)
+
 Returns a backup JSON document as a download (`Content-Disposition: attachment`,
 filename `ferrous-backup-YYYY-MM-DD.json`).
 
@@ -485,6 +538,8 @@ filename `ferrous-backup-YYYY-MM-DD.json`).
 POST /ferrous/api/v1/config/import
 Content-Type: multipart/form-data
 ```
+
+**Auth:** session or API key · **Returns:** `200` `ImportSummaryResponse`, `success: false` on a partial import · **Errors:** `400` no `file` part, invalid JSON or unsupported version
 
 Restores configuration from a previously exported backup file uploaded as a
 multipart field (`file`). Returns an import summary describing what was applied.
@@ -520,8 +575,6 @@ multipart field (`file`). Returns an import summary describing what was applied.
 
 A **partial import** still answers `200`: the import is not transactional, so what was restored stays applied. `success` is then `false`, and `errors` names each item that was not restored, such as a local record with an invalid address or a blocklist source routed for a group the backup does not have.
 
-**Error codes:** `400 Bad Request` (invalid backup file), `401 Unauthorized`, `500 Internal Server Error` (the client groups could not be read)
-
 ---
 
 ## Auth Endpoints
@@ -532,7 +585,9 @@ A **partial import** still answers `200`: the import is not transactional, so wh
 GET /ferrous/api/v1/auth/status
 ```
 
-Returns whether authentication is enabled and whether a password has been configured. **Public** — no auth required.
+**Auth:** public · **Returns:** `200` `AuthStatusResponse`
+
+Returns whether authentication is enabled and whether a password has been configured.
 
 ```json
 {
@@ -547,7 +602,9 @@ Returns whether authentication is enabled and whether a password has been config
 POST /ferrous/api/v1/auth/setup
 ```
 
-Sets the admin password on first run (when no password is configured). **Public** — no auth required.
+**Auth:** public · **Returns:** `204` · **Errors:** `400` invalid password, `409` password already set
+
+Sets the admin password on first run (when no password is configured).
 
 ```json
 {
@@ -556,13 +613,15 @@ Sets the admin password on first run (when no password is configured). **Public*
 ```
 
 !!! warning
-    This endpoint is only available when `password_hash` is empty. Once a password is set, it returns `403 Forbidden`.
+    This endpoint is only available when `password_hash` is empty. Once a password is set, it returns `409 Conflict`.
 
 ### Login
 
 ```http
 POST /ferrous/api/v1/auth/login
 ```
+
+**Auth:** public · **Returns:** `200` `LoginResponse` and the session cookie, or `"mfa_required": true` and a `challenge_token` · **Errors:** `401` wrong username or password, `429` too many attempts
 
 Authenticates with username and password. Returns a session cookie (`ferrous_session`).
 
@@ -586,7 +645,9 @@ Authenticates with username and password. Returns a session cookie (`ferrous_ses
 POST /ferrous/api/v1/auth/logout
 ```
 
-Invalidates the current session. **Public** — no auth required (clears session if present).
+**Auth:** public · **Returns:** `204`
+
+Invalidates the current session, if there is one, and clears the cookie.
 
 ### Change Password
 
@@ -594,7 +655,9 @@ Invalidates the current session. **Public** — no auth required (clears session
 POST /ferrous/api/v1/auth/password
 ```
 
-Changes the password of the signed-in user and returns `204`. **Protected** — the session cookie names the user, so an API token alone is refused with `401`. A wrong `current_password` returns `401` and changes nothing.
+**Auth:** session only · **Returns:** `204` · **Errors:** `400` invalid new password, `401` wrong current password
+
+Changes the password of the signed-in user, whom the session cookie names. A wrong `current_password` changes nothing.
 
 Every other session of that user is revoked, so a device signed in with the old password has to log in again. The session that made the change stays signed in.
 
@@ -611,7 +674,9 @@ Every other session of that user is revoked, so a device signed in with the old 
 GET /ferrous/api/v1/auth/sessions
 ```
 
-Returns all active sessions. **Protected**.
+**Auth:** session or API key · **Returns:** `200` `[SessionResponse]`
+
+Returns all active sessions.
 
 ### Revoke Session
 
@@ -619,7 +684,111 @@ Returns all active sessions. **Protected**.
 DELETE /ferrous/api/v1/auth/sessions/{id}
 ```
 
-Revokes a specific session by ID. **Protected**. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
+**Auth:** session or API key · **Returns:** `204`, also for an unknown id
+
+Revokes a specific session by ID. Any authenticated caller — any user's session or any API token — can revoke any user's session, including the admin's; there is no ownership or role check.
+
+### Two-Factor Authentication (TOTP)
+
+The signed-in user's authenticator app and recovery codes. The flows and the rules behind them are in [Two-Factor Authentication](features/two-factor-auth.md).
+
+```http
+GET /ferrous/api/v1/auth/2fa/status
+```
+
+**Auth:** session only · **Returns:** `200` `MfaStatusResponse`
+
+Returns `totp_enabled`, `recovery_codes_remaining`, `webauthn_configured` and the user's `passkeys` (`id`, `label`, `created_at`, `last_used_at`).
+
+```http
+POST /ferrous/api/v1/auth/2fa/setup
+```
+
+**Auth:** session only · **Returns:** `200` `SetupTotpResponse` · **Errors:** `409` TOTP already enabled
+
+Starts TOTP enrollment and returns the material for the authenticator app: `secret`, `otpauth_uri` and a `qr_svg`. Nothing is enabled until the code is confirmed.
+
+```http
+POST /ferrous/api/v1/auth/2fa/confirm
+```
+
+**Auth:** session only · **Returns:** `200` `RecoveryCodesResponse` · **Errors:** `400` setup not started, `401` wrong code, `409` TOTP already enabled
+
+Confirms enrollment with the app's current code and enables TOTP. The response carries the `recovery_codes`, shown only this once.
+
+```json
+{
+  "code": "123456"
+}
+```
+
+```http
+DELETE /ferrous/api/v1/auth/2fa
+```
+
+**Auth:** session only · **Returns:** `204` · **Errors:** `401` wrong password
+
+Turns off every second factor of the user, after checking the password:
+
+```json
+{
+  "password": "your-password"
+}
+```
+
+```http
+POST /ferrous/api/v1/auth/2fa/verify
+```
+
+**Auth:** public · **Returns:** `200` `LoginResponse` and the session cookie · **Errors:** `400` no second factor enrolled, `401` wrong code or expired challenge, `429` too many attempts
+
+The second step of a login. When `POST /auth/login` answers `"mfa_required": true`, it also returns a `challenge_token` and the `methods` the user has. Send the token with a TOTP code or a recovery code; the answer is the same as a login's, with the session cookie.
+
+```json
+{
+  "challenge_token": "…",
+  "code": "123456"
+}
+```
+
+### Passkeys (WebAuthn)
+
+Each passkey ceremony is a `start` that returns options for the browser's WebAuthn API and a token, then a `finish` that takes the browser's response with that token. Passkeys need `[auth.webauthn]` configured; without it the `start` routes answer `400`. See [Passkeys](features/two-factor-auth.md#passkeys-webauthn).
+
+```http
+POST /ferrous/api/v1/auth/webauthn/register/start
+POST /ferrous/api/v1/auth/webauthn/register/finish
+```
+
+**Auth:** session only · **Returns:** `start` `200` `WebauthnRegisterStartResponse`; `finish` `204` · **Errors:** `start` `400` passkeys not configured; `finish` `400` attestation rejected, `401` ceremony expired
+
+Registers a passkey for the signed-in user. `start` returns `challenge` (for `navigator.credentials.create`) and a `ceremony_token`; `finish` takes `ceremony_token`, the browser's `response` and an optional `label`.
+
+```http
+POST /ferrous/api/v1/auth/webauthn/authenticate/start
+POST /ferrous/api/v1/auth/webauthn/authenticate/finish
+```
+
+**Auth:** public · **Returns:** `start` `200` WebAuthn request options; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured or none registered, `401` expired challenge; `finish` `400` assertion rejected, `401` expired challenge
+
+A passkey as the second step of a login. `start` takes the login's `challenge_token` and returns the options for `navigator.credentials.get`; `finish` takes the same `challenge_token` and the browser's `response`, and answers like a login, with the session cookie.
+
+```http
+POST /ferrous/api/v1/auth/webauthn/discoverable/start
+POST /ferrous/api/v1/auth/webauthn/discoverable/finish
+```
+
+**Auth:** public · **Returns:** `start` `200` `DiscoverableStartResponse`; `finish` `200` `LoginResponse` and the session cookie · **Errors:** `start` `400` passkeys not configured; `finish` `400` assertion rejected, `401` expired challenge or unknown passkey
+
+Passwordless login with a resident passkey: no username or password. `start` takes no body and returns `challenge` and a `challenge_token`; `finish` takes `challenge_token`, the browser's `response` and an optional `remember_me`, and answers like a login.
+
+```http
+DELETE /ferrous/api/v1/auth/webauthn/{id}
+```
+
+**Auth:** session only · **Returns:** `204` · **Errors:** `404` unknown passkey
+
+Removes one of the signed-in user's passkeys.
 
 ---
 
@@ -633,6 +802,8 @@ Named API tokens for programmatic access. Tokens are stored as SHA-256 hashes �
 GET /ferrous/api/v1/api-tokens
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[ApiTokenResponse]`
+
 Returns all tokens. Only the token prefix is shown in the listing.
 
 ### Create Token
@@ -640,6 +811,8 @@ Returns all tokens. Only the token prefix is shown in the listing.
 ```http
 POST /ferrous/api/v1/api-tokens
 ```
+
+**Auth:** session or API key · **Returns:** `201` `CreatedApiTokenResponse` · **Errors:** `400` empty or too long name, `409` name taken
 
 ```json
 {
@@ -663,23 +836,27 @@ Response includes the full token value — save it immediately:
 PUT /ferrous/api/v1/api-tokens/{id}
 ```
 
-Update the token name or import a custom key:
+**Auth:** session or API key · **Returns:** `200` `ApiTokenResponse` · **Errors:** `400` invalid name, `404` unknown token, `409` name taken
+
+Send the `name`, which is required, and `token` to import a custom key:
 
 ```json
 {
   "name": "New Name",
-  "key": "custom-imported-key"
+  "token": "custom-imported-key"
 }
 ```
 
 !!! tip "Pi-hole migration"
-    Use the `key` field to import existing API keys from Pi-hole or other tools.
+    Use the `token` field to import existing API keys from Pi-hole or other tools.
 
 ### Delete Token
 
 ```http
 DELETE /ferrous/api/v1/api-tokens/{id}
 ```
+
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown token
 
 ---
 
@@ -694,13 +871,17 @@ DELETE /ferrous/api/v1/api-tokens/{id}
 GET /ferrous/api/v1/users
 ```
 
-Returns all users. **Protected**.
+**Auth:** session or API key · **Returns:** `200` `[UserResponse]`
+
+Returns all users.
 
 ### Create User
 
 ```http
 POST /ferrous/api/v1/users
 ```
+
+**Auth:** session or API key · **Returns:** `201` `UserResponse` · **Errors:** `400` invalid field or role, `409` username taken
 
 ```json
 {
@@ -725,6 +906,8 @@ A username that is already taken returns `409`. The `[auth.admin]` username is a
 DELETE /ferrous/api/v1/users/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `403` the `[auth.admin]` user, `404` unknown user
+
 ---
 
 ## Cache
@@ -735,6 +918,8 @@ DELETE /ferrous/api/v1/users/{id}
 GET /ferrous/api/v1/cache/stats
 ```
 
+**Auth:** session or API key · **Returns:** `200` `CacheStatsResponse`
+
 Returns cache hit/miss counts, hit rate, and total entries.
 
 ### Cache Metrics
@@ -743,6 +928,8 @@ Returns cache hit/miss counts, hit rate, and total entries.
 GET /ferrous/api/v1/cache/metrics
 ```
 
+**Auth:** session or API key · **Returns:** `200` `CacheMetricsResponse`
+
 Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic refreshes, lazy deletions, compactions, expirations, hit rate. `expirations` counts the positive entries their timer removed past their TTL; `compactions` also counts expired negative answers.
 
 ### Cache Overview
@@ -750,6 +937,8 @@ Returns detailed cache metrics: hits, misses, evictions, insertions, optimistic 
 ```http
 GET /ferrous/api/v1/cache/overview
 ```
+
+**Auth:** session or API key · **Returns:** `200` `CacheOverviewResponse`
 
 What the dashboard's **Cache Refreshes** card shows, from one pass over the cache:
 
@@ -772,6 +961,8 @@ What the dashboard's **Cache Refreshes** card shows, from one pass over the cach
 ```http
 GET /ferrous/api/v1/cache/entries?limit=25&offset=0&sort=cached_at&order=desc
 ```
+
+**Auth:** session or API key · **Returns:** `200` `PaginatedCacheEntries`
 
 Returns the entries currently held in the positive cache, with filtering, ordering, and pagination.
 
@@ -796,7 +987,9 @@ The response is a [page](#pagination) with `records_total`: `total` counts the e
 DELETE /ferrous/api/v1/cache/entries?domain=example.com&type=A
 ```
 
-Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed. Returns `204 No Content` on success, `404` if the entry is not cached, and `400` if the record type is unknown.
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `400` unknown record type or a permanent local record, `404` not cached
+
+Removes a single cache entry. Add `group_id` to remove a client group's split-horizon entry (`&group_id=2`); without it, the entry every client shares is removed.
 
 ---
 
@@ -808,6 +1001,8 @@ Removes a single cache entry. Add `group_id` to remove a client group's split-ho
 GET /ferrous/api/v1/upstream/health
 ```
 
+**Auth:** session or API key · **Returns:** `200` map of upstream to status
+
 Returns health status per upstream server (Healthy / Unhealthy).
 
 ### Health Detail
@@ -815,6 +1010,8 @@ Returns health status per upstream server (Healthy / Unhealthy).
 ```http
 GET /ferrous/api/v1/upstream/health/detail
 ```
+
+**Auth:** session or API key · **Returns:** `200` `[UpstreamGroupResponse]`
 
 Returns detailed health information per upstream: pool name, strategy, latency metrics, failure counts.
 
@@ -827,6 +1024,8 @@ Returns detailed health information per upstream: pool name, strategy, latency m
 ```http
 GET /ferrous/api/v1/clients?limit=100&offset=0
 ```
+
+**Auth:** session or API key · **Returns:** `200` `PaginatedClients`
 
 Returns the detected clients with IP, MAC, hostname, group, query count, and last seen, most recently seen first, as a [page](#pagination).
 
@@ -842,6 +1041,8 @@ Returns the detected clients with IP, MAC, hostname, group, query count, and las
 GET /ferrous/api/v1/clients/stats
 ```
 
+**Auth:** session or API key · **Returns:** `200` `ClientStatsResponse`
+
 Returns per-client query statistics.
 
 ### Create Manual Client
@@ -850,12 +1051,17 @@ Returns per-client query statistics.
 POST /ferrous/api/v1/clients
 ```
 
+**Auth:** session or API key · **Returns:** `201` `ClientResponse` · **Errors:** `400` invalid `ip_address`, `404` unknown group
+
 ```json
 {
-  "name": "Living Room TV",
-  "ip": "192.168.1.50"
+  "ip_address": "192.168.1.50",
+  "hostname": "Living Room TV",
+  "group_id": 2
 }
 ```
+
+`hostname`, `group_id` and `mac_address` are optional.
 
 ### Update Client
 
@@ -863,11 +1069,16 @@ POST /ferrous/api/v1/clients
 PATCH /ferrous/api/v1/clients/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `200` `ClientResponse` · **Errors:** `404` unknown client or group
+
 ```json
 {
-  "name": "New Name"
+  "hostname": "New Name",
+  "group_id": 2
 }
 ```
+
+Both fields are optional; an absent field keeps its value.
 
 ### Delete Client
 
@@ -875,11 +1086,15 @@ PATCH /ferrous/api/v1/clients/{id}
 DELETE /ferrous/api/v1/clients/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown client
+
 ### Assign Client to Group
 
 ```http
 PUT /ferrous/api/v1/clients/{id}/group
 ```
+
+**Auth:** session or API key · **Returns:** `200` `ClientResponse` · **Errors:** `404` unknown client or group
 
 ```json
 {
@@ -899,16 +1114,21 @@ Subnets auto-assign clients matching a CIDR range to a group.
 GET /ferrous/api/v1/client-subnets
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[ClientSubnetResponse]`
+
 ### Create Subnet
 
 ```http
 POST /ferrous/api/v1/client-subnets
 ```
 
+**Auth:** session or API key · **Returns:** `201` `ClientSubnetResponse` · **Errors:** `400` invalid CIDR, `404` unknown group, `409` subnet exists
+
 ```json
 {
-  "cidr": "192.168.1.0/24",
-  "group_id": 2
+  "subnet_cidr": "192.168.1.0/24",
+  "group_id": 2,
+  "comment": "Guest Wi-Fi"
 }
 ```
 
@@ -922,6 +1142,8 @@ Subnets stored before canonicalisation are rewritten the same way at startup. If
 DELETE /ferrous/api/v1/client-subnets/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown subnet
+
 ---
 
 ## Groups
@@ -932,11 +1154,15 @@ DELETE /ferrous/api/v1/client-subnets/{id}
 GET /ferrous/api/v1/groups
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[GroupResponse]`
+
 ### Create Group
 
 ```http
 POST /ferrous/api/v1/groups
 ```
+
+**Auth:** session or API key · **Returns:** `201` `GroupResponse` · **Errors:** `400` invalid name or comment, `409` name taken
 
 ```json
 {
@@ -954,17 +1180,23 @@ POST /ferrous/api/v1/groups
 GET /ferrous/api/v1/groups/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `200` `GroupResponse` · **Errors:** `404` unknown group
+
 ### Update Group
 
 ```http
 PUT /ferrous/api/v1/groups/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `200` `GroupResponse` · **Errors:** `400` invalid field or disabling the default group, `404` unknown group, `409` name taken
+
 ### Delete Group
 
 ```http
 DELETE /ferrous/api/v1/groups/{id}
 ```
+
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `400` the default group, `404` unknown group, `409` clients assigned or an upstream pool routes for it
 
 Returns `409` if the group still has assigned clients, or if an upstream pool routes domains for it (its `groups` in a [conditional pool](configuration/dns.md#conditional-forwarding)); remove the group from the pool first. Managed domains (including the rules generated for a blocked service), regex filters, blocklist and allowlist memberships, blocked services, Safe Search settings, client subnets and schedule assignments are removed with the group, and the block filter is reloaded so they stop applying immediately; query-log entries keep their data but lose the group attribution.
 
@@ -973,6 +1205,8 @@ Returns `409` if the group still has assigned clients, or if an upstream pool ro
 ```http
 GET /ferrous/api/v1/groups/{id}/clients
 ```
+
+**Auth:** session or API key · **Returns:** `200` `[ClientResponse]`, empty for an unknown group
 
 ---
 
@@ -984,11 +1218,15 @@ GET /ferrous/api/v1/groups/{id}/clients
 GET /ferrous/api/v1/blocklist-sources
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[BlocklistSourceResponse]`
+
 ### Create Source
 
 ```http
 POST /ferrous/api/v1/blocklist-sources
 ```
+
+**Auth:** session or API key · **Returns:** `201` `BlocklistSourceResponse` · **Errors:** `400` invalid name, URL or comment, `404` unknown group, `409` name taken
 
 ```json
 {
@@ -1007,11 +1245,15 @@ so it takes effect on the next query.
 GET /ferrous/api/v1/blocklist-sources/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `200` `BlocklistSourceResponse` · **Errors:** `404` unknown source
+
 ### Update Source
 
 ```http
 PUT /ferrous/api/v1/blocklist-sources/{id}
 ```
+
+**Auth:** session or API key · **Returns:** `200` `BlocklistSourceResponse` · **Errors:** `400` invalid name, URL or comment, `404` unknown source or group, `409` name taken
 
 ### Delete Source
 
@@ -1019,11 +1261,15 @@ PUT /ferrous/api/v1/blocklist-sources/{id}
 DELETE /ferrous/api/v1/blocklist-sources/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown source
+
 ### Sync Sources
 
 ```http
 POST /ferrous/api/v1/blocklist-sources/{id}/sync
 ```
+
+**Auth:** session or API key · **Returns:** `202`, no body: the sync runs in the background · **Errors:** `404` unknown source, `409` a sync is already running
 
 Refreshes the given source. The compiled index is a single snapshot keyed by a
 global source bitset, so one list cannot be re-downloaded on its own: this
@@ -1041,9 +1287,6 @@ does not hold yet. This endpoint, the daily sync job and the Pi-hole
 download keeps its previous copy in the index, and its `last_synced_at` does not
 change; the log line `Failed to fetch blocklist source` gives the reason.
 
-**Error codes:** `404 Not Found`, `409 Conflict` (a sync is already running),
-`401 Unauthorized`
-
 ---
 
 ## Whitelist Sources
@@ -1054,11 +1297,15 @@ change; the log line `Failed to fetch blocklist source` gives the reason.
 GET /ferrous/api/v1/whitelist-sources
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[WhitelistSourceResponse]`
+
 ### Create Source
 
 ```http
 POST /ferrous/api/v1/whitelist-sources
 ```
+
+**Auth:** session or API key · **Returns:** `201` `WhitelistSourceResponse` · **Errors:** `400` invalid name, URL or comment, `404` unknown group, `409` name taken
 
 ```json
 {
@@ -1076,6 +1323,8 @@ PUT    /ferrous/api/v1/whitelist-sources/{id}
 DELETE /ferrous/api/v1/whitelist-sources/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `WhitelistSourceResponse`; `PUT` `200` `WhitelistSourceResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown source; `PUT` `400` invalid name, URL or comment, `404` unknown source or group, `409` name taken; `DELETE` `404` unknown source
+
 Creating, updating or deleting a whitelist source rebuilds the block filter, as blocklist source changes do, so the change applies without waiting for the daily sync. The rebuild re-downloads every enabled list.
 
 ---
@@ -1090,6 +1339,8 @@ Individual domains added to the blocklist or allowlist via the dashboard.
 GET /ferrous/api/v1/managed-domains?limit=100&offset=0
 ```
 
+**Auth:** session or API key · **Returns:** `200` `PaginatedManagedDomains`
+
 Returns the managed domains sorted by name, as a [page](#pagination) (`limit` default 100, max 1000).
 
 ### Create Domain
@@ -1098,13 +1349,18 @@ Returns the managed domains sorted by name, as a [page](#pagination) (`limit` de
 POST /ferrous/api/v1/managed-domains
 ```
 
+**Auth:** session or API key · **Returns:** `201` `ManagedDomainResponse` · **Errors:** `400` invalid name, domain, comment or action, `404` unknown group, `409` name taken in the group
+
 ```json
 {
+  "name": "Popup ads",
   "domain": "ads.example.com",
-  "list_type": "block",
+  "action": "deny",
   "comment": "Annoying popup ads"
 }
 ```
+
+`action` is `deny` (block) or `allow`. `group_id` defaults to the default group, `enabled` to `true`.
 
 ### Get / Update / Delete
 
@@ -1113,6 +1369,8 @@ GET    /ferrous/api/v1/managed-domains/{id}
 PUT    /ferrous/api/v1/managed-domains/{id}
 DELETE /ferrous/api/v1/managed-domains/{id}
 ```
+
+**Auth:** session or API key · **Returns:** `GET` `200` `ManagedDomainResponse`; `PUT` `200` `ManagedDomainResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown domain; `PUT` `400` invalid name, domain, comment or action, `404` unknown domain or group, `409` name taken in the target group; `DELETE` `404` unknown domain
 
 `PUT` is a partial update: an absent field keeps its value. Send `"comment": null` to clear the comment.
 
@@ -1126,19 +1384,26 @@ DELETE /ferrous/api/v1/managed-domains/{id}
 GET /ferrous/api/v1/regex-filters
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[RegexFilterResponse]`
+
 ### Create Filter
 
 ```http
 POST /ferrous/api/v1/regex-filters
 ```
 
+**Auth:** session or API key · **Returns:** `201` `RegexFilterResponse` · **Errors:** `400` invalid name, pattern, comment, action or regex, `404` unknown group, `409` name taken
+
 ```json
 {
+  "name": "Numbered ad hosts",
   "pattern": "^ads\\d+\\.example\\.com$",
-  "list_type": "block",
+  "action": "deny",
   "enabled": true
 }
 ```
+
+`action` is `deny` (block) or `allow`.
 
 ### Get / Update / Delete
 
@@ -1148,17 +1413,58 @@ PUT    /ferrous/api/v1/regex-filters/{id}
 DELETE /ferrous/api/v1/regex-filters/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `RegexFilterResponse`; `PUT` `200` `RegexFilterResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown filter; `PUT` `400` invalid name, pattern, comment, action or regex, `404` unknown filter or group, `409` name taken; `DELETE` `404` unknown filter
+
 `PUT` is a partial update: an absent field keeps its value. Send `"comment": null` to clear the comment.
 
 ---
 
-## Block Filter Stats
+## Block Filter
+
+### Block Filter Stats
 
 ```http
 GET /ferrous/api/v1/block-filter/stats
 ```
 
-Returns blocking engine statistics: total domains in blocklist, total in allowlist, filter size.
+**Auth:** session or API key · **Returns:** `200` `BlockFilterStatsResponse`
+
+Returns `total_blocked_domains`, the number of exact domains in the compiled blocklist.
+
+### Test a Domain
+
+```http
+POST /ferrous/api/v1/block-filter/test
+```
+
+**Auth:** session or API key · **Returns:** `200` `FilterTestResponse` · **Errors:** `400` `client` is not an IP address
+
+Evaluates one domain against the compiled filter for a group, without sending a query, and names every rule involved: `blocked`, the `block_matches` and the `allow_reasons`, each with its `kind` (`blocklist`, `manual`, `managed_domain`, `regex` or `allowlist`), its source and its `match_type`. The group is `group_id`, else the group of the `client` IP, else the default group.
+
+```json
+{
+  "domain": "ads.example.com",
+  "client": "192.168.1.20"
+}
+```
+
+### Backtest a Rule Set
+
+```http
+POST /ferrous/api/v1/block-filter/backtest
+```
+
+**Auth:** session or API key · **Returns:** `200` `BacktestResponse` · **Errors:** `400` `action` is not `allow` or `deny`, no list line or regex, or an invalid regex
+
+Simulates a candidate blocklist (`"action": "deny"`) or allowlist (`"action": "allow"`) over the domains of recent traffic, before adding it. `list` takes lines in any [blocklist format](features/blocking-filtering.md#supported-formats), `regexes` raw patterns; `window_hours` (default 24), `group_id` (default 1) and `limit` (the most-queried distinct domains to evaluate) are optional. The report counts the domains and queries the candidate would match, change, find already blocked, or leave to an override, with a `sample` of the affected domains.
+
+```json
+{
+  "action": "deny",
+  "list": ["||tracker.example^", "0.0.0.0 ads.example.net"],
+  "window_hours": 24
+}
+```
 
 ---
 
@@ -1170,11 +1476,15 @@ Returns blocking engine statistics: total domains in blocklist, total in allowli
 GET /ferrous/api/v1/services/catalog
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[ServiceDefinitionResponse]`
+
 Returns all available service categories (built-in + custom).
 
 ```http
 GET /ferrous/api/v1/services/catalog/{id}
 ```
+
+**Auth:** session or API key · **Returns:** `200` `ServiceDefinitionResponse` · **Errors:** `404` not in the catalog
 
 Returns a specific service definition with its domain list.
 
@@ -1184,6 +1494,8 @@ Returns a specific service definition with its domain list.
 GET /ferrous/api/v1/services?group_id=1
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[BlockedServiceResponse]`
+
 Returns services currently blocked for a group.
 
 ### Block Service
@@ -1191,6 +1503,8 @@ Returns services currently blocked for a group.
 ```http
 POST /ferrous/api/v1/services
 ```
+
+**Auth:** session or API key · **Returns:** `201` `BlockedServiceResponse` · **Errors:** `404` service not in the catalog or unknown group, `409` already blocked for the group
 
 ```json
 {
@@ -1205,6 +1519,8 @@ POST /ferrous/api/v1/services
 DELETE /ferrous/api/v1/services/{service_id}/groups/{group_id}
 ```
 
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` not blocked for the group
+
 ---
 
 ## Custom Services
@@ -1218,13 +1534,17 @@ GET  /ferrous/api/v1/custom-services
 POST /ferrous/api/v1/custom-services
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `[CustomServiceResponse]`; `POST` `201` `CustomServiceResponse` · **Errors:** `POST` `400` empty name or no domains, `409` a service with that id exists
+
 ```json
 {
   "name": "My Custom Tracker",
   "domains": ["tracker1.example.com", "tracker2.example.com"],
-  "category": "tracking"
+  "category_name": "Tracking"
 }
 ```
+
+`category_name` is optional and defaults to `Custom`.
 
 ### Get / Update / Delete
 
@@ -1234,6 +1554,8 @@ PATCH  /ferrous/api/v1/custom-services/{id}
 DELETE /ferrous/api/v1/custom-services/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `CustomServiceResponse`; `PATCH` `200` `CustomServiceResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown service; `PATCH` `404` unknown service; `DELETE` `404` unknown service
+
 ---
 
 ## Safe Search
@@ -1242,8 +1564,19 @@ DELETE /ferrous/api/v1/custom-services/{id}
 
 ```http
 GET /ferrous/api/v1/safe-search/configs
+```
+
+**Auth:** session or API key · **Returns:** `200` `[SafeSearchConfigResponse]`
+
+Every group's Safe Search settings.
+
+```http
 GET /ferrous/api/v1/safe-search/configs/{group_id}
 ```
+
+**Auth:** session or API key · **Returns:** `200` `[SafeSearchConfigResponse]` · **Errors:** `404` unknown group
+
+One group's settings, one entry per engine.
 
 ### Toggle Safe Search
 
@@ -1251,18 +1584,24 @@ GET /ferrous/api/v1/safe-search/configs/{group_id}
 POST /ferrous/api/v1/safe-search/configs/{group_id}
 ```
 
+**Auth:** session or API key · **Returns:** `200` `SafeSearchConfigResponse` · **Errors:** `400` unknown engine or `youtube_mode`, `404` unknown group
+
 ```json
 {
-  "platform": "google",
+  "engine": "google",
   "enabled": true
 }
 ```
+
+`youtube_mode` (`strict` or `moderate`, default `strict`) applies to the `youtube` engine.
 
 ### Delete Configs
 
 ```http
 DELETE /ferrous/api/v1/safe-search/configs/{group_id}
 ```
+
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown group
 
 ---
 
@@ -1276,11 +1615,15 @@ Static A/AAAA records served directly from cache.
 GET /ferrous/api/v1/local-records
 ```
 
+**Auth:** session or API key · **Returns:** `200` `[LocalRecordDto]`
+
 ### Create Record
 
 ```http
 POST /ferrous/api/v1/local-records
 ```
+
+**Auth:** session or API key · **Returns:** `201` `LocalRecordDto` · **Errors:** `400` invalid hostname, domain, IP or type, or an IP of the wrong family
 
 ```json
 {
@@ -1299,6 +1642,8 @@ PUT    /ferrous/api/v1/local-records/{id}
 DELETE /ferrous/api/v1/local-records/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `PUT` `200` `LocalRecordDto`; `DELETE` `204` · **Errors:** `PUT` `400` invalid field, `404` unknown record; `DELETE` `404` unknown record
+
 ---
 
 ## Schedule Profiles
@@ -1312,12 +1657,17 @@ GET  /ferrous/api/v1/schedule-profiles
 POST /ferrous/api/v1/schedule-profiles
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `[ScheduleProfileResponse]`; `POST` `201` `ScheduleProfileResponse` · **Errors:** `POST` `400` invalid name, timezone or comment, `409` name taken
+
 ```json
 {
   "name": "School Hours",
-  "description": "Block social media during school"
+  "timezone": "Europe/Lisbon",
+  "comment": "Block social media during school"
 }
 ```
+
+`timezone` is an IANA name and defaults to `UTC`.
 
 ### Get / Update / Delete Profile
 
@@ -1327,6 +1677,8 @@ PUT    /ferrous/api/v1/schedule-profiles/{id}
 DELETE /ferrous/api/v1/schedule-profiles/{id}
 ```
 
+**Auth:** session or API key · **Returns:** `GET` `200` `ScheduleProfileWithSlotsResponse`; `PUT` `200` `ScheduleProfileResponse`; `DELETE` `204` · **Errors:** `GET` `404` unknown profile; `PUT` `400` invalid name, timezone or comment, `404` unknown profile, `409` name taken; `DELETE` `404` unknown profile
+
 ### Manage Time Slots
 
 ```http
@@ -1334,13 +1686,18 @@ POST   /ferrous/api/v1/schedule-profiles/{id}/slots
 DELETE /ferrous/api/v1/schedule-profiles/{id}/slots/{slot_id}
 ```
 
+**Auth:** session or API key · **Returns:** `POST` `201` `TimeSlotResponse`; `DELETE` `204` · **Errors:** `POST` `400` invalid action, days or time range, `404` unknown profile; `DELETE` `404` unknown slot or profile
+
 ```json
 {
-  "day_of_week": 1,
+  "days": 31,
   "start_time": "08:00",
-  "end_time": "15:00"
+  "end_time": "15:00",
+  "action": "block_all"
 }
 ```
+
+`days` is a bitmask from 1 to 127 with Monday as 1, Tuesday as 2, and so on up to Sunday as 64: `31` is Monday to Friday. `action` is `block_all` or `allow_all`.
 
 ### Assign Schedule to Group
 
@@ -1349,6 +1706,8 @@ GET    /ferrous/api/v1/groups/{id}/schedule
 PUT    /ferrous/api/v1/groups/{id}/schedule
 DELETE /ferrous/api/v1/groups/{id}/schedule
 ```
+
+**Auth:** session or API key · **Returns:** `GET` `200` `GroupScheduleResponse`; `PUT` `200` `GroupScheduleResponse`; `DELETE` `204` · **Errors:** `GET` `404` no schedule assigned; `PUT` `404` unknown group or profile; `DELETE` `404` unknown group
 
 ```json
 {

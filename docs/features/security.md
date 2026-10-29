@@ -49,6 +49,8 @@ All API endpoints are protected by the auth guard middleware, except:
 - `POST /ferrous/api/v1/auth/setup` — first-run password setup
 - `POST /ferrous/api/v1/auth/login` — login
 - `POST /ferrous/api/v1/auth/logout` — logout
+- `POST /ferrous/api/v1/auth/2fa/verify`, `POST /ferrous/api/v1/auth/webauthn/authenticate/start` and `POST /ferrous/api/v1/auth/webauthn/authenticate/finish` — the second step of a login; each needs the challenge token `POST /auth/login` issued
+- `POST /ferrous/api/v1/auth/webauthn/discoverable/start` and `POST /ferrous/api/v1/auth/webauthn/discoverable/finish` — passwordless passkey login; `start` issues the token `finish` takes
 - `GET /ferrous/api/v1/health` — health check; it tells only whether the server is up, and its version
 
 ### Users and Roles
