@@ -4,7 +4,7 @@ name: Release PR
 # prepends the release's section to CHANGELOG.md and opens the
 # `chore(release): vX.Y.Z` pull request. Nothing reaches main until a
 # maintainer merges it; release-tag.yml then tags the merge commit, and the tag
-# starts release.yml (binaries → Docker image → docs).
+# starts release.yml (binaries → milestone, Docker image → docs).
 #
 # A maintainer starts it by hand with the bump type. After that, every merge to
 # main regenerates the open release PR for the same version, so its notes

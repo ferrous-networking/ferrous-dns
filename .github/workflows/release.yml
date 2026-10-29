@@ -130,6 +130,7 @@ jobs:
   # under the release's milestone, closes it and links it from the release
   # notes (scripts/release-milestone.sh). It waits for the binaries, whose
   # upload rewrites the release, and a failure here holds back nothing else.
+  # GITHUB_TOKEN is enough: nothing it changes has to start a workflow.
   milestone:
     name: Close the milestone
     needs: [create-release, build-binaries]

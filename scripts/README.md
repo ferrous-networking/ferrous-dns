@@ -50,7 +50,8 @@ titled `vX.Y.Z` (or `vX.Y.Z — …`), whatever milestone it had. Anything still
 open in it moves to the next open milestone by version; with no later
 milestone, it stays open and the script warns. A release with no milestone,
 such as a patch, gets one. The GitHub release notes gain a link to it. Running
-it again changes nothing more.
+it again changes nothing more. It needs the tags fetched, and stops when it
+finds no earlier tag or no pull request in the range.
 
 ```bash
 ./scripts/release-milestone.sh v0.10.0 origin/main --dry-run   # before the tag exists
