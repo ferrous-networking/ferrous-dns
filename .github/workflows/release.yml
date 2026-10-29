@@ -126,6 +126,34 @@ jobs:
             ${{ matrix.asset_name }}.tar.gz
             ${{ matrix.asset_name }}.tar.gz.sha256
 
+  # Files every pull request since the previous tag, and the issues they close,
+  # under the release's milestone, closes it and links it from the release
+  # notes (scripts/release-milestone.sh). It waits for the binaries, whose
+  # upload rewrites the release, and a failure here holds back nothing else.
+  milestone:
+    name: Close the milestone
+    needs: [create-release, build-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # The previous tag bounds the release.
+          fetch-depth: 0
+
+      - name: File the release under its milestone
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          set -o pipefail
+          bash scripts/release-milestone.sh "$VERSION" | tee -a "$GITHUB_STEP_SUMMARY"
+
   # docker.yml and docs.yml both listen for `release-created`. It is sent with
   # the PAT because events raised with GITHUB_TOKEN start no workflow.
   trigger-docker:
