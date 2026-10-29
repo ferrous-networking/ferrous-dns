@@ -1,6 +1,6 @@
 # Roadmap
 
-Current release: **v0.9.24**
+Current release: **v0.10.0**
 
 What comes next is tracked on GitHub: one issue per item, grouped into milestones. Each milestone page lists its open and closed issues and shows how far along it is. When a release ships, its milestone is closed and lists every pull request in it and the issues they fixed, whichever milestone they were planned in; what it did not get to moves to the next milestone. What already shipped is in the [Changelog](changelog.md).
 

@@ -4,6 +4,46 @@ All notable changes to Ferrous DNS, newest first. Each entry links the pull requ
 
 <!-- --8<-- [start:releases] -->
 
+## [0.10.0](https://github.com/ferrous-networking/ferrous-dns/compare/v0.9.24...v0.10.0) - 2026-10-29
+
+### ✨ Features
+
+- **breaking:** **api:** serve the Ferrous API at /ferrous/api/v1 in every mode by @andersonviudes in [#310](https://github.com/ferrous-networking/ferrous-dns/pull/310)
+- **clients:** label clients with the names they announce over mDNS by @andersonviudes in [#346](https://github.com/ferrous-networking/ferrous-dns/pull/346)
+- **breaking:** **api:** page every list endpoint with one envelope by @andersonviudes in [#349](https://github.com/ferrous-networking/ferrous-dns/pull/349)
+
+### 🐛 Bug Fixes
+
+- **query-log:** log upstream NXDOMAIN answers as NXDOMAIN by @andersonviudes in [#305](https://github.com/ferrous-networking/ferrous-dns/pull/305)
+- **config:** restore pools, rate limits and malware settings from backups by @andersonviudes in [#306](https://github.com/ferrous-networking/ferrous-dns/pull/306)
+- **query-log:** log coalesced followers as the upstream answer they got by @andersonviudes in [#308](https://github.com/ferrous-networking/ferrous-dns/pull/308)
+- **dns:** look upstream hostnames up again when their TTL runs out by @andersonviudes in [#307](https://github.com/ferrous-networking/ferrous-dns/pull/307)
+- **web:** stop admin pages scrolling sideways on phones and tablets by @andersonviudes in [#309](https://github.com/ferrous-networking/ferrous-dns/pull/309)
+- **clients:** keep manual client names when the PTR sync runs by @andersonviudes in [#343](https://github.com/ferrous-networking/ferrous-dns/pull/343)
+- **dns:** charge upstream NXDOMAIN answers to the NXDOMAIN budget by @andersonviudes in [#341](https://github.com/ferrous-networking/ferrous-dns/pull/341)
+- **database:** reclaim freed space and stop scanning the raw query log by @andersonviudes in [#345](https://github.com/ferrous-networking/ferrous-dns/pull/345)
+- **breaking:** **config:** answer failed config saves with an error status by @andersonviudes in [#347](https://github.com/ferrous-networking/ferrous-dns/pull/347)
+- **breaking:** **api:** make /health public and use it for the Docker healthcheck by @andersonviudes in [#348](https://github.com/ferrous-networking/ferrous-dns/pull/348)
+
+### 📚 Documentation
+
+- mark ECS privacy and test coverage done on the roadmap by @andersonviudes in [#304](https://github.com/ferrous-networking/ferrous-dns/pull/304)
+- replace the roadmap with GitHub milestones and issues by @andersonviudes in [#340](https://github.com/ferrous-networking/ferrous-dns/pull/340)
+- drop the stale KSK-2024 rollover and L1 cache-hit wording by @andersonviudes in [#342](https://github.com/ferrous-networking/ferrous-dns/pull/342)
+- **api:** document every route and describe responses as the handlers return them by @andersonviudes in [#350](https://github.com/ferrous-networking/ferrous-dns/pull/350)
+
+### ⬆️ Dependencies
+
+- bump lru from 0.18.5 to 0.19.0 by @dependabot[bot] in [#303](https://github.com/ferrous-networking/ferrous-dns/pull/303)
+- bump the cargo-minor-patch group with 2 updates by @dependabot[bot] in [#302](https://github.com/ferrous-networking/ferrous-dns/pull/302)
+- bump the cargo-minor-patch group with 2 updates by @dependabot[bot] in [#312](https://github.com/ferrous-networking/ferrous-dns/pull/312)
+- bump parking_lot from 0.12.5 to 0.13.0 by @dependabot[bot] in [#313](https://github.com/ferrous-networking/ferrous-dns/pull/313)
+
+### 👷 CI/CD
+
+- release through a pull request and publish docs only on release by @andersonviudes in [#301](https://github.com/ferrous-networking/ferrous-dns/pull/301)
+- close each release's milestone and file what it shipped under it by @andersonviudes in [#351](https://github.com/ferrous-networking/ferrous-dns/pull/351)
+
 ## [0.9.24](https://github.com/ferrous-networking/ferrous-dns/compare/v0.9.23...v0.9.24) - 2026-10-23
 
 ### ✨ Features
