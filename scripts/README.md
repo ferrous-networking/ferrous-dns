@@ -42,6 +42,25 @@ always match.
 ./scripts/changelog-section.sh v0.9.24
 ```
 
+### `release-milestone.sh`
+
+Files a release under its milestone and closes it. Every pull request merged
+since the previous tag, and every issue it closes, is set to the milestone
+titled `vX.Y.Z` (or `vX.Y.Z — …`), whatever milestone it had. Anything still
+open in it moves to the next open milestone by version; with no later
+milestone, it stays open and the script warns. A release with no milestone,
+such as a patch, gets one. The GitHub release notes gain a link to it. Running
+it again changes nothing more. It needs the tags fetched, and stops when it
+finds no earlier tag or no pull request in the range.
+
+```bash
+./scripts/release-milestone.sh v0.10.0 origin/main --dry-run   # before the tag exists
+./scripts/release-milestone.sh v0.10.0                         # what release.yml runs
+```
+
+`--dry-run` only reads, and prints what it would change. The **Release**
+workflow runs it once the release and its binaries are published.
+
 ---
 
 ## 🚀 Releasing
@@ -57,7 +76,8 @@ A release is a pull request; nothing is pushed to `main` directly.
    that branch right before merging. `make changelog` previews them locally.
 3. Merge it. **Release Tag** tags the merge commit, and the tag starts
    **Release**: binaries, GitHub release (notes taken from `CHANGELOG.md`),
-   Docker image, and the docs site.
+   Docker image, and the docs site. It also closes the release's milestone,
+   with every pull request and issue the release shipped filed under it.
 
 Versions follow [Semantic Versioning](https://semver.org/); while on 0.x, a
 release with new features is still a patch bump unless something breaks.

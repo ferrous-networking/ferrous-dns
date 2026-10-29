@@ -270,7 +270,8 @@ is about to ship:
    a regeneration replaces them.
 3. Merging it tags the release. The tag builds the binaries and publishes the
    GitHub release (with that `CHANGELOG.md` section as its notes), the Docker
-   image, and the documentation site.
+   image, and the documentation site. It also closes the release's milestone,
+   with every PR it shipped, and the issues those PRs closed, filed under it.
 
 While on 0.x, a release with new features is still a patch bump unless
 something breaks. `make changelog` previews the notes of the next release.
