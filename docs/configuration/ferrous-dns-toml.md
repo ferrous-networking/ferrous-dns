@@ -449,13 +449,13 @@ stale_entry_ttl_secs       = 300
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable the rate limiter |
-| `queries_per_second` | `int` | `1000` | Sustained query budget per client subnet |
+| `queries_per_second` | `int` | `1000` | Sustained query budget per client subnet, for UDP and for the stream transports (TCP, DoT, DoH, DoQ) each |
 | `burst_size` | `int` | `500` | Maximum burst above the sustained rate |
 | `ipv4_prefix_len` | `int` | `24` | Group IPv4 clients by this prefix length (e.g. `/24` subnet) |
 | `ipv6_prefix_len` | `int` | `48` | Group IPv6 clients by this prefix length (e.g. `/48` subnet) |
 | `whitelist` | `list` | `[]` | CIDRs exempt from rate limiting |
 | `nxdomain_per_second` | `int` | `50` | Stricter per-subnet budget charged for NXDOMAIN answers; only an NXDOMAIN answer over it is limited, never the subnet's other queries. `local_dns_server` and internal pool answers are not charged. `0` = no NXDOMAIN budget |
-| `slip_ratio` | `int` | `2` | 1 in N rate-limited responses sends `TC=1` to force a TCP retry |
+| `slip_ratio` | `int` | `2` | 1 in N rate-limited UDP responses sends `TC=1` to force a TCP retry; stream transports are refused instead |
 | `dry_run` | `bool` | `false` | Log rate limit events without enforcing them |
 | `tcp_max_connections_per_ip` | `int` | `30` | Maximum concurrent TCP DNS connections per client IP |
 | `dot_max_connections_per_ip` | `int` | `15` | Maximum concurrent DoT connections per client IP |

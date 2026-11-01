@@ -306,7 +306,7 @@ Ferrous DNS includes a token-bucket rate limiter that throttles abusive clients 
 
 ### How It Works
 
-Each client subnet (default `/24` for IPv4, `/48` for IPv6) gets an independent token bucket. Tokens refill at the configured `queries_per_second` rate, up to the `burst_size` capacity. When a subnet exhausts its tokens, queries are either **refused** (`REFUSED` response code) or **slipped** (`TC=1` truncated response forcing a TCP retry).
+Each client subnet (default `/24` for IPv4, `/48` for IPv6) gets an independent token bucket for UDP and another for the stream transports (TCP, DoT, DoH, DoQ). Tokens refill at the configured `queries_per_second` rate, up to the `burst_size` capacity. When a subnet exhausts its UDP tokens, queries are either **refused** (`REFUSED` response code) or **slipped** (`TC=1` truncated response forcing a TCP retry); over its stream budget they are refused.
 
 ### Configuration
 
@@ -333,7 +333,7 @@ stale_entry_ttl_secs       = 300      # evict idle subnet buckets after 5 min
 | `ipv6_prefix_len` | `48` | IPv6 subnet grouping prefix length |
 | `whitelist` | `[]` | CIDRs that bypass rate limiting entirely |
 | `nxdomain_per_second` | `50` | Separate, stricter budget for NXDOMAIN answers; only an NXDOMAIN over it is limited. 0 = no NXDOMAIN budget |
-| `slip_ratio` | `0` | Every Nth rate-limited response sends TC=1 instead of REFUSED. 0 = disabled |
+| `slip_ratio` | `0` | Every Nth rate-limited UDP response sends TC=1 instead of REFUSED. 0 = disabled |
 | `dry_run` | `false` | Log rate-limit events without refusing queries |
 | `stale_entry_ttl_secs` | `300` | Seconds before an idle subnet bucket is evicted |
 
@@ -342,12 +342,14 @@ stale_entry_ttl_secs       = 300      # evict idle subnet buckets after 5 min
 When `slip_ratio` is set (e.g. `2`), every Nth rate-limited UDP response is sent as a **truncated** response (`TC=1` flag set) instead of `REFUSED`. This forces the client to retry over TCP, which:
 
 - Verifies the client is a legitimate resolver (not a spoofed-source flood)
-- Allows real clients to still get answers via TCP even when rate-limited on UDP
+- Allows real clients to still get answers via TCP even when rate-limited on UDP: the retry spends the subnet's stream budget, which a spoofed UDP flood cannot drain
 - Follows the same approach used by NSD and BIND
+
+TCP, DoT, DoH and DoQ answers are never slipped; over the stream budget they are `REFUSED`.
 
 ### NXDOMAIN Budget
 
-The `nxdomain_per_second` setting provides a separate, stricter budget charged for each NXDOMAIN answer a subnet receives, like BIND's `nxdomains-per-second`. This catches malware and IoT devices that probe many random subdomains. Only an NXDOMAIN answer over the budget is limited (REFUSED or TC=1, or only logged under `dry_run`); the subnet's other queries are never refused because of it. NXDOMAINs from `local_dns_server` and internal pools are never charged. See [Rate Limiting](../configuration/rate-limiting.md#nxdomain-budget).
+The `nxdomain_per_second` setting provides a separate, stricter budget charged for each NXDOMAIN answer a subnet receives, like BIND's `nxdomains-per-second`. This catches malware and IoT devices that probe many random subdomains. Only an NXDOMAIN answer over the budget is limited (REFUSED or, over UDP, TC=1, or only logged under `dry_run`); the subnet's other queries are never refused because of it. NXDOMAINs from `local_dns_server` and internal pools are never charged. See [Rate Limiting](../configuration/rate-limiting.md#nxdomain-budget).
 
 ### Dry-Run Mode
 

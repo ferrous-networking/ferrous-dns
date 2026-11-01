@@ -954,7 +954,7 @@
                             <i data-lucide="gauge" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Queries per Second</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum sustained queries per subnet per second.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Maximum sustained queries per subnet per second. UDP and the stream transports (TCP, DoT, DoH, DoQ) each get this budget.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
                         <input type="number" x-model.number="config.dns.rate_limit.queries_per_second" min="1" placeholder="1000" style="width:100%;text-align:right">
@@ -996,7 +996,7 @@
                             <i data-lucide="repeat" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Slip Ratio (TC=1)</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Every Nth rate-limited response becomes a truncated response (TC=1) forcing TCP retry. 0 = disabled, 2 = every 2nd.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Every Nth rate-limited UDP response becomes a truncated response (TC=1), so the client retries over TCP, which has its own budget. Stream transports are refused instead. 0 = disabled, 2 = every 2nd.</p>
                     </div>
                     <div style="flex-shrink:0;width:150px">
                         <input type="number" x-model.number="config.dns.rate_limit.slip_ratio" min="0" placeholder="2" style="width:100%;text-align:right">
