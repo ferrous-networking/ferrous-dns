@@ -50,6 +50,7 @@ pub struct DnsRateLimiter {
     whitelist: WhitelistSet,
     /// UDP, and requests from no listener.
     udp_buckets: Arc<Buckets>,
+    /// TCP, DoT, DoH and DoQ.
     stream_buckets: Arc<Buckets>,
     slip_counter: AtomicU64,
 }
@@ -101,29 +102,15 @@ impl DnsRateLimiter {
         if self.whitelist.contains(client_ip) {
             return RateLimitDecision::Allow;
         }
-
-        let stream = protocol.is_some_and(ClientProtocol::is_stream);
-        let now_ns = coarse_now_ns();
-        let key = self.grouping.key(client_ip);
-
-        let allowed = self
-            .buckets(stream)
-            .entry(key)
-            .or_insert_with(|| TokenBucket::new(self.burst, self.nx_qps, now_ns))
-            .try_consume(now_ns, self.qps, self.burst, self.nx_qps);
-
-        if allowed {
-            RateLimitDecision::Allow
-        } else {
-            self.over_budget(stream)
-        }
+        self.spend(client_ip, protocol, |bucket, now_ns| {
+            bucket.try_consume(now_ns, self.qps, self.burst, self.nx_qps)
+        })
     }
 
     /// Charges an NXDOMAIN answer for `client_ip` over `protocol` against its
     /// subnet's NXDOMAIN budget for that transport (BIND RRL
-    /// `nxdomains-per-second`) and decides that answer: only an NXDOMAIN over
-    /// budget gets the configured action, and the subnet's other queries are
-    /// never limited by it.
+    /// `nxdomains-per-second`). Only an NXDOMAIN over budget gets the
+    /// configured action; the subnet's other queries are never limited by it.
     pub fn charge_nxdomain(
         &self,
         client_ip: IpAddr,
@@ -135,21 +122,9 @@ impl DnsRateLimiter {
         if self.whitelist.contains(client_ip) {
             return RateLimitDecision::Allow;
         }
-
-        let stream = protocol.is_some_and(ClientProtocol::is_stream);
-        let now_ns = coarse_now_ns();
-        let key = self.grouping.key(client_ip);
-        let covered = self
-            .buckets(stream)
-            .entry(key)
-            .or_insert_with(|| TokenBucket::new(self.burst, self.nx_qps, now_ns))
-            .try_charge_nxdomain(now_ns, self.qps, self.burst, self.nx_qps);
-
-        if covered {
-            RateLimitDecision::Allow
-        } else {
-            self.over_budget(stream)
-        }
+        self.spend(client_ip, protocol, |bucket, now_ns| {
+            bucket.try_charge_nxdomain(now_ns, self.qps, self.burst, self.nx_qps)
+        })
     }
 
     /// Whether NXDOMAIN answers are charged at all.
@@ -158,12 +133,34 @@ impl DnsRateLimiter {
         self.enabled && self.nx_qps > 0
     }
 
+    /// Spends from the bucket of `client_ip`'s subnet for `protocol`, created
+    /// full on first use: `try_spend` says whether the budget covered the
+    /// response. The shard guard is released before the decision is made.
     #[inline]
-    fn buckets(&self, stream: bool) -> &Buckets {
-        if stream {
+    fn spend(
+        &self,
+        client_ip: IpAddr,
+        protocol: Option<ClientProtocol>,
+        try_spend: impl FnOnce(&TokenBucket, u64) -> bool,
+    ) -> RateLimitDecision {
+        let stream = protocol.is_some_and(ClientProtocol::is_stream);
+        let buckets = if stream {
             &self.stream_buckets
         } else {
             &self.udp_buckets
+        };
+        let now_ns = coarse_now_ns();
+        let covered = try_spend(
+            &buckets
+                .entry(self.grouping.key(client_ip))
+                .or_insert_with(|| TokenBucket::new(self.burst, self.nx_qps, now_ns)),
+            now_ns,
+        );
+
+        if covered {
+            RateLimitDecision::Allow
+        } else {
+            self.over_budget(stream)
         }
     }
 
