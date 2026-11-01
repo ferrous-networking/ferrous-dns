@@ -78,51 +78,55 @@ impl DgaGuard {
             _ => return DgaVerdict::Clean,
         };
 
-        let mut confidence: f32 = 0.0;
-        let mut top = TopSignal::default();
+        let long = sld.len() > self.sld_max_length;
+        let (consonants, vowels, digits, total) = char_ratios(sld);
+        let alpha = consonants + vowels;
+        let consonant_ratio = (alpha > 0).then(|| consonants as f32 / alpha as f32);
+        let consonant_heavy = consonant_ratio.is_some_and(|r| r > self.consonant_ratio_threshold);
+        let digit_ratio = (total > 0).then(|| digits as f32 / total as f32);
+        let digit_heavy = digit_ratio.is_some_and(|r| r > self.digit_ratio_threshold);
 
-        if sld.len() > self.sld_max_length {
-            confidence += HP_WEIGHT_SLD_LENGTH;
-            top.offer("sld_length", sld.len() as f32, self.sld_max_length as f32);
+        // Each sum adds the weights in the same order, so its rounding matches
+        // the score's. The entropy is the costly signal, and most names fire
+        // none of the others, so it is skipped when even its full weight could
+        // not reach the threshold.
+        let weight = |fired: bool, weight: f32| if fired { weight } else { 0.0 };
+        let ceiling = weight(long, HP_WEIGHT_SLD_LENGTH)
+            + HP_WEIGHT_SLD_ENTROPY
+            + weight(consonant_heavy, HP_WEIGHT_CONSONANT_RATIO)
+            + weight(digit_heavy, HP_WEIGHT_DIGIT_RATIO);
+        if ceiling < self.hot_path_confidence_threshold {
+            return DgaVerdict::Clean;
         }
 
         let entropy = shannon_entropy(sld.as_bytes());
-        if entropy > self.sld_entropy_threshold {
-            confidence += HP_WEIGHT_SLD_ENTROPY;
+        let high_entropy = entropy > self.sld_entropy_threshold;
+        let confidence = weight(long, HP_WEIGHT_SLD_LENGTH)
+            + weight(high_entropy, HP_WEIGHT_SLD_ENTROPY)
+            + weight(consonant_heavy, HP_WEIGHT_CONSONANT_RATIO)
+            + weight(digit_heavy, HP_WEIGHT_DIGIT_RATIO);
+        if confidence < self.hot_path_confidence_threshold {
+            return DgaVerdict::Clean;
+        }
+
+        let mut top = TopSignal::default();
+        if long {
+            top.offer("sld_length", sld.len() as f32, self.sld_max_length as f32);
+        }
+        if high_entropy {
             top.offer("sld_entropy", entropy, self.sld_entropy_threshold);
         }
-
-        let (consonants, vowels, digits, total) = char_ratios(sld);
-        if total > 0 {
-            let alpha = consonants + vowels;
-            if alpha > 0 {
-                let consonant_ratio = consonants as f32 / alpha as f32;
-                if consonant_ratio > self.consonant_ratio_threshold {
-                    confidence += HP_WEIGHT_CONSONANT_RATIO;
-                    top.offer(
-                        "consonant_ratio",
-                        consonant_ratio,
-                        self.consonant_ratio_threshold,
-                    );
-                }
-            }
-
-            let digit_ratio = digits as f32 / total as f32;
-            if digit_ratio > self.digit_ratio_threshold {
-                confidence += HP_WEIGHT_DIGIT_RATIO;
-                top.offer("digit_ratio", digit_ratio, self.digit_ratio_threshold);
-            }
+        if let Some(ratio) = consonant_ratio.filter(|_| consonant_heavy) {
+            top.offer("consonant_ratio", ratio, self.consonant_ratio_threshold);
         }
-
-        if confidence >= self.hot_path_confidence_threshold {
-            return DgaVerdict::Detected {
-                signal: top.name,
-                measured: top.measured,
-                threshold: top.threshold,
-            };
+        if let Some(ratio) = digit_ratio.filter(|_| digit_heavy) {
+            top.offer("digit_ratio", ratio, self.digit_ratio_threshold);
         }
-
-        DgaVerdict::Clean
+        DgaVerdict::Detected {
+            signal: top.name,
+            measured: top.measured,
+            threshold: top.threshold,
+        }
     }
 }
 

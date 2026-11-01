@@ -158,6 +158,32 @@ async fn short_sld_passes_dga_guard() {
     assert!(result.is_ok());
 }
 
+/// The guard skips the entropy when it cannot reach the threshold, so a
+/// threshold the entropy alone meets must still see it.
+#[tokio::test]
+async fn entropy_alone_blocks_when_the_threshold_is_its_weight() {
+    // High entropy (3.17 bits), a normal consonant ratio and no digits.
+    let domain = "aeioubcdf.com";
+    let config = DgaDetectionConfig {
+        hot_path_confidence_threshold: 0.30,
+        sld_entropy_threshold: 3.0,
+        ..dga_config(DgaDetectionAction::Block)
+    };
+    let (use_case, _log) = make_use_case_with_dga(resolver_with_response(domain).await, &config);
+    let request = DnsRequest::new(domain, RecordType::A, CLIENT_IP);
+    assert!(matches!(
+        use_case.execute(&request).await,
+        Err(DomainError::DgaDomainDetected)
+    ));
+
+    let config = DgaDetectionConfig {
+        hot_path_confidence_threshold: 0.31,
+        ..config
+    };
+    let (use_case, _log) = make_use_case_with_dga(resolver_with_response(domain).await, &config);
+    assert!(use_case.execute(&request).await.is_ok(), "0.30 < 0.31");
+}
+
 #[tokio::test]
 async fn flagged_domain_is_blocked() {
     let resolver = resolver_with_response("dga.evil.com").await;
