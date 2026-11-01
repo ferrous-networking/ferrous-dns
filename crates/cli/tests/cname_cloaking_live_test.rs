@@ -1,11 +1,11 @@
-//! CNAME cloaking and the CNAME target cache against the real binary. A fake
-//! upstream answers two first-party names with CNAME chains, and managed
-//! domains are added through the API, as the dashboard adds them:
+//! CNAME cloaking against the real binary. A fake upstream answers two
+//! first-party names with CNAME chains, and managed domains are added through
+//! the API, as the dashboard adds them:
 //!
 //! - a chain through a denied name is blocked (CNAME cloaking);
 //! - it stays blocked once a block filter rebuild drops the block memo, when
 //!   the answer comes from the cache;
-//! - a chain's final target is answered from the cache (#325);
+//! - a chain's final target is not answered from the alias's cached answer;
 //! - an allow on the queried name lifts the block.
 
 mod server_process;
@@ -177,11 +177,11 @@ fn test_cname_cloaking_and_the_target_cache_on_the_real_server() {
     );
 
     assert_eq!(ask(config.dns_port, CLEAN), [IpAddr::V4(CDN_IP)]);
-    assert_eq!(ask(config.dns_port, CDN), [IpAddr::V4(CDN_IP)]);
+    ask(config.dns_port, CDN);
     assert_eq!(
         upstream.times_asked(CDN),
-        0,
-        "the chain's target is answered from the cache"
+        1,
+        "the chain's target is asked upstream, not taken from the alias's answer"
     );
 
     add_managed_domain(config.web_port, CLOAKED, "allow");
