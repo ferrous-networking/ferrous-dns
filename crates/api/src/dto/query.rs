@@ -90,4 +90,8 @@ pub struct QueryResponse {
     /// got such a query's answer, `null` otherwise.
     #[schema(value_type = Option<String>)]
     pub coalesced: Option<&'static str>,
+    /// Id of the client group the query was decided in, whose rules applied
+    /// to it. `null` for rows logged before this was recorded, or whose group
+    /// has since been deleted.
+    pub group_id: Option<i64>,
 }

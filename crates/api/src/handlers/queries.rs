@@ -100,6 +100,7 @@ pub async fn get_queries(
             block_source: q.block_source.map(|s| s.to_str()),
             response_status: q.response_status,
             coalesced: q.coalesced.map(|role| role.as_str()),
+            group_id: q.group_id,
         })
         .collect();
 

@@ -319,6 +319,11 @@ answer, `follower` when it got such a query's answer with no upstream request of
 its own, and `null` otherwise. A follower carries its leader's `cache_hit`,
 `upstream_server` and `upstream_pool`, and its own response time.
 
+`group_id` is the client group the query was decided in, whose rules applied to
+it, or `null` for rows logged before the group was recorded and rows whose group
+has since been deleted. A managed-domain rule that should change the outcome for
+that client belongs in that group.
+
 ---
 
 ## Configuration
