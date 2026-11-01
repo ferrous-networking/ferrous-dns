@@ -29,9 +29,8 @@ const GROUP_A: i64 = 3;
 const GROUP_B: i64 = 4;
 const OTHER_GROUP: i64 = 99;
 const NAME: &str = "host.corp.example";
-/// The response parser keeps the target's trailing dot, so the cache stores a
-/// chain target under that form; check both.
-const TARGET_FORMS: [&str; 2] = ["lb.cdn.example", "lb.cdn.example."];
+/// A chain target as a client asks for it.
+const TARGET: &str = "lb.cdn.example";
 
 fn pool(name: &str, upstream: &Upstream, domains: &[&str], groups: &[i64]) -> UpstreamPool {
     UpstreamPool {
@@ -278,10 +277,8 @@ async fn test_cname_target_of_a_group_routed_answer_is_not_cached() {
         ips(OFFICE_A_IP)
     );
 
-    for target in TARGET_FORMS {
-        assert_eq!(probe(&f.stack, target, None), None, "{target}");
-        assert_eq!(probe(&f.stack, target, Some(OTHER_GROUP)), None, "{target}");
-    }
+    assert_eq!(probe(&f.stack, TARGET, None), None);
+    assert_eq!(probe(&f.stack, TARGET, Some(OTHER_GROUP)), None);
 }
 
 #[tokio::test]
@@ -311,9 +308,7 @@ async fn test_cname_target_of_an_every_client_routed_answer_is_not_cached() {
         probe(&stack, "app.corp.example", None),
         Some(ips(OFFICE_A_IP))
     );
-    for target in TARGET_FORMS {
-        assert_eq!(probe(&stack, target, None), None, "{target}");
-    }
+    assert_eq!(probe(&stack, TARGET, None), None);
 }
 
 #[tokio::test]
@@ -523,10 +518,9 @@ async fn test_cname_target_of_an_unrouted_answer_is_still_cached() {
         ips(PUBLIC_IP)
     );
 
-    assert!(
-        TARGET_FORMS
-            .iter()
-            .any(|target| probe(&f.stack, target, None) == Some(ips(PUBLIC_IP))),
+    assert_eq!(
+        probe(&f.stack, TARGET, None),
+        Some(ips(PUBLIC_IP)),
         "the chain target of an unrouted answer must stay cached"
     );
 }
