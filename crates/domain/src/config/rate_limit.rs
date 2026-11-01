@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 /// Configuration for DNS query rate limiting and DoS protection.
 ///
-/// Uses a token bucket algorithm per client subnet. When `enabled` is `false`,
-/// all checks are bypassed at zero cost.
+/// Uses a token bucket algorithm per client subnet, one for UDP and one for
+/// the stream transports. When `enabled` is `false`, all checks are bypassed
+/// at zero cost.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RateLimitConfig {

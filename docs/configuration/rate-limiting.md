@@ -62,7 +62,7 @@ Subnet 10.0.0.0/24:
 ```
 
 !!! info "Subnet grouping"
-    All clients within the same subnet share a single bucket. With `ipv4_prefix_len = 24`, all devices in `192.168.1.0/24` share one bucket. This prevents a single device from consuming the entire budget.
+    All clients within the same subnet share its buckets, one for UDP and one for the stream transports. With `ipv4_prefix_len = 24`, all devices in `192.168.1.0/24` share them. This prevents a single device from consuming the entire budget.
 
 !!! info "Why the stream transports have a bucket of their own"
     A spoofed-source flood can only use UDP: TCP, TLS and QUIC need a handshake from the real address. Keeping the stream budget apart means such a flood never drains it, so the TCP retry of a [slipped](#tc1-slip) query is answered, while a stream flood from a real address is still held to its own budget. A subnet that uses both kinds of transport can therefore spend up to twice the configured numbers.
@@ -73,10 +73,12 @@ Subnet 10.0.0.0/24:
 
 ### Query Rate Limiting
 
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
+
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `false` | Master switch. When `false`, all rate limiting is bypassed with zero overhead |
-| `queries_per_second` | `u32` | `1000` | Token refill rate per subnet per second, for UDP and for the stream transports each |
+| `queries_per_second` | `u32` | `1000` | Token refill rate per subnet per second |
 | `burst_size` | `u32` | `500` | Token bucket capacity. Allows short bursts (e.g. page loads generating 50+ queries) |
 | `ipv4_prefix_len` | `u8` | `24` | IPv4 prefix length used to group clients into subnet buckets. `24` groups a `/24` subnet |
 | `ipv6_prefix_len` | `u8` | `48` | IPv6 prefix length used to group clients into subnet buckets. `48` covers a standard home delegation |
@@ -102,10 +104,10 @@ When `slip_ratio > 0`, Ferrous DNS alternates between REFUSED and TC=1 (truncate
 
 | `slip_ratio` | Behavior |
 |:-------------|:---------|
-| `0` | All rate-limited responses are REFUSED |
-| `1` | All rate-limited responses are TC=1 |
-| `2` | Every 2nd rate-limited response is TC=1, rest are REFUSED |
-| `N` | Every Nth rate-limited response is TC=1 |
+| `0` | All rate-limited UDP responses are REFUSED |
+| `1` | All rate-limited UDP responses are TC=1 |
+| `2` | Every 2nd rate-limited UDP response is TC=1, rest are REFUSED |
+| `N` | Every Nth rate-limited UDP response is TC=1 |
 
 TC=1 makes the client retry over TCP, which:
 

@@ -319,10 +319,12 @@ ipv4_prefix_len            = 24       # /24 groups the home LAN
 ipv6_prefix_len            = 48       # /48 standard home delegation
 whitelist                  = ["127.0.0.0/8", "::1/128", "10.0.0.0/8"]
 nxdomain_per_second        = 50       # separate stricter budget for NXDOMAIN
-slip_ratio                 = 2        # every 2nd rate-limited response is TC=1
+slip_ratio                 = 2        # every 2nd rate-limited UDP response is TC=1
 dry_run                    = false    # true = log only, don't refuse
 stale_entry_ttl_secs       = 300      # evict idle subnet buckets after 5 min
 ```
+
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
 
 | Option | Default | Description |
 |:-------|:--------|:------------|

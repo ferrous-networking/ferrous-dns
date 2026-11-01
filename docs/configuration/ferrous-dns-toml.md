@@ -446,10 +446,12 @@ doq_max_connections_per_ip = 15
 stale_entry_ttl_secs       = 300
 ```
 
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
+
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable the rate limiter |
-| `queries_per_second` | `int` | `1000` | Sustained query budget per client subnet, for UDP and for the stream transports (TCP, DoT, DoH, DoQ) each |
+| `queries_per_second` | `int` | `1000` | Sustained query budget per client subnet |
 | `burst_size` | `int` | `500` | Maximum burst above the sustained rate |
 | `ipv4_prefix_len` | `int` | `24` | Group IPv4 clients by this prefix length (e.g. `/24` subnet) |
 | `ipv6_prefix_len` | `int` | `48` | Group IPv6 clients by this prefix length (e.g. `/48` subnet) |

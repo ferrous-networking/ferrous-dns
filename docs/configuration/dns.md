@@ -368,10 +368,12 @@ dot_max_connections_per_ip = 15
 doq_max_connections_per_ip = 15
 ```
 
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
+
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `enabled` | `false` | Master switch — `false` disables all rate limiting with zero overhead |
-| `queries_per_second` | `1000` | Sustained token refill rate per subnet per second, for UDP and for the stream transports (TCP, DoT, DoH, DoQ) each |
+| `queries_per_second` | `1000` | Sustained token refill rate per subnet per second |
 | `burst_size` | `500` | Token bucket capacity — allows short bursts above `queries_per_second` |
 | `ipv4_prefix_len` | `24` | IPv4 prefix length for subnet grouping (e.g. 24 = /24) |
 | `ipv6_prefix_len` | `48` | IPv6 prefix length for subnet grouping (e.g. 48 = /48) |
