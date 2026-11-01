@@ -1,4 +1,4 @@
-use crate::dns::cache::key::normalize_domain;
+use crate::dns::cache::key::normalize_wire_name;
 use crate::dns::ede::{self, ExtendedDnsError};
 use crate::dns::fast_path::{self, FastPathQuery};
 use crate::dns::forwarding::RecordTypeMapper;
@@ -455,7 +455,7 @@ fn parse_client_query_hickory(
     let first = msg.queries.first()?;
     let record_type = RecordTypeMapper::from_hickory(first.query_type())?;
     let domain_name = first.name().to_utf8();
-    let domain = normalize_domain(domain_name.trim_end_matches('.'));
+    let domain = normalize_wire_name(&domain_name);
 
     let mut request = DnsRequest::new(domain.as_ref(), record_type, client_ip)
         .with_checking_disabled(msg.checking_disabled)
