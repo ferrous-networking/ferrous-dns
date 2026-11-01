@@ -3,7 +3,8 @@ mod helpers;
 use ferrous_dns_application::ports::DnsResolution;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockSource, DnsRequest, DomainError, RecordType, TunnelingAction, TunnelingDetectionConfig,
+    BlockSource, ClientProtocol, DnsRequest, DomainError, RecordType, TunnelingAction,
+    TunnelingDetectionConfig,
 };
 use helpers::{
     MockBlockFilterEngine, MockDnsResolver, MockQueryLogRepository, MockTunnelingFlagStore,
@@ -63,6 +64,74 @@ async fn resolver_with_response(domain: &str) -> MockDnsResolver {
         )
         .await;
     resolver
+}
+
+fn served(addresses: &[IpAddr], ttl: u32) -> Option<(Vec<IpAddr>, u32)> {
+    Some((addresses.to_vec(), ttl))
+}
+
+fn served_wire(wire: &[u8], remaining: u32) -> Option<(Vec<u8>, u32)> {
+    Some((wire.to_vec(), remaining))
+}
+
+/// A cache hit used to skip the phase-1 check, so a name that anyone had
+/// resolved was served to every client until its TTL ran out.
+#[tokio::test]
+async fn the_fast_path_does_not_serve_a_cached_long_label() {
+    let domain = format!("{}.evil.com", "b".repeat(51));
+    let resolver = MockDnsResolver::new();
+    resolver.set_cached_response(
+        &domain,
+        DnsResolution::new(vec!["1.2.3.4".parse().unwrap()], true),
+    );
+    let config = tunneling_config(TunnelingAction::Block);
+    let (use_case, log) = make_use_case_with_tunneling(resolver, &config);
+
+    let result = use_case.try_cache_direct(
+        &domain,
+        RecordType::A,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served,
+    );
+
+    assert!(result.is_none(), "the fast path served it: {result:?}");
+    assert_eq!(
+        log.sync_log_count(),
+        0,
+        "execute logs the block, not the probe"
+    );
+}
+
+#[tokio::test]
+async fn the_wire_fast_path_does_not_serve_a_cached_null_answer() {
+    let resolver = MockDnsResolver::new();
+    resolver.set_cached_response(
+        "example.com",
+        DnsResolution {
+            upstream_wire_data: Some(bytes::Bytes::from_static(b"\x00\x01\x02\x03")),
+            min_ttl: Some(300),
+            ..DnsResolution::new(vec![], true)
+        },
+    );
+    let config = tunneling_config(TunnelingAction::Block);
+    let (use_case, log) = make_use_case_with_tunneling(resolver, &config);
+
+    let result = use_case.try_cache_wire_direct(
+        "example.com",
+        RecordType::NULL,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served_wire,
+    );
+
+    assert!(result.is_none(), "the wire fast path served it: {result:?}");
+    assert_eq!(log.sync_log_count(), 0);
+    let request = DnsRequest::new("example.com", RecordType::NULL, CLIENT_IP);
+    assert!(matches!(
+        use_case.execute(&request).await,
+        Err(DomainError::DnsTunnelingDetected)
+    ));
 }
 
 #[tokio::test]

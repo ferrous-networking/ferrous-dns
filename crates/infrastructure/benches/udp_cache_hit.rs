@@ -8,7 +8,9 @@
 //! the pool router production attaches: with no group routes, with group
 //! routes the name does not match, and for a name in a group's own view. The
 //! `*_cname` cases are answers that came through a two-hop CNAME chain, which
-//! every hit checks against the block filter again (CNAME cloaking).
+//! every hit checks against the block filter again (CNAME cloaking). The
+//! `*_malware_detection` cases run the DGA and tunneling phase-1 checks, on by
+//! default, against a clean name.
 
 #[path = "../tests/support/ports.rs"]
 mod ports;
@@ -21,8 +23,8 @@ use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_domain::{
-    BlockResponseMode, ClientProtocol, DnsCookiesConfig, DnsQuery, DomainError, RecordType,
-    UpstreamPool,
+    BlockResponseMode, ClientProtocol, DgaDetectionConfig, DnsCookiesConfig, DnsQuery, DomainError,
+    RecordType, TunnelingDetectionConfig, UpstreamPool,
 };
 use ferrous_dns_infrastructure::database::create_write_pool;
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
@@ -188,10 +190,16 @@ fn router(runtime: &tokio::runtime::Runtime, group_routes: bool) -> Arc<dyn Upst
     Arc::new(pm)
 }
 
-fn handler(
-    runtime: &tokio::runtime::Runtime,
-    router: Option<Arc<dyn UpstreamRouter>>,
-) -> (DnsServerHandler, DnsServerHandler, tempfile::TempDir) {
+/// The filtered handler, the same path minus the block filter, and the
+/// filtered path with the default malware detectors on.
+struct Handlers {
+    filtered: DnsServerHandler,
+    unfiltered: DnsServerHandler,
+    malware: DnsServerHandler,
+    _dir: tempfile::TempDir,
+}
+
+fn handler(runtime: &tokio::runtime::Runtime, router: Option<Arc<dyn UpstreamRouter>>) -> Handlers {
     let dir = tempfile::tempdir().unwrap();
     let url = format!("sqlite:{}", dir.path().join("bench.db").display());
     let engine = runtime.block_on(async {
@@ -286,16 +294,22 @@ fn handler(
         require_valid_cookie: false,
         ..DnsCookiesConfig::default()
     };
-    let filtered = HandleDnsQueryUseCase::new(resolver.clone(), engine, Arc::new(NoopQueryLog))
-        .with_dns_cookies(DnsCookieGuard::from_config(&cookies, [7; 32]));
+    let filtered =
+        HandleDnsQueryUseCase::new(resolver.clone(), engine.clone(), Arc::new(NoopQueryLog))
+            .with_dns_cookies(DnsCookieGuard::from_config(&cookies, [7; 32]));
+    let malware = HandleDnsQueryUseCase::new(resolver.clone(), engine, Arc::new(NoopQueryLog))
+        .with_dns_cookies(DnsCookieGuard::from_config(&cookies, [7; 32]))
+        .with_tunneling_detection(&TunnelingDetectionConfig::default())
+        .with_dga_detection(&DgaDetectionConfig::default());
     // The same path minus the block filter, to tell its cost from the rest.
     let unfiltered =
         HandleDnsQueryUseCase::new(resolver, Arc::new(AllowAllFilter), Arc::new(NoopQueryLog));
-    (
-        DnsServerHandler::new(Arc::new(filtered), policy),
-        DnsServerHandler::new(Arc::new(unfiltered), policy),
-        dir,
-    )
+    Handlers {
+        filtered: DnsServerHandler::new(Arc::new(filtered), policy),
+        unfiltered: DnsServerHandler::new(Arc::new(unfiltered), policy),
+        malware: DnsServerHandler::new(Arc::new(malware), policy),
+        _dir: dir,
+    }
 }
 
 /// What the UDP worker does with one datagram before it would fall back.
@@ -327,9 +341,14 @@ fn udp_cache_hit(c: &mut Criterion) {
         .enable_all()
         .build()
         .unwrap();
-    let (filtered, unfiltered, _dir) = handler(&runtime, None);
-    let (routed, _, _routed_dir) = handler(&runtime, Some(router(&runtime, false)));
-    let (group_routed, _, _group_dir) = handler(&runtime, Some(router(&runtime, true)));
+    let Handlers {
+        filtered,
+        unfiltered,
+        malware,
+        _dir,
+    } = handler(&runtime, None);
+    let routed = handler(&runtime, Some(router(&runtime, false)));
+    let group_routed = handler(&runtime, Some(router(&runtime, true)));
     let mut out = [0u8; RESPONSE_BUF_LEN];
 
     let mut group = c.benchmark_group("udp_cache_hit");
@@ -361,20 +380,28 @@ fn udp_cache_hit(c: &mut Criterion) {
     group.bench_function("a_edns_unfiltered", |b| {
         b.iter(|| serve(&unfiltered, black_box(&raw), &mut out))
     });
+    group.bench_function("a_edns_malware_detection", |b| {
+        b.iter(|| serve(&malware, black_box(&raw), &mut out))
+    });
+    let raw_mx = query(MX_NAME, 15, true);
+    assert_ne!(serve(&malware, &raw_mx, &mut out), 0, "mx must hit");
+    group.bench_function("mx_edns_malware_detection", |b| {
+        b.iter(|| serve(&malware, black_box(&raw_mx), &mut out))
+    });
     group.bench_function("router_a_edns", |b| {
-        b.iter(|| serve(&routed, black_box(&raw), &mut out))
+        b.iter(|| serve(&routed.filtered, black_box(&raw), &mut out))
     });
     group.bench_function("router_a_edns_with_group_routes", |b| {
-        b.iter(|| serve(&group_routed, black_box(&raw), &mut out))
+        b.iter(|| serve(&group_routed.filtered, black_box(&raw), &mut out))
     });
     let raw_view = query(GROUP_VIEW_NAME, 1, true);
     assert_ne!(
-        serve(&group_routed, &raw_view, &mut out),
+        serve(&group_routed.filtered, &raw_view, &mut out),
         0,
         "the group view entry must hit"
     );
     group.bench_function("router_a_edns_group_view", |b| {
-        b.iter(|| serve(&group_routed, black_box(&raw_view), &mut out))
+        b.iter(|| serve(&group_routed.filtered, black_box(&raw_view), &mut out))
     });
     group.finish();
 }
