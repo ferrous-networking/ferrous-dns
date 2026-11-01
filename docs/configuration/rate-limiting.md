@@ -8,7 +8,7 @@ The `[dns.rate_limit]` section configures per-subnet token-bucket rate limiting 
 
 Ferrous DNS rate limiting protects against DNS query floods and DoS attacks while allowing legitimate traffic through. It works at three levels:
 
-1. **Query rate limiting** — token bucket per client subnet (UDP + TCP)
+1. **Query rate limiting** — token bucket per client subnet, one for UDP and one for the stream transports (TCP, DoT, DoH, DoQ)
 2. **NXDOMAIN budget** — separate stricter limit that applies only to NXDOMAIN answers
 3. **Connection limiting** — per-IP caps on concurrent TCP and DoT connections
 
@@ -45,12 +45,12 @@ doq_max_connections_per_ip = 15         # DoQ connection limit
 
 ## Token Bucket Algorithm
 
-Each client subnet gets an independent token bucket:
+Each client subnet gets an independent token bucket for UDP and another for the stream transports (TCP, DoT, DoH and DoQ), both with the same settings:
 
 - Tokens refill at `queries_per_second` rate
 - Maximum capacity is `burst_size`
 - Each query consumes one token
-- When empty, queries are either refused or slipped (TC=1)
+- When empty, UDP queries are either refused or slipped (TC=1); stream queries are refused
 
 ```text
 Subnet 10.0.0.0/24:
@@ -62,13 +62,18 @@ Subnet 10.0.0.0/24:
 ```
 
 !!! info "Subnet grouping"
-    All clients within the same subnet share a single bucket. With `ipv4_prefix_len = 24`, all devices in `192.168.1.0/24` share one bucket. This prevents a single device from consuming the entire budget.
+    All clients within the same subnet share its buckets, one for UDP and one for the stream transports. With `ipv4_prefix_len = 24`, all devices in `192.168.1.0/24` share them. This prevents a single device from consuming the entire budget.
+
+!!! info "Why the stream transports have a bucket of their own"
+    A spoofed-source flood can only use UDP: TCP, TLS and QUIC need a handshake from the real address. Keeping the stream budget apart means such a flood never drains it, so the TCP retry of a [slipped](#tc1-slip) query is answered, while a stream flood from a real address is still held to its own budget. A subnet that uses both kinds of transport can therefore spend up to twice the configured numbers.
 
 ---
 
 ## Reference
 
 ### Query Rate Limiting
+
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
 
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
@@ -79,7 +84,7 @@ Subnet 10.0.0.0/24:
 | `ipv6_prefix_len` | `u8` | `48` | IPv6 prefix length used to group clients into subnet buckets. `48` covers a standard home delegation |
 | `whitelist` | `[str]` | `[]` | List of CIDRs that bypass rate limiting entirely |
 | `nxdomain_per_second` | `u32` | `50` | Separate budget for NXDOMAIN answers; only an NXDOMAIN over it is limited. Catches random-subdomain attacks. `0` = no NXDOMAIN budget |
-| `slip_ratio` | `u32` | `0` | Every Nth rate-limited response is TC=1 instead of REFUSED. `0` = disabled |
+| `slip_ratio` | `u32` | `0` | Every Nth rate-limited UDP response is TC=1 instead of REFUSED; the stream transports are always REFUSED. `0` = disabled |
 | `dry_run` | `bool` | `false` | Log rate-limit events without refusing queries |
 | `stale_entry_ttl_secs` | `u64` | `300` | Seconds before an idle subnet bucket is evicted from memory |
 
@@ -95,32 +100,34 @@ Subnet 10.0.0.0/24:
 
 ## TC=1 Slip
 
-When `slip_ratio > 0`, Ferrous DNS alternates between REFUSED and TC=1 (truncated) responses for rate-limited queries:
+When `slip_ratio > 0`, Ferrous DNS alternates between REFUSED and TC=1 (truncated) responses for rate-limited UDP queries:
 
 | `slip_ratio` | Behavior |
 |:-------------|:---------|
-| `0` | All rate-limited responses are REFUSED |
-| `1` | All rate-limited responses are TC=1 |
-| `2` | Every 2nd rate-limited response is TC=1, rest are REFUSED |
-| `N` | Every Nth rate-limited response is TC=1 |
+| `0` | All rate-limited UDP responses are REFUSED |
+| `1` | All rate-limited UDP responses are TC=1 |
+| `2` | Every 2nd rate-limited UDP response is TC=1, rest are REFUSED |
+| `N` | Every Nth rate-limited UDP response is TC=1 |
 
-TC=1 forces clients to retry over TCP, which:
+TC=1 makes the client retry over TCP, which:
 
 - **Verifies legitimacy** — spoofed-source floods can't complete TCP handshakes
-- **Allows recovery** — real clients still get answers via TCP
+- **Allows recovery** — the retry spends the subnet's stream budget, which a UDP flood cannot drain, so real clients still get their answers
 - **Follows standards** — same approach used by NSD and BIND
+
+Only UDP is slipped. A TCP, DoT, DoH or DoQ query over the subnet's stream budget is REFUSED: TC=1 on a stream asks for a retry over a transport the client is already using.
 
 ---
 
 ## NXDOMAIN Budget
 
-The NXDOMAIN budget works like BIND's response rate limiting (`nxdomains-per-second`). It is a separate, stricter token bucket per subnet, charged for each NXDOMAIN answer the subnet receives. This catches:
+The NXDOMAIN budget works like BIND's response rate limiting (`nxdomains-per-second`). It is a separate, stricter token bucket per subnet (again one for UDP and one for the stream transports), charged for each NXDOMAIN answer the subnet receives. This catches:
 
 - **Random subdomain attacks** — bots generating `abc123.example.com` queries
 - **IoT scanning** — devices probing many non-existent subdomains
 - **DGA malware** — domain generation algorithm traffic
 
-The budget is charged when the NXDOMAIN answer is produced, and it decides that answer only. An NXDOMAIN answer over the budget gets the configured action: REFUSED or TC=1 per `slip_ratio`, or only a log line under `dry_run`. The subnet's other queries are never refused because of it, so one device sweeping non-existent names does not take the rest of its `/24` offline.
+The budget is charged when the NXDOMAIN answer is produced, and it decides that answer only. An NXDOMAIN answer over the budget gets the configured action: REFUSED or, over UDP, TC=1 per `slip_ratio`, or only a log line under `dry_run`. The subnet's other queries are never refused because of it, so one device sweeping non-existent names does not take the rest of its `/24` offline.
 
 Upstream NXDOMAINs are charged however they are answered: fresh, from the cache, or for a query that joined another's in-flight lookup. NXDOMAINs from `local_dns_server` and from [internal pools](../features/upstream-management.md#upstream-pools) are never charged, fresh or cached: they are the LAN's own traffic, such as a router answering reverse lookups for hosts it does not know. Whitelisted clients are never charged either.
 
@@ -168,7 +175,7 @@ enabled                = true
 queries_per_second     = 1000    # ~10 QPS/device, covers heavy browsing + IoT
 burst_size             = 500     # absorbs page loads (50+ queries/page)
 nxdomain_per_second    = 50      # IoT devices probe many subdomains
-slip_ratio             = 2       # 50% TC=1 for rate-limited traffic
+slip_ratio             = 2       # 50% TC=1 for rate-limited UDP traffic
 whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 ```
 

@@ -44,6 +44,10 @@ make ci          # fmt-check + clippy -D warnings + test — run before every co
 make pre-commit  # same, but formats in place instead of only checking
 ```
 
+Every target builds and runs the tests on half of your machine's logical CPUs,
+so the rest stays usable. Pass `JOBS=all` to use every core, or `JOBS=<n>` to
+set the count: `make ci JOBS=all`. Under CI (`CI` set) the default is every core.
+
 Other targets worth knowing (`make help` lists them all):
 
 | Command | What it does |

@@ -231,7 +231,7 @@ enabled                = true
 queries_per_second     = 1000    # ~10 QPS/device, covers heavy browsing + IoT
 burst_size             = 500     # absorbs page loads (50+ queries/page)
 nxdomain_per_second    = 50
-slip_ratio             = 2       # 50% TC=1 for rate-limited traffic
+slip_ratio             = 2       # 50% TC=1 for rate-limited UDP traffic
 whitelist              = ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 tcp_max_connections_per_ip = 30
 dot_max_connections_per_ip = 15

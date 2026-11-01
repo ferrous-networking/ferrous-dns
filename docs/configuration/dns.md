@@ -368,6 +368,8 @@ dot_max_connections_per_ip = 15
 doq_max_connections_per_ip = 15
 ```
 
+The budgets apply per subnet, once for UDP and once for the stream transports (TCP, DoT, DoH, DoQ).
+
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `enabled` | `false` | Master switch — `false` disables all rate limiting with zero overhead |
@@ -377,7 +379,7 @@ doq_max_connections_per_ip = 15
 | `ipv6_prefix_len` | `48` | IPv6 prefix length for subnet grouping (e.g. 48 = /48) |
 | `whitelist` | `[]` | CIDRs that bypass rate limiting entirely |
 | `nxdomain_per_second` | `50` | Separate, stricter budget for NXDOMAIN answers per subnet; only an NXDOMAIN answer over it is limited, never the subnet's other queries. `local_dns_server` and internal pool answers are not charged. 0 = no NXDOMAIN budget |
-| `slip_ratio` | `0` | Every Nth rate-limited UDP response sends TC=1 (forcing TCP retry). 0 = disabled |
+| `slip_ratio` | `0` | Every Nth rate-limited UDP response sends TC=1 (forcing a TCP retry, which spends the separate stream budget). Stream transports are refused, never slipped. 0 = disabled |
 | `dry_run` | `false` | Log rate-limit events without refusing queries |
 | `stale_entry_ttl_secs` | `300` | Seconds before an idle subnet bucket is evicted from memory |
 | `tcp_max_connections_per_ip` | `30` | Max concurrent TCP DNS connections per IP. 0 = unlimited |

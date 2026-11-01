@@ -1,20 +1,23 @@
 ---
 name: cname-target-cached-under-dotted-name
-description: The CNAME chain's final target is cached as "target.example." (trailing dot), a key no client lookup ever matches — the shortcut has never served a hit; filed as #325 (v1.0.0 milestone)
+description: CNAME chain names kept hickory's trailing dot, so the target shortcut (#325) never hit and CNAME cloaking never blocked a real answer; PR #354 normalizes them and removes the shortcut (opened 2026-11-01)
 type: project
 paths:
   - crates/infrastructure/src/dns/forwarding/response_parser.rs
   - crates/infrastructure/src/dns/resolver/cache_layer.rs
+  - crates/application/src/use_cases/dns/handle_dns_query.rs
 ---
 
-**Symptom:** `CachedResolver::store_in_cache` also caches the chain's final target under its own name, so a direct query for it skips upstream. In production that entry is never hit.
+**Symptom:** `ResponseParser` filled `cname_chain` with `Name::to_utf8()`, which keeps the root dot (`lb.cdn.example.`). Client names, block rules and cache keys have none. Two features were dead for it: the chain-target cache entry (#325, never hit) and CNAME cloaking (never matched a rule on a real answer).
 
-**Where:** `ResponseParser` fills `cname_chain` with `canonical.to_utf8()` (`response_parser.rs:75-79`). hickory's `Name` display keeps the trailing dot of a wire name, so the target is `lb.cdn.example.`. Client query names arrive without it: the fast path never has one, and `parse_client_query_hickory` trims it (`server.rs`). The cache stores the target under the dotted key, and every lookup uses the undotted one.
+**Why tests missed it:** the application cloaking tests and `cache_cname_target_test.rs` fed mock chains without the dot. Only a real wire answer (`tests/support/upstream.rs` `Answer::Cname`) shows it.
 
-**Why tests missed it:** `cache_cname_target_test.rs` feeds a mock resolver whose chain targets have no dot. With a real wire answer (`tests/support/upstream.rs` `Answer::Cname`), only the dotted probe hits. Found 2026-10-15 while writing `cache_group_view_test.rs` for #272.
+**Fix (branch `fix/cname-chain-trailing-dot`, 2026-10-31 → 11-01):**
+- `normalize_wire_name` in `cache/key.rs` (no trailing dot, ASCII-lowercase), used by `server.rs` and the parser.
+- The chain is cached with the answer (`CachedAddresses.cname_chain`, `WireData(Arc<CachedWire>)`), and every cached hit re-checks it per group. The memo in the decision cache alone let a reload, the chain's TTL or another group's cached copy serve the alias unchecked.
+- An explicit allow of the queried name now lifts cloaking (it ignored `explicitly_allowed` before).
+- DNS64's synthesized AAAA keeps the A answer's chain.
 
-**Cost today:** one dead entry per CNAME answer, plus its refresh timer. Entries nobody reads are parked by the access window rather than renewed.
+**The target shortcut was removed, not fixed.** Once names matched, it cached an upstream's answer under the target's own name in the shared view, overriding a name another mechanism owns: a conditional pool for every client, a wildcard local record, a `local_domain` name. A guard would need every owner of a name. Do not bring it back without that.
 
-**Fix sketch:** trim the trailing dot where the chain is built, or where the target key is built in `store_in_cache`. Fixing it starts serving real hits for CDN targets, which is a behavior change: the target answer is the chain's, with the chain's TTL and DNSSEC status.
-
-**Status:** open; filed as issue #325 on 2026-10-26, in the v1.0.0 milestone. The #272 tests check both forms of the target on purpose (`TARGET_FORMS` in `cache_group_view_test.rs`), so they keep passing after a fix.
+**Status:** fixed in PR #354 (opened 2026-11-01, `make ci` 2543 green). The Query Log still labels `cname_cloaking` rows "Upstream" until #326.

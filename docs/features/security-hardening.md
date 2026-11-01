@@ -141,7 +141,7 @@ Trust anchors are the IANA root KSKs, embedded in the binary. `[dns] dnssec_trus
 
 ### Per-subnet rate limiting
 
-A token bucket keyed on the client subnet (`/24` for IPv4, `/48` for IPv6 by default), with a separate NXDOMAIN budget, a TC=1 slip mode that forces suspicious clients onto TCP, and a dry-run mode for tuning without dropping traffic.
+A token bucket keyed on the client subnet (`/24` for IPv4, `/48` for IPv6 by default) and kept apart for UDP and the stream transports, with a separate NXDOMAIN budget, a TC=1 slip mode that moves UDP clients onto TCP, where a spoofed-source flood cannot follow, and a dry-run mode for tuning without dropping traffic.
 
 Note the **code default is `enabled = false`** while the shipped `ferrous-dns.toml` turns it on — check the value you actually run with. Full option reference: [Rate Limiting](../configuration/rate-limiting.md).
 

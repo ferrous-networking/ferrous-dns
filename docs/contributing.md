@@ -50,6 +50,9 @@ make ci
 # Same, but formats in place instead of only checking
 make pre-commit
 
+# Builds and tests use half the logical CPUs by default; JOBS=all uses every core
+make ci JOBS=all
+
 # Build (optimized for your CPU)
 RUSTFLAGS="-C target-cpu=native" cargo build --release
 

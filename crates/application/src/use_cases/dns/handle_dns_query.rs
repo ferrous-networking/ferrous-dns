@@ -676,7 +676,8 @@ impl HandleDnsQueryUseCase {
         group_id: i64,
     ) -> Result<(), DomainError> {
         self.apply_rate_limit(
-            self.rate_limiter.charge_nxdomain(request.client_ip),
+            self.rate_limiter
+                .charge_nxdomain(request.client_ip, request.protocol),
             "nxdomain",
             request,
             elapsed_us,
@@ -701,7 +702,7 @@ impl HandleDnsQueryUseCase {
         let group_id = self.block_filter.resolve_group(request.client_ip);
 
         self.apply_rate_limit(
-            self.rate_limiter.check(request.client_ip),
+            self.rate_limiter.check(request.client_ip, request.protocol),
             "queries",
             request,
             elapsed_us,

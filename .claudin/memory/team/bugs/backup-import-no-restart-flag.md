@@ -1,6 +1,6 @@
 ---
 name: backup-import-no-restart-flag
-description: POST /api/config/import never set AppState.restart_pending, so no restart banner after an import; fixed on branch fix/backup-pools-and-detectors (2026-10-23)
+description: POST /api/config/import never set AppState.restart_pending, so no restart banner after an import; fixed by PR #306 (676b0093, merged 2026-10-23)
 type: project
 paths: crates/api/src/handlers/backup.rs, crates/application/src/use_cases/backup/import.rs
 ---
@@ -17,7 +17,7 @@ DNS64, auth and other settings that only take effect after a restart, yet the
 `/config/import` handler (`crates/api/src/handlers/backup.rs`) never marks a restart.
 The gap predates #234: the old localStorage banner was never raised by an import either.
 
-**Status:** fixed on branch `fix/backup-pools-and-detectors` (2026-10-23). `ImportSummary.restart_required`
+**Status:** fixed by PR #306 (`676b0093`, merged 2026-10-23). `ImportSummary.restart_required`
 is true when the restored config differs from the running one, compared as serde JSON like
 `config_differs`, pools included, because an import hot-applies nothing. The handler marks the
 restart, the response carries `restart_required`, and `settings.js` reads it even when `success`

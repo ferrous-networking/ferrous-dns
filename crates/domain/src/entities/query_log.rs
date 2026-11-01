@@ -193,6 +193,18 @@ impl ClientProtocol {
             ClientProtocol::Doq => "doq",
         }
     }
+
+    /// TCP, DoT, DoH and DoQ: their TCP, TLS or QUIC handshake proves the
+    /// client's address before a query is read, which UDP never does.
+    pub fn is_stream(self) -> bool {
+        match self {
+            ClientProtocol::Udp => false,
+            ClientProtocol::Tcp
+            | ClientProtocol::Dot
+            | ClientProtocol::Doh
+            | ClientProtocol::Doq => true,
+        }
+    }
 }
 
 impl std::fmt::Display for ClientProtocol {
