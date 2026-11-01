@@ -1,5 +1,6 @@
 use crate::dns::wire_response;
 use bytes::Bytes;
+use ferrous_dns_application::ports::DnsResolution;
 use ferrous_dns_domain::DnssecStatus;
 use std::net::IpAddr;
 use std::ops::RangeInclusive;
@@ -105,6 +106,23 @@ impl CachedData {
     /// A wire answer with no CNAME chain.
     pub fn wire(bytes: Bytes) -> Self {
         Self::WireData(Arc::new(CachedWire::new(bytes)))
+    }
+
+    /// What the cache stores for an upstream `resolution`: its addresses if it
+    /// has any, else its wire message, either with the CNAME chain it came
+    /// through. `None` when it has neither.
+    pub(crate) fn from_resolution(resolution: &DnsResolution) -> Option<Self> {
+        if !resolution.addresses.is_empty() {
+            return Some(Self::IpAddresses(
+                CachedAddresses::new(Arc::clone(&resolution.addresses))
+                    .with_cname_chain(&resolution.cname_chain),
+            ));
+        }
+        resolution.upstream_wire_data.as_ref().map(|bytes| {
+            Self::WireData(Arc::new(
+                CachedWire::new(bytes.clone()).with_cname_chain(&resolution.cname_chain),
+            ))
+        })
     }
 
     /// The form the cache stores for an entry of `ttl` seconds: a wire answer

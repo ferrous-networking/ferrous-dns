@@ -1,8 +1,6 @@
 use super::super::cache::key::{BorrowedKey, CacheKey};
 use super::super::cache::negative_cache::{negative_ttl, MIN_NEGATIVE_TTL};
-use super::super::cache::{
-    CachedAddresses, CachedData, CachedDnssecStatus, CachedWire, DnsCacheAccess, LocalRecordStatus,
-};
+use super::super::cache::{CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus};
 use super::super::load_balancer::{Route, UpstreamRouter};
 use super::super::wire_response;
 use async_trait::async_trait;
@@ -241,39 +239,27 @@ impl CachedResolver {
             .dnssec_status
             .map_or(CachedDnssecStatus::Unknown, CachedDnssecStatus::from);
 
-        if resolution.addresses.is_empty() {
-            match &resolution.upstream_wire_data {
-                // No answer records means NXDOMAIN or NODATA, which lives for
-                // the SOA's negative TTL rather than the default one.
-                Some(wire_data) => self.cache.insert(
-                    borrowed(key),
-                    CachedData::WireData(Arc::new(
-                        CachedWire::new(wire_data.clone())
-                            .with_cname_chain(&resolution.cname_chain),
-                    )),
-                    resolution.min_ttl.map_or_else(
-                        || negative_ttl(resolution.negative_soa_ttl),
-                        |ttl| ttl.max(1),
-                    ),
-                    Some(dnssec_status),
-                    resolution.local_dns,
-                ),
-                None => self.insert_negative(
-                    key,
-                    resolution.negative_soa_ttl.unwrap_or(MIN_NEGATIVE_TTL),
-                    resolution.local_dns,
-                ),
-            }
+        let Some(data) = CachedData::from_resolution(resolution) else {
+            self.insert_negative(
+                key,
+                resolution.negative_soa_ttl.unwrap_or(MIN_NEGATIVE_TTL),
+                resolution.local_dns,
+            );
             return;
-        }
-
-        let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
+        };
+        let ttl = if resolution.addresses.is_empty() {
+            // No answer records means NXDOMAIN or NODATA, which lives for
+            // the SOA's negative TTL rather than the default one.
+            resolution.min_ttl.map_or_else(
+                || negative_ttl(resolution.negative_soa_ttl),
+                |ttl| ttl.max(1),
+            )
+        } else {
+            resolution.min_ttl.unwrap_or(self.cache_ttl)
+        };
         self.cache.insert(
             borrowed(key),
-            CachedData::IpAddresses(
-                CachedAddresses::new(Arc::clone(&resolution.addresses))
-                    .with_cname_chain(&resolution.cname_chain),
-            ),
+            data,
             ttl,
             Some(dnssec_status),
             resolution.local_dns,
