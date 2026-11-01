@@ -1,9 +1,8 @@
 //! CNAME cloaking on real upstream answers and the real block filter. A tracker
 //! served under a first-party name (`metrics.site.example CNAME
 //! x.tracker.example`) is blocked when any name in the chain is. The chain
-//! comes from the wire, where every name ends in a dot; the cloaking tests in
-//! the application crate feed it without one, so they never saw a chain that
-//! no rule could match.
+//! comes off the wire, where its names end in a dot, and is matched against
+//! rules written without one.
 //!
 //! The block has to hold for a cached answer too: once its memo is gone, or for
 //! a client group that never saw the fresh answer.

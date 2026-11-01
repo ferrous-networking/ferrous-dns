@@ -10,9 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 /// The answer (addresses and CNAME chain), DNSSEC status, whether the local
 /// DNS server answered, remaining TTL, and the hits this entry has batched for
-/// its L2 record (0 most of the time; see [`L1Entry::pending_hits`]). The
-/// chain makes it 32 bytes, past the two registers it used to fit in; the
-/// `udp_cache_hit` A cases measured no cost for that.
+/// its L2 record (0 most of the time; see [`L1Entry::pending_hits`]).
 type L1Hit = (CachedAddresses, CachedDnssecStatus, bool, u32, u16);
 const _: () = assert!(std::mem::size_of::<L1Hit>() == 32);
 
