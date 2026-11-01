@@ -1,6 +1,6 @@
 ---
 name: upstream-hostname-startup-only-resolution
-description: Upstream hostnames used to be looked up once, via the system resolver only (#250); PR #255 asks local_dns_server first and retries; resolved hostnames are re-looked-up at their TTL on branch fix/upstream-hostname-refresh
+description: Upstream hostnames used to be looked up once, via the system resolver only (#250); PR #255 asks local_dns_server first and retries; PR #307 (f6a0ed54) re-looks resolved hostnames up at their TTL
 type: project
 paths: crates/infrastructure/src/dns/load_balancer/pool.rs, crates/infrastructure/src/dns/transport/resolver.rs, crates/cli/src/wiring/dns/pool.rs
 ---
@@ -28,7 +28,7 @@ The UI shows Local DNS server as its own always-visible field, which used to be 
 a local domain was set. Accepted tradeoff: when the router answers, an `/etc/hosts` pin for an
 upstream hostname is not consulted.
 
-**IP refresh (branch `fix/upstream-hostname-refresh`, 2026-10-23):** resolved hostnames used to
+**IP refresh (PR #307, `f6a0ed54`, merged 2026-10-24):** resolved hostnames used to
 keep their IPs until a restart or save. A retry run for another server also dropped a resolved
 hostname's IPs when its own lookup failed. Now:
 - `run_hostname_refresh` (`load_balancer/hostname_refresh.rs`) keeps one pending lookup per

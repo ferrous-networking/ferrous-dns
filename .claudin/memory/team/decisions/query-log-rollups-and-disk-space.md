@@ -1,12 +1,12 @@
 ---
 name: query-log-rollups-and-disk-space
-description: Why a 20 GB query log got hourly rollups filled by a job (not the writer), incremental auto-vacuum and --compact-database instead of Postgres (#311, branch fix/query-log-database-growth, 2026-10-27); the exactness invariant every rollup read keeps
+description: Why a 20 GB query log got hourly rollups filled by a job (not the writer), incremental auto-vacuum and --compact-database instead of Postgres (#311, PR #345 58d1a375, 2026-10-27); the exactness invariant every rollup read keeps
 type: project
 scope: query-log/database
 impact: structural
 ---
 
-**Decision:** on 2026-10-27 issue #311 ("Please support postgres": 20 GB SQLite, slow queries) went to v1.1.0, and the SQLite causes were fixed instead on `fix/query-log-database-growth`:
+**Decision:** on 2026-10-27 issue #311 ("Please support postgres": 20 GB SQLite, slow queries) went to v1.1.0, and the SQLite causes were fixed instead by PR #345 (`58d1a375`, closes #344, merged by 2026-10-28):
 - **Space.** New databases use `auto_vacuum = INCREMENTAL`; the retention job gives freed pages back after each cleanup (`FreeSpaceReclaimer`, 8 MiB steps + PASSIVE checkpoint). Old files convert with `ferrous-dns --compact-database` (exclusive lock, `VACUUM INTO <db>.compact`, fsync, rename); startup warns at ≥ 64 MiB unreclaimable. Retention's first run moved from 4 h to 10 min after boot.
 - **Reads.** Top domains, distinct domains and top clients read `query_log_hour_domain` / `query_log_hour_client`; the Query Log total and Pi-hole storage counts read the minute rollups. Coverage lives in the one-row `query_log_rollup_state` (`minute_since`, `hour_since`, `hour_until`, `hour_floor`).
 

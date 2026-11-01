@@ -1,6 +1,6 @@
 ---
 name: mobile-layout-overflow
-description: Admin UI pages scrolled sideways on phones and tablets (fixed grids, tab bars, unwrapped tables, fixed-width Settings controls); fixed on fix/mobile-layout-narrow-screens (6e26cc83, 2026-10-24); how to check a layout change
+description: Admin UI pages scrolled sideways on phones and tablets (fixed grids, tab bars, unwrapped tables, fixed-width Settings controls); fixed by PR #309 (7537fadf, 2026-10-24); how to check a layout change
 type: project
 paths: web/static/shared.css, web/static/shared.js, web/static/settings.html, web/static/settings.css, web/static/dns-filter.html, web/static/dns-filter.css, web/static/local-dns-settings.html, web/static/local-dns-settings.css, web/static/clients.html, web/static/groups.html, web/static/dashboard.css
 ---
@@ -51,7 +51,8 @@ the fix, 149 of 270 views overflowed (10 pages, every tab, at 320, 360, 375, 390
 - Run one pass in a headed browser too. Desktop scrollbars take 15px that headless overlay
   scrollbars do not, and that pass caught the tab-scroll timing bug.
 
-**Status:** fixed 2026-10-24; PR not opened yet.
+**Status:** fixed by PR #309 (`7537fadf`, merged 2026-10-24). Consolidating the four `.tab-bar`
+definitions and a fade on the tab edge were turned down in review; the PR lists them as follow-ups.
 
 Related: [[query-log-domain-column-collapse]], [[alpine-xshow-drops-inline-display]] (none of the
 changed grids use `x-show`).
