@@ -7,6 +7,7 @@ ferrous-dns is a security-focused, DNSSEC-validating DNS resolver and content fi
 - `make ci` — formatting check, clippy with `-D warnings`, and the full test suite; run before every commit
 - `make pre-commit` — formatting, clippy, tests
 - `make test` / `make bench` — tests and criterion benchmarks; coverage has no Make target (`cargo tarpaulin --workspace --out Html`)
+- Every `make` target builds and tests on half the logical CPUs; `JOBS=all` uses every core, `JOBS=<n>` sets the count (default is every core when `CI` is set)
 - `cargo run --release --bin ferrous-dns -- --config ferrous-dns.toml` — run the server (the config lives in the repo root; there is no `config/` directory); on failure check the port, config path, and file permissions first
 - The `/verify` and `/pre-pr` skills in `.claudin/skills/` mirror the CI checks (`/pre-pr` adds `cargo audit` and docs version checks) — run them before pushing or opening a PR
 

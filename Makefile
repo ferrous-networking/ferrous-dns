@@ -20,6 +20,23 @@ VERSION := $(shell grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\
 # Artifacts untouched for this many days are dropped by `make prune`
 PRUNE_DAYS ?= 14
 
+# Parallelism of every cargo build and test run: half of this machine's
+# logical CPUs, so the rest stays usable. `JOBS=all` uses every core and
+# `JOBS=<n>` sets the count. Under CI (GitHub Actions sets CI=true) the
+# default is every core.
+CPUS := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+HALF_CPUS := $(shell echo $$(( ($(CPUS) + 1) / 2 )))
+ifdef CI
+JOBS ?= all
+else
+JOBS ?= $(HALF_CPUS)
+endif
+ifeq ($(JOBS),all)
+override JOBS := $(CPUS)
+endif
+export CARGO_BUILD_JOBS := $(JOBS)
+export RUST_TEST_THREADS := $(JOBS)
+
 # Colors for output
 BLUE := \033[0;34m
 GREEN := \033[0;32m
@@ -35,6 +52,8 @@ help: ## Show this help message
 	@echo "$(BLUE)Ferrous DNS - Available Commands$(NC)"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Parallelism: JOBS=$(JOBS) of $(CPUS) CPUs (JOBS=all for every core, JOBS=<n> to set it)"
 	@echo ""
 
 # ============================================================================
