@@ -29,8 +29,7 @@ impl DnsCookieGuard {
     /// client's address, which is all the cookie proves (RFC 7873 §5.2.3).
     /// `None`, a request from no listener, is held to the UDP rule.
     pub(super) fn requires_cookie(&self, protocol: Option<ClientProtocol>) -> bool {
-        use ClientProtocol::{Doh, Doq, Dot, Tcp};
-        self.strict && !matches!(protocol, Some(Tcp | Dot | Doh | Doq))
+        self.strict && !protocol.is_some_and(ClientProtocol::is_stream)
     }
 
     /// Whether EDNS option-10 data carries a server cookie this server issued to `client_ip`.
