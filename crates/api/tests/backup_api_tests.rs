@@ -4,7 +4,7 @@ use axum::{
     Router,
 };
 use ferrous_dns_domain::{Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy};
-use helpers::TestApp;
+use helpers::{get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -458,6 +458,50 @@ async fn test_import_new_group_is_created() {
     assert_eq!(json["success"], true);
     assert_eq!(json["summary"]["groups_imported"], 1);
     assert_eq!(json["summary"]["groups_skipped"], 0);
+}
+
+/// A group switched out of malware detection stays out after a restore, and
+/// the groups of a backup taken before the flag existed come back with it on.
+#[tokio::test]
+async fn test_group_malware_detection_survives_export_import_round_trip() {
+    let source = test_app().await;
+    sqlx::query("INSERT INTO groups (name, malware_detection_enabled) VALUES ('Servers', 0)")
+        .execute(&source.pool)
+        .await
+        .unwrap();
+    let (_, exported) = do_export(source.router).await;
+    assert_eq!(
+        exported["data"]["groups"][1]["malware_detection_enabled"], false,
+        "{exported}"
+    );
+
+    let mut backup = exported.clone();
+    backup["data"]["groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "Legacy", "comment": null }));
+    let target = test_app().await.router;
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(target, "/groups").await;
+    let flag = |name: &str| {
+        groups
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["name"] == name)
+            .unwrap_or_else(|| panic!("{name} was not restored: {groups}"))
+            ["malware_detection_enabled"]
+            .clone()
+    };
+    assert_eq!(flag("Servers"), false);
+    assert_eq!(flag("Legacy"), true);
 }
 
 #[tokio::test]

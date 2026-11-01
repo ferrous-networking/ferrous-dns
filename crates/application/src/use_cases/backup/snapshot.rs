@@ -165,6 +165,13 @@ pub struct GroupSnapshot {
     pub comment: Option<String>,
     #[serde(default)]
     pub is_default: bool,
+    /// Absent from older backups, whose groups all had the detectors on.
+    #[serde(default = "default_malware_detection_enabled")]
+    pub malware_detection_enabled: bool,
+}
+
+fn default_malware_detection_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,8 +11,8 @@ use super::upstream_admission::UpstreamAdmission;
 use crate::drop_counter::DropCounter;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DgaFlagStore, DnsResolution, DnsResolver,
-    FilterDecision, NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore,
-    SafeSearchEnginePort, TunnelingFlagStore,
+    FilterDecision, MalwareExemptionPort, NxdomainHijackIpStore, QueryLogRepository,
+    ResponseIpFilterStore, SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
     BlockSource, ClientProtocol, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest,
@@ -45,8 +45,9 @@ struct Screening {
     group_id: i64,
     /// The answer's CNAME chain goes through the block filter (CNAME cloaking).
     cloaking: bool,
-    /// The malware detectors run. An explicit allow lifts them: clearing their
-    /// false positives is what the allowlist is for.
+    /// The malware detectors run. An explicit allow lifts them, since clearing
+    /// their false positives is what the allowlist is for, and so does a group
+    /// with Malware Detection switched off.
     detectors: bool,
 }
 
@@ -74,6 +75,7 @@ pub struct HandleDnsQueryUseCase {
     dga_guard: DgaGuard,
     dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
     dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
+    malware_exemptions: Option<Arc<dyn MalwareExemptionPort>>,
     cookie_guard: Option<DnsCookieGuard>,
     upstream_admission: Option<UpstreamAdmission>,
     dnssec_enforce: bool,
@@ -104,6 +106,7 @@ impl HandleDnsQueryUseCase {
             dga_guard: DgaGuard::disabled(),
             dga_event_tx: None,
             dga_flag_store: None,
+            malware_exemptions: None,
             cookie_guard: None,
             upstream_admission: None,
             dnssec_enforce: false,
@@ -257,6 +260,13 @@ impl HandleDnsQueryUseCase {
     /// Injects the flag store for checking background-flagged DGA domains.
     pub fn with_dga_flag_store(mut self, store: Arc<dyn DgaFlagStore>) -> Self {
         self.dga_flag_store = Some(store);
+        self
+    }
+
+    /// Skips the malware detectors for the clients of a group with Malware
+    /// Detection switched off.
+    pub fn with_malware_exemptions(mut self, exemptions: Arc<dyn MalwareExemptionPort>) -> Self {
+        self.malware_exemptions = Some(exemptions);
         self
     }
 
@@ -430,12 +440,16 @@ impl HandleDnsQueryUseCase {
     }
 
     #[inline]
-    fn screening(group_id: i64, filter_decision: FilterDecision) -> Screening {
+    fn screening(&self, group_id: i64, filter_decision: FilterDecision) -> Screening {
         let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
         Screening {
             group_id,
             cloaking: !explicitly_allowed,
-            detectors: !explicitly_allowed,
+            detectors: !explicitly_allowed
+                && !self
+                    .malware_exemptions
+                    .as_ref()
+                    .is_some_and(|exemptions| exemptions.is_exempt(group_id)),
         }
     }
 
@@ -522,7 +536,7 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        let screening = Self::screening(group_id, filter_decision);
+        let screening = self.screening(group_id, filter_decision);
         // The cache is shared across groups, so a name another client resolved
         // is checked here exactly as on a miss.
         if screening.detectors
@@ -825,7 +839,7 @@ impl HandleDnsQueryUseCase {
             });
             return Err(DomainError::Blocked);
         }
-        let screening = Self::screening(group_id, filter_decision);
+        let screening = self.screening(group_id, filter_decision);
 
         if screening.detectors {
             let hits = self.screen_name(

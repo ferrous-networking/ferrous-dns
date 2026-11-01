@@ -9,6 +9,9 @@ pub struct Group {
     pub enabled: bool,
     pub comment: Option<Arc<str>>,
     pub is_default: bool,
+    /// Whether the malware detectors check this group's queries. Off exempts
+    /// every client in the group, as a client whitelist did.
+    pub malware_detection_enabled: bool,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }

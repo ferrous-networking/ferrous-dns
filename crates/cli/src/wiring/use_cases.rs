@@ -160,11 +160,18 @@ impl UseCases {
             roll_up_query_log: Arc::new(RollUpQueryLogUseCase::new(repos.query_log.clone())),
             reclaim_free_space: Arc::new(ReclaimFreeSpaceUseCase::new(repos.query_log.clone())),
             get_groups: Arc::new(GetGroupsUseCase::new(repos.group.clone())),
-            create_group: Arc::new(CreateGroupUseCase::new(repos.group.clone())),
-            update_group: Arc::new(UpdateGroupUseCase::new(repos.group.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(
+                repos.group.clone(),
+                repos.malware_exemptions.clone(),
+            )),
+            update_group: Arc::new(UpdateGroupUseCase::new(
+                repos.group.clone(),
+                repos.malware_exemptions.clone(),
+            )),
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 repos.group.clone(),
                 repos.block_filter_engine.clone(),
+                repos.malware_exemptions.clone(),
                 config,
             )),
             assign_client_group: Arc::new(AssignClientGroupUseCase::new(

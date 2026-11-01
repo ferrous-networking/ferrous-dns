@@ -117,7 +117,7 @@ async fn test_create_with_multiple_groups() {
     let repo = Arc::new(MockBlocklistSourceRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
     group_repo
-        .create("Office".to_string(), None, true)
+        .create("Office".to_string(), None, true, true)
         .await
         .unwrap();
     let use_case = CreateBlocklistSourceUseCase::new(
@@ -261,7 +261,7 @@ async fn test_update_change_groups() {
     let repo = Arc::new(MockBlocklistSourceRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
     group_repo
-        .create("Office".to_string(), None, true)
+        .create("Office".to_string(), None, true, true)
         .await
         .unwrap();
 
@@ -292,7 +292,7 @@ async fn test_update_assign_multiple_groups() {
     let repo = Arc::new(MockBlocklistSourceRepository::new());
     let group_repo = Arc::new(MockGroupRepository::new());
     group_repo
-        .create("Office".to_string(), None, true)
+        .create("Office".to_string(), None, true, true)
         .await
         .unwrap();
 

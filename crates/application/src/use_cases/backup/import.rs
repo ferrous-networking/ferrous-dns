@@ -330,7 +330,11 @@ impl ImportConfigUseCase {
         for group in &snapshot.data.groups {
             match self
                 .group_creator
-                .create_group(group.name.clone(), group.comment.clone())
+                .create_group(
+                    group.name.clone(),
+                    group.comment.clone(),
+                    group.malware_detection_enabled,
+                )
                 .await
             {
                 Ok(_) => imported += 1,

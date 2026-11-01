@@ -159,6 +159,38 @@ async fn explicit_allow_clears_a_dga_false_positive() {
     );
 }
 
+/// A managed allow holds for its own group only. The query log's Allow
+/// button once wrote every rule into group 1, so a client in any other group
+/// kept getting blocked after the click.
+#[tokio::test]
+async fn an_allow_in_another_group_does_not_clear_a_dga_hit() {
+    let block_filter = MockBlockFilterEngine::new();
+    block_filter.set_client_group(7);
+    block_filter.allow_domain_in_group(DGA_SHAPED, 1);
+    let use_case = HandleDnsQueryUseCase::new(
+        Arc::new(resolver_with_ip(DGA_SHAPED, "1.2.3.4").await),
+        Arc::new(block_filter.clone()),
+        Arc::new(MockQueryLogRepository::new()),
+    )
+    .with_dga_detection(&DgaDetectionConfig {
+        enabled: true,
+        action: DgaDetectionAction::Block,
+        ..Default::default()
+    });
+    let request = DnsRequest::new(DGA_SHAPED, RecordType::A, CLIENT_IP);
+
+    assert!(matches!(
+        use_case.execute(&request).await,
+        Err(DomainError::DgaDomainDetected)
+    ));
+
+    block_filter.allow_domain_in_group(DGA_SHAPED, 7);
+    assert!(
+        use_case.execute(&request).await.is_ok(),
+        "an allow in the client's own group must clear it"
+    );
+}
+
 #[tokio::test]
 async fn explicit_allow_clears_a_background_dga_flag() {
     let control = build(

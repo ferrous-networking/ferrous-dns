@@ -215,6 +215,7 @@ impl DnsServices {
             repos.query_log.clone(),
         )
         .with_safe_search(repos.safe_search_engine.clone())
+        .with_malware_exemptions(repos.malware_exemptions.clone())
         .with_client_tracking(
             repos.client.clone(),
             config.database.client_tracking_interval,

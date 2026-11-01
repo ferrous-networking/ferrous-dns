@@ -35,6 +35,7 @@ impl GroupCreator for StubGroupCreator {
         &self,
         _name: String,
         _comment: Option<String>,
+        _malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
         Err(DomainError::IoError("test stub".to_string()))
     }
@@ -364,6 +365,7 @@ impl GroupRepository for UnreadableGroups {
         _name: String,
         _comment: Option<String>,
         _enabled: bool,
+        _malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
         unimplemented!()
     }
@@ -385,6 +387,7 @@ impl GroupRepository for UnreadableGroups {
         _name: Option<String>,
         _enabled: Option<bool>,
         _comment: Option<String>,
+        _malware_detection_enabled: Option<bool>,
     ) -> Result<Group, DomainError> {
         unimplemented!()
     }
@@ -428,6 +431,7 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
         name: "Protected".to_string(),
         comment: None,
         is_default: true,
+        malware_detection_enabled: true,
     });
 
     let result = import.execute(snapshot).await;

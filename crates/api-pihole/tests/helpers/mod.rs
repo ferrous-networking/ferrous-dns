@@ -12,7 +12,7 @@ use ferrous_dns_api_pihole::state::{
 use ferrous_dns_api_pihole::{create_pihole_router_with_openapi, PiholeAppState};
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, CacheEntryPage, CacheEntryQuery, CacheMetricsSnapshot, CacheOverview,
-    DnsCachePort, FilterDecision,
+    DnsCachePort, FilterDecision, MalwareExemptionPort,
 };
 use ferrous_dns_application::use_cases::{
     CleanupOldQueryLogsUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
@@ -277,6 +277,7 @@ pub async fn create_test_db() -> sqlx::SqlitePool {
             enabled BOOLEAN NOT NULL DEFAULT 1,
             comment TEXT,
             is_default BOOLEAN NOT NULL DEFAULT 0,
+            malware_detection_enabled BOOLEAN NOT NULL DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
@@ -484,6 +485,10 @@ async fn build_pihole_state(
         Default::default(),
     ));
     let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
+    let malware_exemptions: Arc<dyn MalwareExemptionPort> =
+        ferrous_dns_infrastructure::dns::GroupMalwareExemptions::new(group_repo.clone())
+            .await
+            .unwrap();
     let managed_domain_repo = Arc::new(SqliteManagedDomainRepository::new(pool.clone()));
     let regex_filter_repo = Arc::new(SqliteRegexFilterRepository::new(pool.clone()));
     let blocklist_source_repo = Arc::new(SqliteBlocklistSourceRepository::new(pool.clone()));
@@ -595,11 +600,18 @@ async fn build_pihole_state(
         },
         groups: PiholeGroupState {
             get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
-            create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
-            update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
+            create_group: Arc::new(CreateGroupUseCase::new(
+                group_repo.clone(),
+                malware_exemptions.clone(),
+            )),
+            update_group: Arc::new(UpdateGroupUseCase::new(
+                group_repo.clone(),
+                malware_exemptions.clone(),
+            )),
             delete_group: Arc::new(DeleteGroupUseCase::new(
                 group_repo.clone(),
                 block_filter_engine.clone(),
+                malware_exemptions,
                 config.clone(),
             )),
         },

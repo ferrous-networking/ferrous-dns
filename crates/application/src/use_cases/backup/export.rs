@@ -49,6 +49,7 @@ impl ExportConfigUseCase {
                 name: g.name.to_string(),
                 comment: g.comment.map(|c| c.to_string()),
                 is_default: g.is_default,
+                malware_detection_enabled: g.malware_detection_enabled,
             })
             .collect();
 

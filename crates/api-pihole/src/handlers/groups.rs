@@ -74,7 +74,7 @@ async fn replace_group(
         return state
             .groups
             .create_group
-            .execute(name.to_string(), comment, enabled)
+            .execute(name.to_string(), comment, enabled, true)
             .await
             .map(drop);
     };
@@ -84,7 +84,13 @@ async fn replace_group(
     state
         .groups
         .update_group
-        .execute(id, rename, Some(enabled), Some(comment.unwrap_or_default()))
+        .execute(
+            id,
+            rename,
+            Some(enabled),
+            Some(comment.unwrap_or_default()),
+            None,
+        )
         .await
         .map(drop)
 }
@@ -160,7 +166,7 @@ pub async fn create_group(
         let result = state
             .groups
             .create_group
-            .execute(name.clone(), comment.clone(), enabled)
+            .execute(name.clone(), comment.clone(), enabled, true)
             .await
             .map(drop);
         record(&mut processed, name, result)?;

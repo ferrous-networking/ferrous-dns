@@ -4,11 +4,12 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info, instrument};
 
-use crate::ports::{BlockFilterEnginePort, GroupRepository};
+use crate::ports::{BlockFilterEnginePort, GroupRepository, MalwareExemptionPort};
 
 pub struct DeleteGroupUseCase {
     group_repo: Arc<dyn GroupRepository>,
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+    malware_exemptions: Arc<dyn MalwareExemptionPort>,
     config: Arc<RwLock<Config>>,
 }
 
@@ -16,11 +17,13 @@ impl DeleteGroupUseCase {
     pub fn new(
         group_repo: Arc<dyn GroupRepository>,
         block_filter_engine: Arc<dyn BlockFilterEnginePort>,
+        malware_exemptions: Arc<dyn MalwareExemptionPort>,
         config: Arc<RwLock<Config>>,
     ) -> Self {
         Self {
             group_repo,
             block_filter_engine,
+            malware_exemptions,
             config,
         }
     }
@@ -64,6 +67,11 @@ impl DeleteGroupUseCase {
         // The delete cascades to managed domains and client subnets the engine still holds.
         if let Err(e) = self.block_filter_engine.reload().await {
             error!(error = %e, "Failed to reload block filter after group deletion");
+        }
+        if !group.malware_detection_enabled {
+            if let Err(e) = self.malware_exemptions.reload().await {
+                error!(error = %e, "Failed to reload malware detection exemptions after group deletion");
+            }
         }
 
         Ok(())

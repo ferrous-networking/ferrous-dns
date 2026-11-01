@@ -1,7 +1,7 @@
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlockedServiceRepository, ConfigFilePersistence, ConfigRepository,
-    CustomServiceRepository, FilterDecision, SafeSearchConfigRepository, SafeSearchEnginePort,
-    ScheduleProfileRepository, ServiceCatalogPort,
+    CustomServiceRepository, FilterDecision, MalwareExemptionPort, SafeSearchConfigRepository,
+    SafeSearchEnginePort, ScheduleProfileRepository, ServiceCatalogPort,
 };
 use ferrous_dns_domain::{
     BlockedService, Config, CustomService, DomainError, SafeSearchConfig, SafeSearchEngine,
@@ -176,6 +176,18 @@ pub struct NullSafeSearchEnginePort;
 impl SafeSearchEnginePort for NullSafeSearchEnginePort {
     fn cname_for(&self, _domain: &str, _group_id: i64) -> Option<&'static str> {
         None
+    }
+    async fn reload(&self) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
+pub struct NullMalwareExemptions;
+
+#[async_trait::async_trait]
+impl MalwareExemptionPort for NullMalwareExemptions {
+    fn is_exempt(&self, _group_id: i64) -> bool {
+        false
     }
     async fn reload(&self) -> Result<(), DomainError> {
         Ok(())
