@@ -61,12 +61,18 @@ impl TestConfig {
         )
     }
 
-    /// A server that forwards to `upstream`, with blocking on and the malware
-    /// detectors off, so a test can drive filtering end to end.
+    /// A server that forwards to `upstream`, with blocking on, so a test can
+    /// drive filtering end to end. The malware detectors are off, and so is
+    /// DNSSEC: a fake upstream proves nothing, and an unvalidated answer is
+    /// never cached.
     pub fn filtering(upstream: SocketAddr) -> Self {
         Self::with_tables(
             "",
-            &format!("upstream_servers = [\"{upstream}\"]\nmalware_detection_enabled = false"),
+            &format!(
+                "upstream_servers = [\"{upstream}\"]\n\
+                 malware_detection_enabled = false\n\
+                 dnssec_mode = \"Off\""
+            ),
             "enabled = true",
         )
     }
