@@ -82,9 +82,9 @@ Validation outcomes for the last 24 hours, summarised and then listed per query:
 - Create and manage client groups (Kids, Work, IoT, Guest)
 - Assign clients to groups
 - Each group can have independent blocking policies
-- Switch Malware Detection off for a group to exempt its clients from the malware detectors
+- Switch Malware Detection off for a group to exempt its clients from the malware detectors (hidden while the master switch in Settings is off)
 
-![Groups page — the Protected default group plus Guest, IoT, Kids and Work, each with its client count](../assets/dashboard/dashboard-groups.png)
+![Groups page — the add-group form with Group Enabled and Malware Detection checkboxes, above the Protected default group plus Guest, IoT, Kids, Servers and Work, each with its client count; Servers has Malware Detection off](../assets/dashboard/dashboard-groups.png)
 
 ### DNS Filter
 
