@@ -155,7 +155,7 @@ Ferrous DNS inspects CNAME chains in responses. If a CNAME points to a blocked d
 
 This catches trackers that hide behind first-party CNAMEs (e.g. `tracking.yoursite.com CNAME tracking.thirdparty.com`).
 
-CNAME cloaking detection is enabled automatically when blocking is active.
+CNAME cloaking detection is enabled automatically when blocking is active. It checks cached answers too, and an explicit allow for the queried name (`tracking.yoursite.com`) lifts it.
 
 ---
 

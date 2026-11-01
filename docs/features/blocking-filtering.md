@@ -165,7 +165,7 @@ Domains that arrived from a **downloaded blocklist source** are not manual, and 
 | Malware detection | All five detection engines skip an explicitly allowed domain — see below |
 
 !!! tip "Clearing a false positive"
-    If a domain you need is being blocked by DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
+    If a domain you need is being blocked by CNAME cloaking, DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
 
 ---
 
@@ -179,7 +179,9 @@ tracking.yoursite.com  CNAME  tracking.third-party-analytics.com
 
 Without CNAME inspection, blocking `tracking.third-party-analytics.com` would be ineffective because the query is for `tracking.yoursite.com`.
 
-Ferrous DNS resolves the full CNAME chain and blocks the response if **any** CNAME in the chain points to a blocked domain. This is enabled automatically when blocking is active.
+Ferrous DNS resolves the full CNAME chain and blocks the response if **any** CNAME in the chain points to a blocked domain. The check runs on every answer, including one served from the cache, for the asking client's group. This is enabled automatically when blocking is active.
+
+To let one first-party name through, allow the name the client queried (`tracking.yoursite.com` above): an explicit allow lifts the CNAME check for it, and it is what the query log's **Allow** button adds.
 
 ---
 
