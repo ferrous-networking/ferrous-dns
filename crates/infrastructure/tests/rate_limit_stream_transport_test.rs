@@ -185,7 +185,8 @@ async fn a_query_slipped_over_udp_is_answered_over_tcp() {
 }
 
 /// TC=1 asks a client to retry over TCP; over a stream it tells the client
-/// nothing it can act on.
+/// nothing it can act on. The four stream transports share one budget, so
+/// once TCP has spent it, DoT, DoH and DoQ are refused too.
 #[tokio::test]
 async fn a_stream_over_its_budget_is_refused_never_truncated() {
     let f = fixture(Answer::Address(ADDRESS), BURST, 0).await;
@@ -211,9 +212,15 @@ async fn a_stream_over_its_budget_is_refused_never_truncated() {
 #[tokio::test]
 async fn a_stream_flood_leaves_the_udp_budget_alone() {
     let f = fixture(Answer::Address(ADDRESS), BURST, 0).await;
-    for _ in 0..BURST * 2 {
+    for _ in 0..BURST {
         f.ask(ClientProtocol::Tcp, "www.example").await;
     }
+    let flood = f.ask(ClientProtocol::Tcp, "www.example").await;
+    assert_eq!(
+        flood.metadata.response_code,
+        ResponseCode::Refused,
+        "the TCP flood must reach its budget"
+    );
 
     for i in 0..BURST {
         let reply = f.ask(ClientProtocol::Udp, "www.example").await;
