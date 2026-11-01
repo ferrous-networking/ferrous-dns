@@ -3,11 +3,15 @@
             theme: 'light',
             queryRate: {queries: 0, rate: '0 q/s'},
             groups: [],
+            // The Settings master switch: off turns every detector off for every
+            // group, so the per-group switch has nothing to say.
+            malwareDetectionEnabled: true,
             editingGroup: null,
             form: {
                 name: '',
                 enabled: true,
-                comment: ''
+                comment: '',
+                malware_detection_enabled: true
             },
             error: '',
 
@@ -16,9 +20,20 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await this.loadGroups();
+                await Promise.all([this.loadGroups(), this.loadMalwareDetectionSwitch()]);
                 await this.$nextTick();
                 scheduleLucide(0);
+            },
+
+            async loadMalwareDetectionSwitch() {
+                try {
+                    const res = await fetch(`${API_BASE}/config`);
+                    if (res.ok) {
+                        this.malwareDetectionEnabled = (await res.json()).dns.malware_detection_enabled !== false;
+                    }
+                } catch (e) {
+                    console.error('Failed to load the malware detection switch:', e);
+                }
             },
 
             async loadGroups() {
@@ -39,7 +54,8 @@
                 this.form = {
                     name: group.name,
                     enabled: group.enabled,
-                    comment: group.comment || ''
+                    comment: group.comment || '',
+                    malware_detection_enabled: group.malware_detection_enabled
                 };
                 this.error = '';
                 this.$nextTick(() => scheduleLucide());
@@ -47,7 +63,7 @@
 
             cancelForm() {
                 this.editingGroup = null;
-                this.form = {name: '', enabled: true, comment: ''};
+                this.form = {name: '', enabled: true, comment: '', malware_detection_enabled: true};
                 this.error = '';
             },
 
@@ -57,7 +73,8 @@
                     const payload = {
                         name: this.form.name.trim(),
                         enabled: this.form.enabled,
-                        comment: this.form.comment.trim() || null
+                        comment: this.form.comment.trim() || null,
+                        malware_detection_enabled: this.form.malware_detection_enabled
                     };
 
                     let res;
