@@ -2,6 +2,7 @@ mod helpers;
 
 use async_trait::async_trait;
 use ferrous_dns_application::{
+    drop_counter::DropCounter,
     ports::{DnsResolution, SafeSearchEnginePort},
     use_cases::HandleDnsQueryUseCase,
 };
@@ -634,6 +635,34 @@ async fn test_cname_cloaking_blocks_a_cached_answer() {
     let logs = log.get_sync_logs();
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].block_source, Some(BlockSource::CnameCloaking));
+}
+
+/// The answer is already cached, so blocking it needs no upstream slot: with
+/// every slot taken it is still blocked, not shed.
+#[tokio::test]
+async fn test_cname_cloaking_blocks_a_cached_answer_with_no_upstream_slot_free() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    cache_cloaked_answer(&resolver, cloaked_address_hit()).await;
+    let shed = Arc::new(DropCounter::new());
+
+    let use_case =
+        make_use_case(resolver, filter, log.clone()).with_upstream_limit(0, Arc::clone(&shed));
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(
+        matches!(result, Err(DomainError::Blocked)),
+        "a cached cloaked answer was not blocked: {result:?}"
+    );
+    assert_eq!(shed.total(), 0, "a cached answer was counted as shed");
+    assert_eq!(
+        log.get_sync_logs()[0].block_source,
+        Some(BlockSource::CnameCloaking)
+    );
 }
 
 #[tokio::test]
