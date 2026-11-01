@@ -390,15 +390,14 @@ Partial update — only include the sections you want to change:
 
 `GET /ferrous/api/v1/config` returns `domains`, `groups` and `internal` on every pool, empty or `false` for a default pool. When a save changes where some name is routed, the DNS cache is cleared.
 
-**Malware detection** (require restart). The master switch and the rebinding keys sit in `dns`; each engine is a nested object with the keys of its `ferrous-dns.toml` section ([reference](configuration/ferrous-dns-toml.md#tunneling-detection)), and any subset of them can be sent:
+**Malware detection** (require restart). The master switch and the rebinding switch sit in `dns`; each engine is a nested object with the keys of its `ferrous-dns.toml` section ([reference](configuration/ferrous-dns-toml.md#tunneling-detection)), and any subset of them can be sent:
 
 ```json
 {
   "dns": {
     "malware_detection_enabled": true,
     "rebinding_protection_enabled": true,
-    "rebinding_allowlist": ["router.example.com"],
-    "tunneling_detection": { "action": "alert", "client_whitelist": ["10.0.0.50"] },
+    "tunneling_detection": { "action": "alert", "max_label_length": 40 },
     "dga_detection": { "confidence_threshold": 0.7 },
     "nxdomain_hijack": { "probes_per_round": 3 },
     "response_ip_filter": {
@@ -411,7 +410,9 @@ Partial update — only include the sections you want to change:
 
 `GET /ferrous/api/v1/config` returns all of them, every key of every engine included.
 
-The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a whitelist entry that is not an exact domain name or an IP/CIDR, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes.
+Exemptions are not config keys: a domain is exempted with an allow in [Managed Domains](#managed-domains), and a client with a group whose `malware_detection_enabled` is `false` ([Groups](#groups)). Both apply at once, with no restart. The `rebinding_allowlist`, `domain_whitelist` and `client_whitelist` keys of releases before 1.0 are ignored in a request and no longer returned.
+
+The merged configuration is validated before anything is applied. An invalid value — an unknown `block_mode`, `dnssec_mode` or malware detection `action`, an unparseable server or sinkhole address, a `local_dns_server` that is not an IP address or `IP:port`, a zero interval, timeout or capacity such as `cache_compaction_interval: 0`, a malware detection threshold outside its range such as `confidence_threshold: 1.5`, a feed URL without `http://` or `https://`, response IP filtering enabled without a feed URL, a session lifetime whose expiry is past the latest representable date such as `session_ttl_hours: 4294967295`, or pools that cannot route (an invalid domain, `groups` or `internal` without `domains`, no pool without `domains`, a domain routed to two pools for the same clients, a client group that does not exist) — returns **400** with `{ "success": false, "error": "…" }` naming the key, and neither the live server nor the file changes.
 
 A request that is valid but cannot be carried out answers with an error status and the same `{ "success": false, "error": "…" }` body:
 
@@ -1173,11 +1174,14 @@ POST /ferrous/api/v1/groups
 {
   "name": "Kids",
   "comment": "Children's devices",
-  "enabled": true
+  "enabled": true,
+  "malware_detection_enabled": true
 }
 ```
 
 `enabled` is optional and defaults to `true`; a group created with `"enabled": false` starts disabled.
+
+`malware_detection_enabled` is optional and defaults to `true`. With `false`, the five [malware detectors](features/malware-detection.md#exempt-clients) skip the queries of the group's clients; its blocklists, allows and CNAME cloaking checks still apply. Every response carries the field, and the change applies to the next query, with no restart.
 
 ### Get Group
 
@@ -1194,6 +1198,8 @@ PUT /ferrous/api/v1/groups/{id}
 ```
 
 **Auth:** session or API key · **Returns:** `200` `GroupResponse` · **Errors:** `400` invalid field or disabling the default group, `404` unknown group, `409` name taken
+
+Takes the fields of Create Group, all optional; an omitted field keeps its value. The default group cannot be disabled, but its `malware_detection_enabled` can be switched off.
 
 ### Delete Group
 

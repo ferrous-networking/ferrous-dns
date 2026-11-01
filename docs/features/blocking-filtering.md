@@ -166,7 +166,7 @@ Domains that arrived from a **downloaded blocklist source** are not manual, and 
 | CNAME cloaking | An allow for the queried name lets it resolve through a chain that names a blocked domain, fresh or from the cache |
 
 !!! tip "Clearing a false positive"
-    If a domain you need is being blocked by CNAME cloaking, DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
+    If a domain you need is being blocked by CNAME cloaking, DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, in the group of the clients it is for, or click **Allow** next to it in the query log, which picks that group for you. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#exemptions).
 
 ---
 

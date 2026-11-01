@@ -82,6 +82,7 @@ Validation outcomes for the last 24 hours, summarised and then listed per query:
 - Create and manage client groups (Kids, Work, IoT, Guest)
 - Assign clients to groups
 - Each group can have independent blocking policies
+- Switch Malware Detection off for a group to exempt its clients from the malware detectors
 
 ![Groups page — the Protected default group plus Guest, IoT, Kids and Work, each with its client count](../assets/dashboard/dashboard-groups.png)
 

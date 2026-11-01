@@ -48,7 +48,8 @@ Each group can have its own:
 | Policy | Description |
 |:-------|:------------|
 | **Blocklists** | Which blocklists apply to this group |
-| **Allowlist** | Domains always allowed for this group |
+| **Allowlist** | Domains always allowed for this group; an allow also clears a [malware detection](malware-detection.md#allowlisted-domains) false positive |
+| **Malware Detection** | On by default. Off exempts every client in the group from the five [malware detectors](malware-detection.md#exempt-clients), such as a monitoring server; blocklists and CNAME cloaking still apply |
 | **Safe Search** | Force safe search on search engines |
 | **Scheduling** | Time-based blocking rules |
 | **Conditional forwarding** | Send chosen domains to this group's own upstream pool (split-horizon), cached apart from other groups — see [Conditional Forwarding](../configuration/dns.md#conditional-forwarding) |
