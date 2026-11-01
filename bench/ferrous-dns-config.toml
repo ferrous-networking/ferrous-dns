@@ -138,8 +138,6 @@ txt_proportion_threshold = 0.05
 nxdomain_ratio_threshold = 0.20
 confidence_threshold = 0.7
 stale_entry_ttl_secs = 300
-domain_whitelist = []
-client_whitelist = []
 
 
 # ── DGA Detection (Domain Generation Algorithm) ────────────────────────────
@@ -157,8 +155,6 @@ ngram_score_threshold           = 0.6
 dga_rate_per_client             = 10
 confidence_threshold            = 0.65
 stale_entry_ttl_secs            = 300
-domain_whitelist                = []
-client_whitelist                = []
 
 
 # ── NXDomain Hijack Detection ───────────────────────────────────────────────

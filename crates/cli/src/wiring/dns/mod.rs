@@ -226,10 +226,7 @@ impl DnsServices {
         .with_query_logging(config.database.log_queries);
 
         if config.dns.rebinding_protection_active() {
-            handler = handler.with_rebinding_protection(
-                config.dns.local_domain.as_deref(),
-                &config.dns.rebinding_allowlist,
-            );
+            handler = handler.with_rebinding_protection(config.dns.local_domain.as_deref());
         }
 
         if config.dns64.enabled {

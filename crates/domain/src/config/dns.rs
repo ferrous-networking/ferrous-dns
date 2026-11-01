@@ -99,11 +99,6 @@ pub struct DnsConfig {
     /// Defaults to `true` — opt-out rather than opt-in for security-sensitive features.
     pub rebinding_protection_enabled: bool,
 
-    /// Domains that are always exempt from rebinding protection, regardless of the
-    /// resolved IP address. Useful for split-horizon DNS scenarios where an external
-    /// name intentionally resolves to a private address (e.g. VPN or router admin panels).
-    pub rebinding_allowlist: Vec<String>,
-
     /// DNS query rate limiting and DoS protection configuration.
     pub rate_limit: RateLimitConfig,
 
@@ -168,7 +163,6 @@ impl Default for DnsConfig {
             local_records: vec![],
             malware_detection_enabled: true,
             rebinding_protection_enabled: true,
-            rebinding_allowlist: vec![],
             rate_limit: RateLimitConfig::default(),
             tunneling_detection: TunnelingDetectionConfig::default(),
             nxdomain_hijack: NxdomainHijackConfig::default(),

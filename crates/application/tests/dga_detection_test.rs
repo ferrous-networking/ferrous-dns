@@ -159,42 +159,6 @@ async fn short_sld_passes_dga_guard() {
 }
 
 #[tokio::test]
-async fn whitelisted_domain_bypasses_dga() {
-    let domain = "xjk4f9a2h3b5c7d.com";
-    let resolver = resolver_with_response(domain).await;
-    let config = DgaDetectionConfig {
-        enabled: true,
-        action: DgaDetectionAction::Block,
-        domain_whitelist: vec![domain.to_string()],
-        ..Default::default()
-    };
-    let (use_case, _log) = make_use_case_with_dga(resolver, &config);
-
-    let request = DnsRequest::new(domain, RecordType::A, CLIENT_IP);
-    let result = use_case.execute(&request).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn whitelisted_client_bypasses_dga() {
-    let domain = "xjk4f9a2h3b5c7d.com";
-    let resolver = resolver_with_response(domain).await;
-    let config = DgaDetectionConfig {
-        enabled: true,
-        action: DgaDetectionAction::Block,
-        client_whitelist: vec!["192.168.1.0/24".to_string()],
-        ..Default::default()
-    };
-    let (use_case, _log) = make_use_case_with_dga(resolver, &config);
-
-    let request = DnsRequest::new(domain, RecordType::A, CLIENT_IP);
-    let result = use_case.execute(&request).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
 async fn flagged_domain_is_blocked() {
     let resolver = resolver_with_response("dga.evil.com").await;
     let config = dga_config(DgaDetectionAction::Block);

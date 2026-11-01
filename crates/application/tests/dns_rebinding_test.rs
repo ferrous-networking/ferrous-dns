@@ -7,17 +7,13 @@ use std::sync::Arc;
 mod helpers;
 use helpers::{MockBlockFilterEngine, MockDnsResolver, MockQueryLogRepository};
 
-fn make_use_case(
-    resolver: MockDnsResolver,
-    local_domain: Option<&str>,
-    allowlist: &[String],
-) -> HandleDnsQueryUseCase {
+fn make_use_case(resolver: MockDnsResolver, local_domain: Option<&str>) -> HandleDnsQueryUseCase {
     HandleDnsQueryUseCase::new(
         Arc::new(resolver),
         Arc::new(MockBlockFilterEngine::new()),
         Arc::new(MockQueryLogRepository::new()),
     )
-    .with_rebinding_protection(local_domain, allowlist)
+    .with_rebinding_protection(local_domain)
 }
 
 fn resolution_with_ip(ip: IpAddr) -> DnsResolution {
@@ -44,7 +40,7 @@ async fn test_public_domain_resolves_to_private_ip_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -60,7 +56,7 @@ async fn test_public_domain_resolves_to_loopback_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -76,7 +72,7 @@ async fn test_public_domain_resolves_to_link_local_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -92,7 +88,7 @@ async fn test_public_domain_resolves_to_public_ip_is_allowed() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("google.com")).await;
 
     assert!(result.is_ok());
@@ -108,25 +104,8 @@ async fn test_local_domain_resolves_to_private_ip_is_allowed() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, Some("local"), &[]);
+    let use_case = make_use_case(resolver, Some("local"));
     let result = use_case.execute(&dns_request("server.local")).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn test_allowlisted_domain_resolves_to_private_ip_is_allowed() {
-    let resolver = MockDnsResolver::new();
-    resolver
-        .set_response(
-            "myrouter.corp",
-            resolution_with_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
-        )
-        .await;
-
-    let allowlist = vec!["myrouter.corp".to_string()];
-    let use_case = make_use_case(resolver, None, &allowlist);
-    let result = use_case.execute(&dns_request("myrouter.corp")).await;
 
     assert!(result.is_ok());
 }
@@ -141,7 +120,7 @@ async fn test_local_dns_resolution_is_exempt() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("internal.example")).await;
 
     assert!(result.is_ok());
@@ -157,7 +136,7 @@ async fn test_public_domain_resolves_to_10_range_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -173,7 +152,7 @@ async fn test_public_domain_resolves_to_172_16_range_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -189,7 +168,7 @@ async fn test_public_domain_resolves_to_ipv6_loopback_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -206,7 +185,7 @@ async fn test_public_domain_resolves_to_ipv4_mapped_private_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -223,7 +202,7 @@ async fn test_public_domain_resolves_to_ipv6_unique_local_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -240,7 +219,7 @@ async fn test_public_domain_resolves_to_ipv6_link_local_is_blocked() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("evil.com")).await;
 
     assert!(matches!(result, Err(DomainError::Blocked)));
@@ -259,7 +238,7 @@ async fn test_public_domain_resolves_to_ipv6_public_is_allowed() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
     let result = use_case.execute(&dns_request("cloudflare.com")).await;
 
     assert!(result.is_ok());
@@ -275,25 +254,8 @@ async fn test_local_domain_suffix_match_is_case_insensitive() {
         )
         .await;
 
-    let use_case = make_use_case(resolver, Some("local"), &[]);
+    let use_case = make_use_case(resolver, Some("local"));
     let result = use_case.execute(&dns_request("Server.LOCAL")).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn test_allowlist_match_is_case_insensitive() {
-    let resolver = MockDnsResolver::new();
-    resolver
-        .set_response(
-            "MyRouter.Corp",
-            resolution_with_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
-        )
-        .await;
-
-    let allowlist = vec!["myrouter.corp".to_string()];
-    let use_case = make_use_case(resolver, None, &allowlist);
-    let result = use_case.execute(&dns_request("MyRouter.Corp")).await;
 
     assert!(result.is_ok());
 }
@@ -307,7 +269,7 @@ async fn test_cached_private_answer_for_public_domain_is_blocked() {
         .set_response("evil.com", DnsResolution::new(vec![private], true))
         .await;
 
-    let use_case = make_use_case(resolver, None, &[]);
+    let use_case = make_use_case(resolver, None);
 
     assert!(use_case
         .try_cache_direct(

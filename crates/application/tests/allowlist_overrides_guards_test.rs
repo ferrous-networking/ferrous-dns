@@ -114,7 +114,7 @@ fn build(resolver: MockDnsResolver, fixture: Fixture) -> HandleDnsQueryUseCase {
     .with_tunneling_flag_store(tunneling_store)
     .with_dga_detection(&dga_config)
     .with_dga_flag_store(dga_store)
-    .with_rebinding_protection(None, &[])
+    .with_rebinding_protection(None)
     .with_nxdomain_hijack_detection(&hijack_config, hijack_store)
     .with_response_ip_filter(&c2_config, c2_store)
 }

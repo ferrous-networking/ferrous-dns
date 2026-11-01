@@ -218,24 +218,6 @@ async fn disabled_tunneling_allows_everything() {
 }
 
 #[tokio::test]
-async fn whitelisted_domain_bypasses_guard() {
-    let long_domain = format!("{}.cdn.example.com", "a".repeat(120));
-    let resolver = resolver_with_response(&long_domain).await;
-    let config = TunnelingDetectionConfig {
-        enabled: true,
-        action: TunnelingAction::Block,
-        domain_whitelist: vec![long_domain.clone()],
-        ..Default::default()
-    };
-    let (use_case, _log) = make_use_case_with_tunneling(resolver, &config);
-
-    let request = DnsRequest::new(long_domain.as_str(), RecordType::A, CLIENT_IP);
-    let result = use_case.execute(&request).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
 async fn flagged_domain_is_blocked() {
     let resolver = resolver_with_response("tunnel.evil.com").await;
     let config = tunneling_config(TunnelingAction::Block);

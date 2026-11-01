@@ -378,11 +378,8 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             "rebinding_protection_enabled",
             config.dns.rebinding_protection_enabled,
         );
-        set_val(
-            t,
-            "rebinding_allowlist",
-            str_array(&config.dns.rebinding_allowlist),
-        );
+        // Retired: an explicit allow in DNS Filter exempts a domain now.
+        t.remove("rebinding_allowlist");
         match &config.dns.local_domain {
             Some(domain) => set_val(t, "local_domain", domain.as_str()),
             None => {
@@ -526,8 +523,10 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             f32_value(td.confidence_threshold),
         );
         set_val(t, "stale_entry_ttl_secs", td.stale_entry_ttl_secs as i64);
-        set_val(t, "domain_whitelist", str_array(&td.domain_whitelist));
-        set_val(t, "client_whitelist", str_array(&td.client_whitelist));
+        // Retired: an explicit allow exempts a domain now, and a group with
+        // Malware Detection off exempts its clients.
+        t.remove("domain_whitelist");
+        t.remove("client_whitelist");
     }
 
     {
@@ -569,8 +568,9 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             f32_value(dga.confidence_threshold),
         );
         set_val(t, "stale_entry_ttl_secs", dga.stale_entry_ttl_secs as i64);
-        set_val(t, "domain_whitelist", str_array(&dga.domain_whitelist));
-        set_val(t, "client_whitelist", str_array(&dga.client_whitelist));
+        // Retired, as in the tunneling section.
+        t.remove("domain_whitelist");
+        t.remove("client_whitelist");
     }
 
     {

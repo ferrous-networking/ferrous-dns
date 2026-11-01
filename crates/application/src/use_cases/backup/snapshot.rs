@@ -91,7 +91,6 @@ pub struct SnapshotDnsConfig {
 pub struct SnapshotMalwareConfig {
     pub enabled: bool,
     pub rebinding_protection_enabled: bool,
-    pub rebinding_allowlist: Vec<String>,
     pub tunneling_detection: TunnelingDetectionConfig,
     pub dga_detection: DgaDetectionConfig,
     pub nxdomain_hijack: NxdomainHijackConfig,

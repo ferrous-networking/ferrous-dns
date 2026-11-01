@@ -265,7 +265,6 @@ impl ImportConfigUseCase {
         if let Some(malware) = &sc.dns.malware {
             new_config.dns.malware_detection_enabled = malware.enabled;
             new_config.dns.rebinding_protection_enabled = malware.rebinding_protection_enabled;
-            new_config.dns.rebinding_allowlist = malware.rebinding_allowlist.clone();
             new_config.dns.tunneling_detection = malware.tunneling_detection.clone();
             new_config.dns.dga_detection = malware.dga_detection.clone();
             new_config.dns.nxdomain_hijack = malware.nxdomain_hijack.clone();

@@ -168,13 +168,9 @@ impl HandleDnsQueryUseCase {
 
     /// Enables DNS rebinding protection. Resolving a public domain to a private IP
     /// is blocked unless the domain matches `local_domain` suffix, is served by the
-    /// local DNS server, or is explicitly listed in `allowlist`.
-    pub fn with_rebinding_protection(
-        mut self,
-        local_domain: Option<&str>,
-        allowlist: &[String],
-    ) -> Self {
-        self.rebinding_guard = Some(RebindingGuard::new(local_domain, allowlist));
+    /// local DNS server, or is explicitly allowed.
+    pub fn with_rebinding_protection(mut self, local_domain: Option<&str>) -> Self {
+        self.rebinding_guard = Some(RebindingGuard::new(local_domain));
         self
     }
 
@@ -309,15 +305,8 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Emits a tunneling analysis event to the background task (non-blocking).
-    /// Skips emission for whitelisted clients.
     fn emit_tunneling_event(&self, request: &DnsRequest, was_nxdomain: bool) {
         if let Some(ref tx) = self.tunneling_event_tx {
-            if self
-                .tunneling_guard
-                .is_client_whitelisted(request.client_ip)
-            {
-                return;
-            }
             let _ = tx.try_send(TunnelingAnalysisEvent {
                 domain: Arc::clone(&request.domain),
                 record_type: request.record_type,
@@ -354,12 +343,8 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Emits a DGA analysis event to the background task (non-blocking).
-    /// Skips emission for whitelisted clients.
     fn emit_dga_event(&self, request: &DnsRequest) {
         if let Some(ref tx) = self.dga_event_tx {
-            if self.dga_guard.is_client_whitelisted(request.client_ip) {
-                return;
-            }
             let _ = tx.try_send(DgaAnalysisEvent {
                 domain: Arc::clone(&request.domain),
                 client_ip: request.client_ip,
@@ -462,14 +447,13 @@ impl HandleDnsQueryUseCase {
         &self,
         domain: &str,
         record_type: RecordType,
-        client_ip: IpAddr,
         mut on_hit: impl FnMut(NameHit) -> ControlFlow<B>,
     ) -> ControlFlow<B> {
         if let TunnelingVerdict::Detected {
             signal,
             measured,
             threshold,
-        } = self.tunneling_guard.check(domain, record_type, client_ip)
+        } = self.tunneling_guard.check(domain, record_type)
         {
             tracing::debug!(
                 domain,
@@ -491,7 +475,7 @@ impl HandleDnsQueryUseCase {
             signal,
             measured,
             threshold,
-        } = self.dga_guard.check(domain, client_ip)
+        } = self.dga_guard.check(domain)
         {
             tracing::debug!(domain, signal, measured, threshold, "DGA phase-1 signal");
             on_hit(NameHit::Dga(signal))?;
@@ -541,7 +525,7 @@ impl HandleDnsQueryUseCase {
         // is checked here exactly as on a miss.
         if screening.detectors
             && self
-                .screen_name(domain, record_type, client_ip, |_| ControlFlow::Break(()))
+                .screen_name(domain, record_type, |_| ControlFlow::Break(()))
                 .is_break()
         {
             return None;
@@ -842,25 +826,20 @@ impl HandleDnsQueryUseCase {
         let screening = self.screening(group_id, filter_decision);
 
         if screening.detectors {
-            let hits = self.screen_name(
-                &request.domain,
-                request.record_type,
-                request.client_ip,
-                |hit| {
-                    let applied = match hit {
-                        NameHit::Tunneling(signal) => {
-                            self.apply_tunneling_action(request, signal, elapsed_us(), group_id)
-                        }
-                        NameHit::Dga(signal) => {
-                            self.apply_dga_action(request, signal, elapsed_us(), group_id)
-                        }
-                    };
-                    match applied {
-                        Ok(()) => ControlFlow::Continue(()),
-                        Err(blocked) => ControlFlow::Break(blocked),
+            let hits = self.screen_name(&request.domain, request.record_type, |hit| {
+                let applied = match hit {
+                    NameHit::Tunneling(signal) => {
+                        self.apply_tunneling_action(request, signal, elapsed_us(), group_id)
                     }
-                },
-            );
+                    NameHit::Dga(signal) => {
+                        self.apply_dga_action(request, signal, elapsed_us(), group_id)
+                    }
+                };
+                match applied {
+                    Ok(()) => ControlFlow::Continue(()),
+                    Err(blocked) => ControlFlow::Break(blocked),
+                }
+            });
             if let ControlFlow::Break(blocked) = hits {
                 return Err(blocked);
             }

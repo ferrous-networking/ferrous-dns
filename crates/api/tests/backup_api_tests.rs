@@ -1094,7 +1094,6 @@ fn customize_pools_rate_limit_and_malware(cfg: &mut Config, office_group: i64) {
     cfg.dns.rate_limit.whitelist = vec!["192.0.2.0/24".into()];
     cfg.dns.malware_detection_enabled = !cfg.dns.malware_detection_enabled;
     cfg.dns.rebinding_protection_enabled = !cfg.dns.rebinding_protection_enabled;
-    cfg.dns.rebinding_allowlist = vec!["nas.example".into()];
     cfg.dns.tunneling_detection.max_fqdn_length = 199;
     cfg.dns.dga_detection.sld_max_length = 33;
     cfg.dns.nxdomain_hijack.probe_interval_secs = 1234;
@@ -1108,7 +1107,6 @@ fn pools_rate_limit_and_malware(cfg: &Config) -> Value {
         "rate_limit": json_of(&cfg.dns.rate_limit),
         "malware_detection_enabled": cfg.dns.malware_detection_enabled,
         "rebinding_protection_enabled": cfg.dns.rebinding_protection_enabled,
-        "rebinding_allowlist": json_of(&cfg.dns.rebinding_allowlist),
         "tunneling_detection": json_of(&cfg.dns.tunneling_detection),
         "dga_detection": json_of(&cfg.dns.dga_detection),
         "nxdomain_hijack": json_of(&cfg.dns.nxdomain_hijack),
@@ -1139,7 +1137,6 @@ async fn test_pools_rate_limit_and_malware_settings_survive_export_import_round_
         cfg.dns.rate_limit = defaults.dns.rate_limit;
         cfg.dns.malware_detection_enabled = defaults.dns.malware_detection_enabled;
         cfg.dns.rebinding_protection_enabled = defaults.dns.rebinding_protection_enabled;
-        cfg.dns.rebinding_allowlist = defaults.dns.rebinding_allowlist;
         cfg.dns.tunneling_detection = defaults.dns.tunneling_detection;
         cfg.dns.dga_detection = defaults.dns.dga_detection;
         cfg.dns.nxdomain_hijack = defaults.dns.nxdomain_hijack;

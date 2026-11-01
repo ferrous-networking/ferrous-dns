@@ -1,5 +1,4 @@
 use super::domain_heuristics::{char_ratios, extract_apex, shannon_entropy};
-use super::guard_whitelist::GuardWhitelist;
 use ferrous_dns_domain::{DgaDetectionAction, DgaDetectionConfig};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -36,7 +35,6 @@ pub(super) struct DgaGuard {
     sld_max_length: usize,
     consonant_ratio_threshold: f32,
     digit_ratio_threshold: f32,
-    whitelist: GuardWhitelist,
 }
 
 impl DgaGuard {
@@ -49,11 +47,6 @@ impl DgaGuard {
             sld_max_length: config.sld_max_length,
             consonant_ratio_threshold: config.consonant_ratio_threshold,
             digit_ratio_threshold: config.digit_ratio_threshold,
-            whitelist: GuardWhitelist::new(
-                "dns.dga_detection",
-                &config.domain_whitelist,
-                &config.client_whitelist,
-            ),
         }
     }
 
@@ -67,10 +60,6 @@ impl DgaGuard {
         self.action
     }
 
-    pub(super) fn is_client_whitelisted(&self, client_ip: IpAddr) -> bool {
-        self.whitelist.contains_client(client_ip)
-    }
-
     /// Performs O(1) DGA checks on the hot path using weighted mini-scoring.
     ///
     /// Accumulates weights from all triggered signals and only returns `Detected`
@@ -79,16 +68,8 @@ impl DgaGuard {
     /// (e.g., CDN domains with high entropy but normal consonant ratio).
     ///
     /// Zero heap allocations: `domain` is `&str`, SLD is a slice.
-    pub(super) fn check(&self, domain: &str, client_ip: IpAddr) -> DgaVerdict {
+    pub(super) fn check(&self, domain: &str) -> DgaVerdict {
         if !self.enabled {
-            return DgaVerdict::Clean;
-        }
-
-        if self.is_client_whitelisted(client_ip) {
-            return DgaVerdict::Clean;
-        }
-
-        if self.whitelist.contains_domain(domain) {
             return DgaVerdict::Clean;
         }
 
@@ -199,8 +180,6 @@ fn extract_sld(domain: &str) -> Option<&str> {
 mod tests {
     use super::*;
 
-    const TEST_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 1));
-
     fn guard_with_defaults() -> DgaGuard {
         DgaGuard::from_config(&DgaDetectionConfig {
             enabled: true,
@@ -211,21 +190,21 @@ mod tests {
     #[test]
     fn disabled_guard_always_returns_clean() {
         let guard = DgaGuard::disabled();
-        let result = guard.check("xjk4f9a2h3b5c7d8e.com", TEST_IP);
+        let result = guard.check("xjk4f9a2h3b5c7d8e.com");
         assert!(matches!(result, DgaVerdict::Clean));
     }
 
     #[test]
     fn normal_domain_passes_check() {
         let guard = guard_with_defaults();
-        let result = guard.check("google.com", TEST_IP);
+        let result = guard.check("google.com");
         assert!(matches!(result, DgaVerdict::Clean));
     }
 
     #[test]
     fn short_sld_skipped() {
         let guard = guard_with_defaults();
-        let result = guard.check("go.com", TEST_IP);
+        let result = guard.check("go.com");
         assert!(matches!(result, DgaVerdict::Clean));
     }
 
@@ -233,7 +212,7 @@ mod tests {
     fn multi_signal_dga_domain_triggers_detection_with_correct_top_signal() {
         let guard = guard_with_defaults();
         // Random-looking domain: high entropy + high consonant ratio + digits
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
+        let result = guard.check("xjk4f9a2h3b5c7d.com");
         match result {
             DgaVerdict::Detected {
                 signal,
@@ -268,7 +247,7 @@ mod tests {
             sld_entropy_threshold: 3.0,
             ..Default::default()
         });
-        let result = guard.check("aeioubcdf.com", TEST_IP);
+        let result = guard.check("aeioubcdf.com");
         assert!(
             matches!(result, DgaVerdict::Clean),
             "Single-signal domain should NOT be blocked"
@@ -287,7 +266,7 @@ mod tests {
             "githubusercontent.com",
             "akamaized.net",
         ] {
-            let result = guard.check(domain, TEST_IP);
+            let result = guard.check(domain);
             assert!(
                 matches!(result, DgaVerdict::Clean),
                 "{domain} should NOT be blocked"
@@ -300,7 +279,7 @@ mod tests {
         // Long but repetitive SLD — only sld_length fires (0.25 < 0.40)
         let guard = guard_with_defaults();
         let domain = format!("{}.com", "a".repeat(25));
-        let result = guard.check(&domain, TEST_IP);
+        let result = guard.check(&domain);
         assert!(
             matches!(result, DgaVerdict::Clean),
             "Single sld_length signal should not trigger"
@@ -312,7 +291,7 @@ mod tests {
         let guard = guard_with_defaults();
         // Long + high entropy + consonant-heavy → multiple signals
         let domain = format!("{}xbkrwtplmqzncdf.com", "r".repeat(10));
-        let result = guard.check(&domain, TEST_IP);
+        let result = guard.check(&domain);
         assert!(
             matches!(result, DgaVerdict::Detected { .. }),
             "Long random SLD should be detected via multiple signals"
@@ -323,7 +302,7 @@ mod tests {
     fn two_signals_trigger_detection_at_default_threshold() {
         let guard = guard_with_defaults();
         // All consonants → high entropy (3.9) + consonant ratio 1.0 → 0.30 + 0.25 = 0.55 >= 0.40
-        let result = guard.check("bcdfghjklmnpqrst.com", TEST_IP);
+        let result = guard.check("bcdfghjklmnpqrst.com");
         assert!(matches!(result, DgaVerdict::Detected { .. }));
     }
 
@@ -333,40 +312,7 @@ mod tests {
             enabled: false,
             ..Default::default()
         });
-        let result = guard.check("xjk4f9a2h3b5c7d8e.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn whitelisted_domain_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            domain_whitelist: vec!["xjk4f9a2h3b5c7d.com".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn whitelisted_client_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["192.168.1.0/24".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn bare_ip_client_whitelist_entry_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["192.168.1.1".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
+        let result = guard.check("xjk4f9a2h3b5c7d8e.com");
         assert!(matches!(result, DgaVerdict::Clean));
     }
 

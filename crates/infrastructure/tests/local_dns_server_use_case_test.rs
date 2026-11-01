@@ -119,7 +119,7 @@ async fn use_case(router: SocketAddr) -> HandleDnsQueryUseCase {
         Arc::new(AllowAllFilter),
         Arc::new(NoopQueryLog),
     )
-    .with_rebinding_protection(Some("lan"), &[])
+    .with_rebinding_protection(Some("lan"))
 }
 
 /// The addresses a client gets for an A query: from the UDP cache fast path

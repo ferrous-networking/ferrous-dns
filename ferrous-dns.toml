@@ -82,7 +82,6 @@ block_private_ptr = true                # Block PTR lookups for private/RFC-1918
 block_non_fqdn = true                   # Block queries for names that are not fully qualified domain names
 malware_detection_enabled = true        # Master switch for the five malware detectors below (tunneling, DGA, rebinding, NXDomain hijack, response IP)
 rebinding_protection_enabled = true     # Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding)
-# rebinding_allowlist = []              # Exact domain names exempt from rebinding protection (split-horizon DNS: VPN, router admin panels)
 mdns_enabled = false                    # Passive mDNS/Bonjour listener on UDP 5353 (LAN multicast): names clients after the host name their device announces; off by default
 local_domain = "lan"                    # Local domain suffix appended to short hostnames
 local_dns_server = "10.0.0.1:53"        # Router/DHCP server — PTR lookups for client hostnames, and upstream URL hostnames (asked before the system resolver)
@@ -165,6 +164,8 @@ stale_entry_ttl_secs = 300              # Evict idle subnet buckets after 5 minu
 # Phase 2: statistical analysis in background (entropy, query rate, unique subdomains).
 # This section and the three below are also edited in Settings → Malware Detection.
 # Score and ratio thresholds take 0-1 (above 0); see docs/configuration/ferrous-dns-toml.md for every range.
+# Exemptions are not set here: allow a domain in DNS Filter (in the group of the
+# clients it is for), or switch Malware Detection off for a group in Groups.
 
 [dns.tunneling_detection]
 enabled = true                          # Master switch — enabled by default
@@ -179,8 +180,6 @@ txt_proportion_threshold = 0.05         # Phase 2: TXT > 5% of client traffic
 nxdomain_ratio_threshold = 0.20         # Phase 2: NXDOMAIN > 20% for a client+apex pair
 confidence_threshold = 0.7              # Phase 2: minimum score to flag (0.0-1.0)
 stale_entry_ttl_secs = 300              # Eviction of idle tracking entries (seconds)
-domain_whitelist = []                   # Domains exempt from detection
-client_whitelist = []                   # Client CIDRs or IPs exempt from detection
 
 
 # ── DGA Detection (Domain Generation Algorithm) ────────────────────────────
@@ -202,8 +201,6 @@ ngram_score_threshold           = 0.6
 dga_rate_per_client             = 10
 confidence_threshold            = 0.65
 stale_entry_ttl_secs            = 300
-domain_whitelist                = []
-client_whitelist                = []
 
 
 # ── NXDomain Hijack Detection ───────────────────────────────────────────────
