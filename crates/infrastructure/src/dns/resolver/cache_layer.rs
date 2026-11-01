@@ -1,8 +1,6 @@
 use super::super::cache::key::{BorrowedKey, CacheKey};
 use super::super::cache::negative_cache::{negative_ttl, MIN_NEGATIVE_TTL};
-use super::super::cache::{
-    CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
-};
+use super::super::cache::{CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus};
 use super::super::load_balancer::{Route, UpstreamRouter};
 use super::super::wire_response;
 use async_trait::async_trait;
@@ -161,16 +159,23 @@ impl CachedResolver {
         // A local server's NXDOMAIN must not read as `local_dns`, which on an
         // empty answer means NODATA.
         let (addresses, cname_chain, upstream_wire_data, local_nxdomain) = match data {
-            CachedData::IpAddresses(entry) => {
-                (entry.addresses, Arc::clone(&EMPTY_CNAME_CHAIN), None, false)
-            }
+            CachedData::IpAddresses(entry) => (
+                entry.addresses,
+                entry
+                    .cname_chain
+                    .unwrap_or_else(|| Arc::clone(&EMPTY_CNAME_CHAIN)),
+                None,
+                false,
+            ),
             CachedData::CanonicalName(name) => {
                 (Arc::clone(&EMPTY_ADDRESSES), Arc::from([name]), None, false)
             }
-            CachedData::WireData(bytes) => (
+            CachedData::WireData(wire) => (
                 Arc::clone(&EMPTY_ADDRESSES),
-                Arc::clone(&EMPTY_CNAME_CHAIN),
-                Some(bytes),
+                wire.cname_chain
+                    .clone()
+                    .unwrap_or_else(|| Arc::clone(&EMPTY_CNAME_CHAIN)),
+                Some(wire.bytes.clone()),
                 false,
             ),
             CachedData::NegativeResponse => (
@@ -216,15 +221,11 @@ impl CachedResolver {
         );
     }
 
-    /// Stores `resolution` under `key`. `routed` says a conditional pool
-    /// answered it.
-    fn store_in_cache(
-        &self,
-        query: &DnsQuery,
-        key: &CacheKey,
-        routed: bool,
-        resolution: &DnsResolution,
-    ) {
+    /// Stores `resolution` under `key`. A CNAME chain's target is not stored
+    /// under its own name: something else may answer that name (a conditional
+    /// pool, a local record or wildcard, the local DNS server), and this answer
+    /// is only the queried name's.
+    fn store_in_cache(&self, key: &CacheKey, resolution: &DnsResolution) {
         // Never cache an unvalidated (Bogus/Indeterminate) result. Under Strict it
         // must SERVFAIL on every query, so the fast cache path must not be able to
         // serve it; under Permissive, re-validating it each time is fine.
@@ -238,71 +239,31 @@ impl CachedResolver {
             .dnssec_status
             .map_or(CachedDnssecStatus::Unknown, CachedDnssecStatus::from);
 
-        if resolution.addresses.is_empty() {
-            match &resolution.upstream_wire_data {
-                // No answer records means NXDOMAIN or NODATA, which lives for
-                // the SOA's negative TTL rather than the default one.
-                Some(wire_data) => self.cache.insert(
-                    borrowed(key),
-                    CachedData::WireData(wire_data.clone()),
-                    resolution.min_ttl.map_or_else(
-                        || negative_ttl(resolution.negative_soa_ttl),
-                        |ttl| ttl.max(1),
-                    ),
-                    Some(dnssec_status),
-                    resolution.local_dns,
-                ),
-                None => self.insert_negative(
-                    key,
-                    resolution.negative_soa_ttl.unwrap_or(MIN_NEGATIVE_TTL),
-                    resolution.local_dns,
-                ),
-            }
+        let Some(data) = CachedData::from_resolution(resolution) else {
+            self.insert_negative(
+                key,
+                resolution.negative_soa_ttl.unwrap_or(MIN_NEGATIVE_TTL),
+                resolution.local_dns,
+            );
             return;
-        }
-
-        let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
+        };
+        let ttl = if resolution.addresses.is_empty() {
+            // No answer records means NXDOMAIN or NODATA, which lives for
+            // the SOA's negative TTL rather than the default one.
+            resolution.min_ttl.map_or_else(
+                || negative_ttl(resolution.negative_soa_ttl),
+                |ttl| ttl.max(1),
+            )
+        } else {
+            resolution.min_ttl.unwrap_or(self.cache_ttl)
+        };
         self.cache.insert(
             borrowed(key),
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::clone(&resolution.addresses),
-            }),
+            data,
             ttl,
             Some(dnssec_status),
             resolution.local_dns,
         );
-
-        // Also cache the chain's final target under its own name, so a direct
-        // query for it does not go upstream. `min_ttl` already spans the whole
-        // chain, and the DNSSEC status is inherited, never elevated.
-        // Not when a conditional pool answered: the target is another name,
-        // which that pool does not answer for everyone.
-        //
-        // TODO(bailiwick): the response parser accepts any CNAME target, so an
-        // untrusted upstream could plant a cross-bailiwick target here.
-        if let Some(final_target) = resolution.cname_chain.last().filter(|_| !routed) {
-            let target_name: &str = final_target.as_ref();
-            // Cache keys are case-insensitive, so a case-variant self-loop
-            // would write the same entry twice. A local name is configuration:
-            // an upstream chain ending in it must not repoint it.
-            if !target_name.eq_ignore_ascii_case(query.domain.as_ref())
-                && self
-                    .cache
-                    .local_record_status(target_name, &query.record_type)
-                    == LocalRecordStatus::NotLocal
-            {
-                let target = CacheKey::new(target_name, query.record_type);
-                self.cache.insert(
-                    borrowed(&target),
-                    CachedData::IpAddresses(CachedAddresses {
-                        addresses: Arc::clone(&resolution.addresses),
-                    }),
-                    ttl,
-                    Some(dnssec_status),
-                    resolution.local_dns,
-                );
-            }
-        }
     }
 
     fn register_or_join_inflight(
@@ -346,7 +307,6 @@ impl CachedResolver {
         &self,
         query: &DnsQuery,
         key: CacheKey,
-        routed: bool,
     ) -> Result<DnsResolution, DomainError> {
         let mut guard = InflightLeaderGuard {
             inflight: &self.inflight,
@@ -368,7 +328,7 @@ impl CachedResolver {
 
         match &mut result {
             Ok(resolution) => {
-                self.store_in_cache(query, &guard.key, routed, resolution);
+                self.store_in_cache(&guard.key, resolution);
                 self.publish_inflight(&guard.key, resolution);
                 guard.defuse();
             }
@@ -451,8 +411,7 @@ impl DnsResolver for CachedResolver {
         // No cache probe before registering: callers probe with `try_cache`
         // first, and the leader re-checks once its guard is in place, which is
         // also what closes the race with a leader that just finished.
-        let route = self.route(query);
-        let view = route.map_or(0, |route| route.view);
+        let view = self.route(query).map_or(0, |route| route.view);
         let key = CacheKey::new(query.domain.as_ref(), query.record_type).in_view(view);
         let (is_leader, rx) = self.register_or_join_inflight(&key);
 
@@ -462,7 +421,7 @@ impl DnsResolver for CachedResolver {
         // Only followers keep a receiver, so the receivers left at publish
         // count them.
         drop(rx);
-        self.resolve_as_leader(query, key, route.is_some()).await
+        self.resolve_as_leader(query, key).await
     }
 }
 

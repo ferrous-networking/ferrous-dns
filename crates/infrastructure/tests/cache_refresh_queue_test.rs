@@ -787,7 +787,7 @@ async fn test_negative_entry_renewal_follows_the_new_soa_ttl() {
     cache.insert(
         "queued-0.com",
         RecordType::A,
-        CachedData::WireData(nxdomain_wire("queued-0.com", 300)),
+        CachedData::wire(nxdomain_wire("queued-0.com", 300)),
         300,
         None,
     );

@@ -455,9 +455,7 @@ fn insert_ip(cache: &DnsCache, ip: Ipv4Addr) {
     cache.insert(
         DOMAIN,
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![IpAddr::V4(ip)]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(ip)]))),
         300,
         None,
     );

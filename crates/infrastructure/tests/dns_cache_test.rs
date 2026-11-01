@@ -31,9 +31,7 @@ fn create_refresh_cache(access_window_secs: u64) -> DnsCache {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
 }
 
 /// Cria dados CNAME que NÃO vão para o cache L1 (apenas IpAddresses usam L1).

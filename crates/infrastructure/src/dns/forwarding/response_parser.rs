@@ -1,3 +1,4 @@
+use crate::dns::cache::key::normalize_wire_name;
 use bytes::Bytes;
 use ferrous_dns_domain::DomainError;
 use hickory_proto::op::{Message, ResponseCode};
@@ -73,9 +74,10 @@ impl ResponseParser {
                     addresses.push(IpAddr::V6(aaaa.0));
                 }
                 RData::CNAME(canonical) => {
-                    let name = canonical.to_utf8();
+                    let utf8 = canonical.to_utf8();
+                    let name = normalize_wire_name(&utf8);
                     debug!(cname = %name, "CNAME record found");
-                    cname_chain.push(Arc::from(name.as_str()));
+                    cname_chain.push(Arc::from(name.as_ref()));
                 }
                 _ => {}
             }

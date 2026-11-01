@@ -45,7 +45,7 @@ Query: ads.doubleclick.net
      Return response
 ```
 
-A domain allowed at step 1 also skips the five [malware detection](malware-detection.md) engines, which otherwise run around steps 4 and 8.
+A domain allowed at step 1 also skips the five [malware detection](malware-detection.md) engines, which otherwise run around steps 4 and 8, and the CNAME cloaking check at step 9.
 
 ---
 
@@ -163,9 +163,10 @@ Domains that arrived from a **downloaded blocklist source** are not manual, and 
 | Schedule overrides | A `BlockAll` window does not override an allow; an `AllowAll` window or bypass timer does not release a manual deny |
 | Blockable services | A service blocked for the group is overridden by an explicit allow for one of its domains |
 | Malware detection | All five detection engines skip an explicitly allowed domain — see below |
+| CNAME cloaking | An allow for the queried name lets it resolve through a chain that names a blocked domain, fresh or from the cache |
 
 !!! tip "Clearing a false positive"
-    If a domain you need is being blocked by DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
+    If a domain you need is being blocked by CNAME cloaking, DNS tunneling, DGA, rebinding, NXDomain hijack or response IP filtering, add it as an **allow** in Managed Domains, or click **Allow** next to it in the query log. It takes effect on the next query — no restart, no TOML edit. See [Malware Detection](malware-detection.md#allowlisted-domains-are-exempt).
 
 ---
 
@@ -179,7 +180,9 @@ tracking.yoursite.com  CNAME  tracking.third-party-analytics.com
 
 Without CNAME inspection, blocking `tracking.third-party-analytics.com` would be ineffective because the query is for `tracking.yoursite.com`.
 
-Ferrous DNS resolves the full CNAME chain and blocks the response if **any** CNAME in the chain points to a blocked domain. This is enabled automatically when blocking is active.
+Ferrous DNS resolves the full CNAME chain and blocks the response if **any** CNAME in the chain points to a blocked domain. The check runs on every answer, including one served from the cache, for the asking client's group. This is enabled automatically when blocking is active.
+
+To let one first-party name through, allow the name the client queried (`tracking.yoursite.com` above): an explicit allow lifts the CNAME check for it, and it is what the query log's **Allow** button adds.
 
 ---
 

@@ -56,9 +56,9 @@ pub fn refresh_cache_config(
 }
 
 pub fn address(ip: &str) -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![ip.parse::<IpAddr>().unwrap()]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![ip
+        .parse::<IpAddr>()
+        .unwrap()])))
 }
 
 /// A CNAME never enters L1, so every lookup of it is an L2 hit and counts.

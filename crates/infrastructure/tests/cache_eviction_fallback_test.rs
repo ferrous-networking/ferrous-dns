@@ -48,9 +48,7 @@ fn make_cache(max_entries: usize) -> Arc<DnsCache> {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
 }
 
 /// Runs `f` on its own thread and fails if it has not returned within

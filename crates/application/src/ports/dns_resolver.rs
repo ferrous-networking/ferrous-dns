@@ -21,6 +21,9 @@ pub struct DnsResolution {
     /// The resolution's part in coalescing identical in-flight queries.
     pub coalesced: Option<CoalescedRole>,
     pub dnssec_status: Option<DnssecStatus>,
+    /// The names the answer went through, in the form client query names
+    /// have: no trailing dot, ASCII-lowercase. CNAME cloaking checks each one
+    /// against the block filter.
     pub cname_chain: Arc<[Arc<str>]>,
     pub upstream_server: Option<Arc<str>>,
     pub upstream_pool: Option<Arc<str>>,

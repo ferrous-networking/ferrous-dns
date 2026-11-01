@@ -12,7 +12,7 @@
 //! import can feed arbitrary strings into them.
 
 use ferrous_dns_domain::RecordType;
-use ferrous_dns_infrastructure::dns::cache::data::CachedDnssecStatus;
+use ferrous_dns_infrastructure::dns::cache::data::{CachedAddresses, CachedDnssecStatus};
 use ferrous_dns_infrastructure::dns::cache::key::CacheKey;
 use ferrous_dns_infrastructure::dns::cache::l1::{l1_clear, l1_get, l1_insert};
 use std::net::IpAddr;
@@ -76,7 +76,7 @@ fn should_round_trip_oversized_non_ascii_domain_through_l1() {
     l1_insert(
         &domain,
         &RecordType::A,
-        Arc::new(vec![addr]),
+        CachedAddresses::new(Arc::new(vec![addr])),
         CachedDnssecStatus::Insecure,
         false,
         expires,
@@ -87,7 +87,7 @@ fn should_round_trip_oversized_non_ascii_domain_through_l1() {
         hit.is_some(),
         "an oversized non-ASCII domain must be retrievable from L1 after insert"
     );
-    assert_eq!(hit.unwrap().0.as_slice(), [addr]);
+    assert_eq!(hit.unwrap().0.addresses.as_slice(), [addr]);
 
     l1_clear();
 }

@@ -147,7 +147,7 @@ impl Server {
     /// `answers`.
     fn caching(answers: &[(&str, RecordType, Vec<u8>)], log: Arc<dyn QueryLogRepository>) -> Self {
         let entries = answers.iter().map(|(name, record_type, wire)| {
-            let data = CachedData::WireData(Bytes::from(wire.clone()));
+            let data = CachedData::wire(Bytes::from(wire.clone()));
             (*name, *record_type, data)
         });
         Self::holding(entries, log, false)
@@ -289,9 +289,7 @@ fn txt(text: &str) -> RData {
 }
 
 fn addresses(addresses: &[IpAddr]) -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(addresses.to_vec()),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(addresses.to_vec())))
 }
 
 /// A query for `owner`, with an OPT carrying `cookie` when `edns` is
@@ -425,7 +423,7 @@ async fn strict_mode_validates_cache_hits_on_the_slow_path() {
             (
                 "mail.example.com",
                 RecordType::MX,
-                CachedData::WireData(Bytes::from(mx_wire)),
+                CachedData::wire(Bytes::from(mx_wire)),
             ),
         ],
         Arc::new(NoopQueryLog),

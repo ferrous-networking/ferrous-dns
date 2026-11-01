@@ -1,6 +1,6 @@
 use super::local_ptr::ptr_resolution;
 use async_trait::async_trait;
-use ferrous_dns_application::ports::{DnsResolution, DnsResolver, EMPTY_CNAME_CHAIN};
+use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
 use ferrous_dns_domain::{DnsQuery, DomainError, Nat64Prefix, PrivateIpFilter, RecordType};
 use hickory_proto::op::{Message, ResponseCode};
 use hickory_proto::rr::{Name, RData};
@@ -95,7 +95,8 @@ impl Dns64Resolver {
             coalesced: None,
             // Synthetic AAAA is unsigned — the AD bit must never be set.
             dnssec_status: None,
-            cname_chain: Arc::clone(&EMPTY_CNAME_CHAIN),
+            // The chain the A answer came through, which CNAME cloaking checks.
+            cname_chain: Arc::clone(&a_res.cname_chain),
             upstream_server: a_res.upstream_server.clone(),
             upstream_pool: a_res.upstream_pool.clone(),
             min_ttl: a_res.min_ttl,

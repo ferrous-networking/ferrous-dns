@@ -6,7 +6,9 @@
 //! (fetched with DO=1) to clients that did not set DO, and an eight-record
 //! wire answer, whose every TTL a hit counts down. The `router_*` cases add
 //! the pool router production attaches: with no group routes, with group
-//! routes the name does not match, and for a name in a group's own view.
+//! routes the name does not match, and for a name in a group's own view. The
+//! `*_cname` cases are answers that came through a two-hop CNAME chain, which
+//! every hit checks against the block filter again (CNAME cloaking).
 
 #[path = "../tests/support/ports.rs"]
 mod ports;
@@ -30,8 +32,8 @@ use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
 use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use ferrous_dns_infrastructure::dns::wire_response::{self, RESPONSE_BUF_LEN};
 use ferrous_dns_infrastructure::dns::{
-    BlockFilterEngine, BorrowedKey, CachedAddresses, CachedData, DnsCache, DnsCacheAccess,
-    DnsCacheConfig, EvictionStrategy, PoolManager,
+    BlockFilterEngine, BorrowedKey, CachedAddresses, CachedData, CachedWire, DnsCache,
+    DnsCacheAccess, DnsCacheConfig, EvictionStrategy, PoolManager,
 };
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query};
@@ -48,6 +50,10 @@ const A_NAME: &str = "www.example.com";
 const MX_NAME: &str = "mail.example.com";
 const SIGNED_NAME: &str = "signed.example.com";
 const MANY_NAME: &str = "many.example.com";
+/// Answered through `CNAME_CHAIN`, whose names no rule blocks.
+const CNAME_NAME: &str = "cdn.example.com";
+const CNAME_MX_NAME: &str = "cdn-mail.example.com";
+const CNAME_CHAIN: [&str; 2] = ["cdn.example.com.edgekey.net", "e1234.a.akamaiedge.net"];
 /// Cached in the view of group 1, the default group every bench client is in.
 const GROUP_VIEW_NAME: &str = "host.corp.example";
 const GROUP_VIEW: u32 = 1;
@@ -208,30 +214,50 @@ fn handler(
     cache.insert(
         A_NAME,
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(
+            Ipv4Addr::new(93, 184, 216, 34),
+        )]))),
         3600,
         None,
     );
     cache.insert(
         MX_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_mx("mail.example.com.", 1)),
+        CachedData::wire(upstream_mx("mail.example.com.", 1)),
         3600,
         None,
     );
     cache.insert(
         MANY_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_mx("many.example.com.", 8)),
+        CachedData::wire(upstream_mx("many.example.com.", 8)),
         3600,
         None,
     );
     cache.insert(
         SIGNED_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_signed_mx()),
+        CachedData::wire(upstream_signed_mx()),
+        3600,
+        None,
+    );
+    let chain: Arc<[Arc<str>]> = CNAME_CHAIN.iter().map(|name| Arc::from(*name)).collect();
+    cache.insert(
+        CNAME_NAME,
+        RecordType::A,
+        CachedData::IpAddresses(
+            CachedAddresses::new(Arc::new(vec![IpAddr::V4(Ipv4Addr::new(23, 45, 67, 89))]))
+                .with_cname_chain(&chain),
+        ),
+        3600,
+        None,
+    );
+    cache.insert(
+        CNAME_MX_NAME,
+        RecordType::MX,
+        CachedData::WireData(Arc::new(
+            CachedWire::new(upstream_mx("cdn-mail.example.com.", 1)).with_cname_chain(&chain),
+        )),
         3600,
         None,
     );
@@ -240,9 +266,9 @@ fn handler(
         DnsCacheAccess::insert(
             cache.as_ref(),
             BorrowedKey::new(GROUP_VIEW_NAME, RecordType::A).in_view(GROUP_VIEW),
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(10, 1, 1, 1))]),
-            }),
+            CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(
+                Ipv4Addr::new(10, 1, 1, 1),
+            )]))),
             3600,
             None,
             true,
@@ -323,6 +349,8 @@ fn udp_cache_hit(c: &mut Criterion) {
         ("mx_edns_signed", query(SIGNED_NAME, 15, true)),
         ("mx_plain_signed", query(SIGNED_NAME, 15, false)),
         ("mx8_edns", query(MANY_NAME, 15, true)),
+        ("a_edns_cname", query(CNAME_NAME, 1, true)),
+        ("mx_edns_cname", query(CNAME_MX_NAME, 15, true)),
     ] {
         assert_ne!(serve(&filtered, &raw, &mut out), 0, "{label} must hit");
         group.bench_function(label, |b| {

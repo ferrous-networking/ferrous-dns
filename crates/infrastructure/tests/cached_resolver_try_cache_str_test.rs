@@ -179,9 +179,7 @@ async fn entries_cached_without_a_determination_report_none() {
     cache.insert_permanent(
         "nas.home.lan",
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![local]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![local]))),
         300,
     );
     let resolver = CachedResolver::new(Arc::new(Plain), cache.clone(), 300, 4);

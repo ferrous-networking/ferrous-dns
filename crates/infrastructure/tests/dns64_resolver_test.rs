@@ -55,6 +55,8 @@ struct MockInner {
     /// Addresses returned for the A re-query.
     a_addrs: Vec<IpAddr>,
     a_dnssec: Option<ferrous_dns_domain::DnssecStatus>,
+    /// The CNAME chain the A answer came through.
+    a_cname_chain: Vec<&'static str>,
     /// PTR target for `*.in-addr.arpa` queries (None = no PTR).
     ptr_target: Option<String>,
     calls: Mutex<Vec<(String, RecordType)>>,
@@ -93,6 +95,11 @@ impl DnsResolver for MockInner {
                     let mut res = empty_resolution(ResponseCode::NoError);
                     res.addresses = Arc::new(self.a_addrs.clone());
                     res.dnssec_status = self.a_dnssec;
+                    res.cname_chain = self
+                        .a_cname_chain
+                        .iter()
+                        .map(|name| Arc::from(*name))
+                        .collect();
                     Ok(res)
                 }
             }
@@ -145,6 +152,23 @@ async fn synthesizes_aaaa_from_a_on_nodata() {
         .calls()
         .iter()
         .any(|(d, rt)| d == "example.com" && *rt == RecordType::A));
+}
+
+/// The synthesized AAAA keeps the chain its A answer came through, so CNAME
+/// cloaking checks it as it checks the A answer.
+#[tokio::test]
+async fn synthesized_aaaa_keeps_the_cname_chain_of_the_a_answer() {
+    let inner = Arc::new(MockInner {
+        a_addrs: vec!["93.184.216.34".parse().unwrap()],
+        a_cname_chain: vec!["x.tracker.example"],
+        ..Default::default()
+    });
+    let resolver = Dns64Resolver::new(inner as Arc<dyn DnsResolver>, prefix());
+
+    let res = resolver.resolve(&aaaa_query()).await.unwrap();
+
+    assert!(!res.addresses.is_empty(), "DNS64 synthesized an answer");
+    assert_eq!(&*res.cname_chain, &[Arc::<str>::from("x.tracker.example")]);
 }
 
 #[tokio::test]

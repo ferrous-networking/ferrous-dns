@@ -64,9 +64,7 @@ fn insert_local(cache: &DnsCache, name: &str, record_type: RecordType, address: 
     cache.insert_permanent(
         name,
         record_type,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![ip(address)]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![ip(address)]))),
         300,
     );
 }

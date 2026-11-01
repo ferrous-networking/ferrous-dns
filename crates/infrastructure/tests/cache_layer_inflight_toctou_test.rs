@@ -84,9 +84,7 @@ fn preload(cache: &dyn DnsCacheAccess, domain: &str, record_type: RecordType, ad
     let ip: IpAddr = addr.parse().unwrap();
     cache.insert(
         BorrowedKey::new(domain, record_type),
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![ip]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![ip]))),
         300,
         Some(CachedDnssecStatus::Insecure),
         false,

@@ -36,9 +36,9 @@ fn cache(max_entries: usize, access_window_secs: u64) -> DnsCache {
 }
 
 fn address() -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec!["192.0.2.7".parse::<IpAddr>().unwrap()]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec!["192.0.2.7"
+        .parse::<IpAddr>()
+        .unwrap()])))
 }
 
 /// Caches `domain` and serves it `lookups` times from this thread's L1, then

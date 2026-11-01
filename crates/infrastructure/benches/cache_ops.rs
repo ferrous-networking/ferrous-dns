@@ -63,9 +63,9 @@ fn config(max_entries: usize) -> DnsCacheConfig {
 }
 
 fn address() -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 215, 14))]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(
+        Ipv4Addr::new(93, 184, 215, 14),
+    )])))
 }
 
 /// Wires a refresh worker stand-in that collects timers in batches, as the

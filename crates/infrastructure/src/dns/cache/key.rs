@@ -14,6 +14,15 @@ pub(crate) fn normalize_domain(domain: &str) -> Cow<'_, str> {
     }
 }
 
+/// A name off the wire (hickory's `to_utf8`, which keeps the root dot) in the
+/// form every name takes past the parsers: no trailing dot, ASCII-lowercase.
+/// The names hickory parses go through it, client queries off the fast path
+/// and CNAME chain names, so the block filter and the cache see one form.
+#[inline]
+pub(crate) fn normalize_wire_name(name: &str) -> Cow<'_, str> {
+    normalize_domain(name.trim_end_matches('.'))
+}
+
 #[derive(Clone, Debug, Eq)]
 pub struct CacheKey {
     pub domain: CompactString,

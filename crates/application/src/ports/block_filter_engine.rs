@@ -11,9 +11,10 @@ pub enum FilterDecision {
     /// allow-type managed domain or an allow regex filter.
     ///
     /// Callers that run their own heuristics on top of the filter (tunneling,
-    /// DGA, rebinding, NXDOMAIN hijack, response-IP filtering) must skip them
-    /// for these domains: an explicit allow is how the operator clears a false
-    /// positive, and it would be pointless if a detector could override it.
+    /// DGA, rebinding, NXDOMAIN hijack, response-IP filtering, CNAME cloaking)
+    /// must skip them for these domains: an explicit allow is how the operator
+    /// clears a false positive, and it would be pointless if a detector could
+    /// override it.
     ExplicitAllow,
 }
 
