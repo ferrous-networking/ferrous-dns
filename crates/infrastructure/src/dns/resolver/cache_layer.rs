@@ -223,15 +223,11 @@ impl CachedResolver {
         );
     }
 
-    /// Stores `resolution` under `key`. `routed` says a conditional pool
-    /// answered it.
-    fn store_in_cache(
-        &self,
-        query: &DnsQuery,
-        key: &CacheKey,
-        routed: bool,
-        resolution: &DnsResolution,
-    ) {
+    /// Stores `resolution` under `key`. A CNAME chain's target is not stored
+    /// under its own name: something else may answer that name (a conditional
+    /// pool, a local record or wildcard, the local DNS server), and this answer
+    /// is only the queried name's.
+    fn store_in_cache(&self, key: &CacheKey, resolution: &DnsResolution) {
         // Never cache an unvalidated (Bogus/Indeterminate) result. Under Strict it
         // must SERVFAIL on every query, so the fast cache path must not be able to
         // serve it; under Permissive, re-validating it each time is fine.
@@ -282,38 +278,6 @@ impl CachedResolver {
             Some(dnssec_status),
             resolution.local_dns,
         );
-
-        // Also cache the chain's final target under its own name, so a direct
-        // query for it does not go upstream. `min_ttl` already spans the whole
-        // chain, and the DNSSEC status is inherited, never elevated.
-        // Not when a conditional pool answered: the target is another name,
-        // which that pool does not answer for everyone.
-        //
-        // TODO(bailiwick): the response parser accepts any CNAME target, so an
-        // untrusted upstream could plant a cross-bailiwick target here.
-        if let Some(final_target) = resolution.cname_chain.last().filter(|_| !routed) {
-            let target_name: &str = final_target.as_ref();
-            // Cache keys are case-insensitive, so a case-variant self-loop
-            // would write the same entry twice. A local name is configuration:
-            // an upstream chain ending in it must not repoint it.
-            if !target_name.eq_ignore_ascii_case(query.domain.as_ref())
-                && self
-                    .cache
-                    .local_record_status(target_name, &query.record_type)
-                    == LocalRecordStatus::NotLocal
-            {
-                let target = CacheKey::new(target_name, query.record_type);
-                self.cache.insert(
-                    borrowed(&target),
-                    CachedData::IpAddresses(CachedAddresses::new(Arc::clone(
-                        &resolution.addresses,
-                    ))),
-                    ttl,
-                    Some(dnssec_status),
-                    resolution.local_dns,
-                );
-            }
-        }
     }
 
     fn register_or_join_inflight(
@@ -357,7 +321,6 @@ impl CachedResolver {
         &self,
         query: &DnsQuery,
         key: CacheKey,
-        routed: bool,
     ) -> Result<DnsResolution, DomainError> {
         let mut guard = InflightLeaderGuard {
             inflight: &self.inflight,
@@ -379,7 +342,7 @@ impl CachedResolver {
 
         match &mut result {
             Ok(resolution) => {
-                self.store_in_cache(query, &guard.key, routed, resolution);
+                self.store_in_cache(&guard.key, resolution);
                 self.publish_inflight(&guard.key, resolution);
                 guard.defuse();
             }
@@ -462,8 +425,7 @@ impl DnsResolver for CachedResolver {
         // No cache probe before registering: callers probe with `try_cache`
         // first, and the leader re-checks once its guard is in place, which is
         // also what closes the race with a leader that just finished.
-        let route = self.route(query);
-        let view = route.map_or(0, |route| route.view);
+        let view = self.route(query).map_or(0, |route| route.view);
         let key = CacheKey::new(query.domain.as_ref(), query.record_type).in_view(view);
         let (is_leader, rx) = self.register_or_join_inflight(&key);
 
@@ -473,7 +435,7 @@ impl DnsResolver for CachedResolver {
         // Only followers keep a receiver, so the receivers left at publish
         // count them.
         drop(rx);
-        self.resolve_as_leader(query, key, route.is_some()).await
+        self.resolve_as_leader(query, key).await
     }
 }
 

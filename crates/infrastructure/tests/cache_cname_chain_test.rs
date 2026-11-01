@@ -223,19 +223,3 @@ async fn test_an_answer_without_a_chain_reports_none() {
         Some(vec![])
     );
 }
-
-/// The chain's target is the chain's end: its own entry has no chain.
-#[tokio::test]
-async fn test_the_chain_target_entry_has_no_chain() {
-    let resolver = cached_resolver(ChainResolver::new(&[TRACKER]));
-
-    resolver
-        .resolve(&query(ALIAS, RecordType::A))
-        .await
-        .unwrap();
-
-    assert_eq!(
-        cached_chain_from_l2(&resolver, TRACKER, RecordType::A),
-        Some(vec![])
-    );
-}

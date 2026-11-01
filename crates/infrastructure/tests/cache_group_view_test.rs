@@ -29,8 +29,6 @@ const GROUP_A: i64 = 3;
 const GROUP_B: i64 = 4;
 const OTHER_GROUP: i64 = 99;
 const NAME: &str = "host.corp.example";
-/// A chain target as a client asks for it.
-const TARGET: &str = "lb.cdn.example";
 
 fn pool(name: &str, upstream: &Upstream, domains: &[&str], groups: &[i64]) -> UpstreamPool {
     UpstreamPool {
@@ -267,51 +265,6 @@ async fn test_refresh_renews_a_group_entry_through_the_group_pool() {
 }
 
 #[tokio::test]
-async fn test_cname_target_of_a_group_routed_answer_is_not_cached() {
-    let f = fixture().await;
-    f.office_a
-        .set(Answer::Cname("lb.cdn.example.", OFFICE_A_IP));
-
-    assert_eq!(
-        resolve(&f.stack, "app.corp.example", Some(GROUP_A)).await,
-        ips(OFFICE_A_IP)
-    );
-
-    assert_eq!(probe(&f.stack, TARGET, None), None);
-    assert_eq!(probe(&f.stack, TARGET, Some(OTHER_GROUP)), None);
-}
-
-#[tokio::test]
-async fn test_cname_target_of_an_every_client_routed_answer_is_not_cached() {
-    let public = Upstream::spawn(Answer::Address(PUBLIC_IP)).await;
-    let office = Upstream::spawn(Answer::Cname("lb.cdn.example.", OFFICE_A_IP)).await;
-    let pm = Arc::new(
-        PoolManager::new(
-            vec![
-                pool("public", &public, &[], &[]),
-                pool("office", &office, &["corp.example"], &[]),
-            ],
-            None,
-        )
-        .await
-        .unwrap(),
-    );
-    let stack = ResolverBuilder::new(pm, TIMEOUT_MS)
-        .with_cache(refresh::refresh_cache(1_000, 0.75, 7_200), 7_200, 4)
-        .build();
-
-    assert_eq!(
-        resolve(&stack, "app.corp.example", None).await,
-        ips(OFFICE_A_IP)
-    );
-    assert_eq!(
-        probe(&stack, "app.corp.example", None),
-        Some(ips(OFFICE_A_IP))
-    );
-    assert_eq!(probe(&stack, TARGET, None), None);
-}
-
-#[tokio::test]
 async fn test_a_local_record_wins_over_a_group_route() {
     let f = fixture().await;
     f.cache.insert_permanent(
@@ -506,21 +459,4 @@ async fn test_refresh_renews_a_shared_entry_through_the_default_pools() {
     let renewed = refresh::wait_until(Duration::from_secs(5), || f.public.queries() >= 2).await;
     assert!(renewed, "the shared entry was not renewed");
     assert_eq!(f.office_a.queries() + f.office_b.queries(), 0);
-}
-
-#[tokio::test]
-async fn test_cname_target_of_an_unrouted_answer_is_still_cached() {
-    let f = fixture().await;
-    f.public.set(Answer::Cname("lb.cdn.example.", PUBLIC_IP));
-
-    assert_eq!(
-        resolve(&f.stack, UNROUTED, Some(GROUP_A)).await,
-        ips(PUBLIC_IP)
-    );
-
-    assert_eq!(
-        probe(&f.stack, TARGET, None),
-        Some(ips(PUBLIC_IP)),
-        "the chain target of an unrouted answer must stay cached"
-    );
 }
