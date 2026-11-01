@@ -512,8 +512,8 @@ impl HandleDnsQueryUseCase {
         if Self::spends_nxdomain_budget(&resolution) && self.rate_limiter.limits_nxdomain() {
             return None;
         }
-        // Fall through to execute() so it logs and applies the configured action.
-        if !explicitly_allowed && self.is_suspicious_cached_answer(domain, group_id, &resolution) {
+        // Fall through to execute() so it logs and blocks it.
+        if !explicitly_allowed && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
             return None;
         }
         let wire = resolution.upstream_wire_data.as_deref()?;
@@ -563,7 +563,10 @@ impl HandleDnsQueryUseCase {
             return None;
         }
         // Fall through to execute() so it logs and applies the configured action.
-        if !explicitly_allowed && self.is_suspicious_cached_answer(domain, group_id, &resolution) {
+        if !explicitly_allowed
+            && (self.is_cname_cloaked(&resolution.cname_chain, group_id)
+                || self.is_suspicious_cached_answer(domain, &resolution))
+        {
             return None;
         }
         let DnsResolution {
@@ -596,19 +599,36 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Cached answers are admitted before the response guards run, so re-check the
-    /// ones whose verdict depends on the answer (CNAME cloaking, hijack, C2 IP,
-    /// rebinding).
+    /// ones whose verdict depends on the answer (hijack, C2 IP, rebinding).
+    /// CNAME cloaking is checked on its own, because a cached hit can be blocked
+    /// without the upstream path.
     #[inline]
-    fn is_suspicious_cached_answer(
-        &self,
-        domain: &str,
-        group_id: i64,
-        resolution: &DnsResolution,
-    ) -> bool {
-        self.is_cname_cloaked(&resolution.cname_chain, group_id)
-            || self.nxdomain_hijack_guard.is_hijacked_response(resolution)
+    fn is_suspicious_cached_answer(&self, domain: &str, resolution: &DnsResolution) -> bool {
+        self.nxdomain_hijack_guard.is_hijacked_response(resolution)
             || self.response_ip_filter_guard.has_blocked_ip(resolution)
             || self.is_rebinding_attempt(domain, resolution)
+    }
+
+    /// Blocks `request` for an answer whose CNAME chain goes through a blocked
+    /// name, and remembers the verdict for the chain's TTL so the next query is
+    /// refused before any lookup.
+    fn block_cname_cloaking(
+        &self,
+        request: &DnsRequest,
+        resolution: &DnsResolution,
+        group_id: i64,
+        response_time_us: u64,
+    ) -> DomainError {
+        let ttl = resolution.min_ttl.map(|t| t as u64).unwrap_or(60).max(5);
+        self.block_filter
+            .store_cname_decision(&request.domain, group_id, ttl);
+        self.log(&QueryLog {
+            blocked: true,
+            response_status: Some("BLOCKED"),
+            block_source: Some(BlockSource::CnameCloaking),
+            ..Self::base_query_log(request, response_time_us, group_id)
+        });
+        DomainError::Blocked
     }
 
     #[inline]
@@ -803,8 +823,15 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if cached.has_response_data() {
-                if !explicitly_allowed
-                    && self.is_suspicious_cached_answer(&request.domain, group_id, &cached)
+                if !explicitly_allowed && self.is_cname_cloaked(&cached.cname_chain, group_id) {
+                    return Err(self.block_cname_cloaking(
+                        request,
+                        &cached,
+                        group_id,
+                        elapsed_us(),
+                    ));
+                }
+                if !explicitly_allowed && self.is_suspicious_cached_answer(&request.domain, &cached)
                 {
                     // Fall through to full resolve path for logging and action.
                 } else {
@@ -838,16 +865,12 @@ impl HandleDnsQueryUseCase {
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
                 if !explicitly_allowed && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
-                    let ttl = resolution.min_ttl.map(|t| t as u64).unwrap_or(60).max(5);
-                    self.block_filter
-                        .store_cname_decision(&request.domain, group_id, ttl);
-                    self.log(&QueryLog {
-                        blocked: true,
-                        response_status: Some("BLOCKED"),
-                        block_source: Some(BlockSource::CnameCloaking),
-                        ..Self::base_query_log(request, elapsed_us(), group_id)
-                    });
-                    return Err(DomainError::Blocked);
+                    return Err(self.block_cname_cloaking(
+                        request,
+                        &resolution,
+                        group_id,
+                        elapsed_us(),
+                    ));
                 }
                 if !explicitly_allowed && self.is_rebinding_attempt(&request.domain, &resolution) {
                     self.log(&QueryLog {
