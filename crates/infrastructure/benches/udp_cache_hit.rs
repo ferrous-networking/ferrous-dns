@@ -10,7 +10,7 @@
 //! `*_cname` cases are answers that came through a two-hop CNAME chain, which
 //! every hit checks against the block filter again (CNAME cloaking). The
 //! `*_malware_detection` cases run the DGA and tunneling phase-1 checks, on by
-//! default, against a clean name.
+//! default, against a clean name, with one other group exempt from them.
 
 #[path = "../tests/support/ports.rs"]
 mod ports;
@@ -35,8 +35,9 @@ use ferrous_dns_infrastructure::dns::server::{BlockPolicy, DnsServerHandler};
 use ferrous_dns_infrastructure::dns::wire_response::{self, RESPONSE_BUF_LEN};
 use ferrous_dns_infrastructure::dns::{
     BlockFilterEngine, BorrowedKey, CachedAddresses, CachedData, CachedWire, DnsCache,
-    DnsCacheAccess, DnsCacheConfig, EvictionStrategy, PoolManager,
+    DnsCacheAccess, DnsCacheConfig, EvictionStrategy, GroupMalwareExemptions, PoolManager,
 };
+use ferrous_dns_infrastructure::repositories::group_repository::SqliteGroupRepository;
 use ferrous_dns_infrastructure::schedule::ScheduleStateStore;
 use hickory_proto::op::{Edns, Message, MessageType, OpCode, Query};
 use hickory_proto::rr::rdata::MX;
@@ -202,7 +203,7 @@ struct Handlers {
 fn handler(runtime: &tokio::runtime::Runtime, router: Option<Arc<dyn UpstreamRouter>>) -> Handlers {
     let dir = tempfile::tempdir().unwrap();
     let url = format!("sqlite:{}", dir.path().join("bench.db").display());
-    let engine = runtime.block_on(async {
+    let (engine, exemptions) = runtime.block_on(async {
         let pool = create_write_pool(&url, &DatabaseConfig::default())
             .await
             .unwrap();
@@ -210,11 +211,19 @@ fn handler(runtime: &tokio::runtime::Runtime, router: Option<Arc<dyn UpstreamRou
             .execute(&pool)
             .await
             .unwrap();
+        sqlx::query("INSERT INTO groups (name, malware_detection_enabled) VALUES ('Servers', 0)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let exemptions =
+            GroupMalwareExemptions::new(Arc::new(SqliteGroupRepository::new(pool.clone())))
+                .await
+                .unwrap();
         let engine = BlockFilterEngine::new(pool, 1, Arc::new(ScheduleStateStore::new()), true)
             .await
             .unwrap();
         engine.reload().await.unwrap();
-        engine
+        (engine, exemptions)
     });
 
     coarse_clock::tick();
@@ -300,7 +309,8 @@ fn handler(runtime: &tokio::runtime::Runtime, router: Option<Arc<dyn UpstreamRou
     let malware = HandleDnsQueryUseCase::new(resolver.clone(), engine, Arc::new(NoopQueryLog))
         .with_dns_cookies(DnsCookieGuard::from_config(&cookies, [7; 32]))
         .with_tunneling_detection(&TunnelingDetectionConfig::default())
-        .with_dga_detection(&DgaDetectionConfig::default());
+        .with_dga_detection(&DgaDetectionConfig::default())
+        .with_malware_exemptions(exemptions);
     // The same path minus the block filter, to tell its cost from the rest.
     let unfiltered =
         HandleDnsQueryUseCase::new(resolver, Arc::new(AllowAllFilter), Arc::new(NoopQueryLog));
