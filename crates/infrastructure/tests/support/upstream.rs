@@ -18,7 +18,8 @@ use tokio::net::UdpSocket;
 pub enum Answer {
     /// An A record with this address for A queries; NODATA for other types.
     Address(Ipv4Addr),
-    /// A CNAME to the target name, followed by the target's A record.
+    /// A CNAME to the target name for every type, followed by the target's A
+    /// record for A queries.
     Cname(&'static str, Ipv4Addr),
     /// Authoritative for one zone (an absolute name): names under it get the
     /// address, or NODATA for other types; anything else is REFUSED, as an
@@ -142,6 +143,18 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
     }
     for q in &req.queries {
         resp.add_query(q.clone());
+        if let Answer::Cname(target, ip) = answer {
+            let target = Name::from_str(target).unwrap();
+            resp.add_answer(Record::from_rdata(
+                q.name().clone(),
+                300,
+                RData::CNAME(CNAME(target.clone())),
+            ));
+            if q.query_type() == RecordType::A {
+                resp.add_answer(Record::from_rdata(target, 300, RData::A(A(ip))));
+            }
+            continue;
+        }
         if q.query_type() != RecordType::A {
             continue;
         }
@@ -152,16 +165,7 @@ fn reply(req: &Message, answer: Answer) -> Option<Vec<u8>> {
             Answer::Zone(_, ip) if resp.metadata.response_code == ResponseCode::NoError => {
                 resp.add_answer(Record::from_rdata(q.name().clone(), 300, RData::A(A(ip))));
             }
-            Answer::Cname(target, ip) => {
-                let target = Name::from_str(target).unwrap();
-                resp.add_answer(Record::from_rdata(
-                    q.name().clone(),
-                    300,
-                    RData::CNAME(CNAME(target.clone())),
-                ));
-                resp.add_answer(Record::from_rdata(target, 300, RData::A(A(ip))));
-            }
-            Answer::Zone(..) | Answer::NxDomain | Answer::Silent => {}
+            Answer::Cname(..) | Answer::Zone(..) | Answer::NxDomain | Answer::Silent => {}
         }
     }
     Some(resp.to_bytes().unwrap())

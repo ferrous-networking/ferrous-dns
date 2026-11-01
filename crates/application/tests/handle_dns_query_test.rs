@@ -589,6 +589,146 @@ async fn test_cname_chain_not_blocked_when_clean() {
     assert!(!logs[0].blocked);
 }
 
+/// A cached answer for `analytics.seusite.com` through `x.tracker.com`. The
+/// cache layer hands the same answer back on `resolve`, where a hit the fast
+/// checks turned down goes next.
+async fn cache_cloaked_answer(resolver: &MockDnsResolver, cached: DnsResolution) {
+    resolver.set_cached_response("analytics.seusite.com", cached.clone());
+    resolver.set_response("analytics.seusite.com", cached).await;
+}
+
+fn cloaked_address_hit() -> DnsResolution {
+    DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .with_cname_chain(vec!["x.tracker.com"])
+        .cache_hit()
+        .build()
+}
+
+fn cloaked_wire_hit() -> DnsResolution {
+    DnsResolution {
+        cname_chain: Arc::from([Arc::from("x.tracker.com")]),
+        ..cached_wire_resolution()
+    }
+}
+
+/// The block memo is gone (it lapsed, or a reload dropped it), and the answer
+/// comes from the cache: its chain must be checked again.
+#[tokio::test]
+async fn test_cname_cloaking_blocks_a_cached_answer() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    cache_cloaked_answer(&resolver, cloaked_address_hit()).await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(
+        matches!(result, Err(DomainError::Blocked)),
+        "a cached answer through a blocked name was served: {result:?}"
+    );
+    let logs = log.get_sync_logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].block_source, Some(BlockSource::CnameCloaking));
+}
+
+#[tokio::test]
+async fn test_try_cache_direct_declines_a_cached_answer_through_a_blocked_name() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    cache_cloaked_answer(&resolver, cloaked_address_hit()).await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+
+    let result = use_case.try_cache_direct(
+        "analytics.seusite.com",
+        RecordType::A,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served,
+    );
+
+    assert!(result.is_none(), "the fast path served it: {result:?}");
+    assert_eq!(log.sync_log_count(), 0);
+}
+
+#[tokio::test]
+async fn test_try_cache_wire_direct_declines_a_cached_answer_through_a_blocked_name() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    cache_cloaked_answer(&resolver, cloaked_wire_hit()).await;
+
+    let use_case = make_use_case(resolver, filter, log.clone());
+
+    let result = use_case.try_cache_wire_direct(
+        "analytics.seusite.com",
+        RecordType::MX,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served_wire,
+    );
+
+    assert!(result.is_none(), "the wire fast path served it: {result:?}");
+    assert_eq!(log.sync_log_count(), 0);
+}
+
+/// The Query Log's Allow button adds an allow for the queried name; it has to
+/// lift a CNAME cloaking block like it lifts the other answer checks.
+#[tokio::test]
+async fn test_an_explicit_allow_lifts_cname_cloaking_on_a_fresh_answer() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    filter.allow_domain("analytics.seusite.com");
+    let upstream = DnsResolutionBuilder::new()
+        .with_address("1.2.3.4")
+        .with_cname_chain(vec!["x.tracker.com"])
+        .build();
+    resolver
+        .set_response("analytics.seusite.com", upstream)
+        .await;
+
+    let use_case = make_use_case(resolver, filter, log);
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    let result = use_case.execute(&request).await;
+
+    assert!(result.is_ok(), "the allowed name was blocked: {result:?}");
+}
+
+#[tokio::test]
+async fn test_an_explicit_allow_lifts_cname_cloaking_on_a_cached_answer() {
+    let resolver = Arc::new(MockDnsResolver::new());
+    let filter = Arc::new(MockBlockFilterEngine::new());
+    let log = Arc::new(MockQueryLogRepository::new());
+    filter.block_domain("x.tracker.com");
+    filter.allow_domain("analytics.seusite.com");
+    cache_cloaked_answer(&resolver, cloaked_address_hit()).await;
+
+    let use_case = make_use_case(resolver, filter, log);
+    let request = DnsRequest::new("analytics.seusite.com", RecordType::A, CLIENT_IP);
+
+    assert!(use_case
+        .try_cache_direct(
+            "analytics.seusite.com",
+            RecordType::A,
+            CLIENT_IP,
+            ClientProtocol::Udp,
+            served,
+        )
+        .is_some());
+    assert!(use_case.execute(&request).await.is_ok());
+}
+
 #[tokio::test]
 async fn test_try_cache_direct_returns_none_when_domain_blocked() {
     let resolver = Arc::new(MockDnsResolver::new());
