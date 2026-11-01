@@ -6,16 +6,24 @@
 //! A direct subsequent query for `cdn.foo.com A` should be served from
 //! the cache instead of escaping to upstream.
 
+#[path = "support/upstream.rs"]
+mod upstream;
+
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
-use ferrous_dns_domain::{DnsQuery, DnssecStatus, DomainError, RecordType};
-use ferrous_dns_infrastructure::dns::resolver::CachedResolver;
-use ferrous_dns_infrastructure::dns::{
-    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy,
+use ferrous_dns_domain::{
+    DnsQuery, DnssecStatus, DomainError, RecordType, UpstreamPool, UpstreamStrategy,
 };
-use std::net::IpAddr;
+use ferrous_dns_infrastructure::dns::resolver::{CachedResolver, ResolverBuilder};
+use ferrous_dns_infrastructure::dns::{
+    CachedAddresses, CachedData, DnsCache, DnsCacheConfig, EvictionStrategy, PoolManager,
+};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use upstream::{Answer, Upstream};
+
+const TARGET_IP: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 10);
 
 /// Mock resolver returning a canned response with a CNAME chain.
 /// Counts upstream calls so tests can assert whether the cache was consulted.
@@ -105,6 +113,49 @@ fn make_query(domain: &str) -> DnsQuery {
         record_type: RecordType::A,
         group_id: None,
     }
+}
+
+/// The server's resolver stack over `cache`, with one upstream answering
+/// `answer` on the wire.
+async fn wire_stack(answer: Answer, cache: Arc<DnsCache>) -> (Upstream, Arc<dyn DnsResolver>) {
+    let upstream = Upstream::spawn(answer).await;
+    let pool = UpstreamPool {
+        name: "only".into(),
+        strategy: UpstreamStrategy::Failover,
+        servers: vec![upstream.url()],
+        ..Default::default()
+    };
+    let pm = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());
+    let stack = ResolverBuilder::new(pm, 2_000)
+        .with_cache(cache, 300, 4)
+        .build();
+    (upstream, stack)
+}
+
+/// The addresses a cache probe for `domain` returns, as a client asks for it.
+fn cached_addresses(stack: &Arc<dyn DnsResolver>, domain: &str) -> Option<Vec<IpAddr>> {
+    stack
+        .try_cache(&make_query(domain))
+        .map(|hit| hit.addresses.as_ref().clone())
+}
+
+/// The chain's target arrives from the wire as `lb.cdn.example.`, and a client
+/// asks for `lb.cdn.example`; the shortcut must serve that query (#325).
+#[tokio::test]
+async fn should_serve_the_target_of_a_wire_cname_chain_from_the_cache() {
+    let (upstream, stack) =
+        wire_stack(Answer::Cname("lb.cdn.example.", TARGET_IP), make_cache()).await;
+
+    stack
+        .resolve(&make_query("www.site.example"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        cached_addresses(&stack, "lb.cdn.example"),
+        Some(vec![IpAddr::V4(TARGET_IP)])
+    );
+    assert_eq!(upstream.queries(), 1, "the target is never asked upstream");
 }
 
 #[tokio::test]
@@ -241,4 +292,32 @@ async fn should_not_overwrite_a_local_record_with_a_cname_target() {
         data.as_ip_addresses().map(|a| a.as_ref().clone()),
         Some(vec![local])
     );
+}
+
+/// The same guard on a real answer. While wire chain names kept their trailing
+/// dot, the target never matched a local name, so the guard never ran.
+#[tokio::test]
+async fn should_not_overwrite_a_local_record_with_a_wire_cname_target() {
+    let cache = make_cache();
+    let local: IpAddr = "10.0.0.5".parse().unwrap();
+    cache.insert_permanent(
+        "nas.home.lan",
+        RecordType::A,
+        CachedData::IpAddresses(CachedAddresses {
+            addresses: Arc::new(vec![local]),
+        }),
+        300,
+    );
+    let (_upstream, stack) = wire_stack(
+        Answer::Cname("nas.home.lan.", Ipv4Addr::new(203, 0, 113, 66)),
+        cache.clone(),
+    )
+    .await;
+
+    stack
+        .resolve(&make_query("evil.example.com"))
+        .await
+        .unwrap();
+
+    assert_eq!(cached_addresses(&stack, "nas.home.lan"), Some(vec![local]));
 }

@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::net::{TcpListener, TcpStream, UdpSocket};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::sleep;
@@ -54,6 +54,26 @@ impl TestConfig {
 
     /// `extra` is appended to the `[server]` table, e.g. a `[server.web_tls]` table.
     pub fn with_extra(extra: &str) -> Self {
+        Self::with_tables(
+            extra,
+            r#"upstream_servers = ["127.0.0.1:9"]"#,
+            "enabled = false",
+        )
+    }
+
+    /// A server that forwards to `upstream`, with blocking on and the malware
+    /// detectors off, so a test can drive filtering end to end.
+    pub fn filtering(upstream: SocketAddr) -> Self {
+        Self::with_tables(
+            "",
+            &format!("upstream_servers = [\"{upstream}\"]\nmalware_detection_enabled = false"),
+            "enabled = true",
+        )
+    }
+
+    /// `server_extra` is appended to `[server]`; `dns` and `blocking` are the
+    /// bodies of those tables.
+    fn with_tables(server_extra: &str, dns: &str, blocking: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let dns_port = free_port();
         let web_port = free_port();
@@ -62,14 +82,14 @@ impl TestConfig {
 dns_port = {dns_port}
 web_port = {web_port}
 bind_address = "127.0.0.1"
-{extra}
+{server_extra}
 
 [dns]
-upstream_servers = ["127.0.0.1:9"]
+{dns}
 mdns_enabled = false
 
 [blocking]
-enabled = false
+{blocking}
 
 [logging]
 level = "info"
