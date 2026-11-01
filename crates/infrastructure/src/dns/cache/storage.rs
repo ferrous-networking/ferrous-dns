@@ -188,7 +188,7 @@ impl DnsCache {
         // so only an A or AAAA probe is worth its lookup. L1 is keyed by name
         // alone, so it only ever holds the shared view.
         if view == 0 && matches!(record_type, RecordType::A | RecordType::AAAA) {
-            if let Some((arc_data, dnssec_status, local_dns, remaining_ttl, l1_hits)) =
+            if let Some((answer, dnssec_status, local_dns, remaining_ttl, l1_hits)) =
                 l1_get(domain, record_type)
             {
                 self.metrics.hits.fetch_add(1, AtomicOrdering::Relaxed);
@@ -196,9 +196,7 @@ impl DnsCache {
                     self.record_l1_hits(domain, *record_type, l1_hits);
                 }
                 return Some((
-                    CachedData::IpAddresses(super::data::CachedAddresses {
-                        addresses: arc_data,
-                    }),
+                    CachedData::IpAddresses(answer),
                     Some(dnssec_status),
                     Some(remaining_ttl),
                     local_dns,
@@ -350,7 +348,7 @@ impl DnsCache {
             return;
         };
         let key = CacheKey::from_lowercase(domain, record_type).in_view(view);
-        let maybe_l1_addresses = data.as_ip_addresses().filter(|_| view == 0).cloned();
+        let maybe_l1_answer = data.as_cached_addresses().filter(|_| view == 0).cloned();
 
         let record = CachedRecord::new(data, ttl, record_type, dnssec_status);
         let mut record = if local_dns {
@@ -381,13 +379,13 @@ impl DnsCache {
 
         self.arm_timer(timer_key, first_timer_at, TimerKind::Due);
 
-        if let Some(addresses) = maybe_l1_addresses {
+        if let Some(answer) = maybe_l1_answer {
             // The hits the replaced copy batched belonged to the replaced
             // record, whose counters this one does not carry over.
             l1_insert(
                 domain,
                 &record_type,
-                addresses,
+                answer,
                 dnssec_status.unwrap_or(CachedDnssecStatus::Unknown),
                 local_dns,
                 expires_secs,
@@ -422,12 +420,12 @@ impl DnsCache {
             self.evict_entries();
         }
 
-        let maybe_l1_addresses = data.as_ip_addresses().cloned();
+        let maybe_l1_answer = data.as_cached_addresses().cloned();
         let record = CachedRecord::permanent(data, ttl, record_type);
         let _owner = self.claim_permanent(&key.domain, record_type);
         self.cache.insert(key, record);
 
-        if let Some(addresses) = maybe_l1_addresses {
+        if let Some(answer) = maybe_l1_answer {
             // Permanent (local DNS / hosts) entries are not DNSSEC-validated.
             // L1 gets a real expiry so the TTL it reports is the configured one;
             // when it lapses the entry is simply promoted again from L2, which
@@ -435,7 +433,7 @@ impl DnsCache {
             l1_insert(
                 domain,
                 &record_type,
-                addresses,
+                answer,
                 CachedDnssecStatus::Unknown,
                 false,
                 coarse_now_secs() + ttl as u64,
@@ -745,17 +743,17 @@ impl DnsCache {
             record.note_refreshed();
             record.clear_refreshing();
 
-            let maybe_l1_addresses = new_data
-                .as_ip_addresses()
+            let maybe_l1_answer = new_data
+                .as_cached_addresses()
                 .filter(|_| key.view == 0)
                 .cloned();
             record.data = new_data;
 
-            if let Some(addresses) = maybe_l1_addresses {
+            if let Some(answer) = maybe_l1_answer {
                 let batched = l1_insert(
                     domain,
                     record_type,
-                    addresses,
+                    answer,
                     record.dnssec_status,
                     record.is_local_dns(),
                     record.expires_at_secs,
@@ -818,7 +816,7 @@ impl DnsCache {
             let batched = l1_insert(
                 domain,
                 record_type,
-                Arc::clone(&entry.addresses),
+                entry.clone(),
                 record.dnssec_status,
                 record.is_local_dns(),
                 expires_secs,
@@ -1024,9 +1022,7 @@ impl ferrous_dns_application::ports::DnsCachePort for DnsCache {
         addresses: Vec<std::net::IpAddr>,
         ttl: u32,
     ) {
-        let data = CachedData::IpAddresses(super::data::CachedAddresses {
-            addresses: Arc::new(addresses),
-        });
+        let data = CachedData::IpAddresses(super::data::CachedAddresses::new(Arc::new(addresses)));
         self.insert_permanent(domain, record_type, data, ttl);
     }
 

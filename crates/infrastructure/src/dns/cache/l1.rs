@@ -1,26 +1,25 @@
-use super::data::CachedDnssecStatus;
+use super::data::{CachedAddresses, CachedDnssecStatus};
 use crate::dns::cache::coarse_clock::coarse_now_secs;
 use compact_str::CompactString;
 use ferrous_dns_domain::RecordType;
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 use std::cell::RefCell;
-use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::Arc;
 
-/// Addresses, DNSSEC status, whether the local DNS server answered, remaining
-/// TTL, and the hits this entry has batched for its L2 record (0 most of the
-/// time; see [`L1Entry::pending_hits`]). Kept at 16 bytes so it still comes
-/// back in two registers on the hottest call in the resolver.
-type L1Hit = (Arc<Vec<IpAddr>>, CachedDnssecStatus, bool, u32, u16);
-const _: () = assert!(std::mem::size_of::<L1Hit>() == 16);
+/// The answer (addresses and CNAME chain), DNSSEC status, whether the local
+/// DNS server answered, remaining TTL, and the hits this entry has batched for
+/// its L2 record (0 most of the time; see [`L1Entry::pending_hits`]). The
+/// chain took it from 16 bytes, two registers, to 32; the gate for that was
+/// the `udp_cache_hit` bench.
+type L1Hit = (CachedAddresses, CachedDnssecStatus, bool, u32, u16);
+const _: () = assert!(std::mem::size_of::<L1Hit>() == 32);
 
 struct L1Entry {
-    addresses: Arc<Vec<IpAddr>>,
+    answer: CachedAddresses,
     dnssec_status: CachedDnssecStatus,
-    // Packs with `dnssec_status` and the counters below: the entry is 24
+    // Packs with `dnssec_status` and the counters below: the entry is 40
     // bytes, and a thread holds at most `L1_CAPACITY` of them.
     local_dns: bool,
     /// Hits served here and not yet counted on the L2 record. A hit served
@@ -38,7 +37,7 @@ struct L1Entry {
     /// only compared for equality, so the truncation is harmless.
     flushed_at_secs: u32,
 }
-const _: () = assert!(std::mem::size_of::<L1Entry>() == 24);
+const _: () = assert!(std::mem::size_of::<L1Entry>() == 40);
 
 struct L1State {
     cache: LruCache<CompactString, L1Entry, FxBuildHasher>,
@@ -94,7 +93,7 @@ fn heap_key(type_str: &str, domain: &str) -> CompactString {
     key
 }
 
-/// Looks up a domain in the thread-local L1 cache, returning addresses and remaining TTL.
+/// Looks up a domain in the thread-local L1 cache, returning the answer and remaining TTL.
 #[inline]
 pub fn l1_get(domain: &str, record_type: &RecordType) -> Option<L1Hit> {
     let type_str = record_type.as_str();
@@ -128,7 +127,7 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
                     std::mem::take(&mut entry.pending_hits)
                 };
                 return Some((
-                    Arc::clone(&entry.addresses),
+                    entry.answer.clone(),
                     entry.dnssec_status,
                     entry.local_dns,
                     remaining,
@@ -150,7 +149,7 @@ fn lookup_l1(key_str: &str) -> Option<L1Hit> {
 pub fn l1_insert(
     domain: &str,
     record_type: &RecordType,
-    addresses: Arc<Vec<IpAddr>>,
+    answer: CachedAddresses,
     dnssec_status: CachedDnssecStatus,
     local_dns: bool,
     expires_secs: u64,
@@ -169,7 +168,7 @@ pub fn l1_insert(
             .put(
                 key,
                 L1Entry {
-                    addresses,
+                    answer,
                     dnssec_status,
                     local_dns,
                     pending_hits: 0,

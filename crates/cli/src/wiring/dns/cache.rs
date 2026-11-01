@@ -70,9 +70,7 @@ pub(super) fn preload_local_records_into_cache(
     let mut count = 0usize;
     for record in records.iter().filter(|r| !r.is_wildcard()) {
         let fqdn = record.fqdn(default_domain);
-        let data = CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![record.ip]),
-        });
+        let data = CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![record.ip])));
         let ttl = record.ttl_or_default();
 
         cache.insert_permanent(&fqdn, record.record_type.into(), data, ttl);

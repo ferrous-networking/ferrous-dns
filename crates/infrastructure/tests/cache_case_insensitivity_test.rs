@@ -12,9 +12,7 @@ use std::sync::Arc;
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
 }
 
 fn create_cache() -> DnsCache {

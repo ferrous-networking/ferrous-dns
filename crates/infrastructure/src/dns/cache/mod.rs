@@ -16,7 +16,7 @@ pub mod schedule;
 pub mod storage;
 
 pub use bloom::AtomicBloom;
-pub use data::{CachedAddresses, CachedData, CachedDnssecStatus};
+pub use data::{CachedAddresses, CachedData, CachedDnssecStatus, CachedWire};
 pub use eviction::EvictionStrategy;
 pub use key::{BorrowedKey, CacheKey};
 pub use metrics::CacheMetrics;

@@ -34,9 +34,7 @@ fn create_cache() -> DnsCache {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
 }
 
 fn insert(cache: &DnsCache, domain: &str, record_type: RecordType, ttl: u32) {

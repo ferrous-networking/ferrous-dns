@@ -58,9 +58,9 @@ fn cache(max_entries: usize) -> Arc<DnsCache> {
 }
 
 fn address() -> CachedData {
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec!["192.0.2.1".parse::<IpAddr>().unwrap()]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec!["192.0.2.1"
+        .parse::<IpAddr>()
+        .unwrap()])))
 }
 
 /// Wires the cache's repair queue; its timers wait in its inbox until a

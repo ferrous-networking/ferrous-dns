@@ -28,9 +28,7 @@ fn create_listing_cache() -> DnsCache {
 
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
-    CachedData::IpAddresses(CachedAddresses {
-        addresses: Arc::new(vec![addr]),
-    })
+    CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
 }
 
 /// CNAME data never reaches the thread-local L1, so `cache.get()` always goes

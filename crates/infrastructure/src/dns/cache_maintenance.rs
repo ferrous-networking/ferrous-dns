@@ -1,7 +1,8 @@
 use super::cache::negative_cache::negative_ttl;
 use super::cache::{
-    coarse_clock, CacheKey, CachedAddresses, CachedData, CachedDnssecStatus, ColdThresholds,
-    DnsCache, DueRefresh, RefreshRequest, RefreshSchedule, SweepFrom, TimerInbox, TimerKind,
+    coarse_clock, CacheKey, CachedAddresses, CachedData, CachedDnssecStatus, CachedWire,
+    ColdThresholds, DnsCache, DueRefresh, RefreshRequest, RefreshSchedule, SweepFrom, TimerInbox,
+    TimerKind,
 };
 
 use ferrous_dns_application::ports::{DnsResolver, QueryLogRepository};
@@ -144,11 +145,14 @@ impl DnsCacheMaintenance {
         }
 
         let new_data = if !resolution.addresses.is_empty() {
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::clone(&resolution.addresses),
-            })
+            CachedData::IpAddresses(
+                CachedAddresses::new(Arc::clone(&resolution.addresses))
+                    .with_cname_chain(&resolution.cname_chain),
+            )
         } else if let Some(wire_bytes) = &resolution.upstream_wire_data {
-            CachedData::WireData(wire_bytes.clone())
+            CachedData::WireData(Arc::new(
+                CachedWire::new(wire_bytes.clone()).with_cname_chain(&resolution.cname_chain),
+            ))
         } else {
             return Ok(RefreshOutcome::Kept);
         };

@@ -272,9 +272,7 @@ async fn should_not_overwrite_a_local_record_with_a_cname_target() {
     cache.insert_permanent(
         "nas.home.lan",
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![local]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![local]))),
         300,
     );
     let mock = Arc::new(CnameChainResolver::new("203.0.113.66", &["nas.home.lan"]));
@@ -303,9 +301,7 @@ async fn should_not_overwrite_a_local_record_with_a_wire_cname_target() {
     cache.insert_permanent(
         "nas.home.lan",
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![local]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![local]))),
         300,
     );
     let (_upstream, stack) = wire_stack(

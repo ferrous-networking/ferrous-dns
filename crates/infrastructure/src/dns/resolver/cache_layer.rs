@@ -1,7 +1,7 @@
 use super::super::cache::key::{BorrowedKey, CacheKey};
 use super::super::cache::negative_cache::{negative_ttl, MIN_NEGATIVE_TTL};
 use super::super::cache::{
-    CachedAddresses, CachedData, CachedDnssecStatus, DnsCacheAccess, LocalRecordStatus,
+    CachedAddresses, CachedData, CachedDnssecStatus, CachedWire, DnsCacheAccess, LocalRecordStatus,
 };
 use super::super::load_balancer::{Route, UpstreamRouter};
 use super::super::wire_response;
@@ -161,16 +161,23 @@ impl CachedResolver {
         // A local server's NXDOMAIN must not read as `local_dns`, which on an
         // empty answer means NODATA.
         let (addresses, cname_chain, upstream_wire_data, local_nxdomain) = match data {
-            CachedData::IpAddresses(entry) => {
-                (entry.addresses, Arc::clone(&EMPTY_CNAME_CHAIN), None, false)
-            }
+            CachedData::IpAddresses(entry) => (
+                entry.addresses,
+                entry
+                    .cname_chain
+                    .unwrap_or_else(|| Arc::clone(&EMPTY_CNAME_CHAIN)),
+                None,
+                false,
+            ),
             CachedData::CanonicalName(name) => {
                 (Arc::clone(&EMPTY_ADDRESSES), Arc::from([name]), None, false)
             }
-            CachedData::WireData(bytes) => (
+            CachedData::WireData(wire) => (
                 Arc::clone(&EMPTY_ADDRESSES),
-                Arc::clone(&EMPTY_CNAME_CHAIN),
-                Some(bytes),
+                wire.cname_chain
+                    .clone()
+                    .unwrap_or_else(|| Arc::clone(&EMPTY_CNAME_CHAIN)),
+                Some(wire.bytes.clone()),
                 false,
             ),
             CachedData::NegativeResponse => (
@@ -244,7 +251,10 @@ impl CachedResolver {
                 // the SOA's negative TTL rather than the default one.
                 Some(wire_data) => self.cache.insert(
                     borrowed(key),
-                    CachedData::WireData(wire_data.clone()),
+                    CachedData::WireData(Arc::new(
+                        CachedWire::new(wire_data.clone())
+                            .with_cname_chain(&resolution.cname_chain),
+                    )),
                     resolution.min_ttl.map_or_else(
                         || negative_ttl(resolution.negative_soa_ttl),
                         |ttl| ttl.max(1),
@@ -264,9 +274,10 @@ impl CachedResolver {
         let ttl = resolution.min_ttl.unwrap_or(self.cache_ttl);
         self.cache.insert(
             borrowed(key),
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::clone(&resolution.addresses),
-            }),
+            CachedData::IpAddresses(
+                CachedAddresses::new(Arc::clone(&resolution.addresses))
+                    .with_cname_chain(&resolution.cname_chain),
+            ),
             ttl,
             Some(dnssec_status),
             resolution.local_dns,
@@ -294,9 +305,9 @@ impl CachedResolver {
                 let target = CacheKey::new(target_name, query.record_type);
                 self.cache.insert(
                     borrowed(&target),
-                    CachedData::IpAddresses(CachedAddresses {
-                        addresses: Arc::clone(&resolution.addresses),
-                    }),
+                    CachedData::IpAddresses(CachedAddresses::new(Arc::clone(
+                        &resolution.addresses,
+                    ))),
                     ttl,
                     Some(dnssec_status),
                     resolution.local_dns,

@@ -382,10 +382,10 @@ async fn cached_upstream_nxdomain_keeps_rcode_and_soa() {
     );
     let (data, _) = cache_upstream_answer("nx-relay.example.com", RecordType::A, wire).await;
 
-    let CachedData::WireData(bytes) = data else {
+    let CachedData::WireData(wire) = data else {
         panic!("expected wire data, got {data:?}");
     };
-    let msg = Message::from_vec(&bytes).expect("the cached wire must parse");
+    let msg = Message::from_vec(&wire.bytes).expect("the cached wire must parse");
     assert_eq!(msg.metadata.response_code, ResponseCode::NXDomain);
     assert!(
         msg.authorities

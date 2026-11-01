@@ -208,30 +208,30 @@ fn handler(
     cache.insert(
         A_NAME,
         RecordType::A,
-        CachedData::IpAddresses(CachedAddresses {
-            addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))]),
-        }),
+        CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(
+            Ipv4Addr::new(93, 184, 216, 34),
+        )]))),
         3600,
         None,
     );
     cache.insert(
         MX_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_mx("mail.example.com.", 1)),
+        CachedData::wire(upstream_mx("mail.example.com.", 1)),
         3600,
         None,
     );
     cache.insert(
         MANY_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_mx("many.example.com.", 8)),
+        CachedData::wire(upstream_mx("many.example.com.", 8)),
         3600,
         None,
     );
     cache.insert(
         SIGNED_NAME,
         RecordType::MX,
-        CachedData::WireData(upstream_signed_mx()),
+        CachedData::wire(upstream_signed_mx()),
         3600,
         None,
     );
@@ -240,9 +240,9 @@ fn handler(
         DnsCacheAccess::insert(
             cache.as_ref(),
             BorrowedKey::new(GROUP_VIEW_NAME, RecordType::A).in_view(GROUP_VIEW),
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::new(vec![IpAddr::V4(Ipv4Addr::new(10, 1, 1, 1))]),
-            }),
+            CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![IpAddr::V4(
+                Ipv4Addr::new(10, 1, 1, 1),
+            )]))),
             3600,
             None,
             true,

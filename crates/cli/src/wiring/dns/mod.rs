@@ -607,9 +607,9 @@ mod tests {
         services.cache.insert(
             DOMAIN,
             RecordType::A,
-            CachedData::IpAddresses(CachedAddresses {
-                addresses: Arc::new(vec!["192.0.2.1".parse().unwrap()]),
-            }),
+            CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec!["192.0.2.1"
+                .parse()
+                .unwrap()]))),
             2,
             None,
         );
