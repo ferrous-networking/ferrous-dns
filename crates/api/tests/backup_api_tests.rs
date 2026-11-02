@@ -504,6 +504,50 @@ async fn test_group_malware_detection_survives_export_import_round_trip() {
     assert_eq!(flag("Legacy"), true);
 }
 
+/// The import creates only the groups the target lacks. The default group, and
+/// any other the target already has, still take the backup's switch.
+#[tokio::test]
+async fn test_import_restores_the_malware_switch_of_groups_that_already_exist() {
+    let source = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await;
+    sqlx::query("UPDATE groups SET malware_detection_enabled = 0")
+        .execute(&source.pool)
+        .await
+        .unwrap();
+    let (_, backup) = do_export(source.router).await;
+
+    let target = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await
+        .router;
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(target, "/groups").await;
+    let switches: Vec<(&str, bool)> = groups
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| {
+            (
+                g["name"].as_str().unwrap(),
+                g["malware_detection_enabled"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(switches, [("Protected", false), ("IoT", false)], "{groups}");
+}
+
 #[tokio::test]
 async fn test_import_without_file_returns_bad_request() {
     let app = test_app().await.router;
