@@ -477,7 +477,7 @@ Two-phase DNS tunneling detector. Phase 1 runs on the hot path in O(1) time, che
     The API rejects a value outside the range given in the tables below. A file loaded at startup is more forgiving, so an older file still starts: a threshold above its maximum loads as the maximum (the signal could not fire there either), a zero, negative or `nan` one loads as the default, and an invalid feed URL is dropped, each with a warning naming the key.
 
 !!! note "No exemption lists here"
-    Releases before 1.0 read `domain_whitelist` and `client_whitelist` in this section and in `[dns.dga_detection]`, and `rebinding_allowlist` in `[dns]`. A file that still has them loads with a warning naming each list and its entries, and the next save from the dashboard removes them. A domain is now exempted by an allow in DNS Filter, and a client by a group with Malware Detection off: see [Exemptions](../features/malware-detection.md#exemptions).
+    Earlier releases read `domain_whitelist` and `client_whitelist` in this section and in `[dns.dga_detection]`, and `rebinding_allowlist` in `[dns]`. A file that still has them loads with a warning naming each list and its entries, and the next save from the dashboard removes them. A domain is now exempted by an allow in DNS Filter, and a client by a group with Malware Detection off: see [Exemptions](../features/malware-detection.md#exemptions).
 
 ```toml title="ferrous-dns.toml"
 [dns.tunneling_detection]

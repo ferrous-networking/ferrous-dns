@@ -425,7 +425,7 @@ impl HandleDnsQueryUseCase {
     }
 
     #[inline]
-    fn screening(&self, group_id: i64, filter_decision: FilterDecision) -> Screening {
+    fn screen_query(&self, group_id: i64, filter_decision: FilterDecision) -> Screening {
         let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
         Screening {
             group_id,
@@ -456,7 +456,7 @@ impl HandleDnsQueryUseCase {
         } = self.tunneling_guard.check(domain, record_type)
         {
             tracing::debug!(
-                domain,
+                domain = %domain,
                 signal,
                 measured,
                 threshold,
@@ -477,7 +477,13 @@ impl HandleDnsQueryUseCase {
             threshold,
         } = self.dga_guard.check(domain)
         {
-            tracing::debug!(domain, signal, measured, threshold, "DGA phase-1 signal");
+            tracing::debug!(
+                domain = %domain,
+                signal,
+                measured,
+                threshold,
+                "DGA phase-1 signal"
+            );
             on_hit(NameHit::Dga(signal))?;
         }
         if self
@@ -520,7 +526,7 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        let screening = self.screening(group_id, filter_decision);
+        let screening = self.screen_query(group_id, filter_decision);
         // The cache is shared across groups, so a name another client resolved
         // is checked here exactly as on a miss.
         if screening.detectors
@@ -823,7 +829,7 @@ impl HandleDnsQueryUseCase {
             });
             return Err(DomainError::Blocked);
         }
-        let screening = self.screening(group_id, filter_decision);
+        let screening = self.screen_query(group_id, filter_decision);
 
         if screening.detectors {
             let hits = self.screen_name(&request.domain, request.record_type, |hit| {

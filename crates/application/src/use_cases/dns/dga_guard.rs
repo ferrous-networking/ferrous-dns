@@ -90,7 +90,7 @@ impl DgaGuard {
         // the score's. The entropy is the costly signal, and most names fire
         // none of the others, so it is skipped when even its full weight could
         // not reach the threshold.
-        let weight = |fired: bool, weight: f32| if fired { weight } else { 0.0 };
+        let weight = |fired: bool, value: f32| if fired { value } else { 0.0 };
         let ceiling = weight(long, HP_WEIGHT_SLD_LENGTH)
             + HP_WEIGHT_SLD_ENTROPY
             + weight(consonant_heavy, HP_WEIGHT_CONSONANT_RATIO)
