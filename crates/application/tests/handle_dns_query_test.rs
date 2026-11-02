@@ -7,6 +7,7 @@ use ferrous_dns_application::{
     use_cases::HandleDnsQueryUseCase,
 };
 use ferrous_dns_domain::{BlockSource, ClientProtocol, DnsRequest, DomainError, RecordType};
+use helpers::fast_path::{served, served_wire};
 use helpers::{
     DnsResolutionBuilder, MockBlockFilterEngine, MockClientRepository, MockDnsResolver,
     MockQueryLogRepository,
@@ -39,16 +40,6 @@ fn local_dns_resolution(ip: &str) -> DnsResolution {
         coalesced: None,
         ..DnsResolution::new(vec![ip.parse().unwrap()], false)
     }
-}
-
-/// A fast-path `respond` that serves every A/AAAA hit.
-fn served(addresses: &[IpAddr], ttl: u32) -> Option<(Vec<IpAddr>, u32)> {
-    Some((addresses.to_vec(), ttl))
-}
-
-/// A fast-path `respond` that serves every wire hit.
-fn served_wire(wire: &[u8], remaining: u32) -> Option<(Vec<u8>, u32)> {
-    Some((wire.to_vec(), remaining))
 }
 
 /// A cached wire answer for `mail.example.com`, as the cache layer reports it.

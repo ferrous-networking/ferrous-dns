@@ -6,6 +6,7 @@ use ferrous_dns_domain::{
     BlockSource, ClientProtocol, DgaDetectionAction, DgaDetectionConfig, DnsRequest, DomainError,
     RecordType,
 };
+use helpers::fast_path::{resolver_with_cached_ip, resolver_with_cached_wire, served, served_wire};
 use helpers::{MockBlockFilterEngine, MockDgaFlagStore, MockDnsResolver, MockQueryLogRepository};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -61,31 +62,6 @@ async fn resolver_with_response(domain: &str) -> MockDnsResolver {
         )
         .await;
     resolver
-}
-
-/// A resolver whose cache already holds `domain`, as it does once a client in
-/// another group, or one that allowed the name, resolved it: the cache is
-/// shared across groups.
-fn resolver_with_cached(domain: &str, record_type: RecordType) -> MockDnsResolver {
-    let resolver = MockDnsResolver::new();
-    let resolution = match record_type {
-        RecordType::A => DnsResolution::new(vec!["1.2.3.4".parse().unwrap()], true),
-        _ => DnsResolution {
-            upstream_wire_data: Some(bytes::Bytes::from_static(b"\x00\x01\x02\x03")),
-            min_ttl: Some(300),
-            ..DnsResolution::new(vec![], true)
-        },
-    };
-    resolver.set_cached_response(domain, resolution);
-    resolver
-}
-
-fn served(addresses: &[IpAddr], ttl: u32) -> Option<(Vec<IpAddr>, u32)> {
-    Some((addresses.to_vec(), ttl))
-}
-
-fn served_wire(wire: &[u8], remaining: u32) -> Option<(Vec<u8>, u32)> {
-    Some((wire.to_vec(), remaining))
 }
 
 #[tokio::test]
@@ -158,6 +134,42 @@ async fn short_sld_passes_dga_guard() {
     assert!(result.is_ok());
 }
 
+/// At the default threshold the hot-path score needs two or more signals: one
+/// alone (length, entropy) never blocks, real CDN names pass, and only the
+/// SLD is scored, under a compound suffix too.
+#[tokio::test]
+async fn the_hot_path_score_blocks_only_names_that_fire_several_signals() {
+    let long_repetitive = format!("{}.com", "a".repeat(25));
+    let long_random = format!("{}xbkrwtplmqzncdf.com", "r".repeat(10));
+    let cases = [
+        ("cloudflare.com", false),
+        ("fastly.net", false),
+        ("gstatic.com", false),
+        ("fbcdn.net", false),
+        ("twimg.com", false),
+        ("githubusercontent.com", false),
+        ("akamaized.net", false),
+        (long_repetitive.as_str(), false),
+        ("xjk4f9a2h3b5c7d.example.com", false),
+        ("bcdfghjklmnpqrst.com", true),
+        (long_random.as_str(), true),
+        ("xjk4f9a2h3b5c7d.co.uk", true),
+    ];
+    for (domain, blocked) in cases {
+        let config = dga_config(DgaDetectionAction::Block);
+        let (use_case, _log) =
+            make_use_case_with_dga(resolver_with_response(domain).await, &config);
+        let result = use_case
+            .execute(&DnsRequest::new(domain, RecordType::A, CLIENT_IP))
+            .await;
+        assert_eq!(
+            matches!(result, Err(DomainError::DgaDomainDetected)),
+            blocked,
+            "{domain}: {result:?}"
+        );
+    }
+}
+
 /// The guard skips the entropy when it cannot reach the threshold, so a
 /// threshold the entropy alone meets must still see it.
 #[tokio::test]
@@ -222,7 +234,7 @@ async fn unflagged_domain_passes_flag_store() {
 async fn the_fast_path_does_not_serve_a_cached_dga_shaped_name() {
     let config = dga_config(DgaDetectionAction::Block);
     let (use_case, log) =
-        make_use_case_with_dga(resolver_with_cached(DGA_SHAPED, RecordType::A), &config);
+        make_use_case_with_dga(resolver_with_cached_ip(DGA_SHAPED, "1.2.3.4"), &config);
 
     let result = use_case.try_cache_direct(
         DGA_SHAPED,
@@ -248,8 +260,7 @@ async fn the_fast_path_does_not_serve_a_cached_dga_shaped_name() {
 #[tokio::test]
 async fn the_wire_fast_path_does_not_serve_a_cached_dga_shaped_name() {
     let config = dga_config(DgaDetectionAction::Block);
-    let (use_case, log) =
-        make_use_case_with_dga(resolver_with_cached(DGA_SHAPED, RecordType::MX), &config);
+    let (use_case, log) = make_use_case_with_dga(resolver_with_cached_wire(DGA_SHAPED), &config);
 
     let result = use_case.try_cache_wire_direct(
         DGA_SHAPED,
@@ -267,7 +278,7 @@ async fn the_wire_fast_path_does_not_serve_a_cached_dga_shaped_name() {
 /// raised; the fast path would serve it silently.
 #[tokio::test]
 async fn the_fast_path_leaves_an_alert_mode_hit_to_execute() {
-    let resolver = resolver_with_cached(DGA_SHAPED, RecordType::A);
+    let resolver = resolver_with_cached_ip(DGA_SHAPED, "1.2.3.4");
     resolver
         .set_response(
             DGA_SHAPED,
@@ -295,7 +306,7 @@ async fn the_fast_path_serves_a_cached_dga_shaped_name_that_is_explicitly_allowe
     let filter = MockBlockFilterEngine::new();
     filter.allow_domain(DGA_SHAPED);
     let use_case = HandleDnsQueryUseCase::new(
-        Arc::new(resolver_with_cached(DGA_SHAPED, RecordType::A)),
+        Arc::new(resolver_with_cached_ip(DGA_SHAPED, "1.2.3.4")),
         Arc::new(filter),
         Arc::new(MockQueryLogRepository::new()),
     )
