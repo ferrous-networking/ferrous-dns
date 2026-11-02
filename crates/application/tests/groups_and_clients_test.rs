@@ -1,6 +1,6 @@
 use ferrous_dns_application::ports::GroupRepository;
 use ferrous_dns_application::use_cases::{
-    CreateGroupUseCase, DeleteGroupUseCase, UpdateClientUseCase,
+    CreateGroupUseCase, DeleteGroupUseCase, UpdateClientUseCase, UpdateGroupUseCase,
 };
 use ferrous_dns_domain::config::upstream::UpstreamPool;
 use ferrous_dns_domain::{Client, Config, DomainError};
@@ -8,7 +8,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 mod helpers;
-use helpers::{MockBlockFilterEngine, MockClientRepository, MockGroupRepository};
+use helpers::{
+    MockBlockFilterEngine, MockClientRepository, MockGroupRepository, MockMalwareExemptions,
+};
 
 fn client_in_default_group(id: i64, ip: &str) -> Client {
     Client {
@@ -28,6 +30,10 @@ fn client_in_default_group(id: i64, ip: &str) -> Client {
 
 fn no_pools() -> Arc<RwLock<Config>> {
     Arc::new(RwLock::new(Config::default()))
+}
+
+fn exemptions() -> Arc<MockMalwareExemptions> {
+    Arc::new(MockMalwareExemptions::new())
 }
 
 #[tokio::test]
@@ -53,14 +59,14 @@ async fn test_update_client_rejects_unknown_group_and_keeps_assignment() {
 
 #[tokio::test]
 async fn test_create_group_honours_enabled_flag() {
-    let use_case = CreateGroupUseCase::new(Arc::new(MockGroupRepository::new()));
+    let use_case = CreateGroupUseCase::new(Arc::new(MockGroupRepository::new()), exemptions());
 
     let disabled = use_case
-        .execute("Kids".to_string(), None, false)
+        .execute("Kids".to_string(), None, false, true)
         .await
         .unwrap();
     let enabled = use_case
-        .execute("Adults".to_string(), None, true)
+        .execute("Adults".to_string(), None, true, true)
         .await
         .unwrap();
 
@@ -68,12 +74,115 @@ async fn test_create_group_honours_enabled_flag() {
     assert!(enabled.enabled);
 }
 
+/// The query path reads the exempt groups from memory, so a group created
+/// with the detectors off must reach it at once; one created with them on
+/// changes nothing there.
+#[tokio::test]
+async fn test_create_group_with_malware_detection_off_reloads_the_exemptions() {
+    let exempt = exemptions();
+    let use_case = CreateGroupUseCase::new(Arc::new(MockGroupRepository::new()), exempt.clone());
+
+    let servers = use_case
+        .execute("Servers".to_string(), None, true, false)
+        .await
+        .unwrap();
+    assert!(!servers.malware_detection_enabled);
+    assert_eq!(exempt.reload_count(), 1);
+
+    let kids = use_case
+        .execute("Kids".to_string(), None, true, true)
+        .await
+        .unwrap();
+    assert!(kids.malware_detection_enabled);
+    assert_eq!(exempt.reload_count(), 1, "a group with the detectors on");
+}
+
+#[tokio::test]
+async fn test_update_group_toggling_malware_detection_reloads_the_exemptions() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let exempt = exemptions();
+    let use_case = UpdateGroupUseCase::new(groups.clone(), exempt.clone());
+
+    let updated = use_case
+        .execute(1, None, None, None, Some(false))
+        .await
+        .unwrap();
+    assert!(!updated.malware_detection_enabled, "the default group too");
+    assert_eq!(exempt.reload_count(), 1);
+
+    let renamed = use_case
+        .execute(1, Some("Home".to_string()), None, None, None)
+        .await
+        .unwrap();
+    assert!(
+        !renamed.malware_detection_enabled,
+        "an omitted flag is kept"
+    );
+    assert_eq!(exempt.reload_count(), 1, "nothing to reload");
+}
+
+/// The row is written before the exemptions reload, so a failed reload must
+/// not report the change as failed: the API would answer 500 for a saved
+/// group, and a retried create would get "already exists".
+#[tokio::test]
+async fn test_create_and_update_group_succeed_when_the_exemption_reload_fails() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let exempt = exemptions();
+    exempt.fail_reloads();
+    let create = CreateGroupUseCase::new(groups.clone(), exempt.clone());
+    let update = UpdateGroupUseCase::new(groups.clone(), exempt.clone());
+
+    let created = create
+        .execute("Servers".to_string(), None, true, false)
+        .await;
+    let updated = update.execute(1, None, None, None, Some(false)).await;
+
+    assert!(
+        created.as_ref().is_ok_and(|g| !g.malware_detection_enabled),
+        "{created:?}"
+    );
+    assert!(
+        updated.as_ref().is_ok_and(|g| !g.malware_detection_enabled),
+        "{updated:?}"
+    );
+    assert_eq!(exempt.reload_count(), 2, "both still tried the reload");
+}
+
+#[tokio::test]
+async fn test_delete_group_exempt_from_malware_detection_reloads_the_exemptions() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let exempt = exemptions();
+    let servers = groups
+        .create("Servers".to_string(), None, true, false)
+        .await
+        .unwrap();
+    let kids = groups
+        .create("Kids".to_string(), None, true, true)
+        .await
+        .unwrap();
+    let use_case = DeleteGroupUseCase::new(
+        groups,
+        Arc::new(MockBlockFilterEngine::new()),
+        exempt.clone(),
+        no_pools(),
+    );
+
+    use_case.execute(kids.id.unwrap()).await.unwrap();
+    assert_eq!(exempt.reload_count(), 0, "kids was not exempt");
+
+    use_case.execute(servers.id.unwrap()).await.unwrap();
+    assert_eq!(exempt.reload_count(), 1);
+}
+
 #[tokio::test]
 async fn test_delete_group_reloads_block_filter() {
     let groups = Arc::new(MockGroupRepository::new());
     let engine = Arc::new(MockBlockFilterEngine::new());
-    let group = groups.create("Kids".to_string(), None, true).await.unwrap();
-    let use_case = DeleteGroupUseCase::new(groups, engine.clone(), no_pools());
+    let group = groups
+        .create("Kids".to_string(), None, true, true)
+        .await
+        .unwrap();
+    let use_case = DeleteGroupUseCase::new(groups, engine.clone(), exemptions(), no_pools());
 
     use_case.execute(group.id.unwrap()).await.unwrap();
 
@@ -85,7 +194,7 @@ async fn test_delete_group_routed_by_a_pool_is_refused() {
     let groups = Arc::new(MockGroupRepository::new());
     let engine = Arc::new(MockBlockFilterEngine::new());
     let group_id = groups
-        .create("Office".to_string(), None, true)
+        .create("Office".to_string(), None, true, true)
         .await
         .unwrap()
         .id
@@ -101,6 +210,7 @@ async fn test_delete_group_routed_by_a_pool_is_refused() {
     let use_case = DeleteGroupUseCase::new(
         groups.clone(),
         engine.clone(),
+        exemptions(),
         Arc::new(RwLock::new(config)),
     );
 
@@ -120,6 +230,7 @@ async fn test_delete_protected_group_does_not_reload_block_filter() {
     let use_case = DeleteGroupUseCase::new(
         Arc::new(MockGroupRepository::new()),
         engine.clone(),
+        exemptions(),
         no_pools(),
     );
 

@@ -49,6 +49,7 @@ impl ExportConfigUseCase {
                 name: g.name.to_string(),
                 comment: g.comment.map(|c| c.to_string()),
                 is_default: g.is_default,
+                malware_detection_enabled: Some(g.malware_detection_enabled),
             })
             .collect();
 
@@ -140,7 +141,6 @@ impl ExportConfigUseCase {
                 malware: Some(SnapshotMalwareConfig {
                     enabled: config.dns.malware_detection_enabled,
                     rebinding_protection_enabled: config.dns.rebinding_protection_enabled,
-                    rebinding_allowlist: config.dns.rebinding_allowlist.clone(),
                     tunneling_detection: config.dns.tunneling_detection.clone(),
                     dga_detection: config.dns.dga_detection.clone(),
                     nxdomain_hijack: config.dns.nxdomain_hijack.clone(),

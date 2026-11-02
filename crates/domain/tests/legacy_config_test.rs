@@ -571,35 +571,40 @@ fn a_response_ip_filter_without_a_usable_feed_loads_disabled() {
     }
 }
 
-/// None of these entries could ever match; the valid ones around them stay.
+/// A feed URL that could never download is dropped; the valid ones stay.
 #[test]
-fn malware_list_entries_that_never_matched_are_dropped() {
+fn response_ip_feeds_that_never_downloaded_are_dropped() {
     let config = load(&file(
-        "rebinding_allowlist = [\"router.example.com\", \"*.vpn.example.com\"]",
-        "[dns.tunneling_detection]\n\
-         domain_whitelist = [\"cdn.example.com\", \"example.com.\", \"\"]\n\
-         client_whitelist = [\"10.0.0.0/8\", \"10.0.0.0/33\", \"monitor\"]\n\
-         [dns.dga_detection]\n\
-         domain_whitelist = [\"bücher.de\", \"xn--bcher-kva.de\"]\n\
-         client_whitelist = [\"fd00::/8\", \"::1/200\"]\n\
-         [dns.response_ip_filter]\n\
+        "",
+        "[dns.response_ip_filter]\n\
          enabled = true\n\
          ip_list_urls = [\"https://feeds.example/c2.txt\", \"feeds.example/other.txt\"]",
     ));
-    let dns = &config.dns;
-    assert_eq!(dns.rebinding_allowlist, ["router.example.com"]);
-    assert_eq!(
-        dns.tunneling_detection.domain_whitelist,
-        ["cdn.example.com"]
-    );
-    assert_eq!(dns.tunneling_detection.client_whitelist, ["10.0.0.0/8"]);
-    assert_eq!(dns.dga_detection.domain_whitelist, ["xn--bcher-kva.de"]);
-    assert_eq!(dns.dga_detection.client_whitelist, ["fd00::/8"]);
-    assert_eq!(
-        dns.response_ip_filter.ip_list_urls,
-        ["https://feeds.example/c2.txt"]
-    );
-    assert!(dns.response_ip_filter.enabled);
+    let filter = &config.dns.response_ip_filter;
+    assert_eq!(filter.ip_list_urls, ["https://feeds.example/c2.txt"]);
+    assert!(filter.enabled);
+}
+
+/// Older releases read per-detector exemption lists. A domain is exempted by
+/// an explicit allow now, a client by a group with Malware Detection off. A
+/// file that still holds the lists, entries the old validation rejected
+/// included, loads with the rest of each section intact.
+#[test]
+fn retired_exemption_lists_still_load() {
+    let config = load(&file(
+        "rebinding_allowlist = [\"router.example.com\", \"*.vpn.example.com\"]",
+        "[dns.tunneling_detection]\n\
+         max_label_length = 40\n\
+         domain_whitelist = [\"cdn.example.com\", \"example.com.\"]\n\
+         client_whitelist = [\"10.0.0.0/8\", \"monitor\"]\n\
+         [dns.dga_detection]\n\
+         sld_max_length = 30\n\
+         domain_whitelist = []\n\
+         client_whitelist = [\"::1/200\"]",
+    ));
+    assert_eq!(config.dns.tunneling_detection.max_label_length, 40);
+    assert_eq!(config.dns.dga_detection.sld_max_length, 30);
+    assert!(config.validate().is_ok());
 }
 
 /// The API never normalises: what a file load rewrites, a save still rejects.

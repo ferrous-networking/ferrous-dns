@@ -3,13 +3,16 @@ use ferrous_dns_application::ports::{
     ApiTokenRepository, MfaRepository, SessionRepository, UserRepository,
 };
 use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, CustomServiceRepository, SafeSearchConfigRepository,
-    SafeSearchEnginePort, ScheduleProfileRepository, ScheduleStatePort, ServiceCatalogPort,
+    BlockFilterEnginePort, CustomServiceRepository, MalwareExemptionPort,
+    SafeSearchConfigRepository, SafeSearchEnginePort, ScheduleProfileRepository, ScheduleStatePort,
+    ServiceCatalogPort,
 };
 use ferrous_dns_application::use_cases::custom_services::custom_to_definition;
 use ferrous_dns_domain::config::DatabaseConfig;
 use ferrous_dns_infrastructure::auth::SqliteMfaRepository;
-use ferrous_dns_infrastructure::dns::{BlockFilterEngine, SafeSearchEnforcer};
+use ferrous_dns_infrastructure::dns::{
+    BlockFilterEngine, GroupMalwareExemptions, SafeSearchEnforcer,
+};
 use ferrous_dns_infrastructure::repositories::{
     api_token_repository::SqliteApiTokenRepository,
     blocked_service_repository::SqliteBlockedServiceRepository,
@@ -48,6 +51,7 @@ pub struct Repositories {
     pub block_filter_engine: Arc<dyn BlockFilterEnginePort>,
     pub safe_search_config: Arc<SqliteSafeSearchConfigRepository>,
     pub safe_search_engine: Arc<dyn SafeSearchEnginePort>,
+    pub malware_exemptions: Arc<dyn MalwareExemptionPort>,
     pub schedule_profile: Arc<dyn ScheduleProfileRepository>,
     pub schedule_state: Arc<dyn ScheduleStatePort>,
     pub session: Arc<dyn SessionRepository>,
@@ -109,6 +113,10 @@ impl Repositories {
             SafeSearchEnforcer::new(repo).await?
         };
 
+        let group = Arc::new(SqliteGroupRepository::new(write_pool.clone()));
+        let malware_exemptions: Arc<dyn MalwareExemptionPort> =
+            GroupMalwareExemptions::new(group.clone()).await?;
+
         Ok(Self {
             query_log: Arc::new(SqliteQueryLogRepository::new(
                 write_pool.clone(),
@@ -120,7 +128,7 @@ impl Repositories {
             blocklist_source: Arc::new(SqliteBlocklistSourceRepository::new(write_pool.clone())),
             whitelist_source: Arc::new(SqliteWhitelistSourceRepository::new(write_pool.clone())),
             client: Arc::new(SqliteClientRepository::new(write_pool.clone(), db_config)),
-            group: Arc::new(SqliteGroupRepository::new(write_pool.clone())),
+            group,
             client_subnet: Arc::new(SqliteClientSubnetRepository::new(write_pool.clone())),
             managed_domain: Arc::new(SqliteManagedDomainRepository::new(write_pool.clone())),
             regex_filter: Arc::new(SqliteRegexFilterRepository::new(write_pool.clone())),
@@ -130,6 +138,7 @@ impl Repositories {
             block_filter_engine,
             safe_search_config: safe_search_config.clone(),
             safe_search_engine,
+            malware_exemptions,
             schedule_profile: Arc::new(SqliteScheduleProfileRepository::new(write_pool.clone())),
             schedule_state,
             session: Arc::new(SqliteSessionRepository::new(write_pool.clone(), read_pool)),

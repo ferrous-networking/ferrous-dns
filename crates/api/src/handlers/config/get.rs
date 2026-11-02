@@ -107,7 +107,6 @@ pub async fn get_config(State(state): State<AppState>) -> Json<ConfigResponse> {
             },
             malware_detection_enabled: config.dns.malware_detection_enabled,
             rebinding_protection_enabled: config.dns.rebinding_protection_enabled,
-            rebinding_allowlist: config.dns.rebinding_allowlist.clone(),
             tunneling_detection: (&config.dns.tunneling_detection).into(),
             dga_detection: (&config.dns.dga_detection).into(),
             nxdomain_hijack: (&config.dns.nxdomain_hijack).into(),

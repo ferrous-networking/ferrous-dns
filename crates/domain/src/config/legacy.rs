@@ -28,9 +28,7 @@ use super::encrypted_dns::EncryptedDnsConfig;
 use super::malware_detection::{is_threshold_in_range, MAX_ENTROPY_BITS, MAX_RATIO};
 use super::root::Config;
 use super::server::parse_bind_host;
-use crate::value_objects::validators::{
-    validate_exact_domain, validate_ip_or_cidr, validate_url, MAX_DOMAIN_LEN, MAX_LABEL_LEN,
-};
+use crate::value_objects::validators::{validate_url, MAX_DOMAIN_LEN, MAX_LABEL_LEN};
 use crate::DnsProtocol;
 
 /// Rewrites, in the parsed file `doc`, each string value the typed parse
@@ -41,6 +39,7 @@ pub(super) fn normalize_document(doc: &mut Table) {
     default_unknown_eviction_strategy(doc);
     disable_unparseable_local_dns_server(doc);
     drop_hostless_upstreams(doc);
+    drop_retired_exemption_lists(doc);
 }
 
 /// Replaces with its default each number [`Config::validate`] would reject
@@ -350,32 +349,6 @@ fn normalize_malware_detection(dns: &mut DnsConfig, default_dns: &DnsConfig) {
         default_if(key, value, default, is_zero);
     }
 
-    for (key, entries) in [
-        (
-            "dns.tunneling_detection.domain_whitelist",
-            &mut tunneling.domain_whitelist,
-        ),
-        (
-            "dns.dga_detection.domain_whitelist",
-            &mut dga.domain_whitelist,
-        ),
-        ("dns.rebinding_allowlist", &mut dns.rebinding_allowlist),
-    ] {
-        drop_invalid_entries(key, entries, validate_exact_domain);
-    }
-    for (key, entries) in [
-        (
-            "dns.tunneling_detection.client_whitelist",
-            &mut tunneling.client_whitelist,
-        ),
-        (
-            "dns.dga_detection.client_whitelist",
-            &mut dga.client_whitelist,
-        ),
-    ] {
-        drop_invalid_entries(key, entries, validate_ip_or_cidr);
-    }
-
     let ip_filter = &mut dns.response_ip_filter;
     drop_invalid_entries(
         "dns.response_ip_filter.ip_list_urls",
@@ -415,7 +388,7 @@ fn clamp_threshold<T: Copy + Display + PartialOrd + Default>(
 }
 
 /// Drops, with a warning, each entry `validate` rejects: none could ever
-/// match, and the detectors skipped the client entries already.
+/// match.
 fn drop_invalid_entries(
     key: &str,
     entries: &mut Vec<String>,
@@ -565,6 +538,38 @@ fn drop_hostless_upstreams(doc: &mut Table) {
         );
         false
     });
+}
+
+/// Older releases read these exemption lists. A domain is now exempted by an
+/// explicit allow in DNS Filter, and a client by a group with Malware
+/// Detection switched off. Each key is dropped, with a warning that names the
+/// entries a list still held. The next save from the dashboard removes them
+/// from the file.
+fn drop_retired_exemption_lists(doc: &mut Table) {
+    const ALLOW: &str = "allow each domain in DNS Filter, in the group of the clients it is for";
+    const GROUP: &str = "put these clients in a group with Malware Detection switched off";
+    for (key, instead) in [
+        ("dns.tunneling_detection.domain_whitelist", ALLOW),
+        ("dns.tunneling_detection.client_whitelist", GROUP),
+        ("dns.dga_detection.domain_whitelist", ALLOW),
+        ("dns.dga_detection.client_whitelist", GROUP),
+        ("dns.rebinding_allowlist", ALLOW),
+    ] {
+        let Some((section, leaf)) = parent_mut(doc, key) else {
+            continue;
+        };
+        let Some(entries) = section.remove(leaf) else {
+            continue;
+        };
+        if entries.as_array().is_some_and(Vec::is_empty) {
+            continue;
+        }
+        warn!(
+            key,
+            entries = %entries,
+            "Config key no longer read, its entries are ignored: {instead}"
+        );
+    }
 }
 
 /// Removes each server [`is_hostless_upstream`] matches; whether any went.

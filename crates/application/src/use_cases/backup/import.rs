@@ -7,7 +7,7 @@ use tracing::{error, info, instrument, warn};
 
 use crate::ports::{
     BlockFilterEnginePort, BlocklistSourceCreator, ConfigFilePersistence, GroupCreator,
-    GroupRepository, LocalRecordCreator,
+    GroupRepository, LocalRecordCreator, MalwareExemptionPort,
 };
 
 use super::snapshot::{BackupSnapshot, ImportSummary};
@@ -40,6 +40,7 @@ pub struct ImportConfigUseCase {
     destination: ConfigDestination,
     group_creator: Arc<dyn GroupCreator>,
     group_repo: Arc<dyn GroupRepository>,
+    malware_exemptions: Arc<dyn MalwareExemptionPort>,
     blocklist_source_creator: Arc<dyn BlocklistSourceCreator>,
     local_record_creator: Arc<dyn LocalRecordCreator>,
     block_filter_engine: Arc<dyn BlockFilterEnginePort>,
@@ -50,6 +51,7 @@ impl ImportConfigUseCase {
         destination: ConfigDestination,
         group_creator: Arc<dyn GroupCreator>,
         group_repo: Arc<dyn GroupRepository>,
+        malware_exemptions: Arc<dyn MalwareExemptionPort>,
         blocklist_source_creator: Arc<dyn BlocklistSourceCreator>,
         local_record_creator: Arc<dyn LocalRecordCreator>,
         block_filter_engine: Arc<dyn BlockFilterEnginePort>,
@@ -58,6 +60,7 @@ impl ImportConfigUseCase {
             destination,
             group_creator,
             group_repo,
+            malware_exemptions,
             blocklist_source_creator,
             local_record_creator,
             block_filter_engine,
@@ -265,7 +268,6 @@ impl ImportConfigUseCase {
         if let Some(malware) = &sc.dns.malware {
             new_config.dns.malware_detection_enabled = malware.enabled;
             new_config.dns.rebinding_protection_enabled = malware.rebinding_protection_enabled;
-            new_config.dns.rebinding_allowlist = malware.rebinding_allowlist.clone();
             new_config.dns.tunneling_detection = malware.tunneling_detection.clone();
             new_config.dns.dga_detection = malware.dga_detection.clone();
             new_config.dns.nxdomain_hijack = malware.nxdomain_hijack.clone();
@@ -330,7 +332,11 @@ impl ImportConfigUseCase {
         for group in &snapshot.data.groups {
             match self
                 .group_creator
-                .create_group(group.name.clone(), group.comment.clone())
+                .create_group(
+                    group.name.clone(),
+                    group.comment.clone(),
+                    group.malware_detection_enabled.unwrap_or(true),
+                )
                 .await
             {
                 Ok(_) => imported += 1,
@@ -345,7 +351,56 @@ impl ImportConfigUseCase {
             }
         }
 
+        self.restore_malware_switches(snapshot, errors).await;
         (imported, skipped)
+    }
+
+    /// The create above skips a group that already exists here, the default
+    /// group always among them, so their Malware Detection switch is set from
+    /// the backup on its own. A backup without the switch leaves it as it is.
+    async fn restore_malware_switches(&self, snapshot: &BackupSnapshot, errors: &mut Vec<String>) {
+        let here = match self.group_repo.get_all().await {
+            Ok(groups) => groups,
+            Err(e) => {
+                errors.push(format!("Groups: {e}"));
+                return;
+            }
+        };
+        let mut changed = false;
+        for group in &snapshot.data.groups {
+            let Some(enabled) = group.malware_detection_enabled else {
+                continue;
+            };
+            let local = here.iter().find(|local| {
+                if group.is_default {
+                    local.is_default
+                } else {
+                    local.name.as_ref() == group.name
+                }
+            });
+            let Some(id) = local
+                .filter(|local| local.malware_detection_enabled != enabled)
+                .and_then(|local| local.id)
+            else {
+                continue;
+            };
+            match self
+                .group_repo
+                .update(id, None, None, None, Some(enabled))
+                .await
+            {
+                Ok(_) => changed = true,
+                Err(e) => {
+                    warn!(name = %group.name, error = %e, "Skipping a group's Malware Detection switch during import");
+                    errors.push(format!("Group '{}': {}", group.name, e));
+                }
+            }
+        }
+        if changed {
+            if let Err(e) = self.malware_exemptions.reload().await {
+                error!(error = %e, "Failed to reload malware detection exemptions after backup import");
+            }
+        }
     }
 
     async fn import_blocklist_sources(

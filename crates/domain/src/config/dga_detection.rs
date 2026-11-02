@@ -42,12 +42,6 @@ pub struct DgaDetectionConfig {
 
     /// Seconds before idle tracking entries are evicted from memory.
     pub stale_entry_ttl_secs: u64,
-
-    /// Domains exempt from DGA detection.
-    pub domain_whitelist: Vec<String>,
-
-    /// Client CIDRs exempt from DGA detection.
-    pub client_whitelist: Vec<String>,
 }
 
 /// Action to take when a DGA domain is detected.
@@ -98,8 +92,6 @@ impl Default for DgaDetectionConfig {
             dga_rate_per_client: 10,
             confidence_threshold: 0.65,
             stale_entry_ttl_secs: 300,
-            domain_whitelist: vec![],
-            client_whitelist: vec![],
         }
     }
 }

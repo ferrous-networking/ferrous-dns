@@ -262,7 +262,6 @@ qname_case_randomization = false
 | `block_non_fqdn` | `bool` | `false` | Block queries for non-fully-qualified domain names |
 | `malware_detection_enabled` | `bool` | `true` | Master switch for [malware detection](../features/malware-detection.md): when `false`, none of tunneling, DGA, rebinding, NXDomain hijack or response IP detection runs, whatever its own `enabled` says |
 | `rebinding_protection_enabled` | `bool` | `true` | Block responses where a public domain resolves to a private/RFC-1918 IP (DNS rebinding protection); also needs `malware_detection_enabled` |
-| `rebinding_allowlist` | `list` | `[]` | Exact domain names exempt from rebinding protection (split-horizon DNS: VPN endpoints, router admin panels). Wildcards and trailing dots never match: the API rejects them, and a file load drops them with a warning |
 | `local_domain` | `str` | `"lan"` | Local domain: short hostnames are qualified with it, and names under it are answered by local records or `local_dns_server`, never the upstream pools; a [conditional pool](dns.md#conditional-forwarding) for the same names takes precedence |
 | `local_dns_server` | `str` | `"10.0.0.1:53"` | Router or DHCP server used for PTR lookups, client hostname resolution and names under `local_domain`: `IP:port`, or a bare IP for port 53. A hostname is ignored with a warning, leaving local forwarding off |
 | `mdns_enabled` | `bool` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast), which names clients after the host name their device announces; requires host networking in Docker |
@@ -475,7 +474,10 @@ Two-phase DNS tunneling detector. Phase 1 runs on the hot path in O(1) time, che
 !!! note "Also in the dashboard, and range-checked"
     This section, `[dns.dga_detection]`, `[dns.nxdomain_hijack]`, `[dns.response_ip_filter]` and the `malware_detection_enabled` and `rebinding_*` keys of `[dns]` are also edited in **Settings → Malware Detection**. Saving there rewrites them in this file; like every key here, they take effect after a restart.
 
-    The API rejects a value outside the range given in the tables below. A file loaded at startup is more forgiving, so an older file still starts: a threshold above its maximum loads as the maximum (the signal could not fire there either), a zero, negative or `nan` one loads as the default, and an invalid list entry is dropped, each with a warning naming the key.
+    The API rejects a value outside the range given in the tables below. A file loaded at startup is more forgiving, so an older file still starts: a threshold above its maximum loads as the maximum (the signal could not fire there either), a zero, negative or `nan` one loads as the default, and an invalid feed URL is dropped, each with a warning naming the key.
+
+!!! note "No exemption lists here"
+    Earlier releases read `domain_whitelist` and `client_whitelist` in this section and in `[dns.dga_detection]`, and `rebinding_allowlist` in `[dns]`. A file that still has them loads with a warning naming each list and its entries, and the next save from the dashboard removes them. A domain is now exempted by an allow in DNS Filter, and a client by a group with Malware Detection off: see [Exemptions](../features/malware-detection.md#exemptions).
 
 ```toml title="ferrous-dns.toml"
 [dns.tunneling_detection]
@@ -491,8 +493,6 @@ txt_proportion_threshold     = 0.05
 nxdomain_ratio_threshold     = 0.20
 confidence_threshold         = 0.7
 stale_entry_ttl_secs         = 300
-domain_whitelist             = []
-client_whitelist             = []
 ```
 
 | Option | Type | Default | Description |
@@ -509,8 +509,6 @@ client_whitelist             = []
 | `nxdomain_ratio_threshold` | `float` | `0.20` | Phase 2: NXDOMAIN ratio above 20% triggers a flag. Above 0, at most 1 |
 | `confidence_threshold` | `float` | `0.7` | Phase 2: minimum combined confidence score required to act. Above 0, at most 1 |
 | `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted. At least 1 |
-| `domain_whitelist` | `list` | `[]` | Exact domain names exempt from tunneling detection; wildcards and trailing dots never match and are rejected |
-| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from tunneling detection |
 
 See [Malware Detection](../features/malware-detection.md#dns-tunneling-detection).
 
@@ -533,8 +531,6 @@ ngram_score_threshold         = 0.6
 dga_rate_per_client           = 10
 confidence_threshold          = 0.65
 stale_entry_ttl_secs          = 300
-domain_whitelist              = []
-client_whitelist              = []
 ```
 
 | Option | Type | Default | Description |
@@ -550,8 +546,6 @@ client_whitelist              = []
 | `dga_rate_per_client` | `int` | `10` | DGA-flagged queries per minute per client before action is escalated. At least 1 |
 | `confidence_threshold` | `float` | `0.65` | Phase 2: minimum combined confidence score required to act. Above 0, at most 1 |
 | `stale_entry_ttl_secs` | `int` | `300` | Seconds of inactivity before a tracking entry is evicted. At least 1 |
-| `domain_whitelist` | `list` | `[]` | Exact domain names exempt from DGA detection; wildcards and trailing dots never match and are rejected |
-| `client_whitelist` | `list` | `[]` | Client CIDRs or bare IPs exempt from DGA detection |
 
 See [Malware Detection](../features/malware-detection.md#dga-detection).
 

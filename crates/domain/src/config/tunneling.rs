@@ -44,12 +44,6 @@ pub struct TunnelingDetectionConfig {
 
     /// Seconds before idle tracking entries are evicted from memory.
     pub stale_entry_ttl_secs: u64,
-
-    /// Domains exempt from tunneling detection (e.g. CDN domains with long labels).
-    pub domain_whitelist: Vec<String>,
-
-    /// Client CIDRs exempt from tunneling detection.
-    pub client_whitelist: Vec<String>,
 }
 
 /// Action to take when DNS tunneling is detected.
@@ -105,8 +99,6 @@ impl Default for TunnelingDetectionConfig {
             nxdomain_ratio_threshold: 0.20,
             confidence_threshold: 0.7,
             stale_entry_ttl_secs: 300,
-            domain_whitelist: vec![],
-            client_whitelist: vec![],
         }
     }
 }

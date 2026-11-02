@@ -33,7 +33,6 @@ local_dns_server = "10.0.0.1:53"
 | `mdns_enabled` | `false` | Enable the passive mDNS/Bonjour listener (UDP 5353 multicast), which names clients after the host name their device announces — see [Client Detection](../features/client-management.md#client-detection). In Docker this needs host networking — see [Installation](../getting-started/installation.md#docker) |
 | `malware_detection_enabled` | `true` | Master switch for the five [malware detectors](../features/malware-detection.md): when `false`, none runs, whatever its own `enabled` says. Also in **Settings → Malware Detection** |
 | `rebinding_protection_enabled` | `true` | Block public domains that resolve to private/RFC-1918 (or IPv6 ULA/link-local) addresses — see [DNS Rebinding Protection](../features/malware-detection.md#dns-rebinding-protection) |
-| `rebinding_allowlist` | `[]` | Exact domain names exempt from rebinding protection regardless of resolved IP (split-horizon DNS); a wildcard or a trailing dot never matches and is rejected |
 | `qname_case_randomization` | `false` | Randomize QNAME letter case on upstream queries of every record type (draft-vixie-dns-0x20) for extra anti-spoofing entropy; off by default because some upstreams/forwarders normalize case and would fail validation. DNS Cookies are always on regardless of this flag |
 
 ---
@@ -502,7 +501,9 @@ local_dns_server = "192.168.1.1:53"  # your router's IP
 
 DNS tunneling detection is configured under `[dns.tunneling_detection]`. It is enabled by default and requires no additional setup.
 
-Like DGA detection, rebinding protection, NXDomain hijack detection and response IP filtering, it can also be set in **Settings → Malware Detection**, which writes this file. For full documentation including real-world attack examples, configuration reference, confidence scoring, and whitelisting, see the [Malware Detection](../features/malware-detection.md) page. The valid range of each key is in the [configuration reference](ferrous-dns-toml.md#tunneling-detection).
+Like DGA detection, rebinding protection, NXDomain hijack detection and response IP filtering, it can also be set in **Settings → Malware Detection**, which writes this file. For full documentation including real-world attack examples, configuration reference, confidence scoring, and exemptions, see the [Malware Detection](../features/malware-detection.md) page. The valid range of each key is in the [configuration reference](ferrous-dns-toml.md#tunneling-detection).
+
+No key here exempts a domain or a client: allow the domain in DNS Filter, or switch Malware Detection off for the client's group. See [Exemptions](../features/malware-detection.md#exemptions).
 
 ```toml title="ferrous-dns.toml"
 [dns.tunneling_detection]
@@ -518,8 +519,6 @@ txt_proportion_threshold   = 0.05
 nxdomain_ratio_threshold   = 0.20
 confidence_threshold       = 0.7
 stale_entry_ttl_secs       = 300
-domain_whitelist           = []
-client_whitelist           = []
 ```
 
 ---
@@ -528,7 +527,7 @@ client_whitelist           = []
 
 DGA (Domain Generation Algorithm) detection analyzes second-level domain names for statistical properties associated with algorithmically generated names. It is **enabled by default** and requires no external feeds.
 
-For full documentation including signal descriptions, malware family examples, and whitelisting, see the [Malware Detection](../features/malware-detection.md#dga-detection) page.
+For full documentation including signal descriptions, malware family examples, and exemptions, see the [Malware Detection](../features/malware-detection.md#dga-detection) page.
 
 ```toml title="ferrous-dns.toml"
 [dns.dga_detection]
@@ -543,8 +542,6 @@ ngram_score_threshold         = 0.6
 dga_rate_per_client           = 10
 confidence_threshold          = 0.65
 stale_entry_ttl_secs          = 300
-domain_whitelist              = []
-client_whitelist              = []
 ```
 
 | Option | Default | Description |
@@ -560,8 +557,6 @@ client_whitelist              = []
 | `dga_rate_per_client` | `10` | Maximum DGA-like domains per minute per client subnet |
 | `confidence_threshold` | `0.65` | Minimum combined weighted score for Phase 2 background analysis to flag an SLD (0.0–1.0) |
 | `stale_entry_ttl_secs` | `300` | Seconds before idle tracking entries are evicted from memory |
-| `domain_whitelist` | `[]` | Domains that bypass DGA detection entirely |
-| `client_whitelist` | `[]` | Client CIDRs (e.g. `10.0.0.0/8`) or bare IPs (a single host) that bypass DGA detection. Invalid entries are skipped with a warning |
 
 ---
 

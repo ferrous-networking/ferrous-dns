@@ -1,7 +1,8 @@
 use super::stubs::{
     NullBlockFilterEngine, NullBlockedServiceRepository, NullConfigFilePersistence,
-    NullConfigRepository, NullCustomServiceRepository, NullSafeSearchConfigRepository,
-    NullSafeSearchEnginePort, NullScheduleProfileRepository, NullServiceCatalog,
+    NullConfigRepository, NullCustomServiceRepository, NullMalwareExemptions,
+    NullSafeSearchConfigRepository, NullSafeSearchEnginePort, NullScheduleProfileRepository,
+    NullServiceCatalog,
 };
 use super::{build_test_auth_use_cases, build_test_backup_use_cases, MockTlsCertificateService};
 use axum::Router;
@@ -12,8 +13,8 @@ use ferrous_dns_api::{
 };
 use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_application::ports::{
-    BlockFilterEnginePort, DnsCachePort, SafeSearchConfigRepository, SafeSearchEnginePort,
-    UpstreamReloadPort,
+    BlockFilterEnginePort, DnsCachePort, MalwareExemptionPort, SafeSearchConfigRepository,
+    SafeSearchEnginePort, UpstreamReloadPort,
 };
 use ferrous_dns_application::use_cases::*;
 use ferrous_dns_domain::config::upstream::{UpstreamPool, UpstreamStrategy};
@@ -22,7 +23,8 @@ use ferrous_dns_domain::Config;
 use ferrous_dns_infrastructure::dns::cache::DnsCache;
 use ferrous_dns_infrastructure::dns::dnssec::DnssecStatsAdapter;
 use ferrous_dns_infrastructure::dns::{
-    DnsCacheConfig, EvictionStrategy, PoolManager, UpstreamHealthAdapter, UpstreamReloadAdapter,
+    DnsCacheConfig, EvictionStrategy, GroupMalwareExemptions, PoolManager, UpstreamHealthAdapter,
+    UpstreamReloadAdapter,
 };
 use ferrous_dns_infrastructure::repositories::blocklist_source_repository::SqliteBlocklistSourceRepository;
 use ferrous_dns_infrastructure::repositories::client_repository::SqliteClientRepository;
@@ -159,6 +161,10 @@ impl TestAppBuilder {
         let shed = ShedCounters::default();
         let client_repo = Arc::new(SqliteClientRepository::new(pool.clone(), &db_config));
         let group_repo = Arc::new(SqliteGroupRepository::new(pool.clone()));
+        let malware_exemptions: Arc<dyn MalwareExemptionPort> =
+            GroupMalwareExemptions::new(group_repo.clone())
+                .await
+                .unwrap();
         let subnet_repo = Arc::new(SqliteClientSubnetRepository::new(pool.clone()));
         let blocklist_source_repo = Arc::new(SqliteBlocklistSourceRepository::new(pool.clone()));
         let whitelist_source_repo = Arc::new(SqliteWhitelistSourceRepository::new(pool.clone()));
@@ -269,11 +275,18 @@ impl TestAppBuilder {
             },
             groups: GroupUseCases {
                 get_groups: Arc::new(GetGroupsUseCase::new(group_repo.clone())),
-                create_group: Arc::new(CreateGroupUseCase::new(group_repo.clone())),
-                update_group: Arc::new(UpdateGroupUseCase::new(group_repo.clone())),
+                create_group: Arc::new(CreateGroupUseCase::new(
+                    group_repo.clone(),
+                    malware_exemptions.clone(),
+                )),
+                update_group: Arc::new(UpdateGroupUseCase::new(
+                    group_repo.clone(),
+                    malware_exemptions.clone(),
+                )),
                 delete_group: Arc::new(DeleteGroupUseCase::new(
                     group_repo.clone(),
                     null_engine.clone(),
+                    malware_exemptions.clone(),
                     config.clone(),
                 )),
                 assign_client_group: Arc::new(AssignClientGroupUseCase::new(
@@ -512,8 +525,12 @@ fn sqlite_backup_use_cases(
                 persistence: Arc::new(NullConfigFilePersistence),
                 path: Some("ferrous-dns.toml".to_string()),
             },
-            Arc::new(CreateGroupUseCase::new(group_repo.clone())),
+            Arc::new(CreateGroupUseCase::new(
+                group_repo.clone(),
+                Arc::new(NullMalwareExemptions),
+            )),
             group_repo.clone(),
+            Arc::new(NullMalwareExemptions),
             Arc::new(CreateBlocklistSourceUseCase::new(
                 blocklist_source_repo.clone(),
                 group_repo.clone(),

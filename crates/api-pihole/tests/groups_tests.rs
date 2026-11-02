@@ -216,6 +216,40 @@ async fn update_group_replaces_omitted_fields_with_their_defaults() {
     assert!(entry.enabled, "an omitted enabled defaults to true");
 }
 
+/// FTL has no malware switch: a group it creates keeps the detectors on, and
+/// a replace through it leaves a group's switch as the dashboard set it.
+#[tokio::test]
+async fn compat_writes_leave_the_malware_detection_switch_alone() {
+    let pool = helpers::create_test_db().await;
+    let app = helpers::create_pihole_test_app(pool.clone()).await;
+    create(&app, json!({ "name": "Kids" })).await;
+    sqlx::query("INSERT INTO groups (name, malware_detection_enabled) VALUES ('Servers', 0)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (status, reply) = send(
+        &app,
+        with_body("PUT", "/groups/Servers", json!({ "comment": "monitoring" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+
+    let flags: Vec<(String, bool)> =
+        sqlx::query_as("SELECT name, malware_detection_enabled FROM groups ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        flags,
+        [
+            ("Protected".to_string(), true),
+            ("Kids".to_string(), true),
+            ("Servers".to_string(), false),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn update_creates_a_missing_group() {
     let app = app().await;

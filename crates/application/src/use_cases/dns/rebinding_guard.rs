@@ -4,19 +4,18 @@ use ferrous_dns_domain::PrivateIpFilter;
 /// Guards DNS responses against DNS rebinding attacks.
 ///
 /// Blocks resolutions where a public domain resolves to a private/RFC1918 IP address,
-/// with configurable exemptions for local domains and explicitly allowlisted entries.
+/// except for names under the local domain. Other exemptions are explicit allows
+/// in the block filter, which the caller checks first.
 pub(super) struct RebindingGuard {
     /// `.{local_domain}`, lowercased.
     local_domain_suffix: Option<Box<str>>,
-    allowlist: Box<[Box<str>]>,
 }
 
 impl RebindingGuard {
-    /// Subdomains of `local_domain` (e.g. `"local"`) and exact `allowlist` names are exempt.
-    pub(super) fn new(local_domain: Option<&str>, allowlist: &[String]) -> Self {
+    /// `local_domain` (e.g. `"local"`) and its subdomains are exempt.
+    pub(super) fn new(local_domain: Option<&str>) -> Self {
         Self {
             local_domain_suffix: local_domain.map(|d| format!(".{}", d.to_lowercase()).into()),
-            allowlist: allowlist.iter().map(|s| s.to_lowercase().into()).collect(),
         }
     }
 
@@ -34,13 +33,6 @@ impl RebindingGuard {
             {
                 return false;
             }
-        }
-        if self
-            .allowlist
-            .iter()
-            .any(|allowed| domain.eq_ignore_ascii_case(allowed))
-        {
-            return false;
         }
         resolution
             .addresses

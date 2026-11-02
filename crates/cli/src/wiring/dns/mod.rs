@@ -215,6 +215,7 @@ impl DnsServices {
             repos.query_log.clone(),
         )
         .with_safe_search(repos.safe_search_engine.clone())
+        .with_malware_exemptions(repos.malware_exemptions.clone())
         .with_client_tracking(
             repos.client.clone(),
             config.database.client_tracking_interval,
@@ -225,10 +226,7 @@ impl DnsServices {
         .with_query_logging(config.database.log_queries);
 
         if config.dns.rebinding_protection_active() {
-            handler = handler.with_rebinding_protection(
-                config.dns.local_domain.as_deref(),
-                &config.dns.rebinding_allowlist,
-            );
+            handler = handler.with_rebinding_protection(config.dns.local_domain.as_deref());
         }
 
         if config.dns64.enabled {

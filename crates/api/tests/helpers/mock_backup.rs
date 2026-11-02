@@ -1,4 +1,6 @@
-use super::stubs::{NullBlockFilterEngine, NullConfigFilePersistence, NullConfigRepository};
+use super::stubs::{
+    NullBlockFilterEngine, NullConfigFilePersistence, NullConfigRepository, NullMalwareExemptions,
+};
 use ferrous_dns_api::BackupUseCases;
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlocklistSourceCreator, BlocklistSourceRepository, GroupCreator,
@@ -21,6 +23,7 @@ impl GroupRepository for NullGroupRepository {
         _name: String,
         _comment: Option<String>,
         _enabled: bool,
+        _malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
         Err(DomainError::IoError("test stub".to_string()))
     }
@@ -42,6 +45,7 @@ impl GroupRepository for NullGroupRepository {
         _name: Option<String>,
         _enabled: Option<bool>,
         _comment: Option<String>,
+        _malware_detection_enabled: Option<bool>,
     ) -> Result<Group, DomainError> {
         Err(DomainError::IoError("test stub".to_string()))
     }
@@ -101,8 +105,10 @@ pub fn build_test_backup_use_cases(
         Arc::new(NullBlocklistSourceRepository);
 
     let engine: Arc<dyn BlockFilterEnginePort> = Arc::new(NullBlockFilterEngine);
-    let group_creator: Arc<dyn GroupCreator> =
-        Arc::new(CreateGroupUseCase::new(group_repo.clone()));
+    let group_creator: Arc<dyn GroupCreator> = Arc::new(CreateGroupUseCase::new(
+        group_repo.clone(),
+        Arc::new(NullMalwareExemptions),
+    ));
     let blocklist_source_creator: Arc<dyn BlocklistSourceCreator> =
         Arc::new(CreateBlocklistSourceUseCase::new(
             blocklist_source_repo.clone(),
@@ -128,6 +134,7 @@ pub fn build_test_backup_use_cases(
             },
             group_creator,
             group_repo,
+            Arc::new(NullMalwareExemptions),
             blocklist_source_creator,
             local_record_creator,
             engine,

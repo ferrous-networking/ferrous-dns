@@ -315,6 +315,21 @@ The image's health check now probes the running server through `ferrous-dns --he
 
 The first start rebuilds the `query_log` table, and the server answers queries only once that is done. On large databases this takes a while: about 9 seconds for 3 million rows on an NVMe drive, and noticeably longer on a Raspberry Pi SD card. The database file also grows by about 70% until it is compacted. To reclaim the space, stop the server and run it once with `--compact-database`; see [Disk Space](../configuration/database.md#disk-space).
 
+### Malware detection exemption lists removed
+
+`domain_whitelist` and `client_whitelist` under `[dns.tunneling_detection]` and `[dns.dga_detection]`, and `rebinding_allowlist` under `[dns]`, are no longer read. A file that still has them starts, logs one warning per list with its entries, and drops them on the next save from the dashboard:
+
+```bash
+docker logs ferrous-dns 2>&1 | grep "Config key no longer read"
+```
+
+Recreate each entry the new way. Both apply at once, with no restart. See [Exemptions](../features/malware-detection.md#exemptions).
+
+- **A domain:** add it as an **allow** in **DNS Filter → Managed Domains**, in the group of the clients it is for. A wildcard rule such as `*.cdn.example.com` covers its subdomains, which the old lists did not. An allow also overrules the blocklists for that group.
+- **A client or subnet:** put it in a group (**Clients**), and switch **Malware Detection** off for that group in **Groups**. The group skips all five detectors, not only tunneling and DGA.
+
+The query log's **Allow** button now writes the rule into the group the query was decided in, instead of always the default group, and its confirmation names the group.
+
 ---
 
 ## Platform support

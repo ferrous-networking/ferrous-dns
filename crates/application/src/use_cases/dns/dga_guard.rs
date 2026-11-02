@@ -1,5 +1,4 @@
 use super::domain_heuristics::{char_ratios, extract_apex, shannon_entropy};
-use super::guard_whitelist::GuardWhitelist;
 use ferrous_dns_domain::{DgaDetectionAction, DgaDetectionConfig};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -36,7 +35,6 @@ pub(super) struct DgaGuard {
     sld_max_length: usize,
     consonant_ratio_threshold: f32,
     digit_ratio_threshold: f32,
-    whitelist: GuardWhitelist,
 }
 
 impl DgaGuard {
@@ -49,11 +47,6 @@ impl DgaGuard {
             sld_max_length: config.sld_max_length,
             consonant_ratio_threshold: config.consonant_ratio_threshold,
             digit_ratio_threshold: config.digit_ratio_threshold,
-            whitelist: GuardWhitelist::new(
-                "dns.dga_detection",
-                &config.domain_whitelist,
-                &config.client_whitelist,
-            ),
         }
     }
 
@@ -67,10 +60,6 @@ impl DgaGuard {
         self.action
     }
 
-    pub(super) fn is_client_whitelisted(&self, client_ip: IpAddr) -> bool {
-        self.whitelist.contains_client(client_ip)
-    }
-
     /// Performs O(1) DGA checks on the hot path using weighted mini-scoring.
     ///
     /// Accumulates weights from all triggered signals and only returns `Detected`
@@ -79,16 +68,8 @@ impl DgaGuard {
     /// (e.g., CDN domains with high entropy but normal consonant ratio).
     ///
     /// Zero heap allocations: `domain` is `&str`, SLD is a slice.
-    pub(super) fn check(&self, domain: &str, client_ip: IpAddr) -> DgaVerdict {
+    pub(super) fn check(&self, domain: &str) -> DgaVerdict {
         if !self.enabled {
-            return DgaVerdict::Clean;
-        }
-
-        if self.is_client_whitelisted(client_ip) {
-            return DgaVerdict::Clean;
-        }
-
-        if self.whitelist.contains_domain(domain) {
             return DgaVerdict::Clean;
         }
 
@@ -97,51 +78,55 @@ impl DgaGuard {
             _ => return DgaVerdict::Clean,
         };
 
-        let mut confidence: f32 = 0.0;
-        let mut top = TopSignal::default();
+        let long = sld.len() > self.sld_max_length;
+        let (consonants, vowels, digits, total) = char_ratios(sld);
+        let alpha = consonants + vowels;
+        let consonant_ratio = (alpha > 0).then(|| consonants as f32 / alpha as f32);
+        let consonant_heavy = consonant_ratio.is_some_and(|r| r > self.consonant_ratio_threshold);
+        let digit_ratio = (total > 0).then(|| digits as f32 / total as f32);
+        let digit_heavy = digit_ratio.is_some_and(|r| r > self.digit_ratio_threshold);
 
-        if sld.len() > self.sld_max_length {
-            confidence += HP_WEIGHT_SLD_LENGTH;
-            top.offer("sld_length", sld.len() as f32, self.sld_max_length as f32);
+        // Each sum adds the weights in the same order, so its rounding matches
+        // the score's. The entropy is the costly signal, and most names fire
+        // none of the others, so it is skipped when even its full weight could
+        // not reach the threshold.
+        let weight = |fired: bool, value: f32| if fired { value } else { 0.0 };
+        let ceiling = weight(long, HP_WEIGHT_SLD_LENGTH)
+            + HP_WEIGHT_SLD_ENTROPY
+            + weight(consonant_heavy, HP_WEIGHT_CONSONANT_RATIO)
+            + weight(digit_heavy, HP_WEIGHT_DIGIT_RATIO);
+        if ceiling < self.hot_path_confidence_threshold {
+            return DgaVerdict::Clean;
         }
 
         let entropy = shannon_entropy(sld.as_bytes());
-        if entropy > self.sld_entropy_threshold {
-            confidence += HP_WEIGHT_SLD_ENTROPY;
+        let high_entropy = entropy > self.sld_entropy_threshold;
+        let confidence = weight(long, HP_WEIGHT_SLD_LENGTH)
+            + weight(high_entropy, HP_WEIGHT_SLD_ENTROPY)
+            + weight(consonant_heavy, HP_WEIGHT_CONSONANT_RATIO)
+            + weight(digit_heavy, HP_WEIGHT_DIGIT_RATIO);
+        if confidence < self.hot_path_confidence_threshold {
+            return DgaVerdict::Clean;
+        }
+
+        let mut top = TopSignal::default();
+        if long {
+            top.offer("sld_length", sld.len() as f32, self.sld_max_length as f32);
+        }
+        if high_entropy {
             top.offer("sld_entropy", entropy, self.sld_entropy_threshold);
         }
-
-        let (consonants, vowels, digits, total) = char_ratios(sld);
-        if total > 0 {
-            let alpha = consonants + vowels;
-            if alpha > 0 {
-                let consonant_ratio = consonants as f32 / alpha as f32;
-                if consonant_ratio > self.consonant_ratio_threshold {
-                    confidence += HP_WEIGHT_CONSONANT_RATIO;
-                    top.offer(
-                        "consonant_ratio",
-                        consonant_ratio,
-                        self.consonant_ratio_threshold,
-                    );
-                }
-            }
-
-            let digit_ratio = digits as f32 / total as f32;
-            if digit_ratio > self.digit_ratio_threshold {
-                confidence += HP_WEIGHT_DIGIT_RATIO;
-                top.offer("digit_ratio", digit_ratio, self.digit_ratio_threshold);
-            }
+        if let Some(ratio) = consonant_ratio.filter(|_| consonant_heavy) {
+            top.offer("consonant_ratio", ratio, self.consonant_ratio_threshold);
         }
-
-        if confidence >= self.hot_path_confidence_threshold {
-            return DgaVerdict::Detected {
-                signal: top.name,
-                measured: top.measured,
-                threshold: top.threshold,
-            };
+        if let Some(ratio) = digit_ratio.filter(|_| digit_heavy) {
+            top.offer("digit_ratio", ratio, self.digit_ratio_threshold);
         }
-
-        DgaVerdict::Clean
+        DgaVerdict::Detected {
+            signal: top.name,
+            measured: top.measured,
+            threshold: top.threshold,
+        }
     }
 }
 
@@ -193,188 +178,4 @@ fn extract_sld(domain: &str) -> Option<&str> {
     let apex = extract_apex(domain);
     // SLD is the first label of the apex
     apex.split('.').next().filter(|s| !s.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const TEST_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 1));
-
-    fn guard_with_defaults() -> DgaGuard {
-        DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            ..Default::default()
-        })
-    }
-
-    #[test]
-    fn disabled_guard_always_returns_clean() {
-        let guard = DgaGuard::disabled();
-        let result = guard.check("xjk4f9a2h3b5c7d8e.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn normal_domain_passes_check() {
-        let guard = guard_with_defaults();
-        let result = guard.check("google.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn short_sld_skipped() {
-        let guard = guard_with_defaults();
-        let result = guard.check("go.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn multi_signal_dga_domain_triggers_detection_with_correct_top_signal() {
-        let guard = guard_with_defaults();
-        // Random-looking domain: high entropy + high consonant ratio + digits
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        match result {
-            DgaVerdict::Detected {
-                signal,
-                measured,
-                threshold,
-            } => {
-                assert!(
-                    [
-                        "sld_entropy",
-                        "consonant_ratio",
-                        "digit_ratio",
-                        "sld_length"
-                    ]
-                    .contains(&signal),
-                    "unexpected signal: {signal}"
-                );
-                assert!(
-                    measured > threshold,
-                    "measured ({measured}) should exceed threshold ({threshold})"
-                );
-            }
-            DgaVerdict::Clean => panic!("DGA domain should be detected"),
-        }
-    }
-
-    #[test]
-    fn single_high_entropy_domain_not_blocked() {
-        // SLD "aeioubcdf" has high entropy (3.17) but normal consonant ratio (5/9 = 0.56)
-        // and zero digits — only entropy can fire, which alone (0.30) < threshold (0.40)
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            sld_entropy_threshold: 3.0,
-            ..Default::default()
-        });
-        let result = guard.check("aeioubcdf.com", TEST_IP);
-        assert!(
-            matches!(result, DgaVerdict::Clean),
-            "Single-signal domain should NOT be blocked"
-        );
-    }
-
-    #[test]
-    fn legitimate_cdn_domains_pass() {
-        let guard = guard_with_defaults();
-        for domain in &[
-            "cloudflare.com",
-            "fastly.net",
-            "gstatic.com",
-            "fbcdn.net",
-            "twimg.com",
-            "githubusercontent.com",
-            "akamaized.net",
-        ] {
-            let result = guard.check(domain, TEST_IP);
-            assert!(
-                matches!(result, DgaVerdict::Clean),
-                "{domain} should NOT be blocked"
-            );
-        }
-    }
-
-    #[test]
-    fn long_sld_alone_does_not_trigger() {
-        // Long but repetitive SLD — only sld_length fires (0.25 < 0.40)
-        let guard = guard_with_defaults();
-        let domain = format!("{}.com", "a".repeat(25));
-        let result = guard.check(&domain, TEST_IP);
-        assert!(
-            matches!(result, DgaVerdict::Clean),
-            "Single sld_length signal should not trigger"
-        );
-    }
-
-    #[test]
-    fn long_random_sld_triggers_detection() {
-        let guard = guard_with_defaults();
-        // Long + high entropy + consonant-heavy → multiple signals
-        let domain = format!("{}xbkrwtplmqzncdf.com", "r".repeat(10));
-        let result = guard.check(&domain, TEST_IP);
-        assert!(
-            matches!(result, DgaVerdict::Detected { .. }),
-            "Long random SLD should be detected via multiple signals"
-        );
-    }
-
-    #[test]
-    fn two_signals_trigger_detection_at_default_threshold() {
-        let guard = guard_with_defaults();
-        // All consonants → high entropy (3.9) + consonant ratio 1.0 → 0.30 + 0.25 = 0.55 >= 0.40
-        let result = guard.check("bcdfghjklmnpqrst.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Detected { .. }));
-    }
-
-    #[test]
-    fn from_config_disabled_never_triggers() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: false,
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d8e.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn whitelisted_domain_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            domain_whitelist: vec!["xjk4f9a2h3b5c7d.com".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn whitelisted_client_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["192.168.1.0/24".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn bare_ip_client_whitelist_entry_passes_check() {
-        let guard = DgaGuard::from_config(&DgaDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["192.168.1.1".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("xjk4f9a2h3b5c7d.com", TEST_IP);
-        assert!(matches!(result, DgaVerdict::Clean));
-    }
-
-    #[test]
-    fn extract_sld_basic() {
-        assert_eq!(extract_sld("example.com"), Some("example"));
-        assert_eq!(extract_sld("sub.example.com"), Some("example"));
-        assert_eq!(extract_sld("example.co.uk"), Some("example"));
-        assert_eq!(extract_sld("xjk4f9a2h.com"), Some("xjk4f9a2h"));
-    }
 }

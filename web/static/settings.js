@@ -44,20 +44,18 @@
                     },
                     malware_detection_enabled: true,
                     rebinding_protection_enabled: true,
-                    rebinding_allowlist: [],
                     tunneling_detection: {
                         enabled: true, action: 'block', max_fqdn_length: 120, max_label_length: 50,
                         block_null_queries: true, entropy_threshold: 3.8, query_rate_per_apex: 50,
                         unique_subdomain_threshold: 30, txt_proportion_threshold: 0.05,
                         nxdomain_ratio_threshold: 0.2, confidence_threshold: 0.7,
-                        stale_entry_ttl_secs: 300, domain_whitelist: [], client_whitelist: []
+                        stale_entry_ttl_secs: 300
                     },
                     dga_detection: {
                         enabled: true, action: 'block', hot_path_confidence_threshold: 0.4,
                         sld_entropy_threshold: 3.5, sld_max_length: 24, consonant_ratio_threshold: 0.75,
                         digit_ratio_threshold: 0.3, ngram_score_threshold: 0.6, dga_rate_per_client: 10,
-                        confidence_threshold: 0.65, stale_entry_ttl_secs: 300,
-                        domain_whitelist: [], client_whitelist: []
+                        confidence_threshold: 0.65, stale_entry_ttl_secs: 300
                     },
                     nxdomain_hijack: {
                         enabled: true, action: 'block', probe_interval_secs: 300,
@@ -76,7 +74,6 @@
             malwareTitles: {
                 tunneling_detection: 'DNS Tunneling Detection',
                 dga_detection: 'DGA Detection',
-                rebinding: 'DNS Rebinding Protection',
                 nxdomain_hijack: 'NXDomain Hijack Detection',
                 response_ip_filter: 'Response IP Filtering',
             },
@@ -139,24 +136,8 @@
                 ],
             },
             malwareListRows: {
-                tunneling_detection: [
-                    {field: 'domain_whitelist', kind: 'domain', label: 'Domain Whitelist', icon: 'list-checks', placeholder: 'cdn.example.com',
-                        help: 'Exact domain names exempt from tunneling detection (no wildcards; subdomains are not included). For a one-off false positive, allowing the domain (allowlist, or Allow in the query log) works too and needs no restart.'},
-                    {field: 'client_whitelist', kind: 'client', label: 'Client Whitelist', icon: 'network', placeholder: '10.0.0.50 or 192.168.10.0/24',
-                        help: 'IPs or CIDRs of clients exempt from tunneling detection, such as a monitoring server.'},
-                ],
-                dga_detection: [
-                    {field: 'domain_whitelist', kind: 'domain', label: 'Domain Whitelist', icon: 'list-checks', placeholder: 'xjk3-vendor-cloud.com',
-                        help: 'Exact domain names exempt from DGA detection (no wildcards; subdomains are not included). For a one-off false positive, allowing the domain (allowlist, or Allow in the query log) works too and needs no restart.'},
-                    {field: 'client_whitelist', kind: 'client', label: 'Client Whitelist', icon: 'network', placeholder: '10.0.0.50 or 192.168.10.0/24',
-                        help: 'IPs or CIDRs of clients exempt from DGA detection.'},
-                ],
-                rebinding: [
-                    {field: 'rebinding_allowlist', kind: 'domain', label: 'Rebinding Allowlist', icon: 'list-checks', placeholder: 'vpn.example.com',
-                        help: 'Exact domain names allowed to resolve to a private address, such as split-horizon names for a VPN or a router admin page. Names under the local domain, answers from the local DNS server and internal pools are always exempt.'},
-                ],
                 response_ip_filter: [
-                    {field: 'ip_list_urls', kind: 'url', label: 'Feed URLs', icon: 'rss', placeholder: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt',
+                    {field: 'ip_list_urls', label: 'Feed URLs', icon: 'rss', placeholder: 'https://feodotracker.abuse.ch/downloads/ipblocklist.txt',
                         help: 'HTTP or HTTPS URLs of IP feeds: one IP per line, # comments allowed, up to 64 MiB each. At least one is needed while the filter is on.'},
                 ],
             },
@@ -647,12 +628,8 @@
                 }
                 return '';
             },
-            // The object a Malware Detection row edits: the rebinding settings sit in `dns` itself.
-            malwareTarget(section) {
-                return section === 'rebinding' ? this.config.dns : this.config.dns[section];
-            },
             malwareNumberError(section, row) {
-                const value = this.malwareTarget(section)[row.field];
+                const value = this.config.dns[section][row.field];
                 if (value === '' || value === null || value === undefined) return 'Required';
                 if (typeof value !== 'number' || Number.isNaN(value)) return 'Must be a number';
                 if (row.float) {
@@ -664,36 +641,11 @@
                 }
                 return value >= 1 ? '' : 'Must be at least 1';
             },
-            // Mirrors validate_exact_domain, validate_ip_or_cidr and validate_url in
-            // crates/domain/src/value_objects/validators.rs. Blank entries are dropped on save.
-            malwareEntryError(kind, entry) {
+            // Mirrors validate_url in crates/domain/src/value_objects/validators.rs.
+            // Blank entries are dropped on save.
+            malwareEntryError(entry) {
                 const value = (entry || '').trim();
                 if (!value) return '';
-                if (kind === 'domain') {
-                    if (value.length > 253) return 'Domain cannot exceed 253 characters';
-                    if (value.includes('*')) return 'Wildcards are not supported: entries match the exact name';
-                    for (const label of value.split('.')) {
-                        if (!label) return 'Domain cannot contain an empty label (no leading, trailing or double dots)';
-                        if (label.length > 63) return 'Domain label cannot exceed 63 characters';
-                        if (!/^[A-Za-z0-9_-]+$/.test(label)) {
-                            return 'Domain contains invalid characters (only letters, digits, hyphens and underscores; use punycode for internationalized names)';
-                        }
-                    }
-                    return '';
-                }
-                if (kind === 'client') {
-                    const slash = value.indexOf('/');
-                    const addr = slash === -1 ? value : value.slice(0, slash);
-                    const prefix = slash === -1 ? null : value.slice(slash + 1);
-                    const v4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(addr) && addr.split('.').every(o => Number(o) <= 255);
-                    const v6 = !v4 && addr.includes(':') && /^[0-9A-Fa-f:.]+$/.test(addr);
-                    if (!v4 && !v6) return 'Not an IP address or CIDR (e.g. 10.0.0.5 or 10.0.0.0/24)';
-                    const max = v4 ? 32 : 128;
-                    if (prefix !== null && !(/^\+?\d+$/.test(prefix) && Number(prefix) <= max)) {
-                        return `CIDR prefix must be 0-${max}`;
-                    }
-                    return '';
-                }
                 if (value.length > 2048) return 'URL cannot exceed 2048 characters';
                 if (!value.startsWith('http://') && !value.startsWith('https://')) {
                     return 'URL must start with http:// or https://';
@@ -714,8 +666,8 @@
                 }
                 for (const [section, lists] of Object.entries(this.malwareListRows)) {
                     for (const list of lists) {
-                        for (const entry of this.malwareTarget(section)[list.field]) {
-                            const error = this.malwareEntryError(list.kind, entry);
+                        for (const entry of this.config.dns[section][list.field]) {
+                            const error = this.malwareEntryError(entry);
                             if (error) return `${this.malwareTitles[section]} › ${list.label}: '${entry}': ${error}`;
                         }
                     }
@@ -728,7 +680,7 @@
             // Trims list entries and drops blank ones, which the "Add Entry" button leaves behind.
             cleanMalwareLists() {
                 for (const [section, lists] of Object.entries(this.malwareListRows)) {
-                    const target = this.malwareTarget(section);
+                    const target = this.config.dns[section];
                     for (const list of lists) {
                         target[list.field] = target[list.field].map(entry => (entry || '').trim()).filter(Boolean);
                     }

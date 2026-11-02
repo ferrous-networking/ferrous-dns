@@ -1380,7 +1380,7 @@
             <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">Malware Detection</h2>
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Detect DNS-borne malware activity: data tunneling, algorithmically generated domains, rebinding, NXDOMAIN hijacking and known command-and-control servers. Changes apply after a restart.</p>
 
-            <div class="setting-row no-divider">
+            <div class="setting-row">
                 <div style="flex:1;margin-right:24px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                         <i data-lucide="bug" style="width:20px;height:20px;color:var(--color-primary)"></i>
@@ -1391,6 +1391,16 @@
                 <div @click="config.dns.malware_detection_enabled=!config.dns.malware_detection_enabled"
                      :class="config.dns.malware_detection_enabled?'active':''" class="toggle-switch">
                     <div class="toggle-slider"></div>
+                </div>
+            </div>
+
+            <div class="setting-row no-divider">
+                <div style="flex:1">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        <i data-lucide="shield-check" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                        <h4 style="font-size:16px;font-weight:600;margin:0">Exemptions</h4>
+                    </div>
+                    <p style="font-size:13px;color:var(--text-secondary);margin:0">To clear a false positive, allow the domain in <a href="/dns-filter.html" style="color:var(--color-primary)">DNS Filter</a>, in the group of the clients it is for, or click Allow on its row in the Query Log. To exempt a client such as a monitoring server, put it in a group and switch Malware Detection off for that group in <a href="/groups.html" style="color:var(--color-primary)">Groups</a>. Both apply at once, with no restart.</p>
                 </div>
             </div>
         </div>
@@ -1446,8 +1456,8 @@
                         </div>
                     </div>
 
-                    <template x-for="row in malwareNumberRows.tunneling_detection" :key="row.field">
-                        <div class="setting-row">
+                    <template x-for="(row, i) in malwareNumberRows.tunneling_detection" :key="row.field">
+                        <div class="setting-row" :class="{ 'no-divider': i === malwareNumberRows.tunneling_detection.length - 1 }">
                             <div style="flex:1;margin-right:24px">
                                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                                     <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
@@ -1460,34 +1470,6 @@
                                        style="width:100%;text-align:right" :style="malwareNumberError('tunneling_detection', row) ? {borderColor: 'var(--color-error)'} : {}">
                                 <p style="font-size:11px;color:var(--text-tertiary);margin:4px 0 0;text-align:right" x-text="row.unit"></p>
                                 <p x-show="malwareNumberError('tunneling_detection', row)" x-text="malwareNumberError('tunneling_detection', row)" style="font-size:11px;color:var(--color-error);margin:4px 0 0;text-align:right"></p>
-                            </div>
-                        </div>
-                    </template>
-
-                    <template x-for="(list, li) in malwareListRows.tunneling_detection" :key="list.field">
-                        <div :style="'padding:16px 0' + (li < malwareListRows.tunneling_detection.length - 1 ? ';border-bottom:1px solid var(--border-color)' : '')">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
-                            </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
-                            <div style="display:flex;flex-direction:column;gap:8px">
-                                <template x-for="(entry, idx) in config.dns.tunneling_detection[list.field]" :key="idx">
-                                    <div>
-                                        <div style="display:flex;gap:8px;align-items:center">
-                                            <input type="text" x-model="config.dns.tunneling_detection[list.field][idx]" :placeholder="list.placeholder"
-                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
-                                                   :style="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
-                                            <button @click="config.dns.tunneling_detection[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
-                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
-                                            </button>
-                                        </div>
-                                        <p x-show="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.tunneling_detection[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
-                                    </div>
-                                </template>
-                                <button @click="config.dns.tunneling_detection[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
-                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
-                                </button>
                             </div>
                         </div>
                     </template>
@@ -1528,8 +1510,8 @@
                         </select>
                     </div>
 
-                    <template x-for="row in malwareNumberRows.dga_detection" :key="row.field">
-                        <div class="setting-row">
+                    <template x-for="(row, i) in malwareNumberRows.dga_detection" :key="row.field">
+                        <div class="setting-row" :class="{ 'no-divider': i === malwareNumberRows.dga_detection.length - 1 }">
                             <div style="flex:1;margin-right:24px">
                                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                                     <i :data-lucide="row.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
@@ -1545,34 +1527,6 @@
                             </div>
                         </div>
                     </template>
-
-                    <template x-for="(list, li) in malwareListRows.dga_detection" :key="list.field">
-                        <div :style="'padding:16px 0' + (li < malwareListRows.dga_detection.length - 1 ? ';border-bottom:1px solid var(--border-color)' : '')">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
-                            </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
-                            <div style="display:flex;flex-direction:column;gap:8px">
-                                <template x-for="(entry, idx) in config.dns.dga_detection[list.field]" :key="idx">
-                                    <div>
-                                        <div style="display:flex;gap:8px;align-items:center">
-                                            <input type="text" x-model="config.dns.dga_detection[list.field][idx]" :placeholder="list.placeholder"
-                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
-                                                   :style="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
-                                            <button @click="config.dns.dga_detection[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
-                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
-                                            </button>
-                                        </div>
-                                        <p x-show="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.dga_detection[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
-                                    </div>
-                                </template>
-                                <button @click="config.dns.dga_detection[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
-                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
-                                </button>
-                            </div>
-                        </div>
-                    </template>
                 </div>
             </div>
 
@@ -1581,48 +1535,18 @@
                 <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;color:var(--text-primary)">DNS Rebinding Protection</h2>
                 <p style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Blocks answers where a public domain resolves to a private or loopback address, so a web page cannot turn your browser against devices on your own network.</p>
 
-                <div class="setting-row">
+                <div class="setting-row no-divider">
                     <div style="flex:1;margin-right:24px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
                             <i data-lucide="house" style="width:20px;height:20px;color:var(--color-primary)"></i>
                             <h4 style="font-size:16px;font-weight:600;margin:0">Enable DNS Rebinding Protection</h4>
                         </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Check every answer for private addresses. A blocked answer uses the Block Mode set in DNS Settings.</p>
+                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Check every answer for private addresses. A blocked answer uses the Block Mode set in DNS Settings. Names under the local domain, answers from the local DNS server and internal pools are always exempt; allow any other split-horizon name, such as a VPN or router page, in DNS Filter.</p>
                     </div>
                     <div @click="config.dns.rebinding_protection_enabled=!config.dns.rebinding_protection_enabled"
                          :class="config.dns.rebinding_protection_enabled?'active':''" class="toggle-switch">
                         <div class="toggle-slider"></div>
                     </div>
-                </div>
-
-                <div x-show="config.dns.rebinding_protection_enabled">
-                    <template x-for="list in malwareListRows.rebinding" :key="list.field">
-                        <div style="padding:16px 0">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-                                <i :data-lucide="list.icon" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                                <h4 style="font-size:16px;font-weight:600;margin:0" x-text="list.label"></h4>
-                            </div>
-                            <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px" x-text="list.help"></p>
-                            <div style="display:flex;flex-direction:column;gap:8px">
-                                <template x-for="(entry, idx) in config.dns[list.field]" :key="idx">
-                                    <div>
-                                        <div style="display:flex;gap:8px;align-items:center">
-                                            <input type="text" x-model="config.dns[list.field][idx]" :placeholder="list.placeholder"
-                                                   style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
-                                                   :style="malwareEntryError(list.kind, config.dns[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
-                                            <button @click="config.dns[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
-                                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
-                                            </button>
-                                        </div>
-                                        <p x-show="malwareEntryError(list.kind, config.dns[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
-                                    </div>
-                                </template>
-                                <button @click="config.dns[list.field].push('');scheduleLucide()" class="btn btn-primary" style="width:fit-content">
-                                    <i data-lucide="plus" style="width:16px;height:16px"></i> Add Entry
-                                </button>
-                            </div>
-                        </div>
-                    </template>
                 </div>
             </div>
 
@@ -1745,12 +1669,12 @@
                                         <div style="display:flex;gap:8px;align-items:center">
                                             <input type="text" x-model="config.dns.response_ip_filter[list.field][idx]" :placeholder="list.placeholder"
                                                    style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px"
-                                                   :style="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
+                                                   :style="malwareEntryError(config.dns.response_ip_filter[list.field][idx]) ? {borderColor: 'var(--color-error)'} : {}">
                                             <button @click="config.dns.response_ip_filter[list.field].splice(idx, 1)" class="btn btn-danger" style="padding:8px 12px">
                                                 <i data-lucide="trash-2" style="width:14px;height:14px"></i>
                                             </button>
                                         </div>
-                                        <p x-show="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx])" x-text="malwareEntryError(list.kind, config.dns.response_ip_filter[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
+                                        <p x-show="malwareEntryError(config.dns.response_ip_filter[list.field][idx])" x-text="malwareEntryError(config.dns.response_ip_filter[list.field][idx])" style="font-size:12px;color:var(--color-error);margin:4px 0 0"></p>
                                     </div>
                                 </template>
                                 <p x-show="responseIpFilterNeedsFeed()" style="font-size:12px;color:var(--color-error);margin:0">Add at least one feed URL, or turn the filter off.</p>

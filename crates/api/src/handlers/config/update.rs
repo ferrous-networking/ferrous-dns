@@ -320,9 +320,6 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
         if let Some(v) = dns.rebinding_protection_enabled {
             cfg.dns.rebinding_protection_enabled = v;
         }
-        if let Some(v) = dns.rebinding_allowlist {
-            cfg.dns.rebinding_allowlist = v;
-        }
         if let Some(update) = dns.tunneling_detection {
             apply_tunneling_update(&mut cfg.dns.tunneling_detection, update)?;
         }
@@ -422,12 +419,6 @@ fn apply_tunneling_update(
     if let Some(v) = update.stale_entry_ttl_secs {
         target.stale_entry_ttl_secs = v;
     }
-    if let Some(v) = update.domain_whitelist {
-        target.domain_whitelist = v;
-    }
-    if let Some(v) = update.client_whitelist {
-        target.client_whitelist = v;
-    }
     Ok(())
 }
 
@@ -467,12 +458,6 @@ fn apply_dga_update(
     }
     if let Some(v) = update.stale_entry_ttl_secs {
         target.stale_entry_ttl_secs = v;
-    }
-    if let Some(v) = update.domain_whitelist {
-        target.domain_whitelist = v;
-    }
-    if let Some(v) = update.client_whitelist {
-        target.client_whitelist = v;
     }
     Ok(())
 }

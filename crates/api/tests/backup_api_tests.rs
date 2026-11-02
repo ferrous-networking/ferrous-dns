@@ -4,7 +4,7 @@ use axum::{
     Router,
 };
 use ferrous_dns_domain::{Config, LocalDnsRecord, LocalRecordType, UpstreamPool, UpstreamStrategy};
-use helpers::TestApp;
+use helpers::{get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -458,6 +458,119 @@ async fn test_import_new_group_is_created() {
     assert_eq!(json["success"], true);
     assert_eq!(json["summary"]["groups_imported"], 1);
     assert_eq!(json["summary"]["groups_skipped"], 0);
+}
+
+/// A group switched out of malware detection stays out after a restore, and
+/// the groups of a backup taken before the flag existed come back with it on.
+#[tokio::test]
+async fn test_group_malware_detection_survives_export_import_round_trip() {
+    let source = test_app().await;
+    sqlx::query("INSERT INTO groups (name, malware_detection_enabled) VALUES ('Servers', 0)")
+        .execute(&source.pool)
+        .await
+        .unwrap();
+    let (_, exported) = do_export(source.router).await;
+    assert_eq!(
+        exported["data"]["groups"][1]["malware_detection_enabled"], false,
+        "{exported}"
+    );
+
+    let mut backup = exported.clone();
+    backup["data"]["groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "name": "Legacy", "comment": null }));
+    let target = test_app().await.router;
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(target, "/groups").await;
+    let flag = |name: &str| {
+        groups
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["name"] == name)
+            .unwrap_or_else(|| panic!("{name} was not restored: {groups}"))
+            ["malware_detection_enabled"]
+            .clone()
+    };
+    assert_eq!(flag("Servers"), false);
+    assert_eq!(flag("Legacy"), true);
+}
+
+/// The import creates only the groups the target lacks. The default group, and
+/// any other the target already has, still take the backup's switch.
+#[tokio::test]
+async fn test_import_restores_the_malware_switch_of_groups_that_already_exist() {
+    let source = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await;
+    sqlx::query("UPDATE groups SET malware_detection_enabled = 0")
+        .execute(&source.pool)
+        .await
+        .unwrap();
+    let (_, backup) = do_export(source.router).await;
+
+    let target = TestApp::builder()
+        .sqlite_backup()
+        .groups(&["IoT"])
+        .build()
+        .await
+        .router;
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = target
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(target, "/groups").await;
+    let switches: Vec<(&str, bool)> = groups
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| {
+            (
+                g["name"].as_str().unwrap(),
+                g["malware_detection_enabled"].as_bool().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(switches, [("Protected", false), ("IoT", false)], "{groups}");
+}
+
+/// A backup taken before the switch existed says nothing about it, so a group
+/// that exists here keeps its own.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_the_malware_switch_here() {
+    let app = test_app().await;
+    sqlx::query("UPDATE groups SET malware_detection_enabled = 0 WHERE is_default = 1")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([{ "name": "Protected", "comment": null }]);
+
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = app
+        .router
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(app.router, "/groups").await;
+    assert_eq!(groups[0]["malware_detection_enabled"], false, "{groups}");
 }
 
 #[tokio::test]
@@ -1050,7 +1163,6 @@ fn customize_pools_rate_limit_and_malware(cfg: &mut Config, office_group: i64) {
     cfg.dns.rate_limit.whitelist = vec!["192.0.2.0/24".into()];
     cfg.dns.malware_detection_enabled = !cfg.dns.malware_detection_enabled;
     cfg.dns.rebinding_protection_enabled = !cfg.dns.rebinding_protection_enabled;
-    cfg.dns.rebinding_allowlist = vec!["nas.example".into()];
     cfg.dns.tunneling_detection.max_fqdn_length = 199;
     cfg.dns.dga_detection.sld_max_length = 33;
     cfg.dns.nxdomain_hijack.probe_interval_secs = 1234;
@@ -1064,7 +1176,6 @@ fn pools_rate_limit_and_malware(cfg: &Config) -> Value {
         "rate_limit": json_of(&cfg.dns.rate_limit),
         "malware_detection_enabled": cfg.dns.malware_detection_enabled,
         "rebinding_protection_enabled": cfg.dns.rebinding_protection_enabled,
-        "rebinding_allowlist": json_of(&cfg.dns.rebinding_allowlist),
         "tunneling_detection": json_of(&cfg.dns.tunneling_detection),
         "dga_detection": json_of(&cfg.dns.dga_detection),
         "nxdomain_hijack": json_of(&cfg.dns.nxdomain_hijack),
@@ -1095,7 +1206,6 @@ async fn test_pools_rate_limit_and_malware_settings_survive_export_import_round_
         cfg.dns.rate_limit = defaults.dns.rate_limit;
         cfg.dns.malware_detection_enabled = defaults.dns.malware_detection_enabled;
         cfg.dns.rebinding_protection_enabled = defaults.dns.rebinding_protection_enabled;
-        cfg.dns.rebinding_allowlist = defaults.dns.rebinding_allowlist;
         cfg.dns.tunneling_detection = defaults.dns.tunneling_detection;
         cfg.dns.dga_detection = defaults.dns.dga_detection;
         cfg.dns.nxdomain_hijack = defaults.dns.nxdomain_hijack;

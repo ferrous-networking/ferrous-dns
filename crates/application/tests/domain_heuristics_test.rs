@@ -12,6 +12,18 @@ fn two_equal_chars_carry_one_bit() {
     assert!((e - 1.0).abs() < 0.01, "expected ~1.0, got {e}");
 }
 
+/// A repeated byte adds its share once, wherever it appears.
+#[test]
+fn repeated_bytes_count_once_per_value() {
+    // -(2/3·log2(2/3) + 1/3·log2(1/3))
+    for data in [b"aab".as_slice(), b"aba", b"baa"] {
+        let e = shannon_entropy(data);
+        assert!((e - 0.918_296).abs() < 1e-5, "{data:?}: got {e}");
+    }
+    let e = shannon_entropy(b"abcdabcd");
+    assert!((e - 2.0).abs() < 1e-6, "expected 2.0, got {e}");
+}
+
 #[test]
 fn encoded_payloads_score_above_words() {
     for word in [b"google".as_slice(), b"www"] {
@@ -54,4 +66,10 @@ fn apex_under_a_compound_suffix_takes_three_labels() {
     assert_eq!(extract_apex("sub.example.co.uk"), "example.co.uk");
     assert_eq!(extract_apex("data.corp.com.br"), "corp.com.br");
     assert_eq!(extract_apex("sub.example.CO.UK"), "example.CO.UK");
+}
+
+#[test]
+fn apex_under_a_generic_tld_takes_two_labels_even_after_a_compound_label() {
+    assert_eq!(extract_apex("a.co.com"), "co.com");
+    assert_eq!(extract_apex("x.example.org.uk.net"), "uk.net");
 }

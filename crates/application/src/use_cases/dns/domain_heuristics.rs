@@ -12,7 +12,11 @@ pub fn shannon_entropy(data: &[u8]) -> f32 {
     }
     let len = data.len() as f32;
     let mut entropy: f32 = 0.0;
-    for &count in &counts {
+    // Walks the input again rather than all 256 buckets: a label is at most
+    // 63 bytes, and this runs on every cache hit. Taking each count zeroes it,
+    // so a repeated byte adds its share once.
+    for &b in data {
+        let count = std::mem::take(&mut counts[b as usize]);
         if count > 0 {
             let p = count as f32 / len;
             entropy -= p * p.log2();
@@ -60,6 +64,11 @@ const COMPOUND_TLDS: &[&str] = &[
 
 /// Whether the last two labels of `domain` form a known compound suffix.
 fn is_compound_tld(domain: &str) -> bool {
+    // Every compound suffix ends in a two-letter country code, so `.com`,
+    // `.net` and the like skip the list.
+    if domain.rsplit('.').next().map_or(0, str::len) != 2 {
+        return false;
+    }
     let mut dot_count = 0;
     for (i, &b) in domain.as_bytes().iter().enumerate().rev() {
         if b == b'.' {

@@ -1,4 +1,3 @@
-use super::guard_whitelist::GuardWhitelist;
 use ferrous_dns_domain::{RecordType, TunnelingAction, TunnelingDetectionConfig};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -25,7 +24,6 @@ pub(super) struct TunnelingGuard {
     max_fqdn_length: usize,
     max_label_length: usize,
     block_null_queries: bool,
-    whitelist: GuardWhitelist,
 }
 
 impl TunnelingGuard {
@@ -36,11 +34,6 @@ impl TunnelingGuard {
             max_fqdn_length: config.max_fqdn_length,
             max_label_length: config.max_label_length,
             block_null_queries: config.block_null_queries,
-            whitelist: GuardWhitelist::new(
-                "dns.tunneling_detection",
-                &config.domain_whitelist,
-                &config.client_whitelist,
-            ),
         }
     }
 
@@ -51,7 +44,6 @@ impl TunnelingGuard {
             max_fqdn_length: 120,
             max_label_length: 50,
             block_null_queries: true,
-            whitelist: GuardWhitelist::new("dns.tunneling_detection", &[], &[]),
         }
     }
 
@@ -59,28 +51,11 @@ impl TunnelingGuard {
         self.action
     }
 
-    pub(super) fn is_client_whitelisted(&self, client_ip: IpAddr) -> bool {
-        self.whitelist.contains_client(client_ip)
-    }
-
     /// Performs O(1) tunneling checks on the hot path.
     ///
     /// Zero heap allocations: `domain` is `&str`, labels are slices.
-    pub(super) fn check(
-        &self,
-        domain: &str,
-        record_type: RecordType,
-        client_ip: IpAddr,
-    ) -> TunnelingVerdict {
+    pub(super) fn check(&self, domain: &str, record_type: RecordType) -> TunnelingVerdict {
         if !self.enabled {
-            return TunnelingVerdict::Clean;
-        }
-
-        if self.is_client_whitelisted(client_ip) {
-            return TunnelingVerdict::Clean;
-        }
-
-        if self.whitelist.contains_domain(domain) {
             return TunnelingVerdict::Clean;
         }
 
@@ -120,127 +95,4 @@ pub struct TunnelingAnalysisEvent {
     pub record_type: RecordType,
     pub client_ip: IpAddr,
     pub was_nxdomain: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const TEST_IP: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 1));
-
-    fn guard_with_defaults() -> TunnelingGuard {
-        TunnelingGuard::from_config(&TunnelingDetectionConfig {
-            enabled: true,
-            ..Default::default()
-        })
-    }
-
-    #[test]
-    fn disabled_guard_always_returns_clean() {
-        let guard = TunnelingGuard::disabled();
-        let result = guard.check("x".repeat(200).as_str(), RecordType::NULL, TEST_IP);
-        assert!(matches!(result, TunnelingVerdict::Clean));
-    }
-
-    #[test]
-    fn short_domain_passes_check() {
-        let guard = guard_with_defaults();
-        let result = guard.check("example.com", RecordType::A, TEST_IP);
-        assert!(matches!(result, TunnelingVerdict::Clean));
-    }
-
-    #[test]
-    fn long_fqdn_triggers_detection() {
-        let guard = guard_with_defaults();
-        let long = format!("{}.example.com", "a".repeat(120));
-        let result = guard.check(&long, RecordType::A, TEST_IP);
-        assert!(matches!(
-            result,
-            TunnelingVerdict::Detected {
-                signal: "fqdn_length",
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn long_label_triggers_detection() {
-        let guard = guard_with_defaults();
-        let domain = format!("{}.example.com", "b".repeat(51));
-        let result = guard.check(&domain, RecordType::A, TEST_IP);
-        assert!(matches!(
-            result,
-            TunnelingVerdict::Detected {
-                signal: "label_length",
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn null_record_type_triggers_detection() {
-        let guard = guard_with_defaults();
-        let result = guard.check("example.com", RecordType::NULL, TEST_IP);
-        assert!(matches!(
-            result,
-            TunnelingVerdict::Detected {
-                signal: "null_record_type",
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn whitelisted_domain_passes_check() {
-        let guard = TunnelingGuard::from_config(&TunnelingDetectionConfig {
-            enabled: true,
-            domain_whitelist: vec!["long-cdn.example.com".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("long-cdn.example.com", RecordType::NULL, TEST_IP);
-        assert!(matches!(result, TunnelingVerdict::Clean));
-    }
-
-    #[test]
-    fn whitelisted_client_passes_check() {
-        let guard = TunnelingGuard::from_config(&TunnelingDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["192.168.1.0/24".to_string()],
-            ..Default::default()
-        });
-        let long = "x".repeat(200);
-        let result = guard.check(&long, RecordType::NULL, TEST_IP);
-        assert!(matches!(result, TunnelingVerdict::Clean));
-    }
-
-    #[test]
-    fn non_whitelisted_client_is_checked() {
-        let guard = TunnelingGuard::from_config(&TunnelingDetectionConfig {
-            enabled: true,
-            client_whitelist: vec!["10.0.0.0/8".to_string()],
-            ..Default::default()
-        });
-        let result = guard.check("example.com", RecordType::NULL, TEST_IP);
-        assert!(matches!(
-            result,
-            TunnelingVerdict::Detected {
-                signal: "null_record_type",
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn normal_record_types_pass() {
-        let guard = guard_with_defaults();
-        for rt in [
-            RecordType::A,
-            RecordType::AAAA,
-            RecordType::TXT,
-            RecordType::MX,
-        ] {
-            let result = guard.check("example.com", rt, TEST_IP);
-            assert!(matches!(result, TunnelingVerdict::Clean));
-        }
-    }
 }

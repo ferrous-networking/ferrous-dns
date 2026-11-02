@@ -3,8 +3,10 @@ mod helpers;
 use ferrous_dns_application::ports::DnsResolution;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockSource, DnsRequest, DomainError, RecordType, TunnelingAction, TunnelingDetectionConfig,
+    BlockSource, ClientProtocol, DnsRequest, DomainError, RecordType, TunnelingAction,
+    TunnelingDetectionConfig,
 };
+use helpers::fast_path::{resolver_with_cached_ip, resolver_with_cached_wire, served, served_wire};
 use helpers::{
     MockBlockFilterEngine, MockDnsResolver, MockQueryLogRepository, MockTunnelingFlagStore,
 };
@@ -63,6 +65,54 @@ async fn resolver_with_response(domain: &str) -> MockDnsResolver {
         )
         .await;
     resolver
+}
+
+/// A cache hit used to skip the phase-1 check, so a name that anyone had
+/// resolved was served to every client until its TTL ran out.
+#[tokio::test]
+async fn the_fast_path_does_not_serve_a_cached_long_label() {
+    let domain = format!("{}.evil.com", "b".repeat(51));
+    let config = tunneling_config(TunnelingAction::Block);
+    let (use_case, log) =
+        make_use_case_with_tunneling(resolver_with_cached_ip(&domain, "1.2.3.4"), &config);
+
+    let result = use_case.try_cache_direct(
+        &domain,
+        RecordType::A,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served,
+    );
+
+    assert!(result.is_none(), "the fast path served it: {result:?}");
+    assert_eq!(
+        log.sync_log_count(),
+        0,
+        "execute logs the block, not the probe"
+    );
+}
+
+#[tokio::test]
+async fn the_wire_fast_path_does_not_serve_a_cached_null_answer() {
+    let config = tunneling_config(TunnelingAction::Block);
+    let (use_case, log) =
+        make_use_case_with_tunneling(resolver_with_cached_wire("example.com"), &config);
+
+    let result = use_case.try_cache_wire_direct(
+        "example.com",
+        RecordType::NULL,
+        CLIENT_IP,
+        ClientProtocol::Udp,
+        served_wire,
+    );
+
+    assert!(result.is_none(), "the wire fast path served it: {result:?}");
+    assert_eq!(log.sync_log_count(), 0);
+    let request = DnsRequest::new("example.com", RecordType::NULL, CLIENT_IP);
+    assert!(matches!(
+        use_case.execute(&request).await,
+        Err(DomainError::DnsTunnelingDetected)
+    ));
 }
 
 #[tokio::test]
@@ -132,6 +182,37 @@ async fn alert_action_allows_long_fqdn() {
     assert!(result.is_ok(), "alert mode should allow the query through");
 }
 
+/// Only NULL is a tunneling record type; the everyday ones pass with the
+/// default settings.
+#[tokio::test]
+async fn everyday_record_types_pass_with_the_default_settings() {
+    let resolver = resolver_with_response("example.com").await;
+    let config = TunnelingDetectionConfig {
+        enabled: true,
+        ..Default::default()
+    };
+    let (use_case, _log) = make_use_case_with_tunneling(resolver, &config);
+
+    for record_type in [
+        RecordType::A,
+        RecordType::AAAA,
+        RecordType::TXT,
+        RecordType::MX,
+    ] {
+        let request = DnsRequest::new("example.com", record_type, CLIENT_IP);
+        let result = use_case.execute(&request).await;
+        assert!(
+            !matches!(result, Err(DomainError::DnsTunnelingDetected)),
+            "{record_type:?}: {result:?}"
+        );
+    }
+    let request = DnsRequest::new("example.com", RecordType::NULL, CLIENT_IP);
+    assert!(matches!(
+        use_case.execute(&request).await,
+        Err(DomainError::DnsTunnelingDetected)
+    ));
+}
+
 #[tokio::test]
 async fn disabled_tunneling_allows_everything() {
     let long_domain = format!("{}.evil.com", "a".repeat(200));
@@ -143,24 +224,6 @@ async fn disabled_tunneling_allows_everything() {
     let (use_case, _log) = make_use_case_with_tunneling(resolver, &config);
 
     let request = DnsRequest::new(long_domain.as_str(), RecordType::NULL, CLIENT_IP);
-    let result = use_case.execute(&request).await;
-
-    assert!(result.is_ok());
-}
-
-#[tokio::test]
-async fn whitelisted_domain_bypasses_guard() {
-    let long_domain = format!("{}.cdn.example.com", "a".repeat(120));
-    let resolver = resolver_with_response(&long_domain).await;
-    let config = TunnelingDetectionConfig {
-        enabled: true,
-        action: TunnelingAction::Block,
-        domain_whitelist: vec![long_domain.clone()],
-        ..Default::default()
-    };
-    let (use_case, _log) = make_use_case_with_tunneling(resolver, &config);
-
-    let request = DnsRequest::new(long_domain.as_str(), RecordType::A, CLIENT_IP);
     let result = use_case.execute(&request).await;
 
     assert!(result.is_ok());

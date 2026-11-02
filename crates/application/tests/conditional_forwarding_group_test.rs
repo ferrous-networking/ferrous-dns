@@ -26,7 +26,7 @@ fn use_case(resolver: Arc<MockDnsResolver>) -> HandleDnsQueryUseCase {
         Arc::new(filter),
         Arc::new(MockQueryLogRepository::new()),
     )
-    .with_rebinding_protection(None, &[])
+    .with_rebinding_protection(None)
 }
 
 fn internal_answer() -> DnsResolution {

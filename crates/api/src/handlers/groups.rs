@@ -89,7 +89,12 @@ async fn create_group(
     let group = state
         .groups
         .create_group
-        .execute(req.name, req.comment, req.enabled.unwrap_or(true))
+        .execute(
+            req.name,
+            req.comment,
+            req.enabled.unwrap_or(true),
+            req.malware_detection_enabled.unwrap_or(true),
+        )
         .await?;
     Ok((
         StatusCode::CREATED,
@@ -117,7 +122,13 @@ async fn update_group(
     let group = state
         .groups
         .update_group
-        .execute(id, req.name, req.enabled, req.comment)
+        .execute(
+            id,
+            req.name,
+            req.enabled,
+            req.comment,
+            req.malware_detection_enabled,
+        )
         .await?;
     let client_count = state
         .groups

@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use helpers::{create_test_db, TestApp};
+use helpers::{create_test_db, get_json, TestApp};
 use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
@@ -260,4 +260,42 @@ async fn test_timeline_reports_the_granularity_it_used() {
         let json: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["granularity"], effective, "requested {requested}");
     }
+}
+
+/// The query log's Allow and Block buttons write the rule into the group the
+/// query was decided in, so every row must say which group that was.
+#[tokio::test]
+async fn test_queries_rows_carry_the_group_they_were_decided_in() {
+    let pool = create_test_db().await;
+    let servers: i64 =
+        sqlx::query_scalar("INSERT INTO groups (name) VALUES ('Servers') RETURNING id")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO query_log (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, query_source, block_source, group_id)
+         VALUES ('1337x.to', 'A', '10.0.1.2', 1, 2, 0, 'client', 'dga_detection', ?),
+                ('old.example', 'A', '10.0.1.3', 0, 2, 0, 'client', NULL, NULL)",
+    )
+    .bind(servers)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let app = TestApp::builder().pool(pool).build().await.router;
+
+    let json = get_json(app, "/queries?period=24h").await;
+
+    let group_of = |domain: &str| {
+        json["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["domain"] == domain)
+            .unwrap_or_else(|| panic!("no row for {domain}: {json}"))
+            .get("group_id")
+            .cloned()
+    };
+    assert_eq!(group_of("1337x.to"), Some(Value::from(servers)));
+    // A row logged before queries carried a group answers null, not a guess.
+    assert_eq!(group_of("old.example"), Some(Value::Null));
 }

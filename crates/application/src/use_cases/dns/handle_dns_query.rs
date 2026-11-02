@@ -11,8 +11,8 @@ use super::upstream_admission::UpstreamAdmission;
 use crate::drop_counter::DropCounter;
 use crate::ports::{
     BlockFilterEnginePort, ClientRepository, DgaFlagStore, DnsResolution, DnsResolver,
-    FilterDecision, NxdomainHijackIpStore, QueryLogRepository, ResponseIpFilterStore,
-    SafeSearchEnginePort, TunnelingFlagStore,
+    FilterDecision, MalwareExemptionPort, NxdomainHijackIpStore, QueryLogRepository,
+    ResponseIpFilterStore, SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
     BlockSource, ClientProtocol, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest,
@@ -24,6 +24,7 @@ use lru::LruCache;
 use std::cell::RefCell;
 use std::net::{IpAddr, Ipv6Addr};
 use std::num::NonZeroUsize;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::SemaphorePermit;
@@ -36,6 +37,25 @@ const LAST_SEEN_CAPACITY: NonZeroUsize = match NonZeroUsize::new(8_192) {
 thread_local! {
     static LAST_SEEN_TRACKER: RefCell<LruCache<IpAddr, u64>> =
         RefCell::new(LruCache::new(LAST_SEEN_CAPACITY));
+}
+
+/// What the operator's rules leave a query to be checked against.
+#[derive(Clone, Copy)]
+struct Screening {
+    group_id: i64,
+    /// The answer's CNAME chain goes through the block filter (CNAME cloaking).
+    cloaking: bool,
+    /// The malware detectors run. An explicit allow lifts them, since clearing
+    /// their false positives is what the allowlist is for, and so does a group
+    /// with Malware Detection switched off.
+    detectors: bool,
+}
+
+/// A detector that judged the query by its name alone, with the signal it
+/// fired on.
+enum NameHit {
+    Tunneling(&'static str),
+    Dga(&'static str),
 }
 
 pub struct HandleDnsQueryUseCase {
@@ -55,6 +75,7 @@ pub struct HandleDnsQueryUseCase {
     dga_guard: DgaGuard,
     dga_event_tx: Option<tokio::sync::mpsc::Sender<DgaAnalysisEvent>>,
     dga_flag_store: Option<Arc<dyn DgaFlagStore>>,
+    malware_exemptions: Option<Arc<dyn MalwareExemptionPort>>,
     cookie_guard: Option<DnsCookieGuard>,
     upstream_admission: Option<UpstreamAdmission>,
     dnssec_enforce: bool,
@@ -85,6 +106,7 @@ impl HandleDnsQueryUseCase {
             dga_guard: DgaGuard::disabled(),
             dga_event_tx: None,
             dga_flag_store: None,
+            malware_exemptions: None,
             cookie_guard: None,
             upstream_admission: None,
             dnssec_enforce: false,
@@ -146,13 +168,9 @@ impl HandleDnsQueryUseCase {
 
     /// Enables DNS rebinding protection. Resolving a public domain to a private IP
     /// is blocked unless the domain matches `local_domain` suffix, is served by the
-    /// local DNS server, or is explicitly listed in `allowlist`.
-    pub fn with_rebinding_protection(
-        mut self,
-        local_domain: Option<&str>,
-        allowlist: &[String],
-    ) -> Self {
-        self.rebinding_guard = Some(RebindingGuard::new(local_domain, allowlist));
+    /// local DNS server, or is explicitly allowed.
+    pub fn with_rebinding_protection(mut self, local_domain: Option<&str>) -> Self {
+        self.rebinding_guard = Some(RebindingGuard::new(local_domain));
         self
     }
 
@@ -241,6 +259,13 @@ impl HandleDnsQueryUseCase {
         self
     }
 
+    /// Skips the malware detectors for the clients of a group with Malware
+    /// Detection switched off.
+    pub fn with_malware_exemptions(mut self, exemptions: Arc<dyn MalwareExemptionPort>) -> Self {
+        self.malware_exemptions = Some(exemptions);
+        self
+    }
+
     /// Enables RFC 7873 DNS Cookie validation on the hot path.
     pub fn with_dns_cookies(mut self, guard: DnsCookieGuard) -> Self {
         self.cookie_guard = Some(guard);
@@ -280,15 +305,8 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Emits a tunneling analysis event to the background task (non-blocking).
-    /// Skips emission for whitelisted clients.
     fn emit_tunneling_event(&self, request: &DnsRequest, was_nxdomain: bool) {
         if let Some(ref tx) = self.tunneling_event_tx {
-            if self
-                .tunneling_guard
-                .is_client_whitelisted(request.client_ip)
-            {
-                return;
-            }
             let _ = tx.try_send(TunnelingAnalysisEvent {
                 domain: Arc::clone(&request.domain),
                 record_type: request.record_type,
@@ -325,12 +343,8 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Emits a DGA analysis event to the background task (non-blocking).
-    /// Skips emission for whitelisted clients.
     fn emit_dga_event(&self, request: &DnsRequest) {
         if let Some(ref tx) = self.dga_event_tx {
-            if self.dga_guard.is_client_whitelisted(request.client_ip) {
-                return;
-            }
             let _ = tx.try_send(DgaAnalysisEvent {
                 domain: Arc::clone(&request.domain),
                 client_ip: request.client_ip,
@@ -410,10 +424,88 @@ impl HandleDnsQueryUseCase {
         })
     }
 
-    /// Fast-path admission shared by both cache probes: `None` means fall through
-    /// to [`Self::execute`], otherwise `(group_id, explicitly_allowed)`.
     #[inline]
-    fn cache_gate(&self, domain: &str, client_ip: IpAddr) -> Option<(i64, bool)> {
+    fn screen_query(&self, group_id: i64, filter_decision: FilterDecision) -> Screening {
+        let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
+        Screening {
+            group_id,
+            cloaking: !explicitly_allowed,
+            detectors: !explicitly_allowed
+                && !self
+                    .malware_exemptions
+                    .as_ref()
+                    .is_some_and(|exemptions| exemptions.is_exempt(group_id)),
+        }
+    }
+
+    /// Runs the detectors that judge a query by its name alone, each phase-1
+    /// check before its phase-2 flag, and hands every hit to `on_hit` in that
+    /// order. Both paths share this one list: [`Self::execute`] applies each
+    /// hit's action, while a cache probe gives up at the first one.
+    #[inline]
+    fn screen_name<B>(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        mut on_hit: impl FnMut(NameHit) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
+        if let TunnelingVerdict::Detected {
+            signal,
+            measured,
+            threshold,
+        } = self.tunneling_guard.check(domain, record_type)
+        {
+            tracing::debug!(
+                domain = %domain,
+                signal,
+                measured,
+                threshold,
+                "Tunneling phase-1 signal"
+            );
+            on_hit(NameHit::Tunneling(signal))?;
+        }
+        if self
+            .tunneling_flag_store
+            .as_ref()
+            .is_some_and(|store| store.is_flagged(domain))
+        {
+            on_hit(NameHit::Tunneling("flagged_domain"))?;
+        }
+        if let DgaVerdict::Detected {
+            signal,
+            measured,
+            threshold,
+        } = self.dga_guard.check(domain)
+        {
+            tracing::debug!(
+                domain = %domain,
+                signal,
+                measured,
+                threshold,
+                "DGA phase-1 signal"
+            );
+            on_hit(NameHit::Dga(signal))?;
+        }
+        if self
+            .dga_flag_store
+            .as_ref()
+            .is_some_and(|store| store.is_flagged(domain))
+        {
+            on_hit(NameHit::Dga("flagged_domain"))?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    /// Fast-path admission shared by both cache probes: `None` means fall
+    /// through to [`Self::execute`], which logs the query and applies whatever
+    /// stopped it here.
+    #[inline]
+    fn cache_gate(
+        &self,
+        domain: &str,
+        record_type: RecordType,
+        client_ip: IpAddr,
+    ) -> Option<Screening> {
         // Strict DNS Cookies validate every UDP query, which `execute` does.
         if self
             .cookie_guard
@@ -434,25 +526,18 @@ impl HandleDnsQueryUseCase {
             return None;
         }
 
-        let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
-
-        // An explicitly allowed domain is exempt from the heuristic detectors —
-        // clearing their false positives is what the allowlist is for.
-        if !explicitly_allowed {
-            if let Some(ref store) = self.tunneling_flag_store {
-                if store.is_flagged(domain) {
-                    return None;
-                }
-            }
-
-            if let Some(ref store) = self.dga_flag_store {
-                if store.is_flagged(domain) {
-                    return None;
-                }
-            }
+        let screening = self.screen_query(group_id, filter_decision);
+        // The cache is shared across groups, so a name another client resolved
+        // is checked here exactly as on a miss.
+        if screening.detectors
+            && self
+                .screen_name(domain, record_type, |_| ControlFlow::Break(()))
+                .is_break()
+        {
+            return None;
         }
 
-        Some((group_id, explicitly_allowed))
+        Some(screening)
     }
 
     fn cache_hit_log(
@@ -503,7 +588,8 @@ impl HandleDnsQueryUseCase {
         respond: impl FnOnce(&[u8], u32) -> Option<R>,
     ) -> Option<R> {
         let tsc_start = tsc_timer::now();
-        let (group_id, explicitly_allowed) = self.cache_gate(domain, client_ip)?;
+        let screening = self.cache_gate(domain, record_type, client_ip)?;
+        let group_id = screening.group_id;
 
         let resolution = self
             .resolver
@@ -513,7 +599,7 @@ impl HandleDnsQueryUseCase {
             return None;
         }
         // Fall through to execute() so it logs and blocks it.
-        if !explicitly_allowed && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
+        if screening.cloaking && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
             return None;
         }
         let wire = resolution.upstream_wire_data.as_deref()?;
@@ -554,7 +640,8 @@ impl HandleDnsQueryUseCase {
         respond: impl FnOnce(&[IpAddr], u32) -> Option<R>,
     ) -> Option<R> {
         let tsc_start = tsc_timer::now();
-        let (group_id, explicitly_allowed) = self.cache_gate(domain, client_ip)?;
+        let screening = self.cache_gate(domain, record_type, client_ip)?;
+        let group_id = screening.group_id;
 
         let resolution = self
             .resolver
@@ -563,9 +650,8 @@ impl HandleDnsQueryUseCase {
             return None;
         }
         // Fall through to execute() so it logs and applies the configured action.
-        if !explicitly_allowed
-            && (self.is_cname_cloaked(&resolution.cname_chain, group_id)
-                || self.is_suspicious_cached_answer(domain, &resolution))
+        if (screening.cloaking && self.is_cname_cloaked(&resolution.cname_chain, group_id))
+            || (screening.detectors && self.is_suspicious_cached_answer(domain, &resolution))
         {
             return None;
         }
@@ -743,53 +829,25 @@ impl HandleDnsQueryUseCase {
             });
             return Err(DomainError::Blocked);
         }
-        let explicitly_allowed = matches!(filter_decision, FilterDecision::ExplicitAllow);
+        let screening = self.screen_query(group_id, filter_decision);
 
-        if !explicitly_allowed {
-            if let TunnelingVerdict::Detected {
-                signal,
-                measured,
-                threshold,
-            } =
-                self.tunneling_guard
-                    .check(&request.domain, request.record_type, request.client_ip)
-            {
-                tracing::debug!(
-                    domain = %request.domain,
-                    signal,
-                    measured,
-                    threshold,
-                    "Tunneling phase-1 signal"
-                );
-                self.apply_tunneling_action(request, signal, elapsed_us(), group_id)?;
-            }
-
-            if let Some(ref store) = self.tunneling_flag_store {
-                if store.is_flagged(&request.domain) {
-                    self.apply_tunneling_action(request, "flagged_domain", elapsed_us(), group_id)?;
+        if screening.detectors {
+            let hits = self.screen_name(&request.domain, request.record_type, |hit| {
+                let applied = match hit {
+                    NameHit::Tunneling(signal) => {
+                        self.apply_tunneling_action(request, signal, elapsed_us(), group_id)
+                    }
+                    NameHit::Dga(signal) => {
+                        self.apply_dga_action(request, signal, elapsed_us(), group_id)
+                    }
+                };
+                match applied {
+                    Ok(()) => ControlFlow::Continue(()),
+                    Err(blocked) => ControlFlow::Break(blocked),
                 }
-            }
-
-            if let DgaVerdict::Detected {
-                signal,
-                measured,
-                threshold,
-            } = self.dga_guard.check(&request.domain, request.client_ip)
-            {
-                tracing::debug!(
-                    domain = %request.domain,
-                    signal,
-                    measured,
-                    threshold,
-                    "DGA phase-1 signal"
-                );
-                self.apply_dga_action(request, signal, elapsed_us(), group_id)?;
-            }
-
-            if let Some(ref store) = self.dga_flag_store {
-                if store.is_flagged(&request.domain) {
-                    self.apply_dga_action(request, "flagged_domain", elapsed_us(), group_id)?;
-                }
+            });
+            if let ControlFlow::Break(blocked) = hits {
+                return Err(blocked);
             }
         }
 
@@ -824,7 +882,7 @@ impl HandleDnsQueryUseCase {
 
         if let Some(cached) = self.resolver.try_cache(&dns_query) {
             if cached.has_response_data() {
-                if !explicitly_allowed && self.is_cname_cloaked(&cached.cname_chain, group_id) {
+                if screening.cloaking && self.is_cname_cloaked(&cached.cname_chain, group_id) {
                     return Err(self.block_cname_cloaking(
                         request,
                         &cached,
@@ -832,7 +890,7 @@ impl HandleDnsQueryUseCase {
                         elapsed_us(),
                     ));
                 }
-                if !explicitly_allowed && self.is_suspicious_cached_answer(&request.domain, &cached)
+                if screening.detectors && self.is_suspicious_cached_answer(&request.domain, &cached)
                 {
                     // Fall through to full resolve path for logging and action.
                 } else {
@@ -865,7 +923,7 @@ impl HandleDnsQueryUseCase {
         let _upstream_slot = self.admit_upstream()?;
         match self.resolver.resolve(&dns_query).await {
             Ok(resolution) => {
-                if !explicitly_allowed && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
+                if screening.cloaking && self.is_cname_cloaked(&resolution.cname_chain, group_id) {
                     return Err(self.block_cname_cloaking(
                         request,
                         &resolution,
@@ -873,7 +931,7 @@ impl HandleDnsQueryUseCase {
                         elapsed_us(),
                     ));
                 }
-                if !explicitly_allowed && self.is_rebinding_attempt(&request.domain, &resolution) {
+                if screening.detectors && self.is_rebinding_attempt(&request.domain, &resolution) {
                     self.log(&QueryLog {
                         blocked: true,
                         response_status: Some("BLOCKED"),
@@ -882,7 +940,7 @@ impl HandleDnsQueryUseCase {
                     });
                     return Err(DomainError::Blocked);
                 }
-                if !explicitly_allowed
+                if screening.detectors
                     && self.nxdomain_hijack_guard.is_hijacked_response(&resolution)
                 {
                     match self.nxdomain_hijack_guard.action() {
@@ -904,7 +962,7 @@ impl HandleDnsQueryUseCase {
                         }
                     }
                 }
-                if !explicitly_allowed && self.response_ip_filter_guard.has_blocked_ip(&resolution)
+                if screening.detectors && self.response_ip_filter_guard.has_blocked_ip(&resolution)
                 {
                     match self.response_ip_filter_guard.action() {
                         ResponseIpFilterAction::Block => {
@@ -953,7 +1011,7 @@ impl HandleDnsQueryUseCase {
                 // An internal pool's NXDOMAIN is the LAN's own: it feeds neither
                 // the tunneling ratio nor the NXDOMAIN budget.
                 let upstream_nxdomain = Self::spends_nxdomain_budget(&resolution);
-                if !explicitly_allowed {
+                if screening.detectors {
                     self.emit_tunneling_event(request, upstream_nxdomain);
                     self.emit_dga_event(request);
                 }
@@ -996,7 +1054,7 @@ impl HandleDnsQueryUseCase {
             Err(e) => {
                 let response_status = match &e {
                     DomainError::NxDomain => {
-                        if !explicitly_allowed {
+                        if screening.detectors {
                             self.emit_tunneling_event(request, true);
                             self.emit_dga_event(request);
                         }

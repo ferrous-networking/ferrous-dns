@@ -91,7 +91,6 @@ pub struct SnapshotDnsConfig {
 pub struct SnapshotMalwareConfig {
     pub enabled: bool,
     pub rebinding_protection_enabled: bool,
-    pub rebinding_allowlist: Vec<String>,
     pub tunneling_detection: TunnelingDetectionConfig,
     pub dga_detection: DgaDetectionConfig,
     pub nxdomain_hijack: NxdomainHijackConfig,
@@ -165,6 +164,10 @@ pub struct GroupSnapshot {
     pub comment: Option<String>,
     #[serde(default)]
     pub is_default: bool,
+    /// Absent from older backups: a group they create starts with the
+    /// detectors on, and one that exists here keeps its own switch.
+    #[serde(default)]
+    pub malware_detection_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,6 +11,7 @@
             searchDomain: '',
             searchClient: '',
             clients: [],
+            groupNames: {},
             autoRefresh: false,
             _hasMore: false,
             stats: {allowed: 0, blocked: 0, cacheHits: 0, upstream: 0, queries_total: 0},
@@ -24,7 +25,9 @@
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
                 await checkAuth();
                 startRatePolling(rate => { this.queryRate = rate; });
-                await Promise.all([this.loadQueries(), this.loadStats(), this.loadClients()]);
+                await Promise.all([
+                    this.loadQueries(), this.loadStats(), this.loadClients(), this.loadGroups()
+                ]);
                 scheduleLucide(100);
                 this.startPolling();
                 document.addEventListener('visibilitychange', () => {
@@ -158,6 +161,23 @@
                     : client.ip_address;
             },
 
+            async loadGroups() {
+                try {
+                    const res = await fetch(`${API_BASE}/groups`);
+                    if (res.ok) {
+                        this.groupNames = Object.fromEntries(
+                            (await res.json()).map(g => [g.id, g.name]));
+                    }
+                } catch (e) {
+                    console.error('Failed to load groups:', e);
+                }
+            },
+
+            groupLabel(groupId) {
+                const name = this.groupNames[groupId];
+                return name ? `group "${name}"` : `group #${groupId}`;
+            },
+
             coalescedTip(query) {
                 return query.coalesced === 'leader'
                     ? 'Coalesced: identical queries that arrived\nwhile this one was in flight shared its answer'
@@ -216,8 +236,13 @@
                 const isBlocked = query.blocked;
                 const action = isBlocked ? 'allow' : 'deny';
                 const label = isBlocked ? 'Allow' : 'Block';
+                // The rule goes where the query was decided: a rule in any other
+                // group would not apply to this client. Rows logged before queries
+                // carried a group fall back to the default group.
+                const groupId = query.group_id ?? 1;
+                const group = this.groupLabel(groupId);
 
-                if (!isBlocked && !confirm(`Block domain "${domain}"?`)) return;
+                if (!isBlocked && !confirm(`Block domain "${domain}" for ${group}?`)) return;
 
                 try {
                     const res = await fetch(`${API_BASE}/managed-domains`, {
@@ -227,15 +252,15 @@
                             name: `qlog-${action}-${domain}`,
                             domain: domain,
                             action: action,
-                            group_id: 1,
+                            group_id: groupId,
                             comment: `Added from Query Log (${label})`,
                             enabled: true
                         })
                     });
                     if (res.ok) {
-                        alert(`Domain "${domain}" ${isBlocked ? 'allowed' : 'blocked'} successfully.`);
+                        alert(`Domain "${domain}" ${isBlocked ? 'allowed' : 'blocked'} for ${group}.`);
                     } else if (res.status === 409) {
-                        alert(`A rule for "${domain}" already exists. Manage it in DNS Filter.`);
+                        alert(`A rule for "${domain}" already exists in ${group}. Manage it in DNS Filter.`);
                     } else {
                         console.error('Failed to create managed domain:', await res.text());
                         alert(`Failed to create rule for "${domain}".`);

@@ -41,6 +41,8 @@ Group your clients to apply independent policies:
 4. Assign clients to the group
 5. Configure the group's blocklists and schedules
 
+To put one device or a whole range in a group, use **Add Client or Subnet** on the **Clients** page. Enter an IP (`192.168.1.50`) to add a single client with its group, or a CIDR (`192.168.1.0/24`) to add a subnet: every client in the range that has no group of its own then belongs to the subnet's group. A client's own group wins over its subnet's, and a client in neither belongs to **Protected**, the default group.
+
 ### Group Policies
 
 Each group can have its own:
@@ -48,7 +50,8 @@ Each group can have its own:
 | Policy | Description |
 |:-------|:------------|
 | **Blocklists** | Which blocklists apply to this group |
-| **Allowlist** | Domains always allowed for this group |
+| **Allowlist** | Domains always allowed for this group; an allow also clears a [malware detection](malware-detection.md#allowlisted-domains) false positive |
+| **Malware Detection** | On by default. Off exempts every client in the group from the five [malware detectors](malware-detection.md#exempt-clients), such as a monitoring server; blocklists and CNAME cloaking still apply. Hidden while the master switch in **Settings → Malware Detection** is off |
 | **Safe Search** | Force safe search on search engines |
 | **Scheduling** | Time-based blocking rules |
 | **Conditional forwarding** | Send chosen domains to this group's own upstream pool (split-horizon), cached apart from other groups — see [Conditional Forwarding](../configuration/dns.md#conditional-forwarding) |
@@ -113,7 +116,7 @@ The Clients section of the dashboard shows:
 
 Groups themselves are managed one level up, under **Groups**:
 
-![Groups page — the Protected default group plus Guest, IoT, Kids and Work, each with its client count](../assets/dashboard/dashboard-groups.png)
+![Groups page — the add-group form with Group Enabled and Malware Detection checkboxes, above the Protected default group plus Guest, IoT, Kids, Servers and Work, each with its client count; Servers has Malware Detection off](../assets/dashboard/dashboard-groups.png)
 
 ---
 

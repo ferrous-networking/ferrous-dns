@@ -4,8 +4,8 @@
 use async_trait::async_trait;
 use ferrous_dns_application::ports::{
     BlockFilterEnginePort, BlocklistSourceRepository, ClientRepository, DnsResolution, DnsResolver,
-    FilterDecision, GroupRepository, ManagedDomainRepository, ManagedDomainUpdate,
-    QueryLogRepository, TimeGranularity, WhitelistSourceRepository,
+    FilterDecision, GroupRepository, MalwareExemptionPort, ManagedDomainRepository,
+    ManagedDomainUpdate, QueryLogRepository, TimeGranularity, WhitelistSourceRepository,
 };
 use ferrous_dns_domain::{
     BlockSource, BlocklistSource, Client, ClientStats, DnsQuery, DnssecStats, DomainAction,
@@ -899,6 +899,7 @@ impl MockGroupRepository {
             enabled: true,
             comment: Some(Arc::from("Default group")),
             is_default: true,
+            malware_detection_enabled: true,
             created_at: None,
             updated_at: None,
         };
@@ -929,6 +930,7 @@ impl GroupRepository for MockGroupRepository {
         name: String,
         comment: Option<String>,
         enabled: bool,
+        malware_detection_enabled: bool,
     ) -> Result<Group, DomainError> {
         let mut groups = self.groups.write().await;
         if groups.iter().any(|g| g.name.as_ref() == name.as_str()) {
@@ -946,6 +948,7 @@ impl GroupRepository for MockGroupRepository {
             enabled,
             comment: comment.as_deref().map(Arc::from),
             is_default: false,
+            malware_detection_enabled,
             created_at: None,
             updated_at: None,
         };
@@ -978,6 +981,7 @@ impl GroupRepository for MockGroupRepository {
         name: Option<String>,
         enabled: Option<bool>,
         comment: Option<String>,
+        malware_detection_enabled: Option<bool>,
     ) -> Result<Group, DomainError> {
         let mut groups = self.groups.write().await;
         let group = groups
@@ -993,6 +997,9 @@ impl GroupRepository for MockGroupRepository {
         }
         if let Some(c) = comment {
             group.comment = Some(Arc::from(c.as_str()));
+        }
+        if let Some(m) = malware_detection_enabled {
+            group.malware_detection_enabled = m;
         }
         Ok(group.clone())
     }
@@ -1411,6 +1418,7 @@ pub struct MockBlockFilterEngine {
     blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     cname_blocked_domains: Arc<std::sync::RwLock<HashSet<String>>>,
     explicitly_allowed_domains: Arc<std::sync::RwLock<HashSet<String>>>,
+    group_allowed_domains: Arc<std::sync::RwLock<HashSet<(String, i64)>>>,
     client_group: Arc<std::sync::RwLock<i64>>,
 }
 
@@ -1422,6 +1430,7 @@ impl MockBlockFilterEngine {
             blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             cname_blocked_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             explicitly_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
+            group_allowed_domains: Arc::new(std::sync::RwLock::new(HashSet::new())),
             client_group: Arc::new(std::sync::RwLock::new(1)),
         }
     }
@@ -1455,6 +1464,15 @@ impl MockBlockFilterEngine {
             .insert(domain.to_string());
     }
 
+    /// Allows `domain` for the clients of `group_id` only, as a managed
+    /// domain does.
+    pub fn allow_domain_in_group(&self, domain: &str, group_id: i64) {
+        self.group_allowed_domains
+            .write()
+            .unwrap()
+            .insert((domain.to_string(), group_id));
+    }
+
     pub fn is_cname_blocked(&self, domain: &str) -> bool {
         self.cname_blocked_domains.read().unwrap().contains(domain)
     }
@@ -1472,12 +1490,17 @@ impl BlockFilterEnginePort for MockBlockFilterEngine {
         *self.client_group.read().unwrap()
     }
 
-    fn check(&self, domain: &str, _group_id: i64) -> FilterDecision {
+    fn check(&self, domain: &str, group_id: i64) -> FilterDecision {
         if self
             .explicitly_allowed_domains
             .read()
             .unwrap()
             .contains(domain)
+            || self
+                .group_allowed_domains
+                .read()
+                .unwrap()
+                .contains(&(domain.to_string(), group_id))
         {
             return FilterDecision::ExplicitAllow;
         }
@@ -1648,5 +1671,54 @@ impl Default for MockDgaFlagStore {
 impl DgaFlagStore for MockDgaFlagStore {
     fn is_flagged(&self, domain: &str) -> bool {
         self.flagged.read().unwrap().contains(domain)
+    }
+}
+
+/// The groups the malware detectors skip, set by hand; `reload` only counts.
+#[derive(Clone, Default)]
+pub struct MockMalwareExemptions {
+    exempt: Arc<std::sync::RwLock<HashSet<i64>>>,
+    reloads: Arc<std::sync::atomic::AtomicUsize>,
+    reload_fails: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl MockMalwareExemptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_exempt(&self, group_id: i64, exempt: bool) {
+        let mut groups = self.exempt.write().unwrap();
+        if exempt {
+            groups.insert(group_id);
+        } else {
+            groups.remove(&group_id);
+        }
+    }
+
+    pub fn reload_count(&self) -> usize {
+        self.reloads.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Every later `reload` fails, as a locked database would make it.
+    pub fn fail_reloads(&self) {
+        self.reload_fails
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[async_trait]
+impl MalwareExemptionPort for MockMalwareExemptions {
+    fn is_exempt(&self, group_id: i64) -> bool {
+        self.exempt.read().unwrap().contains(&group_id)
+    }
+
+    async fn reload(&self) -> Result<(), DomainError> {
+        self.reloads
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.reload_fails.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(DomainError::DatabaseError("database is locked".to_string()));
+        }
+        Ok(())
     }
 }

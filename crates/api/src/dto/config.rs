@@ -85,8 +85,6 @@ pub struct DnsConfigResponse {
     /// whatever its own `enabled` says.
     pub malware_detection_enabled: bool,
     pub rebinding_protection_enabled: bool,
-    /// Exact domain names exempt from rebinding protection.
-    pub rebinding_allowlist: Vec<String>,
     pub tunneling_detection: TunnelingDetectionConfigResponse,
     pub dga_detection: DgaDetectionConfigResponse,
     pub nxdomain_hijack: NxdomainHijackConfigResponse,
@@ -125,8 +123,6 @@ pub struct TunnelingDetectionConfigResponse {
     pub nxdomain_ratio_threshold: f32,
     pub confidence_threshold: f32,
     pub stale_entry_ttl_secs: u64,
-    pub domain_whitelist: Vec<String>,
-    pub client_whitelist: Vec<String>,
 }
 
 impl From<&TunnelingDetectionConfig> for TunnelingDetectionConfigResponse {
@@ -144,8 +140,6 @@ impl From<&TunnelingDetectionConfig> for TunnelingDetectionConfigResponse {
             nxdomain_ratio_threshold: c.nxdomain_ratio_threshold,
             confidence_threshold: c.confidence_threshold,
             stale_entry_ttl_secs: c.stale_entry_ttl_secs,
-            domain_whitelist: c.domain_whitelist.clone(),
-            client_whitelist: c.client_whitelist.clone(),
         }
     }
 }
@@ -164,8 +158,6 @@ pub struct DgaDetectionConfigResponse {
     pub dga_rate_per_client: u32,
     pub confidence_threshold: f32,
     pub stale_entry_ttl_secs: u64,
-    pub domain_whitelist: Vec<String>,
-    pub client_whitelist: Vec<String>,
 }
 
 impl From<&DgaDetectionConfig> for DgaDetectionConfigResponse {
@@ -182,8 +174,6 @@ impl From<&DgaDetectionConfig> for DgaDetectionConfigResponse {
             dga_rate_per_client: c.dga_rate_per_client,
             confidence_threshold: c.confidence_threshold,
             stale_entry_ttl_secs: c.stale_entry_ttl_secs,
-            domain_whitelist: c.domain_whitelist.clone(),
-            client_whitelist: c.client_whitelist.clone(),
         }
     }
 }
@@ -420,7 +410,6 @@ pub struct DnsConfigUpdate {
     pub rate_limit: Option<RateLimitConfigUpdate>,
     pub malware_detection_enabled: Option<bool>,
     pub rebinding_protection_enabled: Option<bool>,
-    pub rebinding_allowlist: Option<Vec<String>>,
     pub tunneling_detection: Option<TunnelingDetectionConfigUpdate>,
     pub dga_detection: Option<DgaDetectionConfigUpdate>,
     pub nxdomain_hijack: Option<NxdomainHijackConfigUpdate>,
@@ -459,8 +448,6 @@ pub struct TunnelingDetectionConfigUpdate {
     pub nxdomain_ratio_threshold: Option<f32>,
     pub confidence_threshold: Option<f32>,
     pub stale_entry_ttl_secs: Option<u64>,
-    pub domain_whitelist: Option<Vec<String>>,
-    pub client_whitelist: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]
@@ -477,8 +464,6 @@ pub struct DgaDetectionConfigUpdate {
     pub dga_rate_per_client: Option<u32>,
     pub confidence_threshold: Option<f32>,
     pub stale_entry_ttl_secs: Option<u64>,
-    pub domain_whitelist: Option<Vec<String>>,
-    pub client_whitelist: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Clone, ToSchema)]

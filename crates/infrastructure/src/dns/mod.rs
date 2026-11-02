@@ -9,6 +9,7 @@ pub mod forwarding;
 #[cfg(feature = "fuzzing")]
 pub mod fuzz_api;
 pub mod load_balancer;
+pub mod malware_exemption;
 pub mod nxdomain_hijack;
 pub mod proxy_protocol;
 pub mod resolver;
@@ -31,6 +32,7 @@ pub use load_balancer::{
     HealthChecker, PoolManager, ServerHealth, ServerStatus, UpstreamHealthAdapter,
     UpstreamReloadAdapter,
 };
+pub use malware_exemption::GroupMalwareExemptions;
 pub use nxdomain_hijack::NxdomainHijackDetector;
 pub use response_ip_filter::ResponseIpFilterDetector;
 pub use safe_search::SafeSearchEnforcer;

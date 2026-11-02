@@ -631,7 +631,6 @@ fn malware_settings_changed_from_defaults() -> Config {
     let dns = &mut config.dns;
     dns.malware_detection_enabled = false;
     dns.rebinding_protection_enabled = false;
-    dns.rebinding_allowlist = vec!["router.example.com".into()];
 
     let t = &mut dns.tunneling_detection;
     t.enabled = false;
@@ -646,8 +645,6 @@ fn malware_settings_changed_from_defaults() -> Config {
     t.nxdomain_ratio_threshold = 0.35;
     t.confidence_threshold = 0.85;
     t.stale_entry_ttl_secs = 600;
-    t.domain_whitelist = vec!["cdn.example.com".into()];
-    t.client_whitelist = vec!["10.0.0.50".into(), "192.168.10.0/24".into()];
 
     let d = &mut dns.dga_detection;
     d.enabled = false;
@@ -661,8 +658,6 @@ fn malware_settings_changed_from_defaults() -> Config {
     d.dga_rate_per_client = 20;
     d.confidence_threshold = 0.75;
     d.stale_entry_ttl_secs = 900;
-    d.domain_whitelist = vec!["xn--bcher-kva.de".into()];
-    d.client_whitelist = vec!["fd00::/8".into()];
 
     let h = &mut dns.nxdomain_hijack;
     h.enabled = false;
@@ -699,7 +694,6 @@ fn test_save_and_reload_preserves_every_malware_detection_setting() {
         back.rebinding_protection_enabled,
         saved.rebinding_protection_enabled
     );
-    assert_eq!(back.rebinding_allowlist, saved.rebinding_allowlist);
     // The structs don't derive PartialEq; their serialized form compares every field.
     for (saved, back) in [
         (
@@ -721,6 +715,42 @@ fn test_save_and_reload_preserves_every_malware_detection_setting() {
     ] {
         assert_eq!(back, saved);
     }
+}
+
+/// A file written by an older release still holds the exemption lists. The
+/// first save drops them, and leaves the keys around them as they were.
+#[test]
+fn test_save_drops_the_retired_exemption_lists() {
+    let input = default_config_toml().replacen(
+        "[dns]\n",
+        "[dns]\nrebinding_allowlist = [\"router.example.com\"]\n",
+        1,
+    ) + "\n[dns.tunneling_detection]\n\
+           max_fqdn_length = 150\n\
+           domain_whitelist = [\"cdn.example.com\"]\n\
+           client_whitelist = [\"10.0.0.0/8\"]\n\
+           \n[dns.dga_detection]\n\
+           domain_whitelist = []\n\
+           client_whitelist = [\"fd00::/8\"]\n";
+    assert!(
+        input.contains("rebinding_allowlist"),
+        "fixture: no [dns] table"
+    );
+    let config = load_config(&input);
+
+    let written = save_and_reparse(&config, &input).to_string();
+
+    for key in [
+        "rebinding_allowlist",
+        "domain_whitelist",
+        "client_whitelist",
+    ] {
+        assert!(
+            !written.contains(key),
+            "{key} survived the save:\n{written}"
+        );
+    }
+    assert!(written.contains("max_fqdn_length = 150"), "{written}");
 }
 
 #[test]
