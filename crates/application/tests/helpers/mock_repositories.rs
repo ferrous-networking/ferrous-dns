@@ -1679,6 +1679,7 @@ impl DgaFlagStore for MockDgaFlagStore {
 pub struct MockMalwareExemptions {
     exempt: Arc<std::sync::RwLock<HashSet<i64>>>,
     reloads: Arc<std::sync::atomic::AtomicUsize>,
+    reload_fails: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl MockMalwareExemptions {
@@ -1698,6 +1699,12 @@ impl MockMalwareExemptions {
     pub fn reload_count(&self) -> usize {
         self.reloads.load(std::sync::atomic::Ordering::SeqCst)
     }
+
+    /// Every later `reload` fails, as a locked database would make it.
+    pub fn fail_reloads(&self) {
+        self.reload_fails
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[async_trait]
@@ -1709,6 +1716,9 @@ impl MalwareExemptionPort for MockMalwareExemptions {
     async fn reload(&self) -> Result<(), DomainError> {
         self.reloads
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.reload_fails.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(DomainError::DatabaseError("database is locked".to_string()));
+        }
         Ok(())
     }
 }

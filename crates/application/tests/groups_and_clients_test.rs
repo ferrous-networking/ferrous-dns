@@ -121,6 +121,33 @@ async fn test_update_group_toggling_malware_detection_reloads_the_exemptions() {
     assert_eq!(exempt.reload_count(), 1, "nothing to reload");
 }
 
+/// The row is written before the exemptions reload, so a failed reload must
+/// not report the change as failed: the API would answer 500 for a saved
+/// group, and a retried create would get "already exists".
+#[tokio::test]
+async fn test_create_and_update_group_succeed_when_the_exemption_reload_fails() {
+    let groups = Arc::new(MockGroupRepository::new());
+    let exempt = exemptions();
+    exempt.fail_reloads();
+    let create = CreateGroupUseCase::new(groups.clone(), exempt.clone());
+    let update = UpdateGroupUseCase::new(groups.clone(), exempt.clone());
+
+    let created = create
+        .execute("Servers".to_string(), None, true, false)
+        .await;
+    let updated = update.execute(1, None, None, None, Some(false)).await;
+
+    assert!(
+        created.as_ref().is_ok_and(|g| !g.malware_detection_enabled),
+        "{created:?}"
+    );
+    assert!(
+        updated.as_ref().is_ok_and(|g| !g.malware_detection_enabled),
+        "{updated:?}"
+    );
+    assert_eq!(exempt.reload_count(), 2, "both still tried the reload");
+}
+
 #[tokio::test]
 async fn test_delete_group_exempt_from_malware_detection_reloads_the_exemptions() {
     let groups = Arc::new(MockGroupRepository::new());
