@@ -2,7 +2,7 @@ use super::require_group;
 use ferrous_dns_domain::value_objects::validators::validate_comment;
 use ferrous_dns_domain::{DomainError, Group};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use crate::ports::{GroupRepository, MalwareExemptionPort};
 
@@ -49,7 +49,9 @@ impl UpdateGroupUseCase {
             .await?;
 
         if malware_detection_enabled.is_some() {
-            self.malware_exemptions.reload().await?;
+            if let Err(e) = self.malware_exemptions.reload().await {
+                error!(error = %e, "Failed to reload malware detection exemptions after group update");
+            }
         }
 
         info!(
