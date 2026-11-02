@@ -251,10 +251,10 @@ See [Client Management](client-management.md) for group setup.
 
 Every query in the query log has quick-action buttons:
 
-- **Block**: adds the domain to the global blocklist
-- **Allow**: adds the domain to the allowlist
+- **Block**: adds a managed domain with the `deny` action
+- **Allow**: adds a managed domain with the `allow` action
 
-Changes take effect immediately without a restart.
+Both write the rule into the group the query was decided in, the client's group at the time, and say which group in their confirmation. Clients in other groups are not affected. Changes take effect immediately without a restart.
 
 ---
 

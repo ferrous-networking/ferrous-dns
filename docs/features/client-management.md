@@ -41,6 +41,8 @@ Group your clients to apply independent policies:
 4. Assign clients to the group
 5. Configure the group's blocklists and schedules
 
+To put one device or a whole range in a group, use **Add Client or Subnet** on the **Clients** page. Enter an IP (`192.168.1.50`) to add a single client with its group, or a CIDR (`192.168.1.0/24`) to add a subnet: every client in the range that has no group of its own then belongs to the subnet's group. A client's own group wins over its subnet's, and a client in neither belongs to **Protected**, the default group.
+
 ### Group Policies
 
 Each group can have its own:

@@ -160,15 +160,19 @@ Find the real reason before changing anything. Open **Queries**, locate the doma
 
 ### Solution
 
-Click **Allow** next to the domain in the query log, or add it under **DNS Filter > Managed Domains** with the `allow` action.
+Click **Allow** next to the domain in the query log, or add it under **DNS Filter > Managed Domains** with the `allow` action. A rule applies to one group: the query log button writes it into the group of the client on that row, and in **DNS Filter** you pick the group, which must be the blocked client's.
 
 That single step covers every row in the table above except `non_fqdn` / `private_ptr`, which only turning the setting off lifts. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
+
+The `group_id` in the request below is the client's group, as `GET /ferrous/api/v1/queries` reports it on the row (`1` is the default group, **Protected**):
 
 ```bash
 curl -X POST http://localhost:8080/ferrous/api/v1/managed-domains \
   -H 'Content-Type: application/json' \
-  -d '{"name":"needed by build agent","domain":"cdn.example.com","action":"allow","group_id":1}'
+  -d '{"name":"needed by build agent","domain":"cdn.example.com","action":"allow","group_id":2}'
 ```
+
+To stop the malware detectors from judging one client at all, such as a monitoring server, put it in a group with **Malware Detection** off instead: see [Exempt clients](features/malware-detection.md#exempt-clients).
 
 !!! warning "Pausing blocking will not do it"
     Disabling blocking releases downloaded blocklists only. A domain blocked by a rule you wrote by hand stays blocked — remove the rule instead. See [What a manual rule outranks](features/blocking-filtering.md#what-a-manual-rule-outranks).

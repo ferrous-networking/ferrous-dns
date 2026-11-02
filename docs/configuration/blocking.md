@@ -206,6 +206,6 @@ See [Client Management](../features/client-management.md) for details.
 
 ## Allow/Block from Query Log
 
-Any domain in the query log can be instantly added to the allowlist or blocklist by clicking the Allow or Block button next to it. Changes take effect immediately without a server restart.
+Any domain in the query log can be allowed or blocked by clicking the Allow or Block button next to it. The button adds a managed domain to the group the query was decided in, the client's group at the time, and names that group in its confirmation; clients in other groups are not affected. Changes take effect immediately without a server restart.
 
 Both buttons create a **manual rule**, which is the highest-priority verdict in the pipeline: **Allow** also exempts the domain from all five [malware detection](../features/malware-detection.md) engines, and **Block** survives pausing blocking and any schedule bypass window.
