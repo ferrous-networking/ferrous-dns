@@ -25,7 +25,10 @@ use serde_json::json;
 use tokio::sync::RwLock;
 
 mod helpers;
-use helpers::{MockBlockFilterEngine, MockBlocklistSourceRepository, MockGroupRepository};
+use helpers::{
+    MockBlockFilterEngine, MockBlocklistSourceRepository, MockGroupRepository,
+    MockMalwareExemptions,
+};
 
 struct StubGroupCreator;
 
@@ -162,6 +165,7 @@ fn build_import(
         },
         Arc::new(StubGroupCreator),
         Arc::new(MockGroupRepository::new()),
+        Arc::new(MockMalwareExemptions::new()),
         creator,
         Arc::new(StubLocalRecordCreator),
         engine,
@@ -276,6 +280,7 @@ fn import_with(
         },
         Arc::new(StubGroupCreator),
         Arc::new(MockGroupRepository::new()),
+        Arc::new(MockMalwareExemptions::new()),
         Arc::new(CreateBlocklistSourceUseCase::new(
             Arc::new(MockBlocklistSourceRepository::new()),
             Arc::new(MockGroupRepository::new()),
@@ -417,6 +422,7 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
         },
         Arc::new(StubGroupCreator),
         Arc::new(UnreadableGroups),
+        Arc::new(MockMalwareExemptions::new()),
         Arc::new(CreateBlocklistSourceUseCase::new(
             Arc::new(MockBlocklistSourceRepository::new()),
             Arc::new(MockGroupRepository::new()),
@@ -431,7 +437,7 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
         name: "Protected".to_string(),
         comment: None,
         is_default: true,
-        malware_detection_enabled: true,
+        malware_detection_enabled: Some(true),
     });
 
     let result = import.execute(snapshot).await;

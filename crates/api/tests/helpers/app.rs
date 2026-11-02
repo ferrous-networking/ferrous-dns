@@ -530,6 +530,7 @@ fn sqlite_backup_use_cases(
                 Arc::new(NullMalwareExemptions),
             )),
             group_repo.clone(),
+            Arc::new(NullMalwareExemptions),
             Arc::new(CreateBlocklistSourceUseCase::new(
                 blocklist_source_repo.clone(),
                 group_repo.clone(),

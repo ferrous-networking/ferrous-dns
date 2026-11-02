@@ -548,6 +548,31 @@ async fn test_import_restores_the_malware_switch_of_groups_that_already_exist() 
     assert_eq!(switches, [("Protected", false), ("IoT", false)], "{groups}");
 }
 
+/// A backup taken before the switch existed says nothing about it, so a group
+/// that exists here keeps its own.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_the_malware_switch_here() {
+    let app = test_app().await;
+    sqlx::query("UPDATE groups SET malware_detection_enabled = 0 WHERE is_default = 1")
+        .execute(&app.pool)
+        .await
+        .unwrap();
+    let mut backup = minimal_backup_json();
+    backup["data"]["groups"] = json!([{ "name": "Protected", "comment": null }]);
+
+    let payload = serde_json::to_vec(&backup).unwrap();
+    let response = app
+        .router
+        .clone()
+        .oneshot(import_request(&payload))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let groups = get_json(app.router, "/groups").await;
+    assert_eq!(groups[0]["malware_detection_enabled"], false, "{groups}");
+}
+
 #[tokio::test]
 async fn test_import_without_file_returns_bad_request() {
     let app = test_app().await.router;

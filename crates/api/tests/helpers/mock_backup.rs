@@ -134,6 +134,7 @@ pub fn build_test_backup_use_cases(
             },
             group_creator,
             group_repo,
+            Arc::new(NullMalwareExemptions),
             blocklist_source_creator,
             local_record_creator,
             engine,
