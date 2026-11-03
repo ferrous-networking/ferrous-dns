@@ -7,7 +7,6 @@ fn pool(name: &str, server: &str) -> UpstreamPool {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec![server.into()],
-        weight: None,
         ..Default::default()
     }
 }

@@ -105,7 +105,6 @@ cache_max_entries = 200000              # Maximum number of entries the cache ca
 cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", "lfu-k" or "lru"; anything else runs as hit_rate with a warning
 cache_compaction_interval = 600         # Seconds a failed renewal waits for its next try; expired entries leave the cache by themselves
 cache_batch_eviction_percentage = 0.1   # Headroom an eviction pass makes below cache_max_entries (0.1 = a pass leaves the cache at 90% of capacity)
-cache_adaptive_thresholds = false       # Automatically tune eviction thresholds based on observed hit rates
 # Number of internal cache shards (DashMap).
 # When omitted, auto-detected as 4x CPU cores rounded up to the next power of 2
 # (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
@@ -132,7 +131,6 @@ cache_access_window_secs = 43200
 # ── Cache: LFU-K Eviction ────────────────────────────────────────────────────
 
 cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for eviction candidates
-cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for scoring
 
 
 # ── DNS Rate Limiting ────────────────────────────────────────────────────────
@@ -169,7 +167,7 @@ stale_entry_ttl_secs = 300              # Evict idle subnet buckets after 5 minu
 
 [dns.tunneling_detection]
 enabled = true                          # Master switch — enabled by default
-action = "block"                        # "alert" | "block" | "throttle" (not implemented yet: acts as "alert")
+action = "block"                        # "alert" | "block"
 max_fqdn_length = 120                   # Phase 1: block FQDNs longer than 120 bytes
 max_label_length = 50                   # Phase 1: block labels longer than 50 bytes
 block_null_queries = true               # Phase 1: block NULL (type 10) record queries
@@ -333,8 +331,6 @@ rp_origin = ""                          #   Full HTTPS origin, e.g. "https://dns
 
 [blocking]
 enabled = true                          # Enable DNS-based ad/malware blocking
-custom_blocked = []                     # Additional domains to block (beyond downloaded blocklists)
-whitelist = []                          # Domains to always allow, even if present in a blocklist
 block_mode = "null_ip"                  # How blocked domains are answered: "null_ip" (NOERROR + 0.0.0.0/::,
                                         #   cacheable — recommended), "nxdomain", "nodata", or "refused" (legacy)
 block_ttl = 60                          # TTL (seconds) clients cache the null-IP block answer

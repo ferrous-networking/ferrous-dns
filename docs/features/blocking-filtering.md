@@ -58,7 +58,7 @@ Via dashboard: **Blocklists > Add Blocklist** (or the REST API).
 ![DNS Filter — the add-source form and the blocklist table, each source showing its status, Last Sync timestamp, groups and per-row refresh action](../assets/dashboard/dashboard-dns-filter.png)
 
 !!! warning "Not configured via TOML"
-    Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. The `custom_blocked` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect — use the dashboard or API instead.
+    Individual blocked domains are stored in the SQLite database and managed through the dashboard or REST API. There is no TOML key for them: the `custom_blocked` array older releases accepted in `[blocking]` was never read, and a file that still has entries in it loads with a warning.
 
 !!! warning "63 active blocklist sources maximum"
     Each domain carries a 64-bit mask of the sources that contributed it, and one bit is reserved for manually added entries. If more than **63** blocklist sources are enabled, only the 63 oldest are compiled and the rest are silently skipped — the only signal is a `WARN` line at startup and after each refresh. Merge or disable lists to stay under the cap; a handful of large lists beats dozens of small ones.
@@ -140,7 +140,7 @@ Domains in the allowlist bypass all blocking, even if present in a blocklist.
 Manage the allowlist via the dashboard (**DNS Filter > Managed Domains**) or the REST API — entries are stored in the SQLite database. You can also add a domain directly from the query log with one click.
 
 !!! warning "Not configured via TOML"
-    The `whitelist` array in the `[blocking]` TOML section is **not read by the DNS query pipeline** and has no effect. Use the dashboard or API to allow-list domains.
+    Use the dashboard or API to allow-list domains. The `whitelist` array older releases accepted in `[blocking]` was never read, and a file that still has entries in it loads with a warning.
 
 ### What counts as a manual rule
 

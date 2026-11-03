@@ -71,7 +71,6 @@ pub struct DnsConfigResponse {
     pub cache_compaction_interval: u64,
     pub cache_refresh_threshold: f64,
     pub cache_optimistic_refresh: bool,
-    pub cache_adaptive_thresholds: bool,
     pub cache_access_window_secs: u64,
     pub cache_min_ttl: u32,
     pub cache_max_ttl: u32,
@@ -111,7 +110,7 @@ pub struct RateLimitConfigResponse {
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct TunnelingDetectionConfigResponse {
     pub enabled: bool,
-    /// "alert" | "block" | "throttle" (not implemented: acts as alert).
+    /// "alert" | "block".
     pub action: String,
     pub max_fqdn_length: usize,
     pub max_label_length: usize,
@@ -230,7 +229,6 @@ pub struct UpstreamPoolResponse {
     pub strategy: String,
     pub priority: u8,
     pub servers: Vec<String>,
-    pub weight: Option<u32>,
     /// Domains the pool answers, as configured; empty for a default pool.
     pub domains: Vec<String>,
     /// Client group ids the domains are routed for; empty for every client.
@@ -251,8 +249,6 @@ pub struct HealthCheckResponse {
 #[derive(Serialize, Debug, Clone, ToSchema)]
 pub struct BlockingConfigResponse {
     pub enabled: bool,
-    pub custom_blocked: Vec<String>,
-    pub whitelist: Vec<String>,
     pub block_mode: String,
     pub block_ttl: u32,
     /// Custom A target for `null_ip` blocks; empty string means the null
@@ -365,10 +361,6 @@ pub struct PoolUpdate {
     pub strategy: String,
     pub priority: u8,
     pub servers: Vec<String>,
-    /// Optional per-pool weight. Carried through so editing other pool fields
-    /// doesn't silently drop a weight set in the config file.
-    #[serde(default)]
-    pub weight: Option<u32>,
     /// Domains the pool answers; empty or absent for a default pool.
     #[serde(default)]
     pub domains: Vec<String>,
@@ -398,7 +390,6 @@ pub struct DnsConfigUpdate {
     pub cache_compaction_interval: Option<u64>,
     pub cache_refresh_threshold: Option<f64>,
     pub cache_optimistic_refresh: Option<bool>,
-    pub cache_adaptive_thresholds: Option<bool>,
     pub cache_access_window_secs: Option<u64>,
     pub cache_min_ttl: Option<u32>,
     pub cache_max_ttl: Option<u32>,
@@ -436,7 +427,7 @@ pub struct RateLimitConfigUpdate {
 #[derive(Deserialize, Debug, Clone, ToSchema)]
 pub struct TunnelingDetectionConfigUpdate {
     pub enabled: Option<bool>,
-    /// "alert" | "block" | "throttle".
+    /// "alert" | "block".
     pub action: Option<String>,
     pub max_fqdn_length: Option<usize>,
     pub max_label_length: Option<usize>,
@@ -490,8 +481,6 @@ pub struct ResponseIpFilterConfigUpdate {
 #[derive(Deserialize, Debug, Clone, ToSchema)]
 pub struct BlockingConfigUpdate {
     pub enabled: Option<bool>,
-    pub custom_blocked: Option<Vec<String>>,
-    pub whitelist: Option<Vec<String>>,
     pub block_mode: Option<String>,
     pub block_ttl: Option<u32>,
     /// Custom A target for `null_ip` blocks; empty string clears it.

@@ -433,17 +433,22 @@ async fn test_config_api_drops_keys_that_nothing_reads() {
     assert_eq!(status, StatusCode::OK, "{json}");
 
     let written = std::fs::read_to_string(&path).unwrap();
-    for key in [
-        "cache_adaptive_thresholds",
-        "weight",
-        "custom_blocked",
-        "whitelist",
-    ] {
+    for key in ["cache_adaptive_thresholds", "weight", "custom_blocked"] {
         assert!(
             !written.contains(key),
             "{key} must not be written, got:\n{written}"
         );
     }
+    // `[dns.rate_limit]` has a whitelist of its own, which is read.
+    let blocking = written
+        .split("\n[blocking]\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n[").next())
+        .expect("the file has a [blocking] table");
+    assert!(
+        !blocking.contains("whitelist"),
+        "blocking.whitelist must not be written, got:\n{blocking}"
+    );
 
     let (_, json) = get_config(app).await;
     assert!(json["dns"].get("cache_adaptive_thresholds").is_none());

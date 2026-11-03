@@ -22,6 +22,9 @@ pub struct BackupSnapshot {
 ///
 /// Mirrors the fields the user can meaningfully restore, without any
 /// secrets (password hashes, TLS private key contents, API token hashes).
+/// Backups from older releases also carry keys nothing read
+/// (`cache_adaptive_thresholds`, `custom_blocked`, `whitelist`, pool `weight`),
+/// which serde ignores.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotConfig {
     pub server: SnapshotServerConfig,
@@ -65,7 +68,6 @@ pub struct SnapshotDnsConfig {
     pub cache_compaction_interval: u64,
     pub cache_refresh_threshold: f64,
     pub cache_optimistic_refresh: bool,
-    pub cache_adaptive_thresholds: bool,
     pub cache_access_window_secs: u64,
     pub cache_min_ttl: u32,
     pub cache_max_ttl: u32,
@@ -100,8 +102,6 @@ pub struct SnapshotMalwareConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotBlockingConfig {
     pub enabled: bool,
-    pub custom_blocked: Vec<String>,
-    pub whitelist: Vec<String>,
     // The following are absent from pre-0.9 backups; serde defaults keep those
     // older files importable (block_mode → null_ip, block_ttl → 60, sinkhole → none).
     #[serde(default)]

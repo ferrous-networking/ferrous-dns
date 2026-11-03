@@ -9,7 +9,6 @@ async fn test_pool_manager_expands_hostnames() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["udp://dns.google:53".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -45,7 +44,6 @@ async fn test_pool_manager_expansion_includes_ipv6() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["udp://dns.google:53".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -72,7 +70,6 @@ async fn test_pool_manager_keeps_literal_ips_unchanged() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["udp://8.8.8.8:53".into(), "udp://1.1.1.1:53".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -97,7 +94,6 @@ async fn test_pool_manager_mixed_literal_and_hostname() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["udp://8.8.8.8:53".into(), "udp://dns.google:53".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -127,7 +123,6 @@ async fn test_pool_manager_tls_hostname_expansion() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["tls://dns.google:853".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -165,7 +160,6 @@ async fn test_pool_manager_https_not_expanded_but_preresolved() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["https://dns.google/dns-query".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -198,7 +192,6 @@ async fn test_pool_manager_preresolves_h3_hostnames() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["h3://dns.google/dns-query".into()],
-        weight: None,
         ..Default::default()
     };
 
@@ -231,7 +224,6 @@ async fn test_pool_manager_https_ip_no_resolution() {
             strategy: UpstreamStrategy::Parallel,
             priority: 1,
             servers: vec![server.into()],
-            weight: None,
             ..Default::default()
         };
 

@@ -15,9 +15,6 @@ pub struct UpstreamPool {
 
     pub servers: Vec<String>,
 
-    #[serde(default)]
-    pub weight: Option<u32>,
-
     /// Domains this pool answers, together with every name under them, as
     /// configured (Unicode or punycode). Empty for a default pool, which
     /// answers every name no pool claims.
@@ -41,7 +38,6 @@ impl Default for UpstreamPool {
             strategy: UpstreamStrategy::default(),
             priority: default_priority(),
             servers: Vec::new(),
-            weight: None,
             domains: Vec::new(),
             groups: Vec::new(),
             internal: false,

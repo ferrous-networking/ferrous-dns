@@ -127,7 +127,6 @@ impl ExportConfigUseCase {
                 cache_compaction_interval: config.dns.cache_compaction_interval,
                 cache_refresh_threshold: config.dns.cache_refresh_threshold,
                 cache_optimistic_refresh: config.dns.cache_optimistic_refresh,
-                cache_adaptive_thresholds: config.dns.cache_adaptive_thresholds,
                 cache_access_window_secs: config.dns.cache_access_window_secs,
                 cache_min_ttl: config.dns.cache_min_ttl,
                 cache_max_ttl: config.dns.cache_max_ttl,
@@ -149,8 +148,6 @@ impl ExportConfigUseCase {
             },
             blocking: SnapshotBlockingConfig {
                 enabled: config.blocking.enabled,
-                custom_blocked: config.blocking.custom_blocked.clone(),
-                whitelist: config.blocking.whitelist.clone(),
                 block_mode: config.blocking.block_mode,
                 block_ttl: config.blocking.block_ttl,
                 sinkhole_ipv4: config.blocking.sinkhole_ipv4,

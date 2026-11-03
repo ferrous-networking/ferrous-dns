@@ -306,7 +306,6 @@ async fn validator_with_cache(h: &Hierarchy, cache: Arc<DnssecCache>) -> DnssecV
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec![format!("udp://{addr}")],
-        weight: None,
         ..Default::default()
     };
     let pm = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());

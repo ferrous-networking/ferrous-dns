@@ -15,7 +15,6 @@ async fn chain_walk_honours_the_configured_upstream_timeout() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec![format!("udp://{}", blackhole.local_addr().unwrap())],
-        weight: None,
         ..Default::default()
     };
     let pm = Arc::new(PoolManager::new(vec![pool], None).await.unwrap());

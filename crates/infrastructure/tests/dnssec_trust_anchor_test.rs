@@ -261,7 +261,6 @@ async fn live_root_chain_verifier() -> ChainVerifier {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["udp://1.1.1.1:53".into()],
-        weight: None,
         ..Default::default()
     };
 

@@ -28,6 +28,7 @@ use super::encrypted_dns::EncryptedDnsConfig;
 use super::malware_detection::{is_threshold_in_range, MAX_ENTROPY_BITS, MAX_RATIO};
 use super::root::Config;
 use super::server::parse_bind_host;
+use super::tunneling::TunnelingAction;
 use crate::value_objects::validators::{validate_url, MAX_DOMAIN_LEN, MAX_LABEL_LEN};
 use crate::DnsProtocol;
 
@@ -37,9 +38,11 @@ pub(super) fn normalize_document(doc: &mut Table) {
     ignore_unused_bind_hosts(doc);
     ignore_unused_cookie_secret(doc);
     default_unknown_eviction_strategy(doc);
+    run_throttle_as_alert(doc);
     disable_unparseable_local_dns_server(doc);
     drop_hostless_upstreams(doc);
-    drop_retired_exemption_lists(doc);
+    drop_retired_keys(doc);
+    drop_pool_weights(doc);
 }
 
 /// Replaces with its default each number [`Config::validate`] would reject
@@ -518,6 +521,19 @@ fn disable_unparseable_local_dns_server(doc: &mut Table) {
     );
 }
 
+/// Older releases accepted a `throttle` action and ran it as `alert`. Any
+/// other unknown action failed to load, and still does.
+fn run_throttle_as_alert(doc: &mut Table) {
+    replace_invalid(
+        doc,
+        "dns.tunneling_detection.action",
+        |action| action != "throttle",
+        Some(Value::String(TunnelingAction::Alert.as_str().to_string())),
+        Logged::Value,
+        "using alert, which older releases ran throttle as",
+    );
+}
+
 /// Older releases started with an upstream whose host was empty or a broken
 /// IPv6 literal (`doq://:853`), and every query to it failed. It is dropped,
 /// and so is a pool it leaves without servers.
@@ -551,34 +567,74 @@ fn drop_hostless_upstreams(doc: &mut Table) {
     });
 }
 
-/// Older releases read these exemption lists. A domain is now exempted by an
-/// explicit allow in DNS Filter, and a client by a group with Malware
-/// Detection switched off. Each key is dropped, with a warning that names the
-/// entries a list still held. The next save from the dashboard removes them
-/// from the file.
-fn drop_retired_exemption_lists(doc: &mut Table) {
+/// Keys older releases read, or that none ever did: the exemption lists (a
+/// domain is now exempted by an explicit allow in DNS Filter, and a client by
+/// a group with Malware Detection switched off), and keys nothing read. Each
+/// is dropped, with a warning when it holds anything but the value those
+/// releases shipped, since only then did someone expect an effect. The next
+/// save from the dashboard removes them from the file.
+fn drop_retired_keys(doc: &mut Table) {
     const ALLOW: &str = "allow each domain in DNS Filter, in the group of the clients it is for";
     const GROUP: &str = "put these clients in a group with Malware Detection switched off";
-    for (key, instead) in [
-        ("dns.tunneling_detection.domain_whitelist", ALLOW),
-        ("dns.tunneling_detection.client_whitelist", GROUP),
-        ("dns.dga_detection.domain_whitelist", ALLOW),
-        ("dns.dga_detection.client_whitelist", GROUP),
-        ("dns.rebinding_allowlist", ALLOW),
+    const BLOCK: &str = "block each domain in DNS Filter";
+    let empty = || Value::Array(Vec::new());
+    for (key, shipped, instead) in [
+        ("dns.tunneling_detection.domain_whitelist", empty(), ALLOW),
+        ("dns.tunneling_detection.client_whitelist", empty(), GROUP),
+        ("dns.dga_detection.domain_whitelist", empty(), ALLOW),
+        ("dns.dga_detection.client_whitelist", empty(), GROUP),
+        ("dns.rebinding_allowlist", empty(), ALLOW),
+        (
+            "dns.cache_adaptive_thresholds",
+            Value::Boolean(false),
+            "no release read it; Min Hit Rate and Min Frequency are only set by hand",
+        ),
+        (
+            "dns.cache_lfuk_history_size",
+            Value::Integer(10),
+            "no release read it; the LFU-K score uses each entry's hit count and last access",
+        ),
+        ("blocking.custom_blocked", empty(), BLOCK),
+        ("blocking.whitelist", empty(), ALLOW),
     ] {
         let Some((section, leaf)) = parent_mut(doc, key) else {
             continue;
         };
-        let Some(entries) = section.remove(leaf) else {
+        let Some(value) = section.remove(leaf) else {
             continue;
         };
-        if entries.as_array().is_some_and(Vec::is_empty) {
+        if value == shipped {
             continue;
         }
         warn!(
             key,
-            entries = %entries,
-            "Config key no longer read, its entries are ignored: {instead}"
+            value = %value,
+            "Config key not read, its value is ignored: {instead}"
+        );
+    }
+}
+
+/// No release read a pool's `weight`. Each is dropped, with a warning naming
+/// its pool.
+fn drop_pool_weights(doc: &mut Table) {
+    let Some(pools) = doc
+        .get_mut("dns")
+        .and_then(Value::as_table_mut)
+        .and_then(|dns| dns.get_mut("pools"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for pool in pools.iter_mut().filter_map(Value::as_table_mut) {
+        let Some(weight) = pool.remove("weight") else {
+            continue;
+        };
+        let name = pool.get("name").and_then(Value::as_str).unwrap_or_default();
+        warn!(
+            key = "dns.pools.weight",
+            pool = name,
+            value = %weight,
+            "Config key not read, its value is ignored: pools are tried by priority"
         );
     }
 }

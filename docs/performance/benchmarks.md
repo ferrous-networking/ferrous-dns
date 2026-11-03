@@ -161,10 +161,10 @@ This keeps the effective hit rate close to 100% for actively-used domains as the
 
 When the cache reaches capacity, an eviction policy decides which entries to remove. Simple LRU can discard a domain queried 10,000 times that happened to be quiet for the last two minutes — replaced by one queried twice a minute ago.
 
-Ferrous DNS uses **LFU-K**: the K most recent access timestamps are tracked per entry and used to compute a sliding-window frequency score:
+Ferrous DNS's **LFU-K** strategy scores each entry from its hit count, its age and the time since its last hit:
 
 ```
-Score = accesses in the last K timestamps / time span of those K accesses
+Score = hits / √age × 1 / (seconds since the last hit + 1)
 ```
 
 This gives weight to **sustained, frequent access** rather than historical patterns. A domain popular 6 hours ago but idle since scores lower than one queried 5 times in the last minute.

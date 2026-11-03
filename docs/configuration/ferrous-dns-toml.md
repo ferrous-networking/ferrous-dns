@@ -365,7 +365,6 @@ cache_max_entries                = 200000
 cache_eviction_strategy          = "hit_rate"
 cache_compaction_interval        = 600
 cache_batch_eviction_percentage  = 0.1
-cache_adaptive_thresholds        = false
 # cache_shard_amount             = 512
 # cache_inflight_shards          = 64
 ```
@@ -380,7 +379,6 @@ cache_adaptive_thresholds        = false
 | `cache_eviction_strategy` | `str` | `"hit_rate"` | Eviction policy: `"hit_rate"`, `"lfu"`, `"lfu-k"` or `"lru"` (case-insensitive). Any other value in the file runs as `"hit_rate"` with a warning; the API rejects it |
 | `cache_compaction_interval` | `int` | `600` | Seconds a renewal that failed waits for its next try; expired entries leave the cache by themselves |
 | `cache_batch_eviction_percentage` | `float` | `0.1` | Headroom an eviction pass makes below `cache_max_entries` (0.1 = a pass leaves the cache at 90% of capacity) |
-| `cache_adaptive_thresholds` | `bool` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | `int` | auto | L2 cache shard count; auto = 4 x CPU cores rounded up to next power of 2 |
 | `cache_inflight_shards` | `int` | auto | In-flight coalescing map shard count; auto = 2 x CPU cores, rounded to power of 2 (min 8, max 128) |
 
@@ -407,18 +405,16 @@ cache_access_window_secs  = 43200
 
 ### LFU-K eviction parameters
 
-Used when `cache_eviction_strategy` is `"hit_rate"` or `"lfu"`.
+Used when `cache_eviction_strategy` is `"lfu-k"`.
 
 ```toml title="ferrous-dns.toml"
 [dns]
 cache_min_lfuk_score     = 1.5
-cache_lfuk_history_size  = 10
 ```
 
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `cache_min_lfuk_score` | `float` | `1.5` | Minimum LFU-K score threshold for eviction candidates |
-| `cache_lfuk_history_size` | `int` | `10` | Number of recent access timestamps tracked per entry |
 
 See [Cache configuration](cache.md).
 
@@ -498,7 +494,7 @@ stale_entry_ttl_secs         = 300
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable tunneling detection |
-| `action` | `str` | `"block"` | Action on detection: `"alert"` (log only) or `"block"` (answer with the [`[blocking] block_mode`](#blocking)); `"throttle"` is accepted but not implemented and acts as `"alert"` |
+| `action` | `str` | `"block"` | Action on detection: `"alert"` (log only) or `"block"` (answer with the [`[blocking] block_mode`](#blocking)). A file with `"throttle"`, which older releases ran as `"alert"`, loads as `"alert"` with a warning |
 | `max_fqdn_length` | `int` | `120` | Phase 1: FQDNs longer than this are blocked immediately. 1–253 |
 | `max_label_length` | `int` | `50` | Phase 1: labels longer than this are blocked immediately. 1–63 |
 | `block_null_queries` | `bool` | `true` | Phase 1: block NULL (type 10) queries |
@@ -645,13 +641,11 @@ See [DNS & Upstreams](dns.md#local-records).
 
 ## `[blocking]` {#blocking}
 
-DNS-based ad and malware blocking using downloaded blocklists. Blocklists are managed through the dashboard. Custom per-domain overrides can be specified directly in the config.
+DNS-based ad and malware blocking using downloaded blocklists. Blocklists, and per-domain blocks and allows, are managed through the dashboard or the REST API, not in this file.
 
 ```toml title="ferrous-dns.toml"
 [blocking]
 enabled        = true
-custom_blocked = []
-whitelist      = []
 block_mode     = "null_ip"
 block_ttl      = 60
 # sinkhole_ipv4 = "192.168.1.2"
@@ -661,8 +655,6 @@ block_ttl      = 60
 | Option | Type | Default | Description |
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable DNS blocking globally |
-| `custom_blocked` | `list` | `[]` | Additional domains to block beyond any active blocklists |
-| `whitelist` | `list` | `[]` | Domains that are always allowed, even if present in a blocklist |
 | `block_mode` | `string` | `"null_ip"` | How blocked domains are answered: `null_ip` (cacheable `0.0.0.0`/`::`, recommended), `nxdomain`, `nodata`, or `refused` (legacy, non-cacheable) |
 | `block_ttl` | `int` | `60` | TTL in seconds clients/resolvers cache a blocked answer; also drives the synthetic SOA `minimum` for `nxdomain`/`nodata` |
 | `sinkhole_ipv4` | `string` | _(unset)_ | Custom `A` target for `null_ip` blocks (e.g. a LAN block-page server); unset returns `0.0.0.0`. See [Custom Sinkhole IP](blocking.md#custom-sinkhole-ip) |

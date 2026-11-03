@@ -176,11 +176,6 @@ impl DnsServices {
                 action = ?config.dns.tunneling_detection.action,
                 "DNS tunneling detection enabled"
             );
-            if config.dns.tunneling_detection.action
-                == ferrous_dns_domain::TunnelingAction::Throttle
-            {
-                warn!("Tunneling action 'throttle' is not yet implemented — treating as 'alert'");
-            }
             Some((detector, tx))
         } else {
             None
@@ -447,7 +442,6 @@ mod tests {
             strategy: UpstreamStrategy::Parallel,
             priority: 1,
             servers: vec![upstream.to_string()],
-            weight: None,
             ..Default::default()
         }];
 

@@ -195,7 +195,6 @@ cache_access_window_secs    = 43200
 
 # LFU-K
 cache_min_lfuk_score    = 1.5
-cache_lfuk_history_size = 10
 
 # ── Upstream Pools ────────────────────────────────────────────────────────────
 
@@ -318,7 +317,6 @@ cache_eviction_strategy         = "hit_rate"
 cache_compaction_interval       = 300           # retry failed renewals after 5 min
 cache_batch_eviction_percentage = 0.05          # less headroom: passes leave 95%, so they come more often
 cache_shard_amount              = 256           # explicit — 16-core × 16
-cache_adaptive_thresholds       = true          # auto-tune eviction thresholds
 
 # Aggressive optimistic refresh for near-100% hit rate
 cache_optimistic_refresh    = true
@@ -329,7 +327,6 @@ cache_access_window_secs    = 86400           # 24h access window
 
 # LFU-K
 cache_min_lfuk_score    = 1.0
-cache_lfuk_history_size = 20                  # track 20 access timestamps per entry
 
 # ── Upstream Pools ────────────────────────────────────────────────────────────
 
@@ -484,7 +481,6 @@ cache_max_entries               = 200000
 cache_eviction_strategy         = "hit_rate"    # "hit_rate", "lfu", or "lru"
 cache_compaction_interval       = 600
 cache_batch_eviction_percentage = 0.1
-cache_adaptive_thresholds       = false
 # cache_shard_amount = 512                  # auto: 4 × CPU cores, rounded to power of 2
 
 # Optimistic Refresh
@@ -496,7 +492,6 @@ cache_access_window_secs    = 43200
 
 # LFU-K Eviction
 cache_min_lfuk_score    = 1.5
-cache_lfuk_history_size = 10
 
 # ── Upstream Pools ────────────────────────────────────────────────────────────
 
@@ -564,8 +559,6 @@ ttl         = 300
 
 [blocking]
 enabled        = true
-custom_blocked = []                         # Additional domains to block
-whitelist      = []                         # Domains to always allow
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 

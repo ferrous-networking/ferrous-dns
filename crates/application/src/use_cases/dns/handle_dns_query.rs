@@ -297,8 +297,8 @@ impl HandleDnsQueryUseCase {
                 });
                 Err(DomainError::DnsTunnelingDetected)
             }
-            action @ (TunnelingAction::Alert | TunnelingAction::Throttle) => {
-                tracing::info!(domain = %request.domain, context, ?action, "DNS tunneling alert");
+            TunnelingAction::Alert => {
+                tracing::info!(domain = %request.domain, context, "DNS tunneling alert");
                 Ok(())
             }
         }
