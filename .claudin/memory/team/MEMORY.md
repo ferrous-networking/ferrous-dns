@@ -58,6 +58,6 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
 - [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in #297 (e2136494, v0.9.24)
 - [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); missing labels are #326
-- [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — #324 fixed on fix/cache-eviction-overshoot: overshoot + headroom, rotating cursor; open: `insert_permanent` pass overlap, `evict_if_full` bias
+- [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — #324 fixed by PR #360: overshoot + headroom, rotating cursor; open: `insert_permanent` pass overlap, `evict_if_full` bias
 - [Manual client names can't be cleared](bugs/manual-client-name-cannot-be-cleared.md) — since #343 a blank name changes nothing; pre-migration names (NULL source) still lose to PTR/mDNS
 - [Known test flakes](bugs/known-test-flakes.md) — 3 clock-boundary/race tests + the `free_port` AddrInUse race each failed once, passed on rerun; unfiled (11-01)

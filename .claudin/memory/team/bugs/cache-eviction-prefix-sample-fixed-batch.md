@@ -15,7 +15,7 @@ paths:
 
 **Repro:** set `cache_max_entries = 1000` and send 200 unique names/s ([[runtime-verification-recipe]]; the fake upstream also needs `dnssec_mode = "Off"`, or nothing is cached). On 2026-10-16, with `cache_max_ttl = 10`, the event-driven branch held at about 2,800 entries, at 100 evictions per tick. On 2026-11-03, with TTL 3600, main grew by about 100 entries/s with no plateau: 6,565 after 60 s.
 
-**Status:** issue #324 (v1.0.0). Fixed on branch `fix/cache-eviction-overshoot` (2026-11-03): red `f173fd9f`, fix `5992d76b`, docs `8dc00932`. The review round added four commits, `903a1567`..`d7fd8fcc`. The PR was not open yet.
+**Status:** issue #324 (v1.0.0). Fixed on branch `fix/cache-eviction-overshoot` (2026-11-03): red `f173fd9f`, fix `5992d76b`, docs `8dc00932`. The review round added four commits, `903a1567`..`d7fd8fcc`. Opened as PR #360 on 2026-11-03.
 - A pass removes `len − max_entries` plus `max(1, max_entries × batch)` as headroom, so it ends at `(1 − batch) × max_entries`. A pass on a cache below capacity does nothing.
 - Candidates come from a window that starts at `eviction_cursor` (approximate position in iteration order) and wraps round to the front. One labelled loop walks `iter().skip(start)` and then `iter().take(start)`, so no two shard guards are ever alive at once.
 - `evict_arbitrary_entries` was removed. `cache_eviction_fallback_test.rs` became `cache_eviction_deadlock_test.rs`, the same #228 guards on a full cache.
