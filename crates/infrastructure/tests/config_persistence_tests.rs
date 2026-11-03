@@ -142,6 +142,32 @@ fn test_save_drops_legacy_refresh_rate_key_from_file() {
     );
 }
 
+/// Chaves que nenhuma versão leu: o primeiro save as tira do arquivo.
+#[test]
+fn test_save_drops_keys_that_nothing_reads_from_file() {
+    let input = default_config_toml().replace("priority = 1\n", "priority = 1\nweight = 5\n");
+    let config = load_config(&input);
+
+    let doc = save_and_reparse(&config, &input);
+    let dns = doc.get("dns").unwrap().as_table().unwrap();
+    for key in ["cache_adaptive_thresholds", "cache_lfuk_history_size"] {
+        assert!(dns.get(key).is_none(), "dns.{key} deve sair do arquivo");
+    }
+    let blocking = doc.get("blocking").unwrap().as_table().unwrap();
+    for key in ["custom_blocked", "whitelist"] {
+        assert!(
+            blocking.get(key).is_none(),
+            "blocking.{key} deve sair do arquivo"
+        );
+    }
+    let pools = dns.get("pools").unwrap().as_array_of_tables().unwrap();
+    assert_eq!(pools.len(), 2);
+    assert!(
+        pools.iter().all(|pool| pool.get("weight").is_none()),
+        "dns.pools[].weight deve sair do arquivo"
+    );
+}
+
 #[test]
 fn test_save_pools_writes_all_fields() {
     let mut config = load_config(default_config_toml());

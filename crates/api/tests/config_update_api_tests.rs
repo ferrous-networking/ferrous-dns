@@ -410,6 +410,49 @@ async fn test_get_config_reports_mdns_enabled() {
     assert_eq!(json["dns"]["mdns_enabled"], true);
 }
 
+/// Nothing reads these keys, so the API neither reports nor saves them.
+#[tokio::test]
+async fn test_config_api_drops_keys_that_nothing_reads() {
+    let pool = create_test_db().await;
+    let (TestApp { router: app, .. }, path) = test_app(pool).await;
+
+    let (status, json) = post_config(
+        app.clone(),
+        serde_json::json!({
+            "dns": {
+                "cache_adaptive_thresholds": true,
+                "pools": [
+                    { "name": "p1", "strategy": "balanced", "priority": 1,
+                      "servers": ["udp://9.9.9.9:53"], "weight": 5 }
+                ]
+            },
+            "blocking": { "custom_blocked": ["ads.example.com"], "whitelist": ["cdn.example.com"] }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{json}");
+
+    let written = std::fs::read_to_string(&path).unwrap();
+    for key in [
+        "cache_adaptive_thresholds",
+        "weight",
+        "custom_blocked",
+        "whitelist",
+    ] {
+        assert!(
+            !written.contains(key),
+            "{key} must not be written, got:\n{written}"
+        );
+    }
+
+    let (_, json) = get_config(app).await;
+    assert!(json["dns"].get("cache_adaptive_thresholds").is_none());
+    assert_eq!(json["dns"]["pools"][0]["name"], "p1");
+    assert!(json["dns"]["pools"][0].get("weight").is_none());
+    assert!(json["blocking"].get("custom_blocked").is_none());
+    assert!(json["blocking"].get("whitelist").is_none());
+}
+
 async fn post_settings(app: Router, body: serde_json::Value) -> (StatusCode, Value) {
     let response = app
         .oneshot(
