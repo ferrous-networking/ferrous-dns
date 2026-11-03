@@ -61,7 +61,7 @@ cache_adaptive_thresholds = false
 | `cache_max_entries` | `200000` | Maximum entries in L2 cache |
 | `cache_eviction_strategy` | `"hit_rate"` | Eviction policy (see below) |
 | `cache_compaction_interval` | `600` | Seconds a renewal that failed waits for its next try (expired entries leave the cache by themselves) |
-| `cache_batch_eviction_percentage` | `0.1` | Headroom an eviction pass makes below `cache_max_entries` (0.1 = a pass leaves the cache at 90% of it) |
+| `cache_batch_eviction_percentage` | `0.1` | Headroom an eviction pass makes below `cache_max_entries` (0.1 = a pass leaves the cache at 90% of capacity) |
 | `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | auto | L2 cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
 | `cache_inflight_shards` | auto | In-flight coalescing map shard count; auto-detected as 2x CPU cores, rounded to power of 2 (min 8, max 128) |
