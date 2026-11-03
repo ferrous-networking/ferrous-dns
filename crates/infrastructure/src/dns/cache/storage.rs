@@ -951,8 +951,9 @@ impl DnsCache {
 
         let mut scored_evicted = 0usize;
         for candidate in candidates.into_iter().take(evict_count) {
-            self.cache.remove(&candidate.key);
-            scored_evicted += 1;
+            if self.cache.remove(&candidate.key).is_some() {
+                scored_evicted += 1;
+            }
         }
 
         let retain_removed = if !urgent_keys.is_empty() {
