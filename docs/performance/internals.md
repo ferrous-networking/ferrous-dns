@@ -62,7 +62,7 @@ This is the real DNS cache, and it is what the `[dns] cache_*` keys configure.
 | Capacity | `cache_max_entries`, default **200,000** |
 | Structure | Sharded `DashMap`, `cache_shard_amount` shards (auto: 4 × cores, clamped to 8–256) |
 | Eviction | `cache_eviction_strategy`: `hit_rate` (default), `lru`, `lfu`, `lfu-k` |
-| Eviction style | Probabilistic — samples `cache_eviction_sample_size` candidates instead of scanning |
+| Eviction style | Sampled — weighs `cache_eviction_sample_size` candidates per entry it removes instead of scanning, from a window that starts where the previous pass stopped |
 | Record types | **All of them** — A/AAAA as parsed IPs, CNAME, everything else as the upstream response with every record TTL clamped to `cache_min_ttl`..`cache_max_ttl`, its OPT replaced by one of ours: its DO bit records whether the answer holds DNSSEC records, and a private option (code 65001) holds the entry TTL and the offset of every record's TTL field. A hit rewrites each TTL to the record's TTL less the entry's age, capped at what the entry has left (RFC 1035 §3.2.1), with a record past its own TTL given the 2 s stale TTL (RFC 8767 §4) |
 | Negative answers | Upstream NXDOMAIN and NODATA are kept as the upstream response and cached for the SOA negative TTL (the lower of the SOA's TTL and its MINIMUM, RFC 2308 §5), held to 300–3600 s and then to `cache_min_ttl`..`cache_max_ttl` like every other response. NXDOMAINs for local names go to a separate negative cache with the same 300–3600 s window, outside `cache_min_ttl` / `cache_max_ttl` |
 | Miss short-circuit | A bloom filter sized at 2 × capacity (1% false positives) skips the map on definite misses |
