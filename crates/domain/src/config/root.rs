@@ -5,6 +5,7 @@ use super::blocking::BlockingConfig;
 use super::database::DatabaseConfig;
 use super::dns::DnsConfig;
 use super::dns64::Dns64Config;
+use super::dns_cookies::MIN_SECRET_ROTATION_SECS;
 use super::legacy;
 use super::logging::LoggingConfig;
 use super::malware_detection;
@@ -73,6 +74,14 @@ impl Config {
         self.validate_non_zero()?;
         self.validate_derived_durations()?;
         malware_detection::validate(&self.dns)?;
+
+        let cookies = &self.dns.dns_cookies;
+        if cookies.enabled && cookies.has_short_rotation() {
+            return Err(DomainError::ConfigError(format!(
+                "dns.dns_cookies.secret_rotation_secs must be 0 (no rotation) or at least {MIN_SECRET_ROTATION_SECS}, got {}",
+                cookies.secret_rotation_secs
+            )));
+        }
 
         self.dns.local_dns_server_addr()?;
 

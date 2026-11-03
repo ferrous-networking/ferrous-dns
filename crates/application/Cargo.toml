@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 ferrous-dns-domain.workspace = true
+arc-swap.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 tracing.workspace = true

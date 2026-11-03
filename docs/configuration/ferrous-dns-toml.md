@@ -710,7 +710,7 @@ require_valid_cookie = false
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Enable DNS Cookies. When `false` no response carries a COOKIE option |
 | `server_secret` | `str` | `""` (ephemeral) | 64-char hex (32 bytes) secret so cookies survive restarts; generate with `openssl rand -hex 32`. Empty uses an ephemeral secret regenerated on each restart. Any other value stops startup while cookies are enabled, and is ignored with a warning while they are off |
-| `secret_rotation_secs` | `int` | `3600` | Seconds between server-secret rotations |
+| `secret_rotation_secs` | `int` | `3600` | Length of a rotation window: each window signs cookies with its own key, and the previous window's is still accepted. `0` = no rotation; otherwise at least `60` (a shorter window loads as `0`, with a warning) |
 | `require_valid_cookie` | `bool` | `false` | Strict mode: a UDP query without a valid cookie gets BADCOOKIE (with a fresh cookie) or REFUSED, with EDE 18; TCP, DoT, DoH and DoQ are not checked. Only enable when every UDP client supports RFC 7873 |
 
 A COOKIE option whose length RFC 7873 does not allow (anything but 8 or 16–40 bytes) is answered with `FORMERR`, whatever these settings say.

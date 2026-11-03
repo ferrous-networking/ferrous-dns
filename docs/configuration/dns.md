@@ -588,7 +588,7 @@ DNS Cookies (RFC 7873) protect UDP-based DNS against two classes of attack: **so
 |:-------|:-----|:--------|:------------|
 | `enabled` | `bool` | `true` | Master switch — enables DNS Cookie processing. When `false` the server never sends a COOKIE option |
 | `server_secret` | `str` | `""` | Hex-encoded 32-byte HMAC secret (64 hex chars). Empty = auto-generate an ephemeral secret on startup (not suitable for production) |
-| `secret_rotation_secs` | `int` | `3600` | Seconds between secret rotations. The previous secret is still accepted for one full rotation window to allow in-flight clients to re-negotiate without errors |
+| `secret_rotation_secs` | `int` | `3600` | Length of a secret rotation window, in seconds. Each window signs server cookies with its own key, and the previous window's key is still accepted, so a cookie lasts one to two windows. `0` turns rotation off, and the secret itself signs every cookie. Anything else must be at least `60`; a file with a shorter window loads as `0`, with a warning. See [Secret rotation](#secret-rotation) |
 | `require_valid_cookie` | `bool` | `false` | Strict mode: a UDP query without a valid server cookie gets `BADCOOKIE` with a fresh cookie when it sent a client cookie, or `REFUSED` when it sent none (both with EDE 18). TCP, DoT, DoH and DoQ are not checked. Default `false` = permissive mode (always respond, and echo a fresh server cookie) |
 
 !!! warning "The table is nested under `[dns]`"
@@ -623,5 +623,11 @@ require_valid_cookie  = true
 
 !!! tip "Persistent secret across restarts"
     When `server_secret` is empty, Ferrous DNS generates an ephemeral secret at startup. Clients that cached a server cookie during the previous run will need to re-negotiate on restart. For stable production deployments, set a fixed 64-character hex secret.
+
+### Secret rotation
+
+The key that signs server cookies changes every `secret_rotation_secs`. Each window's key is derived from the secret (`server_secret`, or the ephemeral one) and the window's number, counted on the Unix clock from 1970. A cookie from the previous window is still accepted, and every reply carries a cookie from the current one, so a client that keeps querying never holds an expired cookie. A client idle for more than a window sends one that is no longer valid: permissive mode answers it anyway, with a fresh cookie, and strict mode answers `BADCOOKIE` with a fresh cookie, which an RFC 7873 client retries with.
+
+Because the keys depend only on the secret and the clock, servers that share `server_secret` (anycast, or a pair behind one address) derive the same keys and accept each other's cookies. Keep their clocks synchronized with NTP. A server whose clock runs a few seconds ahead switches windows first, and for those seconds its cookies are refused by the others, so a strict-mode client goes through one more `BADCOOKIE` retry.
 
 See [Security > DNS Cookies](../features/security.md#dns-cookies) for a full explanation of the handshake and threat model.

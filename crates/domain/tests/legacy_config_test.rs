@@ -115,6 +115,21 @@ fn a_malformed_cookie_secret_with_cookies_on_fails_saying_how_to_fix_it() {
     }
 }
 
+/// Older releases never rotated the cookie secret, whatever the window.
+#[test]
+fn a_cookie_rotation_window_under_a_minute_loads_as_no_rotation() {
+    for secs in [1, 59] {
+        let tables = format!("[dns.dns_cookies]\nsecret_rotation_secs = {secs}");
+        let cookies = load(&file("", &tables)).dns.dns_cookies;
+        assert_eq!(cookies.secret_rotation_secs, 0, "{secs}");
+    }
+    let tables = "[dns.dns_cookies]\nsecret_rotation_secs = 60";
+    assert_eq!(
+        load(&file("", tables)).dns.dns_cookies.secret_rotation_secs,
+        60
+    );
+}
+
 /// Older releases ran every name but `lfu` and `lfu-k` as hit_rate.
 #[test]
 fn an_unknown_cache_eviction_strategy_loads_as_hit_rate() {
@@ -613,5 +628,10 @@ fn the_values_a_load_rewrites_are_still_rejected_by_validate() {
     let mut config = Config::default();
     config.dns.upstream_servers = vec!["1.1.1.1:53".to_string()];
     config.dns.tunneling_detection.confidence_threshold = 1.5;
+    assert!(config.validate().is_err());
+
+    let mut config = Config::default();
+    config.dns.upstream_servers = vec!["1.1.1.1:53".to_string()];
+    config.dns.dns_cookies.secret_rotation_secs = 30;
     assert!(config.validate().is_err());
 }

@@ -1,5 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// The shortest secret rotation window: a cookie has to outlive the round
+/// trip that refreshes it. `0` turns rotation off.
+pub const MIN_SECRET_ROTATION_SECS: u64 = 60;
+
 /// DNS Cookies anti-spoofing configuration (RFC 7873).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -16,9 +20,12 @@ pub struct DnsCookiesConfig {
     )]
     pub server_secret: Option<[u8; 32]>,
 
-    /// How often the server rotates to a new secret (seconds).
-    /// The previous secret remains accepted during one full rotation window
-    /// to allow in-flight clients to re-negotiate without errors.
+    /// Length of a secret rotation window, in seconds. Each window signs
+    /// server cookies with its own key, derived from the secret and the
+    /// window's number on the Unix clock, and the previous window's key is
+    /// still accepted, so a cookie lasts one to two windows. `0` keeps one key
+    /// for the life of the process; otherwise at least
+    /// [`MIN_SECRET_ROTATION_SECS`].
     pub secret_rotation_secs: u64,
 
     /// When `true`, a UDP query without a valid server cookie is not
@@ -37,6 +44,13 @@ impl Default for DnsCookiesConfig {
             secret_rotation_secs: 3600,
             require_valid_cookie: false,
         }
+    }
+}
+
+impl DnsCookiesConfig {
+    /// Whether `secret_rotation_secs` is a window shorter than [`MIN_SECRET_ROTATION_SECS`].
+    pub(super) fn has_short_rotation(&self) -> bool {
+        (1..MIN_SECRET_ROTATION_SECS).contains(&self.secret_rotation_secs)
     }
 }
 

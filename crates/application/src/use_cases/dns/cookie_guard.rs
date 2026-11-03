@@ -1,27 +1,59 @@
+use arc_swap::{ArcSwap, Guard};
 use ferrous_dns_domain::{ClientProtocol, DnsCookiesConfig};
 use ring::hmac;
 use std::net::IpAddr;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLIENT_COOKIE_LEN: usize = 8;
 const SERVER_COOKIE_LEN: usize = 8;
+/// Keeps the window keys apart from any other use of the secret.
+const WINDOW_KEY_LABEL: &[u8] = b"ferrous-dns cookie window";
 
 /// RFC 7873 DNS Cookie verifier and server-cookie generator.
+///
+/// With `secret_rotation_secs` set, each rotation window signs with its own
+/// key, derived from the secret and the window's number on the Unix clock, so
+/// servers sharing `server_secret` with synced clocks derive the same keys. A
+/// cookie is accepted in the window that issued it and in the next one.
 pub struct DnsCookieGuard {
     /// `[dns_cookies] enabled && require_valid_cookie`: refuse queries without a valid server cookie.
     strict: bool,
+    /// Signs every cookie when rotation is off; derives the window keys otherwise.
     secret: hmac::Key,
+    /// 0 when the secret never rotates.
+    rotation_secs: u64,
+    /// Unix time in seconds.
+    clock: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// The keys of the last window a lookup saw, replaced by the first lookup
+    /// in a new one. Lookups that race to replace them derive the same keys.
+    keys: ArcSwap<WindowKeys>,
+}
+
+struct WindowKeys {
+    window: u64,
+    current: hmac::Key,
+    /// `None` when rotation is off, or before the first window.
+    previous: Option<hmac::Key>,
 }
 
 impl DnsCookieGuard {
     pub fn from_config(config: &DnsCookiesConfig, secret: [u8; 32]) -> Self {
+        let secret = hmac::Key::new(hmac::HMAC_SHA256, &secret);
+        let rotation_secs = config.secret_rotation_secs;
+        let keys = window_keys(&secret, rotation_secs, window_at(unix_now(), rotation_secs));
         Self {
             strict: config.enabled && config.require_valid_cookie,
-            secret: hmac::Key::new(hmac::HMAC_SHA256, &secret),
+            secret,
+            rotation_secs,
+            clock: Box::new(unix_now),
+            keys: ArcSwap::from_pointee(keys),
         }
     }
 
     /// Reads the time, in Unix seconds, from `clock` instead of the system clock.
-    pub fn with_clock(self, _clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+    pub fn with_clock(mut self, clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+        self.clock = Box::new(clock);
         self
     }
 
@@ -49,8 +81,14 @@ impl DnsCookieGuard {
             return false;
         };
         // `hmac::verify` needs the full 32-byte tag; the server cookie is truncated to 8 bytes.
-        let expected = compute_server_cookie(&self.secret, client_ip, client_cookie);
-        subtle_eq(&expected, received)
+        let is_signed_by = |key: &hmac::Key| {
+            subtle_eq(
+                &compute_server_cookie(key, client_ip, client_cookie),
+                received,
+            )
+        };
+        let keys = self.keys();
+        is_signed_by(&keys.current) || keys.previous.as_ref().is_some_and(is_signed_by)
     }
 
     /// Generates the 8-byte server cookie to include in responses.
@@ -59,8 +97,58 @@ impl DnsCookieGuard {
         client_ip: IpAddr,
         client_cookie: &[u8; CLIENT_COOKIE_LEN],
     ) -> [u8; SERVER_COOKIE_LEN] {
-        compute_server_cookie(&self.secret, client_ip, client_cookie)
+        compute_server_cookie(&self.keys().current, client_ip, client_cookie)
     }
+
+    /// The keys of the current rotation window.
+    fn keys(&self) -> Guard<Arc<WindowKeys>> {
+        let keys = self.keys.load();
+        if self.rotation_secs == 0 {
+            return keys;
+        }
+        let window = window_at((self.clock)(), self.rotation_secs);
+        if keys.window == window {
+            return keys;
+        }
+        let fresh = Arc::new(window_keys(&self.secret, self.rotation_secs, window));
+        self.keys.store(Arc::clone(&fresh));
+        Guard::from_inner(fresh)
+    }
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+}
+
+fn window_at(unix_secs: u64, rotation_secs: u64) -> u64 {
+    unix_secs.checked_div(rotation_secs).unwrap_or(0)
+}
+
+fn window_keys(secret: &hmac::Key, rotation_secs: u64, window: u64) -> WindowKeys {
+    if rotation_secs == 0 {
+        return WindowKeys {
+            window,
+            current: secret.clone(),
+            previous: None,
+        };
+    }
+    WindowKeys {
+        window,
+        current: window_key(secret, window),
+        previous: window
+            .checked_sub(1)
+            .map(|previous| window_key(secret, previous)),
+    }
+}
+
+/// `HMAC-SHA256(secret, label ‖ window)`, the key that signs `window`'s cookies.
+fn window_key(secret: &hmac::Key, window: u64) -> hmac::Key {
+    let mut input = [0u8; WINDOW_KEY_LABEL.len() + 8];
+    input[..WINDOW_KEY_LABEL.len()].copy_from_slice(WINDOW_KEY_LABEL);
+    input[WINDOW_KEY_LABEL.len()..].copy_from_slice(&window.to_be_bytes());
+    hmac::Key::new(hmac::HMAC_SHA256, hmac::sign(secret, &input).as_ref())
 }
 
 /// Builds the HMAC input: IP bytes (4 or 16) followed by the client cookie (8 bytes).

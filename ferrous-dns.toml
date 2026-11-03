@@ -459,5 +459,5 @@ sqlite_mmap_size_mb = 64
 [dns.dns_cookies]
 # enabled = true                                                                   # default: true
 server_secret = ""                                                                 # empty = ephemeral secret (regenerated each restart); set a unique 64-char hex via: openssl rand -hex 32
-# secret_rotation_secs = 3600                                                      # default: 3600
+# secret_rotation_secs = 3600                                                      # default: 3600; each window signs with its own key, the previous one is still accepted; 0 = no rotation, else at least 60
 # require_valid_cookie = false                                                      # default: false (permissive)

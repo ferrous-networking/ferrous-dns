@@ -23,7 +23,7 @@ use tracing::warn;
 use super::auth::expiry_from_now;
 use super::cache_eviction::CacheEvictionStrategy;
 use super::dns::DnsConfig;
-use super::dns_cookies::{parse_server_secret, DnsCookiesConfig};
+use super::dns_cookies::{parse_server_secret, DnsCookiesConfig, MIN_SECRET_ROTATION_SECS};
 use super::encrypted_dns::EncryptedDnsConfig;
 use super::malware_detection::{is_threshold_in_range, MAX_ENTROPY_BITS, MAX_RATIO};
 use super::root::Config;
@@ -190,6 +190,17 @@ pub(super) fn normalize_values(config: &mut Config) {
         default_ip_filter.ip_ttl_secs,
         is_zero,
     );
+
+    // Older releases never rotated the cookie secret, whatever this said.
+    let cookies = &mut dns.dns_cookies;
+    if cookies.enabled && cookies.has_short_rotation() {
+        warn!(
+            key = "dns.dns_cookies.secret_rotation_secs",
+            value = cookies.secret_rotation_secs,
+            "Rotation window under {MIN_SECRET_ROTATION_SECS} s: using 0, no rotation, which older releases ran with"
+        );
+        cookies.secret_rotation_secs = 0;
+    }
 
     normalize_malware_detection(dns, default_dns);
 
