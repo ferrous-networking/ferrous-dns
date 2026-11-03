@@ -1,9 +1,9 @@
+use super::coarse_timer::coarse_unix_secs;
 use arc_swap::{ArcSwap, Guard};
 use ferrous_dns_domain::{ClientProtocol, DnsCookiesConfig};
 use ring::hmac;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLIENT_COOKIE_LEN: usize = 8;
 const SERVER_COOKIE_LEN: usize = 8;
@@ -23,8 +23,8 @@ pub struct DnsCookieGuard {
     secret: hmac::Key,
     /// 0 when the secret never rotates.
     rotation_secs: u64,
-    /// Unix time in seconds.
-    clock: Box<dyn Fn() -> u64 + Send + Sync>,
+    /// Unix time in seconds; `None` reads [`coarse_unix_secs`].
+    clock: Option<Box<dyn Fn() -> u64 + Send + Sync>>,
     /// The keys of the last window a lookup saw, replaced by the first lookup
     /// in a new one. Lookups that race to replace them derive the same keys.
     keys: ArcSwap<WindowKeys>,
@@ -41,19 +41,20 @@ impl DnsCookieGuard {
     pub fn from_config(config: &DnsCookiesConfig, secret: [u8; 32]) -> Self {
         let secret = hmac::Key::new(hmac::HMAC_SHA256, &secret);
         let rotation_secs = config.secret_rotation_secs;
-        let keys = window_keys(&secret, rotation_secs, window_at(unix_now(), rotation_secs));
+        let window = window_at(coarse_unix_secs(), rotation_secs);
+        let keys = window_keys(&secret, rotation_secs, window);
         Self {
             strict: config.enabled && config.require_valid_cookie,
             secret,
             rotation_secs,
-            clock: Box::new(unix_now),
+            clock: None,
             keys: ArcSwap::from_pointee(keys),
         }
     }
 
     /// Reads the time, in Unix seconds, from `clock` instead of the system clock.
     pub fn with_clock(mut self, clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
-        self.clock = Box::new(clock);
+        self.clock = Some(Box::new(clock));
         self
     }
 
@@ -106,7 +107,11 @@ impl DnsCookieGuard {
         if self.rotation_secs == 0 {
             return keys;
         }
-        let window = window_at((self.clock)(), self.rotation_secs);
+        let now = self
+            .clock
+            .as_ref()
+            .map_or_else(coarse_unix_secs, |clock| clock());
+        let window = window_at(now, self.rotation_secs);
         if keys.window == window {
             return keys;
         }
@@ -114,12 +119,6 @@ impl DnsCookieGuard {
         self.keys.store(Arc::clone(&fresh));
         Guard::from_inner(fresh)
     }
-}
-
-fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
 }
 
 fn window_at(unix_secs: u64, rotation_secs: u64) -> u64 {
