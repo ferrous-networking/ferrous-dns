@@ -24,13 +24,14 @@ and that text will survive every later refresh.
 │   │   ├── src/ (79)               ← TODO
 │   │   │   ├── dto/ (31)           ← TODO
 │   │   │   └── handlers/ (38)      ← TODO
-│   │   └── tests/ (28)             ← TODO
+│   │   └── tests/ (33)             ← TODO
 │   │       └── helpers/ (4)        ← TODO
 │   ├── application/ (233)          ← use cases + port traits
 │   │   ├── src/ (197)              ← TODO
 │   │   │   ├── ports/ (52)         ← TODO
 │   │   │   └── use_cases/ (133)    ← TODO
-│   │   └── tests/ (36)             ← TODO
+│   │   └── tests/ (40)             ← TODO
+│   │       └── helpers/ (3)        ← TODO
 │   ├── cli/ (41)                   ← the binary; wires everything
 │   │   ├── src/ (30)               ← TODO
 │   │   │   ├── bootstrap/ (5)      ← TODO
@@ -43,15 +44,15 @@ and that text will survive every later refresh.
 │   │   │   ├── entities/ (22)      ← TODO
 │   │   │   └── value_objects/ (7)  ← TODO
 │   │   └── tests/ (22)             ← TODO
-│   ├── infrastructure/ (264)       ← DB, DNS adapters, auth
+│   ├── infrastructure/ (300)       ← DB, DNS adapters, auth
 │   │   ├── src/ (153)              ← TODO
 │   │   │   ├── auth/ (7)           ← TODO
 │   │   │   ├── dns/ (110)          ← TODO
 │   │   │   ├── repositories/ (25)  ← TODO
 │   │   │   └── system/ (3)         ← TODO
-│   │   └── tests/ (132)            ← TODO
+│   │   └── tests/ (147)            ← TODO
 │   │       ├── helpers/ (3)        ← TODO
-│   │       └── support/ (3)        ← TODO
+│   │       └── support/ (9)        ← TODO
 │   └── jobs/ (21)                  ← background jobs
 │       ├── src/ (14)               ← TODO
 │       └── tests/ (7)              ← TODO
@@ -61,7 +62,7 @@ and that text will survive every later refresh.
 ├── tests/ (10)                     ← integration/performance harness crate
 │   ├── common/ (3)                 ← shared fixtures + test server
 │   └── performance/ (5)            ← competitor benchmarks (#[ignore]d)
-└── web/ (16)                       ← admin UI frontend
-    └── static/ (16)                ← vanilla HTML/CSS/JS served by the API
-        └── vendor/ (4)             ← TODO
+└── web/ (58)                       ← admin UI frontend
+    └── static/ (58)                ← vanilla HTML/CSS/JS served by the API
+        └── vendor/ (20)            ← TODO
 ```
