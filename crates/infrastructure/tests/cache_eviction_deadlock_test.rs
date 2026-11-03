@@ -24,6 +24,11 @@ const GUARD_TIMEOUT: Duration = Duration::from_secs(5);
 /// `batch_eviction_percentage` of 0.2 makes one at capacity evict exactly one
 /// entry.
 fn make_cache(max_entries: usize) -> Arc<DnsCache> {
+    make_cache_sampling(max_entries, 8)
+}
+
+/// With one entry to evict, a pass samples `eviction_sample_size` entries.
+fn make_cache_sampling(max_entries: usize, eviction_sample_size: usize) -> Arc<DnsCache> {
     Arc::new(DnsCache::new(DnsCacheConfig {
         max_entries,
         eviction_strategy: EvictionStrategy::LRU,
@@ -33,7 +38,7 @@ fn make_cache(max_entries: usize) -> Arc<DnsCache> {
         min_lfuk_score: 0.0,
         shard_amount: 4,
         access_window_secs: 7200,
-        eviction_sample_size: 8,
+        eviction_sample_size,
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
@@ -92,6 +97,25 @@ fn test_eviction_returns_instead_of_deadlocking() {
         1,
         "the eviction should be counted exactly once"
     );
+}
+
+/// A pass walks from where the previous one stopped to the end of the map,
+/// then round from the front. With windows of 3 in a map of 8, the third pass
+/// starts at 6 and wraps, so both walks run behind the guard.
+#[test]
+fn test_eviction_that_wraps_round_the_map_returns_instead_of_deadlocking() {
+    let cache = make_cache_sampling(8, 3);
+
+    let evicting = Arc::clone(&cache);
+    run_with_deadlock_guard("three evict_entries passes", move || {
+        for _ in 0..3 {
+            insert_names(&evicting, 8);
+            evicting.evict_entries();
+        }
+    });
+
+    assert_eq!(cache.len(), 7, "each pass should have evicted one entry");
+    assert_eq!(cache.metrics().evictions.load(Ordering::Relaxed), 3);
 }
 
 #[test]

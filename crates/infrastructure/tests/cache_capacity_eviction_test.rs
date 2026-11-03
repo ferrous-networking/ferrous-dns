@@ -51,7 +51,7 @@ fn heat(cache: &DnsCache, domain: &str) {
     }
 }
 
-/// Unlike `get`, records no hit, so probing leaves the scores alone.
+/// Unlike `get`, `get_ttl` records no hit, so probing leaves the scores alone.
 fn is_cached(cache: &DnsCache, domain: &str) -> bool {
     cache.get_ttl(domain, &RecordType::CNAME).is_some()
 }
@@ -80,6 +80,8 @@ fn test_pass_brings_an_overfull_cache_below_capacity() {
 #[test]
 fn test_cold_entry_is_evicted_wherever_its_key_lands() {
     const NAMES: usize = 10;
+    // A lap of the map takes four windows of three; twice the names leaves
+    // room for positions shifting as evicted names are put back.
     const PASSES: usize = 2 * NAMES;
     let name = |i: usize| format!("ring-{i}.example");
 
