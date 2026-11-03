@@ -61,7 +61,7 @@ cache_adaptive_thresholds = false
 | `cache_max_entries` | `200000` | Maximum entries in L2 cache |
 | `cache_eviction_strategy` | `"hit_rate"` | Eviction policy (see below) |
 | `cache_compaction_interval` | `600` | Seconds a renewal that failed waits for its next try (expired entries leave the cache by themselves) |
-| `cache_batch_eviction_percentage` | `0.1` | Fraction of cache evicted in one pass when full (0.1 = 10%) |
+| `cache_batch_eviction_percentage` | `0.1` | Headroom an eviction pass makes below `cache_max_entries` (0.1 = a pass leaves the cache at 90% of capacity) |
 | `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | auto | L2 cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
 | `cache_inflight_shards` | auto | In-flight coalescing map shard count; auto-detected as 2x CPU cores, rounded to power of 2 (min 8, max 128) |
@@ -90,7 +90,7 @@ Names are case-insensitive (`hitrate` and `lfuk` are accepted too). Any other va
 
 For most home and office deployments, `"hit_rate"` gives the best results as it preserves entries for frequently visited sites regardless of recency.
 
-Nothing scans the cache on a schedule to remove entries. The cache's background worker checks its size every second: once it reaches `cache_max_entries`, it removes `cache_batch_eviction_percentage` of `cache_max_entries` by the strategy above, and again on the next second for as long as the cache stays full. Inserts do not evict, so the cache can exceed `cache_max_entries` by about a second of inserts. An expired entry leaves the cache the second it stops being servable, at the end of its stale-serve grace period (two TTLs after it was stored or last renewed): every entry carries a timer for that second. Both happen whether or not optimistic refresh is enabled.
+Nothing scans the cache on a schedule to remove entries. The cache's background worker checks its size every second: once it reaches `cache_max_entries`, it removes, by the strategy above, every entry past `cache_max_entries` plus `cache_batch_eviction_percentage` of `cache_max_entries`. So a pass leaves the cache at 90% of capacity at the default, however many new names arrived during the last second. The candidates come from a window that starts where the previous pass stopped, so over successive passes every entry is weighed. Inserts do not evict, so the cache can exceed `cache_max_entries` by about a second of inserts. An expired entry leaves the cache the second it stops being servable, at the end of its stale-serve grace period (two TTLs after it was stored or last renewed): every entry carries a timer for that second. Both happen whether or not optimistic refresh is enabled.
 
 The negative-response and DNSSEC-material caches use bounded expiration sampling when full, falling back to an arbitrary eviction if the sample finds no expired entries. Inserting a new entry does not scan the entire live cache. A negative entry also leaves the cache by its own timer the second it expires. DNSSEC material has no expiry timer: it is keyed per zone, so a re-validated zone replaces its own entry, and only zones that are never queried again keep expired keys until they are evicted.
 

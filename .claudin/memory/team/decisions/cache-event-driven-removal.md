@@ -27,7 +27,7 @@ impact: structural
 **Rejected:**
 - A safety-net sweep inside bloom rotation that keeps the bounded inbox. It was compaction in disguise, on a path that almost never runs.
 - A per-insert size counter to detect a full cache. `len()` once a tick costs microseconds and keeps the insert path untouched.
-- Evicting only the overshoot with a rotating sampling cursor, and removing `cache_batch_eviction_percentage`. Both change the rules; they are follow-ups. Today's sample is the iteration prefix (`storage.rs` `evict_by_strategy`), about 80% of the cache at the defaults.
+- Evicting only the overshoot with a rotating sampling cursor, and removing `cache_batch_eviction_percentage`. Both change the rules; they are follow-ups. Today's sample is the iteration prefix (`storage.rs` `evict_by_strategy`), about 80% of the cache at the defaults. Done later for #324 (2026-11-03), keeping the key as headroom: [[cache-eviction-prefix-sample-fixed-batch]].
 
 **Evidence (2026-10-16, commits `ff0d248f` red, `fda3fcfe` fix):**
 - Bench `cache_ops`, A/B against main in both orders: `insert` 341/343 ns on main and 356/339 ns on the branch, so noise. With refresh off, an insert now arms its expiry: 321/328 → 349/346 ns (+7%). Removing 10k dead entries out of 200k costs 2.56/2.71 ms of timer firings, against 2.98/2.90 ms for one `compact()` pass. The pass costs O(200k) however few entries died.

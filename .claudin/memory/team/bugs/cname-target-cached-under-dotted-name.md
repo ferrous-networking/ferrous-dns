@@ -1,6 +1,6 @@
 ---
 name: cname-target-cached-under-dotted-name
-description: CNAME chain names kept hickory's trailing dot, so the target shortcut (#325) never hit and CNAME cloaking never blocked a real answer; PR #354 normalizes them and removes the shortcut (opened 2026-11-01)
+description: CNAME chain names kept hickory's trailing dot, so the target shortcut (#325) never hit and CNAME cloaking never blocked a real answer; fixed by PR #354 (975e562e, 2026-11-01), which also removed the shortcut
 type: project
 paths:
   - crates/infrastructure/src/dns/forwarding/response_parser.rs
@@ -12,7 +12,7 @@ paths:
 
 **Why tests missed it:** the application cloaking tests and `cache_cname_target_test.rs` fed mock chains without the dot. Only a real wire answer (`tests/support/upstream.rs` `Answer::Cname`) shows it.
 
-**Fix (branch `fix/cname-chain-trailing-dot`, 2026-10-31 → 11-01):**
+**Fix (PR #354, squash `975e562e`, merged 2026-11-01):**
 - `normalize_wire_name` in `cache/key.rs` (no trailing dot, ASCII-lowercase), used by `server.rs` and the parser.
 - The chain is cached with the answer (`CachedAddresses.cname_chain`, `WireData(Arc<CachedWire>)`), and every cached hit re-checks it per group. The memo in the decision cache alone let a reload, the chain's TTL or another group's cached copy serve the alias unchecked.
 - An explicit allow of the queried name now lifts cloaking (it ignored `explicitly_allowed` before).
@@ -20,4 +20,4 @@ paths:
 
 **The target shortcut was removed, not fixed.** Once names matched, it cached an upstream's answer under the target's own name in the shared view, overriding a name another mechanism owns: a conditional pool for every client, a wildcard local record, a `local_domain` name. A guard would need every owner of a name. Do not bring it back without that.
 
-**Status:** fixed in PR #354 (opened 2026-11-01, `make ci` 2543 green). The Query Log still labels `cname_cloaking` rows "Upstream" until #326.
+**Status:** fixed by PR #354, merged 2026-11-01 as `975e562e` (closes #325, milestone v1.0.0). The Query Log still labels `cname_cloaking` rows "Upstream" until #326.

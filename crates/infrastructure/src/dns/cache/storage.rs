@@ -14,7 +14,7 @@ use ferrous_dns_domain::RecordType;
 use rustc_hash::FxBuildHasher;
 use smallvec::SmallVec;
 use std::collections::BinaryHeap;
-use std::sync::atomic::Ordering as AtomicOrdering;
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::mpsc;
 use tracing::{debug, info};
@@ -85,6 +85,11 @@ pub struct DnsCache {
     pub(super) bloom: AtomicBloom,
     pub(super) access_window_secs: u64,
     pub(super) eviction_sample_size: usize,
+    /// Where the next capacity pass starts sampling, as a position in the
+    /// map's iteration order. Only approximate: removals and inserts ahead of
+    /// it, and a shard that grows, shift what sits there, so a pass may skip
+    /// or revisit a few entries. Successive passes still reach every entry.
+    eviction_cursor: AtomicUsize,
     pub(super) negative: NegativeDnsCache,
     permanent_records: DashMap<CompactString, PermanentTypes, FxBuildHasher>,
     min_ttl: u32,
@@ -131,6 +136,7 @@ impl DnsCache {
             bloom,
             access_window_secs: config.access_window_secs,
             eviction_sample_size: config.eviction_sample_size.max(1),
+            eviction_cursor: AtomicUsize::new(0),
             negative: NegativeDnsCache::new(config.max_entries),
             permanent_records: DashMap::with_hasher(FxBuildHasher),
             min_ttl: config.min_ttl,
@@ -827,63 +833,42 @@ impl DnsCache {
         }
     }
 
-    /// Removes up to `count` entries without scoring them — the cheap path for
-    /// a cache that already sits below half its capacity.
-    ///
-    /// The keys are collected into a `Vec` that **ends the statement**: a
-    /// dashmap `Iter` holds the read guard of the shard it is walking, and
-    /// `remove` needs the write guard of that same shard. `parking_lot`'s
-    /// `RawRwLock` is not reentrant, so removing while the iterator is alive
-    /// deadlocks the thread for good (issue #228).
-    ///
-    /// Permanent entries are skipped for the same reason [`Self::evict_by_strategy`]
-    /// skips them: they are local DNS records loaded from config, nothing
-    /// reloads them, and dropping one here would leave `permanent_records`
-    /// claiming a name the backing map no longer holds.
-    fn evict_arbitrary_entries(&self, count: usize) {
-        let keys: Vec<CacheKey> = self
-            .cache
-            .iter()
-            .filter(|entry| {
-                let record = entry.value();
-                !record.is_permanent() && !record.is_marked_for_deletion()
-            })
-            .map(|entry| entry.key().clone())
-            .take(count)
-            .collect();
-
-        let mut evicted = 0u64;
-        for key in &keys {
-            if self.cache.remove(key).is_some() {
-                evicted += 1;
-            }
-        }
-
-        if evicted > 0 {
-            self.metrics
-                .evictions
-                .fetch_add(evicted, AtomicOrdering::Relaxed);
-        }
-    }
-
+    /// Makes room in a full cache: removes what it holds past `max_entries`,
+    /// plus `batch_eviction_percentage` of `max_entries` as headroom, so a pass
+    /// ends at `(1 - batch_eviction_percentage) × max_entries` however fast
+    /// names came in. A cache that dropped below capacity before the pass ran,
+    /// because expiry timers removed entries since the worker checked, is left
+    /// alone.
     pub fn evict_entries(&self) {
-        let num_to_evict = ((self.max_entries as f64) * self.batch_eviction_percentage) as usize;
-        let num_to_evict = num_to_evict.max(1);
-
-        if self.cache.len() > self.max_entries / 2 {
-            self.evict_by_strategy(num_to_evict);
-        } else {
-            self.evict_arbitrary_entries(num_to_evict);
+        let len = self.cache.len();
+        if len < self.max_entries {
+            return;
         }
+        let headroom = ((self.max_entries as f64) * self.batch_eviction_percentage) as usize;
+        self.evict_by_strategy(len - self.max_entries + headroom.max(1));
     }
 
+    /// Scores up to `count × eviction_sample_size` entries and removes the
+    /// `count` lowest. The sample is a window that starts where the previous
+    /// pass stopped and wraps round to the front of the map, so successive
+    /// passes reach every shard.
+    ///
+    /// Each walk ends before the next one starts, and every key is collected
+    /// before any removal: a dashmap `Iter` holds the read guard of the shard
+    /// it is walking, and `remove` on that shard would deadlock on it for good
+    /// (issue #228).
+    ///
+    /// Permanent entries are never candidates: they are local DNS records
+    /// loaded from config, nothing reloads them, and dropping one would leave
+    /// `permanent_records` claiming a name the backing map no longer holds.
     fn evict_by_strategy(&self, count: usize) {
-        if self.cache.is_empty() {
+        let len = self.cache.len();
+        if len == 0 {
             return;
         }
 
         let now_secs = coarse_now_secs();
-        let total_to_sample = count * self.eviction_sample_size;
+        let total_to_sample = count.saturating_mul(self.eviction_sample_size).min(len);
 
         struct RecordSnapshot {
             key: CacheKey,
@@ -893,26 +878,31 @@ impl DnsCache {
             is_expired: bool,
         }
 
+        let start = self.eviction_cursor.load(AtomicOrdering::Relaxed) % len;
         let mut snapshots = Vec::with_capacity(total_to_sample);
-        let mut sampled = 0usize;
-
-        for entry in self.cache.iter() {
-            if sampled >= total_to_sample {
-                break;
+        let mut walked = 0usize;
+        // From the cursor to the end of the map, then round from the front.
+        'walk: for (skip, take) in [(start, usize::MAX), (0, start)] {
+            for entry in self.cache.iter().skip(skip).take(take) {
+                if snapshots.len() >= total_to_sample {
+                    break 'walk;
+                }
+                walked += 1;
+                let record = entry.value();
+                if record.is_marked_for_deletion() || record.is_permanent() {
+                    continue;
+                }
+                snapshots.push(RecordSnapshot {
+                    key: entry.key().clone(),
+                    hit_count: record.counters.hit_count.load(AtomicOrdering::Relaxed),
+                    last_access: record.counters.last_access.load(AtomicOrdering::Relaxed),
+                    inserted_at: record.inserted_at_secs,
+                    is_expired: record.is_expired_at_secs(now_secs),
+                });
             }
-            let record = entry.value();
-            if record.is_marked_for_deletion() || record.is_permanent() {
-                continue;
-            }
-            snapshots.push(RecordSnapshot {
-                key: entry.key().clone(),
-                hit_count: record.counters.hit_count.load(AtomicOrdering::Relaxed),
-                last_access: record.counters.last_access.load(AtomicOrdering::Relaxed),
-                inserted_at: record.inserted_at_secs,
-                is_expired: record.is_expired_at_secs(now_secs),
-            });
-            sampled += 1;
         }
+        self.eviction_cursor
+            .store((start + walked) % len, AtomicOrdering::Relaxed);
 
         let mut heap: BinaryHeap<EvictionCandidate> = BinaryHeap::with_capacity(count + 1);
         let mut urgent_keys: Vec<CacheKey> = Vec::new();
@@ -960,8 +950,9 @@ impl DnsCache {
 
         let mut scored_evicted = 0usize;
         for candidate in candidates.into_iter().take(evict_count) {
-            self.cache.remove(&candidate.key);
-            scored_evicted += 1;
+            if self.cache.remove(&candidate.key).is_some() {
+                scored_evicted += 1;
+            }
         }
 
         let retain_removed = if !urgent_keys.is_empty() {

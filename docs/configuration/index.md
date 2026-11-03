@@ -316,7 +316,7 @@ cache_max_ttl                   = 86400
 cache_max_entries               = 500000        # ~250 MB RAM
 cache_eviction_strategy         = "hit_rate"
 cache_compaction_interval       = 300           # retry failed renewals after 5 min
-cache_batch_eviction_percentage = 0.05          # smaller batches, more frequent
+cache_batch_eviction_percentage = 0.05          # less headroom: passes leave 95%, so they come more often
 cache_shard_amount              = 256           # explicit — 16-core × 16
 cache_adaptive_thresholds       = true          # auto-tune eviction thresholds
 

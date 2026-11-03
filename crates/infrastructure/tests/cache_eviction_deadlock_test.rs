@@ -1,15 +1,11 @@
-//! The eviction branch that does not score candidates.
+//! Capacity eviction must never remove a key while it still holds the dashmap
+//! shard guard it is iterating.
 //!
-//! `evict_entries` falls back to it whenever the cache already sits at or below
-//! half of `max_entries` — which happens when expiry timers drop a burst of
-//! short-TTL entries between the refresh worker's capacity check and the
-//! eviction it starts on a blocking thread.
-//!
-//! That branch used to remove a key while still holding the dashmap shard guard
-//! it was iterating, so it deadlocked on its own shard and took the whole cache
-//! refresh down with it (issue #228). Every test here runs the eviction on a
-//! separate thread behind a timeout, so a reintroduced deadlock fails the suite
-//! instead of hanging it.
+//! An unscored eviction branch, since removed (#324), once did exactly that: it
+//! deadlocked on its own shard and took the whole cache refresh down with it
+//! (issue #228). The scored pass walks the map the same way, so every test here
+//! runs the eviction on a separate thread behind a timeout, and a reintroduced
+//! deadlock fails the suite instead of hanging it.
 
 use ferrous_dns_domain::RecordType;
 use ferrous_dns_infrastructure::dns::{
@@ -24,10 +20,15 @@ use std::time::Duration;
 
 const GUARD_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// `max_entries` is deliberately small: the fallback branch is the one taken
-/// while `len <= max_entries / 2`, and `batch_eviction_percentage` of 0.2 makes
-/// a cycle evict exactly one entry.
+/// `max_entries` is deliberately small: a pass only runs on a full cache, and a
+/// `batch_eviction_percentage` of 0.2 makes one at capacity evict exactly one
+/// entry.
 fn make_cache(max_entries: usize) -> Arc<DnsCache> {
+    make_cache_sampling(max_entries, 8)
+}
+
+/// With one entry to evict, a pass samples `eviction_sample_size` entries.
+fn make_cache_sampling(max_entries: usize, eviction_sample_size: usize) -> Arc<DnsCache> {
     Arc::new(DnsCache::new(DnsCacheConfig {
         max_entries,
         eviction_strategy: EvictionStrategy::LRU,
@@ -37,7 +38,7 @@ fn make_cache(max_entries: usize) -> Arc<DnsCache> {
         min_lfuk_score: 0.0,
         shard_amount: 4,
         access_window_secs: 7200,
-        eviction_sample_size: 8,
+        eviction_sample_size,
         lfuk_k_value: 0.5,
         min_ttl: 0,
         max_ttl: 86_400,
@@ -49,6 +50,18 @@ fn make_cache(max_entries: usize) -> Arc<DnsCache> {
 fn make_ip_data(ip: &str) -> CachedData {
     let addr: IpAddr = ip.parse().unwrap();
     CachedData::IpAddresses(CachedAddresses::new(Arc::new(vec![addr])))
+}
+
+fn insert_names(cache: &DnsCache, count: usize) {
+    for i in 0..count {
+        cache.insert(
+            &format!("host-{i}.example"),
+            RecordType::A,
+            make_ip_data(&format!("192.0.2.{}", i + 1)),
+            300,
+            None,
+        );
+    }
 }
 
 /// Runs `f` on its own thread and fails if it has not returned within
@@ -71,21 +84,14 @@ where
 }
 
 #[test]
-fn test_fallback_eviction_returns_instead_of_deadlocking() {
+fn test_eviction_returns_instead_of_deadlocking() {
     let cache = make_cache(8);
-    cache.insert(
-        "a.local.test",
-        RecordType::A,
-        make_ip_data("192.0.2.1"),
-        300,
-        None,
-    );
+    insert_names(&cache, 8);
 
-    // len (1) <= max_entries / 2 (4), so `evict_entries` takes the fallback.
     let evicting = Arc::clone(&cache);
     run_with_deadlock_guard("evict_entries", move || evicting.evict_entries());
 
-    assert_eq!(cache.len(), 0, "the single entry should have been evicted");
+    assert_eq!(cache.len(), 7, "one entry should have been evicted");
     assert_eq!(
         cache.metrics().evictions.load(Ordering::Relaxed),
         1,
@@ -93,17 +99,30 @@ fn test_fallback_eviction_returns_instead_of_deadlocking() {
     );
 }
 
+/// A pass walks from where the previous one stopped to the end of the map,
+/// then round from the front. With windows of 3 in a map of 8, the third pass
+/// starts at 6 and wraps, so both walks run behind the guard.
 #[test]
-fn test_fallback_eviction_keeps_permanent_entries() {
+fn test_eviction_that_wraps_round_the_map_returns_instead_of_deadlocking() {
+    let cache = make_cache_sampling(8, 3);
+
+    let evicting = Arc::clone(&cache);
+    run_with_deadlock_guard("three evict_entries passes", move || {
+        for _ in 0..3 {
+            insert_names(&evicting, 8);
+            evicting.evict_entries();
+        }
+    });
+
+    assert_eq!(cache.len(), 7, "each pass should have evicted one entry");
+    assert_eq!(cache.metrics().evictions.load(Ordering::Relaxed), 3);
+}
+
+#[test]
+fn test_eviction_keeps_permanent_entries() {
     let cache = make_cache(8);
     cache.insert_permanent("nas.home.lan", RecordType::A, make_ip_data("10.0.0.5"), 300);
-    cache.insert(
-        "example.com",
-        RecordType::A,
-        make_ip_data("93.184.216.34"),
-        300,
-        None,
-    );
+    insert_names(&cache, 7);
 
     let evicting = Arc::clone(&cache);
     run_with_deadlock_guard("evict_entries", move || evicting.evict_entries());
@@ -113,8 +132,8 @@ fn test_fallback_eviction_keeps_permanent_entries() {
     // claiming a name the backing map no longer holds.
     assert_eq!(
         cache.len(),
-        1,
-        "only the non-permanent entry should have been evicted"
+        7,
+        "one non-permanent entry should have been evicted"
     );
     assert!(cache.is_permanent("nas.home.lan", &RecordType::A));
     assert!(
@@ -124,19 +143,21 @@ fn test_fallback_eviction_keeps_permanent_entries() {
 }
 
 #[test]
-fn test_fallback_eviction_terminates_when_every_entry_is_permanent() {
+fn test_eviction_terminates_when_every_entry_is_permanent() {
     let cache = make_cache(8);
-    for (domain, ip) in [
-        ("nas.home.lan", "10.0.0.5"),
-        ("printer.home.lan", "10.0.0.6"),
-    ] {
-        cache.insert_permanent(domain, RecordType::A, make_ip_data(ip), 300);
+    for i in 0..8 {
+        cache.insert_permanent(
+            &format!("device-{i}.home.lan"),
+            RecordType::A,
+            make_ip_data(&format!("10.0.0.{}", i + 5)),
+            300,
+        );
     }
 
     let evicting = Arc::clone(&cache);
     run_with_deadlock_guard("evict_entries", move || evicting.evict_entries());
 
-    assert_eq!(cache.len(), 2, "permanent entries are never evicted");
+    assert_eq!(cache.len(), 8, "permanent entries are never evicted");
     assert_eq!(
         cache.metrics().evictions.load(Ordering::Relaxed),
         0,

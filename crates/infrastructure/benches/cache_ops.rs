@@ -2,9 +2,9 @@
 //! touch, measured in isolation: an L1 hit on one thread and on eight threads
 //! sharing one hot name, an L2 hit, an insert that arms its refresh timer,
 //! one that arms its expiry instead (optimistic refresh off), the timer work
-//! a 200k-entry cache costs per minute, and removing the entries that died in
-//! it. `l2_hit_group_view` is an address answer in a client group's own view,
-//! which L1 never holds.
+//! a 200k-entry cache costs per minute, removing the entries that died in it,
+//! and one capacity eviction pass once it is full. `l2_hit_group_view` is an
+//! address answer in a client group's own view, which L1 never holds.
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use ferrous_dns_domain::RecordType;
@@ -236,6 +236,34 @@ fn refresh_maintenance(c: &mut Criterion) {
                     black_box(cache.claim_due_refresh(timer, dead_at, &thresholds));
                 }
                 assert_eq!(cache.len(), MAINTENANCE_ENTRIES - DEAD_ENTRIES);
+                cache
+            },
+            BatchSize::LargeInput,
+        )
+    });
+
+    // One capacity eviction pass over a full 200k-entry cache. A first pass
+    // and a refill come before it, so the pass measured starts where that one
+    // stopped, about 80% into the map: close to the most it can walk to reach
+    // its cursor. Every entry scores the same, so scoring stays cheap and the
+    // walk weighs more than it would in production.
+    let full_cache = || {
+        let cache = cache(MAINTENANCE_ENTRIES);
+        for key in &keys {
+            cache.insert(&key.domain, RecordType::A, address(), 3600, None);
+        }
+        cache.evict_entries();
+        for key in &keys {
+            cache.insert(&key.domain, RecordType::A, address(), 3600, None);
+        }
+        cache
+    };
+    group.bench_function("evict_pass_full_200k", |b| {
+        b.iter_batched(
+            full_cache,
+            |cache| {
+                cache.evict_entries();
+                assert_eq!(cache.len(), MAINTENANCE_ENTRIES - MAINTENANCE_ENTRIES / 10);
                 cache
             },
             BatchSize::LargeInput,

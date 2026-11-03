@@ -416,12 +416,13 @@ fn test_hits_per_minute_counts_only_hits_since_last_refresh() {
 /// Usa coarse_clock::tick() + sleep para garantir timestamps distintos entre inserção e acesso.
 #[test]
 fn test_lru_eviction_protects_recently_accessed_entry() {
-    // max_entries=4, batch_eviction_percentage=0.25 → evicta 1 por vez
+    // max_entries=4, batch_eviction_percentage=0.25 → com 5 entradas, uma
+    // passada remove o excesso de 1 + a folga de 1
     let cache = DnsCache::new(DnsCacheConfig {
         max_entries: 4,
         eviction_strategy: EvictionStrategy::LRU,
         refresh_threshold: 0.75,
-        batch_eviction_percentage: 0.25, // evicta 1 de 4 por vez
+        batch_eviction_percentage: 0.25, // folga de 1 de 4
         min_frequency: 0,
         min_lfuk_score: 0.0,
         shard_amount: 4,
@@ -449,10 +450,7 @@ fn test_lru_eviction_protects_recently_accessed_entry() {
     cache.insert("e.com", RecordType::CNAME, make_cname_data("e"), 3600, None);
     cache.evict_entries();
 
-    assert!(
-        cache.len() <= 4,
-        "Cache deve respeitar max_entries após eviction"
-    );
+    assert_eq!(cache.len(), 3, "excesso de 1 + folga de 1 removidos");
 
     // "a.com" foi acessado em T+1 (mais recente que b/c em T) → deve sobreviver à eviction LRU
     assert!(
@@ -622,15 +620,13 @@ fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
     );
 }
 
-/// Single-scan eviction: inserir N+X entradas, verificar que exatamente N são removidas.
-///
-/// Garante que o novo algoritmo de scan único em evict_by_strategy() evicta
-/// exatamente `count` entradas por chamada, sem over- ou under-eviction.
+/// Uma passada remove o excesso acima de max_entries mais a folga do batch, e
+/// passadas num cache abaixo da capacidade não removem nada.
 #[test]
-fn test_single_scan_evicts_exact_count() {
-    // max_entries=5, batch_eviction_percentage=0.2 → evicta max(1, 5*0.2=1) por chamada.
-    // Ao inserir a 6ª entrada, o cache tem 5 → evict_entries() é chamado → remove 1.
-    // Resultado: 5 entradas inseridas com sucesso.
+fn test_pass_evicts_overshoot_plus_headroom() {
+    // max_entries=5, batch_eviction_percentage=0.2 → folga de max(1, 5*0.2=1).
+    // Com 8 entradas, a primeira chamada remove 3 de excesso + 1 de folga → 4;
+    // as outras duas encontram o cache abaixo da capacidade.
     let cache = DnsCache::new(DnsCacheConfig {
         max_entries: 5,
         eviction_strategy: EvictionStrategy::LFU,
@@ -673,19 +669,11 @@ fn test_single_scan_evicts_exact_count() {
         cache.evict_entries();
     }
 
-    assert!(
-        cache.len() <= 5,
-        "Cache não deve exceder max_entries após evictions; len={}",
-        cache.len()
-    );
+    assert_eq!(cache.len(), 4, "excesso de 3 + folga de 1 removidos");
 
     let metrics = cache.metrics();
     let evictions = metrics.evictions.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(
-        evictions >= 3,
-        "Devem ter ocorrido pelo menos 3 evictions; evictions={}",
-        evictions
-    );
+    assert_eq!(evictions, 4, "só a primeira chamada remove entradas");
 }
 
 #[test]

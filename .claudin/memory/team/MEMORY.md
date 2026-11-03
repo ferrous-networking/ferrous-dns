@@ -37,6 +37,7 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Release PR flow](decisions/release-pr-flow.md) — releases via a regenerated chore(release) PR; PAT for anything that starts a workflow; docs ride release-created
 - [Query-log rollups and disk space](decisions/query-log-rollups-and-disk-space.md) — #311: hourly rollups filled by a job (writer upserts halved throughput), incremental auto-vacuum, `--compact-database`; reads stay exact
 - [Roadmap as milestones](decisions/roadmap-as-milestones.md) — #340: ROADMAP.md → GitHub milestones + issues; TLD blocking, NRD, ACME, DDNS, anomaly detection, RFC 7828 dropped, and why
+- [Stream transports have their own rate-limit budget](decisions/rate-limit-stream-budget.md) — #355: TCP/DoT/DoH/DoQ buckets apart from UDP, REFUSED not TC=1; BIND exemption rejected (no DoH conn cap)
 
 ## Bugs
 
@@ -47,15 +48,16 @@ Shared memories for the ferrous-dns team (one file per fact, with `name`/`descri
 - [Backup import skips the restart flag](bugs/backup-import-no-restart-flag.md) — `/config/import` never set `restart_pending`; fixed by #306 (676b0093, 10-23), incl. the DNSSEC-mode normalization
 - [Query Log DOMAIN column collapses](bugs/query-log-domain-column-collapse.md) — issue #235: fixed with container queries; widen every threshold when adding a column
 - [Mobile layout overflow](bugs/mobile-layout-overflow.md) — admin pages scrolled sideways at 320–960px; fixed by #309 (7537fadf, 10-24); how to audit a layout change
-- [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282; query log by #305; RRL/tunneling by #341 (#322); TC=1 slip over TCP is #339
+- [Upstream rcode logged as NOERROR](bugs/upstream-rcode-ignored-on-pool-path.md) — caching/failover fixed by #282; query log by #305; RRL/tunneling by #341 (#322); TC=1 slip over TCP by #355 (#339)
 - [Blocklist download timeout + list size](bugs/blocklist-download-timeout-and-list-size.md) — issue #248: stall-based timeouts, held list copies, HaGeZi RAM table, paused-clock test gotcha
 - [Upstream hostnames never resolved (#250)](bugs/upstream-hostname-startup-only-resolution.md) — system-only lookup looped through ferrous itself; #255 asks local_dns_server first + retries; #307 refreshes IPs at their TTL
 - [Cache dead config + L1 hit undercount](bugs/cache-dead-config-and-l1-hit-undercount.md) — two knobs still unused (#320); L1 undercount fixed in #286; stale "not counted" wording fixed by #342
 - [Cache Time counts coalesced followers](bugs/cache-time-counts-coalesced-followers.md) — followers now count as upstream answers with a `coalesced` marker + Query Log icon; fixed by #308 (115e8524)
-- [CNAME chain names kept the trailing dot](bugs/cname-target-cached-under-dotted-name.md) — target shortcut never hit, cloaking never blocked; branch normalizes, caches the chain, removes the shortcut (#325)
+- [CNAME chain names kept the trailing dot](bugs/cname-target-cached-under-dotted-name.md) — target shortcut never hit, cloaking never blocked; #354 (975e562e) normalizes, caches the chain, removes the shortcut
 - [Backup omits pools and detectors](bugs/backup-snapshot-omits-pools-and-detectors.md) — pools/routes, rate_limit, malware + group-id translation fixed by #306 (10-23); other DNS fields still unmirrored
 - [x-show drops inline display](bugs/alpine-xshow-drops-inline-display.md) — Alpine's x-show strips an inline `display:grid`; the pool editor row was redesigned in #297 (v0.9.24); the trap remains
 - [Blocked Domains counts adblock rules twice](bugs/blocked-domains-counts-adblock-rules-twice.md) — card was exact + wildcard, so `||domain^` counted 2x (5.12M vs 2.79M); fixed in #297 (e2136494, v0.9.24)
 - [Filtered queries logged as SERVFAIL/Upstream](bugs/filtered-query-logged-as-servfail-upstream.md) — non-FQDN/private-PTR refusals logged SERVFAIL/"Upstream"; fixed in #300 (38d257ac, v0.9.24); missing labels are #326
-- [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — evict_by_strategy never scores tail shards; batch/pass can be outpaced; kept by "same rules" 10-16; #324
+- [Eviction prefix sample + fixed batch](bugs/cache-eviction-prefix-sample-fixed-batch.md) — #324 fixed by PR #360: overshoot + headroom, rotating cursor; open: `insert_permanent` pass overlap, `evict_if_full` bias
 - [Manual client names can't be cleared](bugs/manual-client-name-cannot-be-cleared.md) — since #343 a blank name changes nothing; pre-migration names (NULL source) still lose to PTR/mDNS
+- [Known test flakes](bugs/known-test-flakes.md) — 3 clock-boundary/race tests + the `free_port` AddrInUse race each failed once, passed on rerun; unfiled (11-01)
