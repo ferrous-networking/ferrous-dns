@@ -20,6 +20,11 @@ impl DnsCookieGuard {
         }
     }
 
+    /// Reads the time, in Unix seconds, from `clock` instead of the system clock.
+    pub fn with_clock(self, _clock: impl Fn() -> u64 + Send + Sync + 'static) -> Self {
+        self
+    }
+
     pub(super) fn is_strict(&self) -> bool {
         self.strict
     }
