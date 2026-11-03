@@ -154,6 +154,7 @@ Find the real reason before changing anything. Open **Queries**, locate the doma
 |:-------------|:-------------|
 | `blocklist` | A downloaded blocklist, or a domain you blocked by hand |
 | `managed_domain` / `regex_filter` | A rule in **DNS Filter** |
+| `cname_cloaking` | The answer's CNAME chain goes through a name a blocklist or a **DNS Filter** rule blocks (CNAME cloaking) |
 | `schedule` | A time-based `BlockAll` window for the client's group |
 | `dns_tunneling`, `dga_detection`, `dns_rebinding`, `nxdomain_hijack`, `response_ip_filter` | One of the five [malware detection](features/malware-detection.md) engines — a heuristic, so this is where false positives live |
 | `non_fqdn` / `private_ptr` | **Never forward non-FQDN queries** or **Never forward reverse lookups for private IP ranges** in **Settings** (`block_non_fqdn` / `block_private_ptr`) |

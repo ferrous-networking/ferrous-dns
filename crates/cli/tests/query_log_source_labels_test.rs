@@ -35,11 +35,12 @@ fn test_query_log_labels_every_block_source() {
     );
 }
 
-/// A source added later still has to read as a block until it gets a label.
+/// A source added later, or a row the API sends without one, still has to
+/// read as a block.
 #[test]
-fn test_query_log_labels_an_unknown_block_source_as_blocked() {
+fn test_query_log_labels_any_other_blocked_row_as_blocked() {
     assert!(
-        format_source_body().contains("if (query.block_source) return 'Blocked';"),
-        "formatSource must label an unknown non-null block_source \"Blocked\", not \"Upstream\""
+        format_source_body().contains("if (query.blocked) return 'Blocked';"),
+        "formatSource must label any other blocked row \"Blocked\", not \"Upstream\""
     );
 }

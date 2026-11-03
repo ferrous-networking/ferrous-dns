@@ -194,6 +194,8 @@
                 if (query.block_source === 'dns_tunneling') return '<span class="badge-malware">DNS Tunneling</span>';
                 if (query.block_source === 'dns_rebinding') return '<span class="badge-malware">DNS Rebinding</span>';
                 if (query.block_source === 'dga_detection') return '<span class="badge-malware">DGA Detection</span>';
+                if (query.block_source === 'nxdomain_hijack') return '<span class="badge-malware">NXDomain Hijack</span>';
+                if (query.block_source === 'response_ip_filter') return '<span class="badge-malware">Response IP Filter</span>';
                 if (query.response_status === 'RATE_LIMITED') return '<span class="badge-rate-limited">Rate Limited</span>';
                 if (query.response_status === 'RATE_LIMITED_TC') return '<span class="badge-rate-limited">Rate Limited (TC)</span>';
                 if (query.cache_hit) return 'Cache';
@@ -202,7 +204,11 @@
                 if (query.block_source === 'regex_filter') return 'Regex Filter';
                 if (query.block_source === 'non_fqdn') return 'Non-FQDN';
                 if (query.block_source === 'private_ptr') return 'Private PTR';
+                if (query.block_source === 'cname_cloaking') return 'CNAME Cloaking';
+                if (query.block_source === 'schedule') return 'Schedule';
                 if (query.block_source === 'rate_limit') return '<span class="badge-rate-limited">Rate Limited</span>';
+                // Any other block, such as a source added later, still reads as one.
+                if (query.blocked) return 'Blocked';
                 if (query.response_status === 'LOCAL_DNS') return 'Local DNS';
                 if (query.upstream_pool && query.upstream_server) {
                     const host = query.upstream_server
