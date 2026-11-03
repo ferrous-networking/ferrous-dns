@@ -622,15 +622,13 @@ fn test_lfu_negative_score_below_min_frequency_leads_to_eviction() {
     );
 }
 
-/// Single-scan eviction: inserir N+X entradas, verificar que exatamente N são removidas.
-///
-/// Garante que o novo algoritmo de scan único em evict_by_strategy() evicta
-/// exatamente `count` entradas por chamada, sem over- ou under-eviction.
+/// Uma passada remove o excesso acima de max_entries mais a folga do batch, e
+/// passadas num cache abaixo da capacidade não removem nada.
 #[test]
 fn test_single_scan_evicts_exact_count() {
-    // max_entries=5, batch_eviction_percentage=0.2 → evicta max(1, 5*0.2=1) por chamada.
-    // Ao inserir a 6ª entrada, o cache tem 5 → evict_entries() é chamado → remove 1.
-    // Resultado: 5 entradas inseridas com sucesso.
+    // max_entries=5, batch_eviction_percentage=0.2 → folga de max(1, 5*0.2=1).
+    // Com 8 entradas, a primeira chamada remove 3 de excesso + 1 de folga → 4;
+    // as outras duas encontram o cache abaixo da capacidade.
     let cache = DnsCache::new(DnsCacheConfig {
         max_entries: 5,
         eviction_strategy: EvictionStrategy::LFU,
@@ -673,19 +671,11 @@ fn test_single_scan_evicts_exact_count() {
         cache.evict_entries();
     }
 
-    assert!(
-        cache.len() <= 5,
-        "Cache não deve exceder max_entries após evictions; len={}",
-        cache.len()
-    );
+    assert_eq!(cache.len(), 4, "excesso de 3 + folga de 1 removidos");
 
     let metrics = cache.metrics();
     let evictions = metrics.evictions.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(
-        evictions >= 3,
-        "Devem ter ocorrido pelo menos 3 evictions; evictions={}",
-        evictions
-    );
+    assert_eq!(evictions, 4, "só a primeira chamada remove entradas");
 }
 
 #[test]

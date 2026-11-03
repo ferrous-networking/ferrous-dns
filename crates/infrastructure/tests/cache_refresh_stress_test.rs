@@ -191,9 +191,7 @@ async fn test_timers_of_evicted_entries_spend_no_queries() {
             None,
         );
         if i % max_entries == max_entries - 1 {
-            while cache.len() > max_entries / 2 {
-                cache.evict_entries();
-            }
+            cache.evict_entries();
         }
     }
     let survivors = cache.len();
