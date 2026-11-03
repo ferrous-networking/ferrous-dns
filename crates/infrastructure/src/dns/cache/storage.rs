@@ -86,7 +86,9 @@ pub struct DnsCache {
     pub(super) access_window_secs: u64,
     pub(super) eviction_sample_size: usize,
     /// Where the next capacity pass starts sampling, as a position in the
-    /// map's iteration order.
+    /// map's iteration order. Only approximate: removals and inserts ahead of
+    /// it, and a shard that grows, shift what sits there, so a pass may skip
+    /// or revisit a few entries. Successive passes still reach every entry.
     eviction_cursor: AtomicUsize,
     pub(super) negative: NegativeDnsCache,
     permanent_records: DashMap<CompactString, PermanentTypes, FxBuildHasher>,
@@ -833,9 +835,10 @@ impl DnsCache {
 
     /// Makes room in a full cache: removes what it holds past `max_entries`,
     /// plus `batch_eviction_percentage` of `max_entries` as headroom, so a pass
-    /// ends at `(1 - batch) × max_entries` however fast names came in. A cache
-    /// that dropped below capacity before the pass ran, because expiry timers
-    /// removed entries since the worker checked, is left alone.
+    /// ends at `(1 - batch_eviction_percentage) × max_entries` however fast
+    /// names came in. A cache that dropped below capacity before the pass ran,
+    /// because expiry timers removed entries since the worker checked, is left
+    /// alone.
     pub fn evict_entries(&self) {
         let len = self.cache.len();
         if len < self.max_entries {
@@ -875,32 +878,28 @@ impl DnsCache {
             is_expired: bool,
         }
 
-        let snapshot_of = |key: &CacheKey, record: &CachedRecord| {
-            (!record.is_marked_for_deletion() && !record.is_permanent()).then(|| RecordSnapshot {
-                key: key.clone(),
-                hit_count: record.counters.hit_count.load(AtomicOrdering::Relaxed),
-                last_access: record.counters.last_access.load(AtomicOrdering::Relaxed),
-                inserted_at: record.inserted_at_secs,
-                is_expired: record.is_expired_at_secs(now_secs),
-            })
-        };
-
         let start = self.eviction_cursor.load(AtomicOrdering::Relaxed) % len;
         let mut snapshots = Vec::with_capacity(total_to_sample);
         let mut walked = 0usize;
-        for entry in self.cache.iter().skip(start) {
-            if snapshots.len() >= total_to_sample {
-                break;
+        // From the cursor to the end of the map, then round from the front.
+        'walk: for (skip, take) in [(start, usize::MAX), (0, start)] {
+            for entry in self.cache.iter().skip(skip).take(take) {
+                if snapshots.len() >= total_to_sample {
+                    break 'walk;
+                }
+                walked += 1;
+                let record = entry.value();
+                if record.is_marked_for_deletion() || record.is_permanent() {
+                    continue;
+                }
+                snapshots.push(RecordSnapshot {
+                    key: entry.key().clone(),
+                    hit_count: record.counters.hit_count.load(AtomicOrdering::Relaxed),
+                    last_access: record.counters.last_access.load(AtomicOrdering::Relaxed),
+                    inserted_at: record.inserted_at_secs,
+                    is_expired: record.is_expired_at_secs(now_secs),
+                });
             }
-            walked += 1;
-            snapshots.extend(snapshot_of(entry.key(), entry.value()));
-        }
-        for entry in self.cache.iter().take(start) {
-            if snapshots.len() >= total_to_sample {
-                break;
-            }
-            walked += 1;
-            snapshots.extend(snapshot_of(entry.key(), entry.value()));
         }
         self.eviction_cursor
             .store((start + walked) % len, AtomicOrdering::Relaxed);

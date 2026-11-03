@@ -243,8 +243,10 @@ fn refresh_maintenance(c: &mut Criterion) {
     });
 
     // One capacity eviction pass over a full 200k-entry cache. A first pass
-    // and a refill come before it, so the pass measured is not the first one
-    // the cache ever ran.
+    // and a refill come before it, so the pass measured starts where that one
+    // stopped, about 80% into the map: close to the most it can walk to reach
+    // its cursor. Every entry scores the same, so scoring stays cheap and the
+    // walk weighs more than it would in production.
     let full_cache = || {
         let cache = cache(MAINTENANCE_ENTRIES);
         for key in &keys {
