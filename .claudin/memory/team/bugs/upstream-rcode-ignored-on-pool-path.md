@@ -1,6 +1,6 @@
 ---
 name: upstream-rcode-ignored-on-pool-path
-description: Upstream rcodes on the pool path — SERVFAIL caching/negative TTL fixed by #282 (10-12); query log fixed by #305 (10-23); RRL + tunneling (issue #322) fixed by #341 (343d03bc), which makes the tunneling nx signal fire
+description: Upstream rcodes on the pool path — SERVFAIL caching/negative TTL fixed by #282 (10-12); query log by #305 (10-23); RRL + tunneling (#322) by #341 (343d03bc), which makes the tunneling nx signal fire; TC=1 slip over TCP (#339) by #355
 type: project
 paths:
   - crates/application/src/use_cases/dns/handle_dns_query.rs
@@ -31,7 +31,7 @@ paths:
   - `HandleDnsQueryUseCase` charges `upstream_nxdomain && !local_dns` on the fresh and cache-hit `Ok` paths. `try_cache_wire_direct` declines such a hit while `DnsRateLimiter::limits_nxdomain()`, because the fast path cannot charge. Internal pools are exempt through `local_dns`, like `local_dns_server`.
   - `emit_tunneling_event` gets the same `upstream_nxdomain && !local_dns` flag (the review round on 10-27 caught internal pools feeding the ratio; red `e9d06beb`, fix `013a839e`).
   - Pre-existing gap the fix widened: every query through `execute` spends a general token in `rate_limiter.check`, and only UDP fast-path cache hits skip it. Cached non-IP upstream NXDOMAINs now leave the fast path while the NXDOMAIN budget is on, so they spend one too. `rate-limiting.md` says so now.
-  - Pre-existing, now reachable: the slip answers TC=1 on every transport (`server.rs` `DnsRateLimitedSlip => query.truncated()`), so a TCP retry of an over-budget NXDOMAIN is limited again. Filed as issue #339 (v1.0.0): `dig +tcp` gets `flags: qr tc` back.
+  - Pre-existing, now reachable: the slip answers TC=1 on every transport (`server.rs` `DnsRateLimitedSlip => query.truncated()`), so a TCP retry of an over-budget NXDOMAIN is limited again. Filed as issue #339 (v1.0.0): `dig +tcp` gets `flags: qr tc` back. Fixed 2026-11-01 by PR #355 (`e5dbd095`): the stream transports get a budget of their own and are REFUSED, never slipped ([[rate-limit-stream-budget]]).
   - Left out of #341: Safe Search rewrites (`cname_for`) do not charge an upstream NXDOMAIN for the rewritten name, and cache hits still emit no tunneling event.
   - Regression tests: `crates/application/tests/rate_limit_nxdomain_test.rs`, `tunneling_test.rs`, and `crates/infrastructure/tests/rate_limit_upstream_nxdomain_test.rs`, the real stack.
 - **Live A/B, shipped `[dns.rate_limit]` (/24, 50/s, slip 2), fake NXDOMAIN upstream, debug builds, 2026-10-26:**

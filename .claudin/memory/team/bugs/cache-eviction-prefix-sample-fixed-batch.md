@@ -1,19 +1,28 @@
 ---
 name: cache-eviction-prefix-sample-fixed-batch
-description: evict_by_strategy samples only the iteration prefix (tail shards never evicted) and removes a fixed batch per pass, so inserts faster than batch/s keep the cache over max_entries; kept on purpose 2026-10-16, filed as #324
+description: evict_by_strategy sampled only the iteration prefix (tail shards never evicted) and removed a fixed batch per pass, so inserts faster than batch/s kept the cache over max_entries; fixed for #324 on fix/cache-eviction-overshoot (overshoot + headroom, rotating cursor); the same prefix bias remains in CountedDashMap::evict_if_full
 type: project
 paths:
   - crates/infrastructure/src/dns/cache/storage.rs
+  - crates/infrastructure/src/counted_map.rs
 ---
 
 **Symptom:** two weaknesses in capacity eviction.
-- **Not a real sample.** `evict_by_strategy` scores the first `count × cache_eviction_sample_size` entries in DashMap iteration order, starting at shard 0. At the defaults that is 160k of 200k, about 80%. The documented 500k/0.05 profile scores only 40%. Entries in the tail shards are never candidates, so hot names near the front get evicted instead of cold ones at the back.
-- **Fixed batch per pass.** One pass removes `max_entries × cache_batch_eviction_percentage`, however far over the cache is. If new names come in faster than one batch per pass, the cache stays above `cache_max_entries` and is held down only by entries dying at 2×TTL.
+- **Not a real sample.** `evict_by_strategy` scored the first `count × cache_eviction_sample_size` entries in DashMap iteration order, starting at shard 0. At the defaults that is 160k of 200k, about 80%. The documented 500k/0.05 profile scored only 40%. Entries in the tail shards were never candidates, so hot names near the front got evicted instead of cold ones at the back.
+- **Fixed batch per pass.** One pass removed `max_entries × cache_batch_eviction_percentage`, however far over the cache was. If new names came in faster than one batch per pass, the cache stayed above `cache_max_entries`, held down only by entries dying at 2×TTL.
 
-**Where:** `DnsCache::evict_by_strategy` and `evict_entries` in `storage.rs`. Also there: the unscored `evict_arbitrary_entries` branch only runs at `len <= max/2`, which the capacity check (`len >= max`) never reaches, so outside tests it is dead.
+**Where:** `DnsCache::evict_by_strategy` and `evict_entries` in `storage.rs`. Also there: the unscored `evict_arbitrary_entries` branch only ran at `len <= max/2`. The tick's capacity check (`len >= max`) reaches it only in a race, when expiry timers empty the cache between the check and the `spawn_blocking` pass, and then it evicted live entries with no pressure.
 
-**Repro:** set `cache_max_entries = 1000` and send 200 unique names/s ([[runtime-verification-recipe]]). On 2026-10-16 the event-driven branch held at about 2,800 entries, at 100 evictions per tick. With the old 60 s job it was about 100 per minute, and main reached 17,800. At the defaults a pass is 20k, so outpacing it needs over 20k new names/s.
+**Repro:** set `cache_max_entries = 1000` and send 200 unique names/s ([[runtime-verification-recipe]]; the fake upstream also needs `dnssec_mode = "Off"`, or nothing is cached). On 2026-10-16, with `cache_max_ttl = 10`, the event-driven branch held at about 2,800 entries, at 100 evictions per tick. On 2026-11-03, with TTL 3600, main grew by about 100 entries/s with no plateau: 6,565 after 60 s.
 
-**Status:** open; filed as issue #324 on 2026-10-26, in the v1.0.0 milestone. The event-driven removal work ([[cache-event-driven-removal]]) runs `evict_entries` every second instead of every minute but left the rule untouched.
+**Status:** issue #324 (v1.0.0). Fixed on branch `fix/cache-eviction-overshoot` (2026-11-03): red `f173fd9f`, fix `5992d76b`, docs `8dc00932`. The PR was not open yet.
+- A pass removes `len − max_entries` plus `max(1, max_entries × batch)` as headroom, so it ends at `(1 − batch) × max_entries`. A pass on a cache below capacity does nothing.
+- Candidates come from a window that starts at `eviction_cursor` (position in iteration order) and wraps round to the front. There are two sequential walks, `iter().skip(start)` then `iter().take(start)`, so no two shard guards are ever alive at once.
+- `evict_arbitrary_entries` was removed. `cache_eviction_fallback_test.rs` became `cache_eviction_deadlock_test.rs`, the same #228 guards on a full cache.
+- Tests: `crates/infrastructure/tests/cache_capacity_eviction_test.rs`. The issue's second test ("the most-hit entry in the last shard survives") passes on main, because the tail is never sampled, so it was replaced by "a cold entry is evicted wherever its key lands".
+- Bench `cache_maintenance/evict_pass_full_200k`: 9.79 → 12.35 ms (+25%). That is the cost of skipping to the cursor without dashmap's `raw-api`. The pass runs at most once a second, on a blocking thread, and only on a full cache.
+- Live, 200 unique names/s for 60 s, max 1000: main peaked at 6,565; the branch peaked at 1,158 and stayed at 900–1,099 under load.
 
-**Why not fixed:** Viudes's rule for that work was "same rules, only the trigger changes". The fixes change eviction behaviour, so they belong in their own PR: evict only the overshoot, sample from a rotating cursor, and drop the dead branch.
+**Still open (follow-up):** `CountedDashMap::evict_if_full` (`counted_map.rs`, used by the negative and DNSSEC caches) has the same prefix bias. Per insert on a full map, it checks the first 32 entries for expired ones, then removes `iter().next()`: always the front of shard 0. Negatives also leave by their own timers. DNSSEC material has none, so its tail zones keep expired keys until replaced.
+
+**Why it waited:** Viudes's rule for the event-driven removal work was "same rules, only the trigger changes" ([[cache-event-driven-removal]]). These fixes change eviction behaviour, so they got their own PR.

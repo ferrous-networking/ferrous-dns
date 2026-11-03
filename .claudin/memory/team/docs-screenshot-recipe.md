@@ -42,6 +42,11 @@ dashboard that reads as realistic.
 **Known stale shots (as of 2026-10-18, not recaptured on purpose):**
 - Every page shot from 2026-09-09 shows the old sidebar footer, a plain version
   label. #294 replaced it with a GitHub icon plus a linked version on 2026-10-16.
+  `dashboard-groups.png` and `dashboard-settings-malware-detection.png` were
+  recaptured with the new footer on 2026-11-01 (feat/malware-exemptions-via-groups),
+  by Playwright with a 1920x1080 viewport; the seed script is in that session's
+  scratchpad `shots/seed.py` (Guest, IoT, Kids, Work, plus Servers with Malware
+  Detection off).
 - `dashboard-cache-control.png` lacks the REFRESHES column (#296). Its alt text
   still describes the old columns on purpose.
 
