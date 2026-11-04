@@ -28,6 +28,7 @@ fn to_static_response_status(s: &str) -> Option<&'static str> {
         "RATE_LIMITED" => Some("RATE_LIMITED"),
         "RATE_LIMITED_TC" => Some("RATE_LIMITED_TC"),
         "SAFE_SEARCH" => Some("SAFE_SEARCH"),
+        "BADCOOKIE" => Some("BADCOOKIE"),
         _ => None,
     }
 }
@@ -67,6 +68,9 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
     let coalesced = row
         .get::<Option<String>, _>("coalesced")
         .and_then(|s| s.parse().ok());
+    let cookie = row
+        .get::<Option<String>, _>("cookie")
+        .and_then(|s| s.parse().ok());
 
     Some(QueryLog {
         id: Some(row.get("id")),
@@ -99,5 +103,6 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         group_id: row.get("group_id"),
         block_source,
         coalesced,
+        cookie,
     })
 }

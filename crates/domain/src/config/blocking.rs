@@ -65,12 +65,6 @@ pub struct BlockingConfig {
     pub enabled: bool,
 
     #[serde(default)]
-    pub custom_blocked: Vec<String>,
-
-    #[serde(default)]
-    pub whitelist: Vec<String>,
-
-    #[serde(default)]
     pub block_mode: BlockResponseMode,
 
     #[serde(default = "default_block_ttl")]
@@ -92,8 +86,6 @@ impl Default for BlockingConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            custom_blocked: vec![],
-            whitelist: vec![],
             block_mode: BlockResponseMode::default(),
             block_ttl: default_block_ttl(),
             sinkhole_ipv4: None,

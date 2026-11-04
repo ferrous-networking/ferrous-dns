@@ -869,6 +869,7 @@ async fn reply_filter_selects_exactly_the_rows_of_that_reply_type() {
         Some("RATE_LIMITED_TC"),
         Some("SAFE_SEARCH"),
         Some("NXDOMAIN_HIJACK"),
+        Some("BADCOOKIE"),
     ];
     let mut rows = 0;
     for status in statuses {
@@ -876,6 +877,7 @@ async fn reply_filter_selects_exactly_the_rows_of_that_reply_type() {
             (false, None),
             (true, Some("blocklist")),
             (true, Some("nxdomain_hijack")),
+            (true, Some("dns_cookie")),
         ] {
             for record_type in ["A", "AAAA", "TXT"] {
                 for answers in [None, Some("1.2.3.4")] {
@@ -930,6 +932,37 @@ async fn reply_filter_selects_exactly_the_rows_of_that_reply_type() {
         }
         assert_eq!(seen.len(), rows, "{mode:?}: every row has one reply type");
     }
+}
+
+/// A strict DNS Cookie refusal is a block whose reply is the rcode the client
+/// got, whatever `block_mode` says.
+#[tokio::test]
+async fn dns_cookie_refusals_report_the_rcode_the_client_got() {
+    let pool = helpers::create_test_db().await;
+    for (domain, rcode) in [("badcookie.test", "BADCOOKIE"), ("refused.test", "REFUSED")] {
+        insert_row(
+            &pool,
+            Row {
+                domain,
+                blocked: true,
+                block_source: Some("dns_cookie"),
+                response_status: Some(rcode),
+                ..Default::default()
+            },
+        )
+        .await;
+    }
+    let app = helpers::create_pihole_test_app_with_config(pool, |c| {
+        c.blocking.block_mode = BlockResponseMode::NxDomain
+    })
+    .await;
+
+    let (_, json) = get(&app, "/queries").await;
+
+    assert_eq!(entry(&json, "badcookie.test")["status"], "GRAVITY");
+    assert_eq!(entry(&json, "badcookie.test")["reply"]["type"], "OTHER");
+    assert_eq!(entry(&json, "refused.test")["status"], "GRAVITY");
+    assert_eq!(entry(&json, "refused.test")["reply"]["type"], "REFUSED");
 }
 
 #[tokio::test]

@@ -33,6 +33,8 @@ pub enum BlockSource {
     NonFqdn = 11,
     /// `block_private_ptr` refused a reverse lookup for a private range.
     PrivatePtr = 12,
+    /// Strict DNS Cookies refused a UDP query without a valid server cookie.
+    DnsCookie = 13,
 }
 
 impl BlockSource {
@@ -51,6 +53,7 @@ impl BlockSource {
             BlockSource::DgaDetection => "dga_detection",
             BlockSource::NonFqdn => "non_fqdn",
             BlockSource::PrivatePtr => "private_ptr",
+            BlockSource::DnsCookie => "dns_cookie",
         }
     }
 
@@ -70,12 +73,13 @@ impl BlockSource {
             | BlockSource::Schedule
             | BlockSource::RateLimit
             | BlockSource::NonFqdn
-            | BlockSource::PrivatePtr => false,
+            | BlockSource::PrivatePtr
+            | BlockSource::DnsCookie => false,
         }
     }
 
     /// Every variant, indexed by its `u8` code.
-    pub const ALL: [BlockSource; 13] = [
+    pub const ALL: [BlockSource; 14] = [
         BlockSource::Blocklist,
         BlockSource::ManagedDomain,
         BlockSource::RegexFilter,
@@ -89,6 +93,7 @@ impl BlockSource {
         BlockSource::DgaDetection,
         BlockSource::NonFqdn,
         BlockSource::PrivatePtr,
+        BlockSource::DnsCookie,
     ];
 
     pub fn from_u8(v: u8) -> Option<Self> {

@@ -33,7 +33,6 @@
                     cache_refresh_threshold: 0.75,
                     cache_compaction_interval: 300,
                     cache_optimistic_refresh: true,
-                    cache_adaptive_thresholds: true,
                     cache_access_window_secs: 7200,
                     rate_limit: {
                         enabled: false, queries_per_second: 1000, burst_size: 500,
@@ -293,7 +292,6 @@
                                 cache_refresh_threshold: data.dns?.cache_refresh_threshold ?? 0.75,
                                 cache_compaction_interval: data.dns?.cache_compaction_interval ?? 300,
                                 cache_optimistic_refresh: data.dns?.cache_optimistic_refresh ?? true,
-                                cache_adaptive_thresholds: data.dns?.cache_adaptive_thresholds ?? true,
                                 cache_access_window_secs: data.dns?.cache_access_window_secs ?? 7200,
                                 rate_limit: {
                                     ...this.config.dns.rate_limit,
@@ -408,7 +406,6 @@
                     strategy: p.strategy,
                     priority: p.priority,
                     servers: (p.servers || []).map(s => s.trim()).filter(s => s.length > 0),
-                    weight: p.weight ?? null,
                     ...this.poolRouting(p)
                 })));
             },

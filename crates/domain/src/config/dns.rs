@@ -58,10 +58,8 @@ pub struct DnsConfig {
     pub cache_min_lfuk_score: f64,
     pub cache_refresh_threshold: f64,
 
-    pub cache_lfuk_history_size: usize,
     pub cache_batch_eviction_percentage: f64,
     pub cache_compaction_interval: u64,
-    pub cache_adaptive_thresholds: bool,
 
     pub cache_shard_amount: usize,
 
@@ -145,10 +143,8 @@ impl Default for DnsConfig {
             cache_min_frequency: 10,
             cache_min_lfuk_score: 1.5,
             cache_refresh_threshold: 0.75,
-            cache_lfuk_history_size: 10,
             cache_batch_eviction_percentage: 0.1,
             cache_compaction_interval: 300,
-            cache_adaptive_thresholds: false,
             cache_shard_amount: default_cache_shard_amount(),
             cache_inflight_shards: default_cache_inflight_shards(),
             cache_access_window_secs: 7200,

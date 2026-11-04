@@ -56,7 +56,8 @@ impl DnsServerHandler {
 
     /// Serves an A/AAAA cache hit through `respond`, which encodes the reply
     /// with the COOKIE payload it is handed, or declines it (`None`) for the
-    /// slow path. `raw` is the query packet.
+    /// slow path. `raw` is the query packet. A client that sent a cookie
+    /// drops a reply without ours (RFC 7873 §5.3), which the use case builds.
     pub fn try_fast_path<R>(
         &self,
         query: &FastPathQuery,
@@ -70,14 +71,8 @@ impl DnsServerHandler {
             query.record_type,
             client_ip,
             protocol,
-            |addresses, ttl| {
-                // A client that sent a cookie drops a reply without ours
-                // (RFC 7873 §5.3).
-                let cookie = query
-                    .edns_cookie(raw)
-                    .and_then(|cookie| self.response_cookie(Some(cookie), client_ip));
-                respond(addresses, ttl, cookie.as_ref().map(EdnsCookie::as_bytes))
-            },
+            query.edns_cookie(raw),
+            respond,
         )
     }
 
@@ -99,53 +94,31 @@ impl DnsServerHandler {
             query.record_type,
             client_ip,
             protocol,
-            |wire, remaining| {
-                let reply = match query.edns_cookie(raw) {
-                    None => wire_response::relay_cached(
-                        wire,
-                        query.id,
-                        query.recursion_desired,
-                        Some(query.question_name(raw)),
-                        query.has_edns().then_some(&PLAIN_EDNS),
-                        remaining,
-                    ),
-                    Some(cookie) => self
-                        .relay_cached_with_cookie(wire, query, raw, cookie, client_ip, remaining),
-                }?;
+            query.edns_cookie(raw),
+            |wire, remaining, cookie| {
+                // A client that sent a cookie drops a reply that does not
+                // echo it (RFC 7873 §5.3).
+                let with_cookie = cookie.map(|cookie| EdnsReply {
+                    dnssec_ok: false,
+                    cookie: Some(cookie),
+                    ede: None,
+                });
+                let edns = with_cookie
+                    .as_ref()
+                    .or_else(|| query.has_edns().then_some(&PLAIN_EDNS));
+                let reply = wire_response::relay_cached(
+                    wire,
+                    query.id,
+                    query.recursion_desired,
+                    Some(query.question_name(raw)),
+                    edns,
+                    remaining,
+                )?;
                 // Oversized-for-UDP hits bail to the slow path, which sets TC=1,
                 // as build_cache_hit_response does for A/AAAA.
                 wire_response::wire_fits_udp_buffer(reply.len(), query.client_max_size)
                     .then_some(reply)
             },
-        )
-    }
-
-    /// The cached answer for a client that sent `cookie`, which drops a reply
-    /// that does not echo it (RFC 7873 §5.3). Out of line: the server cookie
-    /// is an HMAC.
-    #[inline(never)]
-    fn relay_cached_with_cookie(
-        &self,
-        wire: &[u8],
-        query: &FastPathQuery,
-        raw: &[u8],
-        cookie: &[u8],
-        client_ip: IpAddr,
-        remaining: u32,
-    ) -> Option<Vec<u8>> {
-        let cookie = self.response_cookie(Some(cookie), client_ip);
-        let reply = EdnsReply {
-            dnssec_ok: false,
-            cookie: cookie.as_ref().map(EdnsCookie::as_bytes),
-            ede: None,
-        };
-        wire_response::relay_cached(
-            wire,
-            query.id,
-            query.recursion_desired,
-            Some(query.question_name(raw)),
-            Some(&reply),
-            remaining,
         )
     }
 

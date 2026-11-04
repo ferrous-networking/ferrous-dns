@@ -72,7 +72,6 @@ async fn all_unhealthy_but_reachable_servers_still_resolve() {
         strategy: UpstreamStrategy::Failover,
         priority: 1,
         servers: vec![server],
-        weight: None,
         ..Default::default()
     };
     let pm = PoolManager::new(vec![pool], Some(checker)).await.unwrap();

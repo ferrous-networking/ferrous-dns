@@ -1155,7 +1155,6 @@ fn customize_pools_rate_limit_and_malware(cfg: &mut Config, office_group: i64) {
             domains: vec!["corp.example".into()],
             groups: vec![office_group],
             internal: true,
-            ..Default::default()
         },
     ];
     cfg.dns.rate_limit.enabled = true;

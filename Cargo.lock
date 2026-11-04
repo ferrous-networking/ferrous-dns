@@ -1111,6 +1111,7 @@ dependencies = [
 name = "ferrous-dns-application"
 version = "0.10.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "bytes",
  "chrono",

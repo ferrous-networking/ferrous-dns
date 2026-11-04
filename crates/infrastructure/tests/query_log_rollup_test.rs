@@ -96,6 +96,7 @@ fn random_query(rng: &mut fastrand::Rng) -> QueryLog {
         group_id: None,
         block_source: (rng.u8(..5) != 0).then(|| pick(rng, &block_sources)),
         coalesced: None,
+        cookie: None,
     }
 }
 

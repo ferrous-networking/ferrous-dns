@@ -1,5 +1,5 @@
 use super::coarse_timer::coarse_now_ns;
-use super::cookie_guard::DnsCookieGuard;
+use super::cookie_guard::{self, DnsCookieGuard};
 use super::dga_guard::{DgaAnalysisEvent, DgaGuard, DgaVerdict};
 use super::nxdomain_hijack_guard::NxdomainHijackGuard;
 use super::rate_limiter::{DnsRateLimiter, RateLimitDecision};
@@ -15,10 +15,10 @@ use crate::ports::{
     ResponseIpFilterStore, SafeSearchEnginePort, TunnelingFlagStore,
 };
 use ferrous_dns_domain::{
-    BlockSource, ClientProtocol, DgaDetectionAction, DgaDetectionConfig, DnsQuery, DnsRequest,
-    DnssecStatus, DomainError, Nat64Prefix, NxdomainHijackAction, NxdomainHijackConfig, QueryLog,
-    QuerySource, RecordType, ResponseIpFilterAction, ResponseIpFilterConfig, TunnelingAction,
-    TunnelingDetectionConfig,
+    BlockSource, ClientProtocol, CookieStatus, DgaDetectionAction, DgaDetectionConfig, DnsQuery,
+    DnsRequest, DnssecStatus, DomainError, EdnsCookie, Nat64Prefix, NxdomainHijackAction,
+    NxdomainHijackConfig, QueryLog, QuerySource, RecordType, ResponseIpFilterAction,
+    ResponseIpFilterConfig, TunnelingAction, TunnelingDetectionConfig,
 };
 use lru::LruCache;
 use std::cell::RefCell;
@@ -293,12 +293,12 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("TUNNELING_BLOCKED"),
                     block_source: Some(BlockSource::DnsTunneling),
-                    ..Self::base_query_log(request, elapsed_us, group_id)
+                    ..self.base_query_log(request, elapsed_us, group_id)
                 });
                 Err(DomainError::DnsTunnelingDetected)
             }
-            action @ (TunnelingAction::Alert | TunnelingAction::Throttle) => {
-                tracing::info!(domain = %request.domain, context, ?action, "DNS tunneling alert");
+            TunnelingAction::Alert => {
+                tracing::info!(domain = %request.domain, context, "DNS tunneling alert");
                 Ok(())
             }
         }
@@ -331,7 +331,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("DGA_BLOCKED"),
                     block_source: Some(BlockSource::DgaDetection),
-                    ..Self::base_query_log(request, elapsed_us, group_id)
+                    ..self.base_query_log(request, elapsed_us, group_id)
                 });
                 Err(DomainError::DgaDomainDetected)
             }
@@ -361,7 +361,12 @@ impl HandleDnsQueryUseCase {
         }
     }
 
-    fn base_query_log(request: &DnsRequest, response_time_us: u64, group_id: i64) -> QueryLog {
+    fn base_query_log(
+        &self,
+        request: &DnsRequest,
+        response_time_us: u64,
+        group_id: i64,
+    ) -> QueryLog {
         QueryLog {
             id: None,
             domain: Arc::clone(&request.domain),
@@ -384,7 +389,39 @@ impl HandleDnsQueryUseCase {
             group_id: Some(group_id),
             block_source: None,
             coalesced: None,
+            cookie: self.cookie_status(request),
         }
+    }
+
+    /// What the request's DNS Cookie showed, `None` when it carried none.
+    fn cookie_status(&self, request: &DnsRequest) -> Option<CookieStatus> {
+        let opt_data = request.edns_cookie.as_ref()?.as_bytes();
+        Some(match &self.cookie_guard {
+            Some(guard) => guard.cookie_status(request.client_ip, opt_data),
+            None => cookie_guard::status_without_guard(opt_data),
+        })
+    }
+
+    /// The COOKIE option a fast-path reply to `opt_data` carries, the client
+    /// cookie beside ours, and what `opt_data` showed. Out of line: the
+    /// server cookie is an HMAC.
+    #[inline(never)]
+    fn answer_cookie(
+        &self,
+        client_ip: IpAddr,
+        opt_data: &[u8],
+    ) -> (Option<EdnsCookie>, Option<CookieStatus>) {
+        let Some(guard) = &self.cookie_guard else {
+            return (None, Some(cookie_guard::status_without_guard(opt_data)));
+        };
+        let Some(client_cookie) = opt_data.first_chunk::<8>() else {
+            return (None, None);
+        };
+        let (server_cookie, status) = guard.answer(client_ip, client_cookie, opt_data);
+        let mut payload = [0u8; 16];
+        payload[..8].copy_from_slice(client_cookie);
+        payload[8..].copy_from_slice(&server_cookie);
+        (EdnsCookie::from_bytes(&payload), Some(status))
     }
 
     fn maybe_track_client(&self, client_ip: IpAddr) {
@@ -571,13 +608,15 @@ impl HandleDnsQueryUseCase {
             group_id: Some(group_id),
             block_source: None,
             coalesced: None,
+            cookie: None,
         }
     }
 
     /// Checks the cache for a non-IP record type (NS, CNAME, SOA, PTR, MX, TXT,
-    /// HTTPS, SRV, SVCB) and hands a hit's wire bytes and the seconds its entry
-    /// has left to `respond`, which builds the reply or declines it (`None`)
-    /// for the slow path. Only a hit `respond` answers is logged here;
+    /// HTTPS, SRV, SVCB) and hands a hit's wire bytes, the seconds its entry
+    /// has left and the COOKIE option to answer `cookie`, the query's, with
+    /// to `respond`, which builds the reply or declines it (`None`) for the
+    /// slow path. Only a hit `respond` answers is logged here;
     /// [`Self::execute`] logs a declined one.
     pub fn try_cache_wire_direct<R>(
         &self,
@@ -585,7 +624,8 @@ impl HandleDnsQueryUseCase {
         record_type: RecordType,
         client_ip: IpAddr,
         protocol: ClientProtocol,
-        respond: impl FnOnce(&[u8], u32) -> Option<R>,
+        cookie: Option<&[u8]>,
+        respond: impl FnOnce(&[u8], u32, Option<&[u8]>) -> Option<R>,
     ) -> Option<R> {
         let tsc_start = tsc_timer::now();
         let screening = self.cache_gate(domain, record_type, client_ip)?;
@@ -605,11 +645,16 @@ impl HandleDnsQueryUseCase {
         let wire = resolution.upstream_wire_data.as_deref()?;
         // The cache reports what every entry has left; the reply's TTLs need it.
         let remaining = resolution.min_ttl?;
+        let (reply_cookie, cookie_status) = match cookie {
+            Some(opt_data) => self.answer_cookie(client_ip, opt_data),
+            None => (None, None),
+        };
         // Built before `respond`, which rarely declines, and logged only once
         // it answers: the slow path logs a declined hit. The logged time is
         // the cache probe's.
         let log = self.log_queries.then(|| QueryLog {
             response_status: Some(resolution.rcode_name()),
+            cookie: cookie_status,
             ..Self::cache_hit_log(
                 domain,
                 record_type,
@@ -620,7 +665,11 @@ impl HandleDnsQueryUseCase {
                 resolution.dnssec_status,
             )
         });
-        let reply = respond(wire, remaining)?;
+        let reply = respond(
+            wire,
+            remaining,
+            reply_cookie.as_ref().map(EdnsCookie::as_bytes),
+        )?;
         if let Some(log) = &log {
             self.log(log);
         }
@@ -629,15 +678,16 @@ impl HandleDnsQueryUseCase {
     }
 
     /// Checks the cache for an A/AAAA answer and hands its addresses and TTL
-    /// to `respond`, logging the hit only if `respond` answers it; see
-    /// [`Self::try_cache_wire_direct`].
+    /// and the COOKIE option to answer `cookie` with to `respond`, logging the
+    /// hit only if `respond` answers it; see [`Self::try_cache_wire_direct`].
     pub fn try_cache_direct<R>(
         &self,
         domain: &str,
         record_type: RecordType,
         client_ip: IpAddr,
         protocol: ClientProtocol,
-        respond: impl FnOnce(&[IpAddr], u32) -> Option<R>,
+        cookie: Option<&[u8]>,
+        respond: impl FnOnce(&[IpAddr], u32, Option<&[u8]>) -> Option<R>,
     ) -> Option<R> {
         let tsc_start = tsc_timer::now();
         let screening = self.cache_gate(domain, record_type, client_ip)?;
@@ -661,11 +711,16 @@ impl HandleDnsQueryUseCase {
             dnssec_status,
             ..
         } = resolution;
+        let (reply_cookie, cookie_status) = match cookie {
+            Some(opt_data) => self.answer_cookie(client_ip, opt_data),
+            None => (None, None),
+        };
         // Built before `respond`, which rarely declines, and logged only once
         // it answers: the slow path logs a declined hit.
         let log = self.log_queries.then(|| QueryLog {
             dns64_synthesized: self.is_dns64_synthesized(record_type, &addresses),
             answers: Some(Arc::clone(&addresses)),
+            cookie: cookie_status,
             ..Self::cache_hit_log(
                 domain,
                 record_type,
@@ -676,7 +731,11 @@ impl HandleDnsQueryUseCase {
                 dnssec_status,
             )
         });
-        let reply = respond(&addresses, min_ttl.unwrap_or(60))?;
+        let reply = respond(
+            &addresses,
+            min_ttl.unwrap_or(60),
+            reply_cookie.as_ref().map(EdnsCookie::as_bytes),
+        )?;
         if let Some(log) = &log {
             self.log(log);
         }
@@ -712,7 +771,7 @@ impl HandleDnsQueryUseCase {
             blocked: true,
             response_status: Some("BLOCKED"),
             block_source: Some(BlockSource::CnameCloaking),
-            ..Self::base_query_log(request, response_time_us, group_id)
+            ..self.base_query_log(request, response_time_us, group_id)
         });
         DomainError::Blocked
     }
@@ -747,7 +806,7 @@ impl HandleDnsQueryUseCase {
             blocked: true,
             response_status: Some(status),
             block_source: Some(BlockSource::RateLimit),
-            ..Self::base_query_log(request, elapsed_us(), group_id)
+            ..self.base_query_log(request, elapsed_us(), group_id)
         });
         Err(error)
     }
@@ -795,22 +854,31 @@ impl HandleDnsQueryUseCase {
             group_id,
         )?;
 
-        if let Some(guard) = self
+        if self
             .cookie_guard
             .as_ref()
-            .filter(|g| g.requires_cookie(request.protocol))
+            .is_some_and(|g| g.requires_cookie(request.protocol))
         {
-            let opt = request
-                .edns_cookie
-                .as_ref()
-                .map(|c| c.as_bytes())
-                .unwrap_or(&[]);
-            if !guard.has_valid_cookie(request.client_ip, opt) {
+            let query_log = self.base_query_log(request, elapsed_us(), group_id);
+            if query_log.cookie != Some(CookieStatus::Valid) {
                 tracing::debug!(
                     domain = %request.domain,
                     client = %request.client_ip,
                     "DNS cookie validation failed (strict mode)"
                 );
+                // The rcode the server answers (RFC 7873 §5.2.3): BADCOOKIE
+                // and ours to retry with for a client cookie, REFUSED without.
+                let rcode = if request.edns_cookie.is_some() {
+                    "BADCOOKIE"
+                } else {
+                    "REFUSED"
+                };
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some(rcode),
+                    block_source: Some(BlockSource::DnsCookie),
+                    ..query_log
+                });
                 return Err(DomainError::DnsCookieInvalid);
             }
         }
@@ -825,7 +893,7 @@ impl HandleDnsQueryUseCase {
                 blocked: true,
                 response_status: Some("BLOCKED"),
                 block_source: Some(block_source),
-                ..Self::base_query_log(request, elapsed_us(), group_id)
+                ..self.base_query_log(request, elapsed_us(), group_id)
             });
             return Err(DomainError::Blocked);
         }
@@ -875,7 +943,7 @@ impl HandleDnsQueryUseCase {
                 upstream_pool: resolution.upstream_pool.clone(),
                 coalesced: resolution.coalesced,
                 response_status: Some("SAFE_SEARCH"),
-                ..Self::base_query_log(request, elapsed_us(), group_id)
+                ..self.base_query_log(request, elapsed_us(), group_id)
             });
             return Ok(resolution);
         }
@@ -902,7 +970,7 @@ impl HandleDnsQueryUseCase {
                         dnssec_status: cached.dnssec_status,
                         answers: Some(Arc::clone(&cached.addresses)),
                         response_status: Some(cached.rcode_name()),
-                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                        ..self.base_query_log(request, elapsed_us(), group_id)
                     });
                     return Ok(cached);
                 }
@@ -913,7 +981,7 @@ impl HandleDnsQueryUseCase {
                 self.log(&QueryLog {
                     cache_hit: true,
                     response_status: Some("NXDOMAIN"),
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                    ..self.base_query_log(request, elapsed_us(), group_id)
                 });
                 return Err(DomainError::NxDomain);
             }
@@ -936,7 +1004,7 @@ impl HandleDnsQueryUseCase {
                         blocked: true,
                         response_status: Some("BLOCKED"),
                         block_source: Some(BlockSource::DnsRebinding),
-                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                        ..self.base_query_log(request, elapsed_us(), group_id)
                     });
                     return Err(DomainError::Blocked);
                 }
@@ -950,7 +1018,7 @@ impl HandleDnsQueryUseCase {
                                 blocked: true,
                                 response_status: Some("NXDOMAIN_HIJACK"),
                                 block_source: Some(BlockSource::NxdomainHijack),
-                                ..Self::base_query_log(request, elapsed_us(), group_id)
+                                ..self.base_query_log(request, elapsed_us(), group_id)
                             });
                             return Err(DomainError::NxDomain);
                         }
@@ -970,7 +1038,7 @@ impl HandleDnsQueryUseCase {
                                 blocked: true,
                                 response_status: Some("RESPONSE_IP_BLOCKED"),
                                 block_source: Some(BlockSource::ResponseIpFilter),
-                                ..Self::base_query_log(request, elapsed_us(), group_id)
+                                ..self.base_query_log(request, elapsed_us(), group_id)
                             });
                             return Err(DomainError::Blocked);
                         }
@@ -999,7 +1067,7 @@ impl HandleDnsQueryUseCase {
                     self.log(&QueryLog {
                         dnssec_status: resolution.dnssec_status,
                         response_status: Some(response_status),
-                        ..Self::base_query_log(request, elapsed_us(), group_id)
+                        ..self.base_query_log(request, elapsed_us(), group_id)
                     });
                     return Err(error);
                 }
@@ -1028,7 +1096,7 @@ impl HandleDnsQueryUseCase {
                     upstream_pool: resolution.upstream_pool.clone(),
                     coalesced: resolution.coalesced,
                     response_status,
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                    ..self.base_query_log(request, elapsed_us(), group_id)
                 });
                 Ok(resolution)
             }
@@ -1036,7 +1104,7 @@ impl HandleDnsQueryUseCase {
                 // LAN traffic, like a PTR sweep: never charged to the NXDOMAIN budget.
                 self.log(&QueryLog {
                     response_status: Some("LOCAL_DNS"),
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                    ..self.base_query_log(request, elapsed_us(), group_id)
                 });
                 Err(DomainError::NxDomain)
             }
@@ -1047,7 +1115,7 @@ impl HandleDnsQueryUseCase {
                     blocked: true,
                     response_status: Some("BLOCKED"),
                     block_source: Some(block_source),
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                    ..self.base_query_log(request, elapsed_us(), group_id)
                 });
                 Err(DomainError::FilteredQuery(block_source))
             }
@@ -1066,7 +1134,7 @@ impl HandleDnsQueryUseCase {
                 };
                 self.log(&QueryLog {
                     response_status: Some(response_status),
-                    ..Self::base_query_log(request, elapsed_us(), group_id)
+                    ..self.base_query_log(request, elapsed_us(), group_id)
                 });
                 Err(e)
             }

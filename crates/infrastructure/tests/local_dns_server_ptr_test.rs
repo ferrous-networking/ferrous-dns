@@ -76,7 +76,6 @@ async fn manager(addr: SocketAddr) -> Arc<PoolManager> {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec![format!("udp://{addr}")],
-        weight: None,
         ..Default::default()
     };
     Arc::new(PoolManager::new(vec![pool], None).await.unwrap())

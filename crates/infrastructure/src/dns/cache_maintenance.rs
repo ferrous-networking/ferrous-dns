@@ -189,6 +189,7 @@ impl DnsCacheMaintenance {
                 group_id,
                 block_source: None,
                 coalesced: None,
+                cookie: None,
             };
 
             if let Err(e) = log.log_query(&log_entry).await {

@@ -207,7 +207,30 @@ fn zero_where_zero_has_a_meaning_is_accepted() {
     config.database.read_busy_timeout_secs = 0;
     config.auth.login_rate_limit_attempts = 0;
     config.blocking.block_ttl = 0;
+    config.dns.dns_cookies.secret_rotation_secs = 0;
     config.validate().unwrap();
+}
+
+/// A window under a minute expires a cookie before the retry that refreshes it.
+#[test]
+fn test_cookie_rotation_window_under_a_minute_is_rejected_while_cookies_are_on() {
+    for secs in [1, 30, 59] {
+        let mut config = valid_config();
+        config.dns.dns_cookies.secret_rotation_secs = secs;
+        let message = validation_message(&config);
+        assert!(
+            message.contains("dns.dns_cookies.secret_rotation_secs"),
+            "{secs}: {message}"
+        );
+
+        config.dns.dns_cookies.enabled = false;
+        config.validate().unwrap();
+    }
+    for secs in [60, 3600, u64::MAX] {
+        let mut config = valid_config();
+        config.dns.dns_cookies.secret_rotation_secs = secs;
+        config.validate().unwrap();
+    }
 }
 
 /// These used to panic at login or at startup (and release builds abort on panic).

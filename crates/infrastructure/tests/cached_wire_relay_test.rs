@@ -15,8 +15,8 @@ use ferrous_dns_application::ports::{
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    BlockResponseMode, ClientProtocol, DnsCookiesConfig, DnsQuery, DnssecStats, DomainError,
-    QueryLog, QueryLogFilter, QueryStats, RecordType,
+    BlockResponseMode, ClientProtocol, CookieStatus, DnsCookiesConfig, DnsQuery, DnssecStats,
+    DomainError, QueryLog, QueryLogFilter, QueryStats, RecordType,
 };
 use ferrous_dns_infrastructure::dns::cache::coarse_clock;
 use ferrous_dns_infrastructure::dns::fast_path::parse_query;
@@ -31,7 +31,7 @@ use hickory_proto::rr::rdata::opt::EdnsOption;
 use hickory_proto::rr::rdata::{MX, TXT};
 use hickory_proto::rr::{Name, RData, Record, RecordType as WireType};
 use hickory_proto::serialize::binary::BinEncodable;
-use ports::{AllowAllFilter, NoopQueryLog};
+use ports::{AllowAllFilter, NoopQueryLog, RecordingQueryLog};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -545,6 +545,46 @@ async fn a_hit_the_fast_path_declines_is_logged_once() {
     let reply = server.slow(&q).await;
     assert_eq!(reply.metadata.response_code, ResponseCode::ServFail);
     assert_eq!(logged(), 2);
+}
+
+/// A hit served on either fast path is logged with what its DNS Cookie showed.
+#[test]
+fn fast_path_hits_log_what_the_query_cookie_showed() {
+    let v4 = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 80));
+    let mx_wire = upstream("mail.example.com", WireType::MX, mx(), false, true, 0);
+    let log = Arc::new(RecordingQueryLog::default());
+    let server = Server::holding(
+        [
+            ("example.com", RecordType::A, addresses(&[v4])),
+            (
+                "mail.example.com",
+                RecordType::MX,
+                CachedData::wire(Bytes::from(mx_wire)),
+            ),
+        ],
+        log.clone(),
+        false,
+    );
+    let ours = [&CLIENT_COOKIE[..], &server.server_cookie].concat();
+    let forged = [&CLIENT_COOKIE[..], &[0xEE; 8]].concat();
+
+    for (sent, expected) in [
+        (None, None),
+        (Some(&CLIENT_COOKIE[..]), Some(CookieStatus::ClientOnly)),
+        (Some(&ours[..]), Some(CookieStatus::Valid)),
+        (Some(&forged[..]), Some(CookieStatus::Invalid)),
+    ] {
+        server
+            .fast_address(&query("example.com", WireType::A, Some(false), sent))
+            .expect("served on the A/AAAA fast path");
+        server
+            .fast(&query("mail.example.com", WireType::MX, Some(false), sent))
+            .expect("served on the cached-wire fast path");
+
+        let rows = log.logged();
+        let last_two: Vec<_> = rows[rows.len() - 2..].iter().map(|q| q.cookie).collect();
+        assert_eq!(last_two, [expected, expected], "{sent:?}");
+    }
 }
 
 /// RFC 1035 §3.2.1, RFC 2181 §8: a cached answer's TTLs count down its

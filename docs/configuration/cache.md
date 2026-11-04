@@ -47,7 +47,6 @@ cache_max_entries = 200000
 cache_eviction_strategy = "hit_rate"
 cache_compaction_interval = 600
 cache_batch_eviction_percentage = 0.1
-cache_adaptive_thresholds = false
 # cache_shard_amount = 512
 # cache_inflight_shards = 64
 ```
@@ -62,7 +61,6 @@ cache_adaptive_thresholds = false
 | `cache_eviction_strategy` | `"hit_rate"` | Eviction policy (see below) |
 | `cache_compaction_interval` | `600` | Seconds a renewal that failed waits for its next try (expired entries leave the cache by themselves) |
 | `cache_batch_eviction_percentage` | `0.1` | Headroom an eviction pass makes below `cache_max_entries` (0.1 = a pass leaves the cache at 90% of capacity) |
-| `cache_adaptive_thresholds` | `false` | Auto-tune eviction thresholds based on observed hit rates |
 | `cache_shard_amount` | auto | L2 cache shard count; auto-detected as 4x CPU cores, rounded to power of 2 |
 | `cache_inflight_shards` | auto | In-flight coalescing map shard count; auto-detected as 2x CPU cores, rounded to power of 2 (min 8, max 128) |
 
@@ -149,20 +147,18 @@ The half-TTL bound keeps a TTL just above a minute from being renewed every few 
 
 ## LFU-K Eviction Parameters
 
-When using `hit_rate` or `lfu` strategy, these parameters control the LFU-K scoring algorithm:
+With the `lfu-k` strategy, this parameter tunes the LFU-K score:
 
 ```toml
 [dns]
 cache_min_lfuk_score = 1.5
-cache_lfuk_history_size = 10
 ```
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `cache_min_lfuk_score` | `1.5` | Minimum score threshold for eviction candidates |
-| `cache_lfuk_history_size` | `10` | Number of recent access timestamps tracked per entry |
 
-LFU-K tracks the K most recent access times per entry. The score is computed as a sliding-window frequency, giving more weight to recent accesses than stale ones. This prevents cache pollution by entries that were popular historically but are no longer queried.
+The LFU-K score is an entry's hit count divided by the square root of its age, times a recency factor that falls the longer it goes without a hit. Recent hits count for more than old ones, which keeps entries that were popular once but are no longer queried from crowding out the rest.
 
 ---
 
@@ -251,7 +247,6 @@ cache_access_window_secs    = 43200        # 12 hours
 
 # LFU-K
 cache_min_lfuk_score    = 1.5
-cache_lfuk_history_size = 10
 ```
 
 This is the default recommended profile. It gives a strong hit rate for a typical household (50–200 devices, 500–5,000 distinct domains per day) with roughly 50 MB of RAM dedicated to the cache.
@@ -272,7 +267,6 @@ cache_eviction_strategy         = "hit_rate"
 cache_compaction_interval       = 300
 cache_batch_eviction_percentage = 0.05
 cache_shard_amount              = 256          # explicit — 16-core × 16
-cache_adaptive_thresholds       = true         # auto-tune eviction thresholds
 
 # Aggressive optimistic refresh
 cache_optimistic_refresh    = true
@@ -283,10 +277,9 @@ cache_access_window_secs    = 86400           # 24 hours
 
 # LFU-K
 cache_min_lfuk_score    = 1.0
-cache_lfuk_history_size = 20                  # more history = better scoring
 ```
 
-With 500,000 entries and aggressive prefetch enabled, the effective cache hit rate approaches 99% for networks with stable query patterns. The larger `cache_lfuk_history_size` gives the scoring algorithm more data points to distinguish genuinely popular domains from one-time lookups.
+With 500,000 entries and aggressive prefetch enabled, the effective cache hit rate approaches 99% for networks with stable query patterns.
 
 ---
 

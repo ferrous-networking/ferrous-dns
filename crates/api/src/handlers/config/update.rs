@@ -121,7 +121,6 @@ fn parse_pools(pools: Vec<PoolUpdate>) -> Result<Vec<UpstreamPool>, String> {
             strategy,
             priority: p.priority,
             servers,
-            weight: p.weight,
             domains: p
                 .domains
                 .into_iter()
@@ -245,9 +244,6 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
         if let Some(v) = dns.cache_optimistic_refresh {
             cfg.dns.cache_optimistic_refresh = v;
         }
-        if let Some(v) = dns.cache_adaptive_thresholds {
-            cfg.dns.cache_adaptive_thresholds = v;
-        }
         if let Some(v) = dns.cache_access_window_secs {
             cfg.dns.cache_access_window_secs = v;
         }
@@ -337,12 +333,6 @@ fn apply_config_update(cfg: &mut Config, request: UpdateConfigRequest) -> Result
     if let Some(blocking) = request.blocking {
         if let Some(v) = blocking.enabled {
             cfg.blocking.enabled = v;
-        }
-        if let Some(v) = blocking.custom_blocked {
-            cfg.blocking.custom_blocked = v;
-        }
-        if let Some(v) = blocking.whitelist {
-            cfg.blocking.whitelist = v;
         }
         if let Some(v) = blocking.block_mode {
             cfg.blocking.block_mode = v.parse()?;

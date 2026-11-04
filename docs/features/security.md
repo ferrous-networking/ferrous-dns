@@ -453,7 +453,8 @@ Stage 1 — Bootstrap (first query from this client)
   Server → Client:  answer [EDNS OPT: client_cookie=<echo> | server_cookie=<HMAC>]
 
   The server computes:
-      server_cookie = HMAC-SHA256(secret, client_ip ‖ client_cookie)[0..8]
+      server_cookie = HMAC-SHA256(window_key, client_ip ‖ client_cookie)[0..8]
+  (window_key is the current rotation window's key, see Stage 3)
   The client stores this server_cookie for future queries.
 
 Stage 2 — Valid cookie (subsequent queries)
@@ -464,10 +465,11 @@ Stage 2 — Valid cookie (subsequent queries)
 
 Stage 3 — Secret rotation
 
-  After secret_rotation_secs, the server starts signing with a new secret.
-  The previous secret remains accepted for one full rotation window so that
-  in-flight clients are not abruptly rejected — they receive a new cookie in
-  the response and update their cache silently.
+  Every secret_rotation_secs, the server starts signing with a new key:
+      window_key = HMAC-SHA256(secret, label ‖ floor(unix_time / secret_rotation_secs))
+  The previous window's key remains accepted, so in-flight clients are not
+  abruptly rejected — they receive a new cookie in the response and update
+  their cache silently. Servers sharing server_secret derive the same keys.
 ```
 
 ### Protection Against UDP Spoofing
@@ -484,6 +486,9 @@ In strict mode (`require_valid_cookie = true`), a UDP query without a valid serv
 - **With a client cookie** but no server cookie, or a stale or forged one: **RCODE** `BADCOOKIE` (23), carrying a fresh server cookie (RFC 7873 §5.2.3–§5.2.4). An RFC 7873 client retries with it and is answered.
 - **With no cookie at all**: **RCODE** `REFUSED`.
 - Both carry **EDE info_code** `18`: *Prohibited*, with the text "missing or invalid DNS cookie" (RFC 8914 §4.19).
+- Each refusal shows in the Query Log as blocked, with the source **DNS Cookie** and the rcode the client got. The rate limiter runs first, so a spoofed flood past the budget is logged as rate-limited instead.
+
+The Query Log also marks every query that carried a cookie with a cookie icon after its transport: green for a server cookie this server issued, gray for a client cookie alone, amber for a server cookie that is not ours. The **Cookie** filter finds them.
 
 Queries over TCP, DoT, DoH and DoQ are not checked: their handshake already proves the client's address, which is all a server cookie proves (RFC 7873 §5.2.3), and DoH clients never send a cookie.
 
@@ -497,7 +502,7 @@ Every reply to a query that carries a cookie echoes that cookie beside a fresh s
 [dns.dns_cookies]
 enabled               = true    # on by default
 server_secret         = ""      # empty = ephemeral secret (not for production)
-secret_rotation_secs  = 3600    # rotate every hour
+secret_rotation_secs  = 3600    # rotate every hour; 0 = never
 require_valid_cookie  = false   # permissive mode (recommended default)
 ```
 

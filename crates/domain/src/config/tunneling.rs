@@ -51,11 +51,12 @@ pub struct TunnelingDetectionConfig {
 #[serde(rename_all = "snake_case")]
 pub enum TunnelingAction {
     /// Log an alert but allow the query to proceed.
+    /// `throttle`, which older releases accepted and ran as this, still reads
+    /// as it, so their backups import.
+    #[serde(alias = "throttle")]
     Alert,
     /// Block the query, answering with the configured `[blocking] block_mode`.
     Block,
-    /// Throttle the response (future use).
-    Throttle,
 }
 
 impl TunnelingAction {
@@ -64,7 +65,6 @@ impl TunnelingAction {
         match self {
             Self::Alert => "alert",
             Self::Block => "block",
-            Self::Throttle => "throttle",
         }
     }
 }
@@ -76,9 +76,8 @@ impl std::str::FromStr for TunnelingAction {
         match s {
             "alert" => Ok(Self::Alert),
             "block" => Ok(Self::Block),
-            "throttle" => Ok(Self::Throttle),
             _ => Err(format!(
-                "Invalid dns.tunneling_detection.action '{s}': expected alert, block or throttle"
+                "Invalid dns.tunneling_detection.action '{s}': expected alert or block"
             )),
         }
     }

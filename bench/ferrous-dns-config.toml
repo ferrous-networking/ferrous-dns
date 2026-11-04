@@ -78,7 +78,6 @@ cache_max_entries = 500000              # Maximum number of entries the cache ca
 cache_eviction_strategy = "hit_rate"    # Eviction policy: "hit_rate", "lfu", or "lru"
 cache_compaction_interval = 600         # Seconds a failed renewal waits for its next try; expired entries leave the cache by themselves
 cache_batch_eviction_percentage = 0.1   # Headroom an eviction pass makes below cache_max_entries (0.1 = a pass leaves the cache at 90% of capacity)
-cache_adaptive_thresholds = false       # Automatically tune eviction thresholds based on observed hit rates
 # Number of internal cache shards (DashMap).
 # When omitted, auto-detected as 4x CPU cores rounded up to the next power of 2
 # (e.g. RPi 4 = 16, 8-core server = 32, 16-core = 64).
@@ -101,7 +100,6 @@ cache_access_window_secs = 43200
 # ── Cache: LFU-K Eviction ────────────────────────────────────────────────────
 
 cache_min_lfuk_score = 1.5              # Minimum LFU-K score threshold for eviction candidates
-cache_lfuk_history_size = 10            # Number of recent access timestamps tracked per entry for scoring
 
 
 # ── DNS Rate Limiting ────────────────────────────────────────────────────────
@@ -227,8 +225,6 @@ ttl = 300
 
 [blocking]
 enabled = false                         # Toggled per scenario by benchmark.sh (A: false, B/C: true)
-custom_blocked = []                     # Additional domains to block (beyond downloaded blocklists)
-whitelist = []                          # Domains to always allow, even if present in a blocklist
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────

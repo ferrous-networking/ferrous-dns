@@ -119,7 +119,8 @@ async fn fast_path_hit_on_upstream_nxdomain_is_logged_as_nxdomain() {
         RecordType::TXT,
         CLIENT,
         ClientProtocol::Udp,
-        |_, _| Some(()),
+        None,
+        |_, _, _cookie| Some(()),
     );
 
     assert!(

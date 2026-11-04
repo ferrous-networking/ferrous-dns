@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-const COLS_PER_ROW: usize = 19;
+const COLS_PER_ROW: usize = 20;
 const ROWS_PER_CHUNK: usize = 999 / COLS_PER_ROW;
 
 /// Upper bound on how many answer addresses are persisted per row. CDN domains
@@ -38,6 +38,7 @@ pub(super) struct QueryLogEntry {
     pub(super) block_source: Option<BlockSource>,
     pub(super) protocol: Option<&'static str>,
     pub(super) coalesced: Option<&'static str>,
+    pub(super) cookie: Option<&'static str>,
 }
 
 impl QueryLogEntry {
@@ -63,6 +64,7 @@ impl QueryLogEntry {
             block_source: q.block_source,
             protocol: q.protocol.map(|p| p.as_str()),
             coalesced: q.coalesced.map(|role| role.as_str()),
+            cookie: q.cookie.map(|status| status.as_str()),
         }
     }
 }
@@ -71,9 +73,9 @@ fn build_multi_insert_sql(n: usize) -> String {
     debug_assert!(n > 0 && n <= ROWS_PER_CHUNK);
     const HEADER: &str = "INSERT INTO query_log \
         (domain, record_type, client_ip, blocked, response_time_ms, cache_hit, \
-         cache_refresh, dnssec_status, dns64_synthesized, upstream_server, upstream_pool, response_status, query_source, group_id, block_source, answers, protocol, coalesced, created_at) \
+         cache_refresh, dnssec_status, dns64_synthesized, upstream_server, upstream_pool, response_status, query_source, group_id, block_source, answers, protocol, coalesced, cookie, created_at) \
         VALUES ";
-    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    const PLACEHOLDER: &str = "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     let mut sql = String::with_capacity(HEADER.len() + n * (PLACEHOLDER.len() + 1));
     sql.push_str(HEADER);
     for i in 0..n {
@@ -195,6 +197,7 @@ async fn flush_batch(pool: &SqlitePool, batch: &mut Vec<QueryLogEntry>) {
                 .bind(answers.as_deref())
                 .bind(entry.protocol)
                 .bind(entry.coalesced)
+                .bind(entry.cookie)
                 .bind(created_at.as_str());
         }
         match q.execute(&mut *tx).await {

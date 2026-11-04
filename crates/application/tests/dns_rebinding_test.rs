@@ -277,7 +277,8 @@ async fn test_cached_private_answer_for_public_domain_is_blocked() {
             RecordType::A,
             "127.0.0.1".parse().unwrap(),
             ferrous_dns_domain::ClientProtocol::Udp,
-            |_, _| Some(()),
+            None,
+            |_, _, _cookie| Some(()),
         )
         .is_none());
     let result = use_case.execute(&dns_request("evil.com")).await;

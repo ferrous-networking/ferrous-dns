@@ -142,6 +142,33 @@ fn test_save_drops_legacy_refresh_rate_key_from_file() {
     );
 }
 
+/// Chaves que nenhuma versão leu: o primeiro save as tira do arquivo.
+#[test]
+fn test_save_drops_keys_that_nothing_reads_from_file() {
+    // `default_config_toml()` ainda traz as chaves de cache e de [blocking].
+    let input = default_config_toml().replace("priority = 1\n", "priority = 1\nweight = 5\n");
+    let config = load_config(&input);
+
+    let doc = save_and_reparse(&config, &input);
+    let dns = doc.get("dns").unwrap().as_table().unwrap();
+    for key in ["cache_adaptive_thresholds", "cache_lfuk_history_size"] {
+        assert!(dns.get(key).is_none(), "dns.{key} deve sair do arquivo");
+    }
+    let blocking = doc.get("blocking").unwrap().as_table().unwrap();
+    for key in ["custom_blocked", "whitelist"] {
+        assert!(
+            blocking.get(key).is_none(),
+            "blocking.{key} deve sair do arquivo"
+        );
+    }
+    let pools = dns.get("pools").unwrap().as_array_of_tables().unwrap();
+    assert_eq!(pools.len(), 2);
+    assert!(
+        pools.iter().all(|pool| pool.get("weight").is_none()),
+        "dns.pools[].weight deve sair do arquivo"
+    );
+}
+
 #[test]
 fn test_save_pools_writes_all_fields() {
     let mut config = load_config(default_config_toml());
@@ -153,7 +180,6 @@ fn test_save_pools_writes_all_fields() {
             "https://dns.google/dns-query".to_string(),
             "https://cloudflare-dns.com/dns-query".to_string(),
         ],
-        weight: Some(10),
         ..Default::default()
     }];
 
@@ -171,7 +197,6 @@ fn test_save_pools_writes_all_fields() {
     assert_eq!(pool.get("name").unwrap().as_str().unwrap(), "test-pool");
     assert_eq!(pool.get("strategy").unwrap().as_str().unwrap(), "Balanced");
     assert_eq!(pool.get("priority").unwrap().as_integer().unwrap(), 3);
-    assert_eq!(pool.get("weight").unwrap().as_integer().unwrap(), 10);
 
     let servers = pool.get("servers").unwrap().as_array().unwrap();
     assert_eq!(servers.len(), 2);
@@ -179,32 +204,6 @@ fn test_save_pools_writes_all_fields() {
         servers.get(0).unwrap().as_str().unwrap(),
         "https://dns.google/dns-query"
     );
-}
-
-#[test]
-fn test_save_pools_without_weight_omits_field() {
-    let mut config = load_config(default_config_toml());
-    config.dns.pools = vec![UpstreamPool {
-        name: "no-weight".to_string(),
-        strategy: UpstreamStrategy::Parallel,
-        priority: 1,
-        servers: vec!["https://example.com".to_string()],
-        weight: None,
-        ..Default::default()
-    }];
-
-    let doc = save_and_reparse(&config, default_config_toml());
-    let dns = doc.get("dns").unwrap().as_table().unwrap();
-    let pool = dns
-        .get("pools")
-        .unwrap()
-        .as_array_of_tables()
-        .unwrap()
-        .iter()
-        .next()
-        .unwrap();
-
-    assert!(pool.get("weight").is_none());
 }
 
 #[test]
@@ -283,7 +282,6 @@ fn test_save_multiple_pools_preserves_order() {
             strategy: UpstreamStrategy::Parallel,
             priority: 1,
             servers: vec!["https://a.example.com".to_string()],
-            weight: None,
             ..Default::default()
         },
         UpstreamPool {
@@ -291,7 +289,6 @@ fn test_save_multiple_pools_preserves_order() {
             strategy: UpstreamStrategy::Failover,
             priority: 2,
             servers: vec!["https://b.example.com".to_string()],
-            weight: None,
             ..Default::default()
         },
         UpstreamPool {
@@ -299,7 +296,6 @@ fn test_save_multiple_pools_preserves_order() {
             strategy: UpstreamStrategy::Balanced,
             priority: 3,
             servers: vec!["https://c.example.com".to_string()],
-            weight: None,
             ..Default::default()
         },
     ];
@@ -336,7 +332,6 @@ fn test_pool_strategy_parallel_roundtrips() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["https://example.com".to_string()],
-        weight: None,
         ..Default::default()
     }];
 
@@ -365,7 +360,6 @@ fn test_pool_strategy_failover_roundtrips() {
         strategy: UpstreamStrategy::Failover,
         priority: 1,
         servers: vec!["https://example.com".to_string()],
-        weight: None,
         ..Default::default()
     }];
 
@@ -394,7 +388,6 @@ fn test_pool_strategy_balanced_roundtrips() {
         strategy: UpstreamStrategy::Balanced,
         priority: 1,
         servers: vec!["https://example.com".to_string()],
-        weight: None,
         ..Default::default()
     }];
 
@@ -423,7 +416,6 @@ fn test_save_pools_preserves_health_check() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["https://example.com".to_string()],
-        weight: None,
         ..Default::default()
     }];
 
@@ -455,7 +447,6 @@ fn test_save_pools_preserves_upstream_servers() {
         strategy: UpstreamStrategy::Parallel,
         priority: 1,
         servers: vec!["https://primary.example.com".to_string()],
-        weight: None,
         ..Default::default()
     }];
 
@@ -489,31 +480,6 @@ fn test_full_config_save_and_reload_preserves_pools() {
         assert_eq!(orig.priority, saved.priority);
         assert_eq!(orig.servers, saved.servers);
     }
-}
-
-#[test]
-fn test_full_config_save_and_reload_preserves_weight() {
-    let mut config = load_config(default_config_toml());
-    config.dns.pools = vec![UpstreamPool {
-        name: "weighted".to_string(),
-        strategy: UpstreamStrategy::Balanced,
-        priority: 1,
-        servers: vec!["https://example.com".to_string()],
-        weight: Some(10),
-        ..Default::default()
-    }];
-
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("weight_roundtrip.toml");
-    std::fs::write(&path, default_config_toml()).unwrap();
-
-    save_config_to_file(&config, path.to_str().unwrap()).unwrap();
-
-    let reloaded = Config::from_toml_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-
-    assert_eq!(reloaded.dns.pools.len(), 1);
-    assert_eq!(reloaded.dns.pools[0].weight, Some(10));
-    assert_eq!(reloaded.dns.pools[0].strategy, UpstreamStrategy::Balanced);
 }
 
 #[test]

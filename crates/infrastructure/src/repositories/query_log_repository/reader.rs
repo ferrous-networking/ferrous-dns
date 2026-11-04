@@ -7,7 +7,8 @@ use crate::repositories::{
 use chrono::{DateTime, TimeDelta, Utc};
 use ferrous_dns_application::ports::{ClientActivity, PageAt, PagedQueryResult, QueryLogStorage};
 use ferrous_dns_domain::entities::query_log::{
-    ClientProtocol, DnssecStats, DnssecStatusFilter, QueryCategory, QueryLogFilter,
+    ClientProtocol, CookieFilter, CookieStatus, DnssecStats, DnssecStatusFilter, QueryCategory,
+    QueryLogFilter,
 };
 use ferrous_dns_domain::{BlockResponseMode, DomainError, QueryLog, QueryStats};
 use sqlx::sqlite::SqliteRow;
@@ -33,6 +34,8 @@ fn reply_kind_sql(block_mode: BlockResponseMode) -> String {
         "CASE
             WHEN q.blocked = 1 THEN CASE
                 WHEN q.block_source = 'nxdomain_hijack' THEN 'NXDOMAIN'
+                WHEN q.block_source = 'dns_cookie' THEN CASE
+                    WHEN q.response_status = 'REFUSED' THEN 'REFUSED' ELSE 'OTHER' END
                 WHEN q.response_status = 'RATE_LIMITED' THEN 'REFUSED'
                 WHEN q.response_status = 'RATE_LIMITED_TC' THEN 'OTHER'
                 ELSE {blocked} END
@@ -53,7 +56,7 @@ macro_rules! select_query_log {
         concat!(
             "SELECT q.id, q.domain, q.record_type, q.client_ip, q.blocked, q.response_time_ms,
                     q.cache_hit, q.cache_refresh, q.dnssec_status, q.dns64_synthesized, q.answers, q.upstream_server,
-                    q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source, q.coalesced,
+                    q.upstream_pool, q.response_status, q.query_source, q.protocol, q.group_id, q.block_source, q.coalesced, q.cookie,
                     datetime(q.created_at) AS created_at, c.hostname
              FROM query_log q
              LEFT JOIN clients c ON q.client_ip = c.ip_address",
@@ -233,6 +236,14 @@ pub(super) async fn get_recent_paged(
         Some(ClientProtocol::Doq) => " AND q.protocol = 'doq'",
         None => "",
     };
+    let cookie_clause = match filter.cookie {
+        Some(CookieFilter::Any) => " AND q.cookie IS NOT NULL",
+        Some(CookieFilter::Status(CookieStatus::ClientOnly)) => " AND q.cookie = 'client'",
+        Some(CookieFilter::Status(CookieStatus::Valid)) => " AND q.cookie = 'valid'",
+        Some(CookieFilter::Status(CookieStatus::Invalid)) => " AND q.cookie = 'invalid'",
+        Some(CookieFilter::Without) => " AND q.cookie IS NULL",
+        None => "",
+    };
     let until = filter.until.and_then(unix_cutoff);
     let until_clause = if until.is_some() {
         " AND q.created_at < ?"
@@ -257,6 +268,7 @@ pub(super) async fn get_recent_paged(
         dnssec_clause,
         dns64_clause,
         protocol_clause,
+        cookie_clause,
         until_clause,
         &excluded_types_clause,
         &reply_clause,

@@ -338,13 +338,11 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             "cache_refresh_threshold",
             config.dns.cache_refresh_threshold,
         );
-        // Retired key: drop it so files written by older versions stop carrying it.
+        // Retired keys: drop them so files written by older versions stop
+        // carrying them. Nothing ever read the last two.
         t.remove("cache_max_refresh_per_sec");
-        set_val(
-            t,
-            "cache_lfuk_history_size",
-            config.dns.cache_lfuk_history_size as i64,
-        );
+        t.remove("cache_lfuk_history_size");
+        t.remove("cache_adaptive_thresholds");
         set_val(
             t,
             "cache_batch_eviction_percentage",
@@ -354,11 +352,6 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
             t,
             "cache_compaction_interval",
             config.dns.cache_compaction_interval as i64,
-        );
-        set_val(
-            t,
-            "cache_adaptive_thresholds",
-            config.dns.cache_adaptive_thresholds,
         );
         set_val(
             t,
@@ -405,9 +398,6 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
                 table.insert("strategy", toml_edit::value(pool.strategy.to_string()));
                 table.insert("priority", toml_edit::value(pool.priority as i64));
                 table.insert("servers", toml_edit::Item::Value(str_array(&pool.servers)));
-                if let Some(weight) = pool.weight {
-                    table.insert("weight", toml_edit::value(weight as i64));
-                }
                 if pool.is_conditional() {
                     table.insert("domains", toml_edit::Item::Value(str_array(&pool.domains)));
                     if !pool.groups.is_empty() {
@@ -603,12 +593,9 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
     {
         let t = ensure_table(doc, "blocking")?;
         set_val(t, "enabled", config.blocking.enabled);
-        set_val(
-            t,
-            "custom_blocked",
-            str_array(&config.blocking.custom_blocked),
-        );
-        set_val(t, "whitelist", str_array(&config.blocking.whitelist));
+        // Retired: nothing ever read them; DNS Filter blocks and allows domains.
+        t.remove("custom_blocked");
+        t.remove("whitelist");
         set_val(t, "block_mode", config.blocking.block_mode.as_str());
         set_val(t, "block_ttl", config.blocking.block_ttl as i64);
         // Optional custom sinkhole targets: write when set, drop the key when

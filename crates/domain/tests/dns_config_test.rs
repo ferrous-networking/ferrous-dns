@@ -65,10 +65,8 @@ fn test_config_deserialization_with_all_fields() {
         cache_min_frequency = 20
         cache_min_lfuk_score = 2.0
         cache_refresh_threshold = 0.5
-        cache_lfuk_history_size = 5
         cache_batch_eviction_percentage = 0.2
         cache_compaction_interval = 120
-        cache_adaptive_thresholds = true
         cache_access_window_secs = 3600
         block_private_ptr = false
         block_non_fqdn = true
@@ -91,7 +89,6 @@ fn test_config_deserialization_with_all_fields() {
     assert_eq!(config.cache_min_hit_rate, 3.0);
     assert_eq!(config.cache_min_frequency, 20);
     assert_eq!(config.cache_min_lfuk_score, 2.0);
-    assert!(config.cache_adaptive_thresholds);
     assert_eq!(config.cache_access_window_secs, 3600);
     assert!(!config.block_private_ptr);
     assert!(config.block_non_fqdn);

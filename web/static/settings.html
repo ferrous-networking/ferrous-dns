@@ -1337,21 +1337,6 @@
                     </div>
                 </div>
 
-                <div class="setting-row">
-                    <div style="flex:1;margin-right:24px">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                            <i data-lucide="sliders" style="width:20px;height:20px;color:var(--color-primary)"></i>
-                            <h4 style="font-size:16px;font-weight:600;margin:0">Adaptive Thresholds</h4>
-                        </div>
-                        <p style="font-size:13px;color:var(--text-secondary);margin:0">Automatically tunes eviction thresholds based on observed cache behaviour. When enabled, Ferrous DNS continuously adjusts Min Hit Rate and Min Frequency to maintain an optimal working set without manual tuning.</p>
-                        <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">When enabled, the manually configured Min Hit Rate and Min Frequency values are overridden by the adaptive engine.</p>
-                    </div>
-                    <div @click="config.dns.cache_adaptive_thresholds=!config.dns.cache_adaptive_thresholds"
-                         :class="config.dns.cache_adaptive_thresholds?'active':''" class="toggle-switch">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-
                 <div class="setting-row no-divider">
                     <div style="flex:1;margin-right:32px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -1433,12 +1418,10 @@
                                 <h4 style="font-size:16px;font-weight:600;margin:0">Action</h4>
                             </div>
                             <p style="font-size:13px;color:var(--text-secondary);margin:0"><b>Block</b> answers with the Block Mode set in DNS Settings and logs the query. <b>Alert</b> resolves normally and only logs the detection: run it for a few days to check for false positives first.</p>
-                            <p style="font-size:12px;color:var(--text-tertiary);margin:8px 0 0;font-style:italic">Throttle is not implemented yet and acts as Alert.</p>
                         </div>
                         <select x-model="config.dns.tunneling_detection.action" style="width:220px;max-width:100%;align-self:center">
                             <option value="block">Block</option>
                             <option value="alert">Alert — log only</option>
-                            <option value="throttle">Throttle — acts as Alert</option>
                         </select>
                     </div>
 

@@ -2,7 +2,7 @@
 //! server uses at startup and on reload: parse, normalise, then validate.
 
 use ferrous_dns_domain::config::CacheEvictionStrategy;
-use ferrous_dns_domain::{Config, DomainError};
+use ferrous_dns_domain::{Config, DomainError, TunnelingAction};
 
 const MINIMAL_TOML: &str = r#"
 [server]
@@ -115,6 +115,21 @@ fn a_malformed_cookie_secret_with_cookies_on_fails_saying_how_to_fix_it() {
     }
 }
 
+/// Older releases never rotated the cookie secret, whatever the window.
+#[test]
+fn a_cookie_rotation_window_under_a_minute_loads_as_no_rotation() {
+    for secs in [1, 59] {
+        let tables = format!("[dns.dns_cookies]\nsecret_rotation_secs = {secs}");
+        let cookies = load(&file("", &tables)).dns.dns_cookies;
+        assert_eq!(cookies.secret_rotation_secs, 0, "{secs}");
+    }
+    let tables = "[dns.dns_cookies]\nsecret_rotation_secs = 60";
+    assert_eq!(
+        load(&file("", tables)).dns.dns_cookies.secret_rotation_secs,
+        60
+    );
+}
+
 /// Older releases ran every name but `lfu` and `lfu-k` as hit_rate.
 #[test]
 fn an_unknown_cache_eviction_strategy_loads_as_hit_rate() {
@@ -127,6 +142,42 @@ fn an_unknown_cache_eviction_strategy_loads_as_hit_rate() {
             "{name:?}"
         );
     }
+}
+
+/// Older releases accepted `throttle` and ran it as `alert`.
+#[test]
+fn a_throttle_tunneling_action_loads_as_alert() {
+    let tables = "[dns.tunneling_detection]\naction = \"throttle\"";
+    let config = load(&file("", tables));
+    assert_eq!(
+        config.dns.tunneling_detection.action,
+        TunnelingAction::Alert
+    );
+}
+
+#[test]
+fn an_unknown_tunneling_action_still_fails_to_load() {
+    let tables = "[dns.tunneling_detection]\naction = \"drop\"";
+    assert!(Config::from_toml_str(&file("", tables)).is_err());
+}
+
+/// No release read these keys. A file that still sets them, to any value,
+/// loads with everything around them intact.
+#[test]
+fn retired_config_keys_still_load() {
+    let contents = file(
+        "cache_adaptive_thresholds = true\ncache_lfuk_history_size = 32\ncache_max_entries = 500",
+        "[[dns.pools]]\nname = \"default\"\nstrategy = \"Balanced\"\nservers = [\"1.1.1.1:53\"]\nweight = 5",
+    )
+    .replace(
+        "[blocking]\n",
+        "[blocking]\ncustom_blocked = [\"ads.example.com\"]\nwhitelist = [\"cdn.example.com\"]\nblock_ttl = 30\n",
+    );
+    let config = load(&contents);
+    assert_eq!(config.dns.cache_max_entries, 500);
+    assert_eq!(config.dns.pools.len(), 1);
+    assert_eq!(config.dns.pools[0].servers, ["1.1.1.1:53"]);
+    assert_eq!(config.blocking.block_ttl, 30);
 }
 
 #[test]
@@ -613,5 +664,10 @@ fn the_values_a_load_rewrites_are_still_rejected_by_validate() {
     let mut config = Config::default();
     config.dns.upstream_servers = vec!["1.1.1.1:53".to_string()];
     config.dns.tunneling_detection.confidence_threshold = 1.5;
+    assert!(config.validate().is_err());
+
+    let mut config = Config::default();
+    config.dns.upstream_servers = vec!["1.1.1.1:53".to_string()];
+    config.dns.dns_cookies.secret_rotation_secs = 30;
     assert!(config.validate().is_err());
 }

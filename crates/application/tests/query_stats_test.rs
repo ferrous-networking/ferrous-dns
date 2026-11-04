@@ -42,6 +42,7 @@ fn make_log_with_upstream(
         group_id: None,
         block_source,
         coalesced: None,
+        cookie: None,
     }
 }
 

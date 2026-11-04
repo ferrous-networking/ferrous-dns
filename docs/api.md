@@ -298,7 +298,7 @@ Counts the client queries of the `period` by DNSSEC outcome: `secure`, `insecure
 GET /ferrous/api/v1/queries?limit=100&offset=0
 ```
 
-**Auth:** session or API key · **Returns:** `200` `PaginatedQueries` · **Errors:** `400` unknown `category`, `type`, `dnssec_status` or `protocol`
+**Auth:** session or API key · **Returns:** `200` `PaginatedQueries` · **Errors:** `400` unknown `category`, `type`, `dnssec_status`, `protocol` or `cookie`
 
 Returns recent DNS queries with filtering support, newest first, as a [page](#pagination) with `records_total` and `next_cursor`.
 
@@ -308,10 +308,20 @@ Returns recent DNS queries with filtering support, newest first, as a [page](#pa
 | `offset` | integer | Rows to skip |
 | `cursor` | integer | `next_cursor` of the previous page; takes the place of `offset` |
 | `protocol` | string | Transport the client used: `udp`, `tcp`, `dot`, `doh` or `doq`. Case-insensitive; any other value returns `400` |
+| `cookie` | string | The query's [DNS Cookie](features/security.md#dns-cookies): `any` (it carried one), `valid`, `client`, `invalid`, or `none` (it carried none, which includes rows logged before cookies were recorded). Case-insensitive; any other value returns `400` |
 
 Each entry carries a `protocol` field with the same values in lowercase, or
 `null` for internally generated queries and for rows logged before the
 transport was recorded.
+
+`cookie` says what the query's DNS Cookie showed: `client` for a client cookie
+alone (a first query, or a client that did not keep ours), `valid` for a server
+cookie this server issued to that client in the current or previous
+[rotation window](configuration/dns.md#secret-rotation), and `invalid` for any
+other server cookie: one from before a restart or older than two windows, or a
+forged one. It is `null` when the query carried none. A strict-mode refusal is
+logged as blocked, with `block_source` `dns_cookie` and `response_status`
+`BADCOOKIE`, or `REFUSED` for a query that carried no cookie.
 
 `coalesced` marks a query's part in [in-flight coalescing](architecture/overview.md#in-flight-coalescing):
 `leader` when identical queries that arrived while it was in flight shared its

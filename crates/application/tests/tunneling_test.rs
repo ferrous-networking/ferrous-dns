@@ -81,6 +81,7 @@ async fn the_fast_path_does_not_serve_a_cached_long_label() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -103,6 +104,7 @@ async fn the_wire_fast_path_does_not_serve_a_cached_null_answer() {
         RecordType::NULL,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 

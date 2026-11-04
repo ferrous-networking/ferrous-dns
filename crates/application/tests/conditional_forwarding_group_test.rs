@@ -78,7 +78,8 @@ async fn test_fast_path_cache_probes_pass_the_client_group() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| Some(()),
+        None,
+        |_, _, _cookie| Some(()),
     );
     assert!(hit.is_some());
     let _ = use_case.try_cache_wire_direct(
@@ -86,7 +87,8 @@ async fn test_fast_path_cache_probes_pass_the_client_group() {
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| Some(()),
+        None,
+        |_, _, _cookie| Some(()),
     );
 
     assert_eq!(
@@ -164,7 +166,8 @@ async fn test_cached_internal_answer_with_a_private_address_is_served() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |addresses, _| Some(addresses.to_vec()),
+        None,
+        |addresses, _, _cookie| Some(addresses.to_vec()),
     );
     assert_eq!(hit, Some(vec![OFFICE_IP]));
 }

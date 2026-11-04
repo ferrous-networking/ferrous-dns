@@ -225,7 +225,6 @@ impl ImportConfigUseCase {
         new_config.dns.cache_compaction_interval = sc.dns.cache_compaction_interval;
         new_config.dns.cache_refresh_threshold = sc.dns.cache_refresh_threshold;
         new_config.dns.cache_optimistic_refresh = sc.dns.cache_optimistic_refresh;
-        new_config.dns.cache_adaptive_thresholds = sc.dns.cache_adaptive_thresholds;
         new_config.dns.cache_access_window_secs = sc.dns.cache_access_window_secs;
         new_config.dns.cache_min_ttl = sc.dns.cache_min_ttl;
         new_config.dns.cache_max_ttl = sc.dns.cache_max_ttl;
@@ -275,8 +274,6 @@ impl ImportConfigUseCase {
         }
 
         new_config.blocking.enabled = sc.blocking.enabled;
-        new_config.blocking.custom_blocked = sc.blocking.custom_blocked.clone();
-        new_config.blocking.whitelist = sc.blocking.whitelist.clone();
         new_config.blocking.block_mode = sc.blocking.block_mode;
         new_config.blocking.block_ttl = sc.blocking.block_ttl;
         new_config.blocking.sinkhole_ipv4 = sc.blocking.sinkhole_ipv4;

@@ -41,6 +41,7 @@ pub async fn get_queries(
         upstream = ?params.upstream,
         dnssec_status = ?params.dnssec_status,
         protocol = ?params.protocol,
+        cookie = ?params.cookie,
         "Fetching recent queries"
     );
 
@@ -69,6 +70,7 @@ pub async fn get_queries(
         dnssec_status,
         dns64: params.dns64,
         protocol: params.protocol.as_deref(),
+        cookie: params.cookie.as_deref(),
         ..Default::default()
     };
 
@@ -100,6 +102,7 @@ pub async fn get_queries(
             block_source: q.block_source.map(|s| s.to_str()),
             response_status: q.response_status,
             coalesced: q.coalesced.map(|role| role.as_str()),
+            cookie: q.cookie.map(|status| status.as_str()),
             group_id: q.group_id,
         })
         .collect();

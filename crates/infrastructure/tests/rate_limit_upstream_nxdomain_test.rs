@@ -103,7 +103,8 @@ fn fast_path_answers(use_case: &HandleDnsQueryUseCase, domain: &str) -> bool {
             RecordType::TXT,
             CLIENT,
             ClientProtocol::Udp,
-            |_, _| Some(()),
+            None,
+            |_, _, _cookie| Some(()),
         )
         .is_some()
 }
