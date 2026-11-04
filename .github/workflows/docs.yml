@@ -24,6 +24,7 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'contrib/**'
       - 'requirements.txt'
       - 'CHANGELOG.md'
       - '.github/workflows/docs.yml'
