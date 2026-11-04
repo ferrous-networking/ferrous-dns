@@ -854,22 +854,31 @@ impl HandleDnsQueryUseCase {
             group_id,
         )?;
 
-        if let Some(guard) = self
+        if self
             .cookie_guard
             .as_ref()
-            .filter(|g| g.requires_cookie(request.protocol))
+            .is_some_and(|g| g.requires_cookie(request.protocol))
         {
-            let opt = request
-                .edns_cookie
-                .as_ref()
-                .map(|c| c.as_bytes())
-                .unwrap_or(&[]);
-            if !guard.has_valid_cookie(request.client_ip, opt) {
+            let query_log = self.base_query_log(request, elapsed_us(), group_id);
+            if query_log.cookie != Some(CookieStatus::Valid) {
                 tracing::debug!(
                     domain = %request.domain,
                     client = %request.client_ip,
                     "DNS cookie validation failed (strict mode)"
                 );
+                // The rcode the server answers (RFC 7873 §5.2.3): BADCOOKIE
+                // and ours to retry with for a client cookie, REFUSED without.
+                let rcode = if request.edns_cookie.is_some() {
+                    "BADCOOKIE"
+                } else {
+                    "REFUSED"
+                };
+                self.log(&QueryLog {
+                    blocked: true,
+                    response_status: Some(rcode),
+                    block_source: Some(BlockSource::DnsCookie),
+                    ..query_log
+                });
                 return Err(DomainError::DnsCookieInvalid);
             }
         }

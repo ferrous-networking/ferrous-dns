@@ -34,6 +34,8 @@ fn reply_kind_sql(block_mode: BlockResponseMode) -> String {
         "CASE
             WHEN q.blocked = 1 THEN CASE
                 WHEN q.block_source = 'nxdomain_hijack' THEN 'NXDOMAIN'
+                WHEN q.block_source = 'dns_cookie' THEN CASE
+                    WHEN q.response_status = 'REFUSED' THEN 'REFUSED' ELSE 'OTHER' END
                 WHEN q.response_status = 'RATE_LIMITED' THEN 'REFUSED'
                 WHEN q.response_status = 'RATE_LIMITED_TC' THEN 'OTHER'
                 ELSE {blocked} END

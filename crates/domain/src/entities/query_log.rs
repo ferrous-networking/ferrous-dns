@@ -374,6 +374,7 @@ impl QueryLog {
     /// | Logged                                         | Kind |
     /// |------------------------------------------------|------|
     /// | blocked as an NXDOMAIN hijack                  | `NxDomain` |
+    /// | refused by strict DNS Cookies (`dns_cookie`)    | `Refused` for `REFUSED`, `Other` for `BADCOOKIE` |
     /// | rate limited (`RATE_LIMITED`)                  | `Refused` |
     /// | rate limited by truncation (`RATE_LIMITED_TC`) | `Other` |
     /// | any other block                                | what `block_mode` answers: `null_ip` → `Ip` for A/AAAA and `NoData` otherwise, `nxdomain` → `NxDomain`, `nodata` → `NoData`, `refused` → `Refused` |
@@ -394,6 +395,8 @@ impl QueryLog {
         if self.blocked {
             return match (self.block_source, self.response_status) {
                 (Some(BlockSource::NxdomainHijack), _) => ReplyKind::NxDomain,
+                (Some(BlockSource::DnsCookie), Some("REFUSED")) => ReplyKind::Refused,
+                (Some(BlockSource::DnsCookie), _) => ReplyKind::Other,
                 (_, Some("RATE_LIMITED")) => ReplyKind::Refused,
                 (_, Some("RATE_LIMITED_TC")) => ReplyKind::Other,
                 _ => match block_mode {
