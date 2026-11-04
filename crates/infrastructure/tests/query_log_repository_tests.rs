@@ -1573,6 +1573,28 @@ async fn test_coalesced_role_round_trips() {
     assert_eq!(role("alone.example.com"), None);
 }
 
+/// A strict DNS Cookie refusal answered BADCOOKIE reads back with that rcode.
+#[tokio::test]
+async fn test_badcookie_status_reads_back() {
+    let pool = migrated_pool().await;
+    insert(
+        &pool,
+        Row {
+            domain: "refused.example.com",
+            blocked: true,
+            block_source: Some("dns_cookie"),
+            response_status: Some("BADCOOKIE"),
+            ..Row::default()
+        },
+    )
+    .await;
+
+    let queries = page(&pool, 10, &no_filter()).await;
+
+    assert_eq!(queries.len(), 1);
+    assert_eq!(queries[0].response_status, Some("BADCOOKIE"));
+}
+
 #[tokio::test]
 async fn test_cookie_status_round_trips_and_filters_the_page() {
     let pool = migrated_pool().await;

@@ -28,6 +28,7 @@ fn to_static_response_status(s: &str) -> Option<&'static str> {
         "RATE_LIMITED" => Some("RATE_LIMITED"),
         "RATE_LIMITED_TC" => Some("RATE_LIMITED_TC"),
         "SAFE_SEARCH" => Some("SAFE_SEARCH"),
+        "BADCOOKIE" => Some("BADCOOKIE"),
         _ => None,
     }
 }
