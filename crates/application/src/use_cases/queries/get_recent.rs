@@ -95,6 +95,7 @@ impl GetRecentQueriesUseCase {
             dnssec_status: input.dnssec_status,
             dns64_synthesized: input.dns64,
             protocol: parsed_protocol,
+            cookie: None,
             until: input.until,
             excluded_record_types: input.excluded_record_types.clone(),
             reply: input.reply,

@@ -99,5 +99,6 @@ pub fn row_to_query_log(row: SqliteRow) -> Option<QueryLog> {
         group_id: row.get("group_id"),
         block_source,
         coalesced,
+        cookie: None,
     })
 }

@@ -4,7 +4,8 @@ use ferrous_dns_application::ports::DnsResolution;
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
-    ClientProtocol, DnsCookiesConfig, DnsRequest, DomainError, EdnsCookie, RecordType,
+    BlockSource, ClientProtocol, CookieStatus, DnsCookiesConfig, DnsRequest, DomainError,
+    EdnsCookie, RecordType,
 };
 use helpers::{MockBlockFilterEngine, MockDnsResolver, MockQueryLogRepository};
 use std::net::IpAddr;
@@ -333,4 +334,108 @@ async fn test_cookie_never_expires_when_rotation_is_off() {
     now.store(WINDOW_START + 10 * 365 * 86_400, Ordering::Relaxed);
     assert!(use_case.execute(&query_with(issued)).await.is_ok());
     assert_eq!(server_cookie(&use_case), issued);
+}
+
+/// The one row a query logged.
+fn logged(log: &MockQueryLogRepository) -> ferrous_dns_domain::QueryLog {
+    let mut rows = log.get_sync_logs();
+    assert_eq!(rows.len(), 1, "one query, one row: {rows:?}");
+    rows.remove(0)
+}
+
+fn request_with(sent: Option<&[u8]>) -> DnsRequest {
+    let request = DnsRequest::new("example.com", RecordType::A, CLIENT_IP);
+    match sent {
+        Some(data) => request.with_cookie(cookie(data)),
+        None => request,
+    }
+}
+
+/// The server cookie `SECRET` signs for `CLIENT_COOKIE` at `now`.
+fn issued_at(now: u64) -> Vec<u8> {
+    let (_now, clock) = manual_clock(now);
+    let guard =
+        DnsCookieGuard::from_config(&rotating_config(ROTATION_SECS), SECRET).with_clock(clock);
+    [
+        CLIENT_COOKIE,
+        guard.generate_server_cookie(CLIENT_IP, &CLIENT_COOKIE),
+    ]
+    .concat()
+}
+
+/// The Query Log records what each query's DNS Cookie showed.
+#[tokio::test]
+async fn test_execute_logs_what_the_query_cookie_showed() {
+    let current = issued_at(WINDOW_START + 10);
+    let previous_window = issued_at(WINDOW_START - 10);
+    let forged = [CLIENT_COOKIE, [0xFF; 8]].concat();
+    for (sent, expected) in [
+        (None, None),
+        (Some(&CLIENT_COOKIE[..]), Some(CookieStatus::ClientOnly)),
+        (Some(&current[..]), Some(CookieStatus::Valid)),
+        (Some(&previous_window[..]), Some(CookieStatus::Valid)),
+        (Some(&forged[..]), Some(CookieStatus::Invalid)),
+    ] {
+        let (_now, clock) = manual_clock(WINDOW_START + 10);
+        let config = DnsCookiesConfig {
+            secret_rotation_secs: ROTATION_SECS,
+            ..cookies_config(false)
+        };
+        let guard = DnsCookieGuard::from_config(&config, SECRET).with_clock(clock);
+        let (use_case, log) = make_use_case(resolver_ok().await, guard);
+
+        use_case.execute(&request_with(sent)).await.unwrap();
+
+        assert_eq!(logged(&log).cookie, expected, "{sent:?}");
+    }
+}
+
+/// Strict mode refuses a UDP query without a valid server cookie, and the
+/// Query Log shows the refusal with the rcode the client got.
+#[tokio::test]
+async fn test_strict_mode_logs_the_queries_it_refuses() {
+    let forged = [CLIENT_COOKIE, [0xFF; 8]].concat();
+    for (sent, rcode, expected) in [
+        (
+            Some(&CLIENT_COOKIE[..]),
+            "BADCOOKIE",
+            Some(CookieStatus::ClientOnly),
+        ),
+        (Some(&forged[..]), "BADCOOKIE", Some(CookieStatus::Invalid)),
+        (None, "REFUSED", None),
+    ] {
+        let (_now, clock) = manual_clock(WINDOW_START + 10);
+        let guard =
+            DnsCookieGuard::from_config(&rotating_config(ROTATION_SECS), SECRET).with_clock(clock);
+        let (use_case, log) = make_use_case(resolver_ok().await, guard);
+
+        let result = use_case.execute(&request_with(sent)).await;
+
+        assert!(
+            matches!(result, Err(DomainError::DnsCookieInvalid)),
+            "{sent:?}"
+        );
+        let row = logged(&log);
+        assert!(row.blocked, "{sent:?}");
+        assert_eq!(row.block_source, Some(BlockSource::DnsCookie), "{sent:?}");
+        assert_eq!(row.response_status, Some(rcode), "{sent:?}");
+        assert_eq!(row.cookie, expected, "{sent:?}");
+    }
+}
+
+/// Strict mode leaves stream transports unchecked, but their rows still say
+/// what the cookie showed.
+#[tokio::test]
+async fn test_strict_mode_logs_the_cookie_of_a_stream_query_it_answers() {
+    let (_now, clock) = manual_clock(WINDOW_START + 10);
+    let guard =
+        DnsCookieGuard::from_config(&rotating_config(ROTATION_SECS), SECRET).with_clock(clock);
+    let (use_case, log) = make_use_case(resolver_ok().await, guard);
+    let request = request_with(Some(&CLIENT_COOKIE[..])).with_protocol(ClientProtocol::Tcp);
+
+    use_case.execute(&request).await.unwrap();
+
+    let row = logged(&log);
+    assert!(!row.blocked);
+    assert_eq!(row.cookie, Some(CookieStatus::ClientOnly));
 }

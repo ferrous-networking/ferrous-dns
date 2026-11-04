@@ -2,7 +2,8 @@ use ferrous_dns_application::ports::{
     PageAt, QueryLogRepository, QueryLogStorageRepository, TimeGranularity,
 };
 use ferrous_dns_domain::{
-    ClientProtocol, CoalescedRole, QueryCategory, QueryLog, QueryLogFilter, QuerySource, RecordType,
+    ClientProtocol, CoalescedRole, CookieFilter, CookieStatus, QueryCategory, QueryLog,
+    QueryLogFilter, QuerySource, RecordType,
 };
 use sqlx::SqlitePool;
 use std::collections::BTreeSet;
@@ -187,6 +188,7 @@ fn client_query(domain: &str, protocol: Option<ClientProtocol>) -> QueryLog {
         group_id: None,
         block_source: None,
         coalesced: None,
+        cookie: None,
     }
 }
 
@@ -1215,6 +1217,7 @@ async fn test_combined_all_filters() {
         dnssec_status: None,
         dns64_synthesized: None,
         protocol: None,
+        cookie: None,
         until: None,
         excluded_record_types: Vec::new(),
         reply: None,
@@ -1568,6 +1571,91 @@ async fn test_coalesced_role_round_trips() {
     assert_eq!(role("leader.example.com"), Some(CoalescedRole::Leader));
     assert_eq!(role("follower.example.com"), Some(CoalescedRole::Follower));
     assert_eq!(role("alone.example.com"), None);
+}
+
+#[tokio::test]
+async fn test_cookie_status_round_trips_and_filters_the_page() {
+    let pool = migrated_pool().await;
+    let repository = repo(&pool);
+    for (domain, cookie) in [
+        ("valid.example.com", Some(CookieStatus::Valid)),
+        ("client.example.com", Some(CookieStatus::ClientOnly)),
+        ("invalid.example.com", Some(CookieStatus::Invalid)),
+        ("none.example.com", None),
+    ] {
+        repository
+            .log_query(&QueryLog {
+                cookie,
+                ..client_query(domain, Some(ClientProtocol::Udp))
+            })
+            .await
+            .unwrap();
+    }
+    let page = |cookie: Option<CookieFilter>| {
+        let repository = &repository;
+        async move {
+            repository
+                .get_recent_paged(
+                    10,
+                    PageAt::Offset(0),
+                    24.0,
+                    &QueryLogFilter {
+                        cookie,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let mut rows = Vec::new();
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        rows = page(None).await.queries;
+        if rows.len() == 4 {
+            break;
+        }
+    }
+    let status = |domain: &str| {
+        rows.iter()
+            .find(|q| &*q.domain == domain)
+            .unwrap_or_else(|| panic!("{domain} not read back"))
+            .cookie
+    };
+    assert_eq!(status("valid.example.com"), Some(CookieStatus::Valid));
+    assert_eq!(status("client.example.com"), Some(CookieStatus::ClientOnly));
+    assert_eq!(status("invalid.example.com"), Some(CookieStatus::Invalid));
+    assert_eq!(status("none.example.com"), None);
+
+    for (filter, expected) in [
+        (
+            CookieFilter::Any,
+            &[
+                "client.example.com",
+                "invalid.example.com",
+                "valid.example.com",
+            ][..],
+        ),
+        (
+            CookieFilter::Status(CookieStatus::Valid),
+            &["valid.example.com"][..],
+        ),
+        (
+            CookieFilter::Status(CookieStatus::ClientOnly),
+            &["client.example.com"][..],
+        ),
+        (
+            CookieFilter::Status(CookieStatus::Invalid),
+            &["invalid.example.com"][..],
+        ),
+        (CookieFilter::Without, &["none.example.com"][..]),
+    ] {
+        let result = page(Some(filter)).await;
+        let names: BTreeSet<&str> = result.queries.iter().map(|q| &*q.domain).collect();
+        assert_eq!(names, expected.iter().copied().collect(), "{filter:?}");
+        assert_eq!(result.records_filtered, expected.len() as u64, "{filter:?}");
+        assert_eq!(result.records_total, 4, "{filter:?}");
+    }
 }
 
 #[tokio::test]

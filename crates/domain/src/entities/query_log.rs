@@ -30,6 +30,8 @@ pub struct QueryLogFilter {
     pub dns64_synthesized: Option<bool>,
     /// Exact match on the transport the client used to reach the resolver.
     pub protocol: Option<ClientProtocol>,
+    /// What the query's DNS Cookie showed, if it carried one.
+    pub cookie: Option<CookieFilter>,
     /// Only queries logged before this Unix time.
     pub until: Option<i64>,
     /// Record types left out.
@@ -264,6 +266,69 @@ impl FromStr for CoalescedRole {
     }
 }
 
+/// What a query's DNS Cookie (RFC 7873) showed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookieStatus {
+    /// A client cookie alone: the client's first query to this server, or
+    /// one that did not keep the server cookie it was given.
+    ClientOnly,
+    /// A server cookie this server issued to the client, in the current
+    /// rotation window or the previous one.
+    Valid,
+    /// A server cookie this server did not issue to the client, or issued two
+    /// or more rotation windows ago: expired by rotation or a restart, or forged.
+    Invalid,
+}
+
+impl CookieStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CookieStatus::ClientOnly => "client",
+            CookieStatus::Valid => "valid",
+            CookieStatus::Invalid => "invalid",
+        }
+    }
+}
+
+impl FromStr for CookieStatus {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "client" => Ok(CookieStatus::ClientOnly),
+            "valid" => Ok(CookieStatus::Valid),
+            "invalid" => Ok(CookieStatus::Invalid),
+            other => Err(DomainError::InvalidInput(format!(
+                "invalid cookie status: '{other}'"
+            ))),
+        }
+    }
+}
+
+/// Selects queries by their DNS Cookie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookieFilter {
+    /// Queries that carried a cookie, whatever it showed.
+    Any,
+    Status(CookieStatus),
+    /// Queries without one, including rows written before cookies were logged.
+    Without,
+}
+
+impl FromStr for CookieFilter {
+    type Err = DomainError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "any" => Ok(CookieFilter::Any),
+            "none" => Ok(CookieFilter::Without),
+            other => other.parse().map(CookieFilter::Status).map_err(|_| {
+                DomainError::InvalidInput(format!("invalid cookie filter: '{other}'"))
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueryLog {
     pub id: Option<i64>,
@@ -297,6 +362,10 @@ pub struct QueryLog {
     pub block_source: Option<BlockSource>,
     /// The query's part in coalescing, `None` when it took none.
     pub coalesced: Option<CoalescedRole>,
+    /// What the query's DNS Cookie showed. `None` when it carried none, for
+    /// internally generated queries, and for rows written before the column
+    /// existed.
+    pub cookie: Option<CookieStatus>,
 }
 
 impl QueryLog {

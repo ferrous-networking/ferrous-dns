@@ -57,6 +57,7 @@ fn logged_query() -> QueryLog {
         group_id: None,
         block_source: None,
         coalesced: None,
+        cookie: None,
     }
 }
 

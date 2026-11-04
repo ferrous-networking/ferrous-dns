@@ -384,6 +384,7 @@ impl HandleDnsQueryUseCase {
             group_id: Some(group_id),
             block_source: None,
             coalesced: None,
+            cookie: None,
         }
     }
 
@@ -571,6 +572,7 @@ impl HandleDnsQueryUseCase {
             group_id: Some(group_id),
             block_source: None,
             coalesced: None,
+            cookie: None,
         }
     }
 
