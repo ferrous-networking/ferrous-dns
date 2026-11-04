@@ -186,11 +186,6 @@ Run all tests:
 cargo test --workspace
 ```
 
-Run with logging:
-```bash
-RUST_LOG=debug cargo test --workspace
-```
-
 ---
 
 ## Coverage Targets

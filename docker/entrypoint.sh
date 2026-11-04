@@ -38,17 +38,6 @@ if [ "$1" != "--healthcheck" ]; then
         echo "WARNING: $CONFIG_PATH is not writable as $RUN_AS — the setup wizard," >&2
         echo "         POST /config and backup restore will fail to persist changes." >&2
     fi
-
-    # Bootstrap migrations if not present (first run or fresh volume)
-    # The app resolves ./migrations relative to WORKDIR (/data)
-    if [ ! -d "/data/migrations" ]; then
-        echo "No migrations found at /data/migrations — copying bundled migrations..."
-        if ! cp -r "$SHARE_DIR/migrations" /data/migrations; then
-            echo "ERROR: could not create /data/migrations as $RUN_AS." >&2
-            echo "       The /data volume must be writable by that user." >&2
-            exit 1
-        fi
-    fi
 fi
 
 # Initialize args array
@@ -81,7 +70,7 @@ if [ -n "$FERROUS_LOG_LEVEL" ] && [ "$FERROUS_LOG_LEVEL" != "info" ]; then
 fi
 
 # Log the command being executed (for debugging)
-if [ "$1" != "--healthcheck" ] && { [ "$RUST_LOG" = "debug" ] || [ "$RUST_LOG" = "trace" ]; }; then
+if [ "$1" != "--healthcheck" ] && { [ "$FERROUS_LOG_LEVEL" = "debug" ] || [ "$FERROUS_LOG_LEVEL" = "trace" ]; }; then
     echo "Starting Ferrous DNS with args: $ARGS $*"
 fi
 

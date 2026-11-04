@@ -250,10 +250,10 @@ openssl rsa -in key.pem -modulus -noout | md5sum
 docker logs ferrous-dns 2>&1 | grep -i tls
 
 # Binary
-RUST_LOG=debug ./ferrous-dns --config ferrous-dns.toml 2>&1 | grep -i tls
+./ferrous-dns --config ferrous-dns.toml --log-level debug 2>&1 | grep -i tls
 ```
 
-If you see "TLS certificate not found, skipping DoT/DoH listeners", verify the file paths in:
+If you see `TLS cert file not found — DoT disabled` (or `DoQ`, or `Web HTTPS`), verify the file paths in:
 
 ```toml
 [server.encrypted_dns]
@@ -524,10 +524,10 @@ For debugging, increase the log level:
 level = "debug"    # options: error, warn, info, debug, trace
 ```
 
-Or via environment variable:
+Or with the command-line flag, which overrides the file:
 
 ```bash
-RUST_LOG=debug ./ferrous-dns --config ferrous-dns.toml
+./ferrous-dns --config ferrous-dns.toml --log-level debug
 ```
 
 !!! warning
