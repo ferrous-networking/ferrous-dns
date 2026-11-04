@@ -103,6 +103,14 @@ nav:
     - Security Hardening: features/security-hardening.md
     - Two-Factor Authentication: features/two-factor-auth.md
     - Metrics & Monitoring: features/metrics.md
+  - Operations:
+    - Production Checklist: operations/index.md
+    - Bare Metal (systemd): operations/systemd.md
+    - Backups & Upgrades: operations/backups-upgrades.md
+    - Sizing: operations/sizing.md
+    - Logs & Monitoring: operations/logs-monitoring.md
+    - TLS & Reverse Proxy: operations/tls-reverse-proxy.md
+    - Redundancy: operations/redundancy.md
   - API & Integrations:
     - API Reference: api.md
     - Integrations: integrations.md

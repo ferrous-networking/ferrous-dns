@@ -65,6 +65,8 @@ Access the dashboard at `http://localhost:8080`
 
 See [full installation guide](https://ferrous-networking.github.io/ferrous-dns/getting-started/installation/) for Docker Compose, build from source, and Raspberry Pi setup.
 
+Running it for a network that depends on it? [Running in Production](https://ferrous-networking.github.io/ferrous-dns/operations/) covers a systemd service, backups, sizing, monitoring, the dashboard behind a reverse proxy, and a second resolver.
+
 ### Docker Compose
 
 ```yaml
