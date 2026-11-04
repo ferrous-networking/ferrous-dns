@@ -83,7 +83,7 @@ async fn fixture(answer: Answer, burst_size: u32, nxdomain_per_second: u32) -> F
     };
     Fixture {
         _upstream: upstream,
-        handler: DnsServerHandler::new(Arc::new(use_case), policy),
+        handler: DnsServerHandler::new(Arc::new(use_case), policy, Arc::default()),
     }
 }
 

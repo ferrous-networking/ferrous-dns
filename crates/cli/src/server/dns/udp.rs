@@ -468,6 +468,7 @@ mod tests {
             None,
             0,
             &shed.totals(),
+            &Default::default(),
             "test",
         )
         .unwrap();

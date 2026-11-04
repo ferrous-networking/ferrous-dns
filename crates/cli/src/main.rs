@@ -147,6 +147,7 @@ async fn async_main() -> anyhow::Result<()> {
 
     let dns_addr = config.server.dns_listen_address();
     let handler_use_case = dns_services.handler_use_case;
+    let responses = dns_services.responses;
     let tcp_conn_limiter = dns_services.tcp_conn_limiter;
     let dot_conn_limiter = dns_services.dot_conn_limiter;
     let doq_conn_limiter = dns_services.doq_conn_limiter;
@@ -156,7 +157,8 @@ async fn async_main() -> anyhow::Result<()> {
         sinkhole_ipv4: config.blocking.sinkhole_ipv4,
         sinkhole_ipv6: config.blocking.sinkhole_ipv6,
     };
-    let dns_handler = DnsServerHandler::new(handler_use_case.clone(), block_policy);
+    let dns_handler =
+        DnsServerHandler::new(handler_use_case.clone(), block_policy, responses.clone());
     let num_dns_workers = tokio::runtime::Handle::current().metrics().num_workers();
 
     let proxy_protocol_enabled = config.server.proxy_protocol_enabled;
@@ -193,6 +195,7 @@ async fn async_main() -> anyhow::Result<()> {
             let dot_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
+                responses.clone(),
             ));
             tokio::spawn(async move {
                 if let Err(e) = server::start_dot_server(
@@ -223,6 +226,7 @@ async fn async_main() -> anyhow::Result<()> {
             let doq_handler = Arc::new(DnsServerHandler::new(
                 handler_use_case.clone(),
                 block_policy,
+                responses.clone(),
             ));
             tokio::spawn(async move {
                 if let Err(e) =
@@ -238,7 +242,11 @@ async fn async_main() -> anyhow::Result<()> {
     // listener), so unlike DoT and DoQ it needs no certificate.
     let doh = config.server.encrypted_dns.doh_enabled.then(|| {
         Arc::new(server::DohContext {
-            handler: Arc::new(DnsServerHandler::new(handler_use_case, block_policy)),
+            handler: Arc::new(DnsServerHandler::new(
+                handler_use_case,
+                block_policy,
+                responses,
+            )),
             trusted_proxies: config.server.trusted_proxies.clone(),
         })
     });

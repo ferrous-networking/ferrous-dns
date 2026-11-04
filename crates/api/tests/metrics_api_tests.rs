@@ -9,6 +9,7 @@ use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, IpFamily, ResolvedEndpointHealth, UpstreamGroupHealth,
     UpstreamStatus,
 };
+use ferrous_dns_application::response_counter::ResponseTotals;
 use ferrous_dns_domain::{QueryStats, RecordType, UpstreamStrategy};
 use std::collections::HashMap;
 
@@ -80,6 +81,7 @@ fn render_includes_cache_counters_and_gauges() {
         Some(&sample_stats()),
         1234,
         &ShedTotals::default(),
+        &ResponseTotals::default(),
         "9.9.9",
     )
     .unwrap();
@@ -104,6 +106,7 @@ fn render_includes_upstream_and_query_series() {
         Some(&sample_stats()),
         0,
         &ShedTotals::default(),
+        &ResponseTotals::default(),
         "9.9.9",
     )
     .unwrap();
@@ -128,6 +131,7 @@ fn render_omits_query_gauges_when_stats_missing() {
         None,
         5,
         &ShedTotals::default(),
+        &ResponseTotals::default(),
         "9.9.9",
     )
     .unwrap();
@@ -138,4 +142,33 @@ fn render_omits_query_gauges_when_stats_missing() {
     // No query-log–derived series when stats are unavailable.
     assert!(!body.contains("ferrousdns_queries"));
     assert!(!body.contains("ferrousdns_uptime_seconds"));
+}
+
+#[test]
+fn render_includes_responses_by_rcode() {
+    let body = render_metrics(
+        &sample_cache(),
+        &sample_upstreams(),
+        None,
+        0,
+        &ShedTotals::default(),
+        &ResponseTotals {
+            by_rcode: [90, 1, 4, 3, 0, 2, 5],
+        },
+        "9.9.9",
+    )
+    .unwrap();
+
+    assert!(body.contains("# TYPE ferrousdns_responses counter"));
+    for line in [
+        "ferrousdns_responses_total{rcode=\"NOERROR\"} 90",
+        "ferrousdns_responses_total{rcode=\"FORMERR\"} 1",
+        "ferrousdns_responses_total{rcode=\"SERVFAIL\"} 4",
+        "ferrousdns_responses_total{rcode=\"NXDOMAIN\"} 3",
+        "ferrousdns_responses_total{rcode=\"NOTIMP\"} 0",
+        "ferrousdns_responses_total{rcode=\"REFUSED\"} 2",
+        "ferrousdns_responses_total{rcode=\"OTHER\"} 5",
+    ] {
+        assert!(body.contains(line), "missing `{line}` in:\n{body}");
+    }
 }

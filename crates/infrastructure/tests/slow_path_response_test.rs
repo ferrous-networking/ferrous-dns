@@ -1,6 +1,7 @@
 //! What `DnsServerHandler::handle_raw_udp_fallback` puts on the wire for each
-//! resolution outcome: RCODE, EDE, OPT, AD and COOKIE. The encoders have their
-//! own tests; these pin the handler's choices, decoding every reply with hickory.
+//! resolution outcome: RCODE, EDE, OPT, AD and COOKIE, and how `/metrics`
+//! counts it. The encoders have their own tests; these pin the handler's
+//! choices, decoding every reply with hickory.
 
 #[path = "support/ports.rs"]
 mod ports;
@@ -8,6 +9,7 @@ mod ports;
 use async_trait::async_trait;
 use bytes::Bytes;
 use ferrous_dns_application::ports::{DnsResolution, DnsResolver};
+use ferrous_dns_application::response_counter::{ResponseCounters, RCODE_LABELS};
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
@@ -48,18 +50,19 @@ fn server_with_policy(
     outcome: Result<DnsResolution, DomainError>,
     policy: BlockPolicy,
 ) -> (DnsServerHandler, Vec<u8>) {
-    handler_with(outcome, policy, false)
+    handler_with(outcome, policy, false, Arc::default())
 }
 
 /// [`server`] in strict cookie mode: `require_valid_cookie = true`.
 fn strict_server(outcome: Result<DnsResolution, DomainError>) -> (DnsServerHandler, Vec<u8>) {
-    handler_with(outcome, POLICY, true)
+    handler_with(outcome, POLICY, true, Arc::default())
 }
 
 fn handler_with(
     outcome: Result<DnsResolution, DomainError>,
     policy: BlockPolicy,
     require_valid_cookie: bool,
+    responses: Arc<ResponseCounters>,
 ) -> (DnsServerHandler, Vec<u8>) {
     let cookies = DnsCookiesConfig {
         require_valid_cookie,
@@ -75,7 +78,7 @@ fn handler_with(
         .cookie_guard()
         .expect("cookies are enabled")
         .generate_server_cookie(CLIENT, &CLIENT_COOKIE);
-    let handler = DnsServerHandler::new(Arc::new(use_case), policy);
+    let handler = DnsServerHandler::new(Arc::new(use_case), policy, responses);
     (handler, [&CLIENT_COOKIE[..], &server_cookie].concat())
 }
 
@@ -93,7 +96,7 @@ fn server_without_cookies(outcome: Result<DnsResolution, DomainError>) -> DnsSer
         Arc::new(AllowAllFilter),
         Arc::new(NoopQueryLog),
     );
-    DnsServerHandler::new(Arc::new(use_case), POLICY)
+    DnsServerHandler::new(Arc::new(use_case), POLICY, Arc::default())
 }
 
 fn name() -> Name {
@@ -518,4 +521,143 @@ async fn unresectionable_upstream_answers_are_servfail_under_our_opt() {
     let reply = ask(&handler, &query(RecordType::TXT, None, false, false)).await;
     assert_eq!(reply.metadata.response_code, ResponseCode::ServFail);
     assert!(reply.edns.is_none());
+}
+
+/// The labels `/metrics` would show a non-zero count for, in label order.
+fn counted(responses: &ResponseCounters) -> Vec<(&'static str, u64)> {
+    RCODE_LABELS
+        .into_iter()
+        .zip(responses.totals().by_rcode)
+        .filter(|(_, count)| *count > 0)
+        .collect()
+}
+
+/// [`unresectionable_upstream_answers_are_servfail_under_our_opt`]'s answer.
+fn unresectionable() -> DnsResolution {
+    let mut resolution = relayed(None);
+    let mut wire = resolution.upstream_wire_data.take().unwrap().to_vec();
+    wire.extend_from_slice(&[0, 0, 41, 0x04, 0xD0, 0, 0, 0, 0, 0, 0]);
+    wire[11] += 1;
+    resolution.upstream_wire_data = Some(Bytes::from(wire));
+    resolution
+}
+
+/// Every reply is counted once, under the RCODE its header carries:
+/// BADCOOKIE is extended (23), so its header reads 7 and it counts as OTHER.
+#[tokio::test]
+async fn every_reply_is_counted_under_the_rcode_it_carries() {
+    use DomainError as E;
+    let plain = query(RecordType::A, Some(false), false, false);
+    let bare_cookie = query(RecordType::A, Some(false), true, false);
+    let short_cookie = query_with_cookie(RecordType::A, Some(false), Some(&[0xAB; 7]), false);
+    let txt = query(RecordType::TXT, Some(false), false, false);
+    // (what, outcome, strict cookies, query, label)
+    let cases = [
+        ("an answer", Ok(answer(None)), false, &plain, "NOERROR"),
+        ("a block", Err(E::Blocked), false, &plain, "NOERROR"),
+        (
+            "a slip",
+            Err(E::DnsRateLimitedSlip),
+            false,
+            &plain,
+            "NOERROR",
+        ),
+        ("NXDOMAIN", Err(E::NxDomain), false, &plain, "NXDOMAIN"),
+        (
+            "a rate limit",
+            Err(E::DnsRateLimited),
+            false,
+            &plain,
+            "REFUSED",
+        ),
+        (
+            "no cookie, strict",
+            Ok(answer(None)),
+            true,
+            &plain,
+            "REFUSED",
+        ),
+        (
+            "a bad cookie",
+            Ok(answer(None)),
+            true,
+            &bare_cookie,
+            "OTHER",
+        ),
+        (
+            "a short cookie",
+            Ok(answer(None)),
+            false,
+            &short_cookie,
+            "FORMERR",
+        ),
+        (
+            "all upstreams failing",
+            Err(E::AllUpstreamsServfail),
+            false,
+            &plain,
+            "SERVFAIL",
+        ),
+        (
+            "a Bogus answer",
+            Err(E::DnssecBogus),
+            false,
+            &plain,
+            "SERVFAIL",
+        ),
+        (
+            "an unrelayable answer",
+            Ok(unresectionable()),
+            false,
+            &txt,
+            "SERVFAIL",
+        ),
+    ];
+    for (what, outcome, strict, query, label) in cases {
+        let responses = Arc::new(ResponseCounters::default());
+        let (handler, _) = handler_with(outcome, POLICY, strict, responses.clone());
+        ask_raw(&handler, query).await;
+        assert_eq!(counted(&responses), [(label, 1)], "{what}");
+    }
+}
+
+#[tokio::test]
+async fn a_shed_query_counts_only_where_it_is_answered() {
+    let responses = Arc::new(ResponseCounters::default());
+    let (handler, _) = handler_with(
+        Err(DomainError::UpstreamCapacityExhausted),
+        POLICY,
+        false,
+        responses.clone(),
+    );
+    let q = query(RecordType::A, Some(false), false, false);
+
+    let dropped = handler
+        .handle_raw_udp_fallback(&q, CLIENT, ClientProtocol::Udp)
+        .await;
+    assert!(dropped.is_none());
+    assert_eq!(counted(&responses), [], "nothing was sent");
+
+    handler
+        .handle_raw_udp_fallback(&q, CLIENT, ClientProtocol::Tcp)
+        .await
+        .expect("stream transports are answered");
+    assert_eq!(counted(&responses), [("SERVFAIL", 1)]);
+}
+
+/// Every transport's handler counts into the one set `/metrics` reads.
+#[tokio::test]
+async fn handlers_sharing_counters_add_up() {
+    let responses = Arc::new(ResponseCounters::default());
+    let (udp, _) = handler_with(Ok(answer(None)), POLICY, false, responses.clone());
+    let (dot, _) = handler_with(Err(DomainError::NxDomain), POLICY, false, responses.clone());
+    let q = query(RecordType::A, Some(false), false, false);
+
+    ask_raw(&udp, &q).await;
+    ask_raw(&udp, &q).await;
+    dot.handle_raw_udp_fallback(&q, CLIENT, ClientProtocol::Dot)
+        .await
+        .expect("answered");
+
+    assert_eq!(counted(&responses), [("NOERROR", 2), ("NXDOMAIN", 1)]);
 }

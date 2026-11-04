@@ -1,9 +1,9 @@
 //! Prometheus text-exposition endpoint (`GET /metrics`).
 //!
-//! Snapshot-based: on each scrape it reads the existing live cache atomics,
-//! upstream health, blocklist size, and the (24h-windowed) query-log stats, and
-//! renders them as an OpenMetrics/Prometheus exposition. No DNS hot-path
-//! instrumentation and no global recorder — the registry is rebuilt per scrape.
+//! Snapshot-based: on each scrape it reads the live cache, shed and response
+//! atomics, upstream health, blocklist size, and the (24h-windowed) query-log
+//! stats, and renders them as an OpenMetrics/Prometheus exposition. No global
+//! recorder — the registry is rebuilt per scrape.
 
 use axum::{
     extract::State,
@@ -16,6 +16,7 @@ use ferrous_dns_application::drop_counter::ShedTotals;
 use ferrous_dns_application::ports::{
     AggregateStatus, CacheMetricsSnapshot, UpstreamGroupHealth, UpstreamStatus,
 };
+use ferrous_dns_application::response_counter::{ResponseTotals, RCODE_LABELS};
 use ferrous_dns_domain::{DomainError, QueryStats};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::encoding::EncodeLabelSet;
@@ -53,6 +54,11 @@ struct BuildLabels {
     version: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct RcodeLabels {
+    rcode: String,
+}
+
 /// Maps an aggregate status to a 1/0 "up" value, or `None` when unknown
 /// (no health data yet) so we don't emit a misleading `down`.
 fn aggregate_up(status: AggregateStatus) -> Option<i64> {
@@ -82,6 +88,7 @@ pub fn render_metrics(
     query_stats: Option<&QueryStats>,
     blocklist_domains: usize,
     shed: &ShedTotals,
+    responses: &ResponseTotals,
     version: &str,
 ) -> Result<String, DomainError> {
     let mut registry = Registry::with_prefix("ferrousdns");
@@ -161,6 +168,20 @@ pub fn render_metrics(
         counter.inc_by(value);
         registry.register(name, help, counter);
     }
+
+    let by_rcode = Family::<RcodeLabels, Counter>::default();
+    for (rcode, count) in RCODE_LABELS.iter().zip(responses.by_rcode) {
+        by_rcode
+            .get_or_create(&RcodeLabels {
+                rcode: (*rcode).to_string(),
+            })
+            .inc_by(count);
+    }
+    registry.register(
+        "responses",
+        "DNS responses sent to clients over every transport, by RCODE, since start",
+        by_rcode,
+    );
 
     let cache_entries = Gauge::<i64>::default();
     cache_entries.set(cache.total_entries as i64);
@@ -356,6 +377,7 @@ async fn metrics_handler(State(state): State<AppState>) -> Response {
         query_stats.as_ref(),
         blocklist_domains,
         &state.dns.shed.totals(),
+        &state.dns.responses.totals(),
         env!("CARGO_PKG_VERSION"),
     );
 

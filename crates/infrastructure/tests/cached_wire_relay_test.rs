@@ -12,6 +12,7 @@ use ferrous_dns_application::ports::{
     CacheStats, DnsResolution, DnsResolver, PagedQueryResult, QueryLogRepository, TimeGranularity,
     TimelineBucket,
 };
+use ferrous_dns_application::response_counter::{ResponseCounters, RCODE_LABELS};
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
@@ -140,6 +141,8 @@ struct Server {
     handler: DnsServerHandler,
     /// Our server cookie for `CLIENT_COOKIE` from `CLIENT`.
     server_cookie: [u8; 8],
+    /// What the handler counted for `/metrics`.
+    responses: Arc<ResponseCounters>,
 }
 
 impl Server {
@@ -196,10 +199,21 @@ impl Server {
             sinkhole_ipv4: None,
             sinkhole_ipv6: None,
         };
+        let responses = Arc::new(ResponseCounters::default());
         Self {
-            handler: DnsServerHandler::new(Arc::new(use_case), policy),
+            handler: DnsServerHandler::new(Arc::new(use_case), policy, responses.clone()),
             server_cookie,
+            responses,
         }
+    }
+
+    /// The labels with a non-zero count, in label order.
+    fn counted(&self) -> Vec<(&'static str, u64)> {
+        RCODE_LABELS
+            .into_iter()
+            .zip(self.responses.totals().by_rcode)
+            .filter(|(_, count)| *count > 0)
+            .collect()
     }
 
     /// What the UDP worker's cached-wire fast path sends for `query`.
@@ -545,6 +559,47 @@ async fn a_hit_the_fast_path_declines_is_logged_once() {
     let reply = server.slow(&q).await;
     assert_eq!(reply.metadata.response_code, ResponseCode::ServFail);
     assert_eq!(logged(), 2);
+}
+
+/// Both inline paths count what they serve; a hit they decline is counted
+/// once, by the slow path that answers it.
+#[tokio::test]
+async fn fast_path_replies_are_counted_once() {
+    let v4 = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 80));
+    let mx_wire = upstream("mail.example.com", WireType::MX, mx(), false, true, 0);
+    let big = RData::TXT(TXT::new(vec!["x".repeat(250), "y".repeat(250)]));
+    let big = upstream("big.example.com", WireType::TXT, big, false, true, 0);
+    let server = Server::holding(
+        [
+            ("example.com", RecordType::A, addresses(&[v4])),
+            (
+                "mail.example.com",
+                RecordType::MX,
+                CachedData::wire(Bytes::from(mx_wire)),
+            ),
+            (
+                "big.example.com",
+                RecordType::TXT,
+                CachedData::wire(Bytes::from(big)),
+            ),
+        ],
+        Arc::new(NoopQueryLog),
+        false,
+    );
+
+    server
+        .fast_address(&query("example.com", WireType::A, None, None))
+        .expect("served on the fast path");
+    server
+        .fast(&query("mail.example.com", WireType::MX, None, None))
+        .expect("served on the fast path");
+    assert_eq!(server.counted(), [("NOERROR", 2)]);
+
+    let q = query("big.example.com", WireType::TXT, None, None);
+    assert!(server.fast(&q).is_none(), "too big for 512 bytes");
+    assert_eq!(server.counted(), [("NOERROR", 2)]);
+    assert!(server.slow(&q).await.metadata.truncation);
+    assert_eq!(server.counted(), [("NOERROR", 3)]);
 }
 
 /// A hit served on either fast path is logged with what its DNS Cookie showed.

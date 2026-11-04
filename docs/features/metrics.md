@@ -1,6 +1,6 @@
 # Metrics & Monitoring
 
-Ferrous DNS exposes a Prometheus/OpenMetrics endpoint covering cache behaviour, upstream health, blocklist size and query volume.
+Ferrous DNS exposes a Prometheus/OpenMetrics endpoint covering responses by RCODE, cache behaviour, upstream health, blocklist size and query volume.
 
 ---
 
@@ -32,6 +32,21 @@ Responses use the OpenMetrics content type `application/openmetrics-text; versio
 
 Every name is prefixed `ferrousdns_`, and counters carry the OpenMetrics `_total` suffix (`ferrousdns_cache_hits_total`).
 
+### Responses
+
+Every reply sent to a client over UDP, TCP, DoT, DoH or DoQ, counted since process start under the RCODE in its header. It is counted where the reply leaves the resolver, so it is exact with the query log on or off.
+
+| Metric | Type | Meaning |
+|:-------|:-----|:--------|
+| `responses{rcode=…}` | counter | Replies sent, by `rcode`: `NOERROR`, `FORMERR`, `SERVFAIL`, `NXDOMAIN`, `NOTIMP`, `REFUSED` or `OTHER` |
+
+- A blocked query counts under the RCODE its [block mode](../configuration/blocking.md) answers with: `NOERROR` for a null IP or NODATA, `NXDOMAIN`, or `REFUSED`.
+- A truncated reply (TC=1), such as a rate-limit slip, counts as `NOERROR`. A query the rate limiter refuses counts as `REFUSED`.
+- BADCOOKIE is an extended RCODE (23) carried in the OPT record, so it counts as `OTHER`.
+- A query dropped without a reply (`udp_fallback_shed`, and `upstream_shed` over UDP) is not counted.
+
+The sum over every `rcode` is the total number of replies, so `rate()` of one label over the sum is its share of the traffic.
+
 ### Cache
 
 | Metric | Type | Meaning |
@@ -48,7 +63,7 @@ Every name is prefixed `ferrousdns_`, and counters carry the OpenMetrics `_total
 | `cache_batch_evictions` | counter | Batch eviction passes |
 | `cache_transient_upstream_errors` | counter | Upstream errors absorbed without failing the query |
 | `cache_entries` | gauge | Entries currently held |
-| `cache_hit_rate` | gauge | Hit ratio since start |
+| `cache_hit_rate` | gauge | Hit percentage (0–100) since start |
 
 ### Upstreams
 
@@ -113,13 +128,24 @@ scrape_configs:
       - targets: ["ferrous-dns.internal:8080"]
 ```
 
-If the dashboard runs over HTTPS (`[server.web_tls]`), add `scheme: https` — and `tls_config.insecure_skip_verify: true` when using the self-signed certificate generated from the UI.
+If the dashboard runs over HTTPS (`[server.web_tls]`), add `scheme: https`. With the self-signed certificate generated from the UI, give Prometheus a copy of that certificate rather than turning verification off. The certificate is issued to `localhost` and `ferrous-dns`:
+
+```yaml
+    scheme: https
+    tls_config:
+      ca_file: /etc/prometheus/ferrous-dns-upstream.pem   # a copy of tls_cert_path
+      server_name: localhost
+```
 
 ---
 
 ## Useful queries
 
 ```promql
+# Share of replies that were SERVFAIL over the last 5 minutes
+sum(rate(ferrousdns_responses_total{rcode="SERVFAIL"}[5m]))
+  / sum(rate(ferrousdns_responses_total[5m]))
+
 # Cache hit rate over the last 5 minutes
 rate(ferrousdns_cache_hits_total[5m])
   / (rate(ferrousdns_cache_hits_total[5m]) + rate(ferrousdns_cache_misses_total[5m]))
@@ -138,7 +164,7 @@ increase(ferrousdns_upstream_shed_total[5m])
 count by (version) (ferrousdns_build_info)
 ```
 
-Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, `ferrousdns_cache_hit_rate` dropping below its normal band, a rising `ferrousdns_queries_rate_limited` (either an attack or a rate limit set too tight), and any increase in `ferrousdns_udp_fallback_shed_total` or `ferrousdns_upstream_shed_total` (clients went unanswered: upstreams too slow, or traffic beyond what the server can absorb).
+Suggested alerts: `ferrousdns_upstream_up == 0` for more than a few minutes, a rising share of `SERVFAIL` or `REFUSED` replies, the cache hit rate from the two counters above dropping below its normal band, and any increase in `ferrousdns_udp_fallback_shed_total` or `ferrousdns_upstream_shed_total` (clients went unanswered: upstreams too slow, or traffic beyond what the server can absorb). Alert on rates of the counters rather than on the 24 h gauges: a `delta()` over a rolling 24 h count compares the last minutes with the same minutes a day earlier, not with zero. Ready-made rules for all of these are in [Logs & Monitoring](../operations/logs-monitoring.md#alert-rules).
 
 ---
 

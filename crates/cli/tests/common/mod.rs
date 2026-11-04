@@ -234,6 +234,7 @@ pub fn handler_with_use_case(use_case: HandleDnsQueryUseCase) -> Arc<DnsServerHa
             sinkhole_ipv4: None,
             sinkhole_ipv6: None,
         },
+        Arc::default(),
     ))
 }
 

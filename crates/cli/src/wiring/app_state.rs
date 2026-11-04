@@ -165,6 +165,7 @@ pub async fn build_app_state(
             )),
             dnssec_stats: dns_services.dnssec_stats.clone(),
             shed,
+            responses: dns_services.responses.clone(),
             reload_upstream: config_services.reload_upstream.clone(),
         },
         groups: GroupUseCases {

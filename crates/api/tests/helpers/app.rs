@@ -269,6 +269,7 @@ impl TestAppBuilder {
                 )),
                 dnssec_stats: Arc::new(DnssecStatsAdapter::disabled()),
                 shed,
+                responses: Arc::default(),
                 upstream_health: Arc::new(UpstreamHealthAdapter::new(pool_manager.clone(), None)),
                 reload_upstream,
             },

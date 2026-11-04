@@ -5,6 +5,7 @@ use crate::dns::forwarding::RecordTypeMapper;
 use crate::dns::wire_response::{
     self, EdnsReply, QuestionName, Rcode, ResponseBody, ResponseHead, COOKIE_OPTION_CODE,
 };
+use ferrous_dns_application::response_counter::ResponseCounters;
 use ferrous_dns_application::use_cases::HandleDnsQueryUseCase;
 use ferrous_dns_domain::{
     BlockResponseMode, ClientProtocol, DnsRequest, DnssecStatus, DomainError, EdnsCookie,
@@ -44,13 +45,20 @@ pub struct BlockPolicy {
 pub struct DnsServerHandler {
     use_case: Arc<HandleDnsQueryUseCase>,
     block_policy: BlockPolicy,
+    /// Every reply this handler hands back, by RCODE; shared by all transports.
+    responses: Arc<ResponseCounters>,
 }
 
 impl DnsServerHandler {
-    pub fn new(use_case: Arc<HandleDnsQueryUseCase>, block_policy: BlockPolicy) -> Self {
+    pub fn new(
+        use_case: Arc<HandleDnsQueryUseCase>,
+        block_policy: BlockPolicy,
+        responses: Arc<ResponseCounters>,
+    ) -> Self {
         Self {
             use_case,
             block_policy,
+            responses,
         }
     }
 
@@ -66,14 +74,16 @@ impl DnsServerHandler {
         protocol: ClientProtocol,
         respond: impl FnOnce(&[IpAddr], u32, Option<&[u8]>) -> Option<R>,
     ) -> Option<R> {
-        self.use_case.try_cache_direct(
+        let reply = self.use_case.try_cache_direct(
             query.domain(),
             query.record_type,
             client_ip,
             protocol,
             query.edns_cookie(raw),
             respond,
-        )
+        );
+        // Only an A/AAAA hit with addresses is served here: always NOERROR.
+        reply.inspect(|_| self.responses.record_noerror())
     }
 
     /// Returns a ready-to-send cached wire response for non-IP record types (NS,
@@ -89,7 +99,7 @@ impl DnsServerHandler {
         client_ip: IpAddr,
         protocol: ClientProtocol,
     ) -> Option<Vec<u8>> {
-        self.use_case.try_cache_wire_direct(
+        let reply = self.use_case.try_cache_wire_direct(
             query.domain(),
             query.record_type,
             client_ip,
@@ -119,7 +129,8 @@ impl DnsServerHandler {
                 wire_response::wire_fits_udp_buffer(reply.len(), query.client_max_size)
                     .then_some(reply)
             },
-        )
+        );
+        reply.inspect(|reply| self.responses.record(reply))
     }
 
     /// The resolution path for every query the inline cache path did not
@@ -127,8 +138,19 @@ impl DnsServerHandler {
     /// parser as the cache fast path and the response is written straight to
     /// wire; hickory only parses queries that parser declines (IDN or escaped
     /// names, uncommon types, several questions), whose cache keys must match
-    /// `Name::to_utf8()`.
+    /// `Name::to_utf8()`. `None` means nothing is sent.
     pub async fn handle_raw_udp_fallback(
+        &self,
+        raw: &[u8],
+        client_ip: IpAddr,
+        protocol: ClientProtocol,
+    ) -> Option<Vec<u8>> {
+        self.answer(raw, client_ip, protocol)
+            .await
+            .inspect(|reply| self.responses.record(reply))
+    }
+
+    async fn answer(
         &self,
         raw: &[u8],
         client_ip: IpAddr,

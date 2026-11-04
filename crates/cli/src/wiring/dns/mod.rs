@@ -10,6 +10,7 @@ use ferrous_dns_application::ports::{
     NxdomainHijackProbeTarget, PtrRecordRegistry, ResponseIpFilterEvictionTarget,
     ResponseIpFilterStore, TunnelingEvictionTarget, TunnelingFlagStore, WildcardRecordRegistry,
 };
+use ferrous_dns_application::response_counter::ResponseCounters;
 use ferrous_dns_application::use_cases::dns::rate_limiter::DnsRateLimiter;
 use ferrous_dns_application::use_cases::dns::tsc_timer;
 use ferrous_dns_application::use_cases::dns::DnsCookieGuard;
@@ -35,6 +36,8 @@ use super::Repositories;
 pub struct DnsServices {
     pub cache: Arc<DnsCache>,
     pub handler_use_case: Arc<HandleDnsQueryUseCase>,
+    /// Replies by RCODE, shared by every transport's handler and `/metrics`.
+    pub responses: Arc<ResponseCounters>,
     pub pool_manager: Arc<PoolManager>,
     /// Pool manager the DNSSEC validator walks the chain of trust on; absent
     /// when validation is off.
@@ -340,6 +343,7 @@ impl DnsServices {
         Ok(Self {
             cache: dns_cache,
             handler_use_case,
+            responses: Arc::default(),
             pool_manager,
             dnssec_pool_manager,
             dnssec_stats,
