@@ -486,6 +486,9 @@ In strict mode (`require_valid_cookie = true`), a UDP query without a valid serv
 - **With a client cookie** but no server cookie, or a stale or forged one: **RCODE** `BADCOOKIE` (23), carrying a fresh server cookie (RFC 7873 §5.2.3–§5.2.4). An RFC 7873 client retries with it and is answered.
 - **With no cookie at all**: **RCODE** `REFUSED`.
 - Both carry **EDE info_code** `18`: *Prohibited*, with the text "missing or invalid DNS cookie" (RFC 8914 §4.19).
+- Each refusal shows in the Query Log as blocked, with the source **DNS Cookie** and the rcode the client got. The rate limiter runs first, so a spoofed flood past the budget is logged as rate-limited instead.
+
+The Query Log also marks every query that carried a cookie with a cookie icon after its transport: green for a server cookie this server issued, gray for a client cookie alone, amber for a server cookie that is not ours. The **Cookie** filter finds them.
 
 Queries over TCP, DoT, DoH and DoQ are not checked: their handshake already proves the client's address, which is all a server cookie proves (RFC 7873 §5.2.3), and DoH clients never send a cookie.
 

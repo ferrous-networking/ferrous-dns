@@ -85,6 +85,26 @@
             color: #6366F1
         }
 
+        /* The protocol badge and, after it, the query's DNS Cookie on one
+           line: 65px + 4px + 13px fits the 104px column with its padding. */
+        .proto-cell {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap
+        }
+
+        /* Green when the cookie is ours, gray for a client cookie alone,
+           amber for a server cookie that is not ours. Its tooltip is an
+           answer-tip. */
+        .cookie-icon {
+            display: inline-flex
+        }
+
+        .cookie-valid { color: #22C55E }
+        .cookie-client { color: #6B7280 }
+        .cookie-invalid { color: #EAB308 }
+
         /* DOMAIN is the only flexible column: it gets whatever the fixed ones
            leave. Hide columns by the card's width rather than the viewport's —
            on desktop the viewport also counts the 260px sidebar — so DOMAIN

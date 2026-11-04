@@ -45,10 +45,12 @@ Live query log with:
 - Client IP and hostname
 - A merge icon beside the client of a [coalesced](../architecture/overview.md#in-flight-coalescing) query: on the one that went upstream, and on each identical query that arrived meanwhile and got its answer. The tooltip says which
 - Transport the client used to reach the resolver (UDP, TCP, DoT, DoH, DoQ)
+- A cookie icon after the transport of a query that carried a [DNS Cookie](security.md#dns-cookies): green for a server cookie this server issued, gray for a client cookie alone, amber for a server cookie that is not ours (expired by rotation or a restart, or forged). The tooltip says which
 - Response status (allowed, blocked, cached, rate-limited)
 - Response time
 - Filter by category: allowed, blocked, rate-limited
 - Filter by protocol: UDP, TCP, DoT, DoH, DoQ
+- Filter by DNS Cookie: with one, valid, client only, invalid, or without one
 - **Quick actions**: Block or Allow a domain with one click
 - On narrower windows the response time, answer, then type and protocol columns are hidden in turn, so the domain name stays readable
 

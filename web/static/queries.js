@@ -8,6 +8,7 @@
             currentPage: 1,
             category: '',
             protocol: '',
+            cookie: '',
             searchDomain: '',
             searchClient: '',
             clients: [],
@@ -63,8 +64,11 @@
                     const protocolParam = this.protocol
                         ? `&protocol=${encodeURIComponent(this.protocol)}`
                         : '';
+                    const cookieParam = this.cookie
+                        ? `&cookie=${encodeURIComponent(this.cookie)}`
+                        : '';
                     const res = await fetch(
-                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${clientParam}${categoryParam}${protocolParam}`,
+                        `${API_BASE}/queries?limit=${this.pageSize}&${pageParam}&period=24h${domainParam}${clientParam}${categoryParam}${protocolParam}${cookieParam}`,
                         {signal: this._ctrl.queries.signal}
                     );
                     if (res.ok) {
@@ -184,6 +188,16 @@
                     : 'Coalesced: shared the answer of an identical\nquery already in flight, with no upstream\nrequest of its own';
             },
 
+            cookieTip(query) {
+                if (query.cookie === 'valid') {
+                    return 'DNS Cookie: a server cookie this server issued\nto the client, still in its rotation window';
+                }
+                if (query.cookie === 'client') {
+                    return 'DNS Cookie: a client cookie only, from a first\nquery or a client that did not keep ours';
+                }
+                return 'DNS Cookie: a server cookie that is not ours:\nexpired by rotation or a restart, or forged';
+            },
+
             escapeHtml(str) {
                 const d = document.createElement('div');
                 d.textContent = str;
@@ -204,6 +218,7 @@
                 if (query.block_source === 'regex_filter') return 'Regex Filter';
                 if (query.block_source === 'non_fqdn') return 'Non-FQDN';
                 if (query.block_source === 'private_ptr') return 'Private PTR';
+                if (query.block_source === 'dns_cookie') return 'DNS Cookie';
                 if (query.block_source === 'cname_cloaking') return 'CNAME Cloaking';
                 if (query.block_source === 'schedule') return 'Schedule';
                 if (query.block_source === 'rate_limit') return '<span class="badge-rate-limited">Rate Limited</span>';

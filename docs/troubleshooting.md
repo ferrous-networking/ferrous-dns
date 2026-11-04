@@ -158,12 +158,13 @@ Find the real reason before changing anything. Open **Queries**, locate the doma
 | `schedule` | A time-based `BlockAll` window for the client's group |
 | `dns_tunneling`, `dga_detection`, `dns_rebinding`, `nxdomain_hijack`, `response_ip_filter` | One of the five [malware detection](features/malware-detection.md) engines — a heuristic, so this is where false positives live |
 | `non_fqdn` / `private_ptr` | **Never forward non-FQDN queries** or **Never forward reverse lookups for private IP ranges** in **Settings** (`block_non_fqdn` / `block_private_ptr`) |
+| `dns_cookie` | Strict [DNS Cookies](features/security.md#dns-cookies) (`require_valid_cookie`) refused a UDP query without a valid server cookie. The client got `BADCOOKIE` or `REFUSED`, not a block answer |
 
 ### Solution
 
 Click **Allow** next to the domain in the query log, or add it under **DNS Filter > Managed Domains** with the `allow` action. A rule applies to one group: the query log button writes it into the group of the client on that row, and in **DNS Filter** you pick the group, which must be the blocked client's.
 
-That single step covers every row in the table above except `non_fqdn` / `private_ptr`, which only turning the setting off lifts. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
+That single step covers every row in the table above except `non_fqdn` / `private_ptr`, which only turning the setting off lifts, and `dns_cookie`: an RFC 7873 client retries with the server cookie that came with `BADCOOKIE`, and one without cookie support needs `require_valid_cookie = false` or a stream transport. An explicit allow is the highest-priority verdict in the pipeline: it overrules downloaded blocklists, schedule windows, blocked services, and all five detection engines. It applies from the next query — no restart.
 
 The `group_id` in the request below is the client's group, as `GET /ferrous/api/v1/queries` reports it on the row (`1` is the default group, **Protected**):
 

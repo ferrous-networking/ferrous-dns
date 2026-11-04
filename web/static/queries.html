@@ -144,6 +144,18 @@
                     <option value="doq">DoQ</option>
                 </select>
             </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Cookie:</label>
+                <select x-model="cookie" @change="currentPage=1;_cursors={};loadQueries()"
+                        style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
+                    <option value="">All</option>
+                    <option value="any">With cookie</option>
+                    <option value="valid">Valid</option>
+                    <option value="client">Client only</option>
+                    <option value="invalid">Invalid</option>
+                    <option value="none">Without cookie</option>
+                </select>
+            </div>
             <div style="margin-left:auto">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" x-model="autoRefresh"
@@ -204,6 +216,7 @@
                          Lucide only substitutes `<i data-lucide>` once while Alpine re-renders
                          these rows on every poll. Same reason the DNSSEC icons above are inline. -->
                     <td class="col-proto">
+                        <span class="proto-cell">
                         <template x-if="query.protocol === 'udp'">
                             <span class="badge" style="background:rgba(107,114,128,0.15);color:#6B7280"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>UDP</span>
                         </template>
@@ -222,6 +235,11 @@
                         <template x-if="!['udp','tcp','dot','doh','doq'].includes(query.protocol)">
                             <span style="color:var(--text-secondary)">—</span>
                         </template>
+                        <!-- Lucide `cookie`, inline for the same reason as the icons above. -->
+                        <template x-if="query.cookie">
+                            <span class="answer-tip cookie-icon" :class="'cookie-' + query.cookie" :data-tooltip="cookieTip(query)"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/></svg></span>
+                        </template>
+                        </span>
                     </td>
                     <td class="col-client" style="font-size:13px">
                         <!-- Lucide `git-merge`, inline for the same reason as the icons above. -->
@@ -242,7 +260,7 @@
                                       ? 'background:rgba(249,115,22,0.1);color:#f97316'
                                       : query.block_source === 'regex_filter'
                                         ? 'background:rgba(139,92,246,0.1);color:#8b5cf6'
-                                        : (query.block_source === 'non_fqdn' || query.block_source === 'private_ptr')
+                                        : (query.block_source === 'non_fqdn' || query.block_source === 'private_ptr' || query.block_source === 'dns_cookie')
                                           ? 'background:rgba(107,114,128,0.15);color:#6B7280'
                                           : (query.blocked && query.block_source !== 'rate_limit')
                                             ? 'background:rgba(239,68,68,0.1);color:#ef4444'
@@ -271,12 +289,13 @@
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
                     <td class="col-action">
-                        <!-- A managed allow cannot lift block_non_fqdn / block_private_ptr. -->
-                        <template x-if="query.block_source === 'non_fqdn' || query.block_source === 'private_ptr'">
+                        <!-- A managed allow cannot lift block_non_fqdn / block_private_ptr or a
+                             strict DNS Cookie refusal. -->
+                        <template x-if="query.block_source === 'non_fqdn' || query.block_source === 'private_ptr' || query.block_source === 'dns_cookie'">
                             <span style="color:var(--text-secondary)">—</span>
                         </template>
                         <button type="button" class="btn-action"
-                            x-show="query.block_source !== 'non_fqdn' && query.block_source !== 'private_ptr'"
+                            x-show="query.block_source !== 'non_fqdn' && query.block_source !== 'private_ptr' && query.block_source !== 'dns_cookie'"
                             :class="query.blocked ? 'btn-action-allow' : 'btn-action-block'"
                             @click="handleDomainAction(query)"
                             x-text="query.blocked ? 'Allow' : 'Block'">
