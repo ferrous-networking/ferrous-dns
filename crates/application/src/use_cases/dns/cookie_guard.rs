@@ -1,6 +1,6 @@
 use super::coarse_timer::coarse_unix_secs;
 use arc_swap::{ArcSwap, Guard};
-use ferrous_dns_domain::{ClientProtocol, DnsCookiesConfig};
+use ferrous_dns_domain::{ClientProtocol, CookieStatus, DnsCookiesConfig};
 use ring::hmac;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -92,6 +92,48 @@ impl DnsCookieGuard {
         is_signed_by(&keys.current) || keys.previous.as_ref().is_some_and(is_signed_by)
     }
 
+    /// What `opt_data`, a query's COOKIE option, shows: a client cookie alone,
+    /// or a server cookie this server issued to `client_ip` or did not.
+    pub(super) fn cookie_status(&self, client_ip: IpAddr, opt_data: &[u8]) -> CookieStatus {
+        if opt_data.len() <= CLIENT_COOKIE_LEN {
+            CookieStatus::ClientOnly
+        } else if self.has_valid_cookie(client_ip, opt_data) {
+            CookieStatus::Valid
+        } else {
+            CookieStatus::Invalid
+        }
+    }
+
+    /// The server cookie to answer `opt_data` with, and what `opt_data`
+    /// showed: one HMAC, plus one for a server cookie that is not this
+    /// window's.
+    pub(super) fn answer(
+        &self,
+        client_ip: IpAddr,
+        client_cookie: &[u8; CLIENT_COOKIE_LEN],
+        opt_data: &[u8],
+    ) -> ([u8; SERVER_COOKIE_LEN], CookieStatus) {
+        let keys = self.keys();
+        let server_cookie = compute_server_cookie(&keys.current, client_ip, client_cookie);
+        let Some(received) = opt_data.get(CLIENT_COOKIE_LEN..CLIENT_COOKIE_LEN + SERVER_COOKIE_LEN)
+        else {
+            return (server_cookie, CookieStatus::ClientOnly);
+        };
+        let is_ours = subtle_eq(&server_cookie, received)
+            || keys.previous.as_ref().is_some_and(|key| {
+                subtle_eq(
+                    &compute_server_cookie(key, client_ip, client_cookie),
+                    received,
+                )
+            });
+        let status = if is_ours {
+            CookieStatus::Valid
+        } else {
+            CookieStatus::Invalid
+        };
+        (server_cookie, status)
+    }
+
     /// Generates the 8-byte server cookie to include in responses.
     pub fn generate_server_cookie(
         &self,
@@ -123,6 +165,16 @@ impl DnsCookieGuard {
 
 fn window_at(unix_secs: u64, rotation_secs: u64) -> u64 {
     unix_secs.checked_div(rotation_secs).unwrap_or(0)
+}
+
+/// What `opt_data` shows a server with DNS Cookies off, which issued no
+/// server cookie: a client cookie alone, or a server cookie that is not ours.
+pub(super) fn status_without_guard(opt_data: &[u8]) -> CookieStatus {
+    if opt_data.len() > CLIENT_COOKIE_LEN {
+        CookieStatus::Invalid
+    } else {
+        CookieStatus::ClientOnly
+    }
 }
 
 fn window_keys(secret: &hmac::Key, rotation_secs: u64, window: u64) -> WindowKeys {

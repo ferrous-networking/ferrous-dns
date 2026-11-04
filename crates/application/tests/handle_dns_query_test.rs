@@ -285,6 +285,7 @@ async fn test_try_cache_direct_returns_none_on_miss() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -307,6 +308,7 @@ async fn test_try_cache_direct_returns_addresses_and_logs_on_hit() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -340,6 +342,7 @@ async fn test_try_cache_direct_logs_the_protocol_it_was_given() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Dot,
+        None,
         served,
     );
 
@@ -408,6 +411,7 @@ async fn test_try_cache_direct_returns_none_when_cached_addresses_empty() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -671,6 +675,7 @@ async fn test_try_cache_direct_declines_a_cached_answer_through_a_blocked_name()
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -693,6 +698,7 @@ async fn test_try_cache_wire_direct_declines_a_cached_answer_through_a_blocked_n
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 
@@ -743,6 +749,7 @@ async fn test_an_explicit_allow_lifts_cname_cloaking_on_a_cached_answer() {
             RecordType::A,
             CLIENT_IP,
             ClientProtocol::Udp,
+            None,
             served,
         )
         .is_some());
@@ -770,6 +777,7 @@ async fn test_try_cache_direct_returns_none_when_domain_blocked() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -790,6 +798,7 @@ fn try_cache_wire_direct_returns_none_on_cache_miss() {
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 
@@ -811,6 +820,7 @@ fn try_cache_wire_direct_hands_a_hit_and_what_its_entry_has_left_to_respond() {
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 
@@ -835,7 +845,8 @@ async fn fast_path_hits_declined_by_the_server_are_logged_once_by_the_slow_path(
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| None::<()>,
+        None,
+        |_, _, _cookie| None::<()>,
     );
     assert!(declined.is_none());
     let declined = use_case.try_cache_direct(
@@ -843,7 +854,8 @@ async fn fast_path_hits_declined_by_the_server_are_logged_once_by_the_slow_path(
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| None::<()>,
+        None,
+        |_, _, _cookie| None::<()>,
     );
     assert!(declined.is_none());
     assert_eq!(log.sync_log_count(), 0, "a declined hit is not logged");
@@ -879,6 +891,7 @@ fn try_cache_wire_direct_returns_none_when_cached_resolution_has_no_wire_data() 
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 
@@ -920,6 +933,7 @@ fn try_cache_wire_direct_returns_none_when_domain_blocked() {
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 

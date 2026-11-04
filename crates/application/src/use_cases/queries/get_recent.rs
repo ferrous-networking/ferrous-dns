@@ -1,6 +1,7 @@
 use crate::ports::{PageAt, PagedQueryResult, QueryLogRepository};
 use ferrous_dns_domain::entities::query_log::{
-    ClientProtocol, DnssecStatusFilter, QueryCategory, QueryLog, QueryLogFilter, ReplyFilter,
+    ClientProtocol, CookieFilter, DnssecStatusFilter, QueryCategory, QueryLog, QueryLogFilter,
+    ReplyFilter,
 };
 use ferrous_dns_domain::{DomainError, RecordType};
 use std::sync::Arc;
@@ -32,6 +33,8 @@ pub struct PagedQueryInput<'a> {
     pub dns64: Option<bool>,
     /// Transport filter: `udp`, `tcp`, `dot`, `doh` or `doq`.
     pub protocol: Option<&'a str>,
+    /// DNS Cookie filter: `any`, `valid`, `client`, `invalid` or `none`.
+    pub cookie: Option<&'a str>,
     /// Only queries logged before this Unix time.
     pub until: Option<i64>,
     /// Record types left out.
@@ -86,6 +89,12 @@ impl GetRecentQueriesUseCase {
             .map(|p| p.to_ascii_lowercase().parse::<ClientProtocol>())
             .transpose()?;
 
+        let parsed_cookie = input
+            .cookie
+            .filter(|c| !c.is_empty())
+            .map(|c| c.to_ascii_lowercase().parse::<CookieFilter>())
+            .transpose()?;
+
         let filter = QueryLogFilter {
             domain: input.domain.filter(|d| !d.is_empty()).map(String::from),
             category: parsed_category,
@@ -95,7 +104,7 @@ impl GetRecentQueriesUseCase {
             dnssec_status: input.dnssec_status,
             dns64_synthesized: input.dns64,
             protocol: parsed_protocol,
-            cookie: None,
+            cookie: parsed_cookie,
             until: input.until,
             excluded_record_types: input.excluded_record_types.clone(),
             reply: input.reply,

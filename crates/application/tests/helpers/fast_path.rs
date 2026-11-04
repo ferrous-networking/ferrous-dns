@@ -9,12 +9,16 @@ use ferrous_dns_application::ports::DnsResolution;
 use std::net::IpAddr;
 
 /// A fast-path `respond` that serves every A/AAAA hit.
-pub fn served(addresses: &[IpAddr], ttl: u32) -> Option<(Vec<IpAddr>, u32)> {
+pub fn served(
+    addresses: &[IpAddr],
+    ttl: u32,
+    _cookie: Option<&[u8]>,
+) -> Option<(Vec<IpAddr>, u32)> {
     Some((addresses.to_vec(), ttl))
 }
 
 /// A fast-path `respond` that serves every wire hit.
-pub fn served_wire(wire: &[u8], remaining: u32) -> Option<(Vec<u8>, u32)> {
+pub fn served_wire(wire: &[u8], remaining: u32, _cookie: Option<&[u8]>) -> Option<(Vec<u8>, u32)> {
     Some((wire.to_vec(), remaining))
 }
 

@@ -29,6 +29,10 @@ pub struct QueryParams {
     /// Filter by the transport the client used: `udp`, `tcp`, `dot`, `doh` or
     /// `doq` (case-insensitive).
     pub protocol: Option<String>,
+    /// Filter by the query's DNS Cookie: `any` (it carried one), `valid`,
+    /// `client` (a client cookie alone), `invalid`, or `none` (it carried
+    /// none, including rows logged before cookies were recorded).
+    pub cookie: Option<String>,
 }
 
 fn default_limit() -> u32 {
@@ -90,6 +94,13 @@ pub struct QueryResponse {
     /// got such a query's answer, `null` otherwise.
     #[schema(value_type = Option<String>)]
     pub coalesced: Option<&'static str>,
+    /// What the query's DNS Cookie showed: `client` for a client cookie
+    /// alone, `valid` for a server cookie this server issued to the client in
+    /// the current or previous rotation window, `invalid` for any other.
+    /// `null` when it carried none, and for rows logged before this was
+    /// recorded.
+    #[schema(value_type = Option<String>)]
+    pub cookie: Option<&'static str>,
     /// Id of the client group the query was decided in, whose rules applied
     /// to it. `null` for rows logged before this was recorded, or whose group
     /// has since been deleted.

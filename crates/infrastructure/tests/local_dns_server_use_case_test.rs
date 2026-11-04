@@ -128,11 +128,14 @@ async fn answer_a(
     client: IpAddr,
     name: &str,
 ) -> Result<Vec<IpAddr>, DomainError> {
-    if let Some(addresses) =
-        use_case.try_cache_direct(name, RecordType::A, client, ClientProtocol::Udp, |a, _| {
-            Some(a.to_vec())
-        })
-    {
+    if let Some(addresses) = use_case.try_cache_direct(
+        name,
+        RecordType::A,
+        client,
+        ClientProtocol::Udp,
+        None,
+        |a, _, _cookie| Some(a.to_vec()),
+    ) {
         return Ok(addresses);
     }
     let request = DnsRequest::new(name, RecordType::A, client);

@@ -89,7 +89,8 @@ async fn answer_over_udp(
         RecordType::TXT,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| Some(()),
+        None,
+        |_, _, _cookie| Some(()),
     );
     match fast {
         Some(()) => Ok(upstream_nxdomain(true)),
@@ -229,7 +230,8 @@ async fn fast_path_answers_upstream_nxdomains_when_there_is_no_budget() {
         RecordType::TXT,
         CLIENT_IP,
         ClientProtocol::Udp,
-        |_, _| Some(()),
+        None,
+        |_, _, _cookie| Some(()),
     );
 
     assert!(fast.is_some());
@@ -259,7 +261,8 @@ async fn internal_pool_nxdomain_answers_are_never_charged() {
                 RecordType::TXT,
                 CLIENT_IP,
                 ClientProtocol::Udp,
-                |_, _| Some(()),
+                None,
+                |_, _, _cookie| Some(()),
             )
             .is_some());
     }

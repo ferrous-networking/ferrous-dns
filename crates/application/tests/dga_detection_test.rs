@@ -241,6 +241,7 @@ async fn the_fast_path_does_not_serve_a_cached_dga_shaped_name() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -267,6 +268,7 @@ async fn the_wire_fast_path_does_not_serve_a_cached_dga_shaped_name() {
         RecordType::MX,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served_wire,
     );
 
@@ -293,6 +295,7 @@ async fn the_fast_path_leaves_an_alert_mode_hit_to_execute() {
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 
@@ -317,6 +320,7 @@ async fn the_fast_path_serves_a_cached_dga_shaped_name_that_is_explicitly_allowe
         RecordType::A,
         CLIENT_IP,
         ClientProtocol::Udp,
+        None,
         served,
     );
 

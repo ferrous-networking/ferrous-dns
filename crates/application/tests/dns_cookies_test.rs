@@ -213,7 +213,8 @@ fn should_leave_cache_hits_to_execute_when_require_valid_cookie_true() {
             RecordType::A,
             CLIENT_IP,
             ClientProtocol::Udp,
-            |addresses, _ttl| Some(addresses.len()),
+            None,
+            |addresses, _ttl, _cookie| Some(addresses.len()),
         );
         assert_eq!(
             hit.is_some(),
