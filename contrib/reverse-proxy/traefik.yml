@@ -1,0 +1,26 @@
+# Traefik static configuration for Ferrous DNS.
+# Guide: https://ferrous-networking.github.io/ferrous-dns/operations/tls-reverse-proxy/
+# The routes are in traefik-dynamic.yml, loaded by the file provider below.
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  file:
+    filename: /etc/traefik/traefik-dynamic.yml

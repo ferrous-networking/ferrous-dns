@@ -1,0 +1,62 @@
+# Ferrous DNS as a systemd service.
+# Install: https://ferrous-networking.github.io/ferrous-dns/operations/systemd/
+#
+# Runs as the unprivileged `ferrous-dns` user. Port 53 (and 853 for DoT/DoQ)
+# is bound through CAP_NET_BIND_SERVICE, the only capability it keeps. The
+# dashboard rewrites the config file, so /etc/ferrous-dns stays writable; the
+# database, the TLS files and backups live in /var/lib/ferrous-dns.
+
+[Unit]
+Description=Ferrous DNS resolver and content filter
+Documentation=https://ferrous-networking.github.io/ferrous-dns/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ferrous-dns
+Group=ferrous-dns
+ExecStart=/usr/local/bin/ferrous-dns --config /etc/ferrous-dns/config.toml
+WorkingDirectory=/var/lib/ferrous-dns
+StateDirectory=ferrous-dns
+StateDirectoryMode=0750
+ReadWritePaths=/etc/ferrous-dns
+UMask=0077
+
+Restart=on-failure
+RestartSec=5s
+# SIGTERM closes the database within 5 s, folding the WAL back into it.
+TimeoutStopSec=30s
+LimitNOFILE=65536
+
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# AF_NETLINK: getifaddrs() lists the interfaces for the Pi-hole network API.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

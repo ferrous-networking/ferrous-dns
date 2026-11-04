@@ -1,0 +1,99 @@
+# Prometheus alerting rules for Ferrous DNS.
+# Guide: https://ferrous-networking.github.io/ferrous-dns/operations/logs-monitoring/
+#
+# Needs `[server] metrics_enabled = true` and a scrape job named `ferrous-dns`.
+# Ratios use the since-boot counters, never the rolling 24 h gauges: a rate()
+# survives a restart, a delta() over a 24 h window compares with yesterday.
+# Check the file with: promtool check rules ferrous-dns-alerts.yml
+groups:
+  - name: ferrous-dns
+    rules:
+      - alert: FerrousDnsDown
+        expr: up{job="ferrous-dns"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ferrous DNS on {{ $labels.instance }} does not answer scrapes"
+
+      # family="all" is the server as a whole: up while any of its addresses is.
+      - alert: FerrousDnsUpstreamDown
+        expr: ferrousdns_upstream_up{family="all"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Upstream {{ $labels.server }} in pool {{ $labels.pool }} is down on {{ $labels.instance }}"
+
+      - alert: FerrousDnsPoolDown
+        expr: max by (instance, pool) (ferrousdns_upstream_up{family="all"}) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Every upstream in pool {{ $labels.pool }} is down on {{ $labels.instance }}"
+
+      # Below one reply a second the ratio is noise, so it does not count.
+      - alert: FerrousDnsServfailRatioHigh
+        expr: |
+          sum by (instance) (rate(ferrousdns_responses_total{rcode="SERVFAIL"}[5m]))
+            / sum by (instance) (rate(ferrousdns_responses_total[5m])) > 0.05
+          and sum by (instance) (rate(ferrousdns_responses_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of the replies from {{ $labels.instance }} are SERVFAIL"
+
+      # Rate limiting, strict DNS cookies and block_mode = "refused" all answer
+      # REFUSED; the 24 h gauges and the Query Log tell them apart.
+      - alert: FerrousDnsRefusedRatioHigh
+        expr: |
+          sum by (instance) (rate(ferrousdns_responses_total{rcode="REFUSED"}[5m]))
+            / sum by (instance) (rate(ferrousdns_responses_total[5m])) > 0.05
+          and sum by (instance) (rate(ferrousdns_responses_total[5m])) > 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of the replies from {{ $labels.instance }} are REFUSED"
+
+      - alert: FerrousDnsCacheHitRatioLow
+        expr: |
+          sum by (instance) (rate(ferrousdns_cache_hits_total[15m]))
+            / (sum by (instance) (rate(ferrousdns_cache_hits_total[15m]))
+               + sum by (instance) (rate(ferrousdns_cache_misses_total[15m]))) < 0.3
+          and (sum by (instance) (rate(ferrousdns_cache_hits_total[15m]))
+               + sum by (instance) (rate(ferrousdns_cache_misses_total[15m]))) > 1
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "The cache on {{ $labels.instance }} answers less than 30% of lookups"
+
+      # Clients went unanswered (UDP) or got SERVFAIL (streams) for lack of a slot.
+      - alert: FerrousDnsShedding
+        expr: |
+          sum by (instance) (increase(ferrousdns_udp_fallback_shed_total[5m]))
+            + sum by (instance) (increase(ferrousdns_upstream_shed_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} shed queries in the last 5 minutes"
+
+      - alert: FerrousDnsQueryLogDropping
+        expr: sum by (instance) (increase(ferrousdns_query_log_dropped_total[5m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} dropped query log entries in the last 5 minutes"
+
+      # From node_exporter. Set mountpoint to the filesystem holding the
+      # database (/var/lib/ferrous-dns, or the Docker volume's).
+      - alert: FerrousDnsDiskFull
+        expr: predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[6h], 24 * 3600) < 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} fills up within a day"
