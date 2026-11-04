@@ -9,9 +9,15 @@ SHARE_DIR="/usr/local/share/ferrous-dns"
 CONFIG_PATH="/data/config/ferrous-dns.toml"
 RUN_AS="uid $(id -u), gid $(id -g)"
 
-# The HEALTHCHECK runs `/entrypoint.sh --healthcheck` beside the running server:
-# it needs the FERROUS_* mapping below, never the first-run bootstrap.
-if [ "$1" != "--healthcheck" ]; then
+# The HEALTHCHECK runs `/entrypoint.sh --healthcheck`, and a backup
+# `/entrypoint.sh --backup-database <path>`, beside the running server: they need
+# the FERROUS_* mapping below, never the first-run bootstrap.
+case "$1" in
+    --healthcheck|--backup-database|--backup-database=*) BESIDE_SERVER=true ;;
+    *) BESIDE_SERVER=false ;;
+esac
+
+if [ "$BESIDE_SERVER" = false ]; then
     # Docker creates the source of a bind mount as a root-owned *directory* when the
     # host path does not exist yet, so the config path can be a directory that only
     # looks like a missing file. Copying into it would land the default at
@@ -70,7 +76,7 @@ if [ -n "$FERROUS_LOG_LEVEL" ] && [ "$FERROUS_LOG_LEVEL" != "info" ]; then
 fi
 
 # Log the command being executed (for debugging)
-if [ "$1" != "--healthcheck" ] && { [ "$FERROUS_LOG_LEVEL" = "debug" ] || [ "$FERROUS_LOG_LEVEL" = "trace" ]; }; then
+if [ "$BESIDE_SERVER" = false ] && { [ "$FERROUS_LOG_LEVEL" = "debug" ] || [ "$FERROUS_LOG_LEVEL" = "trace" ]; }; then
     echo "Starting Ferrous DNS with args: $ARGS $*"
 fi
 

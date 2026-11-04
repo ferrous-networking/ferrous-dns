@@ -25,8 +25,13 @@ pub struct Cli {
     pub log_level: Option<String>,
 
     /// Rewrite the database file without its free space, then exit. Stop the server first.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "backup_database")]
     pub compact_database: bool,
+
+    /// Copy the database to PATH while the server keeps running, check the copy, then
+    /// exit. PATH must not exist yet.
+    #[arg(long, value_name = "PATH", conflicts_with = "healthcheck")]
+    pub backup_database: Option<String>,
 
     /// Ask the running server's GET /health on this config's web port, then exit:
     /// 0 when it answers 200, 1 otherwise. For container health checks.

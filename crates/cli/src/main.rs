@@ -52,6 +52,9 @@ async fn async_main() -> anyhow::Result<()> {
     if cli.compact_database {
         return bootstrap::compact_database(&database_url).await;
     }
+    if let Some(target) = cli.backup_database.as_deref() {
+        return bootstrap::backup_database(&database_url, target).await;
+    }
 
     info!("Starting Ferrous DNS Server v{}", env!("CARGO_PKG_VERSION"));
 

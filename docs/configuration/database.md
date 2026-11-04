@@ -163,6 +163,27 @@ The dashboard's top domains and top clients, the Query Log total, and the Pi-hol
 
 ---
 
+## Backups
+
+`--backup-database <PATH>` copies the database while the server keeps running, then exits. The server goes on answering and writing during the copy, and the copy holds the database as it stood at one instant:
+
+=== "Docker"
+
+    ```bash
+    docker exec ferrous-dns mkdir -p /data/backups
+    docker exec ferrous-dns /entrypoint.sh --backup-database /data/backups/ferrous-$(date +%F).db
+    ```
+
+=== "Binary"
+
+    ```bash
+    ferrous-dns --config ferrous-dns.toml --backup-database /var/backups/ferrous-dns/ferrous-$(date +%F).db
+    ```
+
+The copy is written to `<PATH>.partial`, readable by its owner only because it holds the users, sessions and the query log. It is checked with `PRAGMA integrity_check`, and only then renamed to `<PATH>`. An existing `<PATH>` is refused rather than overwritten, and a failed run leaves no file under that name. Like `--compact-database`, the copy has no free pages, so it is usually smaller than the database file. It needs free disk space about the size of the data the database holds. Scheduling, restoring and rolling back are in [Backups & Upgrades](../operations/backups-upgrades.md).
+
+---
+
 ## Database File Location
 
 === "Docker"
@@ -208,6 +229,6 @@ level = "info"
 | `trace` | Full trace (very verbose, avoid in production) |
 
 ```bash
-# Override at runtime via environment
-FERROUS_LOG_LEVEL=debug ./ferrous-dns
+# Override at runtime (Docker: FERROUS_LOG_LEVEL=debug)
+./ferrous-dns --log-level debug
 ```
