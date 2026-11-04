@@ -1,0 +1,168 @@
+# Unit tests for ferrous-dns-alerts.yml:
+#   promtool test rules ferrous-dns-alerts.test.yml
+rule_files:
+  - ferrous-dns-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="ferrous-dns", instance="dns1:8080"}'
+        values: '1 1 0x10'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FerrousDnsDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: FerrousDnsDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: ferrous-dns, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "Ferrous DNS on dns1:8080 does not answer scrapes"
+
+  # One server down, its pool still served by the other; an IPv6 address down
+  # behind a server that is up raises nothing.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_upstream_up{job="ferrous-dns", instance="dns1:8080", pool="main", server="1.1.1.1:53", address="1.1.1.1:53", family="all"}'
+        values: '0x10'
+      - series: 'ferrousdns_upstream_up{job="ferrous-dns", instance="dns1:8080", pool="main", server="9.9.9.9:53", address="9.9.9.9:53", family="all"}'
+        values: '1x10'
+      - series: 'ferrousdns_upstream_up{job="ferrous-dns", instance="dns1:8080", pool="main", server="9.9.9.9:53", address="2620:fe::fe", family="ipv6"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: FerrousDnsUpstreamDown
+        exp_alerts:
+          - exp_labels: {severity: warning, job: ferrous-dns, instance: "dns1:8080", pool: main, server: "1.1.1.1:53", address: "1.1.1.1:53", family: all}
+            exp_annotations:
+              summary: "Upstream 1.1.1.1:53 in pool main is down on dns1:8080"
+      - eval_time: 6m
+        alertname: FerrousDnsPoolDown
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_upstream_up{job="ferrous-dns", instance="dns1:8080", pool="lan", server="192.168.1.1:53", address="192.168.1.1:53", family="all"}'
+        values: '0x5'
+      - series: 'ferrousdns_upstream_up{job="ferrous-dns", instance="dns1:8080", pool="lan", server="192.168.1.2:53", address="192.168.1.2:53", family="all"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FerrousDnsPoolDown
+        exp_alerts:
+          - exp_labels: {severity: critical, instance: "dns1:8080", pool: lan}
+            exp_annotations:
+              summary: "Every upstream in pool lan is down on dns1:8080"
+
+  # 1 SERVFAIL and 2 REFUSED for every 10 NOERROR, at 13 replies a second.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_responses_total{job="ferrous-dns", instance="dns1:8080", rcode="NOERROR"}'
+        values: '0+600x30'
+      - series: 'ferrousdns_responses_total{job="ferrous-dns", instance="dns1:8080", rcode="SERVFAIL"}'
+        values: '0+60x30'
+      - series: 'ferrousdns_responses_total{job="ferrous-dns", instance="dns1:8080", rcode="REFUSED"}'
+        values: '0+120x30'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: FerrousDnsServfailRatioHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FerrousDnsServfailRatioHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "More than 5% of the replies from dns1:8080 are SERVFAIL"
+      - eval_time: 21m
+        alertname: FerrousDnsRefusedRatioHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "More than 5% of the replies from dns1:8080 are REFUSED"
+
+  # Half the replies SERVFAIL, but one reply every five seconds: below the guard.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_responses_total{job="ferrous-dns", instance="dns1:8080", rcode="NOERROR"}'
+        values: '0+6x30'
+      - series: 'ferrousdns_responses_total{job="ferrous-dns", instance="dns1:8080", rcode="SERVFAIL"}'
+        values: '0+6x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: FerrousDnsServfailRatioHigh
+        exp_alerts: []
+
+  # 1 hit for 10 misses, then the same traffic all served from cache.
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_cache_hits_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0+60x60'
+      - series: 'ferrousdns_cache_misses_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0+600x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: FerrousDnsCacheHitRatioLow
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: FerrousDnsCacheHitRatioLow
+        exp_alerts:
+          - exp_labels: {severity: info, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "The cache on dns1:8080 answers less than 30% of lookups"
+
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_cache_hits_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0+600x60'
+      - series: 'ferrousdns_cache_misses_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0+60x60'
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: FerrousDnsCacheHitRatioLow
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'ferrousdns_udp_fallback_shed_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0 0 0 3 3 3 3 3 3 3 3 3 3'
+      - series: 'ferrousdns_upstream_shed_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0x12'
+      - series: 'ferrousdns_query_log_dropped_total{job="ferrous-dns", instance="dns1:8080"}'
+        values: '0 0 0 0 50 50 50 50 50 50 50 50 50'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: FerrousDnsShedding
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: FerrousDnsShedding
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "dns1:8080 shed queries in the last 5 minutes"
+      - eval_time: 12m
+        alertname: FerrousDnsShedding
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: FerrousDnsQueryLogDropping
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: "dns1:8080"}
+            exp_annotations:
+              summary: "dns1:8080 dropped query log entries in the last 5 minutes"
+
+  # 1 GB left, shrinking by 10 MB a minute: gone in under two hours.
+  - interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{job="node", instance="dns1:9100", mountpoint="/", fstype="ext4", device="/dev/sda1"}'
+        values: '1000000000-10000000x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: FerrousDnsDiskFull
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: FerrousDnsDiskFull
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: "dns1:9100", mountpoint: "/", fstype: ext4, device: /dev/sda1}
+            exp_annotations:
+              summary: "/ on dns1:9100 fills up within a day"

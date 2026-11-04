@@ -129,6 +129,7 @@ fn handler_with_cached_wire(wire: Vec<u8>) -> DnsServerHandler {
             sinkhole_ipv4: None,
             sinkhole_ipv6: None,
         },
+        Arc::default(),
     )
 }
 

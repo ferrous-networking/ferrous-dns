@@ -59,8 +59,8 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 # Run the server against the config in the repo root
 cargo run --release --bin ferrous-dns -- --config ferrous-dns.toml
 
-# Tests with logging
-RUST_LOG=debug cargo test --workspace
+# The same with debug logging (the binary reads no RUST_LOG)
+cargo run --release --bin ferrous-dns -- --config ferrous-dns.toml --log-level debug
 
 # Code coverage (no Make target)
 cargo install cargo-tarpaulin

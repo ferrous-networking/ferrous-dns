@@ -1,12 +1,11 @@
 //! Offline compaction: rewrites the database file without its free pages.
 
-use super::base_options;
+use super::{base_options, db_err, io_err, remove_if_present, sibling, sync_parent_dir};
 use ferrous_dns_domain::DomainError;
 use sqlx::sqlite::SqliteLockingMode;
 use sqlx::{ConnectOptions, Connection, SqliteConnection};
-use std::ffi::OsString;
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 /// How long compaction waits for another process to let go of the database.
@@ -19,14 +18,6 @@ const IN_USE: &str = "the database is in use; stop the server before compacting 
 pub struct CompactionReport {
     pub bytes_before: u64,
     pub bytes_after: u64,
-}
-
-fn db_err(e: sqlx::Error) -> DomainError {
-    DomainError::DatabaseError(e.to_string())
-}
-
-fn io_err(e: std::io::Error) -> DomainError {
-    DomainError::IoError(e.to_string())
 }
 
 /// SQLITE_BUSY in any of its extended forms: another connection holds the lock.
@@ -45,21 +36,8 @@ fn lock_err(e: sqlx::Error) -> DomainError {
     }
 }
 
-fn sibling(path: &Path, suffix: &str) -> PathBuf {
-    let mut name: OsString = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
-}
-
 fn file_len(path: &Path) -> u64 {
     fs::metadata(path).map_or(0, |m| m.len())
-}
-
-fn remove_if_present(path: &Path) -> Result<(), DomainError> {
-    match fs::remove_file(path) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io_err(e)),
-        _ => Ok(()),
-    }
 }
 
 /// Rewrites the database without its free pages and with incremental auto-vacuum, so a
@@ -141,16 +119,13 @@ fn replace(path: &Path, wal: &Path, copy: &Path) -> Result<(), DomainError> {
     }
     File::open(copy)
         .and_then(|f| f.sync_all())
-        .map_err(io_err)?;
-    let permissions = fs::metadata(path).map_err(io_err)?.permissions();
-    fs::set_permissions(copy, permissions).map_err(io_err)?;
-    fs::rename(copy, path).map_err(io_err)?;
-
-    let dir = match path.parent() {
-        Some(dir) if !dir.as_os_str().is_empty() => dir,
-        _ => Path::new("."),
-    };
-    File::open(dir).and_then(|d| d.sync_all()).map_err(io_err)?;
+        .map_err(|e| io_err(copy, e))?;
+    let permissions = fs::metadata(path)
+        .map_err(|e| io_err(path, e))?
+        .permissions();
+    fs::set_permissions(copy, permissions).map_err(|e| io_err(copy, e))?;
+    fs::rename(copy, path).map_err(|e| io_err(path, e))?;
+    sync_parent_dir(path)?;
     // A shared-memory index left by a killed server describes the old file.
     remove_if_present(&sibling(path, "-shm"))
 }

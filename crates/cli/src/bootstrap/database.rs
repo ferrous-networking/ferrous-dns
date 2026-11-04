@@ -3,6 +3,7 @@ use ferrous_dns_infrastructure::database::{
     self, create_query_log_pool, create_read_pool, create_write_pool,
 };
 use sqlx::SqlitePool;
+use std::path::Path;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
@@ -59,6 +60,21 @@ pub async fn compact_database(database_url: &str) -> anyhow::Result<()> {
         bytes_after = report.bytes_after,
         duration_ms = started.elapsed().as_millis() as u64,
         "Database compacted"
+    );
+    Ok(())
+}
+
+/// `--backup-database`: a consistent copy of the live database, kept only once it
+/// passes an integrity check.
+pub async fn backup_database(database_url: &str, target: &str) -> anyhow::Result<()> {
+    info!(path = target, "Backing up {}", database_url);
+    let started = Instant::now();
+    let report = database::backup_database(database_url, Path::new(target)).await?;
+    info!(
+        path = target,
+        bytes = report.bytes,
+        duration_ms = started.elapsed().as_millis() as u64,
+        "Database backed up"
     );
     Ok(())
 }

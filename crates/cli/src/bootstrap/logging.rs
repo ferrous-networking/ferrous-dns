@@ -1,4 +1,5 @@
 use ferrous_dns_domain::Config;
+use std::io::IsTerminal;
 use tracing::{info, warn};
 use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*, reload, Registry};
 
@@ -7,6 +8,8 @@ pub type LogLevelHandle = reload::Handle<LevelFilter, Registry>;
 /// Installs the subscriber at `initial` (INFO for the server) so warnings raised
 /// while the config file is read (legacy values rewritten at load) are not
 /// lost; [`apply_log_level`] switches to the configured level afterwards.
+/// Colours only reach a terminal: journald and `docker logs` would store the
+/// escape codes as literal bytes.
 pub fn init_logging(initial: LevelFilter) -> LogLevelHandle {
     let (level, handle) = reload::Layer::new(initial);
     tracing_subscriber::registry()
@@ -16,7 +19,7 @@ pub fn init_logging(initial: LevelFilter) -> LogLevelHandle {
                 .with_target(true)
                 .with_thread_ids(false)
                 .with_level(true)
-                .with_ansi(true),
+                .with_ansi(std::io::stdout().is_terminal()),
         )
         .init();
     handle

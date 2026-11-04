@@ -39,8 +39,15 @@ services:
       - FERROUS_BIND_ADDRESS=0.0.0.0
       - FERROUS_DATABASE=/data/db/ferrous.db
       - FERROUS_LOG_LEVEL=info
-      - RUST_LOG=info
       - TZ=America/Sao_Paulo
+
+    # The server logs to stdout; Docker's json-file driver keeps every line
+    # unless it is capped.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
     # The same probe as the image's HEALTHCHECK: GET /health on the web port.
     healthcheck:

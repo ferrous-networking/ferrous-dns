@@ -315,9 +315,9 @@ fn handler(runtime: &tokio::runtime::Runtime, router: Option<Arc<dyn UpstreamRou
     let unfiltered =
         HandleDnsQueryUseCase::new(resolver, Arc::new(AllowAllFilter), Arc::new(NoopQueryLog));
     Handlers {
-        filtered: DnsServerHandler::new(Arc::new(filtered), policy),
-        unfiltered: DnsServerHandler::new(Arc::new(unfiltered), policy),
-        malware: DnsServerHandler::new(Arc::new(malware), policy),
+        filtered: DnsServerHandler::new(Arc::new(filtered), policy, Arc::default()),
+        unfiltered: DnsServerHandler::new(Arc::new(unfiltered), policy, Arc::default()),
+        malware: DnsServerHandler::new(Arc::new(malware), policy, Arc::default()),
         _dir: dir,
     }
 }

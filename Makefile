@@ -161,7 +161,7 @@ run: ## Run the application in release mode
 
 run-dev: ## Run the application in debug mode
 	@echo "$(BLUE)Running Ferrous DNS (debug)...$(NC)"
-	RUST_LOG=debug $(CARGO) run
+	$(CARGO) run -- --log-level debug
 
 watch: ## Watch for changes and rebuild
 	@echo "$(BLUE)Watching for changes...$(NC)"

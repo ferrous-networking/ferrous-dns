@@ -3,6 +3,7 @@ use ferrous_dns_application::ports::{
     ConfigFilePersistence, DnsCachePort, DnssecStatsPort, TlsCertificatePort, UpstreamHealthPort,
     UpstreamReloadPort,
 };
+use ferrous_dns_application::response_counter::ResponseCounters;
 use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, AssignScheduleProfileUseCase, AuthenticatePasskeyUseCase,
     BacktestBlocklistsUseCase, BlockServiceUseCase, ChangePasswordUseCase, ConfirmTotpUseCase,
@@ -59,6 +60,8 @@ pub struct DnsUseCases {
     pub dnssec_stats: Arc<dyn DnssecStatsPort>,
     /// Work shed under overload, per drop path, since boot.
     pub shed: ShedCounters,
+    /// DNS replies by RCODE, since boot.
+    pub responses: Arc<ResponseCounters>,
 }
 
 #[derive(Clone)]

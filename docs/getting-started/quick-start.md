@@ -158,3 +158,4 @@ See the [full configuration reference](../configuration/index.md) for all availa
 - [Set up encrypted DNS (DoT/DoH)](../features/encrypted-dns.md)
 - [Create client groups with parental controls](../features/client-management.md)
 - [Enable CNAME cloaking detection](../features/blocking-filtering.md)
+- [Run it in production](../operations/index.md): backups, monitoring, HTTPS behind a reverse proxy

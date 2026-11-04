@@ -1,16 +1,21 @@
 use ferrous_dns_domain::config::DatabaseConfig;
+use ferrous_dns_domain::DomainError;
 use sqlx::sqlite::{
     SqliteAutoVacuum, SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool,
     SqlitePoolOptions, SqliteSynchronous,
 };
 use sqlx::Connection;
-use std::path::Path;
+use std::ffi::OsString;
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
+mod backup;
 mod compact;
 
+pub use backup::{backup_database, BackupReport};
 pub use compact::{compact_database, CompactionReport};
 
 /// Creates new databases with incremental auto-vacuum, so retention can give the pages it
@@ -24,6 +29,39 @@ fn base_options(database_url: &str) -> Result<SqliteConnectOptions, sqlx::Error>
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
     })
+}
+
+/// `path` with `suffix` added to its file name, as SQLite names `-wal` and `-shm`.
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut name: OsString = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+fn db_err(e: sqlx::Error) -> DomainError {
+    DomainError::DatabaseError(e.to_string())
+}
+
+fn io_err(path: &Path, e: std::io::Error) -> DomainError {
+    DomainError::IoError(format!("{}: {e}", path.display()))
+}
+
+fn remove_if_present(path: &Path) -> Result<(), DomainError> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io_err(path, e)),
+        _ => Ok(()),
+    }
+}
+
+/// Syncs the directory holding `path`, so a rename or link into it survives a crash.
+fn sync_parent_dir(path: &Path) -> Result<(), DomainError> {
+    let dir = match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    File::open(dir)
+        .and_then(|d| d.sync_all())
+        .map_err(|e| io_err(dir, e))
 }
 
 /// Applied on every connection: these pragmas are per-connection state, and each pool

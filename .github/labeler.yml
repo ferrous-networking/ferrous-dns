@@ -97,6 +97,7 @@ database:
           - crates/domain/src/config/database.rs
           - crates/jobs/src/wal_checkpoint.rs
           - crates/*/tests/{database_,wal_checkpoint_,*_migration_}*
+          - crates/cli/src/bootstrap/database.rs
 
 config:
   - changed-files:
@@ -125,6 +126,7 @@ documentation:
   - changed-files:
       - any-glob-to-any-file:
           - docs/**
+          - contrib/**
           - mkdocs.yml
           - requirements.txt
           - '*.md'

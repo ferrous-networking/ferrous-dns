@@ -55,12 +55,11 @@ RUN apk upgrade --no-cache && \
     tzdata && \
     addgroup -g 1000 ferrous && \
     adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
-    mkdir -p /data/config /data/db /data/logs && \
+    mkdir -p /data/config /data/db && \
     chown -R ferrous:ferrous /data
 
 COPY --from=builder /app/target/release/ferrous-dns /usr/local/bin/ferrous-dns
 COPY --chown=ferrous:ferrous ferrous-dns.toml /usr/local/share/ferrous-dns/ferrous-dns.toml
-COPY --chown=ferrous:ferrous migrations/ /usr/local/share/ferrous-dns/migrations/
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh && \
@@ -82,8 +81,7 @@ ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
     FERROUS_WEB_PORT="8080" \
     FERROUS_BIND_ADDRESS="0.0.0.0" \
     FERROUS_DATABASE="/data/db/ferrous.db" \
-    FERROUS_LOG_LEVEL="info" \
-    RUST_LOG="info"
+    FERROUS_LOG_LEVEL="info"
 
 VOLUME ["/data"]
 

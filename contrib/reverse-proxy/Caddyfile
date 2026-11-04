@@ -1,0 +1,24 @@
+# Ferrous DNS (dashboard, both APIs and DoH) behind Caddy.
+# Guide: https://ferrous-networking.github.io/ferrous-dns/operations/tls-reverse-proxy/
+# Replace dns.example.com; Caddy obtains and renews its certificate itself.
+#
+# ferrous-dns serves HTTPS itself ([server.web_tls] with its own certificate),
+# so the session cookie keeps its Secure flag. Caddy checks that certificate
+# against a copy of it (ferrous-dns-upstream.pem) instead of skipping the check.
+
+dns.example.com {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+
+	reverse_proxy https://127.0.0.1:8080 {
+		transport http {
+			tls_trust_pool file /etc/caddy/ferrous-dns-upstream.pem
+			# The certificate ferrous-dns generates is issued to "localhost" and "ferrous-dns".
+			tls_server_name localhost
+		}
+	}
+}

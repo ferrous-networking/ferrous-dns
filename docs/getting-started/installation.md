@@ -94,12 +94,17 @@ services:
       - NET_BIND_SERVICE
     volumes:
       - ferrous-data:/data/
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   ferrous-data:
 ```
 
-To keep the config on the host, follow [Keeping the config file on the host](#keeping-the-config-file-on-the-host-optional) first, then add `- ./ferrous-dns.toml:/data/config/ferrous-dns.toml` to `volumes:`.
+To keep the config on the host, follow [Keeping the config file on the host](#keeping-the-config-file-on-the-host-optional) first, then add `- ./ferrous-dns.toml:/data/config/ferrous-dns.toml` to `volumes:`. The `logging:` block caps the container log at three 10 MB files; without it Docker keeps every line the server writes.
 
 Then start it:
 
@@ -240,7 +245,7 @@ The binary is at `./target/release/ferrous-dns`.
 
 ## Configuration
 
-Ferrous DNS is configured through a TOML config file, with a few settings also exposed as command-line flags. **The `ferrous-dns` binary itself has no environment variables** — it does not read `FERROUS_*` or `RUST_LOG` directly. The `FERROUS_*` variables only exist as a convenience layer in the Docker image's entrypoint script, which converts them into the CLI flags below before launching the binary. `RUST_LOG` is not one of them — the entrypoint only checks it to decide whether to echo its assembled command line for debugging; it never controls the server's own log level (`FERROUS_LOG_LEVEL`/`--log-level` does).
+Ferrous DNS is configured through a TOML config file, with a few settings also exposed as command-line flags. **The `ferrous-dns` binary itself has no environment variables** — it does not read `FERROUS_*` or `RUST_LOG` directly. The `FERROUS_*` variables only exist as a convenience layer in the Docker image's entrypoint script, which converts them into the CLI flags below before launching the binary. With `FERROUS_LOG_LEVEL` at `debug` or `trace`, the entrypoint also prints the command line it runs.
 
 ### Config file
 
@@ -272,6 +277,8 @@ These flags override the matching values from the config file:
 
 `--compact-database` is a maintenance command, not an override: with the server stopped, it rewrites the database without its free space and exits. See [Disk Space](../configuration/database.md#disk-space).
 
+`--backup-database <PATH>` is another: with the server running, it writes a checked copy of the database to `PATH`, which must not exist yet, and exits. In Docker, run it through the entrypoint so the `FERROUS_*` variables apply: `docker exec ferrous-dns /entrypoint.sh --backup-database /data/backups/ferrous.db`. See [Backups](../configuration/database.md#backups).
+
 `--healthcheck` asks the running server's [`GET /ferrous/api/v1/health`](../api.md#health-check) and exits: `0` when it answers `200`, `1` otherwise. It reads the same config file and flags as the server to find the web port. When the server listens on every address it calls `127.0.0.1`, then `::1` if nothing answers there; it never goes through an `HTTP_PROXY` from the environment. It follows the redirect to HTTPS when web TLS is on, accepting a self-signed certificate. The [Docker health check](#health-check) runs it.
 
 !!! note "Log level"
@@ -281,7 +288,7 @@ These flags override the matching values from the config file:
 
 ## Upgrading {#upgrading}
 
-Stop the server, replace the binary or pull the new image, and start it again with the same config file and database. Read these notes first: this release changes a few behaviours that an existing install can notice.
+Stop the server, replace the binary or pull the new image, and start it again with the same config file and database. Read these notes first: this release changes a few behaviours that an existing install can notice. Back up first and keep the previous version at hand: see [Backups & Upgrades](../operations/backups-upgrades.md#upgrading) for the steps and how to roll back.
 
 ### Config values rewritten at load
 
@@ -320,7 +327,7 @@ The first start rebuilds the `query_log` table, and the server answers queries o
 `domain_whitelist` and `client_whitelist` under `[dns.tunneling_detection]` and `[dns.dga_detection]`, and `rebinding_allowlist` under `[dns]`, are no longer read. A file that still has them starts, logs one warning per list with its entries, and drops them on the next save from the dashboard:
 
 ```bash
-docker logs ferrous-dns 2>&1 | grep "Config key no longer read"
+docker logs ferrous-dns 2>&1 | grep "Config key not read"
 ```
 
 Recreate each entry the new way. Both apply at once, with no restart. See [Exemptions](../features/malware-detection.md#exemptions).
@@ -329,6 +336,10 @@ Recreate each entry the new way. Both apply at once, with no restart. See [Exemp
 - **A client or subnet:** put it in a group (**Clients**), and switch **Malware Detection** off for that group in **Groups**. The group skips all five detectors, not only tunneling and DGA.
 
 The query log's **Allow** button now writes the rule into the group the query was decided in, instead of always the default group, and its confirmation names the group.
+
+### Docker image cleanup
+
+The image no longer sets `RUST_LOG`, which the server never read: the entrypoint now prints its command line when `FERROUS_LOG_LEVEL` is `debug` or `trace`. It also stops copying the SQL migrations into `/data/migrations`. They are built into the binary, so an existing `/data/migrations` directory in the volume is unused and can be deleted. The bundled `docker-compose.yml` now caps the container log at three 10 MB files.
 
 ---
 

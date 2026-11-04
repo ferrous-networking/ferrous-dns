@@ -9,9 +9,15 @@ SHARE_DIR="/usr/local/share/ferrous-dns"
 CONFIG_PATH="/data/config/ferrous-dns.toml"
 RUN_AS="uid $(id -u), gid $(id -g)"
 
-# The HEALTHCHECK runs `/entrypoint.sh --healthcheck` beside the running server:
-# it needs the FERROUS_* mapping below, never the first-run bootstrap.
-if [ "$1" != "--healthcheck" ]; then
+# The HEALTHCHECK runs `/entrypoint.sh --healthcheck`, and a backup
+# `/entrypoint.sh --backup-database <path>`, beside the running server: they need
+# the FERROUS_* mapping below, never the first-run bootstrap.
+case "$1" in
+    --healthcheck|--backup-database|--backup-database=*) BESIDE_SERVER=true ;;
+    *) BESIDE_SERVER=false ;;
+esac
+
+if [ "$BESIDE_SERVER" = false ]; then
     # Docker creates the source of a bind mount as a root-owned *directory* when the
     # host path does not exist yet, so the config path can be a directory that only
     # looks like a missing file. Copying into it would land the default at
@@ -37,17 +43,6 @@ if [ "$1" != "--healthcheck" ]; then
     elif [ ! -w "$CONFIG_PATH" ]; then
         echo "WARNING: $CONFIG_PATH is not writable as $RUN_AS — the setup wizard," >&2
         echo "         POST /config and backup restore will fail to persist changes." >&2
-    fi
-
-    # Bootstrap migrations if not present (first run or fresh volume)
-    # The app resolves ./migrations relative to WORKDIR (/data)
-    if [ ! -d "/data/migrations" ]; then
-        echo "No migrations found at /data/migrations — copying bundled migrations..."
-        if ! cp -r "$SHARE_DIR/migrations" /data/migrations; then
-            echo "ERROR: could not create /data/migrations as $RUN_AS." >&2
-            echo "       The /data volume must be writable by that user." >&2
-            exit 1
-        fi
     fi
 fi
 
@@ -81,7 +76,7 @@ if [ -n "$FERROUS_LOG_LEVEL" ] && [ "$FERROUS_LOG_LEVEL" != "info" ]; then
 fi
 
 # Log the command being executed (for debugging)
-if [ "$1" != "--healthcheck" ] && { [ "$RUST_LOG" = "debug" ] || [ "$RUST_LOG" = "trace" ]; }; then
+if [ "$BESIDE_SERVER" = false ] && { [ "$FERROUS_LOG_LEVEL" = "debug" ] || [ "$FERROUS_LOG_LEVEL" = "trace" ]; }; then
     echo "Starting Ferrous DNS with args: $ARGS $*"
 fi
 
