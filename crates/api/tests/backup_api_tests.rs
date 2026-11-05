@@ -29,10 +29,14 @@ fn build_multipart_body(boundary: &str, json_bytes: &[u8]) -> Vec<u8> {
 }
 
 fn import_request(json_bytes: &[u8]) -> Request<Body> {
+    import_request_to("/config/import", json_bytes)
+}
+
+fn import_request_to(uri: &str, json_bytes: &[u8]) -> Request<Body> {
     let boundary = "testboundary";
     let body = build_multipart_body(boundary, json_bytes);
     Request::builder()
-        .uri("/config/import")
+        .uri(uri)
         .method("POST")
         .header(
             "content-type",
@@ -326,6 +330,103 @@ async fn test_web_bind_address_survives_export_import_roundtrip() {
         config_b.read().await.server.web_bind_address,
         Some("::1".parse().unwrap())
     );
+}
+
+/// This server's own listener, web TLS and passkey settings.
+fn give_host_settings(cfg: &mut Config) {
+    cfg.server.dns_port = 5353;
+    cfg.server.web_port = 8443;
+    cfg.server.bind_address = "10.0.0.3".parse().unwrap();
+    cfg.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    cfg.server.web_tls.enabled = true;
+    cfg.server.web_tls.tls_cert_path = "/etc/dns-b/cert.pem".to_string();
+    cfg.server.web_tls.tls_key_path = "/etc/dns-b/key.pem".to_string();
+    cfg.auth.webauthn.rp_id = "dns-b.example".to_string();
+    cfg.auth.webauthn.rp_origin = "https://dns-b.example".to_string();
+}
+
+/// A backup from another server, with host settings of its own, Pi-hole
+/// compatibility on and a debug log level.
+fn backup_from_another_host() -> Vec<u8> {
+    let mut backup = minimal_backup_json();
+    backup["config"]["server"] = json!({
+        "dns_port": 53, "web_port": 8080, "bind_address": "10.0.0.2",
+        "web_bind_address": "10.0.0.2", "pihole_compat": true,
+        "tls_cert_path": "/etc/dns-a/cert.pem", "tls_key_path": "/etc/dns-a/key.pem",
+        "tls_enabled": false
+    });
+    backup["config"]["auth"]["webauthn_rp_id"] = json!("dns-a.example");
+    backup["config"]["auth"]["webauthn_rp_origin"] = json!("https://dns-a.example");
+    backup["config"]["logging"]["level"] = json!("debug");
+    serde_json::to_vec(&backup).unwrap()
+}
+
+async fn import_ok(app: Router, uri: &str, payload: &[u8]) {
+    let response = app.oneshot(import_request_to(uri, payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["success"], true, "{json}");
+}
+
+#[tokio::test]
+async fn test_import_keeps_this_servers_host_settings_when_asked() {
+    let TestApp { router, config, .. } = test_app().await;
+    give_host_settings(&mut *config.write().await);
+    let before = config.read().await.clone();
+
+    import_ok(
+        router,
+        "/config/import?keep_host_settings=true",
+        &backup_from_another_host(),
+    )
+    .await;
+
+    let cfg = config.read().await;
+    assert_eq!(cfg.server.dns_port, before.server.dns_port);
+    assert_eq!(cfg.server.web_port, before.server.web_port);
+    assert_eq!(cfg.server.bind_address, before.server.bind_address);
+    assert_eq!(cfg.server.web_bind_address, before.server.web_bind_address);
+    assert_eq!(cfg.server.web_tls.enabled, before.server.web_tls.enabled);
+    assert_eq!(
+        cfg.server.web_tls.tls_cert_path,
+        before.server.web_tls.tls_cert_path
+    );
+    assert_eq!(
+        cfg.server.web_tls.tls_key_path,
+        before.server.web_tls.tls_key_path
+    );
+    assert_eq!(cfg.auth.webauthn.rp_id, before.auth.webauthn.rp_id);
+    assert_eq!(cfg.auth.webauthn.rp_origin, before.auth.webauthn.rp_origin);
+    // The rest of the backup still lands, Pi-hole compatibility included.
+    assert!(cfg.server.pihole_compat);
+    assert_eq!(cfg.logging.level, "debug");
+}
+
+#[tokio::test]
+async fn test_import_restores_the_backups_host_settings_by_default() {
+    let TestApp { router, config, .. } = test_app().await;
+    give_host_settings(&mut *config.write().await);
+
+    import_ok(router, "/config/import", &backup_from_another_host()).await;
+
+    let cfg = config.read().await;
+    assert_eq!(cfg.server.dns_port, 53);
+    assert_eq!(cfg.server.web_port, 8080);
+    assert_eq!(cfg.server.bind_address.to_string(), "10.0.0.2");
+    assert_eq!(
+        cfg.server
+            .web_bind_address
+            .map(|ip| ip.to_string())
+            .as_deref(),
+        Some("10.0.0.2")
+    );
+    assert!(!cfg.server.web_tls.enabled);
+    assert_eq!(cfg.server.web_tls.tls_cert_path, "/etc/dns-a/cert.pem");
+    assert_eq!(cfg.server.web_tls.tls_key_path, "/etc/dns-a/key.pem");
+    assert_eq!(cfg.auth.webauthn.rp_id, "dns-a.example");
+    assert_eq!(cfg.auth.webauthn.rp_origin, "https://dns-a.example");
+    assert!(cfg.server.pihole_compat);
 }
 
 #[tokio::test]
