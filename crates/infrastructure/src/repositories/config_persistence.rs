@@ -273,6 +273,12 @@ fn write_config(doc: &mut toml_edit::DocumentMut, config: &Config) -> Result<(),
         set_val(t, "dns_port", config.server.dns_port as i64);
         set_val(t, "web_port", config.server.web_port as i64);
         set_val(t, "bind_address", bind_host(config.server.bind_address));
+        match config.server.web_bind_address {
+            Some(ip) => set_val(t, "web_bind_address", bind_host(ip)),
+            None => {
+                t.remove("web_bind_address");
+            }
+        }
         t.remove("api_key");
         set_val(t, "pihole_compat", config.server.pihole_compat);
     }

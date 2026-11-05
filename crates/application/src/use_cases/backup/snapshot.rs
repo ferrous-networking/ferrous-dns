@@ -43,6 +43,9 @@ pub struct SnapshotServerConfig {
     pub dns_port: u16,
     pub web_port: u16,
     pub bind_address: String,
+    /// Absent from older backups, whose web server always shared `bind_address`.
+    #[serde(default)]
+    pub web_bind_address: Option<String>,
     pub pihole_compat: bool,
     /// TLS cert/key paths are exported (paths ok, content not).
     pub tls_cert_path: String,

@@ -6,11 +6,12 @@ use std::time::Duration;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Where the probe reaches this host's web server, in the order it tries them:
-/// the loopback when the server listens on every address, else the address it
-/// is bound to. A dual-stack listener on `::` answers on 127.0.0.1 too, which
+/// the loopback when the web server listens on every address, else the address
+/// it is bound to. A dual-stack listener on `::` answers on 127.0.0.1 too, which
 /// still works where IPv6 is off on the loopback; ::1 covers an IPv6-only one.
 pub fn resolve_probe_addresses(server: &ServerConfig) -> Vec<SocketAddr> {
-    let ips = match server.bind_address {
+    let web = server.web_listen_address();
+    let ips = match web.ip() {
         IpAddr::V4(v4) if v4.is_unspecified() => vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
         IpAddr::V6(v6) if v6.is_unspecified() => vec![
             IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -19,7 +20,7 @@ pub fn resolve_probe_addresses(server: &ServerConfig) -> Vec<SocketAddr> {
         ip => vec![ip],
     };
     ips.into_iter()
-        .map(|ip| SocketAddr::new(ip, server.web_port))
+        .map(|ip| SocketAddr::new(ip, web.port()))
         .collect()
 }
 

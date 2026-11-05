@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::sleep;
@@ -45,6 +45,8 @@ pub struct TestConfig {
     pub path: PathBuf,
     pub dns_port: u16,
     pub web_port: u16,
+    /// Where the web listener answers: the loopback, unless the config moves it.
+    pub web_host: IpAddr,
 }
 
 impl TestConfig {
@@ -59,6 +61,14 @@ impl TestConfig {
             r#"upstream_servers = ["127.0.0.1:9"]"#,
             "enabled = false",
         )
+    }
+
+    /// A server whose web listener binds `web_host` while DNS stays on
+    /// 127.0.0.1; `extra` is appended to `[server]` as in [`Self::with_extra`].
+    pub fn with_web_bind_address(web_host: IpAddr, extra: &str) -> Self {
+        let mut config = Self::with_extra(&format!("web_bind_address = \"{web_host}\"\n{extra}"));
+        config.web_host = web_host;
+        config
     }
 
     /// A server that forwards to `upstream`, with blocking on, so a test can
@@ -115,6 +125,7 @@ enabled = false
             path,
             dns_port,
             web_port,
+            web_host: IpAddr::V4(Ipv4Addr::LOCALHOST),
         }
     }
 
@@ -139,7 +150,7 @@ enabled = false
             .unwrap();
 
         let started = Instant::now();
-        while TcpStream::connect(("127.0.0.1", self.web_port)).is_err() {
+        while TcpStream::connect((self.web_host, self.web_port)).is_err() {
             if let Some(status) = child.try_wait().unwrap() {
                 panic!(
                     "server exited with {status} before serving:\n{}",

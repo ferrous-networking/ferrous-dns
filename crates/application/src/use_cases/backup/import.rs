@@ -10,7 +10,7 @@ use crate::ports::{
     GroupRepository, LocalRecordCreator, MalwareExemptionPort,
 };
 
-use super::snapshot::{BackupSnapshot, ImportSummary};
+use super::snapshot::{BackupSnapshot, ImportSummary, SnapshotConfig};
 
 const SUPPORTED_VERSION: &str = "1";
 
@@ -25,6 +25,38 @@ fn translate_group_ids(ids: &[i64], here: &HashMap<i64, i64>) -> Result<Vec<i64>
     ids.iter()
         .map(|id| here.get(id).copied().ok_or(*id))
         .collect()
+}
+
+/// What an import leaves as it is on this server.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ImportOptions {
+    /// Keeps this server's ports, bind addresses, web TLS files and passkey
+    /// origin: what a backup copied to a second server must not overwrite.
+    pub keep_host_settings: bool,
+}
+
+/// The settings that belong to the server a backup came from: where it
+/// listens, its web certificate files and the name its passkeys are bound to.
+fn restore_host_settings(config: &mut Config, sc: &SnapshotConfig) -> Result<(), String> {
+    let parse = |host: &str| {
+        ferrous_dns_domain::config::server::parse_bind_host(host)
+            .map_err(|e| format!("Config section not restored: {e}"))
+    };
+    config.server.dns_port = sc.server.dns_port;
+    config.server.web_port = sc.server.web_port;
+    config.server.bind_address = parse(&sc.server.bind_address)?;
+    config.server.web_bind_address = sc
+        .server
+        .web_bind_address
+        .as_deref()
+        .map(parse)
+        .transpose()?;
+    config.server.web_tls.enabled = sc.server.tls_enabled;
+    config.server.web_tls.tls_cert_path = sc.server.tls_cert_path.clone();
+    config.server.web_tls.tls_key_path = sc.server.tls_key_path.clone();
+    config.auth.webauthn.rp_id = sc.auth.webauthn_rp_id.clone();
+    config.auth.webauthn.rp_origin = sc.auth.webauthn_rp_origin.clone();
+    Ok(())
 }
 
 /// The live config an import restores into, and the file it is saved to.
@@ -68,7 +100,11 @@ impl ImportConfigUseCase {
     }
 
     #[instrument(skip(self, snapshot), name = "import_config")]
-    pub async fn execute(&self, snapshot: BackupSnapshot) -> Result<ImportSummary, DomainError> {
+    pub async fn execute(
+        &self,
+        snapshot: BackupSnapshot,
+        options: ImportOptions,
+    ) -> Result<ImportSummary, DomainError> {
         if snapshot.version != SUPPORTED_VERSION {
             return Err(DomainError::InvalidInput(format!(
                 "Unsupported backup version '{}'. Expected '{}'.",
@@ -82,14 +118,16 @@ impl ImportConfigUseCase {
         let (groups_imported, groups_skipped) = self.import_groups(&snapshot, &mut errors).await;
         let group_ids = self.map_group_ids(&snapshot).await?;
 
-        let (config_updated, restart_required) =
-            match self.apply_config(&snapshot, group_ids.as_ref()).await {
-                Ok(changed) => (true, changed),
-                Err(e) => {
-                    errors.push(e);
-                    (false, false)
-                }
-            };
+        let (config_updated, restart_required) = match self
+            .apply_config(&snapshot, group_ids.as_ref(), options)
+            .await
+        {
+            Ok(changed) => (true, changed),
+            Err(e) => {
+                errors.push(e);
+                (false, false)
+            }
+        };
 
         let (blocklist_sources_imported, blocklist_sources_skipped) = self
             .import_blocklist_sources(&snapshot, group_ids.as_ref(), &mut errors)
@@ -174,6 +212,7 @@ impl ImportConfigUseCase {
         &self,
         snapshot: &BackupSnapshot,
         group_ids: Option<&HashMap<i64, i64>>,
+        options: ImportOptions,
     ) -> Result<bool, String> {
         let Some(path) = &self.destination.path else {
             let msg = "No config file path available — config section not restored.";
@@ -188,15 +227,10 @@ impl ImportConfigUseCase {
         let mut new_config = config.clone();
 
         let sc = &snapshot.config;
-        new_config.server.dns_port = sc.server.dns_port;
-        new_config.server.web_port = sc.server.web_port;
-        new_config.server.bind_address =
-            ferrous_dns_domain::config::server::parse_bind_host(&sc.server.bind_address)
-                .map_err(|e| format!("Config section not restored: {e}"))?;
+        if !options.keep_host_settings {
+            restore_host_settings(&mut new_config, sc)?;
+        }
         new_config.server.pihole_compat = sc.server.pihole_compat;
-        new_config.server.web_tls.enabled = sc.server.tls_enabled;
-        new_config.server.web_tls.tls_cert_path = sc.server.tls_cert_path.clone();
-        new_config.server.web_tls.tls_key_path = sc.server.tls_key_path.clone();
 
         new_config.dns.upstream_servers = sc.dns.upstream_servers.clone();
         new_config.dns.cache_enabled = sc.dns.cache_enabled;
@@ -291,8 +325,6 @@ impl ImportConfigUseCase {
         new_config.auth.remember_me_days = sc.auth.remember_me_days;
         new_config.auth.login_rate_limit_attempts = sc.auth.login_rate_limit_attempts;
         new_config.auth.login_rate_limit_window_secs = sc.auth.login_rate_limit_window_secs;
-        new_config.auth.webauthn.rp_id = sc.auth.webauthn_rp_id.clone();
-        new_config.auth.webauthn.rp_origin = sc.auth.webauthn_rp_origin.clone();
 
         new_config
             .validate()

@@ -90,6 +90,7 @@ trusted_proxies          = ["127.0.0.0/8", "::1/128"]
 | `dns_port` | `int` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `int` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
 | `bind_address` | `str` | `"0.0.0.0"` | Default address every listener binds to; `"0.0.0.0"` is all IPv4 interfaces, `"[::]"` is dual-stack (IPv4 + IPv6) |
+| `web_bind_address` | `str` | _(unset)_ | Address the dashboard and REST API bind to; unset, they use `bind_address`. See [Dashboard on its own address](server.md#web-bind-address) |
 | `pihole_compat` | `bool` | `false` | Expose Pi-hole v6 compatible API at `/api/*`; the Ferrous DNS native API stays at `/ferrous/api/v1/*` |
 | `proxy_protocol_enabled` | `bool` | `false` | Enable PROXY Protocol v2 on TCP DNS and DoT listeners |
 | `metrics_enabled` | `bool` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port |

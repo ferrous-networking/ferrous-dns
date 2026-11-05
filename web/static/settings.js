@@ -199,6 +199,7 @@
             backupImportResult: null,
             backupImportErrors: [],
             backupImporting: false,
+            backupKeepHostSettings: false,
             async init() {
                 this.theme = localStorage.getItem('theme') || 'light';
                 document.documentElement.classList.toggle('dark', this.theme === 'dark');
@@ -1237,8 +1238,9 @@
                 this.backupImportErrors = [];
                 const fd = new FormData();
                 fd.append('file', input.files[0]);
+                const query = this.backupKeepHostSettings ? '?keep_host_settings=true' : '';
                 try {
-                    const res = await apiFetch(`${API_BASE}/config/import`, { method: 'POST', body: fd });
+                    const res = await apiFetch(`${API_BASE}/config/import${query}`, { method: 'POST', body: fd });
                     if (res.status === 401) { window.location.href = '/login.html'; return; }
                     const data = await res.json().catch(() => ({}));
                     // A partial import is a 200 with success: false; what it restored, settings included, stays applied.

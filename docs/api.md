@@ -560,6 +560,10 @@ Content-Type: multipart/form-data
 Restores configuration from a previously exported backup file uploaded as a
 multipart field (`file`). Returns an import summary describing what was applied.
 
+| Query parameter | Default | Description |
+|:----------------|:--------|:------------|
+| `keep_host_settings` | `false` | `true` keeps this server's `dns_port`, `web_port`, `bind_address`, `web_bind_address`, `[server.web_tls]` `enabled`, `tls_cert_path` and `tls_key_path`, and `[auth.webauthn]` `rp_id` and `rp_origin`, instead of the backup's. Use it to copy a setup to a [second server](operations/redundancy.md); leave it off to restore a server from its own backup. |
+
 - Groups are created by name; one that already exists is kept. A pool's routes
   and a blocklist source follow each group by name, so a backup from another
   server lands on the right groups even though their ids differ.

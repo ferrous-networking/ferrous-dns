@@ -271,7 +271,7 @@ These flags override the matching values from the config file:
 | `--config <FILE>`     | `-c`  | Path to the TOML config file                  |
 | `--dns-port <PORT>`   | `-d`  | DNS server port (config: `server.dns_port`)   |
 | `--web-port <PORT>`   | `-w`  | Web dashboard port (config: `server.web_port`) |
-| `--bind <ADDR>`       | `-b`  | Bind address (config: `server.bind_address`)  |
+| `--bind <ADDR>`       | `-b`  | Bind address (config: `server.bind_address`; `server.web_bind_address` is left as it is) |
 | `--database <PATH>`   |       | SQLite database path (config: `database.path`) |
 | `--log-level <LEVEL>` |       | Log level: `debug`, `info`, `warn`, `error` (config: `logging.level`) |
 

@@ -1,17 +1,17 @@
 use axum::{
     body::Bytes,
-    extract::{Multipart, State},
+    extract::{Multipart, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use chrono::Utc;
-use ferrous_dns_application::use_cases::{BackupSnapshot, ImportSummary};
+use ferrous_dns_application::use_cases::{BackupSnapshot, ImportOptions, ImportSummary};
 use tracing::{error, info, instrument};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    dto::backup::{ImportSummaryDto, ImportSummaryResponse},
+    dto::backup::{ImportQuery, ImportSummaryDto, ImportSummaryResponse},
     errors::ApiError,
     state::AppState,
 };
@@ -59,6 +59,7 @@ async fn export_config(State(state): State<AppState>) -> Result<Response, ApiErr
     post,
     path = "/config/import",
     tag = "backup",
+    params(ImportQuery),
     request_body(content_type = "multipart/form-data", content = String),
     responses(
         (status = 200, description = "Import summary. A partial import is still a 200, with `success` false and `errors` naming what was not restored; the rest stays applied", body = ImportSummaryResponse),
@@ -70,13 +71,17 @@ async fn export_config(State(state): State<AppState>) -> Result<Response, ApiErr
 #[instrument(skip(state, multipart), name = "api_import_config")]
 async fn import_config(
     State(state): State<AppState>,
+    Query(query): Query<ImportQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<ImportSummaryResponse>, ApiError> {
     let file_bytes = read_backup_file_from_multipart(&mut multipart).await?;
 
     let snapshot = parse_backup_snapshot(&file_bytes)?;
 
-    let summary = state.backup.import.execute(snapshot).await?;
+    let options = ImportOptions {
+        keep_host_settings: query.keep_host_settings,
+    };
+    let summary = state.backup.import.execute(snapshot, options).await?;
     if summary.restart_required {
         state.mark_restart_pending();
     }
