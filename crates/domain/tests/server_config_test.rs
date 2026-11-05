@@ -75,6 +75,36 @@ fn an_invalid_per_protocol_bind_address_names_its_own_key() {
 }
 
 #[test]
+fn web_bind_address_moves_only_the_web_listener() {
+    let config = parse(&server_toml("web_bind_address = \"127.0.0.1\""));
+
+    assert_eq!(config.web_listen_address(), addr("127.0.0.1:8080"));
+    assert_eq!(config.dns_listen_address(), addr("0.0.0.0:53"));
+    assert_eq!(config.dot_listen_address(), addr("0.0.0.0:853"));
+}
+
+#[test]
+fn web_bind_address_accepts_bare_and_bracketed_ipv6() {
+    for spelling in ["::1", "[::1]"] {
+        let config = parse(&server_toml(&format!("web_bind_address = \"{spelling}\"")));
+        assert_eq!(
+            config.web_listen_address(),
+            addr("[::1]:8080"),
+            "{spelling}"
+        );
+    }
+}
+
+#[test]
+fn a_hostname_web_bind_address_is_rejected_and_names_its_key() {
+    let err = toml::from_str::<ServerConfig>(&server_toml("web_bind_address = \"localhost\""))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("web_bind_address"), "names the key: {err}");
+    assert!(err.contains("not a hostname"), "{err}");
+}
+
+#[test]
 fn doh_has_no_listen_address_when_it_is_co_hosted_on_the_web_port() {
     let config = parse(&server_toml(""));
     assert!(config.encrypted_dns.doh_port.is_none());

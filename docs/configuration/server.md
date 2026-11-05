@@ -20,6 +20,7 @@ trusted_proxies = ["127.0.0.0/8", "::1/128"]
 | `dns_port` | `53` | UDP and TCP port for DNS queries |
 | `web_port` | `8080` | HTTP/HTTPS port for the dashboard and REST API |
 | `bind_address` | `0.0.0.0` | Default address every listener binds to. Use a specific IP to restrict access, or `[::]` for dual-stack. Must be an IP literal; a hostname is rejected at startup |
+| `web_bind_address` | _(unset)_ | Address the dashboard and REST API bind to instead of `bind_address`. See [Dashboard on its own address](#web-bind-address) |
 | `metrics_enabled` | `false` | Serve an unauthenticated Prometheus text-exposition endpoint at `/metrics` on the web port (opt-in) |
 | `trusted_proxies` | `["127.0.0.0/8", "::1/128"]` | CIDRs (or single addresses) of reverse proxies whose `X-Forwarded-For` / `X-Real-IP` headers are believed on DoH requests. See [DoH client identity](#doh-client-identity) |
 
@@ -62,6 +63,20 @@ doq_bind_address = "192.168.1.10"   # DoQ only on the LAN address
 Like `bind_address`, each override must be an IP literal. A hostname on a listener that is running (for DoH: `doh_enabled` with a `doh_port`) stops startup; on one that is off it is ignored with a warning in the log.
 
 See [Encrypted DNS](#encrypted-dns) for the full list of options.
+
+### Dashboard on its own address {#web-bind-address}
+
+`web_bind_address` moves the dashboard and the REST API, over HTTP or HTTPS, off `bind_address`, while every DNS listener stays where it is. The usual case is a reverse proxy on the same host: DNS serves the network, and the web server listens on loopback only.
+
+```toml
+[server]
+bind_address     = "0.0.0.0"     # DNS for the network
+web_bind_address = "127.0.0.1"   # dashboard and API for the local reverse proxy only
+```
+
+Unset, the web server binds `bind_address`, as before. Like `bind_address`, it must be an IP literal.
+
+Everything served on `web_port` moves with it: the [Pi-hole compatible API](../features/pihole-compat.md), `/metrics`, and DoH when it has no `doh_port` of its own. A Prometheus on another host then has to scrape through the proxy. `--bind` (`FERROUS_BIND_ADDRESS` in Docker) changes `bind_address` only. `--healthcheck` probes the web server at `web_bind_address`.
 
 ### DoH client identity {#doh-client-identity}
 

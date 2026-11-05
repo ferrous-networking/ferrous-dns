@@ -297,6 +297,38 @@ async fn test_dns64_config_survives_export_import_roundtrip() {
 }
 
 #[tokio::test]
+async fn test_web_bind_address_survives_export_import_roundtrip() {
+    let TestApp {
+        router: app_a,
+        config: config_a,
+        ..
+    } = test_app().await;
+    config_a.write().await.server.web_bind_address = Some("::1".parse().unwrap());
+    let (status, exported) = do_export(app_a).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(exported["config"]["server"]["web_bind_address"], "::1");
+
+    let TestApp {
+        router: app_b,
+        config: config_b,
+        ..
+    } = test_app().await;
+    assert_eq!(config_b.read().await.server.web_bind_address, None);
+
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["success"], true, "{json}");
+
+    assert_eq!(
+        config_b.read().await.server.web_bind_address,
+        Some("::1".parse().unwrap())
+    );
+}
+
+#[tokio::test]
 async fn test_import_new_local_record_is_added_to_config() {
     let TestApp {
         router: app,

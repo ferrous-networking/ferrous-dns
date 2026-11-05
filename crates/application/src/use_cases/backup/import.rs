@@ -193,6 +193,13 @@ impl ImportConfigUseCase {
         new_config.server.bind_address =
             ferrous_dns_domain::config::server::parse_bind_host(&sc.server.bind_address)
                 .map_err(|e| format!("Config section not restored: {e}"))?;
+        new_config.server.web_bind_address = sc
+            .server
+            .web_bind_address
+            .as_deref()
+            .map(ferrous_dns_domain::config::server::parse_bind_host)
+            .transpose()
+            .map_err(|e| format!("Config section not restored: {e}"))?;
         new_config.server.pihole_compat = sc.server.pihole_compat;
         new_config.server.web_tls.enabled = sc.server.tls_enabled;
         new_config.server.web_tls.tls_cert_path = sc.server.tls_cert_path.clone();
