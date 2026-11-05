@@ -2429,6 +2429,17 @@
                            style="font-size:12px;width:100%;padding:8px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)">
                 </div>
 
+                <div style="margin-bottom:16px">
+                    <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+                        <input type="checkbox" x-model="backupKeepHostSettings"
+                               style="width:16px;height:16px;margin:2px 0 0;flex-shrink:0;accent-color:var(--color-primary)">
+                        <span>
+                            <span style="display:block;font-size:13px;font-weight:500;color:var(--text-primary)">Keep this server's addresses, ports, web TLS and passkey settings</span>
+                            <span style="display:block;font-size:12px;color:var(--text-secondary);margin-top:2px">Tick it when copying settings to a second resolver. Leave it off to restore this server from its own backup.</span>
+                        </span>
+                    </label>
+                </div>
+
                 <button @click="importConfig()" class="btn btn-primary" :disabled="backupImporting"
                         style="width:100%;justify-content:center">
                     <template x-if="!backupImporting">
