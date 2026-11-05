@@ -37,7 +37,6 @@ services:
       - FERROUS_DNS_PORT=53
       - FERROUS_WEB_PORT=8080
       - FERROUS_BIND_ADDRESS=0.0.0.0
-      - FERROUS_DATABASE=/data/db/ferrous.db
       - FERROUS_LOG_LEVEL=info
       - TZ=America/Sao_Paulo
 
