@@ -55,7 +55,7 @@ RUN apk upgrade --no-cache && \
     tzdata && \
     addgroup -g 1000 ferrous && \
     adduser -D -u 1000 -G ferrous -s /bin/sh ferrous && \
-    mkdir -p /data/config /data/db && \
+    mkdir -p /data/config && \
     chown -R ferrous:ferrous /data
 
 COPY --from=builder /app/target/release/ferrous-dns /usr/local/bin/ferrous-dns
@@ -80,7 +80,6 @@ ENV FERROUS_CONFIG="/data/config/ferrous-dns.toml" \
     FERROUS_DNS_PORT="53" \
     FERROUS_WEB_PORT="8080" \
     FERROUS_BIND_ADDRESS="0.0.0.0" \
-    FERROUS_DATABASE="/data/db/ferrous.db" \
     FERROUS_LOG_LEVEL="info"
 
 VOLUME ["/data"]
