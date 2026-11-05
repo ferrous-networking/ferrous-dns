@@ -565,12 +565,18 @@ async fn test_import_is_idempotent() {
     // Protected already exists in the DB, so it is skipped.
     let snapshot: ferrous_dns_application::use_cases::BackupSnapshot =
         serde_json::from_slice(&payload).unwrap();
-    let summary1 = import_uc.execute(snapshot.clone()).await.unwrap();
+    let summary1 = import_uc
+        .execute(snapshot.clone(), Default::default())
+        .await
+        .unwrap();
     assert_eq!(summary1.groups_skipped, 1);
     assert_eq!(summary1.groups_imported, 0);
 
     // A second import yields the same result.
-    let summary2 = import_uc.execute(snapshot).await.unwrap();
+    let summary2 = import_uc
+        .execute(snapshot, Default::default())
+        .await
+        .unwrap();
     assert_eq!(summary2.groups_skipped, 1);
     assert_eq!(summary2.groups_imported, 0);
 }

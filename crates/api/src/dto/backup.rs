@@ -1,5 +1,13 @@
-use serde::Serialize;
-use utoipa::ToSchema;
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+
+#[derive(Deserialize, Debug, IntoParams)]
+pub struct ImportQuery {
+    /// Keep this server's ports, bind addresses, web TLS files and passkey
+    /// origin instead of the backup's: for copying a setup to a second server.
+    #[serde(default)]
+    pub keep_host_settings: bool,
+}
 
 /// HTTP response returned after a successful import operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]

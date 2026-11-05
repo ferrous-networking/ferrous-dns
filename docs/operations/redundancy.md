@@ -22,7 +22,9 @@ Do not chain them: configure each with public or provider upstreams, not with th
 Clients may land on either instance at any moment, so both should filter alike. The dashboard export carries the setup from one to the other:
 
 1. On the first instance, **Settings → Backup → Download Backup**.
-2. On the second, import the file under **Settings → Backup**, then restart it.
+2. On the second, import the file under **Settings → Backup** with **Keep this server's addresses, ports, web TLS and passkey settings** ticked, then restart it.
+
+Without that box, the import also restores the first instance's ports, bind addresses, web certificate paths and passkey origin. A second instance that binds its own address, keeps its certificate elsewhere or is reached under its own name would then fail to bind after the restart, or lose its passkeys. Through the API, the box is `?keep_host_settings=true`.
 
 The file carries:
 

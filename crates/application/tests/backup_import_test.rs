@@ -18,7 +18,7 @@ use ferrous_dns_application::ports::{
 };
 use ferrous_dns_application::use_cases::backup::snapshot::{BackupSnapshot, GroupSnapshot};
 use ferrous_dns_application::use_cases::{
-    ConfigDestination, CreateBlocklistSourceUseCase, ImportConfigUseCase,
+    ConfigDestination, CreateBlocklistSourceUseCase, ImportConfigUseCase, ImportOptions,
 };
 use ferrous_dns_domain::{Client, Config, DomainError, Group, LocalDnsRecord};
 use serde_json::json;
@@ -180,11 +180,10 @@ async fn test_import_reloads_block_filter_once_for_the_whole_batch() {
     let (import, source_repo) = build_import(engine.clone());
 
     let summary = import
-        .execute(snapshot_with_sources(&[
-            "hagezi-pro",
-            "stevenblack",
-            "oisd",
-        ]))
+        .execute(
+            snapshot_with_sources(&["hagezi-pro", "stevenblack", "oisd"]),
+            ImportOptions::default(),
+        )
         .await
         .unwrap();
 
@@ -205,7 +204,10 @@ async fn test_import_without_blocklist_sources_does_not_reload() {
     let engine = Arc::new(MockBlockFilterEngine::new());
     let (import, _source_repo) = build_import(engine.clone());
 
-    let summary = import.execute(snapshot_with_sources(&[])).await.unwrap();
+    let summary = import
+        .execute(snapshot_with_sources(&[]), ImportOptions::default())
+        .await
+        .unwrap();
 
     assert_eq!(summary.blocklist_sources_imported, 0);
     assert_eq!(
@@ -221,14 +223,20 @@ async fn test_import_reloads_once_when_some_sources_are_duplicates() {
     let (import, source_repo) = build_import(engine.clone());
 
     import
-        .execute(snapshot_with_sources(&["hagezi-pro"]))
+        .execute(
+            snapshot_with_sources(&["hagezi-pro"]),
+            ImportOptions::default(),
+        )
         .await
         .unwrap();
 
     // Re-importing the same source plus a new one: duplicates are skipped, but
     // the one real insert still earns exactly one rebuild.
     let summary = import
-        .execute(snapshot_with_sources(&["hagezi-pro", "oisd"]))
+        .execute(
+            snapshot_with_sources(&["hagezi-pro", "oisd"]),
+            ImportOptions::default(),
+        )
         .await
         .unwrap();
 
@@ -308,7 +316,11 @@ async fn test_import_does_not_overwrite_a_concurrent_config_write() {
         }),
     );
 
-    let save = tokio::spawn(async move { import.execute(snapshot_with_sources(&[])).await });
+    let save = tokio::spawn(async move {
+        import
+            .execute(snapshot_with_sources(&[]), ImportOptions::default())
+            .await
+    });
     started.notified().await;
 
     let writer_config = config.clone();
@@ -345,7 +357,11 @@ async fn test_import_waits_for_the_config_writer() {
     );
 
     let save_in_flight = config_writer.lock().await;
-    let mut run = tokio::spawn(async move { import.execute(snapshot_with_sources(&[])).await });
+    let mut run = tokio::spawn(async move {
+        import
+            .execute(snapshot_with_sources(&[]), ImportOptions::default())
+            .await
+    });
     let finished_early = tokio::time::timeout(std::time::Duration::from_millis(100), &mut run)
         .await
         .is_ok();
@@ -440,7 +456,7 @@ async fn test_import_fails_when_the_groups_here_cannot_be_read() {
         malware_detection_enabled: Some(true),
     });
 
-    let result = import.execute(snapshot).await;
+    let result = import.execute(snapshot, ImportOptions::default()).await;
 
     assert!(
         matches!(result, Err(DomainError::DatabaseError(_))),
