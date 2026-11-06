@@ -345,3 +345,27 @@ textarea:disabled {
         overflow-x: auto
     }
 }
+
+/* The language control is available before login and on every admin page. */
+.language-selector {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.language-selector select {
+    min-width: 100px;
+    max-width: 150px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+}
+.login-card .language-selector {
+    padding: 8px 0 16px;
+}

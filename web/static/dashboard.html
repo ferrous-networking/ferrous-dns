@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Dashboard</title>
+    <title data-i18n-title="Ferrous DNS - Dashboard">Ferrous DNS - Dashboard</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/chart.js-4.4.1.umd.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/dashboard.css">
@@ -26,67 +28,76 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span>
         </div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span>
+            <span x-text="t(&quot;Active&quot;)">Active</span>
         </div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item">
             <i data-lucide="package" style="width:14px;height:14px;color:var(--text-secondary)"></i>
-            <span id="queries-min" x-text="stats.queries_total||0+' q/total'">0 q/total</span>
+            <span id="queries-min" x-text="tn('{count} query', '{count} queries', stats.queries_total || 0)">0 q/total</span>
         </div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
             <a href="/dashboard.html" class="nav-item active"><i data-lucide="layout-dashboard"
-                                                                 class="nav-icon"></i><span>Dashboard</span></a>
+                                                                 class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
             <a href="/queries.html" class="nav-item"><i data-lucide="file-text"
-                                                        class="nav-icon"></i><span>Query Log</span></a>
+                                                        class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
-            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
+            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
             <a href="/settings.html" class="nav-item"><i data-lucide="settings"
-                                                         class="nav-icon"></i><span>Settings</span></a>
+                                                         class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
+    <label class="language-selector">
+        <span x-text="t('Language')">Language</span>
+        <select aria-label="Interface language" :aria-label="t('Interface language')"
+                x-init="$el.value = FerrousI18n.locale()"
+                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+        </select>
+    </label>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
@@ -97,7 +108,7 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,0.1)">
                     <i data-lucide="package" style="width:24px;height:24px;color:#3B82F6"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Total Queries</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Total Queries&quot;)">Total Queries</p>
             </div>
             <p style="font-size:32px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(stats.queries_total)">0</p>
         </div>
@@ -106,7 +117,7 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)">
                     <i data-lucide="shield-ban" style="width:24px;height:24px;color:#EF4444"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Blocked&quot;)">Blocked</p>
             </div>
             <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_blocked)">0</p>
         </div>
@@ -115,7 +126,7 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(168,85,247,0.1)">
                     <i data-lucide="gauge" style="width:24px;height:24px;color:#A855F7"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Avg Query Time</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Avg Query Time&quot;)">Avg Query Time</p>
             </div>
             <p style="font-size:32px;font-weight:700;color:#A855F7" x-text="formatTime(stats.avg_query_time_ms||0)">0
                 ms</p>
@@ -125,12 +136,12 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(245,158,11,0.1)">
                     <i data-lucide="shield-alert" style="width:24px;height:24px;color:#F59E0B"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Malware Detection</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Malware Detection&quot;)">Malware Detection</p>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
                 <p style="font-size:32px;font-weight:700" :style="{color: malwareDetectionEnabled ? '#F59E0B' : 'var(--text-tertiary)'}" x-text="formatNumber(stats.queries_malware_detected || 0)">0</p>
                 <span x-show="!malwareDetectionEnabled" x-cloak title="Turned off in Settings → Malware Detection"
-                      style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tertiary);color:var(--text-secondary);font-weight:600">Disabled</span>
+                      style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-tertiary);color:var(--text-secondary);font-weight:600" :title="t(&quot;Turned off in Settings → Malware Detection&quot;)" x-text="t(&quot;Disabled&quot;)">Disabled</span>
             </div>
         </div>
         <div class="card-stat" id="dnssec-bogus-card">
@@ -138,7 +149,7 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(239,68,68,0.1)">
                     <i data-lucide="lock" style="width:24px;height:24px;color:#EF4444"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">DNSSEC Bogus</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;DNSSEC Bogus&quot;)">DNSSEC Bogus</p>
             </div>
             <p style="font-size:32px;font-weight:700;color:#EF4444" x-text="formatNumber(stats.queries_dnssec_bogus || 0)">0</p>
         </div>
@@ -147,27 +158,27 @@
                 <div style="padding:12px;border-radius:8px;background:rgba(249,115,22,0.1)">
                     <i data-lucide="shield-check" style="width:24px;height:24px;color:#F97316"></i>
                 </div>
-                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)">Blocked Domains</p>
+                <p style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Blocked Domains&quot;)">Blocked Domains</p>
             </div>
             <p style="font-size:32px;font-weight:700;color:#F97316" x-text="formatNumber(blockFilterStats.total_blocked_domains)">0</p>
         </div>
     </div>
-    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Performance</h2>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Cache Performance&quot;)">Cache Performance</h2>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:32px">
         <div class="card" style="padding:16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
                 <i data-lucide="zap" class="cache-stat-icon" style="width:32px;height:32px;color:#A855F7"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Hits</p>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Cache Hits&quot;)">Cache Hits</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_hits)">0</p>
-                    <p style="font-size:11px;color:#A855F7" x-text="(cacheMetrics.hit_rate||0).toFixed(1)+'% hit rate'">
+                    <p style="font-size:11px;color:#A855F7" x-text="FerrousI18n.decimal(cacheMetrics.hit_rate||0, 1)+t(&quot;% hit rate&quot;)">
                         0%</p></div>
             </div>
         </div>
         <div class="card" style="padding:16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
                 <i data-lucide="clock" class="cache-stat-icon" style="width:32px;height:32px;color:#3B82F6"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Time</p>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Cache Time&quot;)">Cache Time</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatTime(stats.avg_cache_time_ms||0)">0 ms</p></div>
             </div>
@@ -175,7 +186,7 @@
         <div class="card" style="padding:16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
                 <i data-lucide="refresh-cw" class="cache-stat-icon" style="width:32px;height:32px;color:#F59E0B"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Refreshes</p>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Cache Refreshes&quot;)">Cache Refreshes</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_refreshes)">0</p></div>
             </div>
@@ -183,13 +194,13 @@
         <div class="card" style="padding:16px">
             <div style="display:flex;align-items:flex-start;gap:12px">
                 <i data-lucide="database" class="cache-stat-icon" style="width:32px;height:32px;color:#10B981"></i>
-                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)">Cache Entries</p>
+                <div><p style="font-size:12px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Cache Entries&quot;)">Cache Entries</p>
                     <p style="font-size:24px;font-weight:700;color:var(--text-primary)"
                        x-text="formatNumber(cacheMetrics.total_entries)">0</p></div>
             </div>
         </div>
     </div>
-    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Queries over Time</h2>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Queries over Time&quot;)">Queries over Time</h2>
     <div class="card" style="padding:24px;margin-bottom:24px">
         <div class="timeline-chart-container">
             <canvas id="timelineChart"></canvas>
@@ -197,14 +208,14 @@
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;align-items:stretch">
         <div class="card chart-card" style="padding:24px"><h3
-                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Types</h3>
+                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Query Types&quot;)">Query Types</h3>
             <div class="chart-row">
                 <div class="chart-canvas-wrap"><canvas id="queryTypesChart"></canvas></div>
                 <ul id="queryTypesChartLegend" class="chart-legend"></ul>
             </div>
         </div>
         <div class="card chart-card" style="padding:24px"><h3
-                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Query Source</h3>
+                style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Query Source&quot;)">Query Source</h3>
             <div class="chart-row">
                 <div class="chart-canvas-wrap"><canvas id="cacheSourceChart"></canvas></div>
                 <ul id="cacheSourceChartLegend" class="chart-legend"></ul>
@@ -213,13 +224,13 @@
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
         <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Blocked Domains</h3>
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Top Blocked Domains&quot;)">Top Blocked Domains</h3>
             <table style="width:100%;border-collapse:collapse">
                 <thead>
                     <tr style="border-bottom:2px solid var(--border-color)">
                         <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Hits</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)" x-text="t(&quot;Domain&quot;)">Domain</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)" x-text="t(&quot;Hits&quot;)">Hits</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -227,21 +238,21 @@
                         <tr style="border-bottom:1px solid var(--border-color)">
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="d.domain"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="d.count.toLocaleString()"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="d.count.toLocaleString(FerrousI18n.locale())"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="!topBlockedDomains || topBlockedDomains.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No blocked domains</p>
+            <p x-show="!topBlockedDomains || topBlockedDomains.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0" x-text="t(&quot;No blocked domains&quot;)">No blocked domains</p>
         </div>
         <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Top Clients</h3>
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Top Clients&quot;)">Top Clients</h3>
             <table style="width:100%;border-collapse:collapse">
                 <thead>
                     <tr style="border-bottom:2px solid var(--border-color)">
                         <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
                         <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Client</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Queries</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)" x-text="t(&quot;Queries&quot;)">Queries</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -249,18 +260,18 @@
                         <tr style="border-bottom:1px solid var(--border-color)">
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-primary)" x-text="c.hostname || c.ip"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="c.count.toLocaleString()"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="c.count.toLocaleString(FerrousI18n.locale())"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="!topClients || topClients.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No data</p>
+            <p x-show="!topClients || topClients.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0" x-text="t(&quot;No data&quot;)">No data</p>
         </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(450px,100%),1fr));gap:24px;margin-top:24px">
         <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Upstream</h3>
-            <p x-show="upstreamHealth.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No upstream servers configured</p>
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Upstream&quot;)">Upstream</h3>
+            <p x-show="upstreamHealth.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0" x-text="t(&quot;No upstream servers configured&quot;)">No upstream servers configured</p>
             <div x-show="upstreamHealth.length > 0">
                 <template x-for="(pool, poolIdx) in groupUpstreamsByPool(upstreamHealth)" :key="pool.pool_name">
                     <div :style="poolIdx > 0 ? 'margin-top:16px' : ''">
@@ -268,7 +279,7 @@
                             <i data-lucide="layers" style="width:14px;height:14px;color:var(--text-tertiary);flex-shrink:0"></i>
                             <span style="font-size:12px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:0.06em" x-text="pool.pool_name"></span>
                             <span :style="'font-size:10px;font-weight:600;padding:2px 8px;border-radius:8px;' + upstreamStrategyStyle(pool.strategy)"
-                                  x-text="pool.strategy"></span>
+                                  x-text="t(pool.strategy)"></span>
                         </div>
                         <template x-for="group in pool.servers" :key="group.address">
                             <div style="border-bottom:1px solid var(--border-color)">
@@ -281,7 +292,7 @@
                                     </div>
                                     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px">
                                         <span :style="'background:' + upstreamStatusColor(group.status) + ';color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px'"
-                                              x-text="group.status"></span>
+                                              x-text="t(group.status)"></span>
                                         <i :data-lucide="isUpstreamExpanded(group.address) ? 'chevron-up' : 'chevron-down'"
                                            style="width:16px;height:16px;color:var(--text-tertiary)"></i>
                                     </div>
@@ -303,7 +314,7 @@
                                                         <span style="font-size:11px;color:var(--text-tertiary)" x-text="ep.latency_ms + ' ms'"></span>
                                                     </template>
                                                     <span :style="'background:' + upstreamStatusColor(ep.status) + ';color:#fff;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px'"
-                                                          x-text="ep.status"></span>
+                                                          x-text="t(ep.status)"></span>
                                                 </div>
                                             </div>
                                             <p x-show="ep.last_error && ep.status !== 'Healthy'" x-text="ep.last_error"
@@ -318,14 +329,14 @@
             </div>
         </div>
         <div class="card" style="padding:24px">
-            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)">Cache Refreshes</h3>
+            <h3 style="font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text-primary)" x-text="t(&quot;Cache Refreshes&quot;)">Cache Refreshes</h3>
             <table style="width:100%;border-collapse:collapse">
                 <thead>
                     <tr style="border-bottom:2px solid var(--border-color)">
                         <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">#</th>
-                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Domain</th>
+                        <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)" x-text="t(&quot;Domain&quot;)">Domain</th>
                         <th style="text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Type</th>
-                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)">Refreshes</th>
+                        <th style="text-align:right;padding:8px 12px;font-size:12px;font-weight:600;color:var(--text-secondary)" x-text="t(&quot;Refreshes&quot;)">Refreshes</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -334,28 +345,28 @@
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="i+1"></td>
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);word-break:break-all" x-text="e.domain"></td>
                             <td style="padding:6px 12px;font-size:13px;color:var(--text-secondary)" x-text="e.type"></td>
-                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="e.refreshes.toLocaleString()"></td>
+                            <td style="padding:6px 12px;font-size:13px;color:var(--text-primary);text-align:right" x-text="e.refreshes.toLocaleString(FerrousI18n.locale())"></td>
                         </tr>
                     </template>
                 </tbody>
             </table>
-            <p x-show="cacheOverview.top_refreshed.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0">No refreshes yet</p>
+            <p x-show="cacheOverview.top_refreshed.length === 0" style="text-align:center;color:var(--text-secondary);font-size:13px;padding:24px 0" x-text="t(&quot;No refreshes yet&quot;)">No refreshes yet</p>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px">
                 <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expired</div>
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em" x-text="t(&quot;Expired&quot;)">Expired</div>
                     <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expired)">0</div>
                 </div>
                 <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">New</div>
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em" x-text="t(&quot;New&quot;)">New</div>
                     <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.inserted)">0</div>
                 </div>
                 <div style="background:var(--bg-tertiary);border-radius:8px;padding:14px">
-                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Expiring</div>
+                    <div style="font-size:11px;color:var(--text-secondary);font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em" x-text="t(&quot;Expiring&quot;)">Expiring</div>
                     <div style="font-size:20px;font-weight:700;color:var(--text-primary)" x-text="formatNumber(cacheOverview.expiring_soon)">0</div>
                 </div>
             </div>
             <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px"
-               x-text="'Expired and new count since the server started. Expiring: TTL ends within ' + cacheOverview.expiring_window_secs + ' s.'"></p>
+               x-text="t(&quot;Expired and new count since the server started. Expiring: TTL ends within &quot;) + cacheOverview.expiring_window_secs + ' s.'"></p>
         </div>
     </div>
 </main>

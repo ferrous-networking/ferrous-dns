@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Network Clients</title>
+    <title data-i18n-title="Ferrous DNS - Network Clients">Ferrous DNS - Network Clients</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/clients.css">
@@ -29,84 +31,93 @@
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
         <div class="logo-text">
             <h1>Ferrous DNS</h1>
-            <span class="logo-subtitle">High-Performance DNS</span>
+            <span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span>
         </div>
     </div>
 
     <div class="status-box">
         <div class="status-header">
             <i data-lucide="activity" style="width:16px;height:16px"></i>
-            <span>Status</span>
+            <span x-text="t(&quot;Status&quot;)">Status</span>
         </div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span>
+            <span x-text="t(&quot;Active&quot;)">Active</span>
         </div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item">
             <i data-lucide="users" style="width:14px;height:14px"></i>
-            <span x-text="(stats.total_clients || 0) + ' clients'">0 clients</span>
+            <span x-text="tn('{count} client', '{count} clients', stats.total_clients || 0)">0 clients</span>
         </div>
     </div>
 
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
             <a href="/dashboard.html" class="nav-item">
                 <i data-lucide="layout-dashboard" class="nav-icon"></i>
-                <span>Dashboard</span>
+                <span x-text="t(&quot;Dashboard&quot;)">Dashboard</span>
             </a>
             <a href="/queries.html" class="nav-item">
                 <i data-lucide="file-text" class="nav-icon"></i>
-                <span>Query Log</span>
+                <span x-text="t(&quot;Query Log&quot;)">Query Log</span>
             </a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item active">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
             <a href="/local-dns-settings.html" class="nav-item">
                 <i data-lucide="server" class="nav-icon"></i>
-                <span>Local DNS</span>
+                <span x-text="t(&quot;Local DNS&quot;)">Local DNS</span>
             </a>
             <a href="/cache-control.html" class="nav-item">
                 <i data-lucide="database" class="nav-icon"></i>
-                <span>Cache Control</span>
+                <span x-text="t(&quot;Cache Control&quot;)">Cache Control</span>
             </a>
             <a href="/settings.html" class="nav-item">
                 <i data-lucide="settings" class="nav-icon"></i>
-                <span>Settings</span>
+                <span x-text="t(&quot;Settings&quot;)">Settings</span>
             </a>
         </div>
     </nav>
+    <label class="language-selector">
+        <span x-text="t('Language')">Language</span>
+        <select aria-label="Interface language" :aria-label="t('Interface language')"
+                x-init="$el.value = FerrousI18n.locale()"
+                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+        </select>
+    </label>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
@@ -114,32 +125,32 @@
 <main style="padding:32px">
 
     <div style="margin-bottom:32px">
-        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px">👥 Network Clients</h1>
-        <p style="font-size:14px;color:var(--text-secondary)">Manage DNS clients by IP, subnet or MAC address</p>
+        <h1 style="font-size:28px;font-weight:700;margin-bottom:8px" x-text="t(&quot;👥 Network Clients&quot;)">👥 Network Clients</h1>
+        <p style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;Manage DNS clients by IP, subnet or MAC address&quot;)">Manage DNS clients by IP, subnet or MAC address</p>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:20px;margin-bottom:32px">
         <div class="card" style="padding:20px">
-            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Total Clients</p>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px" x-text="t(&quot;Total Clients&quot;)">Total Clients</p>
             <p style="font-size:32px;font-weight:700" x-text="stats.total_clients || 0"></p>
         </div>
         <div class="card" style="padding:20px">
-            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Active 24h</p>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px" x-text="t(&quot;Active 24h&quot;)">Active 24h</p>
             <p style="font-size:32px;font-weight:700;color:var(--color-success)" x-text="stats.active_24h || 0"></p>
         </div>
         <div class="card" style="padding:20px">
-            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Active 7d</p>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px" x-text="t(&quot;Active 7d&quot;)">Active 7d</p>
             <p style="font-size:32px;font-weight:700;color:var(--color-warning)" x-text="stats.active_7d || 0"></p>
         </div>
         <div class="card" style="padding:20px">
-            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">With Hostname</p>
+            <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px" x-text="t(&quot;With Hostname&quot;)">With Hostname</p>
             <p style="font-size:32px;font-weight:700;color:#8B5CF6" x-text="stats.with_hostname || 0"></p>
         </div>
     </div>
 
     <!-- Add Client / Subnet form -->
     <div class="card">
-        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px">Add Client or Subnet</h2>
+        <h2 style="font-size:20px;font-weight:700;margin-bottom:16px" x-text="t(&quot;Add Client or Subnet&quot;)">Add Client or Subnet</h2>
 
         <div x-show="form.type" class="badge" :class="getBadgeClass()">
             <i data-lucide="circle" style="width:16px;height:16px"></i>
@@ -148,7 +159,7 @@
 
         <form @submit.prevent="submitForm()" style="display:flex;flex-direction:column;gap:16px">
             <div>
-                <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px">
+                <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px" x-text="t(&quot;Address / Network *&quot;)">
                     Address / Network *
                 </label>
                 <input x-model="form.address"
@@ -156,14 +167,14 @@
                        type="text"
                        placeholder="IP (192.168.1.100), CIDR (192.168.1.0/24) or MAC (aa:bb:cc:dd:ee:ff)"
                        required
-                       class="input">
-                <p x-show="form.error" x-text="form.error"
+                       class="input" :placeholder="t(&quot;IP (192.168.1.100), CIDR (192.168.1.0/24) or MAC (aa:bb:cc:dd:ee:ff)&quot;)">
+                <p x-show="form.error" x-text="t(form.error)"
                    style="margin-top:6px;font-size:12px;color:var(--color-error)"></p>
             </div>
 
             <div>
                 <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px">
-                    Group <span x-show="form.type==='subnet'" style="color:var(--color-error)">*</span>
+                    <span x-text="t(&quot;Group&quot;)">Group</span> <span x-show="form.type==='subnet'" style="color:var(--color-error)">*</span>
                 </label>
                 <select x-model="form.group_id" class="select">
                     <template x-for="g in groups" :key="g.id">
@@ -174,10 +185,10 @@
 
             <div>
                 <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px"
-                       x-text="form.type==='subnet' ? 'Comment' : 'Hostname'">Hostname</label>
+                       x-text="form.type==='subnet' ? t(&quot;Comment&quot;) : t(&quot;Hostname&quot;)">Hostname</label>
                 <input x-model="form.metadata"
                        type="text"
-                       :placeholder="form.type==='subnet' ? 'Office network' : 'device-name'"
+                       :placeholder="form.type==='subnet' ? t(&quot;Office network&quot;) : t(&quot;device-name&quot;)"
                        class="input">
             </div>
 
@@ -191,11 +202,11 @@
     <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <h2 style="font-size:20px;font-weight:700">
-                Known Clients (<span x-text="clients.length">0</span>)
+                <span x-text="t(&quot;Known Clients (&quot;)">Known Clients (</span><span x-text="clients.length">0</span>)
             </h2>
         </div>
 
-        <div x-show="clients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
+        <div x-show="clients.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)" x-text="t(&quot;No clients discovered yet&quot;)">
             No clients discovered yet
         </div>
 
@@ -203,13 +214,13 @@
             <table x-show="clients.length > 0" class="table">
                 <thead>
                 <tr>
-                    <th>IP Address</th>
-                    <th>Hostname</th>
-                    <th>MAC Address</th>
-                    <th>Group</th>
-                    <th>First Seen</th>
-                    <th>Last Seen</th>
-                    <th>Queries</th>
+                    <th x-text="t(&quot;IP Address&quot;)">IP Address</th>
+                    <th x-text="t(&quot;Hostname&quot;)">Hostname</th>
+                    <th x-text="t(&quot;MAC Address&quot;)">MAC Address</th>
+                    <th x-text="t(&quot;Group&quot;)">Group</th>
+                    <th x-text="t(&quot;First Seen&quot;)">First Seen</th>
+                    <th x-text="t(&quot;Last Seen&quot;)">Last Seen</th>
+                    <th x-text="t(&quot;Queries&quot;)">Queries</th>
                     <th style="text-align:center;width:90px">Actions</th>
                 </tr>
                 </thead>
@@ -224,7 +235,7 @@
                                 <span x-text="c.hostname || '-'"></span>
                             </template>
                             <template x-if="editingId === c.id">
-                                <input class="input-inline" x-model="editForm.hostname" placeholder="hostname">
+                                <input class="input-inline" x-model="editForm.hostname" placeholder="hostname" :placeholder="t(&quot;hostname&quot;)">
                             </template>
                         </td>
 
@@ -259,10 +270,10 @@
                             <!-- Normal mode: edit + delete -->
                             <template x-if="editingId !== c.id">
                                 <span>
-                                    <button @click="startEdit(c)" class="btn-icon edit" title="Edit">
+                                    <button @click="startEdit(c)" class="btn-icon edit" title="Edit" :title="t(&quot;Edit&quot;)">
                                         <i data-lucide="pencil" style="width:15px;height:15px"></i>
                                     </button>
-                                    <button @click="deleteClient(c.id)" class="btn-icon delete" title="Delete">
+                                    <button @click="deleteClient(c.id)" class="btn-icon delete" title="Delete" :title="t(&quot;Delete&quot;)">
                                         <i data-lucide="trash-2" style="width:15px;height:15px"></i>
                                     </button>
                                 </span>
@@ -270,10 +281,10 @@
                             <!-- Edit mode: save + cancel -->
                             <template x-if="editingId === c.id">
                                 <span>
-                                    <button @click="saveEdit(c.id)" class="btn-icon save" title="Save">
+                                    <button @click="saveEdit(c.id)" class="btn-icon save" title="Save" :title="t(&quot;Save&quot;)">
                                         <i data-lucide="check" style="width:15px;height:15px"></i>
                                     </button>
-                                    <button @click="cancelEdit()" class="btn-icon cancel" title="Cancel">
+                                    <button @click="cancelEdit()" class="btn-icon cancel" title="Cancel" :title="t(&quot;Cancel&quot;)">
                                         <i data-lucide="x" style="width:15px;height:15px"></i>
                                     </button>
                                 </span>
@@ -290,17 +301,17 @@
     <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <h2 style="font-size:20px;font-weight:700">
-                Subnets (<span x-text="subnets.length">0</span>)
+                <span x-text="t(&quot;Subnets (&quot;)">Subnets (</span><span x-text="subnets.length">0</span>)
             </h2>
             <div x-show="selectedSubnets.length > 0">
                 <button @click="bulkDeleteSubnets()" class="btn-bulk-delete">
                     <i data-lucide="trash-2" style="width:16px;height:16px"></i>
-                    <span x-text="`Delete ${selectedSubnets.length} item${selectedSubnets.length > 1 ? 's' : ''}`"></span>
+                    <span x-text="tn('Delete {count} item', 'Delete {count} items', selectedSubnets.length)"></span>
                 </button>
             </div>
         </div>
 
-        <div x-show="subnets.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)">
+        <div x-show="subnets.length === 0" style="padding:32px;text-align:center;color:var(--text-secondary)" x-text="t(&quot;No subnets configured yet&quot;)">
             No subnets configured yet
         </div>
 
@@ -312,11 +323,11 @@
                         <input type="checkbox"
                                x-model="selectAllSubnets"
                                @change="toggleSelectAllSubnets()"
-                               title="Select All">
+                               title="Select All" :title="t(&quot;Select All&quot;)">
                     </th>
-                    <th>Subnet CIDR</th>
-                    <th>Group</th>
-                    <th>Comment</th>
+                    <th x-text="t(&quot;Subnet CIDR&quot;)">Subnet CIDR</th>
+                    <th x-text="t(&quot;Group&quot;)">Group</th>
+                    <th x-text="t(&quot;Comment&quot;)">Comment</th>
                     <th style="text-align:center;width:80px">Actions</th>
                 </tr>
                 </thead>
@@ -333,7 +344,7 @@
                         <td x-text="getGroupName(s.group_id)"></td>
                         <td x-text="s.comment || '-'"></td>
                         <td style="text-align:center;width:80px">
-                            <button @click="deleteSubnet(s.id)" class="btn-icon delete" title="Delete">
+                            <button @click="deleteSubnet(s.id)" class="btn-icon delete" title="Delete" :title="t(&quot;Delete&quot;)">
                                 <i data-lucide="trash-2" style="width:16px;height:16px"></i>
                             </button>
                         </td>

@@ -247,6 +247,8 @@ fn create_app(
     let mut app = static_files!(router, {
         "/static/shared.css" => ("shared.css", CSS),
         "/static/shared.js" => ("shared.js", JS),
+        "/static/i18n.js" => ("i18n.js", JS),
+        "/static/i18n-fr.js" => ("i18n-fr.js", JS),
         "/static/logo.svg" => ("logo.svg", SVG),
         "/static/dashboard.css" => ("dashboard.css", CSS),
         "/static/dashboard.js" => ("dashboard.js", JS),
