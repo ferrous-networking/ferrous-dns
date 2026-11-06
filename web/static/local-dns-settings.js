@@ -62,19 +62,19 @@
                 const labels = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
 
                 if (!hostname || !record.ip) {
-                    return 'Hostname and IP address are required.';
+                    return t("Hostname and IP address are required.");
                 }
                 if (hostname.includes('*') && hostname !== '*' && !hostname.startsWith('*.')) {
-                    return "Wildcard must be the leftmost label: use '*' or '*.sub'.";
+                    return t("Wildcard must be the leftmost label: use '*' or '*.sub'.");
                 }
                 if (hostname !== '*' && !labels.test(hostname.replace(/^\*\./, ''))) {
-                    return 'Hostname may only contain letters, digits, hyphens and underscores.';
+                    return t("Hostname may only contain letters, digits, hyphens and underscores.");
                 }
                 if (domain.includes('*')) {
-                    return "Domain cannot contain a wildcard: put the '*' in the hostname.";
+                    return t("Domain cannot contain a wildcard: put the '*' in the hostname.");
                 }
                 if (domain && !labels.test(domain)) {
-                    return 'Domain may only contain letters, digits, hyphens and underscores.';
+                    return t("Domain may only contain letters, digits, hyphens and underscores.");
                 }
                 return '';
             },
@@ -130,11 +130,11 @@
                         await this.loadRecords();
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        this.addError = await this.errorText(r, 'Failed to update record');
+                        this.addError = await this.errorText(r, t("Failed to update record"));
                     }
                 } catch (e) {
                     console.error(e);
-                    this.addError = 'Network error: ' + e.message;
+                    this.addError = t("Network error: ") + e.message;
                 }
             },
             async addRecord() {
@@ -157,26 +157,26 @@
                         this.newRecord = {hostname: '', domain: '', ip: '', record_type: 'A', ttl: 300};
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        this.addError = await this.errorText(r, 'Failed to add record');
+                        this.addError = await this.errorText(r, t("Failed to add record"));
                     }
                 } catch (e) {
                     console.error(e);
-                    this.addError = 'Network error: ' + e.message;
+                    this.addError = t("Network error: ") + e.message;
                 }
             },
             async deleteRecord(id) {
-                if (!confirm('Delete this DNS record?')) return;
+                if (!confirm(t("Delete this DNS record?"))) return;
                 try {
                     const r = await fetch(`${API_BASE}/local-records/${id}`, {method: 'DELETE'});
                     if (r.ok) {
                         await this.loadRecords();
                         this.$nextTick(() => scheduleLucide());
                     } else {
-                        alert('Failed to delete record');
+                        alert(t("Failed to delete record"));
                     }
                 } catch (e) {
                     console.error(e);
-                    alert('Network error: ' + e.message);
+                    alert(t("Network error: ") + e.message);
                 }
             },
         }

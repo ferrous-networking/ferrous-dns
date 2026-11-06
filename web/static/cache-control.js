@@ -123,7 +123,7 @@
 
             formatCachedAt(cachedAt) {
                 if (!cachedAt) return '-';
-                return new Date(cachedAt * 1000).toLocaleTimeString();
+                return new Date(cachedAt * 1000).toLocaleTimeString(FerrousI18n.locale());
             },
 
             // Permanent entries never expire; stale ones already hit zero and
@@ -155,10 +155,10 @@
                         await this.loadEntries();
                     } else {
                         console.error('Failed to remove cache entry:', await res.text());
-                        alert(`Failed to remove "${entry.domain}" (${entry.type}).`);
+                        alert(t("Failed to remove \"{0}\" ({1}).", {0: entry.domain, 1: entry.type}));
                     }
                 } catch (e) {
-                    alert(`Network error: ${e.message}`);
+                    alert(t("Network error: {0}", {0: e.message}));
                 } finally {
                     this.removing = null;
                 }

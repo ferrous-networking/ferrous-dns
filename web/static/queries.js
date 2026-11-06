@@ -179,23 +179,23 @@
 
             groupLabel(groupId) {
                 const name = this.groupNames[groupId];
-                return name ? `group "${name}"` : `group #${groupId}`;
+                return name ? t("group \"{0}\"", {0: name}) : t("group #{0}", {0: groupId});
             },
 
             coalescedTip(query) {
                 return query.coalesced === 'leader'
-                    ? 'Coalesced: identical queries that arrived\nwhile this one was in flight shared its answer'
-                    : 'Coalesced: shared the answer of an identical\nquery already in flight, with no upstream\nrequest of its own';
+                    ? t("Coalesced: identical queries that arrived\nwhile this one was in flight shared its answer")
+                    : t("Coalesced: shared the answer of an identical\nquery already in flight, with no upstream\nrequest of its own");
             },
 
             cookieTip(query) {
                 if (query.cookie === 'valid') {
-                    return 'DNS Cookie: a server cookie this server issued\nto the client, still in its rotation window';
+                    return t("DNS Cookie: a server cookie this server issued\nto the client, still in its rotation window");
                 }
                 if (query.cookie === 'client') {
-                    return 'DNS Cookie: a client cookie only, from a first\nquery or a client that did not keep ours';
+                    return t("DNS Cookie: a client cookie only, from a first\nquery or a client that did not keep ours");
                 }
-                return 'DNS Cookie: a server cookie that is not ours:\nexpired by rotation or a restart, or forged';
+                return t("DNS Cookie: a server cookie that is not ours:\nexpired by rotation or a restart, or forged");
             },
 
             escapeHtml(str) {
@@ -205,26 +205,26 @@
             },
 
             formatSource(query) {
-                if (query.block_source === 'dns_tunneling') return '<span class="badge-malware">DNS Tunneling</span>';
-                if (query.block_source === 'dns_rebinding') return '<span class="badge-malware">DNS Rebinding</span>';
-                if (query.block_source === 'dga_detection') return '<span class="badge-malware">DGA Detection</span>';
-                if (query.block_source === 'nxdomain_hijack') return '<span class="badge-malware">NXDomain Hijack</span>';
-                if (query.block_source === 'response_ip_filter') return '<span class="badge-malware">Response IP Filter</span>';
-                if (query.response_status === 'RATE_LIMITED') return '<span class="badge-rate-limited">Rate Limited</span>';
-                if (query.response_status === 'RATE_LIMITED_TC') return '<span class="badge-rate-limited">Rate Limited (TC)</span>';
+                if (query.block_source === 'dns_tunneling') return '<span class="badge-malware">' + this.escapeHtml(t("DNS Tunneling")) + '</span>';
+                if (query.block_source === 'dns_rebinding') return '<span class="badge-malware">' + this.escapeHtml(t("DNS Rebinding")) + '</span>';
+                if (query.block_source === 'dga_detection') return '<span class="badge-malware">' + this.escapeHtml(t("DGA Detection")) + '</span>';
+                if (query.block_source === 'nxdomain_hijack') return '<span class="badge-malware">' + this.escapeHtml(t("NXDomain Hijack")) + '</span>';
+                if (query.block_source === 'response_ip_filter') return '<span class="badge-malware">' + this.escapeHtml(t("Response IP Filter")) + '</span>';
+                if (query.response_status === 'RATE_LIMITED') return '<span class="badge-rate-limited">' + this.escapeHtml(t("Rate Limited")) + '</span>';
+                if (query.response_status === 'RATE_LIMITED_TC') return '<span class="badge-rate-limited">' + this.escapeHtml(t("Rate Limited (TC)")) + '</span>';
                 if (query.cache_hit) return 'Cache';
-                if (query.block_source === 'blocklist') return 'Blocklist';
-                if (query.block_source === 'managed_domain') return 'Managed Domain';
-                if (query.block_source === 'regex_filter') return 'Regex Filter';
-                if (query.block_source === 'non_fqdn') return 'Non-FQDN';
-                if (query.block_source === 'private_ptr') return 'Private PTR';
-                if (query.block_source === 'dns_cookie') return 'DNS Cookie';
-                if (query.block_source === 'cname_cloaking') return 'CNAME Cloaking';
-                if (query.block_source === 'schedule') return 'Schedule';
-                if (query.block_source === 'rate_limit') return '<span class="badge-rate-limited">Rate Limited</span>';
+                if (query.block_source === 'blocklist') return t("Blocklist");
+                if (query.block_source === 'managed_domain') return t("Managed Domain");
+                if (query.block_source === 'regex_filter') return t("Regex Filter");
+                if (query.block_source === 'non_fqdn') return t("Non-FQDN");
+                if (query.block_source === 'private_ptr') return t("Private PTR");
+                if (query.block_source === 'dns_cookie') return t("DNS Cookie");
+                if (query.block_source === 'cname_cloaking') return t("CNAME Cloaking");
+                if (query.block_source === 'schedule') return t("Schedule");
+                if (query.block_source === 'rate_limit') return '<span class="badge-rate-limited">' + this.escapeHtml(t("Rate Limited")) + '</span>';
                 // Any other block, such as a source added later, still reads as one.
-                if (query.blocked) return 'Blocked';
-                if (query.response_status === 'LOCAL_DNS') return 'Local DNS';
+                if (query.blocked) return t("Blocked");
+                if (query.response_status === 'LOCAL_DNS') return t("Local DNS");
                 if (query.upstream_pool && query.upstream_server) {
                     const host = query.upstream_server
                         .replace(/^[a-z0-9]+:\/\//, '')
@@ -235,13 +235,13 @@
                     return '<span style="color:#F97316">' + pool
                         + '</span><span style="color:var(--text-secondary)">:</span>' + safeHost;
                 }
-                return 'Upstream';
+                return t("Upstream");
             },
 
             formatTime(timestamp) {
                 if (!timestamp) return '-';
                 const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
-                return new Date(utc).toLocaleTimeString();
+                return new Date(utc).toLocaleTimeString(FerrousI18n.locale());
             },
 
             formatResponseTime(query) {
@@ -249,21 +249,21 @@
                 if (us == null) return '-';
                 if (us < 1000) return `${Math.round(us)} µs`;
                 if (us < 1000000) return `${Math.round(us / 1000)} ms`;
-                return `${(us / 1000000).toFixed(2)} s`;
+                return `${FerrousI18n.decimal(us / 1000000, 2)} s`;
             },
 
             async handleDomainAction(query) {
                 const domain = query.domain.replace(/\.$/, '');
                 const isBlocked = query.blocked;
                 const action = isBlocked ? 'allow' : 'deny';
-                const label = isBlocked ? 'Allow' : 'Block';
+                const label = isBlocked ? t("Allow") : t("Block");
                 // The rule goes where the query was decided: a rule in any other
                 // group would not apply to this client. Rows logged before queries
                 // carried a group fall back to the default group.
                 const groupId = query.group_id ?? 1;
                 const group = this.groupLabel(groupId);
 
-                if (!isBlocked && !confirm(`Block domain "${domain}" for ${group}?`)) return;
+                if (!isBlocked && !confirm(t("Block domain \"{0}\" for {1}?", {0: domain, 1: group}))) return;
 
                 try {
                     const res = await fetch(`${API_BASE}/managed-domains`, {
@@ -274,20 +274,20 @@
                             domain: domain,
                             action: action,
                             group_id: groupId,
-                            comment: `Added from Query Log (${label})`,
+                            comment: t("Added from Query Log ({0})", {0: label}),
                             enabled: true
                         })
                     });
                     if (res.ok) {
-                        alert(`Domain "${domain}" ${isBlocked ? 'allowed' : 'blocked'} for ${group}.`);
+                        alert(t("Domain \"{0}\" {1} for {2}.", {0: domain, 1: isBlocked ? t('allowed') : t('blocked'), 2: group}));
                     } else if (res.status === 409) {
-                        alert(`A rule for "${domain}" already exists in ${group}. Manage it in DNS Filter.`);
+                        alert(t("A rule for \"{0}\" already exists in {1}. Manage it in DNS Filter.", {0: domain, 1: group}));
                     } else {
                         console.error('Failed to create managed domain:', await res.text());
-                        alert(`Failed to create rule for "${domain}".`);
+                        alert(t("Failed to create rule for \"{0}\".", {0: domain}));
                     }
                 } catch (e) {
-                    alert(`Network error: ${e.message}`);
+                    alert(t("Network error: {0}", {0: e.message}));
                 }
             }
         };
