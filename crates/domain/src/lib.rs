@@ -21,6 +21,7 @@ pub use entities::blocklist_source::{BlocklistSource, ListSyncStatus};
 pub use entities::client::{Client, ClientStats, HostnameSource};
 pub use entities::client_subnet::{ClientSubnet, SubnetMatcher};
 pub use entities::custom_service::CustomService;
+pub use entities::doh_id::DohId;
 pub use entities::filter_explanation::{
     AllowMatch, AllowMatchKind, BlockMatch, BlockMatchKind, FilterExplanation, MatchType,
 };

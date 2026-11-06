@@ -62,6 +62,7 @@ pub fn create_api_router_with_openapi(state: AppState) -> (Router, utoipa::opena
     let protected_router = core_routes
         .merge(handlers::groups::routes())
         .merge(handlers::client_subnets::routes())
+        .merge(handlers::doh_ids::routes())
         .merge(handlers::blocklist_sources::routes())
         .merge(handlers::whitelist_sources::routes())
         .merge(handlers::managed_domains::routes())

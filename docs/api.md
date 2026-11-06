@@ -172,7 +172,7 @@ Two endpoints add fields to the envelope:
 - `records_total` (`/queries`, `/cache/entries`): the size of the collection the list is drawn from, before the request's filters. For `/queries` it is every logged query in `period`; for `/cache/entries`, every entry the cache holds, including expired ones not yet removed, which the listing leaves out.
 - `next_cursor` (`/queries`): pass it as `cursor` to get the next page, or `null` on the last one. A cursor keeps its place while new queries are logged, which an `offset` does not. With `cursor`, `offset` is ignored and answered as `0`.
 
-Every other list answers a plain JSON array with all of its items: groups, users, API tokens, sessions, blocklist and allowlist sources, client subnets, regex filters, custom and blocked services, Safe Search configs, local records and schedule profiles. These grow only as fast as someone configures them. Top-N lists, such as the dashboard's top domains, take a `limit` but are not paged.
+Every other list answers a plain JSON array with all of its items: groups, users, API tokens, sessions, blocklist and allowlist sources, client subnets, DoH IDs, regex filters, custom and blocked services, Safe Search configs, local records and schedule profiles. These grow only as fast as someone configures them. Top-N lists, such as the dashboard's top domains, take a `limit` but are not paged.
 
 A new endpoint follows the same rule. It is paged when traffic feeds its list, or a bulk import can grow it without a practical bound. It then uses the envelope above, with a default `limit` of 100 and a maximum of 1000 unless its rows are heavy, as cache entries are. Otherwise it answers a plain array.
 
@@ -1159,6 +1159,74 @@ DELETE /ferrous/api/v1/client-subnets/{id}
 ```
 
 **Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown subnet
+
+---
+
+## DoH IDs
+
+Per-device DNS-over-HTTPS identifiers mapped to client groups.
+
+### List DoH IDs
+
+```http
+GET /ferrous/api/v1/doh-ids
+```
+
+**Auth:** session or API key · **Returns:** `200` `[DohIdResponse]`
+
+### Get DoH ID
+
+```http
+GET /ferrous/api/v1/doh-ids/{id}
+```
+
+**Auth:** session or API key · **Returns:** `200` `DohIdResponse` · **Errors:** `404` unknown DoH ID
+
+### Create DoH ID
+
+```http
+POST /ferrous/api/v1/doh-ids
+```
+
+**Auth:** session or API key · **Returns:** `201` `DohIdResponse` · **Errors:** `400` invalid name, client ID or comment, `404` unknown group, `409` duplicate name or client ID
+
+```json
+{
+  "name": "Alice's iPhone",
+  "client_id": "alice-iphone",
+  "group_id": 2,
+  "comment": "Personal phone"
+}
+```
+
+When `client_id` is omitted or `null`, the server generates a random UUID v4. A custom `client_id` must be 1–63 characters of lowercase ASCII (`a-z`), digits (`0-9`) and hyphens (`-`), and cannot start or end with a hyphen.
+
+### Update DoH ID
+
+```http
+PUT /ferrous/api/v1/doh-ids/{id}
+```
+
+**Auth:** session or API key · **Returns:** `200` `DohIdResponse` · **Errors:** `400` invalid name, client ID or comment, `404` unknown DoH ID or group, `409` duplicate name or client ID
+
+```json
+{
+  "name": "Alice's iPhone",
+  "client_id": null,
+  "group_id": 2,
+  "comment": null
+}
+```
+
+Omitting `client_id` (or passing `null`) preserves the existing identifier; passing a string replaces it. Passing `"comment": null` clears the stored comment.
+
+### Delete DoH ID
+
+```http
+DELETE /ferrous/api/v1/doh-ids/{id}
+```
+
+**Auth:** session or API key · **Returns:** `204` · **Errors:** `404` unknown DoH ID
 
 ---
 

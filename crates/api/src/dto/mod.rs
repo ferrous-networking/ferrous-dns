@@ -11,6 +11,7 @@ pub mod config;
 pub mod custom_service;
 pub mod dashboard;
 pub mod dnssec;
+pub mod doh_id;
 pub mod group;
 pub mod health;
 pub mod hostname;
@@ -58,6 +59,7 @@ pub use client_subnet::{
 pub use config::*;
 pub use dashboard::{DashboardQuery, DashboardResponse, TopBlockedDomain, TopClient};
 pub use dnssec::DnssecStatsResponse;
+pub use doh_id::{CreateDohIdRequest, DohIdResponse, UpdateDohIdRequest};
 pub use group::{AssignGroupRequest, CreateGroupRequest, GroupResponse, UpdateGroupRequest};
 pub use health::{HealthResponse, HealthStatus};
 pub use hostname::HostnameResponse;

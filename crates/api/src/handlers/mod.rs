@@ -12,6 +12,7 @@ pub mod config;
 pub mod custom_services;
 pub mod dashboard;
 pub mod dnssec;
+pub mod doh_ids;
 pub mod groups;
 pub mod health;
 pub mod hostname;

@@ -8,17 +8,18 @@ use ferrous_dns_application::use_cases::{
     AssignClientGroupUseCase, AssignScheduleProfileUseCase, AuthenticatePasskeyUseCase,
     BacktestBlocklistsUseCase, BlockServiceUseCase, ChangePasswordUseCase, ConfirmTotpUseCase,
     CreateApiTokenUseCase, CreateBlocklistSourceUseCase, CreateClientSubnetUseCase,
-    CreateCustomServiceUseCase, CreateGroupUseCase, CreateLocalRecordUseCase,
+    CreateCustomServiceUseCase, CreateDohIdUseCase, CreateGroupUseCase, CreateLocalRecordUseCase,
     CreateManagedDomainUseCase, CreateManualClientUseCase, CreateRegexFilterUseCase,
     CreateScheduleProfileUseCase, CreateUserUseCase, CreateWhitelistSourceUseCase,
     DeleteApiTokenUseCase, DeleteBlocklistSourceUseCase, DeleteClientSubnetUseCase,
-    DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteGroupUseCase, DeleteLocalRecordUseCase,
-    DeleteManagedDomainUseCase, DeletePasskeyUseCase, DeleteRegexFilterUseCase,
-    DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase, DeleteUserUseCase,
-    DeleteWhitelistSourceUseCase, DisableMfaUseCase, DiscoverablePasskeyLoginUseCase,
-    ExportConfigUseCase, GetActiveSessionsUseCase, GetApiTokensUseCase, GetAuthStatusUseCase,
-    GetBlockFilterStatsUseCase, GetBlockedServicesUseCase, GetBlocklistSourcesUseCase,
-    GetCacheStatsUseCase, GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase,
+    DeleteClientUseCase, DeleteCustomServiceUseCase, DeleteDohIdUseCase, DeleteGroupUseCase,
+    DeleteLocalRecordUseCase, DeleteManagedDomainUseCase, DeletePasskeyUseCase,
+    DeleteRegexFilterUseCase, DeleteSafeSearchConfigsUseCase, DeleteScheduleProfileUseCase,
+    DeleteUserUseCase, DeleteWhitelistSourceUseCase, DisableMfaUseCase,
+    DiscoverablePasskeyLoginUseCase, ExportConfigUseCase, GetActiveSessionsUseCase,
+    GetApiTokensUseCase, GetAuthStatusUseCase, GetBlockFilterStatsUseCase,
+    GetBlockedServicesUseCase, GetBlocklistSourcesUseCase, GetCacheStatsUseCase,
+    GetClientSubnetsUseCase, GetClientsUseCase, GetCustomServicesUseCase, GetDohIdsUseCase,
     GetGroupsUseCase, GetManagedDomainsUseCase, GetMfaStatusUseCase, GetQueryRateUseCase,
     GetQueryStatsUseCase, GetRecentQueriesUseCase, GetRegexFiltersUseCase,
     GetSafeSearchConfigsUseCase, GetScheduleProfilesUseCase, GetServiceCatalogUseCase,
@@ -27,10 +28,10 @@ use ferrous_dns_application::use_cases::{
     ManageTimeSlotsUseCase, RegisterPasskeyUseCase, ReloadConfigUseCase, SetupPasswordUseCase,
     SetupTotpUseCase, SyncBlocklistSourcesUseCase, TestDomainUseCase, ToggleSafeSearchUseCase,
     UnblockServiceUseCase, UpdateApiTokenUseCase, UpdateBlocklistSourceUseCase,
-    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateGroupUseCase, UpdateLocalRecordUseCase,
-    UpdateManagedDomainUseCase, UpdateRegexFilterUseCase, UpdateScheduleProfileUseCase,
-    UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase, ValidateSessionUseCase,
-    VerifyMfaUseCase,
+    UpdateClientUseCase, UpdateCustomServiceUseCase, UpdateDohIdUseCase, UpdateGroupUseCase,
+    UpdateLocalRecordUseCase, UpdateManagedDomainUseCase, UpdateRegexFilterUseCase,
+    UpdateScheduleProfileUseCase, UpdateWhitelistSourceUseCase, ValidateApiTokenUseCase,
+    ValidateSessionUseCase, VerifyMfaUseCase,
 };
 use ferrous_dns_domain::Config;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -82,6 +83,14 @@ pub struct ClientUseCases {
     pub get_client_subnets: Arc<GetClientSubnetsUseCase>,
     pub create_client_subnet: Arc<CreateClientSubnetUseCase>,
     pub delete_client_subnet: Arc<DeleteClientSubnetUseCase>,
+}
+
+#[derive(Clone)]
+pub struct DohIdUseCases {
+    pub get_doh_ids: Arc<GetDohIdsUseCase>,
+    pub create_doh_id: Arc<CreateDohIdUseCase>,
+    pub update_doh_id: Arc<UpdateDohIdUseCase>,
+    pub delete_doh_id: Arc<DeleteDohIdUseCase>,
 }
 
 #[derive(Clone)]
@@ -177,6 +186,7 @@ pub struct AppState {
     pub dns: DnsUseCases,
     pub groups: GroupUseCases,
     pub clients: ClientUseCases,
+    pub doh_ids: DohIdUseCases,
     pub blocking: BlockingUseCases,
     pub services: ServiceUseCases,
     pub safe_search: SafeSearchUseCases,

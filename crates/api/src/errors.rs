@@ -26,6 +26,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::CustomServiceNotFound(_)
         | DomainError::ClientNotFound(_)
         | DomainError::SubnetNotFound(_)
+        | DomainError::DohIdNotFound(_)
         | DomainError::ServiceNotFoundInCatalog(_)
         | DomainError::ScheduleProfileNotFound(_)
         | DomainError::TimeSlotNotFound(_)
@@ -55,6 +56,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::BlockedServiceAlreadyExists(_)
         | DomainError::CustomServiceAlreadyExists(_)
         | DomainError::SubnetConflict(_)
+        | DomainError::DohIdConflict(_)
         | DomainError::GroupHasAssignedClients(_)
         | DomainError::GroupRoutedByPool(_)
         | DomainError::AlreadyExists(_) => StatusCode::CONFLICT,
@@ -68,6 +70,7 @@ fn status_code(err: &DomainError) -> StatusCode {
         | DomainError::InvalidDomainName(_)
         | DomainError::InvalidIpAddress(_)
         | DomainError::InvalidCidr(_)
+        | DomainError::InvalidDohId(_)
         | DomainError::InvalidSafeSearchEngine(_)
         | DomainError::InvalidTimeSlot(_)
         | DomainError::InvalidScheduleProfile(_)
