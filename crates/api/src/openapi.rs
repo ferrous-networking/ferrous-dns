@@ -63,6 +63,7 @@ impl Modify for SecurityAddon {
         (name = "clients", description = "Client inventory and group assignment"),
         (name = "groups", description = "Client groups"),
         (name = "client_subnets", description = "CIDR-based group mapping"),
+        (name = "doh_ids", description = "Per-client DoH identifier registry"),
         (name = "blocking", description = "Blocklist, whitelist, managed domains and regex filters"),
         (name = "blocklist_sources", description = "External blocklist sources"),
         (name = "whitelist_sources", description = "External whitelist sources"),
@@ -156,6 +157,10 @@ impl Modify for SecurityAddon {
         dto::ClientSubnetResponse,
         dto::CreateClientSubnetRequest,
         dto::CreateManualClientRequest,
+        // doh ids
+        dto::DohIdResponse,
+        dto::CreateDohIdRequest,
+        dto::UpdateDohIdRequest,
         // groups
         dto::GroupResponse,
         dto::CreateGroupRequest,

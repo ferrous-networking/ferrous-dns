@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS doh_ids (
+    id         INTEGER  PRIMARY KEY AUTOINCREMENT,
+    name       TEXT     NOT NULL UNIQUE,
+    client_id  TEXT     NOT NULL UNIQUE,
+    group_id   INTEGER  NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    comment    TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_doh_ids_group ON doh_ids(group_id);

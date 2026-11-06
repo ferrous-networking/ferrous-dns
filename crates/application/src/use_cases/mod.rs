@@ -10,6 +10,7 @@ pub mod clients;
 pub mod config;
 pub mod custom_services;
 pub mod dns;
+pub mod doh_ids;
 pub mod groups;
 pub mod local_records;
 pub mod managed_domains;
@@ -62,6 +63,7 @@ pub use custom_services::{
     UpdateCustomServiceUseCase,
 };
 pub use dns::HandleDnsQueryUseCase;
+pub use doh_ids::{CreateDohIdUseCase, DeleteDohIdUseCase, GetDohIdsUseCase, UpdateDohIdUseCase};
 pub use groups::{
     AssignClientGroupUseCase, CreateGroupUseCase, DeleteGroupUseCase, GetGroupsUseCase,
     UpdateGroupUseCase,

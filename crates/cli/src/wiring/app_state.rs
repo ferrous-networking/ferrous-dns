@@ -1,6 +1,7 @@
 use ferrous_dns_api::{
     AppState, AuthUseCases, BackupUseCases, BlockingUseCases, ClientUseCases, DnsUseCases,
-    GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases, ServiceUseCases,
+    DohIdUseCases, GroupUseCases, QueryUseCases, SafeSearchUseCases, ScheduleUseCases,
+    ServiceUseCases,
 };
 use ferrous_dns_application::drop_counter::ShedCounters;
 use ferrous_dns_application::ports::{
@@ -183,6 +184,12 @@ pub async fn build_app_state(
             get_client_subnets: use_cases.get_client_subnets,
             create_client_subnet: use_cases.create_client_subnet,
             delete_client_subnet: use_cases.delete_client_subnet,
+        },
+        doh_ids: DohIdUseCases {
+            get_doh_ids: use_cases.get_doh_ids,
+            create_doh_id: use_cases.create_doh_id,
+            update_doh_id: use_cases.update_doh_id,
+            delete_doh_id: use_cases.delete_doh_id,
         },
         blocking: BlockingUseCases {
             get_blocklist_sources: use_cases.get_blocklist_sources,
