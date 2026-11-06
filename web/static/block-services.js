@@ -87,9 +87,9 @@ function app() {
             for (const svc of this.catalog) {
                 if (!seen.has(svc.category_id)) seen.set(svc.category_id, svc.category_name);
             }
-            const cats = [{ id: 'all', name: 'All' }];
+            const cats = [{ id: 'all', name: t("All") }];
             for (const [id, name] of [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))) {
-                cats.push({ id, name });
+                cats.push({ id, name, is_custom: this.catalog.filter(svc => svc.category_id === id).every(svc => svc.is_custom) });
             }
             return cats;
         },
@@ -157,7 +157,7 @@ function app() {
 
         serviceCategory(serviceId) {
             const svc = this.catalog.find(s => s.id === serviceId);
-            return svc ? svc.category_name : '—';
+            return svc ? (svc.is_custom ? svc.category_name : t(svc.category_name)) : '—';
         },
 
         groupName(groupId) {
@@ -201,8 +201,8 @@ function app() {
             this.customFormSubmitting = true;
             try {
                 const domains = this.customForm.domains.split('\n').map(d => d.trim()).filter(d => d);
-                if (!this.customForm.name.trim()) throw new Error('Name is required');
-                if (domains.length === 0) throw new Error('At least one domain is required');
+                if (!this.customForm.name.trim()) throw new Error(t("Name is required"));
+                if (domains.length === 0) throw new Error(t("At least one domain is required"));
                 const body = { name: this.customForm.name.trim(), category_name: this.customForm.category_name.trim() || 'Custom', domains };
                 const isNew = !this.editingCustomId;
                 const url = isNew ? `${API_BASE}/custom-services` : `${API_BASE}/custom-services/${this.editingCustomId}`;
@@ -233,7 +233,7 @@ function app() {
         },
 
         async deleteCustomService(serviceId) {
-            if (!confirm('Delete this custom service? All blocked entries and managed domains will be removed.')) return;
+            if (!confirm(t("Delete this custom service? All blocked entries and managed domains will be removed."))) return;
             try {
                 await fetch(`${API_BASE}/custom-services/${serviceId}`, { method: 'DELETE' });
                 await Promise.all([this.loadCustomServices(), this.reloadCatalog(), this.loadBlockedServices()]);
@@ -417,7 +417,7 @@ function app() {
 
         async saveProfile() {
             this.profileFormError = '';
-            if (!this.profileForm.name.trim()) { this.profileFormError = 'Name is required'; return; }
+            if (!this.profileForm.name.trim()) { this.profileFormError = t("Name is required"); return; }
             try {
                 const body = { name: this.profileForm.name.trim(), timezone: this.profileForm.timezone.trim() || 'UTC', comment: this.profileForm.comment.trim() || null };
                 const isNew = !this.editingProfileId;
@@ -434,7 +434,7 @@ function app() {
         },
 
         async deleteProfile(profileId) {
-            if (!confirm('Delete this schedule profile? It will be unassigned from all groups.')) return;
+            if (!confirm(t("Delete this schedule profile? It will be unassigned from all groups."))) return;
             try {
                 await fetch(`${API_BASE}/schedule-profiles/${profileId}`, { method: 'DELETE' });
                 await Promise.all([this.loadScheduleProfiles(), this.loadGroupSchedule()]);
@@ -451,9 +451,9 @@ function app() {
 
         async saveSlot(profileId) {
             this.slotFormError = '';
-            if (!this.slotForm.start_time || !this.slotForm.end_time) { this.slotFormError = 'Start and end time are required'; return; }
-            if (this.slotForm.start_time >= this.slotForm.end_time) { this.slotFormError = 'Start time must be before end time'; return; }
-            if (!this.slotForm.days) { this.slotFormError = 'Select at least one day'; return; }
+            if (!this.slotForm.start_time || !this.slotForm.end_time) { this.slotFormError = t("Start and end time are required"); return; }
+            if (this.slotForm.start_time >= this.slotForm.end_time) { this.slotFormError = t("Start time must be before end time"); return; }
+            if (!this.slotForm.days) { this.slotFormError = t("Select at least one day"); return; }
             try {
                 const res = await fetch(`${API_BASE}/schedule-profiles/${profileId}/slots`, {
                     method: 'POST',
@@ -478,11 +478,11 @@ function app() {
         },
 
         daysLabel(mask) {
-            const names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+            const names = [t("Mon"),t("Tue"),t("Wed"),t("Thu"),t("Fri"),t("Sat"),t("Sun")];
             const days = names.filter((_, i) => mask & (1 << i));
-            if (days.length === 7) return 'Every day';
-            if (days.length === 5 && !(mask & 32) && !(mask & 64)) return 'Mon–Fri';
-            if (days.length === 2 && (mask & 32) && (mask & 64)) return 'Sat–Sun';
+            if (days.length === 7) return t("Every day");
+            if (days.length === 5 && !(mask & 32) && !(mask & 64)) return t("Mon–Fri");
+            if (days.length === 2 && (mask & 32) && (mask & 64)) return t("Sat–Sun");
             return days.join(', ');
         },
     };

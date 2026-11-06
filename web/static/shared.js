@@ -115,7 +115,7 @@ async function logout() {
 // --- User-agent parser ---
 
 function parseBrowser(ua) {
-    if (!ua || ua === 'unknown') return 'Unknown';
+    if (!ua || ua === 'unknown') return t("Unknown");
     if (ua.includes('Edg/')) return 'Edge';
     if (ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
     if (ua.includes('Vivaldi/')) return 'Vivaldi';
@@ -137,6 +137,7 @@ function showRestartBanner() {
     banner.id = 'global-restart-banner';
     banner.style.cssText = 'background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px';
     banner.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><p style="font-size:14px;color:#92400E;margin:0;font-weight:500">Configuration saved. Restart the server to apply changes.</p>';
+    banner.querySelector('p').textContent = t('Configuration saved. Restart the server to apply changes.');
     main.insertBefore(banner, main.children[1] || null);
 }
 

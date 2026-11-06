@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ferrous DNS - Block Services</title>
+    <title data-i18n-title="Ferrous DNS - Block Services">Ferrous DNS - Block Services</title>
     <link rel="stylesheet" href="/static/vendor/tailwind-preflight-3.4.17.css">
     <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/block-services.css">
@@ -25,59 +27,68 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span></div>
-        <div class="status-item"><div class="status-indicator"></div><span>Active</span></div>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span></div>
+        <div class="status-item"><div class="status-indicator"></div><span x-text="t(&quot;Active&quot;)">Active</span></div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
-            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item"><i data-lucide="users" class="nav-icon"></i><span>Clients</span></a>
-            <a href="/doh-ids.html" class="nav-item"><i data-lucide="fingerprint" class="nav-icon"></i><span>DoH IDs</span></a>
-            <a href="/groups.html" class="nav-item"><i data-lucide="layers" class="nav-icon"></i><span>Groups</span></a>
-            <a href="/dns-filter.html" class="nav-item"><i data-lucide="shield" class="nav-icon"></i><span>DNS Filter</span></a>
-            <a href="/block-services.html" class="nav-item active"><i data-lucide="shield-ban" class="nav-icon"></i><span>Block Services</span></a>
+            <a href="/doh-ids.html" class="nav-item"><i data-lucide="fingerprint" class="nav-icon"></i><span x-text="t(&quot;DoH IDs&quot;)">DoH IDs</span></a>
+            <a href="/groups.html"class="nav-item"><i data-lucide="layers" class="nav-icon"></i><span x-text="t(&quot;Groups&quot;)">Groups</span></a>
+            <a href="/dns-filter.html" class="nav-item"><i data-lucide="shield" class="nav-icon"></i><span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span></a>
+            <a href="/block-services.html" class="nav-item active"><i data-lucide="shield-ban" class="nav-icon"></i><span x-text="t(&quot;Block Services&quot;)">Block Services</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
-            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
-            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span>Settings</span></a>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
+            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
+            <a href="/settings.html" class="nav-item"><i data-lucide="settings" class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
+    <label class="language-selector">
+        <span x-text="t('Language')">Language</span>
+        <select aria-label="Interface language" :aria-label="t('Interface language')"
+                x-init="$el.value = FerrousI18n.locale()"
+                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+        </select>
+    </label>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
 <main style="padding:24px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:24px">
         <div>
-            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary);margin:0">Block Services</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Block entire services and configure Safe Search per group.</p>
+            <h2 style="font-size:24px;font-weight:700;color:var(--text-primary);margin:0" x-text="t(&quot;Block Services&quot;)">Block Services</h2>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px" x-text="t(&quot;Block entire services and configure Safe Search per group.&quot;)">Block entire services and configure Safe Search per group.</p>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
             <template x-if="activeTab === 'catalog'">
-                <span class="badge-count" x-text="blockedCount + ' blocked'">0 blocked</span>
+                <span class="badge-count" x-text="tn('{count} blocked service', '{count} blocked services', blockedCount)">0 blocked</span>
             </template>
-            <span style="font-size:14px;font-weight:500;color:var(--text-secondary)">Group:</span>
+            <span style="font-size:14px;font-weight:500;color:var(--text-secondary)" x-text="t(&quot;Group:&quot;)">Group:</span>
             <select class="group-select" x-model="selectedGroupId" @change="selectGroup($event.target.value)">
                 <template x-for="g in groups" :key="g.id">
                     <option :value="g.id" x-text="g.name" :selected="g.id == selectedGroupId"></option>
@@ -87,27 +98,27 @@
     </div>
 
     <div class="tab-bar">
-        <button class="tab-btn" :class="activeTab === 'catalog' ? 'active' : ''" @click="switchTab('catalog')">Block Services</button>
-        <button class="tab-btn" :class="activeTab === 'custom' ? 'active' : ''" @click="switchTab('custom')">Custom Services</button>
-        <button class="tab-btn" :class="activeTab === 'safe-search' ? 'active' : ''" @click="switchTab('safe-search')">Safe Search</button>
-        <button class="tab-btn" :class="activeTab === 'schedule' ? 'active' : ''" @click="switchTab('schedule')">Schedule</button>
+        <button class="tab-btn" :class="activeTab === 'catalog' ? 'active' : ''" @click="switchTab('catalog')" x-text="t(&quot;Block Services&quot;)">Block Services</button>
+        <button class="tab-btn" :class="activeTab === 'custom' ? 'active' : ''" @click="switchTab('custom')" x-text="t(&quot;Custom Services&quot;)">Custom Services</button>
+        <button class="tab-btn" :class="activeTab === 'safe-search' ? 'active' : ''" @click="switchTab('safe-search')" x-text="t(&quot;Safe Search&quot;)">Safe Search</button>
+        <button class="tab-btn" :class="activeTab === 'schedule' ? 'active' : ''" @click="switchTab('schedule')" x-text="t(&quot;Schedule&quot;)">Schedule</button>
     </div>
 
     <!-- TAB: Service Catalog + Blocked Services -->
     <div x-show="activeTab === 'catalog'">
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
             <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">
-                Blocked Services (<span x-text="blockedCount"></span>)
+                <span x-text="t(&quot;Blocked Services (&quot;)">Blocked Services (</span><span x-text="blockedCount"></span>)
             </h3>
             <template x-if="blockedCount === 0">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No services are currently blocked for this group.</div>
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px" x-text="t(&quot;No services are currently blocked for this group.&quot;)">No services are currently blocked for this group.</div>
             </template>
             <template x-if="blockedCount > 0">
                 <div style="overflow-x:auto">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Service</th><th>Category</th><th>Group</th><th>Blocked At</th><th style="width:60px">Actions</th>
+                                <th>Service</th><th x-text="t(&quot;Category&quot;)">Category</th><th x-text="t(&quot;Group&quot;)">Group</th><th x-text="t(&quot;Blocked At&quot;)">Blocked At</th><th style="width:60px">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -116,9 +127,9 @@
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="serviceName(entry.service_id)"></td>
                                     <td><span class="badge-category" x-text="serviceCategory(entry.service_id)"></span></td>
                                     <td style="color:var(--text-secondary)" x-text="groupName(entry.group_id)"></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString() : '—'"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="entry.created_at ? new Date(entry.created_at).toLocaleString(FerrousI18n.locale()) : '—'"></td>
                                     <td>
-                                        <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)">
+                                        <button class="btn-icon" title="Unblock" @click="unblockService(entry.service_id)" :title="t(&quot;Unblock&quot;)">
                                             <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
                                         </button>
                                     </td>
@@ -130,27 +141,27 @@
             </template>
         </div>
 
-        <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0">Service Catalog</h3>
+        <h3 style="font-size:18px;font-weight:600;color:var(--text-primary);margin:0 0 16px 0" x-text="t(&quot;Service Catalog&quot;)">Service Catalog</h3>
 
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
             <template x-for="cat in categories" :key="cat.id">
-                <button class="category-pill" :class="{ active: selectedCategory === cat.id }" @click="selectedCategory = cat.id" x-text="cat.name"></button>
+                <button class="category-pill" :class="{ active: selectedCategory === cat.id }" @click="selectedCategory = cat.id" x-text="cat.is_custom ? cat.name : t(cat.name)"></button>
             </template>
         </div>
 
         <div style="position:relative;margin-bottom:24px">
             <i data-lucide="search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-secondary)"></i>
-            <input type="text" class="search-input" placeholder="Search services..." x-model="searchQuery">
+            <input type="text" class="search-input" placeholder="Search services..." x-model="searchQuery" :placeholder="t(&quot;Search services...&quot;)">
         </div>
 
         <template x-if="loading">
-            <div style="text-align:center;padding:48px;color:var(--text-secondary)">Loading services...</div>
+            <div style="text-align:center;padding:48px;color:var(--text-secondary)" x-text="t(&quot;Loading services...&quot;)">Loading services...</div>
         </template>
 
         <template x-if="!loading">
             <div>
                 <template x-if="filteredServices.length === 0">
-                    <div style="text-align:center;padding:48px;color:var(--text-secondary)">No services match your filter.</div>
+                    <div style="text-align:center;padding:48px;color:var(--text-secondary)" x-text="t(&quot;No services match your filter.&quot;)">No services match your filter.</div>
                 </template>
                 <div class="service-grid">
                     <template x-for="svc in filteredServices" :key="svc.id">
@@ -158,8 +169,8 @@
                             <div class="service-icon" x-html="svc.icon_svg"></div>
                             <div style="font-size:14px;font-weight:600;color:var(--text-primary);text-align:center" x-text="svc.name"></div>
                             <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">
-                                <span class="badge-category" x-text="svc.category_name"></span>
-                                <template x-if="svc.is_custom"><span class="badge-custom">Custom</span></template>
+                                <span class="badge-category" x-text="svc.is_custom ? svc.category_name : t(svc.category_name)"></span>
+                                <template x-if="svc.is_custom"><span class="badge-custom" x-text="t(&quot;Custom&quot;)">Custom</span></template>
                             </div>
                             <div class="toggle-switch" :class="{ on: isBlocked(svc.id) }"
                                  :style="toggling[svc.id] ? 'opacity:0.5;pointer-events:none' : ''"
@@ -176,10 +187,10 @@
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                 <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
-                    Custom Services (<span x-text="customServices.length"></span>)
+                    <span x-text="t(&quot;Custom Services (&quot;)">Custom Services (</span><span x-text="customServices.length"></span>)
                 </h3>
                 <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
-                        @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''">
+                        @click="showCustomForm = true; editingCustomId = null; customForm = { name: '', category_name: 'Custom', domains: '' }; customFormError = ''" x-text="t(&quot;+ New&quot;)">
                     + New
                 </button>
             </div>
@@ -188,38 +199,38 @@
                 <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                            <label class="form-label">Name</label>
-                            <input type="text" class="input" x-model="customForm.name" placeholder="e.g. Google">
+                            <label class="form-label" x-text="t(&quot;Name&quot;)">Name</label>
+                            <input type="text" class="input" x-model="customForm.name" placeholder="e.g. Google" :placeholder="t(&quot;e.g. Google&quot;)">
                         </div>
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                            <label class="form-label">Category</label>
-                            <input type="text" class="input" x-model="customForm.category_name" placeholder="Custom">
+                            <label class="form-label" x-text="t(&quot;Category&quot;)">Category</label>
+                            <input type="text" class="input" x-model="customForm.category_name" placeholder="Custom" :placeholder="t(&quot;Custom&quot;)">
                         </div>
                     </div>
                     <div class="form-group" style="margin-bottom:12px">
-                        <label class="form-label">Domains (one per line)</label>
+                        <label class="form-label" x-text="t(&quot;Domains (one per line)&quot;)">Domains (one per line)</label>
                         <textarea class="textarea" x-model="customForm.domains" placeholder="google.com&#10;*.google.com&#10;accounts.google.com"></textarea>
                     </div>
                     <template x-if="customFormError">
-                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="customFormError"></div>
+                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="t(customFormError)"></div>
                     </template>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-primary" @click="saveCustomService()" :disabled="customFormSubmitting"
-                                x-text="editingCustomId ? 'Update Service' : 'Save Service'"></button>
-                        <button class="btn btn-secondary" @click="resetCustomForm()">Cancel</button>
+                                x-text="editingCustomId ? t(&quot;Update Service&quot;) : t(&quot;Save Service&quot;)"></button>
+                        <button class="btn btn-secondary" @click="resetCustomForm()" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                     </div>
                 </div>
             </template>
 
             <template x-if="customServices.length === 0 && !showCustomForm">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No custom services yet.</div>
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px" x-text="t(&quot;No custom services yet.&quot;)">No custom services yet.</div>
             </template>
             <template x-if="customServices.length > 0">
                 <div style="overflow-x:auto">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Service</th><th>Category</th><th>Domains</th><th>Created</th><th style="width:80px">Actions</th>
+                                <th>Service</th><th x-text="t(&quot;Category&quot;)">Category</th><th x-text="t(&quot;Domains&quot;)">Domains</th><th x-text="t(&quot;Created&quot;)">Created</th><th style="width:80px">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -227,14 +238,14 @@
                                 <tr>
                                     <td style="font-weight:500;color:var(--text-primary)" x-text="cs.name"></td>
                                     <td><span class="badge-category" x-text="cs.category_name"></span></td>
-                                    <td style="color:var(--text-secondary);font-size:13px" x-text="cs.domains.length + ' domain' + (cs.domains.length !== 1 ? 's' : '')"></td>
+                                    <td style="color:var(--text-secondary);font-size:13px" x-text="tn('{count} domain', '{count} domains', cs.domains.length)"></td>
                                     <td style="color:var(--text-secondary);font-size:13px" x-text="cs.created_at ? new Date(cs.created_at).toLocaleDateString() : '—'"></td>
                                     <td>
                                         <div style="display:flex;gap:4px">
-                                            <button class="btn-icon" title="Edit" @click="editCustomService(cs)">
+                                            <button class="btn-icon" title="Edit" @click="editCustomService(cs)" :title="t(&quot;Edit&quot;)">
                                                 <i data-lucide="pencil" style="width:16px;height:16px"></i>
                                             </button>
-                                            <button class="btn-icon" title="Delete" @click="deleteCustomService(cs.service_id)">
+                                            <button class="btn-icon" title="Delete" @click="deleteCustomService(cs.service_id)" :title="t(&quot;Delete&quot;)">
                                                 <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
                                             </button>
                                         </div>
@@ -251,12 +262,12 @@
     <!-- TAB: Safe Search -->
     <div x-show="activeTab === 'safe-search'">
         <template x-if="ssLoading">
-            <div style="text-align:center;padding:48px;color:var(--text-secondary)">Loading Safe Search configuration...</div>
+            <div style="text-align:center;padding:48px;color:var(--text-secondary)" x-text="t(&quot;Loading Safe Search configuration...&quot;)">Loading Safe Search configuration...</div>
         </template>
 
         <template x-if="!ssLoading">
             <div>
-                <p style="font-size:14px;color:var(--text-secondary);margin:0 0 20px">
+                <p style="font-size:14px;color:var(--text-secondary);margin:0 0 20px" x-text="t(&quot;Force Safe Search on DNS level for the selected group. Enabling an engine redirects its domains to the official safe search endpoint automatically.&quot;)">
                     Force Safe Search on DNS level for the selected group. Enabling an engine redirects its domains to the official safe search endpoint automatically.
                 </p>
 
@@ -280,7 +291,7 @@
                                         <input type="radio" name="yt_mode" value="moderate"
                                                :checked="ssMode('youtube') === 'moderate'"
                                                @change="setSafeSearchMode('youtube', 'moderate')">
-                                        Moderate
+                                        <span x-text="t(&quot;Moderate&quot;)">Moderate</span>
                                     </label>
                                 </div>
                             </template>
@@ -290,11 +301,11 @@
 
                 <template x-if="safeSearchConfigs.filter(c => c.enabled).length > 0">
                     <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
-                        <h3 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 14px 0">Active Configurations</h3>
+                        <h3 style="font-size:15px;font-weight:600;color:var(--text-primary);margin:0 0 14px 0" x-text="t(&quot;Active Configurations&quot;)">Active Configurations</h3>
                         <div style="overflow-x:auto">
                             <table class="table">
                                 <thead>
-                                    <tr><th>Engine</th><th>Status</th><th>Mode</th><th>Updated</th></tr>
+                                    <tr><th x-text="t(&quot;Engine&quot;)">Engine</th><th x-text="t(&quot;Status&quot;)">Status</th><th>Mode</th><th x-text="t(&quot;Updated&quot;)">Updated</th></tr>
                                 </thead>
                                 <tbody>
                                     <template x-for="cfg in safeSearchConfigs.filter(c => c.enabled)" :key="cfg.engine">
@@ -303,11 +314,11 @@
                                             <td>
                                                 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#10B981;font-weight:500">
                                                     <span style="width:7px;height:7px;border-radius:50%;background:#10B981;display:inline-block"></span>
-                                                    Enabled
+                                                    <span x-text="t(&quot;Enabled&quot;)">Enabled</span>
                                                 </span>
                                             </td>
-                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.engine === 'youtube' ? cfg.youtube_mode : '—'"></td>
-                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString() : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.engine === 'youtube' ? t(cfg.youtube_mode) : '—'"></td>
+                                            <td style="color:var(--text-secondary);font-size:13px" x-text="cfg.updated_at ? new Date(cfg.updated_at).toLocaleString(FerrousI18n.locale()) : '—'"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -317,7 +328,7 @@
                 </template>
 
                 <template x-if="safeSearchConfigs.filter(c => c.enabled).length === 0">
-                    <div style="text-align:center;padding:32px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;color:var(--text-secondary);font-size:14px">
+                    <div style="text-align:center;padding:32px;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;color:var(--text-secondary);font-size:14px" x-text="t(&quot;No Safe Search engines are enabled for this group.&quot;)">
                         No Safe Search engines are enabled for this group.
                     </div>
                 </template>
@@ -333,7 +344,7 @@
                     style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:none;border:none;cursor:pointer;color:var(--text-primary)">
                 <div style="display:flex;align-items:center;gap:8px">
                     <i data-lucide="info" style="width:16px;height:16px;color:#6366F1;flex-shrink:0"></i>
-                    <span style="font-size:14px;font-weight:600">How scheduling works</span>
+                    <span style="font-size:14px;font-weight:600" x-text="t(&quot;How scheduling works&quot;)">How scheduling works</span>
                 </div>
                 <i :data-lucide="scheduleInfoOpen ? 'chevron-up' : 'chevron-down'"
                    style="width:16px;height:16px;color:var(--text-secondary);flex-shrink:0"
@@ -347,27 +358,27 @@
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
                             <i data-lucide="layers" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Schedule Profile</span>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)" x-text="t(&quot;Schedule Profile&quot;)">Schedule Profile</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5" x-text="t(&quot;A reusable collection of time slots with a timezone. Create one profile and assign it to multiple groups.&quot;)">
                             A reusable collection of time slots with a timezone. Create one profile and assign it to multiple groups.
                         </p>
                     </div>
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
                             <i data-lucide="clock" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Time Slot</span>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)" x-text="t(&quot;Time Slot&quot;)">Time Slot</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5" x-text="t(&quot;Defines which days and hours an action applies. Multiple slots can overlap — the most restrictive wins.&quot;)">
                             Defines which days and hours an action applies. Multiple slots can overlap — the most restrictive wins.
                         </p>
                     </div>
                     <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
                             <i data-lucide="users" style="width:15px;height:15px;color:#6366F1;flex-shrink:0"></i>
-                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Group Assignment</span>
+                            <span style="font-size:13px;font-weight:600;color:var(--text-primary)" x-text="t(&quot;Group Assignment&quot;)">Group Assignment</span>
                         </div>
-                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
+                        <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5" x-text="t(&quot;Each group can have one active profile. The schedule evaluator runs every 60 s and updates overrides automatically.&quot;)">
                             Each group can have one active profile. The schedule evaluator runs every 60 s and updates overrides automatically.
                         </p>
                     </div>
@@ -378,15 +389,15 @@
                     <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
                         <span style="font-size:16px;flex-shrink:0">🔴</span>
                         <div>
-                            <span style="font-size:13px;font-weight:600;color:#EF4444;display:block;margin-bottom:4px">Block All</span>
-                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Blocks <strong>every</strong> DNS query for the group during this window — overrides blocklists completely.</span>
+                            <span style="font-size:13px;font-weight:600;color:#EF4444;display:block;margin-bottom:4px" x-text="t(&quot;Block All&quot;)">Block All</span>
+                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5"><span x-text="t(&quot;Blocks&quot;)">Blocks</span> <strong x-text="t(&quot;every&quot;)">every</strong> <span x-text="t(&quot;DNS query for the group during this window — overrides blocklists completely.&quot;)">DNS query for the group during this window — overrides blocklists completely.</span></span>
                         </div>
                     </div>
                     <div style="display:flex;align-items:flex-start;gap:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:12px 14px;flex:1;min-width:200px">
                         <span style="font-size:16px;flex-shrink:0">🟢</span>
                         <div>
-                            <span style="font-size:13px;font-weight:600;color:#10B981;display:block;margin-bottom:4px">Allow All</span>
-                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5">Allows <strong>every</strong> domain — bypasses all blocklists. Useful for a scheduled "free access" window.</span>
+                            <span style="font-size:13px;font-weight:600;color:#10B981;display:block;margin-bottom:4px" x-text="t(&quot;Allow All&quot;)">Allow All</span>
+                            <span style="font-size:12px;color:var(--text-secondary);line-height:1.5"><span x-text="t(&quot;Allows&quot;)">Allows</span> <strong x-text="t(&quot;every&quot;)">every</strong> <span x-text="t(&quot;domain — bypasses all blocklists. Useful for a scheduled \&quot;free access\&quot; window.&quot;)">domain — bypasses all blocklists. Useful for a scheduled "free access" window.</span></span>
                         </div>
                     </div>
                 </div>
@@ -395,28 +406,28 @@
                 <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:10px;padding:14px">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
                         <i data-lucide="lightbulb" style="width:15px;height:15px;color:#F59E0B;flex-shrink:0"></i>
-                        <span style="font-size:13px;font-weight:600;color:var(--text-primary)">Typical example — "Kids" group</span>
+                        <span style="font-size:13px;font-weight:600;color:var(--text-primary)" x-text="t(&quot;Typical example — \&quot;Kids\&quot; group&quot;)">Typical example — "Kids" group</span>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:10px">
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
                             <span style="font-size:12px">🔴</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">00:00–07:00</strong> Block All</span>
+                            <span style="font-size:12px;color:var(--text-secondary)"><span x-text="t(&quot;Mon–Fri&quot;)">Mon–Fri</span> <strong style="color:var(--text-primary)">00:00–07:00</strong> <span x-text="t(&quot;Block All&quot;)">Block All</span></span>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
                             <span style="font-size:12px">🟢</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">17:00–18:00</strong> Allow All</span>
+                            <span style="font-size:12px;color:var(--text-secondary)"><span x-text="t(&quot;Mon–Fri&quot;)">Mon–Fri</span> <strong style="color:var(--text-primary)">17:00–18:00</strong> <span x-text="t(&quot;Allow All&quot;)">Allow All</span></span>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--bg-secondary)">
                             <span style="font-size:12px">🔴</span>
-                            <span style="font-size:12px;color:var(--text-secondary)">Mon–Fri <strong style="color:var(--text-primary)">21:00–23:59</strong> Block All</span>
+                            <span style="font-size:12px;color:var(--text-secondary)"><span x-text="t(&quot;Mon–Fri&quot;)">Mon–Fri</span> <strong style="color:var(--text-primary)">21:00–23:59</strong> <span x-text="t(&quot;Block All&quot;)">Block All</span></span>
                         </div>
                     </div>
                     <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.5">
-                        Outside those windows the group's <strong style="color:var(--text-primary)">blocklists apply normally</strong> — gaming/social blocked, the rest works. The <em>Allow All</em> at 17h grants 1 h of unrestricted access even if gaming sites are in a blocklist.
+                        <span x-text="t(&quot;Outside those windows the group's&quot;)">Outside those windows the group's</span> <strong style="color:var(--text-primary)" x-text="t(&quot;blocklists apply normally&quot;)">blocklists apply normally</strong> <span x-text="t(&quot;— gaming/social blocked, the rest works. The&quot;)">— gaming/social blocked, the rest works. The</span> <em x-text="t(&quot;Allow All&quot;)">Allow All</em> <span x-text="t(&quot;at 17h grants 1 h of unrestricted access even if gaming sites are in a blocklist.&quot;)">at 17h grants 1 h of unrestricted access even if gaming sites are in a blocklist.</span>
                     </p>
                     <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.15)">
                         <span style="font-size:12px;color:#6366F1">
-                            <strong>Conflict rule:</strong> if a Block All and an Allow All slot overlap, Block All always wins — the most restrictive action takes priority.
+                            <strong x-text="t(&quot;Conflict rule:&quot;)">Conflict rule:</strong> <span x-text="t(&quot;if a Block All and an Allow All slot overlap, Block All always wins — the most restrictive action takes priority.&quot;)">if a Block All and an Allow All slot overlap, Block All always wins — the most restrictive action takes priority.</span>
                         </span>
                     </div>
                 </div>
@@ -426,19 +437,19 @@
         <!-- Group schedule assignment -->
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px;margin-bottom:24px">
             <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 12px 0">
-                Schedule for group: <span x-text="groupName(selectedGroupId)"></span>
+                <span x-text="t(&quot;Schedule for group:&quot;)">Schedule for group:</span> <span x-text="groupName(selectedGroupId)"></span>
             </h3>
             <template x-if="!groupSchedule">
                 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                    <span style="font-size:14px;color:var(--text-secondary)">No schedule assigned.</span>
+                    <span style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;No schedule assigned.&quot;)">No schedule assigned.</span>
                     <select class="group-select" x-model="scheduleAssignId">
-                        <option value="">— Select profile —</option>
+                        <option value="" x-text="t(&quot;— Select profile —&quot;)">— Select profile —</option>
                         <template x-for="p in scheduleProfiles" :key="p.id">
                             <option :value="p.id" x-text="p.name + ' (' + p.timezone + ')'"></option>
                         </template>
                     </select>
                     <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
-                            @click="assignSchedule()" :disabled="!scheduleAssignId">Assign</button>
+                            @click="assignSchedule()" :disabled="!scheduleAssignId" x-text="t(&quot;Assign&quot;)">Assign</button>
                 </div>
             </template>
             <template x-if="groupSchedule">
@@ -448,7 +459,7 @@
                     <span style="font-size:12px;color:var(--text-secondary)"
                           x-text="profileTimezone(groupSchedule.profile_id)"></span>
                     <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px"
-                            @click="unassignSchedule()">Remove</button>
+                            @click="unassignSchedule()" x-text="t(&quot;Remove&quot;)">Remove</button>
                 </div>
             </template>
         </div>
@@ -457,10 +468,10 @@
         <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:12px;padding:20px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
                 <h3 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">
-                    Schedule Profiles (<span x-text="scheduleProfiles.length"></span>)
+                    <span x-text="t(&quot;Schedule Profiles (&quot;)">Schedule Profiles (</span><span x-text="scheduleProfiles.length"></span>)
                 </h3>
                 <button class="btn btn-primary" style="font-size:13px;padding:6px 14px"
-                        @click="openNewProfile()">+ New Profile</button>
+                        @click="openNewProfile()" x-text="t(&quot;+ New Profile&quot;)">+ New Profile</button>
             </div>
 
             <!-- New/Edit profile form -->
@@ -468,31 +479,31 @@
                 <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:16px;margin-bottom:16px">
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                            <label class="form-label">Name</label>
-                            <input type="text" class="input" x-model="profileForm.name" placeholder="e.g. Kids Weeknight">
+                            <label class="form-label" x-text="t(&quot;Name&quot;)">Name</label>
+                            <input type="text" class="input" x-model="profileForm.name" placeholder="e.g. Kids Weeknight" :placeholder="t(&quot;e.g. Kids Weeknight&quot;)">
                         </div>
                         <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-                            <label class="form-label">Timezone (IANA)</label>
+                            <label class="form-label" x-text="t(&quot;Timezone (IANA)&quot;)">Timezone (IANA)</label>
                             <input type="text" class="input" x-model="profileForm.timezone" placeholder="UTC">
                         </div>
                     </div>
                     <div class="form-group" style="margin-bottom:12px">
-                        <label class="form-label">Comment (optional)</label>
-                        <input type="text" class="input" x-model="profileForm.comment" placeholder="Optional description">
+                        <label class="form-label" x-text="t(&quot;Comment (optional)&quot;)">Comment (optional)</label>
+                        <input type="text" class="input" x-model="profileForm.comment" placeholder="Optional description" :placeholder="t(&quot;Optional description&quot;)">
                     </div>
                     <template x-if="profileFormError">
-                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="profileFormError"></div>
+                        <div style="margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="t(profileFormError)"></div>
                     </template>
                     <div style="display:flex;gap:8px">
                         <button class="btn btn-primary" @click="saveProfile()"
-                                x-text="editingProfileId ? 'Update Profile' : 'Save Profile'"></button>
-                        <button class="btn btn-secondary" @click="showProfileForm = false; editingProfileId = null">Cancel</button>
+                                x-text="editingProfileId ? t(&quot;Update Profile&quot;) : t(&quot;Save Profile&quot;)"></button>
+                        <button class="btn btn-secondary" @click="showProfileForm = false; editingProfileId = null" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                     </div>
                 </div>
             </template>
 
             <template x-if="scheduleProfiles.length === 0 && !showProfileForm">
-                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px">No schedule profiles yet. Create one to get started.</div>
+                <div style="text-align:center;padding:24px;color:var(--text-secondary);font-size:14px" x-text="t(&quot;No schedule profiles yet. Create one to get started.&quot;)">No schedule profiles yet. Create one to get started.</div>
             </template>
 
             <template x-for="profile in scheduleProfiles" :key="profile.id">
@@ -504,14 +515,14 @@
                             <span style="font-weight:600;color:var(--text-primary)" x-text="profile.name"></span>
                             <span style="font-size:12px;color:var(--text-secondary)" x-text="'(' + profile.timezone + ')'"></span>
                             <template x-if="groupSchedule && groupSchedule.profile_id == profile.id">
-                                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:600">Active</span>
+                                <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(16,185,129,0.1);color:#10B981;font-weight:600" x-text="t(&quot;Active&quot;)">Active</span>
                             </template>
                         </div>
                         <div style="display:flex;gap:4px">
-                            <button class="btn-icon" title="Edit" @click="editProfile(profile)">
+                            <button class="btn-icon" title="Edit" @click="editProfile(profile)" :title="t(&quot;Edit&quot;)">
                                 <i data-lucide="pencil" style="width:16px;height:16px"></i>
                             </button>
-                            <button class="btn-icon" title="Delete" @click="deleteProfile(profile.id)">
+                            <button class="btn-icon" title="Delete" @click="deleteProfile(profile.id)" :title="t(&quot;Delete&quot;)">
                                 <i data-lucide="trash-2" style="width:16px;height:16px;color:#EF4444"></i>
                             </button>
                         </div>
@@ -520,13 +531,13 @@
                     <!-- Slots table -->
                     <div style="padding:0 16px 12px">
                         <template x-if="(profileSlots[profile.id] || []).length === 0">
-                            <div style="padding:12px 0;color:var(--text-secondary);font-size:13px">No time slots. Add one below.</div>
+                            <div style="padding:12px 0;color:var(--text-secondary);font-size:13px" x-text="t(&quot;No time slots. Add one below.&quot;)">No time slots. Add one below.</div>
                         </template>
                         <template x-if="(profileSlots[profile.id] || []).length > 0">
                             <table class="table" style="margin-top:12px">
                                 <thead>
                                     <tr>
-                                        <th>Days</th><th>Start</th><th>End</th><th>Action</th><th style="width:50px"></th>
+                                        <th x-text="t(&quot;Days&quot;)">Days</th><th x-text="t(&quot;Start&quot;)">Start</th><th x-text="t(&quot;End&quot;)">End</th><th>Action</th><th style="width:50px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -537,10 +548,10 @@
                                             <td style="font-size:13px;color:var(--text-primary)" x-text="slot.end_time"></td>
                                             <td>
                                                 <span :style="slot.action === 'block_all' ? 'color:#EF4444;font-weight:500;font-size:13px' : 'color:#10B981;font-weight:500;font-size:13px'"
-                                                      x-text="slot.action === 'block_all' ? '🔴 Block All' : '🟢 Allow All'"></span>
+                                                      x-text="slot.action === 'block_all' ? t(&quot;🔴 Block All&quot;) : t(&quot;🟢 Allow All&quot;)"></span>
                                             </td>
                                             <td>
-                                                <button class="btn-icon" title="Delete slot" @click="deleteSlot(profile.id, slot.id)">
+                                                <button class="btn-icon" title="Delete slot" @click="deleteSlot(profile.id, slot.id)" :title="t(&quot;Delete slot&quot;)">
                                                     <i data-lucide="trash-2" style="width:14px;height:14px;color:#EF4444"></i>
                                                 </button>
                                             </td>
@@ -554,47 +565,47 @@
                         <template x-if="addingSlotFor == profile.id">
                             <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:14px;margin-top:12px">
                                 <div style="margin-bottom:10px">
-                                    <label class="form-label" style="margin-bottom:6px">Days of week</label>
+                                    <label class="form-label" style="margin-bottom:6px" x-text="t(&quot;Days of week&quot;)">Days of week</label>
                                     <div style="display:flex;gap:8px;flex-wrap:wrap">
                                         <template x-for="(day, idx) in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="idx">
                                             <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
                                                 <input type="checkbox" :value="1 << idx"
                                                        :checked="(slotForm.days & (1 << idx)) !== 0"
                                                        @change="slotForm.days = $event.target.checked ? slotForm.days | (1 << idx) : slotForm.days & ~(1 << idx)">
-                                                <span x-text="day"></span>
+                                                <span x-text="t(day)"></span>
                                             </label>
                                         </template>
                                     </div>
                                 </div>
                                 <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
                                     <div style="flex:1;min-width:100px">
-                                        <label class="form-label">From</label>
+                                        <label class="form-label" x-text="t(&quot;From&quot;)">From</label>
                                         <input type="time" class="input" x-model="slotForm.start_time">
                                     </div>
                                     <div style="flex:1;min-width:100px">
-                                        <label class="form-label">To</label>
+                                        <label class="form-label" x-text="t(&quot;To&quot;)">To</label>
                                         <input type="time" class="input" x-model="slotForm.end_time">
                                     </div>
                                     <div style="flex:1;min-width:140px">
                                         <label class="form-label">Action</label>
                                         <select class="group-select" style="width:100%" x-model="slotForm.action">
-                                            <option value="block_all">🔴 Block All</option>
-                                            <option value="allow_all">🟢 Allow All</option>
+                                            <option value="block_all" x-text="t(&quot;🔴 Block All&quot;)">🔴 Block All</option>
+                                            <option value="allow_all" x-text="t(&quot;🟢 Allow All&quot;)">🟢 Allow All</option>
                                         </select>
                                     </div>
                                 </div>
                                 <template x-if="slotFormError">
-                                    <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="slotFormError"></div>
+                                    <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,0.1);color:#EF4444;font-size:13px" x-text="t(slotFormError)"></div>
                                 </template>
                                 <div style="display:flex;gap:8px">
-                                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px" @click="saveSlot(profile.id)">Save Slot</button>
-                                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px" @click="addingSlotFor = null">Cancel</button>
+                                    <button class="btn btn-primary" style="font-size:13px;padding:6px 14px" @click="saveSlot(profile.id)" x-text="t(&quot;Save Slot&quot;)">Save Slot</button>
+                                    <button class="btn btn-secondary" style="font-size:13px;padding:6px 14px" @click="addingSlotFor = null" x-text="t(&quot;Cancel&quot;)">Cancel</button>
                                 </div>
                             </div>
                         </template>
                         <template x-if="addingSlotFor != profile.id">
                             <button class="btn btn-secondary" style="font-size:13px;padding:5px 12px;margin-top:8px"
-                                    @click="openAddSlot(profile.id)">+ Add Slot</button>
+                                    @click="openAddSlot(profile.id)" x-text="t(&quot;+ Add Slot&quot;)">+ Add Slot</button>
                         </template>
                     </div>
                 </div>

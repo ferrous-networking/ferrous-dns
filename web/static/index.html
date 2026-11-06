@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Redirecting...</title>
+    <script defer src="/static/vendor/alpinejs-3.13.5.min.js"></script>
+    <title data-i18n-title="Redirecting...">Redirecting...</title>
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <script>
         (async () => {
@@ -24,7 +27,7 @@
         })();
     </script>
 </head>
-<body>
-<p>Redirecting...</p>
+<body x-data>
+<p x-text="t(&quot;Redirecting...&quot;)">Redirecting...</p>
 </body>
 </html>

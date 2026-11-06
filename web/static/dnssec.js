@@ -37,7 +37,7 @@
 
             get coverage() {
                 if (!this.stats.total) return '0.0';
-                return (this.stats.validated / this.stats.total * 100).toFixed(1);
+                return FerrousI18n.decimal(this.stats.validated / this.stats.total * 100, 1);
             },
 
             async loadStats() {
@@ -129,7 +129,7 @@
             formatTime(timestamp) {
                 if (!timestamp) return '-';
                 const utc = timestamp.endsWith('Z') ? timestamp : timestamp + 'Z';
-                return new Date(utc).toLocaleTimeString();
+                return new Date(utc).toLocaleTimeString(FerrousI18n.locale());
             },
 
             formatResponseTime(query) {
@@ -137,7 +137,7 @@
                 if (us == null) return '-';
                 if (us < 1000) return `${Math.round(us)} µs`;
                 if (us < 1000000) return `${Math.round(us / 1000)} ms`;
-                return `${(us / 1000000).toFixed(2)} s`;
+                return `${FerrousI18n.decimal(us / 1000000, 2)} s`;
             }
         };
     }

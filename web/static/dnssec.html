@@ -9,6 +9,8 @@
     <script src="/static/vendor/lucide-0.469.0.min.js"></script>
     <link rel="stylesheet" href="/static/shared.css">
     <script src="/ferrous-config.js"></script>
+    <script src="/static/i18n-fr.js"></script>
+    <script src="/static/i18n.js"></script>
     <script src="/static/shared.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
     <link rel="stylesheet" href="/static/queries.css">
@@ -26,30 +28,30 @@
 <aside class="sidebar">
     <div class="logo-container">
         <img src="/static/logo.svg" class="logo-icon" alt="Ferrous DNS">
-        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle">High-Performance DNS</span></div>
+        <div class="logo-text"><h1>Ferrous DNS</h1><span class="logo-subtitle" x-text="t(&quot;High-Performance DNS&quot;)">High-Performance DNS</span></div>
     </div>
     <div class="status-box">
-        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span>Status</span>
+        <div class="status-header"><i data-lucide="activity" style="width:16px;height:16px"></i><span x-text="t(&quot;Status&quot;)">Status</span>
         </div>
         <div class="status-item">
             <div class="status-indicator"></div>
-            <span>Active</span></div>
+            <span x-text="t(&quot;Active&quot;)">Active</span></div>
         <div class="status-item">
             <i data-lucide="gauge" width="14" height="14" :style="'color:' + getRateColor(queryRate)"></i>
-            <span x-text="queryRate.rate || '0 q/s'">0 q/s</span>
+            <span x-text="(queryRate.rate || '0 q/s').replace('q/s', t('q/s'))">0 q/s</span>
         </div>
         <div class="status-item"><i data-lucide="shield-check" style="width:14px;height:14px"></i><span
-                x-text="stats.validated+' validated'">0 validated</span></div>
+                x-text="tn('{count} validated query', '{count} validated queries', stats.validated)">0 validated</span></div>
     </div>
     <nav style="flex:1;padding:16px 0">
         <div class="nav-section">
-            <div class="nav-section-title">MAIN</div>
-            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span>Dashboard</span></a>
-            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span>Query Log</span></a>
+            <div class="nav-section-title" x-text="t(&quot;MAIN&quot;)">MAIN</div>
+            <a href="/dashboard.html" class="nav-item"><i data-lucide="layout-dashboard" class="nav-icon"></i><span x-text="t(&quot;Dashboard&quot;)">Dashboard</span></a>
+            <a href="/queries.html" class="nav-item"><i data-lucide="file-text" class="nav-icon"></i><span x-text="t(&quot;Query Log&quot;)">Query Log</span></a>
             <a href="/dnssec.html" class="nav-item active"><i data-lucide="shield-check" class="nav-icon"></i><span>DNSSEC</span></a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">NETWORK MANAGEMENT</div>
+            <div class="nav-section-title" x-text="t(&quot;NETWORK MANAGEMENT&quot;)">NETWORK MANAGEMENT</div>
             <a href="/clients.html" class="nav-item">
                 <i data-lucide="users" class="nav-icon"></i>
                 <span>Clients</span>
@@ -60,32 +62,41 @@
             </a>
             <a href="/groups.html" class="nav-item">
                 <i data-lucide="layers" class="nav-icon"></i>
-                <span>Groups</span>
+                <span x-text="t(&quot;Groups&quot;)">Groups</span>
             </a>
             <a href="/dns-filter.html" class="nav-item">
                 <i data-lucide="shield" class="nav-icon"></i>
-                <span>DNS Filter</span>
+                <span x-text="t(&quot;DNS Filter&quot;)">DNS Filter</span>
             </a>
             <a href="/block-services.html" class="nav-item">
                 <i data-lucide="shield-ban" class="nav-icon"></i>
-                <span>Block Services</span>
+                <span x-text="t(&quot;Block Services&quot;)">Block Services</span>
             </a>
         </div>
         <div class="nav-section">
-            <div class="nav-section-title">DNS CONTROL</div>
-            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span>Local DNS</span></a>
-            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span>Cache Control</span></a>
+            <div class="nav-section-title" x-text="t(&quot;DNS CONTROL&quot;)">DNS CONTROL</div>
+            <a href="/local-dns-settings.html" class="nav-item"><i data-lucide="server" class="nav-icon"></i><span x-text="t(&quot;Local DNS&quot;)">Local DNS</span></a>
+            <a href="/cache-control.html" class="nav-item"><i data-lucide="database" class="nav-icon"></i><span x-text="t(&quot;Cache Control&quot;)">Cache Control</span></a>
             <a href="/settings.html" class="nav-item"><i data-lucide="settings"
-                                                         class="nav-icon"></i><span>Settings</span></a>
+                                                         class="nav-icon"></i><span x-text="t(&quot;Settings&quot;)">Settings</span></a>
         </div>
     </nav>
+    <label class="language-selector">
+        <span x-text="t('Language')">Language</span>
+        <select aria-label="Interface language" :aria-label="t('Interface language')"
+                x-init="$el.value = FerrousI18n.locale()"
+                @change="if (!FerrousI18n.setLocale($event.target.value)) $el.value = FerrousI18n.locale()">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+        </select>
+    </label>
     <div class="sidebar-meta">
-        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub"><i data-lucide="github"></i></a>
-        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes"></a>
+        <a href="https://github.com/ferrous-networking/ferrous-dns" target="_blank" rel="noopener noreferrer" title="Ferrous DNS on GitHub" aria-label="Ferrous DNS on GitHub" :title="t(&quot;Ferrous DNS on GitHub&quot;)" :aria-label="t(&quot;Ferrous DNS on GitHub&quot;)"><i data-lucide="github"></i></a>
+        <a id="server-version" target="_blank" rel="noopener noreferrer" title="Release notes" :title="t(&quot;Release notes&quot;)"></a>
     </div>
     <div style="padding:12px 0;border-top:1px solid var(--border-color)">
         <a href="#" onclick="logout();return false" class="nav-item" style="color:var(--text-secondary)">
-            <i data-lucide="log-out" class="nav-icon"></i><span>Logout</span>
+            <i data-lucide="log-out" class="nav-icon"></i><span x-text="t(&quot;Logout&quot;)">Logout</span>
         </a>
     </div>
 </aside>
@@ -93,53 +104,53 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <div>
             <h2 style="font-size:24px;font-weight:700;color:var(--text-primary)">DNSSEC</h2>
-            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px">Authenticated DNS validation outcomes — last 24h</p>
+            <p style="font-size:14px;color:var(--text-secondary);margin-top:4px" x-text="t(&quot;Authenticated DNS validation outcomes — last 24h&quot;)">Authenticated DNS validation outcomes — last 24h</p>
         </div>
     </div>
 
     <div class="dnssec-grid">
         <div class="dnssec-stat stat-validated">
-            <div class="stat-label"><i data-lucide="shield-check" style="width:14px;height:14px"></i>Validated</div>
-            <div class="stat-value" x-text="stats.validated.toLocaleString()">0</div>
-            <div class="stat-sub"><span x-text="coverage"></span>% of <span x-text="stats.total.toLocaleString()"></span> queries</div>
+            <div class="stat-label"><i data-lucide="shield-check" style="width:14px;height:14px"></i><span x-text="t(&quot;Validated&quot;)">Validated</span></div>
+            <div class="stat-value" x-text="stats.validated.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-sub"><span x-text="coverage"></span><span x-text="t(&quot;% of&quot;)">% of</span> <span x-text="stats.total.toLocaleString(FerrousI18n.locale())"></span> <span x-text="t(&quot;queries&quot;)">queries</span></div>
         </div>
         <div class="dnssec-stat stat-secure">
-            <div class="stat-label"><i data-lucide="lock" style="width:14px;height:14px"></i>Secure</div>
-            <div class="stat-value" x-text="stats.secure.toLocaleString()">0</div>
-            <div class="stat-sub">Signed &amp; verified</div>
+            <div class="stat-label"><i data-lucide="lock" style="width:14px;height:14px"></i><span x-text="t(&quot;Secure&quot;)">Secure</span></div>
+            <div class="stat-value" x-text="stats.secure.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-sub" x-text="t(&quot;Signed &amp; verified&quot;)">Signed &amp; verified</div>
         </div>
         <div class="dnssec-stat stat-insecure">
-            <div class="stat-label"><i data-lucide="lock-open" style="width:14px;height:14px"></i>Insecure</div>
-            <div class="stat-value" x-text="stats.insecure.toLocaleString()">0</div>
-            <div class="stat-sub">Unsigned zone</div>
+            <div class="stat-label"><i data-lucide="lock-open" style="width:14px;height:14px"></i><span x-text="t(&quot;Insecure&quot;)">Insecure</span></div>
+            <div class="stat-value" x-text="stats.insecure.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-sub" x-text="t(&quot;Unsigned zone&quot;)">Unsigned zone</div>
         </div>
         <div class="dnssec-stat stat-bogus">
-            <div class="stat-label"><i data-lucide="shield-alert" style="width:14px;height:14px"></i>Bogus</div>
-            <div class="stat-value" x-text="stats.bogus.toLocaleString()">0</div>
-            <div class="stat-sub">Validation failed</div>
+            <div class="stat-label"><i data-lucide="shield-alert" style="width:14px;height:14px"></i><span x-text="t(&quot;Bogus&quot;)">Bogus</span></div>
+            <div class="stat-value" x-text="stats.bogus.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-sub" x-text="t(&quot;Validation failed&quot;)">Validation failed</div>
         </div>
         <div class="dnssec-stat stat-indeterminate">
-            <div class="stat-label"><i data-lucide="help-circle" style="width:14px;height:14px"></i>Indeterminate</div>
-            <div class="stat-value" x-text="stats.indeterminate.toLocaleString()">0</div>
-            <div class="stat-sub">Could not determine</div>
+            <div class="stat-label"><i data-lucide="help-circle" style="width:14px;height:14px"></i><span x-text="t(&quot;Indeterminate&quot;)">Indeterminate</span></div>
+            <div class="stat-value" x-text="stats.indeterminate.toLocaleString(FerrousI18n.locale())">0</div>
+            <div class="stat-sub" x-text="t(&quot;Could not determine&quot;)">Could not determine</div>
         </div>
     </div>
 
     <div class="card" style="margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Status:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Status:&quot;)">Status:</label>
                 <select x-model="statusFilter" @change="applyFilter()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
-                    <option value="any">All validated</option>
-                    <option value="Secure">Secure</option>
-                    <option value="Insecure">Insecure</option>
-                    <option value="Bogus">Bogus</option>
-                    <option value="Indeterminate">Indeterminate</option>
+                    <option value="any" x-text="t(&quot;All validated&quot;)">All validated</option>
+                    <option value="Secure" x-text="t(&quot;Secure&quot;)">Secure</option>
+                    <option value="Insecure" x-text="t(&quot;Insecure&quot;)">Insecure</option>
+                    <option value="Bogus" x-text="t(&quot;Bogus&quot;)">Bogus</option>
+                    <option value="Indeterminate" x-text="t(&quot;Indeterminate&quot;)">Indeterminate</option>
                 </select>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
-                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap">Show:</label>
+                <label style="font-size:14px;font-weight:500;color:var(--text-secondary);white-space:nowrap" x-text="t(&quot;Show:&quot;)">Show:</label>
                 <select x-model.number="pageSize" @change="applyFilter()"
                         style="padding:8px 12px;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font-size:14px">
                     <option value="10">10</option>
@@ -152,7 +163,7 @@
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" x-model="autoRefresh"
                            style="width:16px;height:16px;accent-color:var(--color-primary)">
-                    <span style="font-size:14px;color:var(--text-secondary)">Live update</span>
+                    <span style="font-size:14px;color:var(--text-secondary)" x-text="t(&quot;Live update&quot;)">Live update</span>
                 </label>
             </div>
         </div>
@@ -162,12 +173,12 @@
         <table>
             <thead>
             <tr>
-                <th class="col-time">TIME</th>
-                <th>DOMAIN</th>
+                <th class="col-time" x-text="t(&quot;TIME&quot;)">TIME</th>
+                <th x-text="t(&quot;DOMAIN&quot;)">DOMAIN</th>
                 <th class="col-type" style="width:70px">TYPE</th>
                 <th class="col-client">CLIENT</th>
                 <th style="width:140px">DNSSEC</th>
-                <th class="col-rt" style="width:110px">RESPONSE TIME</th>
+                <th class="col-rt" style="width:110px" x-text="t(&quot;RESPONSE TIME&quot;)">RESPONSE TIME</th>
             </tr>
             </thead>
             <tbody>
@@ -181,32 +192,32 @@
                               x-text="query.type"></span></td>
                     <td class="col-client" style="font-size:13px" x-text="clientLabel(query)"></td>
                     <td>
-                        <span class="dnssec-badge" :class="statusClass(query.dnssec_status)" x-text="query.dnssec_status"></span>
+                        <span class="dnssec-badge" :class="statusClass(query.dnssec_status)" x-text="t(query.dnssec_status)"></span>
                     </td>
                     <td class="col-rt" style="font-size:13px" x-text="formatResponseTime(query)"></td>
                 </tr>
             </template>
             <template x-if="queries.length === 0">
                 <tr>
-                    <td colspan="6" style="text-align:center;color:var(--text-secondary);padding:32px 0">No DNSSEC-validated queries in this window.</td>
+                    <td colspan="6" style="text-align:center;color:var(--text-secondary);padding:32px 0" x-text="t(&quot;No DNSSEC-validated queries in this window.&quot;)">No DNSSEC-validated queries in this window.</td>
                 </tr>
             </template>
             </tbody>
         </table>
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;margin-top:16px;border-top:1px solid var(--border-color)">
             <div style="font-size:14px;color:var(--text-secondary)">
-                Showing <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> to <span
-                    x-text="Math.min(currentPage*pageSize,total)"></span> of <span
+                <span x-text="t(&quot;Showing&quot;)">Showing</span> <span x-text="total === 0 ? 0 : (currentPage-1)*pageSize+1"></span> <span x-text="t(&quot;to&quot;)">to</span> <span
+                    x-text="Math.min(currentPage*pageSize,total)"></span> <span x-text="t(&quot;of&quot;)">of</span> <span
                     x-text="total"></span>
             </div>
             <div style="display:flex;gap:8px">
                 <button @click="changePage(-1)" :disabled="currentPage===1"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''">Previous
+                        :style="currentPage===1?'opacity:0.5;cursor:not-allowed':''" x-text="t(&quot;Previous&quot;)">Previous
                 </button>
                 <button @click="changePage(1)" :disabled="!_hasMore"
                         style="padding:8px 16px;border-radius:6px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:14px"
-                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''">Next
+                        :style="!_hasMore?'opacity:0.5;cursor:not-allowed':''" x-text="t(&quot;Next&quot;)">Next
                 </button>
             </div>
         </div>

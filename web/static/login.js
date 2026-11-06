@@ -31,7 +31,7 @@ function loginApp() {
                     this.setupRequired = data.setup_required;
                 }
             } catch (e) {
-                this.error = 'Cannot connect to server';
+                this.error = t("Cannot connect to server");
                 scheduleLucide(100);
                 return;
             }
@@ -68,10 +68,10 @@ function loginApp() {
                     this.password = '';
                 } else {
                     const data = await res.json().catch(() => ({}));
-                    this.error = data.error || 'Setup failed';
+                    this.error = data.error || t("Setup failed");
                 }
             } catch (e) {
-                this.error = 'Connection error. Please try again.';
+                this.error = t("Connection error. Please try again.");
             } finally {
                 this.loading = false;
             }
@@ -105,10 +105,10 @@ function loginApp() {
                     window.location.href = '/dashboard.html';
                 } else {
                     const data = await res.json().catch(() => ({}));
-                    this.error = data.error || 'Invalid username or password';
+                    this.error = data.error || t("Invalid username or password");
                 }
             } catch (e) {
-                this.error = 'Connection error. Please try again.';
+                this.error = t("Connection error. Please try again.");
             } finally {
                 this.loading = false;
             }
@@ -129,10 +129,10 @@ function loginApp() {
                     window.location.href = '/dashboard.html';
                 } else {
                     const data = await res.json().catch(() => ({}));
-                    this.error = data.error || 'Invalid or expired code';
+                    this.error = data.error || t("Invalid or expired code");
                 }
             } catch (e) {
-                this.error = 'Connection error. Please try again.';
+                this.error = t("Connection error. Please try again.");
             } finally {
                 this.loading = false;
             }
@@ -140,7 +140,7 @@ function loginApp() {
 
         async loginPasskey() {
             if (!webauthnSupported()) {
-                this.error = 'Passkeys are not supported in this browser';
+                this.error = t("Passkeys are not supported in this browser");
                 return;
             }
             this.error = '';
@@ -153,7 +153,7 @@ function loginApp() {
                 });
                 if (!startRes.ok) {
                     const data = await startRes.json().catch(() => ({}));
-                    this.error = data.error || 'Could not start passkey login';
+                    this.error = data.error || t("Could not start passkey login");
                     return;
                 }
                 const challenge = await startRes.json();
@@ -167,10 +167,10 @@ function loginApp() {
                     window.location.href = '/dashboard.html';
                 } else {
                     const data = await finishRes.json().catch(() => ({}));
-                    this.error = data.error || 'Passkey verification failed';
+                    this.error = data.error || t("Passkey verification failed");
                 }
             } catch (e) {
-                this.error = (e && e.name === 'NotAllowedError') ? 'Passkey prompt was dismissed' : 'Passkey error. Please try again.';
+                this.error = (e && e.name === 'NotAllowedError') ? t("Passkey prompt was dismissed") : t("Passkey error. Please try again.");
             } finally {
                 this.loading = false;
             }
@@ -178,7 +178,7 @@ function loginApp() {
 
         async loginPasskeyDirect() {
             if (!webauthnSupported()) {
-                this.error = 'Passkeys are not supported in this browser';
+                this.error = t("Passkeys are not supported in this browser");
                 return;
             }
             this.error = '';
@@ -191,7 +191,7 @@ function loginApp() {
                 });
                 if (!startRes.ok) {
                     const data = await startRes.json().catch(() => ({}));
-                    this.error = data.error || 'Passkey login is not available';
+                    this.error = data.error || t("Passkey login is not available");
                     return;
                 }
                 const data = await startRes.json();
@@ -209,10 +209,10 @@ function loginApp() {
                     window.location.href = '/dashboard.html';
                 } else {
                     const d = await finishRes.json().catch(() => ({}));
-                    this.error = d.error || 'Passkey verification failed';
+                    this.error = d.error || t("Passkey verification failed");
                 }
             } catch (e) {
-                this.error = (e && e.name === 'NotAllowedError') ? 'Passkey prompt was dismissed' : 'Passkey error. Please try again.';
+                this.error = (e && e.name === 'NotAllowedError') ? t("Passkey prompt was dismissed") : t("Passkey error. Please try again.");
             } finally {
                 this.loading = false;
             }

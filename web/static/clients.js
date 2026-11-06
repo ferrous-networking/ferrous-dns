@@ -116,11 +116,11 @@
                         await this.loadStats();
                         scheduleLucide(50);
                     } else {
-                        alert('Failed: ' + await res.text());
+                        alert(t("Failed: ") + await res.text());
                     }
                 } catch (e) {
                     console.error(e);
-                    alert('Error saving client');
+                    alert(t("Error saving client"));
                 }
             },
 
@@ -130,16 +130,16 @@
                 if (!v) { this.form.type = null; return; }
                 if (v.includes('/')) {
                     if (this.isValidCIDR(v)) { this.form.type = 'subnet'; }
-                    else { this.form.type = null; this.form.error = 'Invalid CIDR format (e.g., 192.168.1.0/24)'; }
+                    else { this.form.type = null; this.form.error = t("Invalid CIDR format (e.g., 192.168.1.0/24)"); }
                     return;
                 }
                 if (this.isValidMAC(v)) {
                     this.form.type = 'mac';
-                    this.form.error = 'MAC detected! Please enter the IP address.';
+                    this.form.error = t("MAC detected! Please enter the IP address.");
                     return;
                 }
                 if (this.isValidIP(v)) { this.form.type = 'ip'; }
-                else { this.form.type = null; this.form.error = 'Invalid IP, CIDR or MAC address'; }
+                else { this.form.type = null; this.form.error = t("Invalid IP, CIDR or MAC address"); }
             },
 
             isValidIP(ip) {
@@ -173,18 +173,18 @@
             },
 
             getTypeLabel() {
-                return { ip: 'IP Address → Individual Client', subnet: 'CIDR Subnet → Multiple Clients', mac: 'MAC Address → Requires IP' }[this.form.type] || '';
+                return { ip: t("IP Address → Individual Client"), subnet: t("CIDR Subnet → Multiple Clients"), mac: t("MAC Address → Requires IP") }[this.form.type] || '';
             },
 
             getButtonText() {
-                if (!this.form.type) return 'Enter address...';
-                if (this.form.type === 'mac') return 'Add IP address';
-                return this.form.type === 'subnet' ? 'Add Subnet' : 'Add Client';
+                if (!this.form.type) return t("Enter address...");
+                if (this.form.type === 'mac') return t("Add IP address");
+                return this.form.type === 'subnet' ? t("Add Subnet") : t("Add Client");
             },
 
             async submitForm() {
                 if (!this.form.type || this.form.type === 'mac' || this.form.error) {
-                    alert(this.form.error || 'Invalid address');
+                    alert(this.form.error || t("Invalid address"));
                     return;
                 }
                 try {
@@ -192,7 +192,7 @@
                     else { await this.submitClient(); }
                 } catch (e) {
                     console.error('Submission error:', e);
-                    alert('Error: ' + e.message);
+                    alert(t("Error: ") + e.message);
                 }
             },
 
@@ -207,8 +207,8 @@
                         mac_address: null
                     })
                 });
-                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Client added successfully!'); }
-                else { alert('Failed: ' + await res.text()); }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert(t("Client added successfully!")); }
+                else { alert(t("Failed: ") + await res.text()); }
             },
 
             async submitSubnet() {
@@ -221,8 +221,8 @@
                         comment: this.form.metadata || null
                     })
                 });
-                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert('Subnet added successfully!'); }
-                else { alert('Failed: ' + await res.text()); }
+                if (res.ok) { this.resetForm(); await this.loadAll(); scheduleLucide(); alert(t("Subnet added successfully!")); }
+                else { alert(t("Failed: ") + await res.text()); }
             },
 
             resetForm() {
@@ -230,26 +230,26 @@
             },
 
             async deleteClient(id) {
-                if (!confirm('Delete this client?')) return;
+                if (!confirm(t("Delete this client?"))) return;
                 try {
                     const res = await fetch(`${API_BASE}/clients/${id}`, { method: 'DELETE' });
                     if (res.ok) { await this.loadAll(); scheduleLucide(); }
-                    else { alert('Failed: ' + await res.text()); }
+                    else { alert(t("Failed: ") + await res.text()); }
                 } catch (e) {
                     console.error(e);
-                    alert('Error deleting client');
+                    alert(t("Error deleting client"));
                 }
             },
 
             async deleteSubnet(id) {
-                if (!confirm('Delete this subnet?')) return;
+                if (!confirm(t("Delete this subnet?"))) return;
                 try {
                     const res = await fetch(`${API_BASE}/client-subnets/${id}`, { method: 'DELETE' });
                     if (res.ok) { await this.loadAll(); scheduleLucide(); }
-                    else { alert('Failed: ' + await res.text()); }
+                    else { alert(t("Failed: ") + await res.text()); }
                 } catch (e) {
                     console.error(e);
-                    alert('Error deleting subnet');
+                    alert(t("Error deleting subnet"));
                 }
             },
 
@@ -264,7 +264,7 @@
             async bulkDeleteSubnets() {
                 const count = this.selectedSubnets.length;
                 if (count === 0) return;
-                if (!confirm(`Delete ${count} selected subnet${count > 1 ? 's' : ''}? This action cannot be undone.`)) return;
+                if (!confirm(tn('Delete {count} selected subnet? This action cannot be undone.', 'Delete {count} selected subnets? This action cannot be undone.', count))) return;
                 try {
                     let deleted = 0, failed = 0;
                     for (let i = 0; i < this.selectedSubnets.length; i += 10) {
@@ -279,17 +279,17 @@
                     scheduleLucide(100);
                     this.selectedSubnets = [];
                     this.selectAllSubnets = false;
-                    if (failed === 0) alert(`${deleted} subnet${deleted > 1 ? 's' : ''} deleted successfully!`);
-                    else alert(`Deleted ${deleted}. Failed to delete ${failed}.`);
+                    if (failed === 0) alert(tn('{count} subnet deleted successfully!', '{count} subnets deleted successfully!', deleted));
+                    else alert(t("Deleted {0}. Failed to delete {1}.", {0: deleted, 1: failed}));
                 } catch (e) {
                     console.error('Bulk delete error:', e);
-                    alert('Error during bulk delete operation');
+                    alert(t("Error during bulk delete operation"));
                 }
             },
 
             formatDateTime(timestamp) {
                 if (!timestamp) return '-';
-                return new Date(timestamp).toLocaleString();
+                return new Date(timestamp).toLocaleString(FerrousI18n.locale());
             }
         }
     }
