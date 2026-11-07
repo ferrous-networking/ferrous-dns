@@ -29,6 +29,26 @@ async fn test_certificate_not_after_reads_a_generated_certificates_expiry() {
     );
 }
 
+/// rustls serves the certificate out of a file that holds the key first, so
+/// its expiry must be read from there too.
+#[tokio::test]
+async fn test_certificate_not_after_skips_a_key_ahead_of_the_certificate() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (cert, key) = (dir.path().join("cert.pem"), dir.path().join("key.pem"));
+    TlsCertificateService
+        .generate_self_signed(path_str(&cert), path_str(&key))
+        .await
+        .expect("generate pair");
+    let bundle = dir.path().join("bundle.pem");
+    let mut data = std::fs::read(&key).expect("read key");
+    data.extend(std::fs::read(&cert).expect("read cert"));
+    std::fs::write(&bundle, data).expect("write bundle");
+
+    let expected = certificate_not_after(path_str(&cert));
+    assert!(expected.is_some());
+    assert_eq!(certificate_not_after(path_str(&bundle)), expected);
+}
+
 #[test]
 fn test_certificate_not_after_is_none_without_a_certificate() {
     let dir = tempfile::tempdir().expect("tempdir");
