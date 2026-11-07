@@ -332,6 +332,48 @@ async fn test_web_bind_address_survives_export_import_roundtrip() {
     );
 }
 
+/// A backup made before `web_bind_address` existed says nothing about it, so
+/// even a full restore must not move a dashboard kept on loopback back onto
+/// `bind_address`.
+#[tokio::test]
+async fn test_import_of_an_older_backup_keeps_this_servers_web_bind_address() {
+    let TestApp { router, config, .. } = test_app().await;
+    config.write().await.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    assert!(minimal_backup_json()["config"]["server"]
+        .get("web_bind_address")
+        .is_none());
+
+    let payload = serde_json::to_vec(&minimal_backup_json()).unwrap();
+    let response = router.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(
+        config.read().await.server.web_bind_address,
+        Some("127.0.0.1".parse().unwrap())
+    );
+}
+
+/// A backup from a server without the key carries it as `null`, and a full
+/// restore applies that: the web server shares `bind_address` again.
+#[tokio::test]
+async fn test_import_of_a_null_web_bind_address_unsets_it() {
+    let TestApp { router: app_a, .. } = test_app().await;
+    let (_, exported) = do_export(app_a).await;
+    assert!(exported["config"]["server"]["web_bind_address"].is_null());
+
+    let TestApp {
+        router: app_b,
+        config: config_b,
+        ..
+    } = test_app().await;
+    config_b.write().await.server.web_bind_address = Some("127.0.0.1".parse().unwrap());
+    let payload = serde_json::to_vec(&exported).unwrap();
+    let response = app_b.oneshot(import_request(&payload)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(config_b.read().await.server.web_bind_address, None);
+}
+
 /// This server's own listener, web TLS and passkey settings.
 fn give_host_settings(cfg: &mut Config) {
     cfg.server.dns_port = 5353;
